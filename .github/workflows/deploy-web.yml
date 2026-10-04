@@ -71,14 +71,15 @@ jobs:
           mkdir -p .vercel/output
           cp -r build/web .vercel/output/static
           # Serve real files first, then hand every other path to the app so
-          # deep links and refreshes reach the router instead of a 404.
+          # deep links and refreshes reach the router instead of a 404. Vercel's
+          # own /_vercel/* endpoints (Speed Insights) are left alone.
           cat > .vercel/output/config.json <<'JSON'
           {
             "version": 3,
             "routes": [
               { "src": "/(flutter_service_worker\\.js|index\\.html)", "headers": { "cache-control": "no-cache" }, "continue": true },
               { "handle": "filesystem" },
-              { "src": "/.*", "dest": "/index.html" }
+              { "src": "/(?!_vercel/).*", "dest": "/index.html" }
             ]
           }
           JSON

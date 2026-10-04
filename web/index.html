@@ -31,6 +31,17 @@
 
   <title>GET.ride</title>
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    Vercel Speed Insights (the script-tag form of @vercel/speed-insights, for
+    sites that aren't built with npm). The script is served by Vercel itself
+    once Speed Insights is enabled for the project; anywhere else it is simply
+    absent and the queue below stays a no-op.
+  -->
+  <script>
+    window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+  </script>
+  <script defer src="/_vercel/speed-insights/script.js"></script>
 </head>
 <body>
   <!--
