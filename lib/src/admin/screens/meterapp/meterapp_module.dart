@@ -1,9 +1,10 @@
-// Meter & app: Meter Digital rate cards, display/mock settings, site, app icon, splash, always-on pages.
+// Meter & app: Meter Digital rate cards, display/mock settings, site, app icon, splash, always-on pages, store releases.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin_registry.dart';
 import 'always_on_screen.dart';
+import 'app_release_screen.dart';
 import 'branding_screens.dart';
 import 'display_screen.dart';
 import 'meter_digital_screen.dart';
@@ -18,6 +19,7 @@ final meterappRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/app-icon', builder: (_, _) => const AdminAppIconScreen()),
   GoRoute(path: '/admin/m/splash', builder: (_, _) => const AdminSplashScreen()),
   GoRoute(path: '/admin/m/always-on', builder: (_, _) => const AdminAlwaysOnScreen()),
+  GoRoute(path: '/admin/m/app-release', builder: (_, _) => const AdminAppReleaseScreen()),
 ];
 
 const meterappEntries = <AdminScreenEntry>[
@@ -76,6 +78,14 @@ const meterappEntries = <AdminScreenEntry>[
     path: '/admin/m/always-on',
     pages: ['admin-settings-always-on'],
     icon: Icons.wb_sunny_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'Meter & app',
+    title: 'App Release',
+    subtitle: 'Build & upload to the App Store and Google Play',
+    path: '/admin/m/app-release',
+    pages: [appReleasePage],
+    icon: Icons.rocket_launch_outlined,
   ),
 ];
 

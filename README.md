@@ -83,20 +83,17 @@ CI (`.github/workflows/flutter.yml`) analyses, tests and builds every platform.
 
 ## Deploy (web → Vercel)
 
-`.github/workflows/deploy-web.yml` builds the web app and uploads it to Vercel: **production** on every push to `main`, a **preview** for each pull request (its URL is posted as a PR comment). Vercel has no Flutter builder, so the site is built in GitHub Actions and shipped prebuilt (`vercel deploy --prebuilt`); every unknown path falls back to `index.html` so deep links reach the router.
+Deploying is the last step of CI. Every push whose `flutter analyze` and tests pass (`.github/workflows/flutter.yml`) runs `.github/workflows/deploy-web.yml`, which builds the web app and uploads it to Vercel: the default branch (`main`) goes to **production**, every other branch to a **preview** URL (shown on the run's summary). Pull requests get the checks; the push of the same commit deploys it. Vercel has no Flutter builder, so the site is built in GitHub Actions and shipped prebuilt (`vercel deploy --prebuilt`); every unknown path falls back to `index.html` so deep links reach the router. It can also be run by hand from the Actions tab (*Deploy web*).
 
-One-time setup:
-
-1. In Vercel, create a project (Add New → Project; import this repo, or create an empty one). The workflow uploads a finished build, so the project's framework/build settings don't matter. If you did import the repo, turn off Vercel's own Git deployments for it (Settings → Git) so each push isn't deployed twice.
-2. Create a token under Account Settings → Tokens.
-3. Add three repository secrets (GitHub → Settings → Secrets and variables → Actions):
-   - `VERCEL_TOKEN` — the token from step 2
-   - `VERCEL_ORG_ID` — the team/account ID (Vercel → Settings → General)
-   - `VERCEL_PROJECT_ID` — the project ID (project → Settings → General)
+The only credential is the `VERCEL_TOKEN` repository secret. The team and project ids (`team_EBG91tunYkCckYh5bCELGRU3`, `prj_P1tZDFvZfEFMT7z84MtAVd1sa80b`) are identifiers, so they are written into the workflow; a `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` secret or variable overrides them. Vercel's own Git deployments should stay off for the project (Settings → Git), since they cannot build Flutter and would publish an empty site.
 
 Web Analytics and Speed Insights are wired into `web/index.html` as Vercel's script tags (the non-npm forms of `@vercel/analytics` and `@vercel/speed-insights`); turn each on in the project's **Analytics** / **Speed Insights** tab and it starts reporting from the next deploy. The web app uses real path URLs (`/rides`, not `/#/rides`; `usePathUrlStrategy()` in `lib/main.dart`), so Analytics reports each screen separately; old `/#/…` links are rewritten to their path on load.
 
 Until all three are set, the workflow skips the deploy and leaves a notice instead of failing. It can also be run by hand from the Actions tab (**Run workflow**), which deploys `main` to production and any other branch as a preview.
+
+## Release (App Store / Google Play)
+
+The iOS and Android apps ship as **`com.taxxee.teksi`**, the same store listings the Expo app used. Admin → Settings → **App Release** (in this admin or the Expo one) starts `.github/workflows/ios-release.yml` / `android-release.yml` through the `ios-release` / `android-release` Supabase edge functions, which build, sign and upload. The workflows skip with a notice until their secrets exist. Setup, version-number offsets and the shared upload key are in [`docs/store-release.md`](docs/store-release.md).
 
 ## Layout
 

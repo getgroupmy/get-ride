@@ -1,0 +1,243 @@
+# Build the Android app and hand it to Google Play.
+#
+# Started from either admin console (Settings -> App Release) through the
+# `android-release` Supabase edge function, which holds the token that can
+# dispatch this workflow, or by hand from the Actions tab.
+#
+# The app ships as com.taxxee.teksi, the same Play listing the Expo app
+# used, so each release here replaces whatever was last published there.
+#
+# ## What has to exist first
+#
+# Actions secrets (Settings -> Secrets and variables -> Actions):
+#
+#   ANDROID_KEYSTORE_BASE64   base64 of the upload keystore (.jks)
+#   ANDROID_KEYSTORE_PASSWORD the keystore password
+#   ANDROID_KEY_ALIAS         the key alias inside it
+#   ANDROID_KEY_PASSWORD      the key password
+#   PLAY_SERVICE_ACCOUNT      the whole service account JSON (only to upload)
+#
+# Repository variable ANDROID_VERSION_CODE_OFFSET: added to the run number
+# to make the version code. Set it above the highest version code already
+# in the Play Console (the Expo app's EAS builds), or Play refuses it.
+#
+# Until the secrets are there this workflow stops with a list of what is
+# missing rather than failing. See docs/store-release.md.
+name: Android release
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: Where the build goes
+        type: choice
+        options: [internal, alpha, beta, production]
+        default: internal
+      notes:
+        description: What changed (one line, shown to testers)
+        type: string
+        required: false
+      upload:
+        description: Send it to Play. Untick to just build it and download it.
+        type: boolean
+        default: true
+
+# One release at a time: two at once would race for the version code and
+# the loser would be refused after building.
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and upload
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is this set up yet
+        id: creds
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PLAY_SERVICE_ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT }}
+        run: |
+          # The Play credential is needed only to SEND; a build-only run
+          # (for the one manual first upload Play requires) does not.
+          needed="ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD"
+          needed="$needed ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD"
+          if [ "${{ inputs.upload }}" = "true" ]; then
+            needed="$needed PLAY_SERVICE_ACCOUNT"
+          fi
+
+          missing=""
+          for name in $needed; do
+            eval "value=\${$name}"
+            [ -z "$value" ] && missing="$missing $name"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Not set up yet"
+              echo
+              echo "These Actions secrets are missing:"
+              echo
+              for name in $missing; do echo "* \`$name\`"; done
+              echo
+              if [ "$(echo $missing)" = "PLAY_SERVICE_ACCOUNT" ]; then
+                echo "**Everything needed to BUILD is here.** Only the"
+                echo "credential for sending to Play is missing. To make the"
+                echo "bundle for a manual upload, run this again with"
+                echo "**Send it to Play unticked**."
+                echo
+              fi
+              echo "See \`docs/store-release.md\` for where each comes from."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        if: steps.creds.outputs.ready == 'true'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        if: steps.creds.outputs.ready == 'true'
+        with:
+          channel: stable
+          cache: true
+
+      - uses: denoland/setup-deno@v2
+        if: steps.creds.outputs.ready == 'true' && inputs.upload == true
+        with:
+          deno-version: v2.x
+
+      - name: Dependencies
+        if: steps.creds.outputs.ready == 'true'
+        run: flutter pub get
+
+      - name: Signing key
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Outside the checkout, so it is never one `git add -A` from
+          # being committed. A leaked upload key can only be reset by Google.
+          store="$RUNNER_TEMP/upload.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$store"
+
+          # Read by android/app/build.gradle.kts; gitignored.
+          cat > android/key.properties <<PROPS
+          storeFile=$store
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          PROPS
+
+          # Not a secret: a certificate fingerprint is public by design,
+          # and it is what Play Console shows as the upload key.
+          keytool -list -v -keystore "$store" \
+            -alias "$ANDROID_KEY_ALIAS" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" \
+            | grep -i "SHA256:" | head -1 | tee "$RUNNER_TEMP/sha256.txt"
+
+      - name: Build the bundle
+        id: build
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          OFFSET: ${{ vars.ANDROID_VERSION_CODE_OFFSET || 0 }}
+        run: |
+          set -euo pipefail
+          code=$(( ${{ github.run_number }} + OFFSET ))
+          echo "version code $code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          # An app bundle, not an APK: Play requires an AAB.
+          flutter build appbundle --release --build-number="$code"
+
+      - name: The bundle is not signed with the debug key
+        if: steps.creds.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          aab=build/app/outputs/bundle/release/app-release.aab
+          # build.gradle.kts falls back to the debug key when
+          # key.properties is missing or unreadable. Play would refuse
+          # that after the upload; catch it before.
+          if keytool -printcert -jarfile "$aab" | grep -q "CN=Android Debug"; then
+            echo "::error::The bundle is signed with the DEBUG key." \
+                 "key.properties did not take effect. Nothing was sent."
+            exit 1
+          fi
+          echo "signed with the upload key"
+
+      - name: Keep the bundle for download
+        if: steps.creds.outputs.ready == 'true' && inputs.upload != true
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-${{ steps.build.outputs.code }}
+          path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload to Google Play
+        id: upload
+        if: steps.creds.outputs.ready == 'true' && inputs.upload == true
+        env:
+          PLAY_SERVICE_ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT }}
+          PLAY_PACKAGE_NAME: com.taxxee.teksi
+          PLAY_TRACK: ${{ inputs.track }}
+          PLAY_RELEASE_NOTES: ${{ inputs.notes }}
+        run: |
+          set -euo pipefail
+          # Exit 3 from play_upload.ts is a refusal waiting cannot fix
+          # (disabled API, missing permission, version code taken).
+          RETRY_NEVER_ON=3 scripts/ci/retry.sh \
+            deno run --allow-read --allow-env --allow-net \
+              scripts/play_upload.ts \
+              build/app/outputs/bundle/release/app-release.aab
+
+      - name: What happened
+        if: always() && steps.creds.outputs.ready == 'true'
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          {
+            echo "### Android ${{ inputs.track }}"
+            echo
+            echo "* version code: \`${{ steps.build.outputs.code }}\`"
+            echo "* commit: \`${{ github.sha }}\`"
+            if [ -n "$NOTES" ]; then echo "* notes: $NOTES"; fi
+            if [ -f "$RUNNER_TEMP/sha256.txt" ]; then
+              echo "* upload key: \`$(tr -d ' ' < "$RUNNER_TEMP/sha256.txt")\`"
+            fi
+            echo
+            # Reads the outcome rather than assuming one.
+            if [ "${{ inputs.upload }}" != "true" ]; then
+              echo "**Built, not sent.** The bundle is under Artifacts on"
+              echo "this run's summary page."
+            elif [ "${{ steps.upload.outcome }}" != "success" ]; then
+              echo "**Nothing was uploaded.** The failing step above says why."
+            elif [ "${{ inputs.track }}" = "production" ]; then
+              echo "Uploaded and rolled out to production. Play's own review"
+              echo "still applies and takes hours to days."
+            else
+              echo "Uploaded. It reaches the ${{ inputs.track }} testers once"
+              echo "Play has finished processing it."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Take the key away
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/upload.jks" || true
+          rm -f android/key.properties || true

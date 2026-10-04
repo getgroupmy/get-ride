@@ -2,7 +2,7 @@ name: Flutter
 
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: ["**"]
   pull_request:
 
 jobs:
@@ -17,6 +17,26 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+
+  release-scripts:
+    # The Play upload script's decisions (tracks, refusal messages), so a
+    # release does not find a mistake there after a full build.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno check scripts/play_upload.ts
+      - run: deno test scripts/play_upload_test.ts
+
+  # Every push that passes analyze + tests is deployed to Vercel: the
+  # default branch to production, any other branch to a preview URL.
+  deploy:
+    needs: test
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/deploy-web.yml
+    secrets: inherit
 
   build:
     needs: test
