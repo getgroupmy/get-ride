@@ -4,6 +4,13 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <!-- Android 13+: asked for at sign-in, before the push token is stored. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Bluetooth LE OBD-II readers (Meter Digital). Android 12+ asks for scan
+         and connect only; older versions scan under the location permission
+         the app already holds. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
     <application
         android:label="GET.ride"
         android:name="${applicationName}"

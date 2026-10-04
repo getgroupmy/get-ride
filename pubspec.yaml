@@ -50,6 +50,7 @@ dependencies:
   file_picker: ^13.1.0
   firebase_core: ^4.15.0
   firebase_messaging: ^16.7.0
+  universal_ble: ^2.3.0
 
 dev_dependencies:
   flutter_test:
