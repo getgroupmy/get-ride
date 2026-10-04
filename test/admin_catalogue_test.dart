@@ -6,7 +6,8 @@ import 'package:get_ride/src/admin/screens/catalogue/catalogue_logic.dart';
 
 SettingEntry e(String id, Map<String, dynamic> v) => SettingEntry(id: id, values: v);
 
-VehicleMakeModel vmm(String id, String vt, String et, String mk, String model, {String from = '', String to = ''}) =>
+VehicleMakeModel vmm(String id, String vt, String et, String mk, String model,
+        {String from = '', String to = ''}) =>
     VehicleMakeModel(id: id, vehicleType: vt, energyType: et, make: mk, model: model, yearFrom: from, yearTo: to);
 
 void main() {
@@ -56,16 +57,7 @@ void main() {
     });
 
     test('entryMatches searches every value', () {
-      expect(
-        entryMatches(
-          e('1', {
-            'name': 'Car',
-            'serviceTypes': ['Bike'],
-          }),
-          'bik',
-        ),
-        isTrue,
-      );
+      expect(entryMatches(e('1', {'name': 'Car', 'serviceTypes': ['Bike']}), 'bik'), isTrue);
       expect(entryMatches(e('1', {'name': 'Car'}), 'van'), isFalse);
     });
   });
@@ -73,13 +65,7 @@ void main() {
   group('service settings', () {
     test('requires a name', () {
       final r = buildServiceValues(
-        name: ' ',
-        description: '',
-        iconUri: '',
-        priorityText: '',
-        active: true,
-        entryCount: 0,
-      );
+          name: ' ', description: '', iconUri: '', priorityText: '', active: true, entryCount: 0);
       expect(r.error, 'Please fill in Service Name.');
     });
 
@@ -102,13 +88,7 @@ void main() {
         'isDefault': true,
       });
       final add = buildServiceValues(
-        name: 'X',
-        description: '',
-        iconUri: '',
-        priorityText: '2.5',
-        active: true,
-        entryCount: 0,
-      );
+          name: 'X', description: '', iconUri: '', priorityText: '2.5', active: true, entryCount: 0);
       expect(add.values['displayPriority'], 2.5);
       expect(add.values['isDefault'], isFalse);
     });
@@ -162,8 +142,7 @@ void main() {
   });
 
   group('partner type', () {
-    const json =
-        '[{"id":"S-1","name":"A","enabled":true,"children":[{"id":"S-2","name":"A1","children":[]}]},'
+    const json = '[{"id":"S-1","name":"A","enabled":true,"children":[{"id":"S-2","name":"A1","children":[]}]},'
         '{"name":""},{"id":"S-3","name":"B","enabled":false}]';
 
     test('parses and sanitises the sub-service tree', () {
@@ -259,10 +238,8 @@ void main() {
     });
 
     test('icon upload path and types', () {
-      expect(
-        partnerTypeIconPath('png', now: DateTime.fromMillisecondsSinceEpoch(42), rand: 'abc123'),
-        'icon-42-abc123.png',
-      );
+      expect(partnerTypeIconPath('png', now: DateTime.fromMillisecondsSinceEpoch(42), rand: 'abc123'),
+          'icon-42-abc123.png');
       expect(iconExt('A.JPEG'), 'jpg');
       expect(iconExt('a.heic'), 'png');
       expect(imageContentType('a.webp'), 'image/webp');
@@ -293,17 +270,10 @@ void main() {
     });
 
     test('values and duplicate check', () {
-      final all = [
-        e('1', {'name': 'User', 'isDefault': true}),
-      ];
-      expect(buildDocumentTypeValues(entries: all, name: 'user', description: '', enabled: true).error, isNotNull);
-      final r = buildDocumentTypeValues(
-        entries: all,
-        editing: all[0],
-        name: 'User',
-        description: ' x ',
-        enabled: false,
-      );
+      final all = [e('1', {'name': 'User', 'isDefault': true})];
+      expect(
+          buildDocumentTypeValues(entries: all, name: 'user', description: '', enabled: true).error, isNotNull);
+      final r = buildDocumentTypeValues(entries: all, editing: all[0], name: 'User', description: ' x ', enabled: false);
       expect(r.values, {'name': 'User', 'description': 'x', 'isDefault': true, 'enabled': false});
     });
 
@@ -326,14 +296,12 @@ void main() {
     });
 
     test('regions parse from JSON string', () {
-      final r = parseRegions(
-        jsonEncode([
-          {'type': 'country', 'country': 'Malaysia', 'state': '', 'compulsory': false},
-          {'type': 'state', 'country': 'Malaysia', 'state': 'Selangor'},
-          {'type': 'state', 'country': 'Malaysia', 'state': ''},
-          {'country': ''},
-        ]),
-      );
+      final r = parseRegions(jsonEncode([
+        {'type': 'country', 'country': 'Malaysia', 'state': '', 'compulsory': false},
+        {'type': 'state', 'country': 'Malaysia', 'state': 'Selangor'},
+        {'type': 'state', 'country': 'Malaysia', 'state': ''},
+        {'country': ''},
+      ]));
       expect(r.map((x) => x.key), ['country:Malaysia', 'state:Malaysia|Selangor']);
       expect(r[0].compulsory, isFalse);
       expect(r[1].compulsory, isTrue);
@@ -368,21 +336,11 @@ void main() {
     });
 
     test('values: validation and Expo shape', () {
-      final all = [
-        e('1', {'name': 'PSV', 'legacyKey': 1}),
-      ];
+      final all = [e('1', {'name': 'PSV', 'legacyKey': 1})];
       final noRegion = RequiredDocForm(name: 'X', regionsGlobal: false);
-      expect(
-        buildRequiredDocValues(entries: all, form: noRegion).error,
-        'Select at least one country/state or enable Global.',
-      );
-      expect(
-        buildRequiredDocValues(
-          entries: all,
-          form: RequiredDocForm(name: 'psv'),
-        ).error,
-        isNotNull,
-      );
+      expect(buildRequiredDocValues(entries: all, form: noRegion).error,
+          'Select at least one country/state or enable Global.');
+      expect(buildRequiredDocValues(entries: all, form: RequiredDocForm(name: 'psv')).error, isNotNull);
 
       final f = RequiredDocForm.fromValues(all[0].values)
         ..docTypes = [allToken]
@@ -395,9 +353,8 @@ void main() {
       expect(r.values['legacyKey'], 1);
       expect(r.values['docTypes'], '["__ALL__"]');
       expect(r.values['partnerTypes'], '[]');
-      expect(jsonDecode(r.values['regions'] as String), [
-        {'type': 'state', 'country': 'MY', 'state': 'Sel', 'compulsory': true},
-      ]);
+      expect(jsonDecode(r.values['regions'] as String),
+          [{'type': 'state', 'country': 'MY', 'state': 'Sel', 'compulsory': true}]);
       expect(r.values['requireExpiryDate'], isTrue);
       expect(r.values['requireStartDate'], isFalse);
       expect(r.values['isTaxiPermit'], isTrue);
@@ -412,9 +369,7 @@ void main() {
         ]),
         ['Fleet', 'Teksi'],
       );
-      final types = [
-        e('t1', {'name': 'Partner'}),
-      ];
+      final types = [e('t1', {'name': 'Partner'})];
       expect(docTypeLabels(['t1', 'zz'], types), ['Partner', 'Unknown']);
       expect(docTypeLabels([allToken, 't1'], types), ['All']);
     });
@@ -495,33 +450,15 @@ void main() {
 
     test('category validation', () {
       expect(vmmCategoryError(all, level: 0, name: 'car', parents: const VmmPath()), contains('already exists'));
+      expect(vmmCategoryError(all, level: 1, name: 'Diesel', parents: const VmmPath()),
+          'Please select or enter a Vehicle Type.');
+      expect(vmmCategoryError(all, level: 1, name: 'Diesel', parents: const VmmPath(vehicleType: 'Car')), isNull);
       expect(
-        vmmCategoryError(all, level: 1, name: 'Diesel', parents: const VmmPath()),
-        'Please select or enter a Vehicle Type.',
-      );
-      expect(
-        vmmCategoryError(
-          all,
-          level: 1,
-          name: 'Diesel',
-          parents: const VmmPath(vehicleType: 'Car'),
-        ),
-        isNull,
-      );
-      expect(
-        vmmCategoryError(
-          all,
-          level: 2,
-          name: 'Proton',
-          parents: const VmmPath(vehicleType: 'Car', energyType: 'Petrol'),
-        ),
-        isNotNull,
-      );
+          vmmCategoryError(all, level: 2, name: 'Proton', parents: const VmmPath(vehicleType: 'Car', energyType: 'Petrol')),
+          isNotNull);
       expect(vmmCategoryError(all, level: 0, name: 'Car', parents: const VmmPath(), renameFrom: 'Car'), isNull);
-      expect(
-        vmmCategoryError(all, level: 0, name: 'Bike', parents: const VmmPath(), renameFrom: 'Car'),
-        '"Bike" already exists at this level.',
-      );
+      expect(vmmCategoryError(all, level: 0, name: 'Bike', parents: const VmmPath(), renameFrom: 'Car'),
+          '"Bike" already exists at this level.');
     });
 
     test('rename/delete targets and placeholders', () {
@@ -538,14 +475,7 @@ void main() {
     });
 
     test('model row validation, ongoing and duplicates', () {
-      final f = ModelForm(
-        vehicleType: 'Car',
-        energyType: 'Petrol',
-        make: 'Proton',
-        model: 'saga',
-        yearFrom: '2016',
-        ongoing: true,
-      );
+      final f = ModelForm(vehicleType: 'Car', energyType: 'Petrol', make: 'Proton', model: 'saga', yearFrom: '2016', ongoing: true);
       expect(buildModelRow(all, f, newId: 'n').error, contains('already exists'));
       f.yearFrom = '2020';
       final r = buildModelRow(all, f, newId: 'n');
@@ -575,15 +505,9 @@ void main() {
 
     test('legacy page ids migrate', () {
       final m = migrateLegacyPageIds({
-        'driver-teksi': {
-          'maps': {'providerId': 'google', 'serviceId': 'maps'},
-        },
-        'driver-ehailing': {
-          'maps': {'providerId': 'a', 'serviceId': 'b'},
-        },
-        'partner-ehailing': {
-          'maps': {'providerId': 'c', 'serviceId': 'd'},
-        },
+        'driver-teksi': {'maps': {'providerId': 'google', 'serviceId': 'maps'}},
+        'driver-ehailing': {'maps': {'providerId': 'a', 'serviceId': 'b'}},
+        'partner-ehailing': {'maps': {'providerId': 'c', 'serviceId': 'd'}},
       });
       expect(m.changed, isTrue);
       expect(m.next.keys.toSet(), {'partner-teksi', 'partner-ehailing'});

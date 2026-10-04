@@ -52,20 +52,8 @@ void main() {
 
     test('deleted never reaches the user_status column', () {
       final p = userProfilePatch(
-        name: 'a',
-        phone: '1',
-        email: 'e',
-        ic: '',
-        address: '',
-        nationality: '',
-        birthDate: '',
-        referralCode: '',
-        gender: null,
-        profileImage: null,
-        idImage: null,
-        status: 'deleted',
-        documentsOk: false,
-      );
+          name: 'a', phone: '1', email: 'e', ic: '', address: '', nationality: '', birthDate: '', referralCode: '',
+          gender: null, profileImage: null, idImage: null, status: 'deleted', documentsOk: false);
       expect(p['status'], 'unapproved');
       expect(p['profile_status'], 'Deleted');
     });
@@ -85,14 +73,9 @@ void main() {
 
     test('storage paths follow Expo edit-profile', () {
       final d = DateTime(2025, 3, 7);
-      expect(
-        idImagePath(country: 'Malaysia', phone: '+60 12-345', idNumber: '990101-14', ext: 'jpg', now: d),
-        'Malaysia/+60_12-345_990101-14_07032025.jpg',
-      );
-      expect(
-        avatarPath(country: '', phone: '+6012', name: 'Jane Doe', ext: 'png', now: d),
-        'Unknown/+6012_jane_doe_07032025.png',
-      );
+      expect(idImagePath(country: 'Malaysia', phone: '+60 12-345', idNumber: '990101-14', ext: 'jpg', now: d),
+          'Malaysia/+60_12-345_990101-14_07032025.jpg');
+      expect(avatarPath(country: '', phone: '+6012', name: 'Jane Doe', ext: 'png', now: d), 'Unknown/+6012_jane_doe_07032025.png');
       expect(avatarPath(country: 'MY', phone: '1', name: ' ', ext: 'png', now: d), 'MY/1_user_07032025.png');
       expect(docFilePath('p1', 'd1', 'front', 'jpg', ms: 5), 'p1/d1/front-5.jpg');
       expect(vehiclePhotoPath('v1', 'left', 'png', ms: 9), 'v1/photos/left-9.png');
@@ -140,14 +123,7 @@ void main() {
 
     test('profile edit patch nulls blanks', () {
       final p = idProfilePatch(
-        name: '',
-        phone: '1',
-        email: ' ',
-        ic: 'X',
-        nationality: '',
-        documentsOk: true,
-        idExpiry: '2030-01-01',
-      );
+          name: '', phone: '1', email: ' ', ic: 'X', nationality: '', documentsOk: true, idExpiry: '2030-01-01');
       expect(p, {
         'name': null,
         'phone': '1',
@@ -201,10 +177,10 @@ void main() {
     test('geo options merge tables with values in use', () {
       final g = GeoOptions.build(
         countryRows: [
-          {'name': 'Japan'},
+          {'name': 'Japan'}
         ],
         stateRows: [
-          {'country': 'Malaysia', 'name': 'Johor'},
+          {'country': 'Malaysia', 'name': 'Johor'}
         ],
         cityRows: const [],
         inUse: [area],
@@ -247,45 +223,23 @@ void main() {
 
     test('form validation order mirrors Expo', () {
       const area = ServiceArea(countries: ['MY'], states: ['MY|S'], cities: ['MY|S|C']);
+      expect(validatePartnerForm(hasUser: false, area: area, partnerTypes: ['a'], vehicleRequired: false, hasVehicle: false),
+          contains('select a user'));
       expect(
-        validatePartnerForm(hasUser: false, area: area, partnerTypes: ['a'], vehicleRequired: false, hasVehicle: false),
-        contains('select a user'),
-      );
-      expect(
-        validatePartnerForm(
-          hasUser: true,
-          area: const ServiceArea(),
-          partnerTypes: ['a'],
-          vehicleRequired: false,
-          hasVehicle: false,
-        ),
-        contains('country, state and city'),
-      );
-      expect(
-        validatePartnerForm(
-          hasUser: true,
-          area: area,
-          partnerTypes: const [],
-          vehicleRequired: false,
-          hasVehicle: false,
-        ),
-        contains('partner type'),
-      );
-      expect(
-        validatePartnerForm(hasUser: true, area: area, partnerTypes: ['a'], vehicleRequired: true, hasVehicle: false),
-        contains('requires a vehicle'),
-      );
-      expect(
-        validatePartnerForm(hasUser: true, area: area, partnerTypes: ['a'], vehicleRequired: true, hasVehicle: true),
-        isNull,
-      );
+          validatePartnerForm(
+              hasUser: true, area: const ServiceArea(), partnerTypes: ['a'], vehicleRequired: false, hasVehicle: false),
+          contains('country, state and city'));
+      expect(validatePartnerForm(hasUser: true, area: area, partnerTypes: const [], vehicleRequired: false, hasVehicle: false),
+          contains('partner type'));
+      expect(validatePartnerForm(hasUser: true, area: area, partnerTypes: ['a'], vehicleRequired: true, hasVehicle: false),
+          contains('requires a vehicle'));
+      expect(validatePartnerForm(hasUser: true, area: area, partnerTypes: ['a'], vehicleRequired: true, hasVehicle: true),
+          isNull);
     });
 
     test('partner_types is written verbatim and partner_type joined', () {
-      expect(partnerTypeColumns(['Delivery', 'eHailing', 'Teksi']), {
-        'partner_type': 'Delivery,eHailing,Teksi',
-        'partner_types': ['Delivery', 'eHailing', 'Teksi'],
-      });
+      expect(partnerTypeColumns(['Delivery', 'eHailing', 'Teksi']),
+          {'partner_type': 'Delivery,eHailing,Teksi', 'partner_types': ['Delivery', 'eHailing', 'Teksi']});
       expect(partnerTypeColumns(const [])['partner_type'], isNull);
     });
 
@@ -297,13 +251,7 @@ void main() {
         'make': 'Perodua',
         'model': 'Bezza',
       });
-      expect(partnerVehicleColumns(null), {
-        'vehicle': '',
-        'plate': '',
-        'vehicle_type': null,
-        'make': null,
-        'model': null,
-      });
+      expect(partnerVehicleColumns(null), {'vehicle': '', 'plate': '', 'vehicle_type': null, 'make': null, 'model': null});
     });
 
     test('new partner row: no auth_user_id, defaults like Expo addPartner', () {
@@ -339,14 +287,11 @@ void main() {
         {'phone': '+601 '},
         {'phone': '+602'},
       ];
-      expect(
-        eligiblePartnerUsers(users, [
-          {'phone': '+601'},
-        ]),
-        [
-          {'phone': '+602'},
-        ],
-      );
+      expect(eligiblePartnerUsers(users, [
+        {'phone': '+601'}
+      ]), [
+        {'phone': '+602'}
+      ]);
     });
 
     test('vehicle search and plate match', () {
@@ -373,10 +318,7 @@ void main() {
 
     test('validation', () {
       expect(validateVehicleForm(plate: '', make: 'a', model: 'b', ownerName: 'o', ownerPhone: 'p'), contains('plate'));
-      expect(
-        validateVehicleForm(plate: 'x', make: null, model: 'b', ownerName: 'o', ownerPhone: 'p'),
-        contains('vehicle'),
-      );
+      expect(validateVehicleForm(plate: 'x', make: null, model: 'b', ownerName: 'o', ownerPhone: 'p'), contains('vehicle'));
       expect(validateVehicleForm(plate: 'x', make: 'a', model: 'b', ownerName: '', ownerPhone: 'p'), contains('owner'));
       expect(validateVehicleForm(plate: 'x', make: 'a', model: 'b', ownerName: 'o', ownerPhone: 'p'), isNull);
     });
@@ -417,10 +359,7 @@ void main() {
     });
 
     test('vehicle label', () {
-      expect(
-        formatVehicleLabel(make: 'Perodua', model: 'Bezza', yearFrom: '2020', yearTo: ''),
-        'Perodua Bezza (2020 ~)',
-      );
+      expect(formatVehicleLabel(make: 'Perodua', model: 'Bezza', yearFrom: '2020', yearTo: ''), 'Perodua Bezza (2020 ~)');
       expect(formatVehicleLabel(make: 'A', model: 'B', yearFrom: '2020', yearTo: '2022'), 'A B (2020 - 2022)');
       expect(formatVehicleLabel(make: 'A', model: 'B', yearFrom: '', yearTo: '2022'), 'A B (~ 2022)');
       expect(formatVehicleLabel(make: 'A', model: 'B'), 'A B');
@@ -439,23 +378,13 @@ void main() {
       expect((c.approved, c.pending, c.expired, c.rejected, c.total), (1, 1, 1, 1, 4));
       expect(c.ok, isFalse);
       expect(c.blockMessage('X'), contains('1/4 vehicle documents are approved (1 pending, 1 rejected, 1 expired)'));
-      expect(
-        vehicleDocsCheck([
-          {'status': 'Approved'},
-        ]).blockMessage('X'),
-        isNull,
-      );
+      expect(vehicleDocsCheck([{'status': 'Approved'}]).blockMessage('X'), isNull);
     });
   });
 
   group('required documents', () {
     final entries = [
-      entry('global', {
-        'name': 'Driving License',
-        'regionsGlobal': true,
-        'regionsGlobalCompulsory': true,
-        'docTypes': '["dt-p"]',
-      }),
+      entry('global', {'name': 'Driving License', 'regionsGlobal': true, 'regionsGlobalCompulsory': true, 'docTypes': '["dt-p"]'}),
       entry('optional', {'name': 'PSV', 'regionsGlobal': true, 'required': false, 'docTypes': '["dt-p"]'}),
       entry('vehicle', {'name': 'Insurance', 'regionsGlobal': true, 'docTypes': '["dt-v"]'}),
       entry('inactive', {'name': 'Old', 'active': false}),
@@ -463,25 +392,16 @@ void main() {
         'name': 'KL Permit',
         'regionsGlobal': false,
         'docTypes': '["dt-p"]',
-        'regions':
-            '[{"type":"state","country":"Malaysia","state":"Selangor","compulsory":true},'
+        'regions': '[{"type":"state","country":"Malaysia","state":"Selangor","compulsory":true},'
             '{"type":"country","country":"Singapore","compulsory":false}]',
       }),
-      entry('teksi', {
-        'name': 'Driver Permit',
-        'regionsGlobal': true,
-        'partnerTypes': '["Teksi"]',
-        'docTypes': '["dt-x"]',
-      }),
+      entry('teksi', {'name': 'Driver Permit', 'regionsGlobal': true, 'partnerTypes': '["Teksi"]', 'docTypes': '["dt-x"]'}),
     ];
 
     test('doc-type filter, compulsory first then by name', () {
-      final docs = resolveRequiredDocs(
-        entries,
-        docTypeIds: ['dt-p'],
-        countries: ['Malaysia'],
-        states: [(country: 'Malaysia', state: 'Selangor')],
-      );
+      final docs = resolveRequiredDocs(entries, docTypeIds: ['dt-p'], countries: ['Malaysia'], states: [
+        (country: 'Malaysia', state: 'Selangor'),
+      ]);
       expect(docs.map((d) => d.id), ['teksi', 'global', 'regional', 'optional']);
       expect(docs.firstWhere((d) => d.id == 'regional').labels, ['Selangor, Malaysia']);
       expect(docs.firstWhere((d) => d.id == 'regional').scope, 'state');
@@ -516,12 +436,11 @@ void main() {
 
     test('doc types by name', () {
       expect(
-        docTypeIdsNamed([
-          entry('a', {'name': 'Vehicle'}),
-          entry('b', {'name': 'Admin-Vehicle'}),
-        ], 'vehicle'),
-        ['a'],
-      );
+          docTypeIdsNamed([
+            entry('a', {'name': 'Vehicle'}),
+            entry('b', {'name': 'Admin-Vehicle'}),
+          ], 'vehicle'),
+          ['a']);
     });
 
     test('flags parse from values', () {
@@ -549,16 +468,9 @@ void main() {
 
     test('upload validation and payload', () {
       const f = DocFlags(requireFrontBack: true, requireDocumentNumber: true, requireExpiryDate: true);
-      String? v({bool back = true, String no = 'X1', String exp = '2030-01-01'}) => validateDocUpload(
-        f,
-        hasFront: true,
-        hasBack: back,
-        frontIsPdf: false,
-        documentNumber: no,
-        startDate: '',
-        expiryDate: exp,
-        insuranceProviderId: null,
-      );
+      String? v({bool back = true, String no = 'X1', String exp = '2030-01-01'}) => validateDocUpload(f,
+          hasFront: true, hasBack: back, frontIsPdf: false, documentNumber: no, startDate: '', expiryDate: exp,
+          insuranceProviderId: null);
       expect(v(back: false), contains('back'));
       expect(v(no: ''), contains('document number'));
       expect(v(exp: '2030-13-01'), contains('expiry'));
@@ -598,14 +510,10 @@ void main() {
         expect(e.path, startsWith('/admin/m/'));
         expect(e.pages.single, startsWith('admin-'));
       }
-      expect(
-        peopleEntries.where((e) => !e.listed).map((e) => e.pages.single),
-        containsAll(['admin-user-edit', 'admin-partner-edit', 'admin-vehicle-edit']),
-      );
-      expect(
-        peopleEntries.where((e) => e.listed).map((e) => e.pages.single),
-        containsAll(['admin-partner-add', 'admin-vehicle-add', 'admin-documents-users']),
-      );
+      expect(peopleEntries.where((e) => !e.listed).map((e) => e.pages.single),
+          containsAll(['admin-user-edit', 'admin-partner-edit', 'admin-vehicle-edit']));
+      expect(peopleEntries.where((e) => e.listed).map((e) => e.pages.single),
+          containsAll(['admin-partner-add', 'admin-vehicle-add', 'admin-documents-users']));
       expect(peopleRoutes.length, peopleEntries.length);
     });
   });

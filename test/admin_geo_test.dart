@@ -12,8 +12,7 @@ void main() {
     });
 
     test('parseBoundary reads the Expo JSON shape and rejects junk', () {
-      const raw =
-          '{"coords":[{"latitude":1,"longitude":2},{"latitude":3,"longitude":4},{"latitude":1,"longitude":4}],'
+      const raw = '{"coords":[{"latitude":1,"longitude":2},{"latitude":3,"longitude":4},{"latitude":1,"longitude":4}],'
           '"bbox":{"north":3,"south":1,"east":4,"west":2},"source":"osm"}';
       final b = parseBoundary(raw)!;
       expect(b.coords.length, 3);
@@ -51,9 +50,7 @@ void main() {
     });
 
     test('osmHitToShape handles bbox-only, Polygon and MultiPolygon', () {
-      final bboxOnly = osmHitToShape({
-        'boundingbox': ['1', '2', '3', '4'],
-      })!;
+      final bboxOnly = osmHitToShape({'boundingbox': ['1', '2', '3', '4']})!;
       expect(bboxOnly.bbox, const BBox(north: 2, south: 1, east: 4, west: 3));
       expect(bboxOnly.coords.length, 4);
       expect(bboxOnly.polygons, isNull);
@@ -63,12 +60,7 @@ void main() {
         'geojson': {
           'type': 'Polygon',
           'coordinates': [
-            [
-              [0, 0],
-              [1, 0],
-              [1, 1],
-              [0, 0],
-            ],
+            [[0, 0], [1, 0], [1, 1], [0, 0]],
           ],
         },
       })!;
@@ -81,22 +73,8 @@ void main() {
         'geojson': {
           'type': 'MultiPolygon',
           'coordinates': [
-            [
-              [
-                [0, 0],
-                [1, 0],
-                [0, 1],
-              ],
-            ],
-            [
-              [
-                [2, 2],
-                [3, 2],
-                [3, 3],
-                [2, 3],
-                [2, 2],
-              ],
-            ],
+            [[[0, 0], [1, 0], [0, 1]]],
+            [[[2, 2], [3, 2], [3, 3], [2, 3], [2, 2]]],
           ],
         },
       })!;
@@ -107,11 +85,11 @@ void main() {
 
     test('mergeCandidates drops repeats by osm type/id', () {
       BoundaryCandidate c(String id) => BoundaryCandidate(
-        displayName: id,
-        osmType: 'relation',
-        osmId: id,
-        shape: boundaryFromBBoxInput('1', '0', '1', '0')!,
-      );
+            displayName: id,
+            osmType: 'relation',
+            osmId: id,
+            shape: boundaryFromBBoxInput('1', '0', '1', '0')!,
+          );
       final merged = mergeCandidates([c('1'), c('2')], [c('2'), c('3')]);
       expect(merged.map((e) => e.osmId), ['1', '2', '3']);
     });
@@ -123,24 +101,12 @@ void main() {
       expect(pointInRing(const LatLng(5, -1), square), isFalse);
       expect(pointInRing(const LatLng(1, 1), const [LatLng(0, 0), LatLng(1, 1)]), isFalse);
       // Concave "C" shape: the notch is outside.
-      const c = [
-        LatLng(0, 0),
-        LatLng(0, 10),
-        LatLng(3, 10),
-        LatLng(3, 3),
-        LatLng(7, 3),
-        LatLng(7, 10),
-        LatLng(10, 10),
-        LatLng(10, 0),
-      ];
+      const c = [LatLng(0, 0), LatLng(0, 10), LatLng(3, 10), LatLng(3, 3), LatLng(7, 3), LatLng(7, 10), LatLng(10, 10), LatLng(10, 0)];
       expect(pointInRing(const LatLng(5, 6), c), isFalse);
       expect(pointInRing(const LatLng(5, 1), c), isTrue);
       final multi = BoundaryShape(
         coords: square,
-        polygons: const [
-          square,
-          [LatLng(20, 20), LatLng(20, 30), LatLng(30, 30), LatLng(30, 20)],
-        ],
+        polygons: const [square, [LatLng(20, 20), LatLng(20, 30), LatLng(30, 30), LatLng(30, 20)]],
         bbox: const BBox(north: 30, south: 0, east: 30, west: 0),
         source: 'osm',
       );
@@ -254,23 +220,14 @@ void main() {
       expect(validateRegionForm(RegionLevel.country, country: 'MY'), isNull);
       expect(validateRegionForm(RegionLevel.state, country: 'MY'), 'Please enter a state name.');
       expect(validateRegionForm(RegionLevel.city, country: 'MY', state: 'S'), 'State and city names are required.');
-      expect(
-        validateRegionForm(RegionLevel.suburb, country: 'MY', state: 'S', city: 'C'),
-        'State, city and suburb names are required.',
-      );
+      expect(validateRegionForm(RegionLevel.suburb, country: 'MY', state: 'S', city: 'C'),
+          'State, city and suburb names are required.');
       expect(validateRegionForm(RegionLevel.suburb, country: 'MY', state: 'S', city: 'C', suburb: 'B'), isNull);
     });
 
     test('RegionForm.toValues writes country metadata only on country rows', () {
-      final country = RegionForm(
-        country: ' Malaysia ',
-        lat: '3.1',
-        lng: 'x',
-        currencyName: 'MYR',
-        timezone: 'Asia/KL',
-        services: {'a': true, 'b': false},
-        biddingEnabled: false,
-      );
+      final country = RegionForm(country: ' Malaysia ', lat: '3.1', lng: 'x', currencyName: 'MYR', timezone: 'Asia/KL',
+          services: {'a': true, 'b': false}, biddingEnabled: false);
       final v = country.toValues();
       expect(v['country'], 'Malaysia');
       expect(v['lat'], 3.1);
@@ -287,9 +244,7 @@ void main() {
     });
 
     test('RegionForm.fromEntry fills country defaults when missing', () {
-      final f = RegionForm.fromEntry(
-        e('1', 'Malaysia', '', '', '', {'services': '{"x":true}', 'biddingEnabled': false}),
-      );
+      final f = RegionForm.fromEntry(e('1', 'Malaysia', '', '', '', {'services': '{"x":true}', 'biddingEnabled': false}));
       expect(f.emergencyNumber, '999');
       expect(f.languageCode, 'ms-MY');
       expect(f.services, {'x': true});
@@ -345,18 +300,8 @@ void main() {
 
     test('applyPlace fills only empty region fields', () {
       final f = AirportForm(country: 'Malaysia');
-      f.applyPlace(
-        const PlaceResult(
-          id: 'osm-1',
-          name: 'KLIA',
-          address: 'Sepang',
-          lat: '2.7',
-          lon: '101.7',
-          country: 'MY',
-          state: 'Selangor',
-          city: 'Sepang',
-        ),
-      );
+      f.applyPlace(const PlaceResult(
+          id: 'osm-1', name: 'KLIA', address: 'Sepang', lat: '2.7', lon: '101.7', country: 'MY', state: 'Selangor', city: 'Sepang'));
       expect(f.country, 'Malaysia');
       expect(f.state, 'Selangor');
       expect(f.city, 'Sepang');
@@ -365,11 +310,8 @@ void main() {
     });
 
     test('editing keeps the stored geofence', () {
-      final v = airportSaveValues({
-        'boundary': 'b',
-        'boundarySource': 'osm',
-        'name': 'old',
-      }, AirportForm(name: 'new', country: 'MY', placeName: 'p'));
+      final v = airportSaveValues({'boundary': 'b', 'boundarySource': 'osm', 'name': 'old'},
+          AirportForm(name: 'new', country: 'MY', placeName: 'p'));
       expect(v['boundary'], 'b');
       expect(v['name'], 'new');
       expect(airportSaveValues(null, AirportForm(name: 'n')).containsKey('boundary'), isFalse);
@@ -414,14 +356,9 @@ void main() {
     });
 
     test('dedupePlaces rounds coordinates and drops invalid ones', () {
-      PlaceResult p(String id, String lat, String lon) =>
-          PlaceResult(id: id, name: id, address: '', lat: lat, lon: lon);
-      final out = dedupePlaces([
-        p('a', '3.1416', '101.0'),
-        p('b', '3.1418', '101.0'),
-        p('c', 'x', '1'),
-        p('d', '3.2', '101'),
-      ], digits: 3);
+      PlaceResult p(String id, String lat, String lon) => PlaceResult(id: id, name: id, address: '', lat: lat, lon: lon);
+      final out = dedupePlaces([p('a', '3.1416', '101.0'), p('b', '3.1418', '101.0'), p('c', 'x', '1'), p('d', '3.2', '101')],
+          digits: 3);
       expect(out.map((e) => e.id), ['a', 'd']);
       expect(dedupePlaces([p('a', '3.14151', '101.0'), p('b', '3.14149', '101.0')], digits: 5).length, 2);
     });
@@ -467,14 +404,7 @@ void main() {
       expect(parseSurcharge(' 2.50 '), '2.5');
       expect(parseSurcharge('3'), '3');
 
-      final g = GateForm(
-        name: ' Gate A ',
-        lat: '2.7',
-        lon: '101',
-        mode: GateMode.pickup,
-        pickupSurcharge: '5',
-        dropSurcharge: '9',
-      );
+      final g = GateForm(name: ' Gate A ', lat: '2.7', lon: '101', mode: GateMode.pickup, pickupSurcharge: '5', dropSurcharge: '9');
       expect(g.validate(), isNull);
       final v = g.toValues(placeId: 'p1', parentKey: airportAreasKey);
       expect(v, {
@@ -498,13 +428,7 @@ void main() {
     });
 
     test('gate form from stored values and next gate defaults', () {
-      final f = GateForm.fromValues({
-        'name': 'G',
-        'displayPriority': 0,
-        'active': false,
-        'mode': 'drop',
-        'dropSurcharge': '1',
-      });
+      final f = GateForm.fromValues({'name': 'G', 'displayPriority': 0, 'active': false, 'mode': 'drop', 'dropSurcharge': '1'});
       expect(f.displayPriority, 1);
       expect(f.active, isFalse);
       expect(f.mode, GateMode.drop);

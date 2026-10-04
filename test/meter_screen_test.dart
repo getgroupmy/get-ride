@@ -33,14 +33,15 @@ class _FakeLocation implements MeterLocation {
 var _clock = DateTime(2026, 10, 4, 12).millisecondsSinceEpoch;
 
 /// ~11.1 m per 0.0001° of latitude.
-MeterFix _fixAt(double northM) => MeterFix(latitude: 3.0 + northM / 111195, longitude: 101.0, at: _clock, accuracyM: 5);
+MeterFix _fixAt(double northM) =>
+    MeterFix(latitude: 3.0 + northM / 111195, longitude: 101.0, at: _clock, accuracyM: 5);
 
 MeterProfile _card({String source = 'gps'}) => defaultMeterProfile.copyWith(
-  id: 'm1',
-  level: 'master',
-  label: () => 'Global (TEKSI old rates)',
-  sourceMode: source,
-);
+      id: 'm1',
+      level: 'master',
+      label: () => 'Global (TEKSI old rates)',
+      sourceMode: source,
+    );
 
 Future<_FakeLocation> _pump(WidgetTester tester, {MeterProfile? card, _FakeLocation? location, FakeElm? reader}) async {
   // A reader is "saved" on the phone when the test brings one.
@@ -53,21 +54,19 @@ Future<_FakeLocation> _pump(WidgetTester tester, {MeterProfile? card, _FakeLocat
   addTearDown(tester.view.reset);
   _clock = DateTime(2026, 10, 4, 12).millisecondsSinceEpoch;
   final loc = location ?? _FakeLocation();
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        meterLocationProvider.overrideWithValue(loc),
-        meterClockProvider.overrideWithValue(() => _clock),
-        obdClockProvider.overrideWithValue(() => _clock),
-        obdTransportFactoryProvider.overrideWithValue((_) => reader ?? FakeElm()),
-        meterCardsProvider.overrideWith((_) async => [card ?? _card()]),
-        // The geocoder is unreachable in tests: ends stay as coordinates.
-        geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
-        partnerProvider.overrideWith((_) async => Partner({'id': 'p1', 'name': 'Aina', 'plate': 'WXY 1'})),
-      ],
-      child: const MaterialApp(home: MeterScreen()),
-    ),
-  );
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      meterLocationProvider.overrideWithValue(loc),
+      meterClockProvider.overrideWithValue(() => _clock),
+      obdClockProvider.overrideWithValue(() => _clock),
+      obdTransportFactoryProvider.overrideWithValue((_) => reader ?? FakeElm()),
+      meterCardsProvider.overrideWith((_) async => [card ?? _card()]),
+      // The geocoder is unreachable in tests: ends stay as coordinates.
+      geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
+      partnerProvider.overrideWith((_) async => Partner({'id': 'p1', 'name': 'Aina', 'plate': 'WXY 1'})),
+    ],
+    child: const MaterialApp(home: MeterScreen()),
+  ));
   await tester.pump();
   await tester.pump();
   // Lets a saved reader finish its handshake.
@@ -163,11 +162,7 @@ void main() {
 
   testWidgets('an OBD-only rate card starts on the reader and bills on its speed', (tester) async {
     final elm = FakeElm(speed: 36);
-    await _pump(
-      tester,
-      card: _card(source: 'obd'),
-      reader: elm,
-    );
+    await _pump(tester, card: _card(source: 'obd'), reader: elm);
     expect(find.text('OBD-II'), findsOneWidget, reason: 'the connection type, GPS taken away by the card');
     await tester.tap(find.text('START'));
     await tester.pump(const Duration(milliseconds: 10));

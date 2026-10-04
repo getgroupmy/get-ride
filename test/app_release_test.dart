@@ -7,12 +7,8 @@ import 'package:get_ride/src/admin/screens/meterapp/app_release_screen.dart';
 void main() {
   test('destinations match the release workflows', () {
     expect(releaseDestinations[ReleasePlatform.ios]!.map((d) => d.value), ['testflight', 'appstore']);
-    expect(releaseDestinations[ReleasePlatform.android]!.map((d) => d.value), [
-      'internal',
-      'alpha',
-      'beta',
-      'production',
-    ]);
+    expect(releaseDestinations[ReleasePlatform.android]!.map((d) => d.value),
+        ['internal', 'alpha', 'beta', 'production']);
     expect(releaseInput(ReleasePlatform.ios), 'lane');
     expect(releaseInput(ReleasePlatform.android), 'track');
     expect(releaseFunction(ReleasePlatform.android), 'android-release');
@@ -44,14 +40,7 @@ void main() {
   test('releaseStateFrom parses runs', () {
     final s = releaseStateFrom(200, {
       'runs': [
-        {
-          'id': 7,
-          'number': 3,
-          'status': 'completed',
-          'conclusion': 'success',
-          'startedAt': '2026-10-04T10:00:00Z',
-          'url': 'u',
-        },
+        {'id': 7, 'number': 3, 'status': 'completed', 'conclusion': 'success', 'startedAt': '2026-10-04T10:00:00Z', 'url': 'u'},
       ],
     });
     expect(s.kind, ReleaseStateKind.ok);

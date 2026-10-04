@@ -100,27 +100,22 @@ void main() {
 
   group('buildChecklistDraft', () {
     test('starts every template item unticked when nothing is saved', () {
-      expect(buildChecklistDraft(['Keys', 'Charge cable'], {}), [
-        _r(name: 'Keys', done: false),
-        _r(name: 'Charge cable', done: false),
-      ]);
+      expect(buildChecklistDraft(['Keys', 'Charge cable'], {}),
+          [_r(name: 'Keys', done: false), _r(name: 'Charge cable', done: false)]);
     });
 
     test('resumes from what the advisor already submitted', () {
       expect(
-        buildChecklistDraft(
-          ['Keys', 'Charge cable'],
-          {'checklistResults': '[{"name":"Keys","done":true,"note":"2 fobs"}]'},
-        ),
+        buildChecklistDraft(['Keys', 'Charge cable'], {'checklistResults': '[{"name":"Keys","done":true,"note":"2 fobs"}]'}),
         [_r(name: 'Keys', done: true, note: '2 fobs'), _r(name: 'Charge cable', done: false)],
       );
     });
 
     test('keeps submitted items that have since left the template', () {
-      expect(buildChecklistDraft(['Keys'], {'checklistResults': '[{"name":"Retired check","done":true,"note":""}]'}), [
-        _r(name: 'Keys', done: false),
-        _r(name: 'Retired check', done: true),
-      ]);
+      expect(
+        buildChecklistDraft(['Keys'], {'checklistResults': '[{"name":"Retired check","done":true,"note":""}]'}),
+        [_r(name: 'Keys', done: false), _r(name: 'Retired check', done: true)],
+      );
     });
 
     test('ignores blank template names', () {
@@ -158,21 +153,11 @@ void main() {
       expect(isEvFinancingComplete({'financeType': 'hp', 'financeChoice': 'f1'}), isTrue);
       expect(isEvFinancingComplete({'financeType': 'hp'}), isFalse);
       expect(isEvFinancingComplete({'financeType': 'leasing', 'financeChoice': 'f1'}), isFalse);
+      expect(isEvFinancingComplete({'financeType': 'leasing', 'financeChoice': 'f1', 'leasingAddonRequired': 'no'}), isTrue);
+      expect(isEvFinancingComplete({'financeType': 'leasing', 'financeChoice': 'f1', 'leasingAddonRequired': 'yes'}), isFalse);
       expect(
-        isEvFinancingComplete({'financeType': 'leasing', 'financeChoice': 'f1', 'leasingAddonRequired': 'no'}),
-        isTrue,
-      );
-      expect(
-        isEvFinancingComplete({'financeType': 'leasing', 'financeChoice': 'f1', 'leasingAddonRequired': 'yes'}),
-        isFalse,
-      );
-      expect(
-        isEvFinancingComplete({
-          'financeType': 'leasing',
-          'financeChoice': 'f1',
-          'leasingAddonRequired': 'yes',
-          'leasingAddonPaid': true,
-        }),
+        isEvFinancingComplete(
+            {'financeType': 'leasing', 'financeChoice': 'f1', 'leasingAddonRequired': 'yes', 'leasingAddonPaid': true}),
         isTrue,
       );
     });
@@ -292,10 +277,8 @@ void main() {
       expect(r.multiplier, closeTo(1.05, 1e-9));
       expect(r.changePct, 5);
       expect(r.contributions.map((c) => c.key), ['trading', 'revenue', 'services', 'signups', 'minting']);
-      final down = computeMarketRate(
-        s.copyWith(maxSwingPct: 50, signalTrading: false, signalRevenue: false),
-        const CoinMarketStats(mintedGc: 9999),
-      );
+      final down = computeMarketRate(s.copyWith(maxSwingPct: 50, signalTrading: false, signalRevenue: false),
+          const CoinMarketStats(mintedGc: 9999));
       expect(down.multiplier, lessThan(1));
     });
 
@@ -318,11 +301,10 @@ void main() {
 
   group('payment gateways', () {
     test('secret credentials are never collected or written', () {
-      final form = GatewayForm(
-        providerId: 'stripe',
-        accountName: ' Stripe MY ',
-        credentials: {'publishableKey': 'pk_live_1', 'secretKey': 'sk_live_should_not_be_written'},
-      );
+      final form = GatewayForm(providerId: 'stripe', accountName: ' Stripe MY ', credentials: {
+        'publishableKey': 'pk_live_1',
+        'secretKey': 'sk_live_should_not_be_written',
+      });
       final r = buildGatewayValues(form);
       expect(r.error, isNull);
       expect(r.values!['stripe_publishableKey'], 'pk_live_1');
@@ -334,10 +316,7 @@ void main() {
     test('validates provider, account name and required public fields', () {
       expect(buildGatewayValues(GatewayForm(providerId: 'nope')).error, contains('provider'));
       expect(buildGatewayValues(GatewayForm(providerId: 'stripe')).error, contains('account name'));
-      expect(
-        buildGatewayValues(GatewayForm(providerId: 'stripe', accountName: 'x')).error,
-        contains('Publishable Key'),
-      );
+      expect(buildGatewayValues(GatewayForm(providerId: 'stripe', accountName: 'x')).error, contains('Publishable Key'));
       // HitPay has only secret fields, so public config alone is enough.
       expect(buildGatewayValues(GatewayForm(providerId: 'hitpay', accountName: 'x')).error, isNull);
     });
@@ -352,10 +331,7 @@ void main() {
     test('picker and default resolution', () {
       final entries = [
         (id: 'b', values: <String, dynamic>{'providerName': 'Stripe', 'accountName': 'B', 'active': true}),
-        (
-          id: 'a',
-          values: <String, dynamic>{'providerName': 'Fiuu', 'accountName': 'A', 'isDefault': true, 'active': false},
-        ),
+        (id: 'a', values: <String, dynamic>{'providerName': 'Fiuu', 'accountName': 'A', 'isDefault': true, 'active': false}),
         (id: 'c', values: <String, dynamic>{'providerName': 'Billplz', 'accountName': 'C', 'isDefault': true}),
       ];
       expect(pickableGateways(entries).map((g) => g.id), ['c', 'b']);
@@ -365,13 +341,7 @@ void main() {
     });
 
     test('payment type writes the gateway reference keys', () {
-      const g = SelectedGateway(
-        id: 'g1',
-        providerId: 'stripe',
-        providerName: 'Stripe',
-        accountName: 'MY',
-        mode: 'Live',
-      );
+      const g = SelectedGateway(id: 'g1', providerId: 'stripe', providerName: 'Stripe', accountName: 'MY', mode: 'Live');
       final r = buildPaymentTypeValues(name: ' Card ', code: 'CARD', enabled: true, gateway: g, existing: {'extra': 1});
       expect(r.values, {
         'extra': 1,
@@ -393,53 +363,20 @@ void main() {
   // ---- EV catalogue ---------------------------------------------------------
 
   group('EV order fee', () {
-    final others = [
-      (id: 'my', values: <String, dynamic>{'country': 'Malaysia', 'isDefault': true}),
-    ];
+    final others = [(id: 'my', values: <String, dynamic>{'country': 'Malaysia', 'isDefault': true})];
 
     test('validates and rejects duplicate countries', () {
+      expect(buildOrderFeeValues(country: '', currency: '', amount: '1', isDefault: false, active: true, others: others).error,
+          'Please select a Country.');
       expect(
-        buildOrderFeeValues(
-          country: '',
-          currency: '',
-          amount: '1',
-          isDefault: false,
-          active: true,
-          others: others,
-        ).error,
-        'Please select a Country.',
-      );
+          buildOrderFeeValues(country: 'SG', currency: '', amount: 'x', isDefault: false, active: true, others: others).error,
+          'Please enter a valid order fee amount.');
       expect(
-        buildOrderFeeValues(
-          country: 'SG',
-          currency: '',
-          amount: 'x',
-          isDefault: false,
-          active: true,
-          others: others,
-        ).error,
-        'Please enter a valid order fee amount.',
-      );
-      expect(
-        buildOrderFeeValues(
-          country: 'malaysia',
-          currency: '',
-          amount: '1',
-          isDefault: false,
-          active: true,
-          others: others,
-        ).error,
-        contains('already exists'),
-      );
+          buildOrderFeeValues(country: 'malaysia', currency: '', amount: '1', isDefault: false, active: true, others: others)
+              .error,
+          contains('already exists'));
       final ok = buildOrderFeeValues(
-        country: 'Malaysia',
-        currency: '',
-        amount: '3000',
-        isDefault: true,
-        active: true,
-        others: others,
-        editingId: 'my',
-      );
+          country: 'Malaysia', currency: '', amount: '3000', isDefault: true, active: true, others: others, editingId: 'my');
       expect(ok.values!['currency'], 'RM');
       expect(ok.values!['amount'], 3000);
       expect(ok.values!['gatewayId'], '');
@@ -469,23 +406,20 @@ void main() {
 
   group('EV finance options', () {
     test('validation and value shape', () {
-      ({Map<String, dynamic>? values, String? error}) build({
-        String name = 'HP',
-        String mode = 'Custom',
-        String amount = '1200',
-      }) => buildFinanceOptionValues(
-        name: name,
-        type: 'Hire Purchase',
-        country: 'Malaysia',
-        paymentMode: mode,
-        paymentAmount: amount,
-        rate: '2.85',
-        termValue: '60',
-        termUnit: 'Month',
-        details: ' x ',
-        active: true,
-        displayPriority: 3,
-      );
+      ({Map<String, dynamic>? values, String? error}) build({String name = 'HP', String mode = 'Custom', String amount = '1200'}) =>
+          buildFinanceOptionValues(
+            name: name,
+            type: 'Hire Purchase',
+            country: 'Malaysia',
+            paymentMode: mode,
+            paymentAmount: amount,
+            rate: '2.85',
+            termValue: '60',
+            termUnit: 'Month',
+            details: ' x ',
+            active: true,
+            displayPriority: 3,
+          );
       expect(build(name: ' ').error, 'Please fill in Plan Name.');
       expect(build(amount: '0').error, 'Please enter a valid custom payment amount.');
       final v = build().values!;
@@ -506,32 +440,20 @@ void main() {
       ];
       expect(reorderPriorities(sorted, 'c', -1), {'c': 2, 'b': 3});
       expect(reorderPriorities(sorted, 'a', -1), isEmpty);
-      expect(
-        sortByPriority(<Map<String, dynamic>>[
-          {'displayPriority': 2},
-          {},
-          {'displayPriority': 1},
-        ], (v) => v).map((v) => v['displayPriority']),
-        [1, 2, null],
-      );
+      expect(sortByPriority(<Map<String, dynamic>>[{'displayPriority': 2}, {}, {'displayPriority': 1}], (v) => v).map((v) => v['displayPriority']),
+          [1, 2, null]);
     });
   });
 
   group('EV vehicle details & inventory', () {
     test('normalises item lists into the stored JSON strings', () {
-      final f = VehicleDetailsForm(
-        make: 'TEKSI',
-        model: 'EV One',
-        price: '150000',
-        exteriorColors: [
-          {'id': 'c1', 'name': ' White ', 'code': '#fff', 'enabled': true},
-          {'id': 'c2', 'name': '', 'code': '', 'enabled': true},
-        ],
-        features: [
-          {'id': 'f1', 'name': 'Roof', 'price': '1500.5', 'enabled': false},
-          {'id': 'f2', 'name': ' ', 'price': '1', 'enabled': true},
-        ],
-      );
+      final f = VehicleDetailsForm(make: 'TEKSI', model: 'EV One', price: '150000', exteriorColors: [
+        {'id': 'c1', 'name': ' White ', 'code': '#fff', 'enabled': true},
+        {'id': 'c2', 'name': '', 'code': '', 'enabled': true},
+      ], features: [
+        {'id': 'f1', 'name': 'Roof', 'price': '1500.5', 'enabled': false},
+        {'id': 'f2', 'name': ' ', 'price': '1', 'enabled': true},
+      ]);
       f.setGallerySlot('storageImages', 3, 'data:x');
       f.setGallerySlot('exteriorImages', 1, 'data:y');
       final v = buildVehicleDetailsValues(f).values!;
@@ -580,29 +502,13 @@ void main() {
       expect(r.values!['exteriorColorIds'], '["w","k"]');
       expect(parseIdList(r.values!['exteriorColorIds']), ['w', 'k']);
       expect(
-        buildInventoryValues(
-          vehicleId: '',
-          vehicle: null,
-          vin: 'x',
-          exteriorColorIds: [],
-          interiorColorIds: [],
-          featureIds: [],
-          accessoryIds: [],
-        ).error,
-        'Please select a vehicle.',
-      );
+          buildInventoryValues(vehicleId: '', vehicle: null, vin: 'x', exteriorColorIds: [], interiorColorIds: [], featureIds: [], accessoryIds: [])
+              .error,
+          'Please select a vehicle.');
       expect(
-        buildInventoryValues(
-          vehicleId: 'v',
-          vehicle: vehicle,
-          vin: ' ',
-          exteriorColorIds: [],
-          interiorColorIds: [],
-          featureIds: [],
-          accessoryIds: [],
-        ).error,
-        'Please enter a VIN number.',
-      );
+          buildInventoryValues(vehicleId: 'v', vehicle: vehicle, vin: ' ', exteriorColorIds: [], interiorColorIds: [], featureIds: [], accessoryIds: [])
+              .error,
+          'Please enter a VIN number.');
     });
 
     test('misc formatting', () {

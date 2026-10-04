@@ -3,7 +3,12 @@ import 'package:get_ride/src/admin/screens/people/people_logic.dart';
 import 'package:get_ride/src/core/partner_onboarding.dart';
 import 'package:get_ride/src/core/vehicle_onboarding.dart';
 
-const _photos = {'image_front': 'f.png', 'image_left': 'l.png', 'image_right': 'r.png', 'image_back': 'b.png'};
+const _photos = {
+  'image_front': 'f.png',
+  'image_left': 'l.png',
+  'image_right': 'r.png',
+  'image_back': 'b.png',
+};
 
 void main() {
   test('plates are upper-cased with single spaces', () {
@@ -30,14 +35,8 @@ void main() {
     });
 
     test('step keys match what the Expo app stores', () {
-      expect(VehicleStep.wizard.map((s) => s.key), [
-        'plate',
-        'make-model',
-        'year-color',
-        'photos',
-        'owner',
-        'documents',
-      ]);
+      expect(VehicleStep.wizard.map((s) => s.key),
+          ['plate', 'make-model', 'year-color', 'photos', 'owner', 'documents']);
     });
   });
 
@@ -90,22 +89,15 @@ void main() {
       (id: 'puspakom', values: <String, dynamic>{'name': 'Inspection (Puspakom)', 'docTypes': '["type-vehicle"]'}),
       (
         id: 'insurance',
-        values: <String, dynamic>{
-          'name': 'Vehicle Insurance',
-          'docTypes': ['type-vehicle', 'other'],
-        },
+        values: <String, dynamic>{'name': 'Vehicle Insurance', 'docTypes': ['type-vehicle', 'other']}
       ),
       (
         id: 'permit',
-        values: <String, dynamic>{'name': 'Driver Permit', 'docTypes': '["type-partner"]', 'partnerTypes': '["Teksi"]'},
+        values: <String, dynamic>{'name': 'Driver Permit', 'docTypes': '["type-partner"]', 'partnerTypes': '["Teksi"]'}
       ),
     ];
     final ids = vehicleDocTypeIds(docTypes);
-    const area = ServiceArea(
-      countries: ['Malaysia'],
-      states: ['Malaysia|Selangor'],
-      cities: ['Malaysia|Selangor|Ampang'],
-    );
+    const area = ServiceArea(countries: ['Malaysia'], states: ['Malaysia|Selangor'], cities: ['Malaysia|Selangor|Ampang']);
 
     test('the Vehicle document type picks out vehicle documents', () {
       expect(ids, {'type-vehicle'});

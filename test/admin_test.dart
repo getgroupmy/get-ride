@@ -136,21 +136,15 @@ void main() {
     expect(requiredScope('master'), isEmpty);
     expect(requiredScope('city'), ['country', 'state', 'city']);
     expect(requiredScope('user'), ['user_id']);
-    expect(
-      commissionScopeLabel({'level': 'city', 'city': 'Ipoh', 'state': 'Perak', 'country': 'Malaysia'}),
-      'Ipoh, Perak, Malaysia',
-    );
+    expect(commissionScopeLabel({'level': 'city', 'city': 'Ipoh', 'state': 'Perak', 'country': 'Malaysia'}),
+        'Ipoh, Perak, Malaysia');
   });
 
   testWidgets('non-admins see the access gate, not the panel', (tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [adminAccessProvider.overrideWith((_) async => AdminAccess.none)],
-        child: const MaterialApp(
-          home: AdminShell(location: '/admin/dashboard', child: Text('PANEL')),
-        ),
-      ),
-    );
+    await tester.pumpWidget(ProviderScope(
+      overrides: [adminAccessProvider.overrideWith((_) async => AdminAccess.none)],
+      child: const MaterialApp(home: AdminShell(location: '/admin/dashboard', child: Text('PANEL'))),
+    ));
     await tester.pumpAndSettle();
     expect(find.text('No admin access'), findsOneWidget);
     expect(find.text('PANEL'), findsNothing);
@@ -160,18 +154,14 @@ void main() {
     tester.view.physicalSize = const Size(1300, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          adminAccessProvider.overrideWith(
-            (_) async => const AdminAccess([AdminGrant(page: 'admin-support', edit: false)]),
-          ),
-        ],
-        child: const MaterialApp(
-          home: AdminShell(location: '/admin/support', child: Text('PANEL')),
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        adminAccessProvider.overrideWith(
+          (_) async => const AdminAccess([AdminGrant(page: 'admin-support', edit: false)]),
         ),
-      ),
-    );
+      ],
+      child: const MaterialApp(home: AdminShell(location: '/admin/support', child: Text('PANEL'))),
+    ));
     await tester.pumpAndSettle();
     expect(find.text('PANEL'), findsOneWidget);
     expect(find.text('Support'), findsOneWidget);

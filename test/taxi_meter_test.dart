@@ -7,13 +7,7 @@ import 'package:get_ride/src/core/taxi_meter.dart';
 MeterPoint _at(double northM, {double? accuracy}) => MeterPoint(3.0 + northM / 111195, 101.0, accuracyM: accuracy);
 
 /// Drives the meter north at [kmh] for [seconds], one GPS fix a second.
-MeterState _drive(
-  MeterState s, {
-  required int fromMs,
-  required double fromM,
-  required double kmh,
-  required int seconds,
-}) {
+MeterState _drive(MeterState s, {required int fromMs, required double fromM, required double kmh, required int seconds}) {
   var state = s;
   for (var i = 1; i <= seconds; i++) {
     state = applyMeterSample(state, MeterSample(at: fromMs + i * 1000, gpsPoint: _at(fromM + kmh / 3.6 * i)));
@@ -190,22 +184,21 @@ void main() {
 
   group('trip record and receipt', () {
     MeterTrip trip({MeterPeriod period = MeterPeriod.day}) => buildMeterTrip(
-      const MeterState(startedAt: 1000, distanceM: 3420, elapsedMs: 600000, waitingMs: 60000, gpsSamples: 600),
-      id: 't1',
-      endedAt: 601000,
-      fare: 12.4,
-      details: resolveTripDetails(
-        const MeterTripDetailsDraft(pax: 2, luggage: 1, charges: 3, airport: MeterAirport.pickup),
-      )!,
-      rateLabel: 'Global rate card',
-      period: period,
-      flagFare: 4,
-      nightMultiplier: 1.5,
-      currency: 'RM',
-      cardSurcharge: 1,
-      pickup: const MeterWaypoint(at: 1000, latitude: 3.1, longitude: 101.6, place: 'KLCC'),
-      dropoff: const MeterWaypoint(at: 601000, latitude: 3.2, longitude: 101.7),
-    );
+          const MeterState(startedAt: 1000, distanceM: 3420, elapsedMs: 600000, waitingMs: 60000, gpsSamples: 600),
+          id: 't1',
+          endedAt: 601000,
+          fare: 12.4,
+          details: resolveTripDetails(
+              const MeterTripDetailsDraft(pax: 2, luggage: 1, charges: 3, airport: MeterAirport.pickup))!,
+          rateLabel: 'Global rate card',
+          period: period,
+          flagFare: 4,
+          nightMultiplier: 1.5,
+          currency: 'RM',
+          cardSurcharge: 1,
+          pickup: const MeterWaypoint(at: 1000, latitude: 3.1, longitude: 101.6, place: 'KLCC'),
+          dropoff: const MeterWaypoint(at: 601000, latitude: 3.2, longitude: 101.7),
+        );
 
     test('the total is the fare plus every declared charge', () {
       final t = trip();
@@ -249,6 +242,33 @@ void main() {
       expect(s.count, 2);
       expect(s.distanceM, 6840);
       expect(s.total, 38.8);
+    });
+  });
+
+  group('which sensor may open a hire', () {
+    MeterProfile card(String source) => defaultMeterProfile.copyWith(sourceMode: source);
+    const noGps = 'Location permission is needed.';
+
+    test('an OBD-only card needs a live reader, whatever the GPS says', () {
+      expect(meterStartBlock(card('obd'), obdLinked: false), contains('OBD-II reader only'));
+      expect(meterStartBlock(card('obd'), obdLinked: true, locationProblem: noGps), isNull);
+    });
+
+    test('a card with both opens on either sensor', () {
+      expect(meterStartBlock(card('gps+obd'), obdLinked: true, locationProblem: noGps), isNull);
+      expect(meterStartBlock(card('gps+obd'), obdLinked: false, locationProblem: noGps), noGps);
+    });
+
+    test('a GPS card never leans on the reader', () {
+      expect(meterStartBlock(card('gps'), obdLinked: true, locationProblem: noGps), noGps);
+      expect(meterStartBlock(card('gps'), obdLinked: false), isNull);
+    });
+
+    test('the connection type only names sensors the card allows', () {
+      expect(describeMeterConnection(gps: true, obd: true), 'GPS + OBD-II');
+      expect(describeMeterConnection(gps: true, obd: true, gpsAllowed: false), 'OBD-II');
+      expect(describeMeterConnection(gps: true, obd: true, obdAllowed: false), 'GPS');
+      expect(describeMeterConnection(gps: false, obd: false), 'NO SIGNAL');
     });
   });
 }

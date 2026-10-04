@@ -11,7 +11,11 @@ import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // No token refresh: its timer would outlive the first test.
-final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
+final _db = SupabaseClient(
+  'http://localhost',
+  'anon',
+  authOptions: const AuthClientOptions(autoRefreshToken: false),
+);
 
 const _partner = {
   'id': 'p1',
@@ -60,8 +64,7 @@ class _FakeVehicles extends VehicleOnboardingRepository {
   }
 
   @override
-  Future<String> uploadPhoto(String vehicleId, String slot, Uint8List bytes, String fileName) async =>
-      'https://x/$slot';
+  Future<String> uploadPhoto(String vehicleId, String slot, Uint8List bytes, String fileName) async => 'https://x/$slot';
 }
 
 class _FakePeople extends PeopleRepository {
@@ -70,20 +73,14 @@ class _FakePeople extends PeopleRepository {
 
   @override
   Future<List<({String id, Map<String, dynamic> values})>> requiredDocuments() async => [
-    (id: 'licence', values: <String, dynamic>{'name': 'Driving License'}),
-    (
-      id: 'puspakom',
-      values: <String, dynamic>{
-        'name': 'Puspakom inspection',
-        'docTypes': ['type-vehicle'],
-      },
-    ),
-  ];
+        (id: 'licence', values: <String, dynamic>{'name': 'Driving License'}),
+        (id: 'puspakom', values: <String, dynamic>{'name': 'Puspakom inspection', 'docTypes': ['type-vehicle']}),
+      ];
 
   @override
   Future<List<({String id, Map<String, dynamic> values})>> documentTypes() async => [
-    (id: 'type-vehicle', values: <String, dynamic>{'name': 'Vehicle'}),
-  ];
+        (id: 'type-vehicle', values: <String, dynamic>{'name': 'Vehicle'}),
+      ];
 
   @override
   Future<List<Map<String, dynamic>>> vehicleDocuments(String vehicleId) async => uploads;
@@ -113,17 +110,15 @@ Future<_FakeVehicles> _pump(WidgetTester tester, Widget screen, {_FakeVehicles? 
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final repo = vehicles ?? _FakeVehicles();
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        supabaseProvider.overrideWithValue(_db),
-        partnerOnboardingRepositoryProvider.overrideWithValue(_FakeOnboarding()),
-        vehicleOnboardingRepositoryProvider.overrideWithValue(repo),
-        peopleRepositoryProvider.overrideWithValue(people ?? _FakePeople()),
-      ],
-      child: MaterialApp(home: screen),
-    ),
-  );
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      supabaseProvider.overrideWithValue(_db),
+      partnerOnboardingRepositoryProvider.overrideWithValue(_FakeOnboarding()),
+      vehicleOnboardingRepositoryProvider.overrideWithValue(repo),
+      peopleRepositoryProvider.overrideWithValue(people ?? _FakePeople()),
+    ],
+    child: MaterialApp(home: screen),
+  ));
   await tester.pump();
   await tester.pump();
   return repo;
@@ -175,11 +170,8 @@ void main() {
       ..remove('owner_name')
       ..remove('owner_phone')
       ..remove('owner_ic');
-    final repo = await _pump(
-      tester,
-      const VehicleOnboardingScreen(vehicleId: 'v1'),
-      vehicles: _FakeVehicles(existing: existing),
-    );
+    final repo = await _pump(tester, const VehicleOnboardingScreen(vehicleId: 'v1'),
+        vehicles: _FakeVehicles(existing: existing));
     expect(find.text('Who owns the vehicle?'), findsOneWidget);
     await tester.tap(find.text("It's my own vehicle"));
     await tester.pump();
@@ -190,11 +182,8 @@ void main() {
   });
 
   testWidgets('only vehicle documents are asked for, and they gate the submit', (tester) async {
-    final repo = await _pump(
-      tester,
-      const VehicleOnboardingScreen(vehicleId: 'v1'),
-      vehicles: _FakeVehicles(existing: _ready),
-    );
+    final repo = await _pump(tester, const VehicleOnboardingScreen(vehicleId: 'v1'),
+        vehicles: _FakeVehicles(existing: _ready));
     await tester.pump();
     expect(find.text('Vehicle documents'), findsOneWidget);
     expect(find.text('Puspakom inspection'), findsOneWidget);
@@ -209,11 +198,9 @@ void main() {
       tester,
       const VehicleOnboardingScreen(vehicleId: 'v1'),
       vehicles: _FakeVehicles(existing: _ready),
-      people: _FakePeople(
-        uploads: [
-          {'doc_id': 'puspakom', 'status': 'Pending Review'},
-        ],
-      ),
+      people: _FakePeople(uploads: [
+        {'doc_id': 'puspakom', 'status': 'Pending Review'},
+      ]),
     );
     await tester.pump();
     await tester.tap(find.text('Submit for review'));
@@ -224,11 +211,8 @@ void main() {
   });
 
   testWidgets('the vehicle list shows where each vehicle stands', (tester) async {
-    await _pump(
-      tester,
-      const VehiclesScreen(),
-      vehicles: _FakeVehicles(existing: {..._ready, 'make': null, 'model': null}),
-    );
+    await _pump(tester, const VehiclesScreen(),
+        vehicles: _FakeVehicles(existing: {..._ready, 'make': null, 'model': null}));
     await tester.pump();
     expect(find.text('WXY 1'), findsOneWidget);
     expect(find.text('Incomplete: Make & model'), findsOneWidget);

@@ -9,7 +9,11 @@ import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // No token refresh: its timer would outlive the first test.
-final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
+final _db = SupabaseClient(
+  'http://localhost',
+  'anon',
+  authOptions: const AuthClientOptions(autoRefreshToken: false),
+);
 
 /// Serves a fixed onboarding state and records the partner patches.
 class _FakeOnboarding extends PartnerOnboardingRepository {
@@ -35,55 +39,46 @@ class _FakePeople extends PeopleRepository {
   final List<Map<String, dynamic>> uploads;
 
   @override
-  Future<GeoOptions> geoOptions({Iterable<ServiceArea> inUse = const []}) async =>
-      const GeoOptions(countries: ['Malaysia'], states: ['Malaysia|Selangor'], cities: ['Malaysia|Selangor|Ampang']);
+  Future<GeoOptions> geoOptions({Iterable<ServiceArea> inUse = const []}) async => const GeoOptions(
+        countries: ['Malaysia'],
+        states: ['Malaysia|Selangor'],
+        cities: ['Malaysia|Selangor|Ampang'],
+      );
 
   @override
   Future<List<({String id, Map<String, dynamic> values})>> partnerTypes() async => [
-    (id: 't1', values: <String, dynamic>{'name': 'TEKSI'}),
-    (id: 't2', values: <String, dynamic>{'name': 'E-HAILING'}),
-  ];
+        (id: 't1', values: <String, dynamic>{'name': 'TEKSI'}),
+        (id: 't2', values: <String, dynamic>{'name': 'E-HAILING'}),
+      ];
 
   @override
   Future<List<({String id, Map<String, dynamic> values})>> requiredDocuments() async => [
-    (id: 'licence', values: <String, dynamic>{'name': 'Driving licence'}),
-    (
-      id: 'permit',
-      values: <String, dynamic>{
-        'name': 'Taxi permit',
-        'partnerTypes': ['TEKSI'],
-      },
-    ),
-    // Uploaded per vehicle, so never asked for here.
-    (
-      id: 'puspakom',
-      values: <String, dynamic>{
-        'name': 'Puspakom inspection',
-        'docTypes': ['type-vehicle'],
-      },
-    ),
-  ];
+        (id: 'licence', values: <String, dynamic>{'name': 'Driving licence'}),
+        (id: 'permit', values: <String, dynamic>{'name': 'Taxi permit', 'partnerTypes': ['TEKSI']}),
+        // Uploaded per vehicle, so never asked for here.
+        (id: 'puspakom', values: <String, dynamic>{'name': 'Puspakom inspection', 'docTypes': ['type-vehicle']}),
+      ];
 
   @override
   Future<List<({String id, Map<String, dynamic> values})>> documentTypes() async => [
-    (id: 'type-vehicle', values: <String, dynamic>{'name': 'Vehicle'}),
-  ];
+        (id: 'type-vehicle', values: <String, dynamic>{'name': 'Vehicle'}),
+      ];
 
   @override
   Future<List<Map<String, dynamic>>> providerDocuments(String partnerId) async => uploads;
 }
 
 Map<String, dynamic> _partner([Map<String, dynamic> extra = const {}]) => {
-  'id': 'p1',
-  'auth_user_id': 'u1',
-  'status': 'unapproved',
-  'partner_types': <String>[],
-  'service_countries': <String>[],
-  'service_states': <String>[],
-  'service_cities': <String>[],
-  'documents_ok': false,
-  ...extra,
-};
+      'id': 'p1',
+      'auth_user_id': 'u1',
+      'status': 'unapproved',
+      'partner_types': <String>[],
+      'service_countries': <String>[],
+      'service_states': <String>[],
+      'service_cities': <String>[],
+      'documents_ok': false,
+      ...extra,
+    };
 
 const _filledIn = {
   'avatar_url': 'https://example.com/a.png',
@@ -100,17 +95,15 @@ Future<_FakeOnboarding> _pump(WidgetTester tester, OnboardingState state, {_Fake
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final repo = _FakeOnboarding(state);
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: [
-        supabaseProvider.overrideWithValue(_db),
-        partnerOnboardingRepositoryProvider.overrideWithValue(repo),
-        peopleRepositoryProvider.overrideWithValue(people ?? _FakePeople()),
-        partnerProvider.overrideWith((_) async => null),
-      ],
-      child: const MaterialApp(home: PartnerOnboardingScreen()),
-    ),
-  );
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      supabaseProvider.overrideWithValue(_db),
+      partnerOnboardingRepositoryProvider.overrideWithValue(repo),
+      peopleRepositoryProvider.overrideWithValue(people ?? _FakePeople()),
+      partnerProvider.overrideWith((_) async => null),
+    ],
+    child: const MaterialApp(home: PartnerOnboardingScreen()),
+  ));
   await tester.pump();
   await tester.pump();
   return repo;
@@ -125,7 +118,10 @@ void main() {
   });
 
   testWidgets('the ID number is required, then saved to both rows', (tester) async {
-    final repo = await _pump(tester, OnboardingState(profile: const {'profile_image': 'x.png'}, partner: _partner()));
+    final repo = await _pump(
+      tester,
+      OnboardingState(profile: const {'profile_image': 'x.png'}, partner: _partner()),
+    );
     expect(find.text('Your ID'), findsOneWidget);
     await tester.tap(find.text('Save and continue'));
     await tester.pump();
@@ -143,7 +139,10 @@ void main() {
   testWidgets('partner types come from settings and are saved with partner_type', (tester) async {
     final repo = await _pump(
       tester,
-      OnboardingState(profile: const {}, partner: _partner({..._filledIn, 'partner_types': <String>[]})),
+      OnboardingState(
+        profile: const {},
+        partner: _partner({..._filledIn, 'partner_types': <String>[]}),
+      ),
     );
     expect(find.text('What kind of partner are you?'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilterChip, 'TEKSI'));
@@ -151,10 +150,7 @@ void main() {
     await tester.tap(find.text('Save and continue'));
     await tester.pump();
     await tester.pump();
-    expect(repo.patches.single, {
-      'partner_type': 'TEKSI',
-      'partner_types': ['TEKSI'],
-    });
+    expect(repo.patches.single, {'partner_type': 'TEKSI', 'partner_types': ['TEKSI']});
     expect(find.text('Upload your documents'), findsOneWidget);
   });
 
@@ -174,12 +170,10 @@ void main() {
     final repo = await _pump(
       tester,
       OnboardingState(profile: const {}, partner: _partner(_filledIn)),
-      people: _FakePeople(
-        uploads: [
-          {'doc_id': 'licence', 'status': 'Pending Review'},
-          {'doc_id': 'permit', 'status': 'Approved'},
-        ],
-      ),
+      people: _FakePeople(uploads: [
+        {'doc_id': 'licence', 'status': 'Pending Review'},
+        {'doc_id': 'permit', 'status': 'Approved'},
+      ]),
     );
     await tester.pump();
     expect(find.text('Submit for review'), findsOneWidget);

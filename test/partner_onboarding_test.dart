@@ -11,26 +11,27 @@ Map<String, dynamic> _partner({
   List<String> cities = const [],
   List<String> types = const [],
   bool docsOk = false,
-}) => {
-  'avatar_url': avatar,
-  'ic': ic,
-  'address': address,
-  'service_countries': countries,
-  'service_states': states,
-  'service_cities': cities,
-  'partner_types': types,
-  'documents_ok': docsOk,
-};
+}) =>
+    {
+      'avatar_url': avatar,
+      'ic': ic,
+      'address': address,
+      'service_countries': countries,
+      'service_states': states,
+      'service_cities': cities,
+      'partner_types': types,
+      'documents_ok': docsOk,
+    };
 
 RequiredDoc _doc(String id, {bool compulsory = true}) => RequiredDoc(
-  id: id,
-  name: id,
-  description: '',
-  compulsory: compulsory,
-  scope: 'global',
-  labels: const ['Global'],
-  flags: const DocFlags(),
-);
+      id: id,
+      name: id,
+      description: '',
+      compulsory: compulsory,
+      scope: 'global',
+      labels: const ['Global'],
+      flags: const DocFlags(),
+    );
 
 void main() {
   group('firstIncompleteStep', () {
@@ -64,32 +65,14 @@ void main() {
         cities: ['Malaysia|Selangor|Ampang'],
       );
       expect(firstIncompleteStep(null, area), OnboardingStep.partnerType);
-      expect(
-        firstIncompleteStep(null, {
-          ...area,
-          'partner_types': ['TEKSI'],
-        }),
-        OnboardingStep.requirements,
-      );
-      expect(
-        firstIncompleteStep(null, {
-          ...area,
-          'partner_types': ['TEKSI'],
-          'documents_ok': true,
-        }),
-        OnboardingStep.done,
-      );
+      expect(firstIncompleteStep(null, {...area, 'partner_types': ['TEKSI']}), OnboardingStep.requirements);
+      expect(firstIncompleteStep(null, {...area, 'partner_types': ['TEKSI'], 'documents_ok': true}),
+          OnboardingStep.done);
     });
 
     test('step keys match what the Expo app stores in onboarding_step', () {
-      expect(OnboardingStep.wizard.map((s) => s.key), [
-        'avatar',
-        'id',
-        'address',
-        'service-area',
-        'partner-type',
-        'requirements',
-      ]);
+      expect(OnboardingStep.wizard.map((s) => s.key),
+          ['avatar', 'id', 'address', 'service-area', 'partner-type', 'requirements']);
       expect(OnboardingStep.done.key, 'done');
     });
   });
@@ -138,30 +121,17 @@ void main() {
       };
       expect(compulsoryDocsComplete(docs, uploads, now: now), isFalse);
       expect(
-        compulsoryDocsComplete(docs, {
-          ...uploads,
-          'insurance': {'status': 'Approved'},
-        }, now: now),
+        compulsoryDocsComplete(docs, {...uploads, 'insurance': {'status': 'Approved'}}, now: now),
         isTrue,
       );
     });
 
     test('rejected or expired uploads do not count', () {
-      final base = {
-        'licence': {'status': 'Approved'},
-      };
+      final base = {'licence': {'status': 'Approved'}};
+      expect(compulsoryDocsComplete(docs, {...base, 'insurance': {'status': 'Rejected'}}, now: now), isFalse);
       expect(
-        compulsoryDocsComplete(docs, {
-          ...base,
-          'insurance': {'status': 'Rejected'},
-        }, now: now),
-        isFalse,
-      );
-      expect(
-        compulsoryDocsComplete(docs, {
-          ...base,
-          'insurance': {'status': 'Approved', 'expiry_date': '2026-01-01'},
-        }, now: now),
+        compulsoryDocsComplete(
+            docs, {...base, 'insurance': {'status': 'Approved', 'expiry_date': '2026-01-01'}}, now: now),
         isFalse,
       );
     });
@@ -174,13 +144,7 @@ void main() {
   test('required documents follow the partner type and service area', () {
     final entries = [
       (id: 'all', values: <String, dynamic>{'name': 'IC copy'}),
-      (
-        id: 'teksi',
-        values: <String, dynamic>{
-          'name': 'Taxi permit',
-          'partnerTypes': ['TEKSI'],
-        },
-      ),
+      (id: 'teksi', values: <String, dynamic>{'name': 'Taxi permit', 'partnerTypes': ['TEKSI']}),
       (
         id: 'sel',
         values: <String, dynamic>{
@@ -189,39 +153,25 @@ void main() {
           'regions': [
             {'type': 'state', 'country': 'Malaysia', 'state': 'Selangor', 'compulsory': false},
           ],
-        },
+        }
       ),
     ];
-    final area = ServiceArea(
-      countries: ['Malaysia'],
-      states: ['Malaysia|Selangor'],
-      cities: ['Malaysia|Selangor|Ampang'],
-    );
+    final area = ServiceArea(countries: ['Malaysia'], states: ['Malaysia|Selangor'], cities: ['Malaysia|Selangor|Ampang']);
     List<String> ids(List<String> types, ServiceArea a) => requiredDocsFor(
-      requiredDocuments: entries,
-      partnerTypeValues: const [],
-      partnerTypes: types,
-      area: a,
-    ).map((d) => d.id).toList();
+          requiredDocuments: entries,
+          partnerTypeValues: const [],
+          partnerTypes: types,
+          area: a,
+        ).map((d) => d.id).toList();
 
     expect(ids(['TEKSI'], area), containsAll(['all', 'teksi', 'sel']));
     expect(ids(['E-HAILING'], area), isNot(contains('teksi')));
-    expect(
-      ids(['TEKSI'], const ServiceArea(countries: ['Malaysia'], states: ['Malaysia|Johor'])),
-      isNot(contains('sel')),
-    );
+    expect(ids(['TEKSI'], const ServiceArea(countries: ['Malaysia'], states: ['Malaysia|Johor'])),
+        isNot(contains('sel')));
   });
 
   test('uploads are filed under the first service country, else nationality', () {
-    expect(
-      uploadCountry(
-        {
-          'service_countries': ['Malaysia'],
-        },
-        {'nationality': 'Singapore'},
-      ),
-      'Malaysia',
-    );
+    expect(uploadCountry({'service_countries': ['Malaysia']}, {'nationality': 'Singapore'}), 'Malaysia');
     expect(uploadCountry({'service_countries': []}, {'nationality': 'Singapore'}), 'Singapore');
     expect(uploadCountry(null, null), '');
   });

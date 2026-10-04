@@ -10,63 +10,63 @@ import 'package:get_ride/src/admin/screens/meterapp/meterapp_module.dart';
 import 'package:get_ride/src/admin/screens/meterapp/site_logic.dart';
 
 Map<String, dynamic> row([Map<String, dynamic> o = const {}]) => {
-  'id': 'row-1',
-  'level': 'master',
-  'country': null,
-  'state': null,
-  'city': null,
-  'suburb': null,
-  'label': 'Global',
-  'source_mode': 'gps+obd',
-  'allow_start_without_odometer': true,
-  'read_odometer': true,
-  'auto_launch': false,
-  'leave_passenger_action': 'passenger',
-  'leave_ehailing_action': 'app',
-  'leave_ehailing_url': null,
-  'leave_ehailing_label': null,
-  'leave_ehailing_app_id': null,
-  'leave_ehailing_store_ios': null,
-  'leave_ehailing_store_android': null,
-  'leave_ehailing_store_huawei': null,
-  'show_meter': true,
-  'show_trips': true,
-  'show_printer': true,
-  'show_obd': true,
-  'show_settings': true,
-  'tap_meter': true,
-  'tap_trips': true,
-  'tap_printer': true,
-  'tap_obd': true,
-  'tap_settings': true,
-  'currency': 'MYR',
-  'flag_fare': '4.00',
-  'flag_distance_m': 1000,
-  'minimum_fare': '0.00',
-  'distance_mode': 'block',
-  'distance_block_m': 200,
-  'distance_block_charge': '0.35',
-  'per_km_charge': '1.00',
-  'time_mode': 'block',
-  'time_block_s': 36,
-  'time_block_charge': '0.35',
-  'per_minute_charge': '0.30',
-  'per_second_charge': '0.0000',
-  'charge_mode': 'max',
-  'charge_from': 'flag',
-  'night_multiplier': '1.500',
-  'night_start_hour': 0,
-  'night_end_hour': 6,
-  'extra_luggage_charge': '0.00',
-  'free_luggage': 0,
-  'extra_passenger_charge': '0.00',
-  'free_passengers': 1,
-  'extra_step': '0.50',
-  'max_extra': '99.50',
-  'active': true,
-  'updated_at': '2026-08-04T00:00:00.000Z',
-  ...o,
-};
+      'id': 'row-1',
+      'level': 'master',
+      'country': null,
+      'state': null,
+      'city': null,
+      'suburb': null,
+      'label': 'Global',
+      'source_mode': 'gps+obd',
+      'allow_start_without_odometer': true,
+      'read_odometer': true,
+      'auto_launch': false,
+      'leave_passenger_action': 'passenger',
+      'leave_ehailing_action': 'app',
+      'leave_ehailing_url': null,
+      'leave_ehailing_label': null,
+      'leave_ehailing_app_id': null,
+      'leave_ehailing_store_ios': null,
+      'leave_ehailing_store_android': null,
+      'leave_ehailing_store_huawei': null,
+      'show_meter': true,
+      'show_trips': true,
+      'show_printer': true,
+      'show_obd': true,
+      'show_settings': true,
+      'tap_meter': true,
+      'tap_trips': true,
+      'tap_printer': true,
+      'tap_obd': true,
+      'tap_settings': true,
+      'currency': 'MYR',
+      'flag_fare': '4.00',
+      'flag_distance_m': 1000,
+      'minimum_fare': '0.00',
+      'distance_mode': 'block',
+      'distance_block_m': 200,
+      'distance_block_charge': '0.35',
+      'per_km_charge': '1.00',
+      'time_mode': 'block',
+      'time_block_s': 36,
+      'time_block_charge': '0.35',
+      'per_minute_charge': '0.30',
+      'per_second_charge': '0.0000',
+      'charge_mode': 'max',
+      'charge_from': 'flag',
+      'night_multiplier': '1.500',
+      'night_start_hour': 0,
+      'night_end_hour': 6,
+      'extra_luggage_charge': '0.00',
+      'free_luggage': 0,
+      'extra_passenger_charge': '0.00',
+      'free_passengers': 1,
+      'extra_step': '0.50',
+      'max_extra': '99.50',
+      'active': true,
+      'updated_at': '2026-08-04T00:00:00.000Z',
+      ...o,
+    };
 
 MeterProfile profile({
   String id = 'default',
@@ -84,24 +84,25 @@ MeterProfile profile({
   int freeLuggage = 0,
   double extraPassengerCharge = 0,
   int freePassengers = 1,
-}) => defaultMeterProfile.copyWith(
-  id: id,
-  level: level,
-  country: () => country,
-  state: () => state,
-  city: () => city,
-  suburb: () => suburb,
-  sourceMode: sourceMode,
-  allowStartWithoutOdometer: allowStartWithoutOdometer,
-  readOdometer: readOdometer,
-  rates: rates,
-  active: active,
-  panels: allPanelsOn(),
-  extraLuggageCharge: extraLuggageCharge,
-  freeLuggage: freeLuggage,
-  extraPassengerCharge: extraPassengerCharge,
-  freePassengers: freePassengers,
-);
+}) =>
+    defaultMeterProfile.copyWith(
+      id: id,
+      level: level,
+      country: () => country,
+      state: () => state,
+      city: () => city,
+      suburb: () => suburb,
+      sourceMode: sourceMode,
+      allowStartWithoutOdometer: allowStartWithoutOdometer,
+      readOdometer: readOdometer,
+      rates: rates,
+      active: active,
+      panels: allPanelsOn(),
+      extraLuggageCharge: extraLuggageCharge,
+      freeLuggage: freeLuggage,
+      extraPassengerCharge: extraPassengerCharge,
+      freePassengers: freePassengers,
+    );
 
 const leaveDefault = defaultMeterLeave;
 
@@ -124,15 +125,13 @@ void main() {
     });
 
     test('falls back to the built-in default for an unusable value', () {
-      final p = normalizeMeterProfile(
-        row({
-          'flag_fare': 'not a number',
-          'distance_block_m': 0,
-          'time_mode': 'per_fortnight',
-          'source_mode': 'satellite',
-          'night_multiplier': '0.2',
-        }),
-      )!;
+      final p = normalizeMeterProfile(row({
+        'flag_fare': 'not a number',
+        'distance_block_m': 0,
+        'time_mode': 'per_fortnight',
+        'source_mode': 'satellite',
+        'night_multiplier': '0.2',
+      }))!;
       expect(p.rates.flagFare, defaultMeterProfile.rates.flagFare);
       expect(p.rates.distanceBlockM, defaultMeterProfile.rates.distanceBlockM);
       expect(p.rates.timeMode, defaultMeterProfile.rates.timeMode);
@@ -145,8 +144,7 @@ void main() {
       expect(p.country, isNull);
       expect(p.city, isNull);
       final city = normalizeMeterProfile(
-        row({'level': 'city', 'country': 'Malaysia', 'state': 'Selangor', 'city': 'Klang', 'suburb': 'X'}),
-      )!;
+          row({'level': 'city', 'country': 'Malaysia', 'state': 'Selangor', 'city': 'Klang', 'suburb': 'X'}))!;
       expect(city.city, 'Klang');
       expect(city.suburb, isNull);
     });
@@ -162,16 +160,14 @@ void main() {
     });
 
     test('reads the leave-the-meter keys, defaulting them to the in-app pair', () {
-      final configured = normalizeMeterProfile(
-        row({
-          'leave_passenger_action': 'exit',
-          'leave_ehailing_action': 'link',
-          'leave_ehailing_url': 'driverapp://jobs',
-          'leave_ehailing_label': 'Fleet app',
-          'leave_ehailing_app_id': 'grab-driver',
-          'leave_ehailing_store_ios': 'https://apps.apple.com/app/id123',
-        }),
-      )!;
+      final configured = normalizeMeterProfile(row({
+        'leave_passenger_action': 'exit',
+        'leave_ehailing_action': 'link',
+        'leave_ehailing_url': 'driverapp://jobs',
+        'leave_ehailing_label': 'Fleet app',
+        'leave_ehailing_app_id': 'grab-driver',
+        'leave_ehailing_store_ios': 'https://apps.apple.com/app/id123',
+      }))!;
       expect(
         configured.leave,
         const MeterLeaveConfig(
@@ -193,10 +189,7 @@ void main() {
     test('never writes down a link the console could not open', () {
       final p = normalizeMeterProfile(row())!;
       final written = meterProfileToRow(
-        p.copyWith(
-          leave: p.leave.copyWith(ehailing: 'link', ehailingUrl: () => 'not a link'),
-        ),
-      );
+          p.copyWith(leave: p.leave.copyWith(ehailing: 'link', ehailingUrl: () => 'not a link')));
       expect(written['leave_ehailing_url'], isNull);
     });
 
@@ -243,26 +236,15 @@ void main() {
     final state = profile(id: 's', level: 'state', country: 'Malaysia', state: 'Selangor');
     final city = profile(id: 'ci', level: 'city', country: 'Malaysia', state: 'Selangor', city: 'Petaling Jaya');
     final suburb = profile(
-      id: 'su',
-      level: 'suburb',
-      country: 'Malaysia',
-      state: 'Selangor',
-      city: 'Petaling Jaya',
-      suburb: 'Bangsar',
-    );
+        id: 'su', level: 'suburb', country: 'Malaysia', state: 'Selangor', city: 'Petaling Jaya', suburb: 'Bangsar');
     final all = [master, country, state, city, suburb];
 
     test('takes the narrowest matching scope', () {
       expect(
-        resolveMeterProfile(
-          all,
-          country: 'Malaysia',
-          state: 'Selangor',
-          city: 'Petaling Jaya',
-          suburb: 'Bangsar',
-        ).profile.id,
-        'su',
-      );
+          resolveMeterProfile(all, country: 'Malaysia', state: 'Selangor', city: 'Petaling Jaya', suburb: 'Bangsar')
+              .profile
+              .id,
+          'su');
       expect(resolveMeterProfile(all, country: 'Malaysia', state: 'Selangor', city: 'Petaling Jaya').profile.id, 'ci');
       expect(resolveMeterProfile(all, country: 'Malaysia', state: 'Selangor').profile.id, 's');
       expect(resolveMeterProfile(all, country: 'Malaysia').profile.id, 'c');
@@ -278,34 +260,20 @@ void main() {
     test('skips an inactive card and falls through', () {
       final off = [suburb.copyWith(active: false), city, master];
       expect(
-        resolveMeterProfile(
-          off,
-          country: 'Malaysia',
-          state: 'Selangor',
-          city: 'Petaling Jaya',
-          suburb: 'Bangsar',
-        ).profile.id,
-        'ci',
-      );
+          resolveMeterProfile(off, country: 'Malaysia', state: 'Selangor', city: 'Petaling Jaya', suburb: 'Bangsar')
+              .profile
+              .id,
+          'ci');
     });
 
     test('does not match a card whose parent scope contradicts the hire', () {
-      final elsewhere = profile(
-        id: 'other',
-        level: 'city',
-        country: 'Singapore',
-        state: 'Central',
-        city: 'Petaling Jaya',
-      );
+      final elsewhere =
+          profile(id: 'other', level: 'city', country: 'Singapore', state: 'Central', city: 'Petaling Jaya');
       expect(
-        resolveMeterProfile(
-          [elsewhere, master],
-          country: 'Malaysia',
-          state: 'Selangor',
-          city: 'Petaling Jaya',
-        ).profile.id,
-        'm',
-      );
+          resolveMeterProfile([elsewhere, master], country: 'Malaysia', state: 'Selangor', city: 'Petaling Jaya')
+              .profile
+              .id,
+          'm');
     });
 
     test('falls back to the built-in tariff when nothing is configured', () {
@@ -326,25 +294,14 @@ void main() {
 
     test('bills a per-km + per-minute card from the start of the hire', () {
       final r = rates.copyWith(
-        flagFare: 3,
-        distanceMode: 'per_km',
-        perKmCharge: 2,
-        timeMode: 'per_minute',
-        perMinuteCharge: 0.5,
-        chargeMode: 'sum',
-        chargeFrom: 'start',
-      );
+          flagFare: 3, distanceMode: 'per_km', perKmCharge: 2, timeMode: 'per_minute', perMinuteCharge: 0.5,
+          chargeMode: 'sum', chargeFrom: 'start');
       expect(computeMeterFareTotal(r, distanceM: 4000, elapsedMs: 600000), 16);
     });
 
     test('bills a per-second card and an unusual time block', () {
       final r = rates.copyWith(
-        distanceMode: 'off',
-        timeMode: 'per_second',
-        perSecondCharge: 0.01,
-        chargeFrom: 'start',
-        chargeMode: 'sum',
-      );
+          distanceMode: 'off', timeMode: 'per_second', perSecondCharge: 0.01, chargeFrom: 'start', chargeMode: 'sum');
       expect(computeMeterFareTotal(r, distanceM: 0, elapsedMs: 120000), 5.2);
       final b = rates.copyWith(timeBlockS: 45, timeBlockCharge: 1, distanceMode: 'off');
       expect(computeMeterFareTotal(b, distanceM: 1500, chargeableMs: 100000), 7);
@@ -391,10 +348,7 @@ void main() {
       expect(meterReadsOdometerBeforeStart(profile(), false), isFalse);
       expect(meterReadsOdometerBeforeStart(profile(allowStartWithoutOdometer: false), false), isTrue);
       expect(meterReadsOdometerBeforeStart(profile(readOdometer: false), true), isFalse);
-      expect(
-        meterReadsOdometerBeforeStart(profile(sourceMode: 'gps', allowStartWithoutOdometer: false), false),
-        isFalse,
-      );
+      expect(meterReadsOdometerBeforeStart(profile(sourceMode: 'gps', allowStartWithoutOdometer: false), false), isFalse);
       expect(meterReadsOdometer(profile()), isTrue);
       expect(meterReadsOdometer(profile(readOdometer: false)), isFalse);
       expect(meterReadsOdometer(profile(sourceMode: 'obd')), isTrue);
@@ -434,9 +388,8 @@ void main() {
       expect(lines.any((l) => l.contains('whichever is greater')), isFalse);
     });
     test('spells out the extras when the card charges them', () {
-      final lines = describeMeterRates(
-        profile(extraLuggageCharge: 2, freeLuggage: 1, extraPassengerCharge: 3, freePassengers: 2),
-      );
+      final lines =
+          describeMeterRates(profile(extraLuggageCharge: 2, freeLuggage: 1, extraPassengerCharge: 3, freePassengers: 2));
       expect(lines, contains('MYR 2.00 per bag after 1 free'));
       expect(lines, contains('MYR 3.00 per passenger after 2'));
     });
@@ -447,28 +400,19 @@ void main() {
 
     test('requires the place names its level needs', () {
       expect(validateMeterProfile(createMeterProfileDraft('country')), 'Select a country.');
+      expect(validateMeterProfile(createMeterProfileDraft('state').copyWith(country: () => 'Malaysia')),
+          'Select a state.');
       expect(
-        validateMeterProfile(createMeterProfileDraft('state').copyWith(country: () => 'Malaysia')),
-        'Select a state.',
-      );
-      expect(
-        validateMeterProfile(
-          createMeterProfileDraft('suburb')
-              .copyWith(country: () => 'Malaysia', state: () => 'Selangor', city: () => 'Petaling Jaya'),
-        ),
+        validateMeterProfile(createMeterProfileDraft('suburb')
+            .copyWith(country: () => 'Malaysia', state: () => 'Selangor', city: () => 'Petaling Jaya')),
         'Enter a suburb.',
       );
     });
 
     test('refuses a card that would meter every hire at zero', () {
       final free = profile(
-        rates: defaultMeterProfile.rates.copyWith(
-          flagFare: 0,
-          minimumFare: 0,
-          distanceBlockCharge: 0,
-          timeBlockCharge: 0,
-        ),
-      );
+          rates: defaultMeterProfile.rates
+              .copyWith(flagFare: 0, minimumFare: 0, distanceBlockCharge: 0, timeBlockCharge: 0));
       expect(validateMeterProfile(free), contains('charges nothing'));
     });
 
@@ -476,13 +420,9 @@ void main() {
       final p = profile();
       expect(validateMeterProfile(p.copyWith(leave: p.leave.copyWith(ehailing: 'link'))), contains('app link'));
       expect(
-        validateMeterProfile(
-          p.copyWith(
-            leave: p.leave.copyWith(ehailing: 'link', ehailingUrl: () => 'driverapp://jobs'),
-          ),
-        ),
-        isNull,
-      );
+          validateMeterProfile(
+              p.copyWith(leave: p.leave.copyWith(ehailing: 'link', ehailingUrl: () => 'driverapp://jobs'))),
+          isNull);
     });
 
     test('refuses to hide or lock the meter itself', () {
@@ -495,29 +435,23 @@ void main() {
     test('meterProfileScopeLabel prints the scope the way the admin list reads it', () {
       expect(meterProfileScopeLabel(profile()), 'Global (all regions)');
       expect(meterProfileScopeLabel(profile(level: 'country', country: 'Malaysia')), 'Malaysia');
-      expect(
-        meterProfileScopeLabel(profile(level: 'suburb', suburb: 'Bangsar', city: 'Kuala Lumpur')),
-        'Bangsar, Kuala Lumpur',
-      );
+      expect(meterProfileScopeLabel(profile(level: 'suburb', suburb: 'Bangsar', city: 'Kuala Lumpur')),
+          'Bangsar, Kuala Lumpur');
     });
   });
 
   group('setMeterPanelAccess / canApplyMeterPanelLive', () {
     test('hides a panel and takes its tap with it', () {
-      expect(
-        setMeterPanelAccess(allPanelsOn(), 'printer', show: false)['printer'],
-        const MeterPanelAccess(show: false, tap: false),
-      );
+      expect(setMeterPanelAccess(allPanelsOn(), 'printer', show: false)['printer'],
+          const MeterPanelAccess(show: false, tap: false));
     });
     test('shows a panel again without assuming it may be tapped', () {
       final hidden = setMeterPanelAccess(allPanelsOn(), 'obd', show: false);
       expect(setMeterPanelAccess(hidden, 'obd', show: true)['obd'], const MeterPanelAccess(show: true, tap: false));
     });
     test('locks a shown panel, and tap implies show', () {
-      expect(
-        setMeterPanelAccess(allPanelsOn(), 'settings', tap: false)['settings'],
-        const MeterPanelAccess(show: true, tap: false),
-      );
+      expect(setMeterPanelAccess(allPanelsOn(), 'settings', tap: false)['settings'],
+          const MeterPanelAccess(show: true, tap: false));
       final hidden = setMeterPanelAccess(allPanelsOn(), 'trips', show: false);
       expect(setMeterPanelAccess(hidden, 'trips', tap: true)['trips'], const MeterPanelAccess());
     });
@@ -566,9 +500,7 @@ void main() {
 
     test('picking a catalogue app fills only the store pages it knows', () {
       final picked = pickMeterLeaveApp(
-        const MeterLeaveConfig(ehailingStores: MeterLeaveStores(android: 'https://my.store/x')),
-        'gvride',
-      );
+          const MeterLeaveConfig(ehailingStores: MeterLeaveStores(android: 'https://my.store/x')), 'gvride');
       expect(picked.ehailingAppId, 'gvride');
       expect(picked.ehailingStores.android, 'https://my.store/x');
       expect(picked.ehailingStores.ios, 'https://apps.apple.com/my/app/gvride/id6651835302');
@@ -582,19 +514,8 @@ void main() {
       expect(normalizeMeterLeaveUrl('driverapp://jobs'), 'driverapp://jobs');
       expect(normalizeMeterLeaveUrl('  myfleet://  '), 'myfleet://');
       expect(normalizeMeterLeaveUrl('https://dispatch.example.com/driver'), 'https://dispatch.example.com/driver');
-      for (final bad in [
-        'driverapp',
-        'open the driver app',
-        '',
-        null,
-        42,
-        'driverapp:// jobs',
-        'javascript:alert(1)',
-        'JavaScript:alert(1)',
-        'data:text/html,<b>x</b>',
-        'file:///etc/passwd',
-        'app://${'x' * 600}',
-      ]) {
+      for (final bad in ['driverapp', 'open the driver app', '', null, 42, 'driverapp:// jobs', 'javascript:alert(1)',
+        'JavaScript:alert(1)', 'data:text/html,<b>x</b>', 'file:///etc/passwd', 'app://${'x' * 600}']) {
         expect(normalizeMeterLeaveUrl(bad), isNull, reason: '$bad');
       }
     });
@@ -618,20 +539,16 @@ void main() {
       expect((exit.action, exit.route, exit.label), ('exit', null, 'EXIT'));
       expect(exit.hint, contains('stay signed in'));
 
-      final link = resolveMeterLeave(
-        const MeterLeaveConfig(ehailing: 'link', ehailingUrl: 'driverapp://jobs', ehailingLabel: 'Fleet app'),
-      ).ehailing;
+      final link = resolveMeterLeave(const MeterLeaveConfig(
+              ehailing: 'link', ehailingUrl: 'driverapp://jobs', ehailingLabel: 'Fleet app'))
+          .ehailing;
       expect((link.action, link.url, link.label, link.route), ('link', 'driverapp://jobs', 'FLEET APP', null));
-      expect(
-        resolveMeterLeave(const MeterLeaveConfig(ehailing: 'link', ehailingUrl: 'driverapp://')).ehailing.label,
-        'E-HAILING APP',
-      );
+      expect(resolveMeterLeave(const MeterLeaveConfig(ehailing: 'link', ehailingUrl: 'driverapp://')).ehailing.label,
+          'E-HAILING APP');
       final dead = resolveMeterLeave(const MeterLeaveConfig(ehailing: 'link', ehailingUrl: '  ')).ehailing;
       expect((dead.action, dead.route, dead.url), ('route', '/partner-ehailing', null));
-      expect(
-        resolveMeterLeave(const MeterLeaveConfig(ehailing: 'link', ehailingUrl: 'javascript:alert(1)')).ehailing.action,
-        'route',
-      );
+      expect(resolveMeterLeave(const MeterLeaveConfig(ehailing: 'link', ehailingUrl: 'javascript:alert(1)')).ehailing.action,
+          'route');
       final cap = resolveMeterLeave(const MeterLeaveConfig(ehailingLabel: 'jobs')).ehailing;
       expect((cap.action, cap.label), ('route', 'JOBS'));
     });
@@ -643,17 +560,14 @@ void main() {
       expect(android.label, 'GRAB DRIVER');
       expect(android.store, 'https://play.google.com/store/apps/details?id=com.grabtaxi.driver2');
 
-      final withStore = picked.copyWith(
-        ehailingStores: const MeterLeaveStores(ios: 'https://apps.apple.com/app/id123'),
-      );
+      final withStore = picked.copyWith(ehailingStores: const MeterLeaveStores(ios: 'https://apps.apple.com/app/id123'));
       final ios = resolveMeterLeave(withStore, 'ios').ehailing;
       expect((ios.action, ios.url, ios.store), ('link', null, 'https://apps.apple.com/app/id123'));
       expect(ios.hint, contains('Install Grab Driver'));
       expect(resolveMeterLeave(picked, 'ios').ehailing.route, '/partner-ehailing');
 
       final own = picked.copyWith(
-        ehailingStores: const MeterLeaveStores(android: 'https://play.google.com/store/apps/details?id=x'),
-      );
+          ehailingStores: const MeterLeaveStores(android: 'https://play.google.com/store/apps/details?id=x'));
       expect(resolveMeterLeave(own, 'android').ehailing.store, 'https://play.google.com/store/apps/details?id=x');
 
       final both = picked.copyWith(ehailingUrl: () => 'grabdriver://');
@@ -686,16 +600,11 @@ void main() {
       expect(validateMeterLeave(leaveDefault), isNull);
       expect(validateMeterLeave(const MeterLeaveConfig(passenger: 'exit')), isNull);
       expect(validateMeterLeave(const MeterLeaveConfig(ehailing: 'link')), contains('app link'));
-      expect(
-        validateMeterLeave(const MeterLeaveConfig(ehailing: 'link', ehailingUrl: 'driverapp')),
-        contains('app link'),
-      );
+      expect(validateMeterLeave(const MeterLeaveConfig(ehailing: 'link', ehailingUrl: 'driverapp')), contains('app link'));
       expect(validateMeterLeave(const MeterLeaveConfig(ehailing: 'link', ehailingUrl: 'driverapp://jobs')), isNull);
       expect(describeMeterLeave(leaveDefault), isEmpty);
-      expect(
-        describeMeterLeave(const MeterLeaveConfig(passenger: 'exit', ehailing: 'link', ehailingUrl: 'driverapp://')),
-        ['Leave key closes the app', 'E-hailing opens driverapp://'],
-      );
+      expect(describeMeterLeave(const MeterLeaveConfig(passenger: 'exit', ehailing: 'link', ehailingUrl: 'driverapp://')),
+          ['Leave key closes the app', 'E-hailing opens driverapp://']);
       expect(describeMeterLeave(const MeterLeaveConfig(ehailing: 'link', ehailingUrl: 'nonsense')), isEmpty);
     });
   });
@@ -766,10 +675,8 @@ void main() {
     });
 
     test('sanitize, match and parse the stored value', () {
-      expect(sanitizeAlwaysOnRoutes(['/meter-digital', 'meter-digital', '', '  ', 'navigation']), [
-        'meter-digital',
-        'navigation',
-      ]);
+      expect(sanitizeAlwaysOnRoutes(['/meter-digital', 'meter-digital', '', '  ', 'navigation']),
+          ['meter-digital', 'navigation']);
       expect(sanitizeAlwaysOnRoutes([123, null, 'ride-running']), ['ride-running']);
       expect(sanitizeAlwaysOnRoutes('not-an-array'), isEmpty);
       const routes = ['partner-teksi', 'meter-digital'];
@@ -802,13 +709,7 @@ void main() {
           {'route': 'https://evil', 'comingSoon': 'yes'},
           {'route': ' /wallet '},
         ],
-        'userMenu': {
-          'renames': {'wallet': 'Money', 'x': ''},
-          'customItems': [
-            {'id': 'c1', 'label': 'L'},
-            {'id': 2},
-          ],
-        },
+        'userMenu': {'renames': {'wallet': 'Money', 'x': ''}, 'customItems': [{'id': 'c1', 'label': 'L'}, {'id': 2}]},
       });
       expect(s['searchBar'], isFalse);
       expect(s['rideTypes'], isTrue);
@@ -840,10 +741,7 @@ void main() {
       expect(ids.first, 'teksi-ev');
       expect(ids.last, 'custom-1');
       s = moveMenuItem(s, 'user', 'custom-1', -1);
-      expect(menuItemOrder('user', menuOf(s, 'user')).map((o) => o.id).toList().reversed.take(2), [
-        'logout',
-        'custom-1',
-      ]);
+      expect(menuItemOrder('user', menuOf(s, 'user')).map((o) => o.id).toList().reversed.take(2), ['logout', 'custom-1']);
       expect(moveMenuItem(s, 'user', 'teksi-ev', -1), same(s));
 
       s = renameMenuItem(s, 'user', 'wallet', 'Money');
@@ -879,26 +777,13 @@ void main() {
       s = setVehicleServiceVisibility(s, 'v2', false);
       expect(s['hiddenVehicleServiceIds'], ['v2']);
       final vehicles = [
-        {
-          'id': 'v1',
-          'values': {'displayPriority': 2},
-        },
+        {'id': 'v1', 'values': {'displayPriority': 2}},
         {'id': 'v2', 'values': {}},
-        {
-          'id': 'v3',
-          'values': {'displayPriority': 1},
-        },
-        {
-          'id': 'v4',
-          'values': {'status': false},
-        },
+        {'id': 'v3', 'values': {'displayPriority': 1}},
+        {'id': 'v4', 'values': {'status': false}},
       ];
-      List<String> arranged(Map<String, dynamic> st) => arrangeVehicles<Map<String, Object>>(
-        vehicles,
-        st,
-        id: (e) => e['id'] as String,
-        values: (e) => Map<String, dynamic>.from(e['values'] as Map),
-      ).map((e) => e['id'] as String).toList();
+      List<String> arranged(Map<String, dynamic> st) => arrangeVehicles<Map<String, Object>>(vehicles, st,
+          id: (e) => e['id'] as String, values: (e) => Map<String, dynamic>.from(e['values'] as Map)).map((e) => e['id'] as String).toList();
       expect(arranged(s), ['v3', 'v1']);
       s = moveVehicleInBar(s, 'v1', -1, arranged(s));
       expect(arranged(s), ['v1', 'v3']);
@@ -931,18 +816,12 @@ void main() {
     });
 
     test('site settings merge and validate like the Expo screen', () {
-      final s = mergeSiteSettings({
-        'light': {'accent': '#000'},
-        'startLat': '1',
-      });
+      final s = mergeSiteSettings({'light': {'accent': '#000'}, 'startLat': '1'});
       expect((s['light'] as Map)['accent'], '#000');
       expect((s['light'] as Map)['text'], '#111827');
       expect(s['startLng'], '101.686855');
       expect(validateSiteSettings(s), isNull);
-      final bad = {
-        ...s,
-        'dark': {...(s['dark'] as Map), 'border': 'grey'},
-      };
+      final bad = {...s, 'dark': {...(s['dark'] as Map), 'border': 'grey'}};
       expect(validateSiteSettings(bad), 'Invalid Dark Border color');
       expect(validateSiteSettings({...s, 'startLat': '200'}), 'Invalid start latitude/longitude');
       expect(brandingPath('icon', 'png', DateTime.fromMillisecondsSinceEpoch(42)), 'icon-42.png');
