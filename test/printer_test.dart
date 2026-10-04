@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/escpos.dart';
 import 'package:get_ride/src/core/meter_trip.dart';
+import 'package:get_ride/src/core/obd_ble.dart';
 import 'package:get_ride/src/core/printers.dart';
 import 'package:get_ride/src/core/taxi_meter.dart';
 import 'package:get_ride/src/data/printer/printer_service.dart';
@@ -148,6 +149,56 @@ void main() {
       final error = await container.read(printerServiceProvider).send(saved, 'X');
       expect(error, contains('Connection refused'));
       expect(printer.jobs, isEmpty);
+    });
+  });
+
+  group('Bluetooth printers', () {
+    BleCharacteristicInfo c(String uuid, {bool w = false, bool wnr = false, bool n = false}) =>
+        BleCharacteristicInfo(uuid, write: w, writeWithoutResponse: wnr, notify: n);
+
+    test('the common 18F0 print service wins over anything else writable', () {
+      final t = resolveBlePrinterWrite([
+        (uuid: 'ffe0', characteristics: [c('ffe1', wnr: true)]),
+        (uuid: '18f0', characteristics: [c('2af0', n: true), c('2af1', w: true, wnr: true)]),
+      ])!;
+      expect(t.service, '18f0');
+      expect(t.write, '2af1');
+      expect(t.withResponse, isFalse, reason: 'write-without-response is preferred for a bulk stream');
+    });
+
+    test('an unknown printer prints to its first writable characteristic, never a standard service', () {
+      final t = resolveBlePrinterWrite([
+        (uuid: '1800', characteristics: [c('2a00', w: true)]),
+        (uuid: 'abcd1234-0000-1000-8000-00805f9b34fb', characteristics: [c('aa01', n: true), c('aa02', w: true)]),
+      ])!;
+      expect(t.write, 'aa02');
+      expect(t.withResponse, isTrue, reason: 'it only takes writes with response');
+      expect(resolveBlePrinterWrite([(uuid: '1800', characteristics: [c('2a00', w: true)])]), isNull);
+    });
+
+    test('packets follow the negotiated MTU, within limits', () {
+      expect(blePrinterPacketSize(null), 20);
+      expect(blePrinterPacketSize(23), 20);
+      expect(blePrinterPacketSize(100), 97);
+      expect(blePrinterPacketSize(247), 180, reason: 'capped where cheap printers drop data');
+    });
+
+    test('a saved Bluetooth printer keeps the peripheral, its name and paper', () {
+      final p = normalizeBlePrinter(
+              id: 'b', createdAt: 't', deviceId: 'AA:01', advertisedName: 'MTP-II', paper: PaperWidth.mm80)
+          .value!;
+      expect(p.name, 'MTP-II');
+      expect(describePrinter(p), 'Bluetooth LE · AA:01 · 80mm');
+      expect(SavedPrinter.fromJson(p.toJson())!.address, 'AA:01');
+      expect(normalizeBlePrinter(id: 'b', createdAt: 't', deviceId: '').error, isNotNull);
+      final again = normalizeBlePrinter(id: 'c', createdAt: 't', deviceId: 'aa:01', name: 'Dash').value!;
+      expect(upsertPrinter([p], again).single.id, 'b', reason: 'the same printer, however the id is cased');
+    });
+
+    test('an unreachable Bluetooth printer says what to check', () {
+      final p = normalizeBlePrinter(id: 'b', createdAt: 't', deviceId: 'AA:01', advertisedName: 'MTP-II').value!;
+      expect(describePrintError(Exception('gatt 133'), p), contains('Could not reach MTP-II over Bluetooth'));
+      expect(describePrintError(StateError('Bluetooth is off.'), p), 'Bluetooth is off.');
     });
   });
 }

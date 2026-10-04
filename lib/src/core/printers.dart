@@ -2,11 +2,12 @@
 // `utils/printerStore.ts` (the pure half). Kept on the device: a printer is
 // paired to the phone in the car, not to the account.
 //
-// This slice prints over Wi-Fi only (a raw TCP socket to the ESC/POS port);
-// the transport field is kept so Bluetooth printers added later fit the same
-// list.
+// Printers are reached over Wi-Fi (a raw TCP socket to the ESC/POS port) or
+// Bluetooth LE (a writable characteristic); the transport field keeps the
+// list open for classic Bluetooth printers.
 
 import 'escpos.dart';
+import 'obd_ble.dart' show BleServiceInfo, normalizeBleUuid, sameBleUuid;
 
 /// The raw ESC/POS port virtually every network printer listens on.
 const printerWifiPort = 9100;
@@ -115,6 +116,81 @@ final _hostname = RegExp(r'^[A-Za-z0-9._-]+$');
     ),
   );
 }
+
+/// A Bluetooth LE printer picked from the in-app scan; [address] keeps the
+/// peripheral id (a MAC address on Android, a per-phone UUID on iOS and
+/// macOS). The name defaults to the one the printer advertises.
+({String? error, SavedPrinter? value}) normalizeBlePrinter({
+  required String id,
+  required String createdAt,
+  required String deviceId,
+  String? advertisedName,
+  String name = '',
+  PaperWidth paper = PaperWidth.mm58,
+}) {
+  final n = name.trim();
+  if (n.length > 60) return (error: 'Name must be 60 characters or fewer.', value: null);
+  final device = deviceId.trim();
+  if (device.isEmpty) return (error: 'Pick the printer from the scan.', value: null);
+  final advertised = (advertisedName ?? '').trim();
+  return (
+    error: null,
+    value: SavedPrinter(
+      id: id,
+      name: n.isNotEmpty ? n : (advertised.isNotEmpty ? advertised : 'Bluetooth printer'),
+      transport: 'bluetooth',
+      address: device,
+      paper: paper,
+      createdAt: createdAt,
+    ),
+  );
+}
+
+/// The print services mini thermal printers expose, most common first: a
+/// (service, write characteristic) pair each.
+const blePrinterProfiles = <({String service, String write})>[
+  (service: '000018f0-0000-1000-8000-00805f9b34fb', write: '00002af1-0000-1000-8000-00805f9b34fb'),
+  (service: 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', write: 'bef8d6c9-9c21-4c9e-b632-bd58c1009f9f'),
+  (service: '49535343-fe7d-4ae5-8fa9-9fafd205e455', write: '49535343-8841-43f4-a8d4-ecbe34729bb3'),
+  (service: '0000ff00-0000-1000-8000-00805f9b34fb', write: '0000ff02-0000-1000-8000-00805f9b34fb'),
+  (service: '0000ffe0-0000-1000-8000-00805f9b34fb', write: '0000ffe1-0000-1000-8000-00805f9b34fb'),
+];
+
+/// Generic Access / Generic Attribute / Device Information: a writable
+/// characteristic there (the device name, on some modules) is not a printer.
+final _notPrintServices = ['1800', '1801', '180a'].map(normalizeBleUuid).toSet();
+
+/// Where to send ESC/POS on a Bluetooth printer (Expo
+/// `resolveWriteCharacteristic`): a known print service first, else the first
+/// writable characteristic outside the standard services. Write-without-
+/// response is preferred, since a receipt is a bulk stream.
+({String service, String write, bool withResponse})? resolveBlePrinterWrite(List<BleServiceInfo> services) {
+  for (final p in blePrinterProfiles) {
+    final s = services.where((s) => sameBleUuid(s.uuid, p.service)).firstOrNull;
+    final c = s?.characteristics.where((c) => sameBleUuid(c.uuid, p.write) && c.writable).firstOrNull;
+    if (s != null && c != null) return (service: s.uuid, write: c.uuid, withResponse: !c.writeWithoutResponse);
+  }
+  for (final s in services) {
+    if (_notPrintServices.contains(normalizeBleUuid(s.uuid))) continue;
+    final fast = s.characteristics.where((c) => c.writeWithoutResponse).firstOrNull;
+    final any = fast ?? s.characteristics.where((c) => c.writable).firstOrNull;
+    if (any != null) return (service: s.uuid, write: any.uuid, withResponse: fast == null);
+  }
+  return null;
+}
+
+/// How much of a receipt one Bluetooth write carries: what the negotiated
+/// MTU allows (less its 3-byte header), capped where cheap printers start
+/// dropping data, and never below the 20 bytes every link carries.
+int blePrinterPacketSize(int? mtu) {
+  if (mtu == null || mtu <= 23) return 20;
+  final usable = mtu - 3;
+  return usable > 180 ? 180 : usable;
+}
+
+/// The pause between packets written without response, so a cheap
+/// printer's buffer keeps up.
+const blePrinterPacketGap = Duration(milliseconds: 15);
 
 /// "Wi-Fi · 192.168.0.50:9100 · 58mm".
 String describePrinter(SavedPrinter p) {

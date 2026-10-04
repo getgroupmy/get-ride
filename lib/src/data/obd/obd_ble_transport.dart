@@ -6,73 +6,8 @@ import 'package:universal_ble/universal_ble.dart';
 
 import '../../core/obd.dart';
 import '../../core/obd_ble.dart';
+import '../ble.dart';
 import 'obd_transport.dart';
-
-/// One reader seen by the scan.
-typedef ObdBleSighting = ({String deviceId, String? name, List<String> services, int? rssi});
-
-/// Finds Bluetooth LE readers (Expo `scanForBleAdapters`). A seam so tests
-/// can play a scan back.
-abstract class ObdBleScanner {
-  /// Sightings as they arrive, for [duration]. Throws when Bluetooth is off
-  /// or not permitted.
-  Stream<ObdBleSighting> scan({Duration duration = const Duration(seconds: 12)});
-}
-
-/// Why Bluetooth cannot be used right now, in words for the driver.
-String? describeBluetoothUnavailable(AvailabilityState state) => switch (state) {
-      AvailabilityState.poweredOn => null,
-      AvailabilityState.poweredOff => 'Bluetooth is off. Turn it on to use a Bluetooth reader.',
-      AvailabilityState.unauthorized =>
-        'GET.ride is not allowed to use Bluetooth. Allow it in the phone\'s settings for this app.',
-      AvailabilityState.unsupported => 'This device has no Bluetooth LE.',
-      _ => 'Bluetooth is not ready yet. Try again in a moment.',
-    };
-
-/// Asks for permission and waits for the adapter to be on, or throws with
-/// what to tell the driver.
-Future<void> _ensureBluetooth() async {
-  if (kIsWeb) {
-    throw UnsupportedError('A browser cannot connect to a Bluetooth OBD-II reader. Use the phone app.');
-  }
-  await UniversalBle.requestPermissions();
-  var state = await UniversalBle.getBluetoothAvailabilityState();
-  if (state == AvailabilityState.unknown || state == AvailabilityState.resetting) {
-    // The adapter reports unknown for a moment after the app starts.
-    state = await UniversalBle.availabilityStream
-        .firstWhere((s) => s != AvailabilityState.unknown && s != AvailabilityState.resetting)
-        .timeout(const Duration(seconds: 5), onTimeout: () => state);
-  }
-  final problem = describeBluetoothUnavailable(state);
-  if (problem != null) throw StateError(problem);
-}
-
-class UniversalBleScanner implements ObdBleScanner {
-  const UniversalBleScanner();
-
-  @override
-  Stream<ObdBleSighting> scan({Duration duration = const Duration(seconds: 12)}) async* {
-    await _ensureBluetooth();
-    final out = StreamController<ObdBleSighting>();
-    final sub = UniversalBle.scanStream.listen((d) => out.add((
-          deviceId: d.deviceId,
-          name: d.name,
-          services: d.services,
-          rssi: d.rssi,
-        )));
-    final stop = Timer(duration, out.close);
-    try {
-      await UniversalBle.startScan();
-      yield* out.stream;
-    } finally {
-      stop.cancel();
-      await sub.cancel();
-      try {
-        await UniversalBle.stopScan();
-      } catch (_) {}
-    }
-  }
-}
 
 /// An ELM327 over Bluetooth LE (Expo `BleTransport`): connects to the
 /// peripheral picked from the scan, finds its serial characteristics and
@@ -96,7 +31,7 @@ class BleObdTransport implements ObdTransport {
 
   @override
   Future<String> connect() async {
-    await _ensureBluetooth();
+    await ensureBluetoothReady();
     try {
       await _open();
     } catch (_) {
@@ -139,20 +74,8 @@ class BleObdTransport implements ObdTransport {
         : await UniversalBle.subscribeNotifications(deviceId, profile.service, profile.notify);
   }
 
-  Future<void> _findAgain() async {
-    await UniversalBle.startScan();
-    try {
-      await UniversalBle.scanStream
-          .firstWhere((d) => d.deviceId.toLowerCase() == deviceId.toLowerCase())
-          .timeout(const Duration(seconds: 10));
-    } on TimeoutException {
-      throw StateError('Could not find the reader. Check it is plugged in and the ignition is on.');
-    } finally {
-      try {
-        await UniversalBle.stopScan();
-      } catch (_) {}
-    }
-  }
+  Future<void> _findAgain() => findBlePeripheral(deviceId,
+      notFound: 'Could not find the reader. Check it is plugged in and the ignition is on.');
 
   @override
   Future<void> write(String command) async {
