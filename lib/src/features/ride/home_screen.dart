@@ -13,6 +13,7 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
 import 'place_search.dart';
+import '../meter/meter_auto_launch.dart';
 
 enum _PinTarget { none, pickup, drop }
 
@@ -43,6 +44,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _locate();
     _checkOngoing();
+    // A TEKSI driver whose rate card asks for it lands on the meter, once
+    // per launch.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) maybeAutoLaunchMeter(context, ref);
+    });
   }
 
   @override

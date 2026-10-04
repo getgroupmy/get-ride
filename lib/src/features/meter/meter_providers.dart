@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../admin/screens/meterapp/meter_logic.dart';
 import '../../admin/screens/meterapp/meter_store.dart';
+import '../../data/meter_launch_store.dart';
 import '../../data/meter_trips_store.dart';
 import '../../providers.dart';
 
@@ -72,11 +73,21 @@ final meterClockProvider = Provider<int Function()>((_) => () => DateTime.now().
 
 /// The operator's rate cards (Admin → Settings → Meter Digital Setting).
 /// Readable by everyone; an unreachable table means the built-in tariff.
+final meterLaunchStoreProvider = Provider((_) => MeterLaunchStore());
+
+/// The operator's rate cards. Kept on the device as last fetched, because a
+/// meter has to keep pricing with no signal at all (and the launch decision
+/// is made before the network answers): offline, the cached cards decide.
 final meterCardsProvider = FutureProvider<List<MeterProfile>>((ref) async {
+  final cache = ref.watch(meterLaunchStoreProvider);
   try {
-    return await MeterSettingsStore(ref.watch(supabaseProvider)).fetch();
+    final cards = await MeterSettingsStore(ref.watch(supabaseProvider)).fetch();
+    try {
+      await cache.saveCards(cards);
+    } catch (_) {}
+    return cards;
   } catch (_) {
-    return const [];
+    return cache.readCards();
   }
 });
 
