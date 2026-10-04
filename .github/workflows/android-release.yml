@@ -157,13 +157,23 @@ jobs:
         if: steps.creds.outputs.ready == 'true'
         env:
           OFFSET: ${{ vars.ANDROID_VERSION_CODE_OFFSET || 0 }}
+          # Push notifications: Firebase's public client ids, as repository
+          # variables (docs/store-release.md). Unset, the build has no push.
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_ANDROID_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID }}
+          FIREBASE_ANDROID_API_KEY: ${{ vars.FIREBASE_ANDROID_API_KEY }}
         run: |
           set -euo pipefail
           code=$(( ${{ github.run_number }} + OFFSET ))
           echo "version code $code"
           echo "code=$code" >> "$GITHUB_OUTPUT"
           # An app bundle, not an APK: Play requires an AAB.
-          flutter build appbundle --release --build-number="$code"
+          flutter build appbundle --release --build-number="$code" \
+            --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
+            --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID" \
+            --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID" \
+            --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
 
       - name: The bundle is not signed with the debug key
         if: steps.creds.outputs.ready == 'true'

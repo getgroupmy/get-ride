@@ -1,12 +1,15 @@
 import 'dart:async';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'admin/admin_routes.dart';
+import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
+import 'data/push_service.dart';
 import 'features/auth/otp_screen.dart';
 import 'features/auth/phone_screen.dart';
 import 'features/auth/pin_screen.dart';
@@ -139,13 +142,60 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class GetRideApp extends ConsumerWidget {
+class GetRideApp extends ConsumerStatefulWidget {
   const GetRideApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GetRideApp> createState() => _GetRideAppState();
+}
+
+class _GetRideAppState extends ConsumerState<GetRideApp> {
+  final _messenger = GlobalKey<ScaffoldMessengerState>();
+  final _subs = <StreamSubscription<Object?>>[];
+
+  @override
+  void initState() {
+    super.initState();
+    final push = PushService.instance;
+    if (push == null) return;
+    _subs.add(push.taps.listen(_open));
+    _subs.add(push.foreground.listen(_showForeground));
+    // The notification that launched the app, opened once the router exists.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final route = push.takePendingRoute();
+      if (route != null) _open(route);
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final sub in _subs) {
+      sub.cancel();
+    }
+    super.dispose();
+  }
+
+  void _open(String route) => ref.read(routerProvider).go(route);
+
+  /// Android does not show a notification that arrives while the app is open,
+  /// so it is shown as a banner instead. iOS shows its own.
+  void _showForeground(RemoteMessage message) {
+    final title = message.notification?.title ?? '';
+    final body = message.notification?.body ?? '';
+    if (title.isEmpty && body.isEmpty) return;
+    final route = pushRouteFor(message.data);
+    _messenger.currentState?.showSnackBar(SnackBar(
+      content: Text([title, body].where((s) => s.isNotEmpty).join('\n')),
+      duration: const Duration(seconds: 6),
+      action: route == null ? null : SnackBarAction(label: 'Open', onPressed: () => _open(route)),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp.router(
       title: 'GET.ride',
+      scaffoldMessengerKey: _messenger,
       debugShowCheckedModeBanner: false,
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),

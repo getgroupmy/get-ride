@@ -175,6 +175,12 @@ jobs:
         if: steps.creds.outputs.ready == 'true'
         env:
           OFFSET: ${{ vars.IOS_BUILD_NUMBER_OFFSET || 0 }}
+          # Push notifications: Firebase's public client ids, as repository
+          # variables (docs/store-release.md). Unset, the build has no push.
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_IOS_APP_ID: ${{ vars.FIREBASE_IOS_APP_ID }}
+          FIREBASE_IOS_API_KEY: ${{ vars.FIREBASE_IOS_API_KEY }}
         run: |
           set -euo pipefail
           build=$(( ${{ github.run_number }} + OFFSET ))
@@ -198,7 +204,11 @@ jobs:
           PLIST
 
           # The marketing version comes from pubspec.yaml, set by a person.
-          flutter build ios --release --no-codesign --build-number="$build"
+          flutter build ios --release --no-codesign --build-number="$build" \
+            --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
+            --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID" \
+            --dart-define=FIREBASE_IOS_APP_ID="$FIREBASE_IOS_APP_ID" \
+            --dart-define=FIREBASE_IOS_API_KEY="$FIREBASE_IOS_API_KEY"
 
           # Appended, not written: the #include lines already there wire in
           # Flutter's generated settings.

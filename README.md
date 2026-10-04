@@ -11,10 +11,11 @@ Flutter client for **GET.ride** that runs on **web, desktop (macOS / Windows / L
 | Ride tracking | Live status via Supabase Realtime, driver details + live position, trip code, call/SMS driver, cancel / cancellation-request flow. |
 | Drive (partner) | Online toggle, live queue of open requests sorted by distance, race-safe accept, arrive → verify trip code → start → complete, live location publishing, commission charged via `wallet_charge_ride_commission` (rate resolution ported from `utils/commissionStore.ts`). |
 | Wallet | GET.wallet / GET.coin / credit balances and transaction history (read-only; money movement stays behind the server RPCs). |
+| Push notifications | Android and iOS, through Firebase Cloud Messaging. The token is stored with the same `push_register_token` RPC as the Expo app, and the `send-push` edge function delivers to both kinds of token. Taps open the partner queue (ride requests) or the wallet (GET.coin transfers). Needs a Firebase project (see below and `docs/store-release.md`); a build without one has no push. |
 | Account | Profile edit, referral code, emergency contacts, support chat (realtime), light/dark theme, change PIN. |
 | Layout | Bottom navigation on phones, navigation rail on tablets, extended rail + side-by-side map panels on desktop/web. |
 
-Not ported yet (still Expo-only): partner onboarding & document upload, Meter Digital / OBD-II, EV orders, GET.coin trading, voice protection, push-notification registration.
+Not ported yet (still Expo-only): partner onboarding & document upload, Meter Digital / OBD-II, EV orders, GET.coin trading, voice protection.
 
 ## Admin panel (`lib/src/admin/`, route `/admin`)
 
@@ -68,6 +69,7 @@ Defaults point at the production Supabase project used by the Expo app. Override
 | `MAP_TILE_URL` / `MAP_TILE_URL_DARK` | OpenStreetMap's standard tiles, darkened on the device in dark mode. Set a keyed provider (MapTiler, Stadia Maps, CARTO…) for production traffic; `MAP_TILE_URL_DARK` is optional and is used as-is in dark mode |
 | `NOMINATIM_URL` / `OSRM_URL` | public OpenStreetMap endpoints (use self-hosted ones in production — the public servers have strict usage limits) |
 | `GEO_COUNTRIES` | `my` |
+| `FIREBASE_PROJECT_ID`, `FIREBASE_MESSAGING_SENDER_ID`, `FIREBASE_ANDROID_APP_ID` / `FIREBASE_ANDROID_API_KEY`, `FIREBASE_IOS_APP_ID` / `FIREBASE_IOS_API_KEY` | unset: no push. Firebase's public client ids for push notifications; the store-release workflows read them from repository variables of the same names |
 
 Only ever ship the **anon** key; all access is enforced by the database's RLS policies.
 

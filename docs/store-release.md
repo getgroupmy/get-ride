@@ -119,6 +119,46 @@ with **Send it to Play unticked**, download the bundle from the run's
 Artifacts, upload it by hand in the Play Console once, and every release
 after that can come from the button.
 
+### 4. Push notifications (Firebase)
+
+The apps get push through Firebase Cloud Messaging (FCM), which delivers to
+Android directly and to iPhones through Apple's push service. Without this
+step the apps build and work, just without notifications.
+
+1. **Firebase project.** In the [Firebase console](https://console.firebase.google.com)
+   create a project (or use an existing one), then add an **Android app** and
+   an **iOS app**, both with the package / bundle id `com.taxxee.teksi`.
+2. **Client ids → repository variables** (Settings → Secrets and variables →
+   Actions → Variables). These are public identifiers, not secrets. From
+   Project settings → General:
+
+   | Variable | Where |
+   | --- | --- |
+   | `FIREBASE_PROJECT_ID` | Project ID |
+   | `FIREBASE_MESSAGING_SENDER_ID` | Project number (also on the Cloud Messaging tab as *Sender ID*) |
+   | `FIREBASE_ANDROID_APP_ID` | The Android app's *App ID* (`1:…:android:…`) |
+   | `FIREBASE_ANDROID_API_KEY` | `current_key` in the Android app's `google-services.json` |
+   | `FIREBASE_IOS_APP_ID` | The iOS app's *App ID* (`1:…:ios:…`) |
+   | `FIREBASE_IOS_API_KEY` | `API_KEY` in the iOS app's `GoogleService-Info.plist` |
+
+   The two config files are only read for those values; nothing is committed.
+3. **iPhones: the APNs key.** Apple Developer → Certificates, IDs & Profiles →
+   Keys → create a key with **Apple Push Notifications service (APNs)**, and
+   download the `.p8`. Upload it in Firebase → Project settings → Cloud
+   Messaging → Apple app configuration, with its Key ID and your Team ID.
+4. **iPhones: the capability.** The App ID `com.taxxee.teksi` must have
+   **Push Notifications** ticked (Identifiers → the App ID). If you tick it
+   now, regenerate the App Store provisioning profile and replace the
+   `IOS_PROVISIONING_PROFILE` secret, because the app now asks for the push
+   entitlement and an old profile without it is refused at archive time.
+5. **Sending: the service account.** Firebase → Project settings → Service
+   accounts → *Generate new private key*. Put the whole JSON in Supabase →
+   Edge Functions → Secrets as **`FCM_SERVICE_ACCOUNT`**. The `send-push`
+   function (in `getgroupmy/get.ride`) uses it for every Flutter device.
+
+The next store build picks up the variables. Notifications reach a phone once
+someone signs in there and allows notifications.
+
 ## When something goes wrong
 
 Every run writes a summary on its Actions page, saying what was uploaded
@@ -133,4 +173,7 @@ or why nothing was. The console's *Recent builds* list links to each run.
 | App Store Connect: build number already used | Raise `IOS_BUILD_NUMBER_OFFSET` |
 | Play refused the signature | Not signed with the listing's upload key |
 | "API has not been used in project" | Step 2 of the service account setup |
+| iOS archive: profile "doesn't include the aps-environment entitlement" | Push Notifications not enabled on the App ID, or an old profile; step 4 of the push setup |
+| No notifications arrive, `push_notifications` shows them failed | `FCM_SERVICE_ACCOUNT` missing or from another Firebase project; step 5 of the push setup |
+| No token in `push_tokens` after signing in | The build has no `FIREBASE_*` variables, or notifications were not allowed on the phone |
 | 403 "caller does not have permission" | Step 3 of the service account setup |
