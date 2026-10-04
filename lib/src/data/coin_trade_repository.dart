@@ -1,0 +1,78 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../admin/screens/commerce/get_coin.dart';
+import '../core/coin_trade.dart';
+import '../providers.dart';
+
+/// What the trade screen prices against: the two balances it moves between,
+/// the admin's GET.coin settings and the 30-day market signals.
+class CoinTradeQuote {
+  const CoinTradeQuote({
+    required this.walletBalance,
+    required this.coinBalance,
+    required this.settings,
+    required this.stats,
+  });
+
+  final double walletBalance;
+  final double coinBalance;
+  final GetCoinSettings settings;
+  final CoinMarketStats stats;
+
+  CoinMarketRate get market => computeMarketRate(settings, stats);
+}
+
+/// Buying and selling GET.coin against GET.wallet (Expo `tradeCoins`). The
+/// balances only ever move through the owner-scoped `wallet_trade_coins`
+/// RPC, which re-anchors the rate to the admin peg and re-checks the
+/// balances and supply cap server-side.
+class CoinTradeRepository {
+  CoinTradeRepository(this._db);
+  final SupabaseClient _db;
+
+  String get _uid {
+    final id = _db.auth.currentUser?.id;
+    if (id == null) throw StateError('Not signed in');
+    return id;
+  }
+
+  Future<CoinTradeQuote> quote() async {
+    final results = await Future.wait<Object?>([
+      _db.from('wallets').select('wallet_type, balance').eq('user_id', _uid),
+      _db.from('get_coin_settings').select().eq('id', 'master').maybeSingle(),
+      _db.rpc('get_coin_market_stats').then<Object?>((v) => v, onError: (_) => null),
+    ]);
+    double balance(String type) {
+      for (final r in results[0] as List) {
+        if (r['wallet_type'] == type) {
+          final v = r['balance'];
+          return v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+        }
+      }
+      return 0;
+    }
+
+    final row = results[1] as Map<String, dynamic>?;
+    return CoinTradeQuote(
+      walletBalance: balance('get_wallet'),
+      coinBalance: balance('get_coin'),
+      settings: row == null ? const GetCoinSettings() : GetCoinSettings.fromRow(row),
+      stats: CoinMarketStats.fromRpc(results[2]),
+    );
+  }
+
+  /// Settles a trade; throws with the RPC's error string on refusal (map it
+  /// with [coinTradeErrorMessage]).
+  Future<CoinTradeResult> trade(CoinTradeDirection direction, double coins, double ratePerGC) async {
+    final data = await _db.rpc(
+      'wallet_trade_coins',
+      params: {'p_user': _uid, 'p_direction': direction.name, 'p_coins': coins, 'p_rate_per_gc': ratePerGC},
+    );
+    return CoinTradeResult.fromRpc(data, coins: coins, amount: coinTradeValue(coins, ratePerGC), rate: ratePerGC);
+  }
+}
+
+final coinTradeRepositoryProvider = Provider((ref) => CoinTradeRepository(ref.watch(supabaseProvider)));
+
+final coinTradeQuoteProvider = FutureProvider.autoDispose((ref) => ref.watch(coinTradeRepositoryProvider).quote());
