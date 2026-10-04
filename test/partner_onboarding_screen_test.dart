@@ -55,6 +55,13 @@ class _FakePeople extends PeopleRepository {
   Future<List<({String id, Map<String, dynamic> values})>> requiredDocuments() async => [
         (id: 'licence', values: <String, dynamic>{'name': 'Driving licence'}),
         (id: 'permit', values: <String, dynamic>{'name': 'Taxi permit', 'partnerTypes': ['TEKSI']}),
+        // Uploaded per vehicle, so never asked for here.
+        (id: 'puspakom', values: <String, dynamic>{'name': 'Puspakom inspection', 'docTypes': ['type-vehicle']}),
+      ];
+
+  @override
+  Future<List<({String id, Map<String, dynamic> values})>> documentTypes() async => [
+        (id: 'type-vehicle', values: <String, dynamic>{'name': 'Vehicle'}),
       ];
 
   @override
@@ -152,6 +159,7 @@ void main() {
     await tester.pump();
     expect(find.text('Driving licence'), findsOneWidget);
     expect(find.text('Taxi permit'), findsOneWidget);
+    expect(find.text('Puspakom inspection'), findsNothing);
     expect(find.text('Upload every compulsory document'), findsOneWidget);
     await tester.tap(find.text('Upload every compulsory document'));
     await tester.pump();

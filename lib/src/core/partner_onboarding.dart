@@ -10,6 +10,7 @@
 // The required-document rules themselves are shared with the admin panel
 // (`resolveRequiredDocs` in people_logic.dart).
 import '../admin/screens/people/people_logic.dart';
+import 'vehicle_onboarding.dart';
 
 enum OnboardingStep {
   avatar('avatar', 'Profile photo'),
@@ -113,15 +114,18 @@ bool compulsoryDocsComplete(List<RequiredDoc> docs, Map<String, Map<String, dyna
     });
 
 /// The documents this partner must provide: the required-document rules
-/// applied to their partner types and service area.
+/// applied to their partner types and service area. Documents tagged with
+/// the Vehicle document type ([vehicleTypeIds]) are left out: they are
+/// uploaded per vehicle in vehicle onboarding, not once for the partner.
 List<RequiredDoc> requiredDocsFor({
   required Iterable<({String id, Map<String, dynamic> values})> requiredDocuments,
   required Iterable<Map<String, dynamic>> partnerTypeValues,
   required List<String> partnerTypes,
   required ServiceArea area,
+  Set<String> vehicleTypeIds = const {},
 }) =>
     resolveRequiredDocs(
-      requiredDocuments,
+      requiredDocuments.where((e) => !isVehicleDocument(e.values, vehicleTypeIds)),
       docTypeIds: partnerTypeDocTypeIds(partnerTypeValues, partnerTypes),
       partnerTypeNames: partnerTypes,
       countries: area.countries,

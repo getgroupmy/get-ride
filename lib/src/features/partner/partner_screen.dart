@@ -86,7 +86,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Widget build(BuildContext context) {
     final partner = ref.watch(partnerProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Drive')),
+      appBar: AppBar(title: const Text('Drive'), actions: [
+        if (partner.value != null)
+          IconButton(
+            tooltip: 'My vehicles',
+            icon: const Icon(Icons.directions_car_outlined),
+            onPressed: () => context.push('/drive/vehicles'),
+          ),
+      ]),
       body: AsyncView(
         value: partner,
         onRetry: () => ref.invalidate(partnerProvider),
