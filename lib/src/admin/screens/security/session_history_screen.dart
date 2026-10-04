@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../widgets/common.dart';
+import '../../../widgets/map_tiles.dart';
 import '../../../widgets/ride_map.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
@@ -713,10 +714,7 @@ class _HeatMap extends StatelessWidget {
           initialZoom: 14,
         ),
         children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'my.getgroup.get_ride',
-          ),
+          baseTileLayer(context),
           CircleLayer(circles: [
             for (final p in points)
               CircleMarker(

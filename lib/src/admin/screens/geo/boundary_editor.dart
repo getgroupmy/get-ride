@@ -5,25 +5,13 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../data/geo_service.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/map_tiles.dart';
 import '../../widgets/admin_widgets.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
 
-/// OpenStreetMap tiles shared by the geography map editors (same tiles as
-/// `RideMap`).
-List<Widget> osmBaseLayers(BuildContext context) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  return [
-    TileLayer(
-      urlTemplate: dark
-          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-          : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      subdomains: const ['a', 'b', 'c', 'd'],
-      userAgentPackageName: 'my.getgroup.get_ride',
-      retinaMode: dark && RetinaMode.isHighDensity(context),
-    ),
-  ];
-}
+/// Base tiles shared by the geography map editors (same tiles as `RideMap`).
+List<Widget> osmBaseLayers(BuildContext context) => [baseTileLayer(context)];
 
 const _osmAttribution = RichAttributionWidget(
   attributions: [TextSourceAttribution('© OpenStreetMap contributors')],

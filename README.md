@@ -65,6 +65,7 @@ Defaults point at the production Supabase project used by the Expo app. Override
 | `SUPABASE_ANON_KEY` | the Expo app's public anon key |
 | `CURRENCY` | `MYR` |
 | `DIAL_CODE` | `+60` |
+| `MAP_TILE_URL` / `MAP_TILE_URL_DARK` | OpenStreetMap's standard tiles, darkened on the device in dark mode. Set a keyed provider (MapTiler, Stadia Maps, CARTO…) for production traffic; `MAP_TILE_URL_DARK` is optional and is used as-is in dark mode |
 | `NOMINATIM_URL` / `OSRM_URL` | public OpenStreetMap endpoints (use self-hosted ones in production — the public servers have strict usage limits) |
 | `GEO_COUNTRIES` | `my` |
 
