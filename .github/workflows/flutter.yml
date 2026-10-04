@@ -18,6 +18,18 @@ jobs:
       - run: flutter analyze
       - run: flutter test
 
+  release-scripts:
+    # The Play upload script's decisions (tracks, refusal messages), so a
+    # release does not find a mistake there after a full build.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno check scripts/play_upload.ts
+      - run: deno test scripts/play_upload_test.ts
+
   build:
     needs: test
     strategy:

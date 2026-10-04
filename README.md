@@ -98,6 +98,10 @@ Web Analytics and Speed Insights are wired into `web/index.html` as Vercel's scr
 
 Until all three are set, the workflow skips the deploy and leaves a notice instead of failing. It can also be run by hand from the Actions tab (**Run workflow**), which deploys `main` to production and any other branch as a preview.
 
+## Release (App Store / Google Play)
+
+The iOS and Android apps ship as **`com.taxxee.teksi`**, the same store listings the Expo app used. Admin → Settings → **App Release** (in this admin or the Expo one) starts `.github/workflows/ios-release.yml` / `android-release.yml` through the `ios-release` / `android-release` Supabase edge functions, which build, sign and upload. The workflows skip with a notice until their secrets exist. Setup, version-number offsets and the shared upload key are in [`docs/store-release.md`](docs/store-release.md).
+
 ## Layout
 
 ```

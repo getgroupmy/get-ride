@@ -1,0 +1,281 @@
+# Build the iOS app and hand it to App Store Connect.
+#
+# Started from either admin console (Settings -> App Release) through the
+# `ios-release` Supabase edge function, which holds the token that can
+# dispatch this workflow, or by hand from the Actions tab.
+#
+# The app ships as com.taxxee.teksi, the same App Store record the Expo
+# app used, so each release here replaces whatever was last published.
+#
+# Xcode runs on Apple hardware only, so this is a macOS runner. It bills at
+# ten times an Ubuntu runner and an archive takes 20-30 minutes, which is
+# why it only runs when somebody asks for it.
+#
+# What no button can do: skip App Review. `testflight` reaches your
+# testers within minutes of Apple processing the build; `appstore` uploads
+# a build ready to submit, and Apple's review is hours to days.
+#
+# ## What has to exist first
+#
+# Actions secrets (Settings -> Secrets and variables -> Actions):
+#
+#   IOS_DIST_CERT_P12            base64 of the Apple Distribution .p12
+#   IOS_DIST_CERT_PASSWORD       the password that .p12 was exported with
+#   IOS_PROVISIONING_PROFILE     base64 of the App Store .mobileprovision
+#   APP_STORE_CONNECT_KEY_ID     the 10-character Key ID
+#   APP_STORE_CONNECT_ISSUER_ID  the issuer UUID
+#   APP_STORE_CONNECT_KEY_P8     the whole AuthKey_XXXX.p8, PEM
+#
+# Repository variable IOS_BUILD_NUMBER_OFFSET: added to the run number to
+# make the build number. Set it above the highest build already uploaded
+# for this version (the Expo app's EAS builds), or App Store Connect
+# refuses it.
+#
+# Until the secrets are there this workflow stops with a list of what is
+# missing rather than failing. See docs/store-release.md.
+name: iOS release
+
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: Where the build goes
+        type: choice
+        options: [testflight, appstore]
+        default: testflight
+      notes:
+        description: What changed (one line, for your own records)
+        type: string
+        required: false
+
+# One release at a time: two at once would race for the build number.
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+
+env:
+  BUNDLE_ID: com.taxxee.teksi
+
+jobs:
+  release:
+    name: Build and upload
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is this set up yet
+        id: creds
+        env:
+          IOS_DIST_CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+        run: |
+          missing=""
+          for name in IOS_DIST_CERT_P12 IOS_DIST_CERT_PASSWORD \
+                      IOS_PROVISIONING_PROFILE APP_STORE_CONNECT_KEY_ID \
+                      APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_KEY_P8; do
+            eval "value=\${$name}"
+            [ -z "$value" ] && missing="$missing $name"
+          done
+
+          if [ -n "$missing" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Not set up yet"
+              echo
+              echo "These Actions secrets are missing:"
+              echo
+              for name in $missing; do echo "* \`$name\`"; done
+              echo
+              echo "See \`docs/store-release.md\` for where each comes from."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        if: steps.creds.outputs.ready == 'true'
+        with:
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        if: steps.creds.outputs.ready == 'true'
+        run: flutter pub get
+
+      # A keychain of its own, unlocked, and thrown away at the end, so a
+      # distribution certificate is never left on a shared runner image.
+      - name: Signing identity
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          IOS_DIST_CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/ios-release.keychain-db"
+          pass=$(uuidgen)
+
+          security create-keychain -p "$pass" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$pass" "$keychain"
+
+          echo "$IOS_DIST_CERT_P12" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security import "$RUNNER_TEMP/dist.p12" -k "$keychain" \
+            -P "$IOS_DIST_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/dist.p12"
+
+          # Without this codesign stops to ask for the keychain password,
+          # on a machine with nobody at it.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$pass" "$keychain" > /dev/null
+
+          security list-keychains -d user -s "$keychain" \
+            $(security list-keychains -d user | tr -d '"')
+
+          profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profiles"
+          echo "$IOS_PROVISIONING_PROFILE" | base64 --decode \
+            > "$profiles/release.mobileprovision"
+
+          # Read out of the profile rather than typed here: a profile for
+          # the wrong bundle identifier is the commonest signing failure.
+          plist=$(security cms -D -i "$profiles/release.mobileprovision")
+          uuid=$(echo "$plist" | plutil -extract UUID raw -)
+          appid=$(echo "$plist" | plutil -extract Entitlements.application-identifier raw -)
+          echo "profile UUID: $uuid"
+          echo "profile app id: $appid"
+          echo "PROFILE_UUID=$uuid" >> "$GITHUB_ENV"
+          # The team is the prefix of the application identifier.
+          echo "TEAM_ID=${appid%%.*}" >> "$GITHUB_ENV"
+
+          case "$appid" in
+            *."$BUNDLE_ID") ;;
+            *)
+              echo "::error::The profile is for $appid, not $BUNDLE_ID."
+              exit 1
+              ;;
+          esac
+
+      # Flutter compiles without signing, then xcodebuild archives with the
+      # distribution identity named explicitly. `flutter build ipa` looks
+      # for a DEVELOPMENT certificate first, which a distribution-only
+      # machine does not have. The signing settings go in
+      # ios/Flutter/Release.xcconfig (Runner's base config only) rather
+      # than on the xcodebuild command line, where they would apply to
+      # every pod and package and be refused by the ones that are never
+      # signed on their own.
+      - name: Archive
+        id: archive
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          OFFSET: ${{ vars.IOS_BUILD_NUMBER_OFFSET || 0 }}
+        run: |
+          set -euo pipefail
+          build=$(( ${{ github.run_number }} + OFFSET ))
+          echo "build number $build"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+          cat > "$RUNNER_TEMP/export.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key><string>$PROFILE_UUID</string>
+            </dict>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+
+          # The marketing version comes from pubspec.yaml, set by a person.
+          flutter build ios --release --no-codesign --build-number="$build"
+
+          # Appended, not written: the #include lines already there wire in
+          # Flutter's generated settings.
+          cat >> ios/Flutter/Release.xcconfig <<CFG
+
+          // Added by .github/workflows/ios-release.yml for this build only.
+          CODE_SIGN_STYLE = Manual
+          DEVELOPMENT_TEAM = $TEAM_ID
+          PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID
+          CODE_SIGN_IDENTITY = Apple Distribution
+          CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
+          CFG
+
+          xcodebuild archive \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive"
+
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -exportPath "$RUNNER_TEMP/ipa"
+
+          ls -l "$RUNNER_TEMP/ipa"
+
+      - name: Upload to App Store Connect
+        id: upload
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_KEY_P8: ${{ secrets.APP_STORE_CONNECT_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          # altool reads the key from this path and name and nowhere else.
+          keys="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$keys"
+          printf '%s' "$APP_STORE_CONNECT_KEY_P8" \
+            > "$keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8"
+
+          ipa=$(ls "$RUNNER_TEMP"/ipa/*.ipa | head -1)
+          echo "uploading $ipa"
+
+          scripts/ci/retry.sh \
+            xcrun altool --upload-app -f "$ipa" -t ios \
+              --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+              --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+
+      - name: What happened
+        if: always() && steps.creds.outputs.ready == 'true'
+        env:
+          NOTES: ${{ inputs.notes }}
+        run: |
+          {
+            echo "### iOS ${{ inputs.lane }}"
+            echo
+            echo "* build number: \`${{ steps.archive.outputs.build }}\`"
+            echo "* commit: \`${{ github.sha }}\`"
+            if [ -n "$NOTES" ]; then echo "* notes: $NOTES"; fi
+            echo
+            # Reads the outcome rather than assuming one.
+            if [ "${{ steps.upload.outcome }}" != "success" ]; then
+              echo "**Nothing was uploaded.** The failing step above says why."
+            elif [ "${{ inputs.lane }}" = "appstore" ]; then
+              echo "Uploaded. Submit it for review in App Store Connect; the"
+              echo "upload does not do that, and Apple's review is hours to days."
+            else
+              echo "Uploaded. It appears in TestFlight once Apple has finished"
+              echo "processing it, usually within minutes."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Take the keychain away
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/ios-release.keychain-db" || true
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/release.mobileprovision" || true
+          rm -rf "$HOME/.appstoreconnect/private_keys" || true
