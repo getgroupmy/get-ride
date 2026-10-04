@@ -22,3 +22,10 @@ final moduleAccessProvider = Provider.family<AccessLevel, String>((ref, moduleId
   final module = adminModules[moduleId];
   return module == null ? AccessLevel.none : access.levelFor(module.pages);
 });
+
+/// Access to specific Expo page keys (ported screens check their own page,
+/// plus `admin-settings` for anything on the Settings hub).
+final pageAccessProvider = Provider.family<AccessLevel, String>((ref, pageKey) {
+  final access = ref.watch(adminAccessProvider).value ?? AdminAccess.none;
+  return access.levelFor([pageKey, 'admin-settings']);
+});

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../widgets/common.dart';
 import 'admin_access.dart';
 import 'admin_providers.dart';
+import 'admin_registry.dart';
 
 class _NavItem {
   const _NavItem(this.module, this.icon);
@@ -35,7 +36,8 @@ class AdminShell extends ConsumerWidget {
 
   bool _visible(AdminAccess a, String module) {
     if (module == 'settings') {
-      return a.grants.any((g) => g.page == '*' || g.page.startsWith('admin-settings'));
+      final ported = {for (final e in allAdminEntries) ...e.pages};
+      return a.grants.any((g) => g.page == '*' || g.page.startsWith('admin-settings') || ported.contains(g.page));
     }
     return a.canRead(adminModules[module]!.pages);
   }
