@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../data/geo_service.dart';
+import 'map_tiles.dart';
 
 /// OpenStreetMap view used on every platform (web, desktop, iOS, Android).
 class RideMap extends StatefulWidget {
@@ -57,7 +58,6 @@ class _RideMapState extends State<RideMap> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final center = _points.isNotEmpty ? _points.first : defaultCenter;
     return FlutterMap(
       mapController: _controller,
@@ -71,14 +71,7 @@ class _RideMapState extends State<RideMap> {
         },
       ),
       children: [
-        TileLayer(
-          urlTemplate: dark
-              ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-              : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          subdomains: const ['a', 'b', 'c', 'd'],
-          userAgentPackageName: 'my.getgroup.get_ride',
-          retinaMode: dark && RetinaMode.isHighDensity(context),
-        ),
+        baseTileLayer(context),
         if (widget.route.length > 1)
           PolylineLayer(polylines: [
             Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
