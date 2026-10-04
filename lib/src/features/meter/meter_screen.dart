@@ -885,7 +885,7 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
         useRootNavigator: false,
         builder: (c) => AlertDialog(
           title: const Text('No printer set up'),
-          content: const Text('Add a Wi-Fi receipt printer to print receipts. This receipt stays in the trip log '
+          content: const Text('Add a Bluetooth or Wi-Fi receipt printer to print receipts. This receipt stays in the trip log '
               'to print once it is set up, and can be copied as text meanwhile.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')),

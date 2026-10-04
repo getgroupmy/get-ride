@@ -56,9 +56,6 @@ final obdTransportFactoryProvider = Provider<ObdTransport Function(SavedObdAdapt
       },
 );
 
-/// Finds Bluetooth LE readers for the add-reader sheet.
-final obdBleScannerProvider = Provider<ObdBleScanner>((_) => const UniversalBleScanner());
-
 /// Epoch milliseconds now, shared with the meter's clock seam.
 final obdClockProvider = Provider<int Function()>((_) => () => DateTime.now().millisecondsSinceEpoch);
 

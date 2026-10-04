@@ -1,27 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get_ride/src/data/obd/obd_ble_transport.dart';
+import 'package:get_ride/src/data/ble.dart';
 import 'package:get_ride/src/data/obd/obd_session.dart';
 import 'package:get_ride/src/features/meter/obd_reader_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/fake_ble_scanner.dart';
 import 'support/fake_elm.dart';
-
-/// Plays a scan back: what a phone in a car park would see.
-class _FakeScanner implements ObdBleScanner {
-  _FakeScanner({this.error});
-  final Object? error;
-
-  @override
-  Stream<ObdBleSighting> scan({Duration duration = const Duration(seconds: 12)}) async* {
-    if (error != null) throw error!;
-    yield (deviceId: 'AA:BB:CC:00:00:01', name: null, services: const <String>[], rssi: -60);
-    // The name arrives in a later advertisement.
-    yield (deviceId: 'AA:BB:CC:00:00:01', name: 'OBDII', services: const <String>[], rssi: -58);
-    yield (deviceId: '11:22:33:44:55:66', name: 'Pixel Buds', services: const <String>[], rssi: -40);
-  }
-}
 
 void main() {
   testWidgets('a Wi-Fi reader is added, connected and shows live data', (tester) async {
@@ -70,7 +56,7 @@ void main() {
     String? connectedTo;
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        obdBleScannerProvider.overrideWithValue(_FakeScanner()),
+        bleScannerProvider.overrideWithValue(FakeBleScanner(readerSightings)),
         obdTransportFactoryProvider.overrideWithValue((a) {
           connectedTo = a.deviceId;
           return elm;
@@ -105,8 +91,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        obdBleScannerProvider.overrideWithValue(
-            _FakeScanner(error: StateError('Bluetooth is off. Turn it on to use a Bluetooth reader.'))),
+        bleScannerProvider.overrideWithValue(
+            FakeBleScanner(const [], error: StateError('Bluetooth is off. Turn it on to use a Bluetooth device.'))),
       ],
       child: const MaterialApp(home: ObdReaderScreen()),
     ));
@@ -115,7 +101,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Bluetooth reader'));
     await tester.pumpAndSettle();
-    expect(find.text('Bluetooth is off. Turn it on to use a Bluetooth reader.'), findsOneWidget);
+    expect(find.text('Bluetooth is off. Turn it on to use a Bluetooth device.'), findsOneWidget);
     expect(find.text('Scan again'), findsOneWidget);
   });
 }

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,8 +6,9 @@ import 'package:uuid/uuid.dart';
 import '../../core/obd.dart';
 import '../../core/obd_adapters.dart';
 import '../../core/obd_ble.dart';
-import '../../data/obd/obd_ble_transport.dart';
+import '../../data/ble.dart';
 import '../../data/obd/obd_session.dart';
+import 'ble_scan_sheet.dart';
 
 /// The telemetry shown on the status card, in this order.
 const _liveKeys = ['speed', 'rpm', 'coolantTemp', 'moduleVoltage', 'engineLoad', 'fuelLevel'];
@@ -99,11 +98,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
     if (kind == null || !mounted) return;
     final added = kind == 'wifi'
         ? await showDialog<SavedObdAdapter>(context: context, builder: (_) => const _AddWifiReaderDialog())
-        : await showModalBottomSheet<SavedObdAdapter>(
-            context: context,
-            isScrollControlled: true,
-            builder: (_) => const _BleScanSheet(),
-          );
+        : await _pickBleReader();
     if (added == null) return;
     final store = ref.read(obdAdapterStoreProvider);
     final list = upsertAdapter(await store.load(), added);
@@ -114,6 +109,27 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
     await store.select(saved.id);
     await _reload();
     await ref.read(obdSessionProvider.notifier).connect(saved);
+  }
+
+  Future<SavedObdAdapter?> _pickBleReader() async {
+    final d = await showModalBottomSheet<BleSighting>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => BleScanSheet(
+        title: 'Bluetooth readers nearby',
+        filter: (d) => matchesElmAdvertisement(name: d.name, services: d.services),
+        showAllHint: 'For a reader that does not advertise an OBD-II name',
+        looking: 'Looking for readers… Keep the phone near the car with the ignition on.',
+        nothingFound: 'No reader found. Check it is plugged in with the ignition on, then scan again.',
+      ),
+    );
+    if (d == null) return null;
+    return normalizeBleAdapter(
+      id: const Uuid().v4(),
+      createdAt: DateTime.now().toUtc().toIso8601String(),
+      deviceId: d.deviceId,
+      advertisedName: d.name,
+    ).value;
   }
 
   @override
@@ -331,132 +347,6 @@ class _AddWifiReaderDialogState extends State<_AddWifiReaderDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(onPressed: _save, child: const Text('Save & connect')),
       ],
-    );
-  }
-}
-
-/// Scans for Bluetooth LE readers and returns the one the driver taps.
-class _BleScanSheet extends ConsumerStatefulWidget {
-  const _BleScanSheet();
-
-  @override
-  ConsumerState<_BleScanSheet> createState() => _BleScanSheetState();
-}
-
-class _BleScanSheetState extends ConsumerState<_BleScanSheet> {
-  final _seen = <String, ObdBleSighting>{};
-  StreamSubscription<ObdBleSighting>? _sub;
-  bool _scanning = false;
-  bool _showAll = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _scan();
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  void _scan() {
-    _sub?.cancel();
-    setState(() {
-      _scanning = true;
-      _error = null;
-    });
-    _sub = ref.read(obdBleScannerProvider).scan().listen(
-      (d) {
-        if (!mounted) return;
-        // A reader can advertise its name in a later packet than its id.
-        final before = _seen[d.deviceId];
-        setState(() => _seen[d.deviceId] = (
-              deviceId: d.deviceId,
-              name: (d.name ?? '').isNotEmpty ? d.name : before?.name,
-              services: d.services.isNotEmpty ? d.services : (before?.services ?? const []),
-              rssi: d.rssi,
-            ));
-      },
-      // An error ends the scan (there is no done event after it).
-      onError: (Object e) {
-        if (!mounted) return;
-        setState(() {
-          _scanning = false;
-          _error = '$e'.replaceFirst(RegExp(r'^(Bad state|Unsupported operation): '), '');
-        });
-      },
-      onDone: () {
-        if (mounted) setState(() => _scanning = false);
-      },
-      cancelOnError: true,
-    );
-  }
-
-  void _pick(ObdBleSighting d) {
-    final r = normalizeBleAdapter(
-      id: const Uuid().v4(),
-      createdAt: DateTime.now().toUtc().toIso8601String(),
-      deviceId: d.deviceId,
-      advertisedName: d.name,
-    );
-    if (r.value != null) Navigator.pop(context, r.value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final readers = _seen.values.where((d) => _showAll || matchesElmAdvertisement(name: d.name, services: d.services)).toList()
-      ..sort((a, b) => (b.rssi ?? -999).compareTo(a.rssi ?? -999));
-    return SafeArea(
-      child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * 0.7,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ListTile(
-            title: const Text('Bluetooth readers nearby'),
-            subtitle: Text(_scanning ? 'Scanning…' : 'Scan finished'),
-            trailing: _scanning
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : TextButton(onPressed: _scan, child: const Text('Scan again')),
-          ),
-          SwitchListTile(
-            title: const Text('Show all Bluetooth devices'),
-            subtitle: const Text('For a reader that does not advertise an OBD-II name'),
-            value: _showAll,
-            onChanged: (v) => setState(() => _showAll = v),
-          ),
-          if (_error != null)
-            ListTile(
-              leading: Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
-              title: Text(_error!),
-            ),
-          Expanded(
-            child: readers.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        _scanning
-                            ? 'Looking for readers… Keep the phone near the car with the ignition on.'
-                            : 'No reader found. Check it is plugged in with the ignition on, then scan again.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  )
-                : ListView(children: [
-                    for (final d in readers)
-                      ListTile(
-                        leading: const Icon(Icons.bluetooth),
-                        title: Text((d.name ?? '').isEmpty ? 'Unnamed device' : d.name!),
-                        subtitle: Text(d.deviceId),
-                        trailing: d.rssi == null ? null : Text('${d.rssi} dBm'),
-                        onTap: () => _pick(d),
-                      ),
-                  ]),
-          ),
-        ]),
-      ),
     );
   }
 }
