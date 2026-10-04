@@ -1,0 +1,722 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../admin/screens/meterapp/meter_logic.dart';
+import '../../core/meter_trip.dart';
+import '../../core/taxi_meter.dart';
+import '../../data/geo_service.dart';
+import '../../providers.dart';
+import 'meter_providers.dart';
+
+// The console is deliberately not themed: a white screen on a windscreen
+// mount at night is a hazard, so the meter is always the dark instrument it
+// replaces (as in the Expo app).
+const _bg = Color(0xFF0B0F0E);
+const _panel = Color(0xFF151B19);
+const _lcd = Color(0xFF7CFF6B);
+const _lcdDim = Color(0xFF2E4A2B);
+const _amber = Color(0xFFFFC94D);
+const _muted = Color(0xFF8A9A94);
+
+/// A fix older than this is not used: repeating it would read as standing
+/// still while the car is moving.
+const _fixMaxAgeMs = 3000;
+
+/// Meter Digital (Expo `app/meter-digital.tsx`), GPS edition: the in-app
+/// taxi meter for TEKSI partners. Bills on the operator's rate card (or the
+/// built-in TEKSI tariff), with DAY / NIGHT keys, extras, an end-of-hire
+/// declaration and a device-local trip log with receipts. The OBD-II reader,
+/// the receipt printer and the landscape-locked console are later slices.
+class MeterScreen extends ConsumerStatefulWidget {
+  const MeterScreen({super.key});
+
+  @override
+  ConsumerState<MeterScreen> createState() => _MeterScreenState();
+}
+
+class _MeterScreenState extends ConsumerState<MeterScreen> {
+  MeterState _m = const MeterState();
+  MeterPeriod _period = MeterPeriod.day;
+  bool _periodTouched = false;
+  double _extra = 0;
+  int _tab = 0;
+
+  ResolvedMeterProfile _card = resolveMeterProfile(const []);
+  AreaInfo? _area;
+  bool _areaAsked = false;
+
+  String? _locationProblem;
+  MeterFix? _fix;
+  StreamSubscription<MeterFix>? _fixes;
+  Timer? _tick;
+
+  MeterWaypoint? _pickup;
+  bool _ending = false;
+  List<MeterTrip> _trips = const [];
+
+  int _now() => ref.read(meterClockProvider)();
+  MeterProfile get _profile => _card.profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _startSensors();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
+    ref.read(meterTripsStoreProvider).load().then((t) {
+      if (mounted) setState(() => _trips = t);
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    _fixes?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _startSensors() async {
+    final location = ref.read(meterLocationProvider);
+    final problem = await location.prepare();
+    if (!mounted) return;
+    setState(() => _locationProblem = problem);
+    if (problem != null) return;
+    _fixes = location.fixes().listen((f) {
+      if (!mounted) return;
+      setState(() => _fix = f);
+      if (!_areaAsked) _lookUpArea(f);
+    }, onError: (Object e) {
+      if (mounted) setState(() => _locationProblem = 'Lost the location feed ($e).');
+    });
+  }
+
+  /// The rate card is resolved off the first fix's geography, and only while
+  /// no hire is open: a card is frozen for the life of a hire.
+  Future<void> _lookUpArea(MeterFix f) async {
+    _areaAsked = true;
+    final area = await ref.read(geoServiceProvider).reverseArea(LatLng(f.latitude, f.longitude));
+    if (!mounted || area == null) return;
+    setState(() => _area = area);
+    _resolveCard();
+  }
+
+  void _resolveCard() {
+    if (_m.hasHire) return;
+    final cards = ref.read(meterCardsProvider).value ?? const [];
+    final next = resolveMeterProfile(
+      cards,
+      country: _area?.country,
+      state: _area?.state,
+      city: _area?.city,
+      suburb: _area?.suburb,
+    );
+    setState(() {
+      _card = next;
+      if (!_periodTouched) {
+        _period = isNightPeriod(DateTime.fromMillisecondsSinceEpoch(_now()),
+                startHour: next.profile.nightStartHour, endHour: next.profile.nightEndHour)
+            ? MeterPeriod.night
+            : MeterPeriod.day;
+      }
+    });
+  }
+
+  MeterFix? get _freshFix {
+    final f = _fix;
+    if (f == null) return null;
+    return _now() - f.at <= _fixMaxAgeMs ? f : null;
+  }
+
+  void _onTick() {
+    if (!mounted) return;
+    if (!_m.running) return setState(() {});
+    final f = _freshFix;
+    setState(() {
+      _m = applyMeterSample(
+        _m,
+        MeterSample(
+          at: _now(),
+          gpsSpeedKmh: f?.speedKmh,
+          gpsPoint: f == null ? null : MeterPoint(f.latitude, f.longitude, accuracyM: f.accuracyM),
+        ),
+        flagDistanceM: _profile.rates.flagDistanceM,
+      );
+    });
+  }
+
+  // ---- Keys --------------------------------------------------------------------
+
+  void _start() {
+    final block = meterGpsBlock(_profile) ?? _locationProblem;
+    if (block != null) return _explain('Cannot start the meter', block);
+    final now = _now();
+    final opening = !_m.hasHire;
+    setState(() => _m = startMeter(_m, now));
+    if (opening) {
+      _pickup = _waypoint(now);
+      _nameEnd(_pickup!, (named) => _pickup = named);
+    }
+  }
+
+  void _pause() => setState(() => _m = pauseMeter(_m));
+
+  /// END stops the meter at the instant it is pressed; the declaration
+  /// follows on a form that cannot be dismissed, only confirmed or resumed.
+  Future<void> _end() async {
+    final endedAt = _now();
+    setState(() {
+      _m = pauseMeter(_m);
+      _ending = true;
+    });
+    final details = await showModalBottomSheet<MeterTripDetails>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      builder: (_) => _DeclarationSheet(
+        initialCharges: _extra,
+        fareText: _money(_fareNow),
+        step: _profile.extraStep,
+      ),
+    );
+    if (!mounted) return;
+    if (details == null) {
+      // RESUME HIRE: back in the car, accrual restarts from now, so the
+      // seconds spent on the form are never billed.
+      setState(() {
+        _ending = false;
+        _m = startMeter(_m, _now());
+      });
+      return;
+    }
+    await _record(details, endedAt);
+  }
+
+  Future<void> _record(MeterTripDetails details, int endedAt) async {
+    final partner = ref.read(partnerProvider).value;
+    final dropoff = _waypoint(endedAt);
+    final multiplier = periodMultiplier(_period, _profile.nightMultiplier);
+    final trip = buildMeterTrip(
+      _m,
+      id: const Uuid().v4(),
+      endedAt: endedAt,
+      fare: meterFare(_m, _profile.rates, multiplier: multiplier),
+      details: details,
+      rateLabel: _rateLabel,
+      period: _period,
+      flagFare: _profile.rates.flagFare,
+      nightMultiplier: _profile.nightMultiplier,
+      currency: _currency,
+      cardSurcharge: meterExtraSurcharge(_profile, luggage: details.luggage, passengers: details.pax),
+      plate: partner?.plate,
+      driver: partner?.name,
+      pickup: _pickup,
+      dropoff: dropoff,
+    );
+    final store = ref.read(meterTripsStoreProvider);
+    final trips = await store.save(trip);
+    if (!mounted) return;
+    setState(() {
+      _trips = trips;
+      _m = const MeterState();
+      _extra = 0;
+      _pickup = null;
+      _ending = false;
+      _periodTouched = false;
+    });
+    _resolveCard();
+    // The place names arrive after the record is written; only the ends are
+    // ever patched.
+    for (final (end, isPickup) in [(trip.pickup, true), (trip.dropoff, false)]) {
+      if (end == null || end.place != null) continue;
+      _nameEnd(end, (named) async {
+        final next = await store.patchEnds(trip.id, pickup: isPickup ? named : null, dropoff: isPickup ? null : named);
+        if (mounted) setState(() => _trips = next);
+      });
+    }
+    await _showReceipt(trip);
+  }
+
+  MeterWaypoint _waypoint(int at) {
+    final f = _freshFix ?? _fix;
+    return MeterWaypoint(at: at, latitude: f?.latitude, longitude: f?.longitude);
+  }
+
+  void _nameEnd(MeterWaypoint end, void Function(MeterWaypoint named) onNamed) {
+    if (end.latitude == null || end.longitude == null) return;
+    ref.read(geoServiceProvider).reverseArea(LatLng(end.latitude!, end.longitude!)).then((area) {
+      final label = area?.label;
+      if (label != null && label.isNotEmpty) onNamed(end.withPlace(label));
+    });
+  }
+
+  void _explain(String title, String message) => showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        ),
+      );
+
+  Future<void> _showReceipt(MeterTrip trip) => showDialog<void>(context: context, builder: (_) => _ReceiptDialog(trip: trip));
+
+  // ---- Derived -------------------------------------------------------------------
+
+  String get _currency {
+    final c = _profile.currency.trim();
+    return c.isEmpty || c.toUpperCase() == 'MYR' ? 'RM' : c;
+  }
+
+  String _money(double n) => '$_currency ${n.toStringAsFixed(2)}';
+
+  String get _rateLabel => (_profile.label ?? '').trim().isNotEmpty ? _profile.label!.trim() : _card.scope;
+
+  double get _fareNow => meterFare(_m, _profile.rates, multiplier: periodMultiplier(_period, _profile.nightMultiplier));
+
+  String get _connection {
+    if (_locationProblem != null) return 'NO GPS';
+    final f = _freshFix;
+    if (f == null) return 'WAITING FOR GPS';
+    final acc = f.accuracyM;
+    return acc == null ? 'GPS' : 'GPS ±${acc.round()} m';
+  }
+
+  // ---- Layout --------------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen(meterCardsProvider, (_, _) => _resolveCard());
+    // Keeps the partner loaded: the plate and driver go on every receipt.
+    ref.watch(partnerProvider);
+    final locked = _m.hasHire || _ending;
+    return PopScope(
+      // A running or unfinished hire cannot be walked out of.
+      canPop: !locked,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_tab != 0) return setState(() => _tab = 0);
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('End the hire before leaving the meter.')));
+      },
+      child: Theme(
+        data: ThemeData(brightness: Brightness.dark, colorSchemeSeed: _lcd, scaffoldBackgroundColor: _bg),
+        child: Scaffold(
+          appBar: AppBar(
+            backgroundColor: _bg,
+            title: const Text('Meter Digital'),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Center(child: Text(_connection, style: const TextStyle(color: _muted, fontSize: 12))),
+              ),
+            ],
+          ),
+          body: SafeArea(child: _tab == 0 ? _console() : _tripLog()),
+          bottomNavigationBar: NavigationBar(
+            backgroundColor: _panel,
+            selectedIndex: _tab,
+            onDestinationSelected: (i) => setState(() => _tab = i),
+            destinations: const [
+              NavigationDestination(icon: Icon(Icons.speed), label: 'Meter'),
+              NavigationDestination(icon: Icon(Icons.receipt_long_outlined), label: 'Trip log'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _console() {
+    final fare = _fareNow;
+    final total = meterGrandTotal(fare, [_extra]);
+    final status = _m.running
+        ? 'HIRED'
+        : _m.hasHire
+            ? 'STOPPED'
+            : 'FOR HIRE';
+    return LayoutBuilder(builder: (context, c) {
+      final wide = c.maxWidth >= 720;
+      final readouts = _Panel(children: [
+        Row(children: [
+          Expanded(child: _Readout(label: 'DISTANCE', value: formatMeterKm(_m.distanceM), unit: 'km')),
+          Expanded(child: _Readout(label: 'TIME', value: formatMeterClock(_m.elapsedMs))),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _Readout(label: 'WAITING', value: formatMeterClock(_m.waitingMs), small: true)),
+          Expanded(
+            child: _Readout(label: 'SPEED', value: _m.speedKmh.toStringAsFixed(0), unit: 'km/h', small: true),
+          ),
+        ]),
+      ]);
+      final fareBox = _Panel(children: [
+        Row(children: [
+          Text(status, style: TextStyle(color: _m.running ? _amber : _muted, fontWeight: FontWeight.w700)),
+          const Spacer(),
+          Flexible(
+            child: Text(
+              _rateLabel,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, fontSize: 12),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        _Readout(label: 'FARE', value: total.toStringAsFixed(2), unit: _currency, large: true),
+        if (_extra > 0)
+          Text('incl. extras ${_money(_extra)}', style: const TextStyle(color: _muted, fontSize: 12)),
+      ]);
+      final keys = _keys();
+      final body = wide
+          ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(flex: 3, child: Column(children: [fareBox, readouts])),
+              Expanded(flex: 2, child: keys),
+            ])
+          : Column(children: [fareBox, readouts, keys]);
+      return SingleChildScrollView(padding: const EdgeInsets.all(12), child: body);
+    });
+  }
+
+  Widget _keys() {
+    final block = meterGpsBlock(_profile) ?? _locationProblem;
+    return _Panel(children: [
+      if (block != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(block, style: const TextStyle(color: _amber, fontSize: 13)),
+        ),
+      SegmentedButton<MeterPeriod>(
+        segments: [
+          const ButtonSegment(value: MeterPeriod.day, label: Text('DAY'), icon: Icon(Icons.wb_sunny_outlined)),
+          ButtonSegment(
+            value: MeterPeriod.night,
+            label: Text('NIGHT +${((_profile.nightMultiplier - 1) * 100).round()}%'),
+            icon: const Icon(Icons.nightlight_outlined),
+          ),
+        ],
+        selected: {_period},
+        onSelectionChanged: (s) => setState(() {
+          _period = s.first;
+          _periodTouched = true;
+        }),
+      ),
+      const SizedBox(height: 12),
+      Row(children: [
+        const Text('EXTRA', style: TextStyle(color: _muted, fontWeight: FontWeight.w600)),
+        const Spacer(),
+        IconButton.filledTonal(
+          tooltip: 'Less extra',
+          onPressed: _extra > 0
+              ? () => setState(() => _extra = adjustExtra(_extra, -1, step: _profile.extraStep, max: _profile.maxExtra))
+              : null,
+          icon: const Icon(Icons.remove),
+        ),
+        SizedBox(
+          width: 96,
+          child: Text(_extra.toStringAsFixed(2),
+              textAlign: TextAlign.center, style: _digits(22, _extra > 0 ? _lcd : _lcdDim)),
+        ),
+        IconButton.filledTonal(
+          tooltip: 'More extra',
+          onPressed: () =>
+              setState(() => _extra = adjustExtra(_extra, 1, step: _profile.extraStep, max: _profile.maxExtra)),
+          icon: const Icon(Icons.add),
+        ),
+      ]),
+      const SizedBox(height: 16),
+      SizedBox(
+        height: 64,
+        child: _m.running
+            ? FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: _amber, foregroundColor: Colors.black),
+                onPressed: _pause,
+                icon: const Icon(Icons.pause),
+                label: const Text('PAUSE', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              )
+            : FilledButton.icon(
+                style: FilledButton.styleFrom(backgroundColor: _lcd, foregroundColor: Colors.black),
+                onPressed: _ending ? null : _start,
+                icon: const Icon(Icons.play_arrow),
+                label: Text(_m.hasHire ? 'RESUME' : 'START',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              ),
+      ),
+      if (_m.hasHire) ...[
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 56,
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+            onPressed: _ending ? null : _end,
+            icon: const Icon(Icons.stop),
+            label: const Text('END', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+          ),
+        ),
+      ],
+    ]);
+  }
+
+  Widget _tripLog() {
+    final s = summarizeMeterTrips(_trips);
+    if (_trips.isEmpty) {
+      return const Center(child: Text('No hires on this device yet.', style: TextStyle(color: _muted)));
+    }
+    return ListView(padding: const EdgeInsets.all(12), children: [
+      _Panel(children: [
+        Text('${s.count} hire${s.count == 1 ? '' : 's'} · ${formatMeterDistance(s.distanceM)}',
+            style: const TextStyle(color: _muted)),
+        Text(_money(s.total), style: _digits(28, _lcd)),
+      ]),
+      for (final t in _trips)
+        Card(
+          color: _panel,
+          child: ListTile(
+            title: Text('${formatDashDate(t.endedAt)} · ${formatDashTime(t.startedAt)}–${formatDashTime(t.endedAt)}'),
+            subtitle: Text([
+              formatMeterDistance(t.distanceM),
+              if (t.pickup != null && t.dropoff != null) '${t.pickup!.label} → ${t.dropoff!.label}',
+            ].join(' · ')),
+            trailing: Text('${t.currency} ${t.total.toStringAsFixed(2)}', style: _digits(16, _lcd)),
+            onTap: () => _showReceipt(t),
+          ),
+        ),
+      const SizedBox(height: 8),
+      TextButton.icon(
+        onPressed: _m.hasHire ? null : _clearLog,
+        icon: const Icon(Icons.delete_outline),
+        label: const Text('Clear the trip log'),
+      ),
+    ]);
+  }
+
+  Future<void> _clearLog() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Clear the trip log?'),
+        content: const Text('Every hire recorded on this device is removed. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Clear')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(meterTripsStoreProvider).clear();
+    if (mounted) setState(() => _trips = const []);
+  }
+}
+
+TextStyle _digits(double size, Color color) => TextStyle(
+      fontFamily: 'monospace',
+      fontFamilyFallback: const ['Courier New', 'Courier'],
+      fontSize: size,
+      fontWeight: FontWeight.w700,
+      color: color,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+
+class _Panel extends StatelessWidget {
+  const _Panel({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        margin: const EdgeInsets.all(6),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+      );
+}
+
+class _Readout extends StatelessWidget {
+  const _Readout({required this.label, required this.value, this.unit, this.large = false, this.small = false});
+  final String label;
+  final String value;
+  final String? unit;
+  final bool large;
+  final bool small;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = large ? 64.0 : (small ? 22.0 : 30.0);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(color: _muted, fontSize: 11, letterSpacing: 1.2)),
+      // Shrinks rather than overflowing, and ignores the OS font scale: the
+      // fare must stay inside its panel.
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          if (unit != null && large) Text('$unit ', style: _digits(size * 0.35, _muted), textScaler: TextScaler.noScaling),
+          Text(value, style: _digits(size, _lcd), textScaler: TextScaler.noScaling),
+          if (unit != null && !large) Text(' $unit', style: _digits(size * 0.5, _muted), textScaler: TextScaler.noScaling),
+        ]),
+      ),
+    ]);
+  }
+}
+
+// ---- End of hire -------------------------------------------------------------------
+
+/// What the meter cannot measure, declared by the driver (Expo
+/// `meterTripDetails`): passengers, luggage, tolls/charges and whether either
+/// end was an airport. Confirm is enabled only once everything is answered;
+/// the only other way out is RESUME HIRE.
+class _DeclarationSheet extends StatefulWidget {
+  const _DeclarationSheet({required this.initialCharges, required this.fareText, required this.step});
+  final double initialCharges;
+  final String fareText;
+  final double step;
+
+  @override
+  State<_DeclarationSheet> createState() => _DeclarationSheetState();
+}
+
+class _DeclarationSheetState extends State<_DeclarationSheet> {
+  late MeterTripDetailsDraft _d = MeterTripDetailsDraft(charges: sanitizeCharges(widget.initialCharges));
+  late final _charges = TextEditingController(text: chargesToText(widget.initialCharges));
+
+  @override
+  void dispose() {
+    _charges.dispose();
+    super.dispose();
+  }
+
+  void _stepCharges(int steps) {
+    final next = sanitizeCharges(_d.charges + steps * widget.step);
+    setState(() => _d = _d.copyWith(charges: next));
+    _charges.text = chargesToText(next);
+  }
+
+  Widget _choices<T>(String title, List<T> values, T? selected, String Function(T) label, void Function(T) onPick) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(color: _muted, fontSize: 12, letterSpacing: 1)),
+          const SizedBox(height: 6),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            for (final v in values)
+              ChoiceChip(label: Text(label(v)), selected: v == selected, onSelected: (_) => onPick(v)),
+          ]),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final resolved = resolveTripDetails(_d);
+    return PopScope(
+      canPop: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.viewInsetsOf(context).bottom),
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Hire ended · fare ${widget.fareText}', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            const Text('Declare what the meter cannot measure. Each charge prints on the receipt on its own line.',
+                style: TextStyle(color: _muted, fontSize: 12)),
+            const SizedBox(height: 14),
+            _choices<int>('PASSENGERS', [for (var i = minPax; i <= maxPax; i++) i], _d.pax, (v) => '$v',
+                (v) => setState(() => _d = _d.copyWith(pax: v))),
+            _choices<int>('LUGGAGE', [for (var i = minLuggage; i <= maxLuggage; i++) i], _d.luggage,
+                (v) => v == 0 ? 'None' : '$v', (v) => setState(() => _d = _d.copyWith(luggage: v))),
+            _choices<MeterAirport>(
+              'AIRPORT',
+              MeterAirport.values,
+              _d.airport,
+              (a) => describeAirportLeg(a) ?? 'No airport',
+              (v) => setState(() => _d = _d.copyWith(airport: v)),
+            ),
+            const Text('TOLLS & OTHER CHARGES', style: TextStyle(color: _muted, fontSize: 12, letterSpacing: 1)),
+            const SizedBox(height: 6),
+            Row(children: [
+              IconButton.filledTonal(
+                  tooltip: 'Less', onPressed: () => _stepCharges(-1), icon: const Icon(Icons.remove)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _charges,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    TextInputFormatter.withFunction(
+                      (_, v) => v.copyWith(text: sanitizeChargesText(v.text), selection: TextSelection.collapsed(offset: sanitizeChargesText(v.text).length)),
+                    ),
+                  ],
+                  decoration: const InputDecoration(hintText: '0.00', border: OutlineInputBorder(), isDense: true),
+                  onChanged: (t) => setState(() => _d = _d.copyWith(charges: chargesFromText(t))),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(tooltip: 'More', onPressed: () => _stepCharges(1), icon: const Icon(Icons.add)),
+            ]),
+            const SizedBox(height: 16),
+            if (resolved == null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(describeMissingTripDetails(_d) ?? '', style: const TextStyle(color: _amber)),
+              ),
+            FilledButton(
+              onPressed: resolved == null ? null : () => Navigator.pop(context, resolved),
+              child: const Text('CONFIRM & RECORD'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('RESUME HIRE')),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReceiptDialog extends StatelessWidget {
+  const _ReceiptDialog({required this.trip});
+  final MeterTrip trip;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Receipt'),
+        content: SizedBox(
+          width: 360,
+          child: SingleChildScrollView(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (trip.plate != null) Text('Vehicle ${trip.plate}'),
+              if (trip.driver != null) Text('Driver ${trip.driver}'),
+              const Divider(),
+              for (final l in meterReceiptLines(trip))
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(l.label, style: TextStyle(fontWeight: l.strong ? FontWeight.w800 : FontWeight.w400)),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(l.value,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(fontWeight: l.strong ? FontWeight.w800 : FontWeight.w400)),
+                    ),
+                  ]),
+                ),
+              const Divider(),
+              Text(meterReceiptFooterNote(trip), style: const TextStyle(fontSize: 11, color: _muted)),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: meterReceiptText(trip)));
+              ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Receipt copied')));
+            },
+            icon: const Icon(Icons.copy),
+            label: const Text('Copy'),
+          ),
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+        ],
+      );
+}

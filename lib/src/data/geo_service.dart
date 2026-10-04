@@ -13,6 +13,39 @@ class Place {
   final LatLng point;
 }
 
+/// Where a point is, as a rate card is scoped: country, state, city, suburb.
+class AreaInfo {
+  const AreaInfo({this.country, this.state, this.city, this.suburb, this.label});
+  final String? country;
+  final String? state;
+  final String? city;
+  final String? suburb;
+
+  /// A short place name ("Jalan Ampang, KLCC").
+  final String? label;
+
+  static AreaInfo fromNominatim(Map<String, dynamic> m) {
+    final a = (m['address'] as Map?)?.cast<String, dynamic>() ?? const {};
+    String? pick(List<String> keys) {
+      for (final k in keys) {
+        final v = '${a[k] ?? ''}'.trim();
+        if (v.isNotEmpty) return v;
+      }
+      return null;
+    }
+
+    final display = '${m['display_name'] ?? ''}';
+    final parts = display.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).take(2).toList();
+    return AreaInfo(
+      country: pick(['country']),
+      state: pick(['state', 'region']),
+      city: pick(['city', 'town', 'municipality', 'village']),
+      suburb: pick(['suburb', 'neighbourhood', 'quarter', 'city_district']),
+      label: parts.isEmpty ? null : parts.join(', '),
+    );
+  }
+}
+
 class RouteInfo {
   const RouteInfo({required this.distanceKm, required this.durationMin, required this.points});
   final double distanceKm;
@@ -91,6 +124,27 @@ class GeoService {
     } catch (_) {}
     final label = '${p.latitude.toStringAsFixed(5)}, ${p.longitude.toStringAsFixed(5)}';
     return Place(name: 'Pinned location', address: label, point: p);
+  }
+
+  /// Structured geography for [p] (country, state, city, suburb), which the
+  /// meter resolves its rate card on, plus a short label for the receipt.
+  /// Null when the geocoder cannot be reached.
+  Future<AreaInfo?> reverseArea(LatLng p) async {
+    try {
+      final uri = Uri.parse('$_nominatim/reverse').replace(queryParameters: {
+        'lat': '${p.latitude}',
+        'lon': '${p.longitude}',
+        'format': 'jsonv2',
+        'addressdetails': '1',
+        'zoom': '18',
+      });
+      final res = await _http.get(uri, headers: _headers);
+      if (res.statusCode != 200) return null;
+      final m = jsonDecode(res.body) as Map<String, dynamic>;
+      return AreaInfo.fromNominatim(m);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Driving route; falls back to a straight-line estimate when the router is
