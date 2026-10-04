@@ -16,6 +16,14 @@
   -->
   <base href="$FLUTTER_BASE_HREF">
 
+  <script>
+    // Links shared before the switch to path URLs look like /#/rides; move
+    // them onto the real path before the app starts so they still open.
+    if (location.hash.indexOf('#/') === 0) {
+      history.replaceState(null, '', location.hash.slice(1) || '/');
+    }
+  </script>
+
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="GET.ride — Flutter client for web, desktop, iOS and Android">
