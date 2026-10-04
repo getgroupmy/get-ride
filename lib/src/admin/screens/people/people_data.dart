@@ -180,6 +180,22 @@ class PeopleRepository {
     }
   }
 
+  /// Upserts a vehicle document by (vehicle_id, doc_id), like
+  /// [saveProviderDocument] (Expo `upsertVehicleDocument`).
+  Future<void> saveVehicleDocument(Map<String, dynamic> payload) async {
+    final existing = await _db
+        .from('vehicle_documents')
+        .select('id')
+        .eq('vehicle_id', payload['vehicle_id'] as Object)
+        .eq('doc_id', payload['doc_id'] as Object)
+        .maybeSingle();
+    if (existing != null) {
+      await _db.from('vehicle_documents').update(payload).eq('id', existing['id'] as Object);
+    } else {
+      await _db.from('vehicle_documents').insert(payload);
+    }
+  }
+
   // ---- Storage -------------------------------------------------------------
 
   Future<String> upload(String bucket, String path, PickedPeopleFile file) async {

@@ -588,6 +588,7 @@ class PartnerDocsUploader extends ConsumerStatefulWidget {
     this.enabled = true,
     this.authUserId,
     this.onUploads,
+    this.vehicleId,
   });
   final String partnerId;
   final List<RequiredDoc> docs;
@@ -602,6 +603,10 @@ class PartnerDocsUploader extends ConsumerStatefulWidget {
   /// The newest upload per document, each time the list loads.
   final ValueChanged<Map<String, Map<String, dynamic>>>? onUploads;
 
+  /// When set, these are the vehicle's documents (`vehicle_documents`,
+  /// Expo `VehicleDocsUploader`) rather than the partner's own.
+  final String? vehicleId;
+
   @override
   ConsumerState<PartnerDocsUploader> createState() => _PartnerDocsUploaderState();
 }
@@ -610,7 +615,10 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
   late Future<List<Map<String, dynamic>>> _uploads = _load();
 
   Future<List<Map<String, dynamic>>> _load() async {
-    final rows = await ref.read(peopleRepositoryProvider).providerDocuments(widget.partnerId);
+    final repo = ref.read(peopleRepositoryProvider);
+    final vehicleId = widget.vehicleId;
+    final rows =
+        vehicleId == null ? await repo.providerDocuments(widget.partnerId) : await repo.vehicleDocuments(vehicleId);
     widget.onUploads?.call(latestUploadByDoc(rows));
     return rows;
   }
@@ -623,6 +631,7 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
         doc: d,
         existing: existing,
         authUserId: widget.authUserId,
+        vehicleId: widget.vehicleId,
       ),
     );
     if (saved == true && mounted) setState(() => _uploads = _load());
@@ -679,11 +688,22 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
 /// requirement asks for). Saves to `provider-documents` storage and upserts
 /// `provider_documents` with status Pending Review.
 class DocUploadDialog extends ConsumerStatefulWidget {
-  const DocUploadDialog({super.key, required this.partnerId, required this.doc, this.existing, this.authUserId});
+  const DocUploadDialog({
+    super.key,
+    required this.partnerId,
+    required this.doc,
+    this.existing,
+    this.authUserId,
+    this.vehicleId,
+  });
   final String partnerId;
   final RequiredDoc doc;
   final Map<String, dynamic>? existing;
   final String? authUserId;
+
+  /// Upload as one of this vehicle's documents (`vehicle-documents` bucket,
+  /// `vehicle_documents` table) instead of the partner's.
+  final String? vehicleId;
 
   @override
   ConsumerState<DocUploadDialog> createState() => _DocUploadDialogState();
@@ -733,15 +753,17 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
     setState(() => _busy = true);
     final repo = ref.read(peopleRepositoryProvider);
     final ok = await runAdminAction(context, () async {
-      final frontUrl = await repo.upload('provider-documents',
-          docFilePath(widget.partnerId, widget.doc.id, 'front', guessExt(_front!.name)), _front!);
+      final vehicleId = widget.vehicleId;
+      final bucket = vehicleId == null ? 'provider-documents' : 'vehicle-documents';
+      final owner = vehicleId ?? widget.partnerId;
+      final frontUrl =
+          await repo.upload(bucket, docFilePath(owner, widget.doc.id, 'front', guessExt(_front!.name)), _front!);
       String? backUrl;
       if (f.requireFrontBack && _back != null) {
-        backUrl = await repo.upload(
-            'provider-documents', docFilePath(widget.partnerId, widget.doc.id, 'back', guessExt(_back!.name)), _back!);
+        backUrl = await repo.upload(bucket, docFilePath(owner, widget.doc.id, 'back', guessExt(_back!.name)), _back!);
       }
       final insurer = _insurers.where((e) => e.id == _insurerId).firstOrNull;
-      await repo.saveProviderDocument(providerDocPayload(
+      final payload = providerDocPayload(
         partnerId: widget.partnerId,
         authUserId: widget.authUserId,
         docId: widget.doc.id,
@@ -756,7 +778,12 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
         fileUrl: frontUrl,
         fileUrlBack: backUrl,
         uploadedAt: DateTime.now().toUtc().toIso8601String(),
-      ));
+      );
+      if (vehicleId == null) {
+        await repo.saveProviderDocument(payload);
+      } else {
+        await repo.saveVehicleDocument({...payload, 'vehicle_id': vehicleId});
+      }
     }, success: 'Document uploaded');
     if (!mounted) return;
     setState(() => _busy = false);

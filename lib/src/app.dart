@@ -16,6 +16,7 @@ import 'features/auth/pin_screen.dart';
 import 'features/auth/set_pin_screen.dart';
 import 'features/partner/partner_onboarding_screen.dart';
 import 'features/partner/partner_screen.dart';
+import 'features/partner/vehicle_screens.dart';
 import 'features/partner/partner_trip_screen.dart';
 import 'features/profile/account_screen.dart';
 import 'features/profile/edit_profile_screen.dart';
@@ -138,6 +139,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
       GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
+      GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
+      GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
+      GoRoute(
+        path: '/drive/vehicles/:id',
+        builder: (_, s) => VehicleOnboardingScreen(vehicleId: s.pathParameters['id']),
+      ),
       GoRoute(path: '/drive/trip/:id', builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!)),
       adminRoute,
     ],

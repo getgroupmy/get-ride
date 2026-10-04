@@ -7,6 +7,7 @@ import '../../admin/screens/people/people_data.dart';
 import '../../admin/screens/people/people_logic.dart';
 import '../../admin/screens/people/people_widgets.dart';
 import '../../core/partner_onboarding.dart';
+import '../../core/vehicle_onboarding.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -40,6 +41,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
   GeoOptions _geo = const GeoOptions();
   _Entries _typeEntries = const [];
   _Entries _requiredDocs = const [];
+  Set<String> _vehicleTypeIds = const {};
   bool _docsComplete = false;
 
   PartnerOnboardingRepository get _repo => ref.read(partnerOnboardingRepositoryProvider);
@@ -67,6 +69,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         people.geoOptions(inUse: [area]),
         people.partnerTypes(),
         people.requiredDocuments(),
+        people.documentTypes(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -78,6 +81,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         _geo = settled[0] as GeoOptions;
         _typeEntries = settled[1] as _Entries;
         _requiredDocs = settled[2] as _Entries;
+        _vehicleTypeIds = vehicleDocTypeIds(settled[3] as _Entries);
       });
       ref.invalidate(partnerProvider);
     } catch (e) {
@@ -177,6 +181,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         partnerTypeValues: _typeEntries.map((e) => e.values),
         partnerTypes: parseStringList(s.partner['partner_types']),
         area: ServiceArea.fromRow(s.partner),
+        vehicleTypeIds: _vehicleTypeIds,
       );
 
   // ---- Layout ----------------------------------------------------------------
@@ -413,7 +418,13 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       const SizedBox(height: 8),
       Text('A rejected or expired document can be uploaded again here.', style: t.textTheme.bodySmall),
       const SizedBox(height: 16),
-      FilledButton(onPressed: () => context.go('/drive'), child: const Text('Back to Drive')),
+      FilledButton.icon(
+        onPressed: () => context.push('/drive/vehicles'),
+        icon: const Icon(Icons.directions_car_outlined),
+        label: const Text('Add or manage your vehicles'),
+      ),
+      const SizedBox(height: 8),
+      OutlinedButton(onPressed: () => context.go('/drive'), child: const Text('Back to Drive')),
     ]);
   }
 }
