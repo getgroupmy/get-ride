@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/format.dart';
+import '../../core/partner_onboarding.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
@@ -90,20 +91,31 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         value: partner,
         onRetry: () => ref.invalidate(partnerProvider),
         data: (p) {
+          void openOnboarding() => context.push('/drive/onboarding');
           if (p == null) {
-            return const EmptyState(
+            return EmptyState(
               icon: Icons.badge_outlined,
               title: 'Become a GET.ride partner',
-              message: 'Partner registration, document upload and vehicle onboarding are done in the '
-                  'GET.ride partner onboarding flow. Once your account is approved, you can take jobs here.',
+              message: 'Earn by driving with GET.ride. Add your details and documents, and you can take jobs '
+                  'here once an admin approves your account.',
+              action: FilledButton(onPressed: openOnboarding, child: const Text('Get started')),
             );
           }
           if (!partnerCanDrive(p)) {
+            if (partnerSetupIncomplete(p.raw)) {
+              return EmptyState(
+                icon: Icons.assignment_outlined,
+                title: 'Finish your partner application',
+                message: 'A few steps are still missing before an admin can review your account.',
+                action: FilledButton(onPressed: openOnboarding, child: const Text('Continue')),
+              );
+            }
             return EmptyState(
               icon: Icons.hourglass_empty,
               title: 'Account not active yet',
               message: 'Your partner status is "${p.status ?? 'unknown'}". '
                   'You can go online once an admin approves your account.',
+              action: OutlinedButton(onPressed: openOnboarding, child: const Text('View application')),
             );
           }
           return ResponsiveCenter(
