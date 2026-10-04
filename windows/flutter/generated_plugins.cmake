@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   firebase_core
   geolocator_windows
+  record_windows
   universal_ble
   url_launcher_windows
 )

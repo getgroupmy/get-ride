@@ -13,6 +13,7 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
 import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
+import '../safety/voice_protection_controller.dart';
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
 
@@ -30,12 +31,27 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   LatLng? _me;
   DateTime _lastPublish = DateTime.fromMillisecondsSinceEpoch(0);
   bool _busy = false;
+  late final VoiceProtectionController _voice;
 
   @override
   void initState() {
     super.initState();
+    _voice = ref.read(voiceProtectionProvider.notifier);
     _startGps();
+    // VoiceProtection records the trip from the moment it starts (gated by the
+    // driver's own switch inside the controller) and files it when it ends.
+    ref.listenManual(rideStreamProvider(widget.requestId), (_, next) {
+      final r = next.value;
+      if (r == null) return;
+      if (r.status == RideStatus.onTrip) {
+        unawaited(_voice.startTrip(rideId: r.id, label: _tripLabel(r)));
+      } else if (r.status.isFinished) {
+        unawaited(_voice.stopTrip());
+      }
+    }, fireImmediately: true);
   }
+
+  static String _tripLabel(RideRequest r) => '${r.pickupLabel} → ${r.dropLabel}';
 
   Future<void> _startGps() async {
     try {
@@ -63,6 +79,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   @override
   void dispose() {
     _gps?.cancel();
+    // Leaving the trip screen always files whatever was recorded.
+    unawaited(_voice.stopTrip());
     super.dispose();
   }
 
@@ -221,6 +239,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           ]),
         ),
         const SizedBox(height: 12),
+        const _VoiceProtectionPill(),
         if (r.status.isOngoing && target != null)
           OutlinedButton.icon(
             icon: const Icon(Icons.navigation_outlined),
@@ -249,6 +268,32 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           ),
         if (r.status.isFinished)
           FilledButton(onPressed: () => context.go('/drive'), child: const Text('Back to requests')),
+      ]),
+    );
+  }
+}
+
+/// Shown while VoiceProtection is recording the trip (or says why it isn't).
+class _VoiceProtectionPill extends ConsumerWidget {
+  const _VoiceProtectionPill();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final v = ref.watch(voiceProtectionProvider);
+    if (!v.recording && v.error == null) return const SizedBox.shrink();
+    final t = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(children: [
+        Icon(v.recording ? Icons.fiber_manual_record : Icons.mic_off_outlined,
+            size: 16, color: v.recording ? t.colorScheme.error : t.colorScheme.outline),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            v.recording ? 'VoiceProtection recording' : v.error!,
+            style: t.textTheme.bodySmall,
+          ),
+        ),
       ]),
     );
   }
