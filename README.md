@@ -14,7 +14,26 @@ Flutter client for **GET.ride** that runs on **web, desktop (macOS / Windows / L
 | Account | Profile edit, referral code, emergency contacts, support chat (realtime), light/dark theme, change PIN. |
 | Layout | Bottom navigation on phones, navigation rail on tablets, extended rail + side-by-side map panels on desktop/web. |
 
-Not ported yet (still Expo-only): admin panel, partner onboarding & document upload, Meter Digital / OBD-II, EV orders, GET.coin trading, voice protection, push-notification registration.
+Not ported yet (still Expo-only): partner onboarding & document upload, Meter Digital / OBD-II, EV orders, GET.coin trading, voice protection, push-notification registration.
+
+## Admin panel (`lib/src/admin/`, route `/admin`)
+
+Opened from **Account → Admin panel**, which only appears for accounts with at least one `admin_access` row. Access comes from the database only: the same rows `caller_is_admin()` checks in every RLS policy. There is no local admin password, unlike the Expo panel's hardcoded login. Page keys are the Expo route keys (`admin-users`, `admin-settings-promocode`, …, `*` for everything), so grants made in either app apply to both. On a brand-new project the first signed-in user can claim admin through `admin_access_bootstrap()`.
+
+| Module | What it does |
+| --- | --- |
+| Dashboard | Live counts (users, partners awaiting approval, open/active rides, documents to review, open tickets), each linking to its list. |
+| Users | Search and filter (approved / unapproved / ID failed / blocked / rejected / deleted), details, set account status. |
+| Partners / Vehicles | Search and filter including permit states, details, set status, set permit, mark documents complete. |
+| Documents | Partner and vehicle documents: review queue, open front/back files, AI verification details, approve or reject with notes. Expiry is shown as `Expired`. |
+| Rides | Monitor open, in-progress, completed and cancelled requests, view full details, cancel a ride. |
+| Support | Ticket pool (active / unassigned / mine / resolved), realtime chat as admin, assign to me, change status. |
+| Push notifications | Broadcast to everyone, passengers or partners via `send-push`, plus send history. |
+| Commission rates | Create, edit and delete master/country/state/city/suburb/user rules. |
+| Settings | All 23 Expo CRUD categories, generated from the Expo screens into `admin_categories.g.dart`, including the insurance provider → type → duration → premium drill-down and ordering. Any other `settings_entries` category gets an advanced raw-JSON editor. |
+| Sub-admins | Grant per-page read/edit access by phone number, revoke grants. |
+
+Not yet ported from the Expo admin: dedicated editors for Meter Digital rate cards, countries/states/cities, vehicle make & model, partner types, payment gateways, API keys, fare AI, airport areas and multi-gate places (the `settings_entries` ones are editable as raw JSON), branding/app icon/splash, session history & fraud tracing, EV orders, and the add/edit forms for users, partners and vehicles.
 
 ## Run
 

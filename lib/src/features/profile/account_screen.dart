@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../admin/admin_providers.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 
@@ -13,6 +14,7 @@ class AccountScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final profile = ref.watch(profileProvider);
+    final isAdmin = ref.watch(adminAccessProvider).value?.isAdmin ?? false;
     return Scaffold(
       appBar: AppBar(title: const Text('Account')),
       body: ListView(children: [
@@ -64,6 +66,13 @@ class AccountScreen extends ConsumerWidget {
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.go('/account/support'),
                 ),
+                if (isAdmin)
+                  ListTile(
+                    leading: const Icon(Icons.admin_panel_settings_outlined),
+                    title: const Text('Admin panel'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.go('/admin'),
+                  ),
                 ListTile(
                   leading: const Icon(Icons.settings_outlined),
                   title: const Text('Settings'),
