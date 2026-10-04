@@ -9,10 +9,12 @@ import 'package:uuid/uuid.dart';
 
 import '../../admin/screens/meterapp/meter_logic.dart';
 import '../../core/meter_trip.dart';
+import '../../core/escpos.dart';
 import '../../core/obd.dart';
 import '../../core/taxi_meter.dart';
 import '../../data/geo_service.dart';
 import '../../data/obd/obd_session.dart';
+import '../../data/printer/printer_service.dart';
 import '../../providers.dart';
 import 'meter_providers.dart';
 
@@ -34,8 +36,9 @@ const _fixMaxAgeMs = 3000;
 /// TEKSI partners. Bills on the operator's rate card (or the built-in TEKSI
 /// tariff) from the vehicle's OBD-II reader where the card allows it, else
 /// GPS, with DAY / NIGHT keys, extras, an end-of-hire declaration and a
-/// device-local trip log with receipts. The receipt printer and the
-/// landscape-locked console are later slices.
+/// device-local trip log with receipts, printed straight to a mini Wi-Fi
+/// thermal printer when one is set up. The landscape-locked console is a
+/// later slice.
 class MeterScreen extends ConsumerStatefulWidget {
   const MeterScreen({super.key});
 
@@ -381,6 +384,11 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
             backgroundColor: _bg,
             title: const Text('Meter Digital'),
             actions: [
+              IconButton(
+                tooltip: 'Receipt printer',
+                icon: const Icon(Icons.print_outlined, color: _muted),
+                onPressed: () => context.push('/meter/printer'),
+              ),
               IconButton(
                 tooltip: 'OBD-II reader',
                 icon: Icon(Icons.settings_input_component, color: obd.linked ? _lcd : _muted),
@@ -750,9 +758,52 @@ class _DeclarationSheetState extends State<_DeclarationSheet> {
   }
 }
 
-class _ReceiptDialog extends StatelessWidget {
+class _ReceiptDialog extends ConsumerStatefulWidget {
   const _ReceiptDialog({required this.trip});
   final MeterTrip trip;
+
+  @override
+  ConsumerState<_ReceiptDialog> createState() => _ReceiptDialogState();
+}
+
+class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
+  bool _printing = false;
+  MeterTrip get trip => widget.trip;
+
+  /// Straight to the saved printer, with no print dialog. With no printer
+  /// set up the driver is offered the setup screen; the hire stays on the
+  /// roll to print from the trip log afterwards.
+  Future<void> _print() async {
+    final printer = await ref.read(printerStoreProvider).current();
+    if (!mounted) return;
+    if (printer == null) {
+      final setUp = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('No printer set up'),
+          content: const Text('Add a Wi-Fi receipt printer to print receipts. This receipt stays in the trip log '
+              'to print once it is set up, and can be copied as text meanwhile.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Set up printer')),
+          ],
+        ),
+      );
+      if (setUp == true && mounted) {
+        final router = GoRouter.of(context);
+        Navigator.pop(context);
+        router.push('/meter/printer');
+      }
+      return;
+    }
+    setState(() => _printing = true);
+    final error = await ref.read(printerServiceProvider).send(printer, buildMeterReceiptEscpos(trip, paper: printer.paper));
+    if (!mounted) return;
+    setState(() => _printing = false);
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(error ?? 'Receipt sent to ${printer.name}.')));
+  }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -790,6 +841,13 @@ class _ReceiptDialog extends StatelessWidget {
             },
             icon: const Icon(Icons.copy),
             label: const Text('Copy'),
+          ),
+          TextButton.icon(
+            onPressed: _printing ? null : _print,
+            icon: _printing
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.print_outlined),
+            label: const Text('Print'),
           ),
           FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
         ],

@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/meter_logic.dart';
 import 'package:get_ride/src/core/obd_adapters.dart';
+import 'package:get_ride/src/core/printers.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/obd/obd_session.dart';
+import 'package:get_ride/src/data/printer/printer_service.dart';
 import 'package:get_ride/src/features/meter/meter_providers.dart';
 import 'package:get_ride/src/features/meter/meter_screen.dart';
 import 'package:get_ride/src/providers.dart';
@@ -17,6 +19,7 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_elm.dart';
+import 'support/fake_printer.dart';
 
 class _FakeLocation implements MeterLocation {
   final controller = StreamController<MeterFix>.broadcast();
@@ -43,11 +46,13 @@ MeterProfile _card({String source = 'gps'}) => defaultMeterProfile.copyWith(
       sourceMode: source,
     );
 
-Future<_FakeLocation> _pump(WidgetTester tester, {MeterProfile? card, _FakeLocation? location, FakeElm? reader}) async {
+Future<_FakeLocation> _pump(WidgetTester tester, {MeterProfile? card, _FakeLocation? location, FakeElm? reader, FakePrinter? printer}) async {
   // A reader is "saved" on the phone when the test brings one.
   SharedPreferences.setMockInitialValues({
     if (reader != null)
       ObdAdapterStore.listKey: jsonEncode([normalizeWifiAdapter(id: 'r1', createdAt: 't').value!.toJson()]),
+    if (printer != null)
+      PrinterStore.listKey: jsonEncode([normalizeWifiPrinter(id: 'p1', createdAt: 't', host: '10.0.0.2').value!.toJson()]),
   });
   tester.view.physicalSize = const Size(900, 1600);
   tester.view.devicePixelRatio = 1;
@@ -60,6 +65,8 @@ Future<_FakeLocation> _pump(WidgetTester tester, {MeterProfile? card, _FakeLocat
       meterClockProvider.overrideWithValue(() => _clock),
       obdClockProvider.overrideWithValue(() => _clock),
       obdTransportFactoryProvider.overrideWithValue((_) => reader ?? FakeElm()),
+      printerSinkFactoryProvider.overrideWithValue((_) => printer ?? FakePrinter()),
+      printerSettleProvider.overrideWithValue(Duration.zero),
       meterCardsProvider.overrideWith((_) async => [card ?? _card()]),
       // The geocoder is unreachable in tests: ends stay as coordinates.
       geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
@@ -189,6 +196,46 @@ void main() {
     expect(find.text('128 450.6 km'), findsWidgets);
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
+  });
+
+  /// A one-second hire, declared and recorded, leaving the receipt open.
+  Future<void> recordShortHire(WidgetTester tester, _FakeLocation loc) async {
+    loc.controller.add(_fixAt(0));
+    await tester.pump();
+    await tester.tap(find.text('START'));
+    await tester.pump();
+    await _driveSecond(tester, loc, 10);
+    await tester.tap(find.text('END'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '1').first);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'None'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'No airport'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'CONFIRM & RECORD'));
+    await tester.pumpAndSettle();
+    expect(find.text('Receipt'), findsOneWidget);
+  }
+
+  testWidgets('the receipt prints straight to the saved printer', (tester) async {
+    final printer = FakePrinter();
+    final loc = await _pump(tester, printer: printer);
+    await recordShortHire(tester, loc);
+    await tester.tap(find.widgetWithText(TextButton, 'Print'));
+    await tester.pumpAndSettle();
+    expect(printer.jobs.single, contains('Vehicle WXY 1'));
+    expect(printer.jobs.single, contains('Thank you for riding.'));
+    expect(find.text('Receipt sent to Wi-Fi printer.'), findsOneWidget);
+  });
+
+  testWidgets('with no printer set up, Print offers the setup screen', (tester) async {
+    final loc = await _pump(tester);
+    await recordShortHire(tester, loc);
+    await tester.tap(find.widgetWithText(TextButton, 'Print'));
+    await tester.pumpAndSettle();
+    expect(find.text('No printer set up'), findsOneWidget);
+    await tester.tap(find.text('Not now'));
+    await tester.pumpAndSettle();
+    expect(find.text('Receipt'), findsOneWidget, reason: 'the receipt stays open to copy');
   });
 
   testWidgets('no location permission means no hire', (tester) async {
