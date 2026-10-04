@@ -25,7 +25,7 @@ SettingsCategory categoryFor(String key) =>
     );
 
 final _otherCategoriesProvider = FutureProvider.autoDispose<List<String>>((ref) async {
-  final known = crudCategories.map((c) => c.key).toSet();
+  final known = {...crudCategories.map((c) => c.key), ...allOwnedCategories};
   final names = await ref.watch(adminRepositoryProvider).settingCategoryNames();
   return names.where((n) => !known.contains(n)).toList();
 });

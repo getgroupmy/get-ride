@@ -33,7 +33,18 @@ Opened from **Account → Admin panel**, which only appears for accounts with at
 | Settings | All 23 Expo CRUD categories, generated from the Expo screens into `admin_categories.g.dart`, including the insurance provider → type → duration → premium drill-down and ordering. Any other `settings_entries` category gets an advanced raw-JSON editor. |
 | Sub-admins | Grant per-page read/edit access by phone number, revoke grants. |
 
-Not yet ported from the Expo admin: dedicated editors for Meter Digital rate cards, countries/states/cities, vehicle make & model, partner types, payment gateways, API keys, fare AI, airport areas and multi-gate places (the `settings_entries` ones are editable as raw JSON), branding/app icon/splash, session history & fraud tracing, EV orders, and the add/edit forms for users, partners and vehicles.
+Every other Expo admin screen is ported under `/admin/m/…` and listed on the **Settings** hub by section (`lib/src/admin/screens/<group>/`):
+
+| Section | Screens |
+| --- | --- |
+| People | Add/edit partners and vehicles (photos, documents, service areas), edit users, user ID-document review |
+| Services & catalogue | Services, vehicle services, partner types (icons), document types, required documents, vehicle makes & models, service assignment |
+| Payments & commerce | Payment types, payment gateways (public fields only; see security notes), GET.coin, EV order fee / finance options / vehicle details / inventory, EV orders back office |
+| Geography | Countries/states/cities with geofences, airport areas, multi-gate places and gates (OpenStreetMap search and polygon editing) |
+| Meter & app | Meter Digital rate cards (scoped, live panel switches), display and mock settings, site, app icon, splash, always-on pages |
+| Security & integrations | Session history with trails/heatmap, fraud tracing, IP access rules, API keys (masked), eLife, fare AI and its logs, read-only backend diagnostics |
+
+Intentionally not ported: user *add* (a profile needs an auth account), Rork chat (Expo/Rork-specific, ships a toolkit secret), the Expo backend screen's runtime URL/service-role-key entry, installed-app detection, and any client-side handling of secrets.
 
 ## Run
 

@@ -13,6 +13,19 @@ class AdminRepository {
   String? get _uid => _db.auth.currentUser?.id;
   String get _now => DateTime.now().toUtc().toIso8601String();
 
+  /// Updates one row and fails loudly when RLS (or a stale id) lets nothing
+  /// change. PostgREST reports a filtered-out UPDATE as success with zero
+  /// rows, which would otherwise read as "Saved".
+  Future<void> _updateOne(String table, String id, Map<String, dynamic> patch) async {
+    final rows = await _db.from(table).update(patch).eq('id', id).select('id');
+    if (rows.isEmpty) {
+      throw StateError(
+        'Nothing was saved: the database did not allow this change to $table. '
+        'Your account may lack an admin policy for it, or the record no longer exists.',
+      );
+    }
+  }
+
   // ---- Access --------------------------------------------------------------
 
   Future<AdminAccess> myAccess() async {
@@ -97,7 +110,7 @@ class AdminRepository {
 
   /// Mirrors Expo `upsertUser`: `profile_status` carries the admin decision;
   /// `status` mirrors it except for "deleted", which `user_status` lacks.
-  Future<void> setUserStatus(String id, String status) => _db.from('profiles').update({
+  Future<void> setUserStatus(String id, String status) => _updateOne('profiles', id, {
         'profile_status': switch (status) {
           'approved' => 'Approved',
           'blocked' => 'Blocked',
@@ -107,19 +120,19 @@ class AdminRepository {
         },
         if (status != 'deleted') 'status': status,
         'updated_at': _now,
-      }).eq('id', id);
+      });
 
   Future<List<Map<String, dynamic>>> partners() async =>
       List<Map<String, dynamic>>.from(await _db.from('partners').select().order('joined_at', ascending: false));
 
   Future<void> updatePartner(String id, Map<String, dynamic> patch) =>
-      _db.from('partners').update({...patch, 'updated_at': _now}).eq('id', id);
+      _updateOne('partners', id, {...patch, 'updated_at': _now});
 
   Future<List<Map<String, dynamic>>> vehicles() async =>
       List<Map<String, dynamic>>.from(await _db.from('vehicle').select().order('joined_at', ascending: false));
 
   Future<void> updateVehicle(String id, Map<String, dynamic> patch) =>
-      _db.from('vehicle').update({...patch, 'updated_at': _now}).eq('id', id);
+      _updateOne('vehicle', id, {...patch, 'updated_at': _now});
 
   // ---- Documents -----------------------------------------------------------
 
@@ -128,11 +141,11 @@ class AdminRepository {
       );
 
   Future<void> reviewDocument(String table, String id, String status, String? notes) =>
-      _db.from(table).update({
+      _updateOne(table, id, {
         'status': status,
         'reviewer_notes': notes,
         'reviewed_at': _now,
-      }).eq('id', id);
+      });
 
   // ---- Rides ---------------------------------------------------------------
 
@@ -142,11 +155,11 @@ class AdminRepository {
     return List<Map<String, dynamic>>.from(await q.order('created_at', ascending: false).limit(limit));
   }
 
-  Future<void> adminCancelRide(String id, String reason) => _db.from('ride_requests').update({
+  Future<void> adminCancelRide(String id, String reason) => _updateOne('ride_requests', id, {
         'status': 'cancelled',
         'cancelled_at': _now,
         'cancel_reason': reason,
-      }).eq('id', id);
+      });
 
   // ---- Support -------------------------------------------------------------
 
@@ -155,14 +168,14 @@ class AdminRepository {
       );
 
   Future<void> setTicketStatus(String id, String status) =>
-      _db.from('support_tickets').update({'status': status, 'updated_at': _now}).eq('id', id);
+      _updateOne('support_tickets', id, {'status': status, 'updated_at': _now});
 
-  Future<void> assignTicketToMe(String id, String myName) => _db.from('support_tickets').update({
+  Future<void> assignTicketToMe(String id, String myName) => _updateOne('support_tickets', id, {
         'assigned_admin_id': _uid,
         'assigned_admin_name': myName,
         'assigned_at': _now,
         'status': 'in_progress',
-      }).eq('id', id);
+      });
 
   Future<List<Map<String, dynamic>>> ticketMessages(String ticketId) async => List<Map<String, dynamic>>.from(
         await _db.from('support_messages').select().eq('ticket_id', ticketId).order('created_at'),
@@ -213,7 +226,7 @@ class AdminRepository {
     final data = {...row, 'updated_at': _now};
     return row['id'] == null
         ? _db.from('commission_rates').insert(data..remove('id'))
-        : _db.from('commission_rates').update(data).eq('id', row['id'] as Object);
+        : _updateOne('commission_rates', row['id'] as String, data);
   }
 
   Future<void> deleteCommissionRate(String id) => _db.from('commission_rates').delete().eq('id', id);
@@ -236,7 +249,7 @@ class AdminRepository {
 
   Future<void> saveSetting(SettingsCategory c, {String? id, required Map<String, dynamic> values, int? position}) {
     if (id != null) {
-      return _db.from(c.table).update({'values': values, 'updated_at': _now}).eq('id', id);
+      return _updateOne(c.table, id, {'values': values, 'updated_at': _now});
     }
     return _db.from(c.table).insert({
       if (c.usesCategoryColumn) 'category': c.key,

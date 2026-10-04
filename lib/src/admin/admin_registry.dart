@@ -64,3 +64,11 @@ final allPortedAdminRoutes = <RouteBase>[
   ...meterappRoutes,
   ...securityRoutes,
 ];
+
+/// `settings_entries` categories that have a dedicated ported editor.
+const allOwnedCategories = <String>{
+  ...catalogueOwnedCategories,
+  ...commerceOwnedCategories,
+  ...meterappOwnedCategories,
+  ...securityOwnedCategories,
+};
