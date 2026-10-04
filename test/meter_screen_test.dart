@@ -15,6 +15,7 @@ import 'package:get_ride/src/features/meter/meter_providers.dart';
 import 'package:get_ride/src/features/meter/meter_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:http/http.dart' as http;
+import 'package:go_router/go_router.dart';
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -32,6 +33,15 @@ class _FakeLocation implements MeterLocation {
   Stream<MeterFix> fixes() => controller.stream;
 }
 
+/// Records what the meter asked of the device's rotation.
+class _FakeOrientation implements MeterOrientation {
+  final calls = <String>[];
+  @override
+  Future<void> lockLandscape() async => calls.add('lock');
+  @override
+  Future<void> release() async => calls.add('release');
+}
+
 /// Noon, so the DAY key is preselected.
 var _clock = DateTime(2026, 10, 4, 12).millisecondsSinceEpoch;
 
@@ -46,7 +56,15 @@ MeterProfile _card({String source = 'gps'}) => defaultMeterProfile.copyWith(
       sourceMode: source,
     );
 
-Future<_FakeLocation> _pump(WidgetTester tester, {MeterProfile? card, _FakeLocation? location, FakeElm? reader, FakePrinter? printer}) async {
+Future<_FakeLocation> _pump(WidgetTester tester, {
+  MeterProfile? card,
+  _FakeLocation? location,
+  FakeElm? reader,
+  FakePrinter? printer,
+  Size size = const Size(900, 1600),
+  _FakeOrientation? orientation,
+  Widget? app,
+}) async {
   // A reader is "saved" on the phone when the test brings one.
   SharedPreferences.setMockInitialValues({
     if (reader != null)
@@ -54,7 +72,7 @@ Future<_FakeLocation> _pump(WidgetTester tester, {MeterProfile? card, _FakeLocat
     if (printer != null)
       PrinterStore.listKey: jsonEncode([normalizeWifiPrinter(id: 'p1', createdAt: 't', host: '10.0.0.2').value!.toJson()]),
   });
-  tester.view.physicalSize = const Size(900, 1600);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   _clock = DateTime(2026, 10, 4, 12).millisecondsSinceEpoch;
@@ -71,8 +89,9 @@ Future<_FakeLocation> _pump(WidgetTester tester, {MeterProfile? card, _FakeLocat
       // The geocoder is unreachable in tests: ends stay as coordinates.
       geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
       partnerProvider.overrideWith((_) async => Partner({'id': 'p1', 'name': 'Aina', 'plate': 'WXY 1'})),
+      meterOrientationProvider.overrideWithValue(orientation ?? _FakeOrientation()),
     ],
-    child: const MaterialApp(home: MeterScreen()),
+    child: app ?? const MaterialApp(home: MeterScreen()),
   ));
   await tester.pump();
   await tester.pump();
@@ -236,6 +255,75 @@ void main() {
     await tester.tap(find.text('Not now'));
     await tester.pumpAndSettle();
     expect(find.text('Receipt'), findsOneWidget, reason: 'the receipt stays open to copy');
+  });
+
+  group('the landscape console', () {
+    testWidgets('pins landscape while open and hands rotation back on the way out', (tester) async {
+      final orientation = _FakeOrientation();
+      await _pump(tester, orientation: orientation);
+      expect(orientation.calls, ['lock']);
+      await tester.pumpWidget(const SizedBox());
+      expect(orientation.calls, ['lock', 'release']);
+    });
+
+    testWidgets('a portrait viewport turns the console a quarter turn, dialogs included', (tester) async {
+      await _pump(tester, card: _card(source: 'obd'));
+      final stage = find.byType(RotatedBox);
+      expect(tester.widget<RotatedBox>(stage).quarterTurns, 1);
+      await tester.tap(find.text('START'));
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: stage, matching: find.text('Cannot start the meter')), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.text('Cannot start the meter'), findsNothing);
+    });
+
+    testWidgets('a landscape phone gets the console as is, fitted without overflow', (tester) async {
+      // An OBD-only card shows the longest key panel: the start block.
+      await _pump(tester, size: const Size(844, 390), card: _card(source: 'obd'));
+      expect(find.byType(RotatedBox), findsNothing);
+      expect(find.text('START'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a running hire fits a small landscape phone', (tester) async {
+      final loc = await _pump(tester, size: const Size(640, 320));
+      loc.controller.add(_fixAt(0));
+      await tester.pump();
+      await tester.tap(find.text('START'));
+      await tester.pump();
+      await _driveSecond(tester, loc, 10);
+      expect(find.text('END'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('back from the trip log returns to the meter', (tester) async {
+      await _pump(tester, size: const Size(1600, 900));
+      await tester.tap(find.text('Trip log'));
+      await tester.pumpAndSettle();
+      expect(find.text('No hires on this device yet.'), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('FOR HIRE'), findsOneWidget);
+    });
+
+    testWidgets('a settings screen gets the app rotation back, and the console re-pins it', (tester) async {
+      final orientation = _FakeOrientation();
+      final router = GoRouter(initialLocation: '/meter', routes: [
+        GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
+        GoRoute(path: '/meter/printer', builder: (_, _) => const Scaffold(body: Text('PRINTER SETUP'))),
+      ]);
+      addTearDown(router.dispose);
+      await _pump(tester,
+          size: const Size(1600, 900), orientation: orientation, app: MaterialApp.router(routerConfig: router));
+      await tester.tap(find.byTooltip('Receipt printer'));
+      await tester.pumpAndSettle();
+      expect(find.text('PRINTER SETUP'), findsOneWidget);
+      expect(orientation.calls, ['lock', 'release']);
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(orientation.calls, ['lock', 'release', 'lock']);
+    });
   });
 
   testWidgets('no location permission means no hire', (tester) async {
