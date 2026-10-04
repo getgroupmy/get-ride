@@ -84,6 +84,8 @@ CI (`.github/workflows/flutter.yml`) analyses, tests and builds every platform.
 
 ## Deploy (web → Vercel)
 
+Production is **https://getride.my**. `www.getride.my` redirects there, and `getride-snowy.vercel.app` is the project's own Vercel address for the same deployment. Both domains are attached in the Vercel project (Settings → Domains), so no workflow names them: every production deploy is served on them automatically.
+
 Deploying is the last step of CI. Every push to `main` whose `flutter analyze` and tests pass (`.github/workflows/flutter.yml`) runs `.github/workflows/deploy-web.yml`, which builds the web app and uploads it to Vercel **production**. Other branches and pull requests get the checks only: the team is on Vercel's free plan (100 deployments a day, shared with every project on the team), and per-branch previews used that up. Running *Deploy web* by hand on another branch still makes a preview. Vercel has no Flutter builder, so the site is built in GitHub Actions and shipped prebuilt (`vercel deploy --prebuilt`); every unknown path falls back to `index.html` so deep links reach the router. It can also be run by hand from the Actions tab (*Deploy web*).
 
 The only credential is the `VERCEL_TOKEN` repository secret. The team and project ids (`team_EBG91tunYkCckYh5bCELGRU3`, `prj_P1tZDFvZfEFMT7z84MtAVd1sa80b`) are identifiers, so they are written into the workflow; a `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` secret or variable overrides them. Vercel's own Git deployments should stay off for the project (Settings → Git), since they cannot build Flutter and would publish an empty site.
