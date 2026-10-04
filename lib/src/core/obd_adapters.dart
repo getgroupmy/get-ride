@@ -2,9 +2,8 @@
 // `utils/canbusAdapterStore.ts` (the pure half). Kept on the device: a reader
 // belongs to the phone in the car, not to the account.
 //
-// This slice of the port connects over Wi-Fi only; the transport field is
-// kept so readers added by later slices (Bluetooth LE, MFi, USB) fit the same
-// list.
+// Readers connect over Wi-Fi or Bluetooth LE; the transport field keeps the
+// list open for the MFi and USB readers of later slices.
 
 const wifiAdapterHost = '192.168.0.10';
 const wifiAdapterPort = 35000;
@@ -18,6 +17,7 @@ class SavedObdAdapter {
     required this.transport,
     this.host,
     this.port,
+    this.deviceId,
     required this.createdAt,
     this.lastConnectedAt,
   });
@@ -27,6 +27,10 @@ class SavedObdAdapter {
   final String transport;
   final String? host;
   final int? port;
+
+  /// Bluetooth LE: the peripheral the driver picked from the scan (a MAC
+  /// address on Android, a per-phone UUID on iOS and macOS).
+  final String? deviceId;
   final String createdAt;
   final int? lastConnectedAt;
 
@@ -36,6 +40,7 @@ class SavedObdAdapter {
         'transport': transport,
         if (host != null) 'host': host,
         if (port != null) 'port': port,
+        if (deviceId != null) 'deviceId': deviceId,
         'createdAt': createdAt,
         'lastConnectedAt': lastConnectedAt,
       };
@@ -50,6 +55,7 @@ class SavedObdAdapter {
       transport: transport,
       host: raw['host'] is String ? raw['host'] as String : null,
       port: raw['port'] is num ? (raw['port'] as num).toInt() : null,
+      deviceId: raw['deviceId'] is String ? raw['deviceId'] as String : null,
       createdAt: raw['createdAt'] is String ? raw['createdAt'] as String : '',
       lastConnectedAt: raw['lastConnectedAt'] is num ? (raw['lastConnectedAt'] as num).toInt() : null,
     );
@@ -61,6 +67,7 @@ class SavedObdAdapter {
         transport: transport,
         host: host,
         port: port,
+        deviceId: deviceId,
         createdAt: createdAt ?? this.createdAt,
         lastConnectedAt: lastConnectedAt ?? this.lastConnectedAt,
       );
@@ -98,9 +105,36 @@ final _hostname = RegExp(r'^[A-Za-z0-9._-]+$');
   );
 }
 
+/// A Bluetooth LE reader picked from the in-app scan. The name defaults to
+/// the one the dongle advertises.
+({String? error, SavedObdAdapter? value}) normalizeBleAdapter({
+  required String id,
+  required String createdAt,
+  required String deviceId,
+  String? advertisedName,
+  String name = '',
+}) {
+  final n = name.trim();
+  if (n.length > 60) return (error: 'Name must be 60 characters or fewer.', value: null);
+  final device = deviceId.trim();
+  if (device.isEmpty) return (error: 'Pick the reader from the scan.', value: null);
+  final advertised = (advertisedName ?? '').trim();
+  return (
+    error: null,
+    value: SavedObdAdapter(
+      id: id,
+      name: n.isNotEmpty ? n : (advertised.isNotEmpty ? advertised : 'Bluetooth OBD-II reader'),
+      transport: 'bluetooth',
+      deviceId: device,
+      createdAt: createdAt,
+    ),
+  );
+}
+
 String describeAdapter(SavedObdAdapter a) {
   final label = obdTransportLabels[a.transport] ?? a.transport;
   if (a.transport == 'wifi' && a.host != null) return '$label · ${a.host}:${a.port ?? wifiAdapterPort}';
+  if (a.transport == 'bluetooth' && a.deviceId != null) return '$label · ${a.deviceId}';
   return label;
 }
 
@@ -108,11 +142,12 @@ bool _sameDevice(SavedObdAdapter a, SavedObdAdapter b) {
   if (a.id == b.id) return true;
   if (a.transport != b.transport) return false;
   if (b.transport == 'wifi') return a.host == b.host && a.port == b.port;
+  if (b.transport == 'bluetooth') return a.deviceId != null && a.deviceId == b.deviceId;
   return true;
 }
 
 /// Adds [adapter], or replaces the saved reader for the same device (same
-/// host and port), keeping its id.
+/// host and port, or the same Bluetooth peripheral), keeping its id.
 List<SavedObdAdapter> upsertAdapter(List<SavedObdAdapter> list, SavedObdAdapter adapter) {
   final existing = list.where((a) => _sameDevice(a, adapter)).firstOrNull;
   if (existing == null) return [...list, adapter];

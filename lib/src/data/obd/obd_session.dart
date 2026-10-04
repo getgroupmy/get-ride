@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/obd.dart';
 import '../../core/obd_adapters.dart';
 import '../../core/taxi_meter.dart' show obdStaleMs;
+import 'obd_ble_transport.dart';
 import 'obd_client.dart';
 import 'obd_transport.dart';
 
@@ -49,10 +50,14 @@ final obdAdapterStoreProvider = Provider((_) => ObdAdapterStore());
 final obdTransportFactoryProvider = Provider<ObdTransport Function(SavedObdAdapter)>(
   (_) => (a) => switch (a.transport) {
         'wifi' => WifiObdTransport(a.host ?? wifiAdapterHost, a.port ?? wifiAdapterPort),
+        'bluetooth' when a.deviceId != null => BleObdTransport(a.deviceId!, name: a.name),
         _ => throw UnsupportedError(
             '${obdTransportLabels[a.transport] ?? a.transport} readers are not supported in this version of the app yet.'),
       },
 );
+
+/// Finds Bluetooth LE readers for the add-reader sheet.
+final obdBleScannerProvider = Provider<ObdBleScanner>((_) => const UniversalBleScanner());
 
 /// Epoch milliseconds now, shared with the meter's clock seam.
 final obdClockProvider = Provider<int Function()>((_) => () => DateTime.now().millisecondsSinceEpoch);
@@ -218,7 +223,7 @@ class ObdSession extends Notifier<ObdSessionState> {
   }
 
   static String _describe(Object e) {
-    final text = '$e'.replaceFirst(RegExp(r'^(Exception|StateError|SocketException|UnsupportedError|Unsupported operation):\s*'), '');
+    final text = '$e'.replaceFirst(RegExp(r'^(Exception|StateError|Bad state|SocketException|UnsupportedError|Unsupported operation):\s*'), '');
     return text.isEmpty ? 'Could not reach the reader.' : text;
   }
 }

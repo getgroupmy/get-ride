@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>GET.ride connects to your Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>GET.ride connects to your Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>GET.ride uses your location to set your pickup point and to share your position with your driver or passenger during a trip.</string>
 	<key>NSLocalNetworkUsageDescription</key>
