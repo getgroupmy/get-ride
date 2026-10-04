@@ -575,8 +575,9 @@ class RequiredDocsChecklist extends StatelessWidget {
   }
 }
 
-/// Partner document list with upload (Expo `RequiredDocsUploader`, admin
-/// mode: no AI verification, no renewal lock).
+/// Partner document list with upload (Expo `RequiredDocsUploader`: no AI
+/// verification, no renewal lock). Used by the admin panel and by partners
+/// themselves during onboarding.
 class PartnerDocsUploader extends ConsumerStatefulWidget {
   const PartnerDocsUploader({
     super.key,
@@ -585,12 +586,21 @@ class PartnerDocsUploader extends ConsumerStatefulWidget {
     this.title = 'Required documents',
     this.subtitle,
     this.enabled = true,
+    this.authUserId,
+    this.onUploads,
   });
   final String partnerId;
   final List<RequiredDoc> docs;
   final String title;
   final String? subtitle;
   final bool enabled;
+
+  /// Stored on each upload when a partner uploads their own documents; the
+  /// admin panel leaves it null.
+  final String? authUserId;
+
+  /// The newest upload per document, each time the list loads.
+  final ValueChanged<Map<String, Map<String, dynamic>>>? onUploads;
 
   @override
   ConsumerState<PartnerDocsUploader> createState() => _PartnerDocsUploaderState();
@@ -599,12 +609,21 @@ class PartnerDocsUploader extends ConsumerStatefulWidget {
 class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
   late Future<List<Map<String, dynamic>>> _uploads = _load();
 
-  Future<List<Map<String, dynamic>>> _load() => ref.read(peopleRepositoryProvider).providerDocuments(widget.partnerId);
+  Future<List<Map<String, dynamic>>> _load() async {
+    final rows = await ref.read(peopleRepositoryProvider).providerDocuments(widget.partnerId);
+    widget.onUploads?.call(latestUploadByDoc(rows));
+    return rows;
+  }
 
   Future<void> _open(RequiredDoc d, Map<String, dynamic>? existing) async {
     final saved = await showDialog<bool>(
       context: context,
-      builder: (_) => DocUploadDialog(partnerId: widget.partnerId, doc: d, existing: existing),
+      builder: (_) => DocUploadDialog(
+        partnerId: widget.partnerId,
+        doc: d,
+        existing: existing,
+        authUserId: widget.authUserId,
+      ),
     );
     if (saved == true && mounted) setState(() => _uploads = _load());
   }
@@ -660,10 +679,11 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
 /// requirement asks for). Saves to `provider-documents` storage and upserts
 /// `provider_documents` with status Pending Review.
 class DocUploadDialog extends ConsumerStatefulWidget {
-  const DocUploadDialog({super.key, required this.partnerId, required this.doc, this.existing});
+  const DocUploadDialog({super.key, required this.partnerId, required this.doc, this.existing, this.authUserId});
   final String partnerId;
   final RequiredDoc doc;
   final Map<String, dynamic>? existing;
+  final String? authUserId;
 
   @override
   ConsumerState<DocUploadDialog> createState() => _DocUploadDialogState();
@@ -723,7 +743,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
       final insurer = _insurers.where((e) => e.id == _insurerId).firstOrNull;
       await repo.saveProviderDocument(providerDocPayload(
         partnerId: widget.partnerId,
-        authUserId: null,
+        authUserId: widget.authUserId,
         docId: widget.doc.id,
         docName: widget.doc.name,
         flags: f,

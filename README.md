@@ -9,13 +9,14 @@ Flutter client for **GET.ride** that runs on **web, desktop (macOS / Windows / L
 | Sign-in | Phone number → SMS OTP → 6-digit PIN. Returning users sign in with their PIN. Same contract as the Expo app (`profile_phone_lookup`, `verify_pin_for_login`, `set_login_pin`, PIN-derived Auth password), so a PIN set in either app works in both. |
 | Ride booking | OpenStreetMap map, place search, choose-on-map, route + ETA, TEKSI fare calculation (ported from `utils/maps.ts`), service + payment choice, creates `ride_requests` rows and pings partners via the `send-push` edge function. |
 | Ride tracking | Live status via Supabase Realtime, driver details + live position, trip code, call/SMS driver, cancel / cancellation-request flow. |
+| Partner onboarding | From the Drive tab: profile photo, ID number (+ optional ID photo), address, service area, partner type, then the required documents for those types and areas, submitted for admin review (Expo `partner-onboarding`). Resumes at the first missing step; rejected or expired documents can be uploaded again from the submitted application. The partner row is claimed (`claim_partner_by_phone`) or created as an unapproved stub, within the 0088 guards. |
 | Drive (partner) | Online toggle, live queue of open requests sorted by distance, race-safe accept, arrive → verify trip code → start → complete, live location publishing, commission charged via `wallet_charge_ride_commission` (rate resolution ported from `utils/commissionStore.ts`). |
 | Wallet | GET.wallet / GET.coin / credit balances and transaction history (read-only; money movement stays behind the server RPCs). |
 | Push notifications | Android and iOS, through Firebase Cloud Messaging. The token is stored with the same `push_register_token` RPC as the Expo app, and the `send-push` edge function delivers to both kinds of token. Taps open the partner queue (ride requests) or the wallet (GET.coin transfers). Needs a Firebase project (see below and `docs/store-release.md`); a build without one has no push. |
 | Account | Profile edit, referral code, emergency contacts, support chat (realtime), light/dark theme, change PIN. |
 | Layout | Bottom navigation on phones, navigation rail on tablets, extended rail + side-by-side map panels on desktop/web. |
 
-Not ported yet (still Expo-only): partner onboarding & document upload, Meter Digital / OBD-II, EV orders, GET.coin trading, voice protection.
+Not ported yet (still Expo-only): vehicle onboarding, AI document checks, Meter Digital / OBD-II, EV orders, GET.coin trading, voice protection.
 
 ## Admin panel (`lib/src/admin/`, route `/admin`)
 
