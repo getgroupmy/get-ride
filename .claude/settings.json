@@ -1,0 +1,50 @@
+{
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": { "source": "github", "repo": "anthropics/claude-plugins-official" }
+    },
+    "superpowers-dev": {
+      "source": { "source": "github", "repo": "obra/superpowers" }
+    },
+    "caveman": {
+      "source": { "source": "github", "repo": "juliusbrussee/caveman" }
+    },
+    "one-skill-to-rule-them-all": {
+      "source": { "source": "github", "repo": "rebelytics/one-skill-to-rule-them-all" }
+    },
+    "anthropic-agent-skills": {
+      "source": { "source": "github", "repo": "anthropics/skills" }
+    },
+    "mobile-mcp": {
+      "source": { "source": "github", "repo": "mobile-next/mobile-mcp" }
+    },
+    "headroom-marketplace": {
+      "source": { "source": "github", "repo": "headroomlabs-ai/headroom" }
+    }
+  },
+  "enabledPlugins": {
+    "claude-code-setup@claude-plugins-official": true
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v graphify >/dev/null 2>&1 && graphify hook-guard search || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v graphify >/dev/null 2>&1 && graphify hook-guard read || true"
+          }
+        ]
+      }
+    ]
+  }
+}
