@@ -295,10 +295,29 @@ String describeMeterSource(MeterSource s) => switch (s) {
 /// `hasTeksiPartnerType`).
 bool hasTeksiPartnerType(Object? types) => types is List && types.any((t) => '${t ?? ''}'.trim().toLowerCase() == 'teksi');
 
-/// Why this build cannot open a hire on [card], or null when it can. This
-/// slice of the port meters on GPS only, so a card that takes GPS away (an
-/// OBD-only card) cannot be billed here: it must never quietly bill on GPS.
-String? meterGpsBlock(MeterProfile card) => allowedMeterSources(card.sourceMode).gps
-    ? null
-    : "This rate card bills on the vehicle's OBD-II reader only, and the reader is not supported in this version "
-        'of the app yet. Ask an administrator to allow GPS on the card, or use the meter in the previous app.';
+/// Why a hire cannot open now, or null when it can (Expo
+/// `evaluateMeterStart`, without the hold-and-connect flow). The card decides
+/// which sensors may bill: an OBD-only card needs a live reader, because it
+/// must never quietly bill on GPS; a card that allows GPS can open on either
+/// sensor, and bills on the reader whenever it is fresh.
+String? meterStartBlock(MeterProfile card, {required bool obdLinked, String? locationProblem}) {
+  final sources = allowedMeterSources(card.sourceMode);
+  if (!sources.gps) {
+    return obdLinked
+        ? null
+        : "This rate card bills on the vehicle's OBD-II reader only. Connect the reader (OBD-II reader, top right) "
+            'before starting.';
+  }
+  if (locationProblem != null && !(sources.obd && obdLinked)) return locationProblem;
+  return null;
+}
+
+/// The connection type the console headlines (Expo
+/// `describeMeterConnection`): what is linked, not what last billed.
+String describeMeterConnection({required bool gps, required bool obd, bool gpsAllowed = true, bool obdAllowed = true}) {
+  final g = gps && gpsAllowed, o = obd && obdAllowed;
+  if (g && o) return 'GPS + OBD-II';
+  if (o) return 'OBD-II';
+  if (g) return 'GPS';
+  return 'NO SIGNAL';
+}

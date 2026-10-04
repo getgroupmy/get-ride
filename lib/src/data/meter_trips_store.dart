@@ -35,14 +35,18 @@ class MeterTripsStore {
   Future<List<MeterTrip>> save(MeterTrip trip) async =>
       _write([trip, ...(await load()).where((t) => t.id != trip.id)]);
 
-  /// Completes a hire's ends once a late reading lands (the place name comes
-  /// back after the record is written). Only the ends can change: nothing
-  /// that was measured or charged is rewritable.
-  Future<List<MeterTrip>> patchEnds(String id, {MeterWaypoint? pickup, MeterWaypoint? dropoff}) async {
+  /// Completes one end of a hire once a late reading lands (the place name
+  /// and the drop-off odometer come back after the record is written). The
+  /// change is applied to the end as stored, so two late readings for the
+  /// same end never overwrite each other, and only the ends can change:
+  /// nothing that was measured or charged is rewritable.
+  Future<List<MeterTrip>> patchEnd(String id, {required bool pickup, required MeterWaypoint Function(MeterWaypoint end) change}) async {
     final trips = [...await load()];
     final i = trips.indexWhere((t) => t.id == id);
     if (i == -1) return trips;
-    trips[i] = trips[i].withEnds(pickup: pickup, dropoff: dropoff);
+    final end = pickup ? trips[i].pickup : trips[i].dropoff;
+    if (end == null) return trips;
+    trips[i] = pickup ? trips[i].withEnds(pickup: change(end)) : trips[i].withEnds(dropoff: change(end));
     return _write(trips);
   }
 

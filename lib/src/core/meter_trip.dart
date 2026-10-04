@@ -138,6 +138,9 @@ class MeterWaypoint {
   MeterWaypoint withPlace(String? place) =>
       MeterWaypoint(at: at, latitude: latitude, longitude: longitude, place: place, odometerKm: odometerKm);
 
+  MeterWaypoint withOdometer(double? km) =>
+      MeterWaypoint(at: at, latitude: latitude, longitude: longitude, place: place, odometerKm: km);
+
   /// The place, else the coordinates, else "NO FIX".
   String get label {
     if ((place ?? '').isNotEmpty) return place!;
@@ -375,6 +378,15 @@ String formatDashTime(int ms) {
   return '$h12:${d.minute.toString().padLeft(2, '0')} ${d.hour >= 12 ? 'PM' : 'AM'}';
 }
 
+/// The odometer as the dash cluster prints it: "128 450.6 km". A car that
+/// does not publish one (PID A6) shows a dash, never an invented number.
+String formatWaypointOdometer(double? km) {
+  if (km == null || !km.isFinite || km < 0) return '—';
+  final parts = km.toStringAsFixed(1).split('.');
+  final whole = parts[0].replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ' ');
+  return '$whole.${parts[1]} km';
+}
+
 /// "Fare metered on GPS · 0 OBD / 412 GPS samples".
 String meterReceiptFooterNote(MeterTrip t) {
   final onObd = t.obdSamples > 0 && t.obdSamples >= t.gpsSamples;
@@ -396,7 +408,9 @@ List<ReceiptLine> meterReceiptLines(MeterTrip t) {
     line('Start', formatDashTime(t.startedAt)),
     line('End', formatDashTime(t.endedAt)),
     if (t.pickup != null) line('Pickup', t.pickup!.label),
+    if (t.pickup?.odometerKm != null) line('Pickup odometer', formatWaypointOdometer(t.pickup!.odometerKm)),
     if (t.dropoff != null) line('Drop-off', t.dropoff!.label),
+    if (t.dropoff?.odometerKm != null) line('Drop-off odometer', formatWaypointOdometer(t.dropoff!.odometerKm)),
     line('Distance', formatMeterDistance(t.distanceM)),
     line('Trip time', formatMeterClock(t.elapsedMs)),
     line('Waiting', formatMeterClock(t.waitingMs)),

@@ -7,7 +7,13 @@ import 'package:get_ride/src/core/taxi_meter.dart';
 MeterPoint _at(double northM, {double? accuracy}) => MeterPoint(3.0 + northM / 111195, 101.0, accuracyM: accuracy);
 
 /// Drives the meter north at [kmh] for [seconds], one GPS fix a second.
-MeterState _drive(MeterState s, {required int fromMs, required double fromM, required double kmh, required int seconds}) {
+MeterState _drive(
+  MeterState s, {
+  required int fromMs,
+  required double fromM,
+  required double kmh,
+  required int seconds,
+}) {
   var state = s;
   for (var i = 1; i <= seconds; i++) {
     state = applyMeterSample(state, MeterSample(at: fromMs + i * 1000, gpsPoint: _at(fromM + kmh / 3.6 * i)));
@@ -184,21 +190,22 @@ void main() {
 
   group('trip record and receipt', () {
     MeterTrip trip({MeterPeriod period = MeterPeriod.day}) => buildMeterTrip(
-          const MeterState(startedAt: 1000, distanceM: 3420, elapsedMs: 600000, waitingMs: 60000, gpsSamples: 600),
-          id: 't1',
-          endedAt: 601000,
-          fare: 12.4,
-          details: resolveTripDetails(
-              const MeterTripDetailsDraft(pax: 2, luggage: 1, charges: 3, airport: MeterAirport.pickup))!,
-          rateLabel: 'Global rate card',
-          period: period,
-          flagFare: 4,
-          nightMultiplier: 1.5,
-          currency: 'RM',
-          cardSurcharge: 1,
-          pickup: const MeterWaypoint(at: 1000, latitude: 3.1, longitude: 101.6, place: 'KLCC'),
-          dropoff: const MeterWaypoint(at: 601000, latitude: 3.2, longitude: 101.7),
-        );
+      const MeterState(startedAt: 1000, distanceM: 3420, elapsedMs: 600000, waitingMs: 60000, gpsSamples: 600),
+      id: 't1',
+      endedAt: 601000,
+      fare: 12.4,
+      details: resolveTripDetails(
+        const MeterTripDetailsDraft(pax: 2, luggage: 1, charges: 3, airport: MeterAirport.pickup),
+      )!,
+      rateLabel: 'Global rate card',
+      period: period,
+      flagFare: 4,
+      nightMultiplier: 1.5,
+      currency: 'RM',
+      cardSurcharge: 1,
+      pickup: const MeterWaypoint(at: 1000, latitude: 3.1, longitude: 101.6, place: 'KLCC'),
+      dropoff: const MeterWaypoint(at: 601000, latitude: 3.2, longitude: 101.7),
+    );
 
     test('the total is the fare plus every declared charge', () {
       final t = trip();

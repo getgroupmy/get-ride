@@ -35,12 +35,7 @@ void main() {
     });
 
     test('a half-configured platform has no push rather than a crash', () {
-      const androidOnly = FirebaseEnv(
-        projectId: 'p',
-        messagingSenderId: 's',
-        androidAppId: 'a',
-        androidApiKey: 'k',
-      );
+      const androidOnly = FirebaseEnv(projectId: 'p', messagingSenderId: 's', androidAppId: 'a', androidApiKey: 'k');
       expect(firebaseOptionsFor(TargetPlatform.android, androidOnly), isNotNull);
       expect(firebaseOptionsFor(TargetPlatform.iOS, androidOnly), isNull);
       const noSender = FirebaseEnv(projectId: 'p', androidAppId: 'a', androidApiKey: 'k');

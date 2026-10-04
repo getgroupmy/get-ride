@@ -74,19 +74,41 @@ void main() {
     ];
 
     test('user override wins', () {
-      expect(resolveCommissionRate(rules, userId: 'u1', geo: const Geo(city: 'Shah Alam')), 0.05);
+      expect(
+        resolveCommissionRate(
+          rules,
+          userId: 'u1',
+          geo: const Geo(city: 'Shah Alam'),
+        ),
+        0.05,
+      );
     });
 
     test('most specific geography wins', () {
       expect(
-        resolveCommissionRate(rules, geo: const Geo(country: 'malaysia', state: 'Selangor', city: 'shah alam')),
+        resolveCommissionRate(
+          rules,
+          geo: const Geo(country: 'malaysia', state: 'Selangor', city: 'shah alam'),
+        ),
         0.09,
       );
-      expect(resolveCommissionRate(rules, geo: const Geo(country: 'Malaysia', state: 'Johor')), 0.11);
+      expect(
+        resolveCommissionRate(
+          rules,
+          geo: const Geo(country: 'Malaysia', state: 'Johor'),
+        ),
+        0.11,
+      );
     });
 
     test('contradicting parents and inactive rules are skipped', () {
-      expect(resolveCommissionRate(rules, geo: const Geo(state: 'Perak', city: 'Shah Alam')), 0.12);
+      expect(
+        resolveCommissionRate(
+          rules,
+          geo: const Geo(state: 'Perak', city: 'Shah Alam'),
+        ),
+        0.12,
+      );
       expect(resolveCommissionRate(rules, geo: const Geo(city: 'Ipoh')), 0.12);
     });
 

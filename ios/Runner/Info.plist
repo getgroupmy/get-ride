@@ -4,6 +4,8 @@
 <dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>GET.ride uses your location to set your pickup point and to share your position with your driver or passenger during a trip.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>GET.ride connects to your Wi-Fi OBD-II reader on the local network so Meter Digital can read the vehicle's speed and odometer.</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>tel</string>

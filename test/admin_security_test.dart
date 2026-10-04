@@ -28,27 +28,26 @@ RideSignal ride({
   double? userDropLat,
   double? userDropLng,
   String? cancelledAt,
-}) =>
-    RideSignal(
-      id: id,
-      riderId: 'rider-1',
-      partnerId: 'partner-1',
-      status: status,
-      distanceKm: distanceKm,
-      durationMin: durationMin,
-      fare: fare,
-      pickupLat: pickupLat,
-      pickupLng: pickupLng,
-      dropLat: dropLat,
-      dropLng: dropLng,
-      partnerArriveLat: partnerArriveLat,
-      partnerArriveLng: partnerArriveLng,
-      partnerDropLat: partnerDropLat,
-      partnerDropLng: partnerDropLng,
-      userDropLat: userDropLat,
-      userDropLng: userDropLng,
-      cancelledAt: cancelledAt,
-    );
+}) => RideSignal(
+  id: id,
+  riderId: 'rider-1',
+  partnerId: 'partner-1',
+  status: status,
+  distanceKm: distanceKm,
+  durationMin: durationMin,
+  fare: fare,
+  pickupLat: pickupLat,
+  pickupLng: pickupLng,
+  dropLat: dropLat,
+  dropLng: dropLng,
+  partnerArriveLat: partnerArriveLat,
+  partnerArriveLng: partnerArriveLng,
+  partnerDropLat: partnerDropLat,
+  partnerDropLng: partnerDropLng,
+  userDropLat: userDropLat,
+  userDropLng: userDropLng,
+  cancelledAt: cancelledAt,
+);
 
 ApiKeyEntry key(String id, String value, {int failed = 0, int used = 0, bool? disabled, String? label}) =>
     ApiKeyEntry(id: id, label: label ?? id, value: value, failedCount: failed, useCount: used, disabled: disabled);
@@ -115,8 +114,10 @@ void main() {
 
     test('ignores sessions with no device id, anonymous sessions, and self-links', () {
       expect(computeDeviceLinks(const [SessionIdentity(userId: 'a'), SessionIdentity(userId: 'b')]), isEmpty);
-      expect(computeDeviceLinks(const [SessionIdentity(deviceId: 'dev-1'), SessionIdentity(userId: 'b', deviceId: 'dev-1')]),
-          isEmpty);
+      expect(
+        computeDeviceLinks(const [SessionIdentity(deviceId: 'dev-1'), SessionIdentity(userId: 'b', deviceId: 'dev-1')]),
+        isEmpty,
+      );
       expect(
         computeDeviceLinks(const [
           SessionIdentity(userId: 'a', deviceId: 'dev-1'),
@@ -172,8 +173,11 @@ void main() {
       expect((c.enabled, c.maxAccountsPerDevice, c.blockEmulators), (false, 5, true));
       expect(DeviceGuardConfig.fromRpc(null).maxAccountsPerDevice, defaultMaxAccountsPerDevice);
       expect(DeviceGuardConfig.fromRpc({'max_accounts': 0}).maxAccountsPerDevice, defaultMaxAccountsPerDevice);
-      expect(c.copyWith(maxAccountsPerDevice: 0).toRpcParams(),
-          {'p_enabled': false, 'p_max_accounts': 1, 'p_block_emulators': true});
+      expect(c.copyWith(maxAccountsPerDevice: 0).toRpcParams(), {
+        'p_enabled': false,
+        'p_max_accounts': 1,
+        'p_block_emulators': true,
+      });
     });
   });
 
@@ -205,9 +209,14 @@ void main() {
     });
 
     test('resolveMobileOperator', () {
-      expect(resolveMobileOperator(carrierName: 'Digi', connectionType: 'mobile', ispProvider: 'X', ispOrg: 'Y'), 'Digi');
-      expect(resolveMobileOperator(carrierName: '--', connectionType: 'mobile', ispProvider: 'Celcom Axiata'),
-          'Celcom Axiata');
+      expect(
+        resolveMobileOperator(carrierName: 'Digi', connectionType: 'mobile', ispProvider: 'X', ispOrg: 'Y'),
+        'Digi',
+      );
+      expect(
+        resolveMobileOperator(carrierName: '--', connectionType: 'mobile', ispProvider: 'Celcom Axiata'),
+        'Celcom Axiata',
+      );
       expect(resolveMobileOperator(connectionType: 'mobile', ispOrg: 'Maxis Broadband'), 'Maxis Broadband');
       expect(resolveMobileOperator(connectionType: 'wifi', ispProvider: 'Home Fibre Co'), isNull);
       expect(resolveMobileOperator(connectionType: 'other', ispProvider: 'Office WiFi'), isNull);
@@ -218,7 +227,16 @@ void main() {
   // ---- session screen helpers ------------------------------------------------
   group('session summaries & filters', () {
     final sessions = [
-      {'id': 's1', 'user_id': 'u1', 'phone': '+601', 'captured_at': '2026-01-02T00:00:00Z', 'os_name': 'iOS', 'os_version': '17', 'device_model_name': 'iPhone', 'isp_provider': 'Maxis'},
+      {
+        'id': 's1',
+        'user_id': 'u1',
+        'phone': '+601',
+        'captured_at': '2026-01-02T00:00:00Z',
+        'os_name': 'iOS',
+        'os_version': '17',
+        'device_model_name': 'iPhone',
+        'isp_provider': 'Maxis',
+      },
       {'id': 's2', 'user_id': 'u1', 'phone': '+601', 'captured_at': '2026-01-01T00:00:00Z', 'os_name': 'Android'},
       {'id': 's3', 'user_id': null, 'phone': null, 'captured_at': '2026-01-03T00:00:00Z', 'is_physical_device': false},
       {'id': 's4', 'user_id': 'u2', 'phone': null, 'captured_at': '2025-12-01T00:00:00Z', 'is_physical_device': false},
@@ -251,9 +269,15 @@ void main() {
       expect(csvEscape(null), '');
       expect(csvEscape('a,b'), '"a,b"');
       expect(csvEscape('say "hi"'), '"say ""hi"""');
-      expect(rowsToCsv([
-        {'a': 1, 'b': 'x\ny'},
-      ], ['a', 'b']), 'a,b\n1,"x\ny"');
+      expect(
+        rowsToCsv(
+          [
+            {'a': 1, 'b': 'x\ny'},
+          ],
+          ['a', 'b'],
+        ),
+        'a,b\n1,"x\ny"',
+      );
     });
 
     test('day range is inclusive of both days in local time', () {
@@ -274,10 +298,15 @@ void main() {
       String? err;
       expect(trailWindow(TrailScope.range, now, onError: (e) => err = e), isNull);
       expect(err, 'Choose both a start and end date.');
-      expect(trailWindow(TrailScope.range, now, rangeFrom: '2026-03-05', rangeTo: '2026-03-01', onError: (e) => err = e),
-          isNull);
+      expect(
+        trailWindow(TrailScope.range, now, rangeFrom: '2026-03-05', rangeTo: '2026-03-01', onError: (e) => err = e),
+        isNull,
+      );
       expect(err, 'Check the date range values.');
-      expect(trailWindow(TrailScope.range, now, rangeFrom: '2026-03-01', rangeTo: '2026-03-05')!.start, DateTime(2026, 3, 1));
+      expect(
+        trailWindow(TrailScope.range, now, rangeFrom: '2026-03-01', rangeTo: '2026-03-05')!.start,
+        DateTime(2026, 3, 1),
+      );
     });
 
     test('time-of-day filter wraps past midnight', () {
@@ -295,7 +324,12 @@ void main() {
         {'latitude': 1, 'longitude': 1},
       ]);
       expect(coords.map((c) => c.lat), [1, 2, 3]);
-      expect(trailCoordinates([{'latitude': 1, 'longitude': 1}]), isEmpty);
+      expect(
+        trailCoordinates([
+          {'latitude': 1, 'longitude': 1},
+        ]),
+        isEmpty,
+      );
     });
   });
 
@@ -310,7 +344,11 @@ void main() {
 
   group('session detectors', () {
     test('multi-device account', () {
-      final f = detectMultiDeviceAccounts([sess('u1', '+60111', 'dA'), sess('u1', '+60111', 'dB'), sess('u1', '+60111', 'dC')]);
+      final f = detectMultiDeviceAccounts([
+        sess('u1', '+60111', 'dA'),
+        sess('u1', '+60111', 'dB'),
+        sess('u1', '+60111', 'dC'),
+      ]);
       expect(f, hasLength(1));
       expect(f.first.category, FraudCategory.multiDeviceAccount);
       expect(f.first.evidence['deviceCount'], 3);
@@ -321,7 +359,11 @@ void main() {
     });
 
     test('shared device', () {
-      final f = detectSharedDevices([sess('u1', '+60111', 'dS'), sess('u2', '+60222', 'dS'), sess('u3', '+60333', 'dS')]);
+      final f = detectSharedDevices([
+        sess('u1', '+60111', 'dS'),
+        sess('u2', '+60222', 'dS'),
+        sess('u3', '+60333', 'dS'),
+      ]);
       expect(f, hasLength(1));
       expect(f.first.category, FraudCategory.sharedDevice);
       expect(f.first.subjects, containsAll(['uid:u1', 'uid:u2', 'uid:u3']));
@@ -337,25 +379,37 @@ void main() {
 
   group('detectLocationMismatches', () {
     test('fake pickup', () {
-      final f = detectLocationMismatches([ride(pickupLat: 3.139, pickupLng: 101.6869, partnerArriveLat: 3.2, partnerArriveLng: 101.75)]);
+      final f = detectLocationMismatches([
+        ride(pickupLat: 3.139, pickupLng: 101.6869, partnerArriveLat: 3.2, partnerArriveLng: 101.75),
+      ]);
       expect(f.any((x) => x.id.startsWith('location_mismatch:arrive')), isTrue);
     });
     test('fake drop-off', () {
-      final f = detectLocationMismatches([ride(dropLat: 3.139, dropLng: 101.6869, partnerDropLat: 3.3, partnerDropLng: 101.9)]);
+      final f = detectLocationMismatches([
+        ride(dropLat: 3.139, dropLng: 101.6869, partnerDropLat: 3.3, partnerDropLng: 101.9),
+      ]);
       expect(f.any((x) => x.id.startsWith('location_mismatch:drop')), isTrue);
     });
     test('rider/partner disagreement', () {
-      final f = detectLocationMismatches(
-          [ride(partnerDropLat: 3.139, partnerDropLng: 101.6869, userDropLat: 3.25, userDropLng: 101.8)]);
+      final f = detectLocationMismatches([
+        ride(partnerDropLat: 3.139, partnerDropLng: 101.6869, userDropLat: 3.25, userDropLng: 101.8),
+      ]);
       expect(f.any((x) => x.id.startsWith('location_mismatch:sides')), isTrue);
     });
     test('close checkpoints and open rides are not flagged', () {
       expect(
         detectLocationMismatches([
           ride(
-            pickupLat: 3.139, pickupLng: 101.6869, partnerArriveLat: 3.1391, partnerArriveLng: 101.687,
-            dropLat: 3.15, dropLng: 101.7, partnerDropLat: 3.1501, partnerDropLng: 101.7001,
-            userDropLat: 3.1502, userDropLng: 101.7002,
+            pickupLat: 3.139,
+            pickupLng: 101.6869,
+            partnerArriveLat: 3.1391,
+            partnerArriveLng: 101.687,
+            dropLat: 3.15,
+            dropLng: 101.7,
+            partnerDropLat: 3.1501,
+            partnerDropLng: 101.7001,
+            userDropLat: 3.1502,
+            userDropLng: 101.7002,
           ),
         ]),
         isEmpty,
@@ -438,14 +492,23 @@ void main() {
     test('many accepted transfers between two accounts', () {
       final t = [
         for (var i = 0; i < 7; i++)
-          TransferSignal(id: 'x$i', fromUserId: i.isEven ? 'a' : 'b', toUserId: i.isEven ? 'b' : 'a', coins: 5, status: 'accepted'),
+          TransferSignal(
+            id: 'x$i',
+            fromUserId: i.isEven ? 'a' : 'b',
+            toUserId: i.isEven ? 'b' : 'a',
+            coins: 5,
+            status: 'accepted',
+          ),
       ];
       final f = detectTransferCircles(t, minTransfers: 6);
       expect(f, hasLength(1));
       expect(f.first.evidence['transferCount'], 7);
     });
     test('pending transfers ignored', () {
-      final t = [for (var i = 0; i < 7; i++) TransferSignal(id: 'x$i', fromUserId: 'a', toUserId: 'b', coins: 5, status: 'pending')];
+      final t = [
+        for (var i = 0; i < 7; i++)
+          TransferSignal(id: 'x$i', fromUserId: 'a', toUserId: 'b', coins: 5, status: 'pending'),
+      ];
       expect(detectTransferCircles(t, minTransfers: 6), isEmpty);
     });
   });
@@ -504,8 +567,11 @@ void main() {
 
     test('rule rows trim and blank the label; blank IPs are refused', () {
       expect(ipRuleRow(ip: '  ', listType: IpListType.whitelist).error, isNotNull);
-      expect(ipRuleRow(ip: ' 1.2.3.4 ', listType: IpListType.blacklist, label: '  ').row,
-          {'ip_address': '1.2.3.4', 'list_type': 'blacklist', 'label': null});
+      expect(ipRuleRow(ip: ' 1.2.3.4 ', listType: IpListType.blacklist, label: '  ').row, {
+        'ip_address': '1.2.3.4',
+        'list_type': 'blacklist',
+        'label': null,
+      });
       expect(ipRuleRow(ip: '1.2.3.4', listType: IpListType.whitelist, label: ' Office ').row!['label'], 'Office');
     });
 
@@ -533,9 +599,13 @@ void main() {
     test('merge adds missing defaults without touching edits, keeping custom providers last', () {
       final stored = [
         const ApiProviderDef(id: 'custom', name: 'Mine'),
-        ApiProviderDef(id: 'google', name: 'Renamed', services: [
-          ApiServiceDef(id: 'maps', name: 'Maps', keys: [key('k1', 'secret')]),
-        ]),
+        ApiProviderDef(
+          id: 'google',
+          name: 'Renamed',
+          services: [
+            ApiServiceDef(id: 'maps', name: 'Maps', keys: [key('k1', 'secret')]),
+          ],
+        ),
       ];
       final r = mergeDefaultProviders(stored);
       expect(r.changed, isTrue);
@@ -596,13 +666,17 @@ void main() {
     });
 
     test('rotation order: fewest failures, then least used; disabled/empty skipped', () {
-      final s = ApiServiceDef(id: 's', name: 'S', keys: [
-        key('worst', 'k-worst', failed: 3),
-        key('busy', 'k-busy', used: 10),
-        key('off', 'k-off', disabled: true),
-        key('empty', '  '),
-        key('best', 'k-best', used: 1),
-      ]);
+      final s = ApiServiceDef(
+        id: 's',
+        name: 'S',
+        keys: [
+          key('worst', 'k-worst', failed: 3),
+          key('busy', 'k-busy', used: 10),
+          key('off', 'k-off', disabled: true),
+          key('empty', '  '),
+          key('best', 'k-best', used: 1),
+        ],
+      );
       expect(rotationOrder(s).map((k) => k.id), ['best', 'busy', 'worst']);
       expect(pickNextKey(s)!.id, 'best');
       expect(pickNextKey(ApiServiceDef(id: 's', name: 'S', keys: [key('off', 'x', disabled: true)])), isNull);
@@ -615,7 +689,13 @@ void main() {
     test('no service → fallback', () async {
       var called = false;
       final r = await runKeyRotation<String>(
-          service: null, perform: (_) async { called = true; return (ok: true, value: 'x'); }, fallback: fb);
+        service: null,
+        perform: (_) async {
+          called = true;
+          return (ok: true, value: 'x');
+        },
+        fallback: fb,
+      );
       expect(r, 'fb');
       expect(called, isFalse);
     });
@@ -623,9 +703,22 @@ void main() {
     test('keyless service is invoked once with an empty key, falling back on failure', () async {
       const s = ApiServiceDef(id: 'geocoding', name: 'Geocoding');
       final keys = <String>[];
-      expect(await runKeyRotation<String>(service: s, perform: (k) async { keys.add(k); return (ok: true, value: 'via-$k'); }, fallback: fb), 'via-');
+      expect(
+        await runKeyRotation<String>(
+          service: s,
+          perform: (k) async {
+            keys.add(k);
+            return (ok: true, value: 'via-$k');
+          },
+          fallback: fb,
+        ),
+        'via-',
+      );
       expect(keys, ['']);
-      expect(await runKeyRotation<String>(service: s, perform: (_) async => (ok: false, value: 'bad'), fallback: fb), 'fb');
+      expect(
+        await runKeyRotation<String>(service: s, perform: (_) async => (ok: false, value: 'bad'), fallback: fb),
+        'fb',
+      );
     });
 
     test('rotates on failure and reports both attempts', () async {
@@ -642,20 +735,33 @@ void main() {
     });
 
     test('tries keys in health order', () async {
-      final s = ApiServiceDef(id: 'g', name: 'G', keys: [
-        key('worst', 'k-worst', failed: 3),
-        key('busy', 'k-busy', used: 10),
-        key('best', 'k-best', used: 1),
-      ]);
+      final s = ApiServiceDef(
+        id: 'g',
+        name: 'G',
+        keys: [key('worst', 'k-worst', failed: 3), key('busy', 'k-busy', used: 10), key('best', 'k-best', used: 1)],
+      );
       final tried = <String>[];
-      await runKeyRotation<String>(service: s, perform: (k) async { tried.add(k); return (ok: false, value: ''); }, fallback: fb);
+      await runKeyRotation<String>(
+        service: s,
+        perform: (k) async {
+          tried.add(k);
+          return (ok: false, value: '');
+        },
+        fallback: fb,
+      );
       expect(tried, ['k-best', 'k-busy', 'k-worst']);
     });
 
     test('returns the last non-ok value when every key fails with output', () async {
       final s = ApiServiceDef(id: 'g', name: 'G', keys: [key('a', 'key-a')]);
-      expect(await runKeyRotation<String>(service: s, perform: (_) async => (ok: false, value: 'partial-result'), fallback: fb),
-          'partial-result');
+      expect(
+        await runKeyRotation<String>(
+          service: s,
+          perform: (_) async => (ok: false, value: 'partial-result'),
+          fallback: fb,
+        ),
+        'partial-result',
+      );
     });
 
     test('falls back when every key throws, reporting each failure', () async {
@@ -718,15 +824,19 @@ void main() {
 
     test('preflight, status mapping and test outcomes', () {
       expect(elifePreflight(normalizeElife(null))!.message, 'Client ID and Client Secret are required.');
-      expect(elifePreflight(normalizeElife({'clientId': 'a', 'clientSecret': 'b', 'tokenUrl': ' '}))!.message,
-          'Token URL is not configured.');
+      expect(
+        elifePreflight(normalizeElife({'clientId': 'a', 'clientSecret': 'b', 'tokenUrl': ' '}))!.message,
+        'Token URL is not configured.',
+      );
       expect(elifePreflight(normalizeElife({'clientId': 'a', 'clientSecret': 'b'})), isNull);
       expect(elifeResultForStatus(200).ok, isTrue);
       expect(elifeResultForStatus(401).message, 'Token request failed (HTTP 401).');
 
       final failed = applyElifeTest(normalizeElife(null), elifeResultForStatus(401), now: now);
-      expect((failed['status'], failed['lastError'], failed['lastCheckedAt']),
-          ('error', 'Token request failed (HTTP 401).', now.millisecondsSinceEpoch));
+      expect(
+        (failed['status'], failed['lastError'], failed['lastCheckedAt']),
+        ('error', 'Token request failed (HTTP 401).', now.millisecondsSinceEpoch),
+      );
       final ok = applyElifeTest(failed, elifeResultForStatus(200), now: now);
       expect(ok['status'], 'connected');
       expect(ok.containsKey('lastError'), isFalse);
@@ -813,10 +923,23 @@ void main() {
       expect(fareAiProviderLabel('claude'), 'Claude (Anthropic)');
       expect(fareAiProviderLabel('other'), 'other');
       expect(fareAiProviderLabel(''), '—');
-      expect(responseSummary([{'success': true}, {'success': false}]), (total: 2, passed: 1, failed: 1));
+      expect(
+        responseSummary([
+          {'success': true},
+          {'success': false},
+        ]),
+        (total: 2, passed: 1, failed: 1),
+      );
       expect(tollHeadline({'toll_count': 0}), isNull);
       expect(tollHeadline({'toll_count': 2, 'toll_total': 5.5}), 'Tolls: 2 booths · 5.5 total');
-      expect(tollHeadline({'tolls': [{'charge': 1}]}), 'Tolls: 1 booth');
+      expect(
+        tollHeadline({
+          'tolls': [
+            {'charge': 1},
+          ],
+        }),
+        'Tolls: 1 booth',
+      );
     });
   });
 
