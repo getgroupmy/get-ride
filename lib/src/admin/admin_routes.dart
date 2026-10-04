@@ -1,5 +1,6 @@
 import 'package:go_router/go_router.dart';
 
+import 'admin_registry.dart';
 import 'admin_shell.dart';
 import 'screens/commission_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -54,5 +55,6 @@ final adminRoute = ShellRoute(
         return AdminCategoryScreen(categoryKey: s.pathParameters['category']!, scope: q, parentLabel: label);
       },
     ),
+    ...allPortedAdminRoutes,
   ],
 );

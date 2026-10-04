@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../widgets/common.dart';
@@ -24,6 +25,7 @@ class _RecordList extends ConsumerStatefulWidget {
     required this.tile,
     required this.onOpen,
     this.initialFilter,
+    this.floatingActionButton,
   });
 
   final String title;
@@ -35,6 +37,7 @@ class _RecordList extends ConsumerStatefulWidget {
   final Widget Function(Map<String, dynamic>) tile;
   final void Function(Map<String, dynamic>) onOpen;
   final String? initialFilter;
+  final Widget? floatingActionButton;
 
   @override
   ConsumerState<_RecordList> createState() => _RecordListState();
@@ -50,6 +53,7 @@ class _RecordListState extends ConsumerState<_RecordList> {
     return AdminPage(
       title: widget.title,
       module: widget.module,
+      floatingActionButton: widget.floatingActionButton,
       body: Column(children: [
         FilterBar(
           filters: widget.filters,
@@ -117,6 +121,24 @@ Widget _statusPicker({
       ]),
     );
 
+/// "Edit" in a detail sheet: opens the ported edit form, then refreshes.
+Widget _editButton(BuildContext ctx, WidgetRef ref, String page, String path, String id, VoidCallback onDone) =>
+    ref.read(pageAccessProvider(page)) != AccessLevel.edit
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: FilledButton.tonalIcon(
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Edit'),
+              onPressed: () async {
+                final router = GoRouter.of(ctx);
+                Navigator.pop(ctx);
+                await router.push('$path?id=${Uri.encodeQueryComponent(id)}');
+                onDone();
+              },
+            ),
+          );
+
 // ---- Users -----------------------------------------------------------------
 
 class AdminUsersScreen extends ConsumerWidget {
@@ -176,6 +198,7 @@ class AdminUsersScreen extends ConsumerWidget {
             }
           },
         ),
+        _editButton(ctx, ref, 'admin-user-edit', '/admin/m/user-edit', u['id'] as String, () => ref.invalidate(adminUsersProvider)),
       ]),
     );
   }
@@ -296,6 +319,9 @@ class AdminPartnersScreen extends ConsumerWidget {
           value: p['documents_ok'] == true,
           onChanged: canEdit ? (v) => patch(ctx, {'documents_ok': v}) : null,
         ),
+        vehicles
+            ? _editButton(ctx, ref, 'admin-vehicle-edit', '/admin/m/vehicle-edit', id, () => ref.invalidate(adminVehiclesProvider))
+            : _editButton(ctx, ref, 'admin-partner-edit', '/admin/m/partner-edit', id, () => ref.invalidate(adminPartnersProvider)),
       ]),
     );
   }
@@ -312,6 +338,17 @@ class AdminPartnersScreen extends ConsumerWidget {
             ? const ['plate', 'make', 'model', 'owner_name', 'owner_phone', 'display_id', 'vin']
             : const ['name', 'phone', 'plate', 'email', 'display_id'],
         onOpen: (p) => _open(context, ref, p),
+        floatingActionButton: ref.watch(pageAccessProvider(vehicles ? 'admin-vehicle-add' : 'admin-partner-add')) ==
+                AccessLevel.edit
+            ? FloatingActionButton.extended(
+                icon: const Icon(Icons.add),
+                label: Text(vehicles ? 'Add vehicle' : 'Add partner'),
+                onPressed: () async {
+                  await context.push(vehicles ? '/admin/m/vehicle-add' : '/admin/m/partner-add');
+                  ref.invalidate(vehicles ? adminVehiclesProvider : adminPartnersProvider);
+                },
+              )
+            : null,
         tile: (p) => ListTile(
           leading: _avatar(p['avatar_url'] ?? p['image_front']),
           title: Text(vehicles

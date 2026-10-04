@@ -8,6 +8,7 @@ import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_categories.g.dart';
 import '../admin_providers.dart';
+import '../admin_registry.dart';
 import '../admin_settings_models.dart';
 import '../widgets/admin_widgets.dart';
 
@@ -24,7 +25,7 @@ SettingsCategory categoryFor(String key) =>
     );
 
 final _otherCategoriesProvider = FutureProvider.autoDispose<List<String>>((ref) async {
-  final known = crudCategories.map((c) => c.key).toSet();
+  final known = {...crudCategories.map((c) => c.key), ...allOwnedCategories};
   final names = await ref.watch(adminRepositoryProvider).settingCategoryNames();
   return names.where((n) => !known.contains(n)).toList();
 });
@@ -37,6 +38,13 @@ AccessLevel _categoryLevel(WidgetRef ref, SettingsCategory c) {
 class AdminSettingsScreen extends ConsumerWidget {
   const AdminSettingsScreen({super.key});
 
+  List<AdminScreenEntry> _entriesIn(WidgetRef ref, String section) {
+    final access = ref.watch(adminAccessProvider).value ?? AdminAccess.none;
+    return allAdminEntries
+        .where((e) => e.listed && e.section == section && access.canRead([...e.pages, 'admin-settings']))
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final visible = crudCategories.where((c) => !c.nested && _categoryLevel(ref, c) != AccessLevel.none).toList();
@@ -45,6 +53,29 @@ class AdminSettingsScreen extends ConsumerWidget {
       title: 'Settings',
       module: 'settings',
       body: ListView(padding: const EdgeInsets.all(16), children: [
+        for (final section in adminSections) ...[
+          if (_entriesIn(ref, section).isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+              child: Text(section, style: Theme.of(context).textTheme.titleMedium),
+            ),
+            for (final e in _entriesIn(ref, section))
+              Card(
+                child: ListTile(
+                  leading: Icon(e.icon),
+                  title: Text(e.title),
+                  subtitle: Text(e.subtitle),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go(e.path),
+                ),
+              ),
+          ],
+        ],
+        if (visible.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+            child: Text('Lists', style: Theme.of(context).textTheme.titleMedium),
+          ),
         for (final c in visible)
           Card(
             child: ListTile(

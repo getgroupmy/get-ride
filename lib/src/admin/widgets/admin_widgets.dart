@@ -11,27 +11,33 @@ class AdminPage extends ConsumerWidget {
   const AdminPage({
     super.key,
     required this.title,
-    required this.module,
+    this.module,
+    this.page,
     required this.body,
     this.actions = const [],
     this.floatingActionButton,
   });
 
   final String title;
-  final String module;
+  /// Admin module id (core screens) or Expo page key (ported screens);
+  /// exactly one should be set.
+  final String? module;
+  final String? page;
   final Widget body;
   final List<Widget> actions;
   final Widget? floatingActionButton;
 
   Widget? _leading(BuildContext context) {
-    if (Navigator.of(context).canPop()) return null;
+    if (Navigator.of(context).canPop()) return const BackButton();
     final scope = AdminDrawerScope.maybeOf(context);
     return scope == null ? null : IconButton(icon: const Icon(Icons.menu), onPressed: scope.openDrawer);
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final level = ref.watch(moduleAccessProvider(module));
+    final level = page != null
+        ? ref.watch(pageAccessProvider(page!))
+        : ref.watch(moduleAccessProvider(module ?? ''));
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
