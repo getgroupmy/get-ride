@@ -94,7 +94,7 @@ One-time setup:
    - `VERCEL_ORG_ID` — the team/account ID (Vercel → Settings → General)
    - `VERCEL_PROJECT_ID` — the project ID (project → Settings → General)
 
-Speed Insights is wired into `web/index.html` as Vercel's script tag (the non-npm form of `@vercel/speed-insights`); turn it on in the project's **Speed Insights** tab and it starts reporting from the next deploy.
+Web Analytics and Speed Insights are wired into `web/index.html` as Vercel's script tags (the non-npm forms of `@vercel/analytics` and `@vercel/speed-insights`); turn each on in the project's **Analytics** / **Speed Insights** tab and it starts reporting from the next deploy. The app uses Flutter's default hash URLs (`/#/route`), so Analytics is likely to group every screen under `/`; per-screen numbers would need the path URL strategy.
 
 Until all three are set, the workflow skips the deploy and leaves a notice instead of failing. It can also be run by hand from the Actions tab (**Run workflow**), which deploys `main` to production and any other branch as a preview.
 
