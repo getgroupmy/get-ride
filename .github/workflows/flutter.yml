@@ -30,11 +30,13 @@ jobs:
       - run: deno check scripts/play_upload.ts
       - run: deno test scripts/play_upload_test.ts
 
-  # Every push that passes analyze + tests is deployed to Vercel: the
-  # default branch to production, any other branch to a preview URL.
+  # Every push to the default branch that passes analyze + tests is deployed
+  # to Vercel production. Other branches get the checks only: Vercel's free
+  # plan allows 100 deployments a day across the whole team, and per-branch
+  # previews used it up.
   deploy:
     needs: test
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     uses: ./.github/workflows/deploy-web.yml
     secrets: inherit
 

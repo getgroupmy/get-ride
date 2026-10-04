@@ -2,9 +2,10 @@ name: Deploy web
 
 # Builds the Flutter web app and ships it to Vercel, as the last step of CI
 # (`flutter.yml` calls this once `flutter analyze` and the tests pass on a
-# push): the default branch (`main`) goes to production, every other branch
-# to a preview URL. Pull requests get the checks, not the deploy; the push
-# of the same commit deploys it. Runnable by hand from the Actions tab too.
+# push to the default branch, `main`): production. Other branches and pull
+# requests get the checks only, to stay inside Vercel's free-plan limit of
+# 100 deployments a day per team. Runnable by hand from the Actions tab
+# too; on a branch other than `main` that makes a preview.
 #
 # Vercel has no Flutter builder, so the site is built here and uploaded with
 # the Build Output API (`vercel deploy --prebuilt`) -- Vercel only serves it.
