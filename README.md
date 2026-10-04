@@ -81,6 +81,21 @@ flutter build macos | windows | linux
 
 CI (`.github/workflows/flutter.yml`) analyses, tests and builds every platform.
 
+## Deploy (web → Vercel)
+
+`.github/workflows/deploy-web.yml` builds the web app and uploads it to Vercel: **production** on every push to `main`, a **preview** for each pull request (its URL is posted as a PR comment). Vercel has no Flutter builder, so the site is built in GitHub Actions and shipped prebuilt (`vercel deploy --prebuilt`); every unknown path falls back to `index.html` so deep links reach the router.
+
+One-time setup:
+
+1. In Vercel, create a project (Add New → Project; import this repo, or create an empty one). The workflow uploads a finished build, so the project's framework/build settings don't matter. If you did import the repo, turn off Vercel's own Git deployments for it (Settings → Git) so each push isn't deployed twice.
+2. Create a token under Account Settings → Tokens.
+3. Add three repository secrets (GitHub → Settings → Secrets and variables → Actions):
+   - `VERCEL_TOKEN` — the token from step 2
+   - `VERCEL_ORG_ID` — the team/account ID (Vercel → Settings → General)
+   - `VERCEL_PROJECT_ID` — the project ID (project → Settings → General)
+
+Until all three are set, the workflow skips the deploy and leaves a notice instead of failing. It can also be run by hand from the Actions tab (**Run workflow**), which deploys `main` to production and any other branch as a preview.
+
 ## Layout
 
 ```
