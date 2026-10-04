@@ -201,11 +201,13 @@ bool isEvFinancingComplete(EvOrderValues v) {
   final type = mapAdminTypeToFinanceType(v['financeType']);
   if (type == null) return false;
   if (_str(v['financeChoice']).isEmpty) return false;
-  if (type == 'cash') return evFlag(v['cashBalancePaid']);
+  // A sum the customer has confirmed they owe completes the step as surely
+  // as one already received: the back office records the money itself.
+  if (type == 'cash') return evFlag(v['cashBalancePaid']) || evFlag(v['cashBalanceConfirmed']);
   if (type == 'leasing') {
     final addon = _str(v['leasingAddonRequired']).toLowerCase();
     if (addon == 'no') return true;
-    return addon == 'yes' && evFlag(v['leasingAddonPaid']);
+    return addon == 'yes' && (evFlag(v['leasingAddonPaid']) || evFlag(v['leasingAddonConfirmed']));
   }
   return true;
 }

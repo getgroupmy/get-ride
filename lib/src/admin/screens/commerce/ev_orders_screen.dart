@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/ev_wizard.dart' show evMoney, evPaymentsDue, paymentReceivedPatch;
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -322,12 +323,40 @@ class _OrderDetail extends ConsumerWidget {
           'Method': switch (ft) { 'cash' => 'Cash', 'hp' => 'Hire Purchase', 'leasing' => 'Leasing', _ => ft },
           'Plan': _truthy(v['financePlan']) ? '${v['financePlan']}' : null,
           if (ft == 'cash')
-            'Balance': evFlag(v['cashBalancePaid']) ? 'Paid · RM${groupedNumber(toNum(v['balancePaidAmount']))}' : 'Unpaid',
+            'Balance': evFlag(v['cashBalancePaid'])
+                ? 'Paid · RM${groupedNumber(toNum(v['balancePaidAmount']))}'
+                : evFlag(v['cashBalanceConfirmed'])
+                    ? 'Due · RM${groupedNumber(toNum(v['balanceDueAmount']))}'
+                    : 'Not confirmed',
           if (ft == 'leasing' && '${v['leasingAddonRequired'] ?? ''}'.isNotEmpty)
             'Add-on': v['leasingAddonRequired'] == 'yes' ? 'Required' : 'Not required',
           if (ft == 'leasing' && v['leasingAddonRequired'] == 'yes')
-            'Add-on pay': evFlag(v['leasingAddonPaid']) ? 'Paid · RM${groupedNumber(toNum(v['leasingAddonAmount']))}' : 'Unpaid',
+            'Add-on pay': evFlag(v['leasingAddonPaid'])
+                ? 'Paid · RM${groupedNumber(toNum(v['leasingAddonAmount']))}'
+                : evFlag(v['leasingAddonConfirmed'])
+                    ? 'Due · RM${groupedNumber(toNum(v['leasingAddonAmount']))}'
+                    : 'Not confirmed',
         }),
+      ],
+      if (evPaymentsDue(v).isNotEmpty) ...[
+        heading('Payments'),
+        // Nothing is charged in the app: each sum is recorded as due, and is
+        // marked received here once TEKSI has collected it.
+        for (final p in evPaymentsDue(v))
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(p.received ? Icons.check_circle : Icons.schedule,
+                color: p.received ? Colors.green : const Color(0xFFF59E0B)),
+            title: Text('${p.label} · ${evMoney(p.amount, p.currency)}'),
+            subtitle: Text(p.received ? 'Received' : 'Due'),
+            trailing: !p.received && canEdit
+                ? TextButton(
+                    onPressed: () => _patch(context, ref, paymentReceivedPatch(p.key, v, DateTime.now()),
+                        success: '${p.label} recorded as received.'),
+                    child: const Text('Mark received'),
+                  )
+                : null,
+          ),
       ],
       if (_truthy(v['deliveryDate'])) ...[
         heading('Delivery'),

@@ -55,6 +55,13 @@ class AccountScreen extends ConsumerWidget {
             Card(
               child: Column(children: [
                 ListTile(
+                  leading: const Icon(Icons.electric_car_outlined),
+                  title: const Text('Book TEKSI EV'),
+                  subtitle: const Text('Order an electric car, or follow your order'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/ev'),
+                ),
+                ListTile(
                   leading: const Icon(Icons.contact_emergency_outlined),
                   title: const Text('Emergency contacts'),
                   trailing: const Icon(Icons.chevron_right),
