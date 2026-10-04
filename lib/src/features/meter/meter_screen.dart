@@ -154,6 +154,11 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     final area = await ref.read(geoServiceProvider).reverseArea(LatLng(f.latitude, f.longitude));
     if (!mounted || area == null) return;
     setState(() => _area = area);
+    // The launch decision resolves its card for where the meter last ran.
+    unawaited(ref
+        .read(meterLaunchStoreProvider)
+        .saveGeo((country: area.country, state: area.state, city: area.city, suburb: area.suburb))
+        .catchError((_) {}));
     _resolveCard();
   }
 
