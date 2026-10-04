@@ -83,8 +83,8 @@ class WalletScreen extends ConsumerWidget {
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.swap_horiz),
-                  title: const Text('Trade GET.coin'),
-                  subtitle: const Text('Buy or sell coins with GET.wallet'),
+                  title: const Text('GET.coin: buy, sell, send'),
+                  subtitle: const Text('Trade with GET.wallet or send coins to another account'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push('/wallet/trade'),
                 ),
