@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/format.dart';
 import '../../data/models.dart';
@@ -14,8 +15,8 @@ final walletTxProvider = FutureProvider.autoDispose<List<WalletTransaction>>(
   (ref) => ref.watch(accountRepositoryProvider).walletTransactions(),
 );
 
-/// GET.wallet / GET.coin / credit balances and history (read-only — money
-/// movement stays behind the server-side wallet RPCs).
+/// GET.wallet / GET.coin / credit balances and history. Money only moves
+/// through the server-side wallet RPCs (GET.coin trades: `CoinTradeScreen`).
 class WalletScreen extends ConsumerWidget {
   const WalletScreen({super.key});
 
@@ -77,6 +78,16 @@ class WalletScreen extends ConsumerWidget {
                       ),
                   ]);
                 },
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.swap_horiz),
+                  title: const Text('Trade GET.coin'),
+                  subtitle: const Text('Buy or sell coins with GET.wallet'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/wallet/trade'),
+                ),
               ),
               const SizedBox(height: 16),
               Text('Transactions', style: t.textTheme.titleMedium),

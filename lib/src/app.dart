@@ -32,6 +32,7 @@ import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/support/support_chat_screen.dart';
 import 'features/support/support_screen.dart';
+import 'features/wallet/coin_trade_screen.dart';
 import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
 
@@ -124,7 +125,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: '/', builder: (_, _) => const HomeScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: '/trips', builder: (_, _) => const TripsScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen())]),
+          StatefulShellBranch(routes: [GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen(), routes: [
+            GoRoute(path: 'trade', builder: (_, _) => const CoinTradeScreen()),
+          ])]),
           StatefulShellBranch(routes: [GoRoute(path: '/drive', builder: (_, _) => const PartnerScreen())]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/account', builder: (_, _) => const AccountScreen(), routes: [
