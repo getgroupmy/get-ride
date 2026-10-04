@@ -33,6 +33,7 @@ import 'features/shell/app_shell.dart';
 import 'features/support/support_chat_screen.dart';
 import 'features/support/support_screen.dart';
 import 'features/wallet/coin_trade_screen.dart';
+import 'features/wallet/incoming_transfer_listener.dart';
 import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
 
@@ -221,6 +222,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       darkTheme: _theme(Brightness.dark),
       themeMode: ref.watch(themeModeProvider),
       routerConfig: ref.watch(routerProvider),
+      builder: (_, child) => IncomingTransferListener(child: child ?? const SizedBox.shrink()),
     );
   }
 }
