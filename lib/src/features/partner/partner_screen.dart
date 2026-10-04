@@ -1,0 +1,194 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../../core/format.dart';
+import '../../data/geo_service.dart';
+import '../../data/models.dart';
+import '../../providers.dart';
+import '../../widgets/common.dart';
+
+final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
+  (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
+);
+
+/// Partners whose record lets them take jobs.
+bool partnerCanDrive(Partner p) {
+  final s = p.status ?? '';
+  return s == 'approved' || s.startsWith('permit-');
+}
+
+/// Driver mode: go online, see open requests live, accept one.
+class PartnerScreen extends ConsumerStatefulWidget {
+  const PartnerScreen({super.key});
+
+  @override
+  ConsumerState<PartnerScreen> createState() => _PartnerScreenState();
+}
+
+class _PartnerScreenState extends ConsumerState<PartnerScreen> {
+  bool _online = false;
+  LatLng? _me;
+  String? _accepting;
+
+  @override
+  void initState() {
+    super.initState();
+    _resume();
+  }
+
+  Future<void> _resume() async {
+    final trip = await ref.read(rideRepositoryProvider).ongoingForPartner().catchError((_) => null);
+    if (trip != null && mounted) context.push('/drive/trip/${trip.id}');
+  }
+
+  Future<void> _toggle(bool v) async {
+    setState(() => _online = v);
+    if (v) {
+      final p = await currentPosition();
+      if (mounted) setState(() => _me = p);
+    }
+  }
+
+  Future<void> _accept(RideRequest r, Partner partner) async {
+    setState(() => _accepting = r.id);
+    try {
+      final profile = await ref.read(profileProvider.future);
+      final won = await ref.read(rideRepositoryProvider).accept(
+            r.id,
+            partner,
+            lat: _me?.latitude,
+            lng: _me?.longitude,
+            fallbackName: profile?.name,
+            fallbackPhone: profile?.phone,
+          );
+      if (!mounted) return;
+      if (won == null) {
+        showInfo(context, 'Another driver already took this request.');
+      } else {
+        context.push('/drive/trip/${won.id}');
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _accepting = null);
+    }
+  }
+
+  double? _distanceTo(RideRequest r) {
+    if (_me == null || r.pickupLat == null || r.pickupLng == null) return null;
+    return const Distance().as(LengthUnit.Meter, _me!, LatLng(r.pickupLat!, r.pickupLng!)) / 1000;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final partner = ref.watch(partnerProvider);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Drive')),
+      body: AsyncView(
+        value: partner,
+        onRetry: () => ref.invalidate(partnerProvider),
+        data: (p) {
+          if (p == null) {
+            return const EmptyState(
+              icon: Icons.badge_outlined,
+              title: 'Become a GET.ride partner',
+              message: 'Partner registration, document upload and vehicle onboarding are done in the '
+                  'GET.ride partner onboarding flow. Once your account is approved, you can take jobs here.',
+            );
+          }
+          if (!partnerCanDrive(p)) {
+            return EmptyState(
+              icon: Icons.hourglass_empty,
+              title: 'Account not active yet',
+              message: 'Your partner status is "${p.status ?? 'unknown'}". '
+                  'You can go online once an admin approves your account.',
+            );
+          }
+          return ResponsiveCenter(
+            maxWidth: 760,
+            child: Column(children: [
+              Card(
+                child: SwitchListTile(
+                  value: _online,
+                  onChanged: _toggle,
+                  secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
+                  title: Text(_online ? 'You are online' : 'You are offline'),
+                  subtitle: Text([p.name, p.vehicle, p.plate].whereType<String>().join(' · ')),
+                ),
+              ),
+              Expanded(child: _online ? _queue(p) : const EmptyState(
+                icon: Icons.local_taxi_outlined,
+                title: 'Go online to receive ride requests',
+              )),
+            ]),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _queue(Partner partner) {
+    final t = Theme.of(context);
+    return AsyncView(
+      value: ref.watch(openRequestsProvider),
+      onRetry: () => ref.invalidate(openRequestsProvider),
+      data: (list) {
+        if (list.isEmpty) {
+          return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');
+        }
+        final sorted = [...list]
+          ..sort((a, b) => (_distanceTo(a) ?? 1e9).compareTo(_distanceTo(b) ?? 1e9));
+        return ListView.builder(
+          itemCount: sorted.length,
+          itemBuilder: (_, i) {
+            final r = sorted[i];
+            final away = _distanceTo(r);
+            return Card(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Row(children: [
+                    Expanded(child: Text(r.service ?? 'Ride', style: t.textTheme.titleMedium)),
+                    Text(formatMoney(r.effectiveFare, r.currency),
+                        style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text([
+                    if (away != null) '${formatDistance(away)} away',
+                    '${formatDistance(r.distanceKm)} trip',
+                    r.paymentMode,
+                    '${r.passengers} pax',
+                  ].join(' · '), style: t.textTheme.bodySmall),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    Icon(Icons.trip_origin, size: 16, color: Colors.green.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ]),
+                  Row(children: [
+                    Icon(Icons.location_on, size: 16, color: Colors.red.shade700),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ]),
+                  if (r.note != null) Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text('“${r.note}”', style: t.textTheme.bodySmall),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: _accepting != null ? null : () => _accept(r, partner),
+                    child: _accepting == r.id
+                        ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Accept'),
+                  ),
+                ]),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}

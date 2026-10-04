@@ -1,0 +1,29 @@
+name: Security review
+
+on:
+  pull_request:
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  security-review:
+    runs-on: ubuntu-latest
+    # Skips cleanly until the CLAUDE_API_KEY repository secret is added.
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+      - name: Check for API key
+        id: key
+        env:
+          KEY: ${{ secrets.CLAUDE_API_KEY }}
+        run: echo "present=$([ -n "$KEY" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: anthropics/claude-code-security-review@main
+        if: steps.key.outputs.present == 'true'
+        with:
+          comment-pr: true
+          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}

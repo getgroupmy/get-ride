@@ -1,0 +1,128 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../data/geo_service.dart';
+
+/// OpenStreetMap view used on every platform (web, desktop, iOS, Android).
+class RideMap extends StatefulWidget {
+  const RideMap({
+    super.key,
+    this.pickup,
+    this.drop,
+    this.driver,
+    this.me,
+    this.route = const [],
+    this.onTap,
+    this.controller,
+  });
+
+  final LatLng? pickup;
+  final LatLng? drop;
+  final LatLng? driver;
+  final LatLng? me;
+  final List<LatLng> route;
+  final void Function(LatLng)? onTap;
+  final MapController? controller;
+
+  @override
+  State<RideMap> createState() => _RideMapState();
+}
+
+class _RideMapState extends State<RideMap> {
+  late final MapController _controller = widget.controller ?? MapController();
+  bool _ready = false;
+
+  List<LatLng> get _points =>
+      [widget.pickup, widget.drop, widget.driver, widget.me].whereType<LatLng>().toList();
+
+  @override
+  void didUpdateWidget(covariant RideMap old) {
+    super.didUpdateWidget(old);
+    if (_ready &&
+        (old.pickup != widget.pickup || old.drop != widget.drop || old.route.length != widget.route.length)) {
+      _fit();
+    }
+  }
+
+  void _fit() {
+    final pts = [..._points, ...widget.route];
+    if (pts.isEmpty) return;
+    if (pts.length == 1) {
+      _controller.move(pts.first, 15);
+      return;
+    }
+    _controller.fitCamera(CameraFit.coordinates(coordinates: pts, padding: const EdgeInsets.all(64), maxZoom: 16));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final center = _points.isNotEmpty ? _points.first : defaultCenter;
+    return FlutterMap(
+      mapController: _controller,
+      options: MapOptions(
+        initialCenter: center,
+        initialZoom: 14,
+        onTap: widget.onTap == null ? null : (_, p) => widget.onTap!(p),
+        onMapReady: () {
+          _ready = true;
+          _fit();
+        },
+      ),
+      children: [
+        TileLayer(
+          urlTemplate: dark
+              ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+              : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          subdomains: const ['a', 'b', 'c', 'd'],
+          userAgentPackageName: 'my.getgroup.get_ride',
+          retinaMode: dark && RetinaMode.isHighDensity(context),
+        ),
+        if (widget.route.length > 1)
+          PolylineLayer(polylines: [
+            Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
+          ]),
+        MarkerLayer(markers: [
+          if (widget.me != null)
+            Marker(
+              point: widget.me!,
+              width: 22,
+              height: 22,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 3),
+                  boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black26)],
+                ),
+              ),
+            ),
+          if (widget.pickup != null) _pin(widget.pickup!, Colors.green.shade700, Icons.trip_origin),
+          if (widget.drop != null) _pin(widget.drop!, Colors.red.shade700, Icons.location_on),
+          if (widget.driver != null)
+            Marker(
+              point: widget.driver!,
+              width: 40,
+              height: 40,
+              child: const CircleAvatar(
+                backgroundColor: Colors.black,
+                child: Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22),
+              ),
+            ),
+        ]),
+        const RichAttributionWidget(
+          attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
+        ),
+      ],
+    );
+  }
+
+  Marker _pin(LatLng p, Color c, IconData icon) => Marker(
+        point: p,
+        width: 40,
+        height: 40,
+        alignment: Alignment.topCenter,
+        child: Icon(icon, color: c, size: 36, shadows: const [Shadow(blurRadius: 4, color: Colors.black38)]),
+      );
+}
