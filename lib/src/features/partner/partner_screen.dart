@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/format.dart';
 import '../../core/partner_onboarding.dart';
+import '../../core/taxi_meter.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
@@ -87,6 +88,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final partner = ref.watch(partnerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Drive'), actions: [
+        if (partner.value != null && partnerCanDrive(partner.value!) && hasTeksiPartnerType(partner.value!.raw['partner_types']))
+          IconButton(
+            tooltip: 'Meter Digital',
+            icon: const Icon(Icons.speed),
+            onPressed: () => context.push('/meter'),
+          ),
         if (partner.value != null)
           IconButton(
             tooltip: 'My vehicles',

@@ -1,0 +1,82 @@
+import 'dart:async';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
+
+import '../../admin/screens/meterapp/meter_logic.dart';
+import '../../admin/screens/meterapp/meter_store.dart';
+import '../../data/meter_trips_store.dart';
+import '../../providers.dart';
+
+/// One GPS fix as the meter uses it.
+class MeterFix {
+  const MeterFix({
+    required this.latitude,
+    required this.longitude,
+    required this.at,
+    this.accuracyM,
+    this.speedKmh,
+  });
+  final double latitude;
+  final double longitude;
+  final int at;
+  final double? accuracyM;
+
+  /// Ground speed, when the platform reports one.
+  final double? speedKmh;
+}
+
+/// The meter's location feed. A seam so tests can drive a hire.
+abstract class MeterLocation {
+  /// Asks for permission if needed. A message when the meter cannot have
+  /// fixes (services off, permission refused), null when it can.
+  Future<String?> prepare();
+
+  Stream<MeterFix> fixes();
+}
+
+class GeolocatorMeterLocation implements MeterLocation {
+  @override
+  Future<String?> prepare() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return 'Location is turned off on this device.';
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
+        return 'Location permission is needed to meter on GPS.';
+      }
+      return null;
+    } catch (e) {
+      return 'Location is not available here ($e).';
+    }
+  }
+
+  @override
+  Stream<MeterFix> fixes() => Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.bestForNavigation),
+      ).map((p) => MeterFix(
+            latitude: p.latitude,
+            longitude: p.longitude,
+            at: p.timestamp.millisecondsSinceEpoch,
+            accuracyM: p.accuracy.isFinite && p.accuracy > 0 ? p.accuracy : null,
+            // Negative means "unknown" on both platforms.
+            speedKmh: p.speed.isFinite && p.speed >= 0 ? p.speed * 3.6 : null,
+          ));
+}
+
+final meterLocationProvider = Provider<MeterLocation>((_) => GeolocatorMeterLocation());
+
+/// Epoch milliseconds now. A seam so tests can run the meter's clock.
+final meterClockProvider = Provider<int Function()>((_) => () => DateTime.now().millisecondsSinceEpoch);
+
+/// The operator's rate cards (Admin → Settings → Meter Digital Setting).
+/// Readable by everyone; an unreachable table means the built-in tariff.
+final meterCardsProvider = FutureProvider<List<MeterProfile>>((ref) async {
+  try {
+    return await MeterSettingsStore(ref.watch(supabaseProvider)).fetch();
+  } catch (_) {
+    return const [];
+  }
+});
+
+final meterTripsStoreProvider = Provider((_) => MeterTripsStore());
