@@ -12,6 +12,7 @@ import 'data/auth_repository.dart';
 import 'data/push_service.dart';
 import 'features/auth/otp_screen.dart';
 import 'features/meter/meter_screen.dart';
+import 'features/meter/obd_reader_screen.dart';
 import 'features/auth/phone_screen.dart';
 import 'features/auth/pin_screen.dart';
 import 'features/auth/set_pin_screen.dart';
@@ -141,6 +142,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
       GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
       GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
+      GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
       GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
       GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
       GoRoute(

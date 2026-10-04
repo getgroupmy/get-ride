@@ -3,13 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../admin/screens/meterapp/meter_logic.dart';
 import '../../core/meter_trip.dart';
+import '../../core/obd.dart';
 import '../../core/taxi_meter.dart';
 import '../../data/geo_service.dart';
+import '../../data/obd/obd_session.dart';
 import '../../providers.dart';
 import 'meter_providers.dart';
 
@@ -27,11 +30,12 @@ const _muted = Color(0xFF8A9A94);
 /// still while the car is moving.
 const _fixMaxAgeMs = 3000;
 
-/// Meter Digital (Expo `app/meter-digital.tsx`), GPS edition: the in-app
-/// taxi meter for TEKSI partners. Bills on the operator's rate card (or the
-/// built-in TEKSI tariff), with DAY / NIGHT keys, extras, an end-of-hire
-/// declaration and a device-local trip log with receipts. The OBD-II reader,
-/// the receipt printer and the landscape-locked console are later slices.
+/// Meter Digital (Expo `app/meter-digital.tsx`): the in-app taxi meter for
+/// TEKSI partners. Bills on the operator's rate card (or the built-in TEKSI
+/// tariff) from the vehicle's OBD-II reader where the card allows it, else
+/// GPS, with DAY / NIGHT keys, extras, an end-of-hire declaration and a
+/// device-local trip log with receipts. The receipt printer and the
+/// landscape-locked console are later slices.
 class MeterScreen extends ConsumerStatefulWidget {
   const MeterScreen({super.key});
 
@@ -57,6 +61,10 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
 
   MeterWaypoint? _pickup;
   bool _ending = false;
+
+  /// START was pressed and the meter is reading the odometer before the
+  /// hire opens.
+  bool _opening = false;
   List<MeterTrip> _trips = const [];
 
   int _now() => ref.read(meterClockProvider)();
@@ -67,6 +75,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
     super.initState();
     _startSensors();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
+    // The saved OBD-II reader, if any: a dongle serves one client, so the
+    // meter joins the shared session rather than opening its own link.
+    Future.microtask(() => ref.read(obdSessionProvider.notifier).ensureConnected());
     ref.read(meterTripsStoreProvider).load().then((t) {
       if (mounted) setState(() => _trips = t);
     });
@@ -134,12 +145,19 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
   void _onTick() {
     if (!mounted) return;
     if (!_m.running) return setState(() {});
-    final f = _freshFix;
+    // The card takes a sensor away at the source: a GPS-only card never
+    // bills on the reader, an OBD-only card never on the phone's GPS.
+    final sources = allowedMeterSources(_profile.sourceMode);
+    final f = sources.gps ? _freshFix : null;
+    final obd = ref.read(obdSessionProvider);
+    final useObd = sources.obd && obd.linked;
     setState(() {
       _m = applyMeterSample(
         _m,
         MeterSample(
           at: _now(),
+          obdSpeedKmh: useObd ? obd.telemetry['speed'] : null,
+          obdUpdatedAt: useObd ? obd.lastUpdate : null,
           gpsSpeedKmh: f?.speedKmh,
           gpsPoint: f == null ? null : MeterPoint(f.latitude, f.longitude, accuracyM: f.accuracyM),
         ),
@@ -150,16 +168,53 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
 
   // ---- Keys --------------------------------------------------------------------
 
-  void _start() {
-    final block = meterGpsBlock(_profile) ?? _locationProblem;
+  bool get _obdLinked => ref.read(obdSessionProvider).linked;
+
+  String? get _startBlock =>
+      meterStartBlock(_profile, obdLinked: _obdLinked, locationProblem: _locationProblem);
+
+  Future<void> _start() async {
+    final block = _startBlock;
     if (block != null) return _explain('Cannot start the meter', block);
-    final now = _now();
-    final opening = !_m.hasHire;
-    setState(() => _m = startMeter(_m, now));
-    if (opening) {
-      _pickup = _waypoint(now);
-      _nameEnd(_pickup!, (named) => _pickup = named);
+    if (_m.hasHire) {
+      // Resuming from a pause is never gated.
+      setState(() => _m = startMeter(_m, _now()));
+      return;
     }
+    // The pickup odometer is read before the fare opens: once the car moves,
+    // a late answer is no longer the pickup reading.
+    double? odometer;
+    if (meterReadsOdometerBeforeStart(_profile, _obdLinked)) {
+      setState(() => _opening = true);
+      odometer = await _readOdometer();
+      if (!mounted) return;
+      setState(() => _opening = false);
+      final gate = meterOdometerGate(_profile, odometer, _obdLinked);
+      if (!gate.canStart) return _explain('Cannot start the meter', gate.reason ?? '');
+    }
+    final now = _now();
+    setState(() => _m = startMeter(_m, now));
+    _pickup = _waypoint(now).withOdometer(odometer);
+    _nameEnd(_pickup!, (named) {
+      if (_pickup?.at == named.at) _pickup = named;
+    });
+  }
+
+  /// The odometer (PID A6), asked a few times: one unanswered command is an
+  /// adapter busy with the sweep, not a car without an odometer. A car that
+  /// answers NO DATA does not publish one, and is not asked again.
+  Future<double?> _readOdometer() async {
+    final session = ref.read(obdSessionProvider.notifier);
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final raw = await session.request(odometerPid.command);
+        if (raw == null) return null;
+        final km = decodePid(raw, odometerPid);
+        if (km != null) return km;
+        if (isElmError(raw)) return null;
+      } catch (_) {}
+    }
+    return null;
   }
 
   void _pause() => setState(() => _m = pauseMeter(_m));
@@ -230,13 +285,21 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
       _periodTouched = false;
     });
     _resolveCard();
-    // The place names arrive after the record is written; only the ends are
-    // ever patched.
+    // The place names and the drop-off odometer arrive after the record is
+    // written (the fare stopped the instant END was pressed); only the ends
+    // are ever patched, each change applied to the end as stored.
+    Future<void> patch(bool pickup, MeterWaypoint Function(MeterWaypoint) change) async {
+      final next = await store.patchEnd(trip.id, pickup: pickup, change: change);
+      if (mounted) setState(() => _trips = next);
+    }
+
     for (final (end, isPickup) in [(trip.pickup, true), (trip.dropoff, false)]) {
       if (end == null || end.place != null) continue;
-      _nameEnd(end, (named) async {
-        final next = await store.patchEnds(trip.id, pickup: isPickup ? named : null, dropoff: isPickup ? null : named);
-        if (mounted) setState(() => _trips = next);
+      _nameEnd(end, (named) => patch(isPickup, (stored) => stored.withPlace(named.place)));
+    }
+    if (meterReadsOdometer(_profile) && _obdLinked) {
+      _readOdometer().then((km) {
+        if (km != null) patch(false, (stored) => stored.withOdometer(km));
       });
     }
     await _showReceipt(trip);
@@ -280,11 +343,16 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
   double get _fareNow => meterFare(_m, _profile.rates, multiplier: periodMultiplier(_period, _profile.nightMultiplier));
 
   String get _connection {
-    if (_locationProblem != null) return 'NO GPS';
-    final f = _freshFix;
-    if (f == null) return 'WAITING FOR GPS';
-    final acc = f.accuracyM;
-    return acc == null ? 'GPS' : 'GPS ±${acc.round()} m';
+    final sources = allowedMeterSources(_profile.sourceMode);
+    final gps = _locationProblem == null && _freshFix != null;
+    final label = describeMeterConnection(
+      gps: gps,
+      obd: _obdLinked,
+      gpsAllowed: sources.gps,
+      obdAllowed: sources.obd,
+    );
+    final acc = _freshFix?.accuracyM;
+    return gps && sources.gps && acc != null ? '$label · ±${acc.round()} m' : label;
   }
 
   // ---- Layout --------------------------------------------------------------------
@@ -294,6 +362,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
     ref.listen(meterCardsProvider, (_, _) => _resolveCard());
     // Keeps the partner loaded: the plate and driver go on every receipt.
     ref.watch(partnerProvider);
+    final obd = ref.watch(obdSessionProvider);
     final locked = _m.hasHire || _ending;
     return PopScope(
       // A running or unfinished hire cannot be walked out of.
@@ -312,6 +381,11 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
             backgroundColor: _bg,
             title: const Text('Meter Digital'),
             actions: [
+              IconButton(
+                tooltip: 'OBD-II reader',
+                icon: Icon(Icons.settings_input_component, color: obd.linked ? _lcd : _muted),
+                onPressed: () => context.push('/meter/reader'),
+              ),
               Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: Center(child: Text(_connection, style: const TextStyle(color: _muted, fontSize: 12))),
@@ -358,7 +432,8 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
       ]);
       final fareBox = _Panel(children: [
         Row(children: [
-          Text(status, style: TextStyle(color: _m.running ? _amber : _muted, fontWeight: FontWeight.w700)),
+          Text(_m.running ? '$status · ${describeMeterSource(_m.source)}' : status,
+              style: TextStyle(color: _m.running ? _amber : _muted, fontWeight: FontWeight.w700)),
           const Spacer(),
           Flexible(
             child: Text(
@@ -385,7 +460,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
   }
 
   Widget _keys() {
-    final block = meterGpsBlock(_profile) ?? _locationProblem;
+    final block = _startBlock;
     return _Panel(children: [
       if (block != null)
         Padding(
@@ -442,9 +517,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
               )
             : FilledButton.icon(
                 style: FilledButton.styleFrom(backgroundColor: _lcd, foregroundColor: Colors.black),
-                onPressed: _ending ? null : _start,
+                onPressed: _ending || _opening ? null : _start,
                 icon: const Icon(Icons.play_arrow),
-                label: Text(_m.hasHire ? 'RESUME' : 'START',
+                label: Text(_opening ? 'READING ODOMETER…' : (_m.hasHire ? 'RESUME' : 'START'),
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               ),
       ),

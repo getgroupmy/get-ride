@@ -244,4 +244,31 @@ void main() {
       expect(s.total, 38.8);
     });
   });
+
+  group('which sensor may open a hire', () {
+    MeterProfile card(String source) => defaultMeterProfile.copyWith(sourceMode: source);
+    const noGps = 'Location permission is needed.';
+
+    test('an OBD-only card needs a live reader, whatever the GPS says', () {
+      expect(meterStartBlock(card('obd'), obdLinked: false), contains('OBD-II reader only'));
+      expect(meterStartBlock(card('obd'), obdLinked: true, locationProblem: noGps), isNull);
+    });
+
+    test('a card with both opens on either sensor', () {
+      expect(meterStartBlock(card('gps+obd'), obdLinked: true, locationProblem: noGps), isNull);
+      expect(meterStartBlock(card('gps+obd'), obdLinked: false, locationProblem: noGps), noGps);
+    });
+
+    test('a GPS card never leans on the reader', () {
+      expect(meterStartBlock(card('gps'), obdLinked: true, locationProblem: noGps), noGps);
+      expect(meterStartBlock(card('gps'), obdLinked: false), isNull);
+    });
+
+    test('the connection type only names sensors the card allows', () {
+      expect(describeMeterConnection(gps: true, obd: true), 'GPS + OBD-II');
+      expect(describeMeterConnection(gps: true, obd: true, gpsAllowed: false), 'OBD-II');
+      expect(describeMeterConnection(gps: true, obd: true, obdAllowed: false), 'GPS');
+      expect(describeMeterConnection(gps: false, obd: false), 'NO SIGNAL');
+    });
+  });
 }
