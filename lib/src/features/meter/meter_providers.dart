@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -80,3 +81,18 @@ final meterCardsProvider = FutureProvider<List<MeterProfile>>((ref) async {
 });
 
 final meterTripsStoreProvider = Provider((_) => MeterTripsStore());
+
+/// Pins the device to landscape while the console is in front, and hands
+/// rotation back to the app default when it is not (Expo
+/// `useLandscapeLock`). A seam so tests can see the requests.
+class MeterOrientation {
+  const MeterOrientation();
+
+  Future<void> lockLandscape() => SystemChrome.setPreferredOrientations(
+      const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+
+  /// An empty list is the app's own default (`Info.plist` / the manifest).
+  Future<void> release() => SystemChrome.setPreferredOrientations(const []);
+}
+
+final meterOrientationProvider = Provider<MeterOrientation>((_) => const MeterOrientation());

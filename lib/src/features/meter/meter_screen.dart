@@ -10,12 +10,14 @@ import 'package:uuid/uuid.dart';
 import '../../admin/screens/meterapp/meter_logic.dart';
 import '../../core/meter_trip.dart';
 import '../../core/escpos.dart';
+import '../../core/landscape_stage.dart';
 import '../../core/obd.dart';
 import '../../core/taxi_meter.dart';
 import '../../data/geo_service.dart';
 import '../../data/obd/obd_session.dart';
 import '../../data/printer/printer_service.dart';
 import '../../providers.dart';
+import 'landscape_stage.dart';
 import 'meter_providers.dart';
 
 // The console is deliberately not themed: a white screen on a windscreen
@@ -37,8 +39,12 @@ const _fixMaxAgeMs = 3000;
 /// tariff) from the vehicle's OBD-II reader where the card allows it, else
 /// GPS, with DAY / NIGHT keys, extras, an end-of-hire declaration and a
 /// device-local trip log with receipts, printed straight to a mini Wi-Fi
-/// thermal printer when one is set up. The landscape-locked console is a
-/// later slice.
+/// thermal printer when one is set up.
+///
+/// The console is landscape: the device is pinned to landscape while it is in
+/// front, and where the platform will not turn (a browser, an iPad in split
+/// view) the [LandscapeStage] turns the content instead. Its dialogs live in
+/// a navigator inside the stage, so they turn with it.
 class MeterScreen extends ConsumerStatefulWidget {
   const MeterScreen({super.key});
 
@@ -46,7 +52,7 @@ class MeterScreen extends ConsumerStatefulWidget {
   ConsumerState<MeterScreen> createState() => _MeterScreenState();
 }
 
-class _MeterScreenState extends ConsumerState<MeterScreen> {
+class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingObserver {
   MeterState _m = const MeterState();
   MeterPeriod _period = MeterPeriod.day;
   bool _periodTouched = false;
@@ -73,9 +79,23 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
   int _now() => ref.read(meterClockProvider)();
   MeterProfile get _profile => _card.profile;
 
+  /// The navigator inside the stage: dialogs and sheets open here so they
+  /// are turned with the console.
+  final _stageNav = GlobalKey<NavigatorState>();
+  BuildContext get _stageContext => _stageNav.currentContext ?? context;
+
+  late final MeterOrientation _orientation;
+
+  /// False while a settings screen is pushed over the console, which gets
+  /// the app's own rotation back.
+  bool _inFront = true;
+
   @override
   void initState() {
     super.initState();
+    _orientation = ref.read(meterOrientationProvider);
+    _orientation.lockLandscape();
+    WidgetsBinding.instance.addObserver(this);
     _startSensors();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
     // The saved OBD-II reader, if any: a dongle serves one client, so the
@@ -87,7 +107,26 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Coming back to the foreground can drop the lock.
+    if (state == AppLifecycleState.resumed && _inFront) _orientation.lockLandscape();
+  }
+
+  /// Opens a settings screen over the console, in the app's own rotation,
+  /// and pins landscape again on the way back.
+  Future<void> _openSettings(String path) async {
+    _inFront = false;
+    await _orientation.release();
+    if (!mounted) return;
+    await context.push(path);
+    _inFront = true;
+    await _orientation.lockLandscape();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _orientation.release();
     _tick?.cancel();
     _fixes?.cancel();
     super.dispose();
@@ -231,7 +270,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
       _ending = true;
     });
     final details = await showModalBottomSheet<MeterTripDetails>(
-      context: context,
+      context: _stageContext,
       isDismissible: false,
       enableDrag: false,
       isScrollControlled: true,
@@ -322,15 +361,20 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
   }
 
   void _explain(String title, String message) => showDialog<void>(
-        context: context,
-        builder: (_) => AlertDialog(
+        context: _stageContext,
+        useRootNavigator: false,
+        builder: (c) => AlertDialog(
           title: Text(title),
           content: Text(message),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+          actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
         ),
       );
 
-  Future<void> _showReceipt(MeterTrip trip) => showDialog<void>(context: context, builder: (_) => _ReceiptDialog(trip: trip));
+  Future<void> _showReceipt(MeterTrip trip) => showDialog<void>(
+        context: _stageContext,
+        useRootNavigator: false,
+        builder: (_) => _ReceiptDialog(trip: trip, onSetUpPrinter: () => _openSettings('/meter/printer')),
+      );
 
   // ---- Derived -------------------------------------------------------------------
 
@@ -368,8 +412,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
     final obd = ref.watch(obdSessionProvider);
     final locked = _m.hasHire || _ending;
     return PopScope(
-      // A running or unfinished hire cannot be walked out of.
-      canPop: !locked,
+      // A running or unfinished hire cannot be walked out of, and back from
+      // the trip log returns to the meter.
+      canPop: !locked && _tab == 0,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_tab != 0) return setState(() => _tab = 0);
@@ -379,42 +424,75 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
       },
       child: Theme(
         data: ThemeData(brightness: Brightness.dark, colorSchemeSeed: _lcd, scaffoldBackgroundColor: _bg),
-        child: Scaffold(
-          appBar: AppBar(
-            backgroundColor: _bg,
-            title: const Text('Meter Digital'),
-            actions: [
-              IconButton(
-                tooltip: 'Receipt printer',
-                icon: const Icon(Icons.print_outlined, color: _muted),
-                onPressed: () => context.push('/meter/printer'),
+        child: ColoredBox(
+          color: _bg,
+          child: LandscapeStage(
+            // Back closes a dialog in the stage before it reaches the meter.
+            child: NavigatorPopHandler(
+              onPopWithResult: (_) => _stageNav.currentState?.maybePop(),
+              child: Navigator(
+                key: _stageNav,
+                pages: [MaterialPage(key: const ValueKey('console'), child: _scaffold(obd))],
+                onDidRemovePage: (_) {},
               ),
-              IconButton(
-                tooltip: 'OBD-II reader',
-                icon: Icon(Icons.settings_input_component, color: obd.linked ? _lcd : _muted),
-                onPressed: () => context.push('/meter/reader'),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Center(child: Text(_connection, style: const TextStyle(color: _muted, fontSize: 12))),
-              ),
-            ],
-          ),
-          body: SafeArea(child: _tab == 0 ? _console() : _tripLog()),
-          bottomNavigationBar: NavigationBar(
-            backgroundColor: _panel,
-            selectedIndex: _tab,
-            onDestinationSelected: (i) => setState(() => _tab = i),
-            destinations: const [
-              NavigationDestination(icon: Icon(Icons.speed), label: 'Meter'),
-              NavigationDestination(icon: Icon(Icons.receipt_long_outlined), label: 'Trip log'),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
+  Widget _scaffold(ObdSessionState obd) => Scaffold(
+        appBar: AppBar(
+          backgroundColor: _bg,
+          toolbarHeight: 44,
+          automaticallyImplyLeading: false,
+          leading: IconButton(
+            tooltip: 'Back',
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.maybePop(context),
+          ),
+          title: const Text('Meter Digital', style: TextStyle(fontSize: 17)),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Center(child: Text(_connection, style: const TextStyle(color: _muted, fontSize: 12))),
+            ),
+            IconButton(
+              tooltip: 'Receipt printer',
+              icon: const Icon(Icons.print_outlined, color: _muted),
+              onPressed: () => _openSettings('/meter/printer'),
+            ),
+            IconButton(
+              tooltip: 'OBD-II reader',
+              icon: Icon(Icons.settings_input_component, color: obd.linked ? _lcd : _muted),
+              onPressed: () => _openSettings('/meter/reader'),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          top: false,
+          child: Row(children: [
+            NavigationRail(
+              backgroundColor: _panel,
+              selectedIndex: _tab,
+              labelType: NavigationRailLabelType.all,
+              minWidth: 64,
+              onDestinationSelected: (i) => setState(() => _tab = i),
+              destinations: const [
+                NavigationRailDestination(icon: Icon(Icons.speed), label: Text('Meter')),
+                NavigationRailDestination(icon: Icon(Icons.receipt_long_outlined), label: Text('Trip log')),
+              ],
+            ),
+            Expanded(child: _tab == 0 ? _console() : _tripLog()),
+          ]),
+        ),
+      );
+
+  /// The console is one fixed landscape instrument, laid out at
+  /// [meterConsoleLayout] and scaled to the space it is given, so it never
+  /// scrolls and never reflows. It ignores the OS font scale: a wound-up
+  /// accessibility setting must not push the fare out of its panel.
   Widget _console() {
     final fare = _fareNow;
     final total = meterGrandTotal(fare, [_extra]);
@@ -423,47 +501,57 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
         : _m.hasHire
             ? 'STOPPED'
             : 'FOR HIRE';
-    return LayoutBuilder(builder: (context, c) {
-      final wide = c.maxWidth >= 720;
-      final readouts = _Panel(children: [
-        Row(children: [
-          Expanded(child: _Readout(label: 'DISTANCE', value: formatMeterKm(_m.distanceM), unit: 'km')),
-          Expanded(child: _Readout(label: 'TIME', value: formatMeterClock(_m.elapsedMs))),
-        ]),
-        const SizedBox(height: 12),
-        Row(children: [
-          Expanded(child: _Readout(label: 'WAITING', value: formatMeterClock(_m.waitingMs), small: true)),
-          Expanded(
-            child: _Readout(label: 'SPEED', value: _m.speedKmh.toStringAsFixed(0), unit: 'km/h', small: true),
+    final fareBox = _Panel(children: [
+      Row(children: [
+        Text(_m.running ? '$status · ${describeMeterSource(_m.source)}' : status,
+            style: TextStyle(color: _m.running ? _amber : _muted, fontWeight: FontWeight.w700)),
+        const Spacer(),
+        Flexible(
+          child: Text(
+            _rateLabel,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _muted, fontSize: 12),
           ),
-        ]),
-      ]);
-      final fareBox = _Panel(children: [
-        Row(children: [
-          Text(_m.running ? '$status · ${describeMeterSource(_m.source)}' : status,
-              style: TextStyle(color: _m.running ? _amber : _muted, fontWeight: FontWeight.w700)),
-          const Spacer(),
-          Flexible(
-            child: Text(
-              _rateLabel,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _muted, fontSize: 12),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      _Readout(label: 'FARE', value: total.toStringAsFixed(2), unit: _currency, large: true),
+      Text(_extra > 0 ? 'incl. extras ${_money(_extra)}' : ' ', style: const TextStyle(color: _muted, fontSize: 12)),
+    ]);
+    final readouts = _Panel(spread: true, children: [
+      Row(children: [
+        Expanded(child: _Readout(label: 'DISTANCE', value: formatMeterKm(_m.distanceM), unit: 'km')),
+        Expanded(child: _Readout(label: 'TIME', value: formatMeterClock(_m.elapsedMs))),
+      ]),
+      Row(children: [
+        Expanded(child: _Readout(label: 'WAITING', value: formatMeterClock(_m.waitingMs), small: true)),
+        Expanded(
+          child: _Readout(label: 'SPEED', value: _m.speedKmh.toStringAsFixed(0), unit: 'km/h', small: true),
+        ),
+      ]),
+    ]);
+    return LayoutBuilder(builder: (context, c) {
+      final layout = meterConsoleLayout(c.biggest);
+      return Padding(
+        padding: const EdgeInsets.all(6),
+        child: FittedBox(
+          child: SizedBox.fromSize(
+            size: layout,
+            child: MediaQuery.withNoTextScaling(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Expanded(
+                  flex: 11,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [fareBox, Expanded(child: readouts)],
+                  ),
+                ),
+                Expanded(flex: 8, child: _keys()),
+              ]),
             ),
           ),
-        ]),
-        const SizedBox(height: 8),
-        _Readout(label: 'FARE', value: total.toStringAsFixed(2), unit: _currency, large: true),
-        if (_extra > 0)
-          Text('incl. extras ${_money(_extra)}', style: const TextStyle(color: _muted, fontSize: 12)),
-      ]);
-      final keys = _keys();
-      final body = wide
-          ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(flex: 3, child: Column(children: [fareBox, readouts])),
-              Expanded(flex: 2, child: keys),
-            ])
-          : Column(children: [fareBox, readouts, keys]);
-      return SingleChildScrollView(padding: const EdgeInsets.all(12), child: body);
+        ),
+      );
     });
   }
 
@@ -472,8 +560,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
     return _Panel(children: [
       if (block != null)
         Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(block, style: const TextStyle(color: _amber, fontSize: 13)),
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Text(block,
+              maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _amber, fontSize: 12)),
         ),
       SegmentedButton<MeterPeriod>(
         segments: [
@@ -513,9 +602,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
           icon: const Icon(Icons.add),
         ),
       ]),
-      const SizedBox(height: 16),
+      const Spacer(),
       SizedBox(
-        height: 64,
+        height: 56,
         child: _m.running
             ? FilledButton.icon(
                 style: FilledButton.styleFrom(backgroundColor: _amber, foregroundColor: Colors.black),
@@ -532,9 +621,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
               ),
       ),
       if (_m.hasHire) ...[
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         SizedBox(
-          height: 56,
+          height: 48,
           child: OutlinedButton.icon(
             style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
             onPressed: _ending ? null : _end,
@@ -581,13 +670,14 @@ class _MeterScreenState extends ConsumerState<MeterScreen> {
 
   Future<void> _clearLog() async {
     final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
+      context: _stageContext,
+      useRootNavigator: false,
+      builder: (c) => AlertDialog(
         title: const Text('Clear the trip log?'),
         content: const Text('Every hire recorded on this device is removed. This cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Clear')),
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Clear')),
         ],
       ),
     );
@@ -607,15 +697,22 @@ TextStyle _digits(double size, Color color) => TextStyle(
     );
 
 class _Panel extends StatelessWidget {
-  const _Panel({required this.children});
+  const _Panel({required this.children, this.spread = false});
   final List<Widget> children;
+
+  /// Spaces the rows evenly down a panel taller than its content.
+  final bool spread;
 
   @override
   Widget build(BuildContext context) => Container(
         margin: const EdgeInsets.all(6),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(12)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisAlignment: spread ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.start,
+          children: children,
+        ),
       );
 }
 
@@ -759,8 +856,9 @@ class _DeclarationSheetState extends State<_DeclarationSheet> {
 }
 
 class _ReceiptDialog extends ConsumerStatefulWidget {
-  const _ReceiptDialog({required this.trip});
+  const _ReceiptDialog({required this.trip, required this.onSetUpPrinter});
   final MeterTrip trip;
+  final VoidCallback onSetUpPrinter;
 
   @override
   ConsumerState<_ReceiptDialog> createState() => _ReceiptDialogState();
@@ -779,6 +877,7 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
     if (printer == null) {
       final setUp = await showDialog<bool>(
         context: context,
+        useRootNavigator: false,
         builder: (c) => AlertDialog(
           title: const Text('No printer set up'),
           content: const Text('Add a Wi-Fi receipt printer to print receipts. This receipt stays in the trip log '
@@ -790,9 +889,8 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
         ),
       );
       if (setUp == true && mounted) {
-        final router = GoRouter.of(context);
         Navigator.pop(context);
-        router.push('/meter/printer');
+        widget.onSetUpPrinter();
       }
       return;
     }
