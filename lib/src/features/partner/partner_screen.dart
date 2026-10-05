@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/format.dart';
 import '../../core/partner_onboarding.dart';
+import '../../core/partner_queue.dart';
 import '../../core/taxi_meter.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
@@ -35,6 +36,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool _online = false;
   LatLng? _me;
   String? _accepting;
+  bool _autoAccept = false;
+  bool _allowOfferMe = true;
+
+  /// Requests auto-accept must not take: those already queued when it was
+  /// switched on (or when going online with it on), and those it has tried.
+  final _seen = <String>{};
 
   @override
   void initState() {
@@ -47,7 +54,32 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     if (trip != null && mounted) context.push('/drive/trip/${trip.id}');
   }
 
+  void _markQueueSeen() {
+    _seen.addAll(ref.read(openRequestsProvider).value?.map((r) => r.id) ?? const <String>[]);
+  }
+
+  void _setAutoAccept(bool v) {
+    if (v) _markQueueSeen();
+    setState(() => _autoAccept = v);
+  }
+
+  /// Takes the nearest request that arrived since auto-accept went on.
+  void _maybeAutoAccept(List<RideRequest> open) {
+    if (!_online || !_autoAccept || !mounted) return;
+    final partner = ref.read(partnerProvider).value;
+    if (partner == null || !partnerCanDrive(partner)) return;
+    final pick = autoAcceptPick(
+      [for (final r in open) (id: r.id, offerMe: r.offerMe, awayKm: _distanceTo(r))],
+      _seen,
+      busy: _accepting != null,
+    );
+    if (pick == null) return;
+    _seen.add(pick);
+    _accept(open.firstWhere((r) => r.id == pick), partner);
+  }
+
   Future<void> _toggle(bool v) async {
+    if (v && _autoAccept) _markQueueSeen();
     setState(() => _online = v);
     if (v) {
       final p = await currentPosition();
@@ -126,6 +158,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   @override
   Widget build(BuildContext context) {
     final partner = ref.watch(partnerProvider);
+    ref.listen(openRequestsProvider, (_, next) {
+      final open = next.value;
+      if (open != null) _maybeAutoAccept(open);
+    });
     return Scaffold(
       appBar: AppBar(title: const Text('Drive'), actions: [
         if (partner.value != null && hasTeksiPartnerType(partner.value!.raw['partner_types']))
@@ -190,6 +226,31 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   subtitle: Text([p.name, p.vehicle, p.plate].whereType<String>().join(' · ')),
                 ),
               ),
+              if (_online)
+                Card(
+                  child: Column(children: [
+                    SwitchListTile(
+                      key: const ValueKey('queue-auto-accept'),
+                      value: _autoAccept,
+                      onChanged: _setAutoAccept,
+                      secondary: const Icon(Icons.flash_auto),
+                      title: const Text('Auto-accept'),
+                      subtitle: Text(_autoAccept
+                          ? 'Accepting new requests automatically, nearest first'
+                          : 'Manually review each request'),
+                    ),
+                    SwitchListTile(
+                      key: const ValueKey('queue-allow-offer'),
+                      value: _allowOfferMe,
+                      onChanged: (v) => setState(() => _allowOfferMe = v),
+                      secondary: const Icon(Icons.gavel),
+                      title: const Text('Allow OfferMe requests'),
+                      subtitle: Text(_allowOfferMe
+                          ? 'You can offer your own price where the rider allows it'
+                          : 'Take requests at the rider\'s price only'),
+                    ),
+                  ]),
+                ),
               const CurrentVehicleCard(),
               Expanded(child: _online ? _queue(p) : const EmptyState(
                 icon: Icons.local_taxi_outlined,
@@ -257,7 +318,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     ),
                   const SizedBox(height: 8),
                   Row(children: [
-                    if (r.offerMe) ...[
+                    if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[
                       Expanded(
                         child: OutlinedButton(
                           key: ValueKey('offer-${r.id}'),
