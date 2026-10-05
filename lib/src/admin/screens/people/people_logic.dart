@@ -163,7 +163,7 @@ String _ddmmyyyy(DateTime d) =>
 
 /// `ID_Image` bucket path: `<Country>/<phone>_<idNumber>_<ddmmyyyy>.<ext>`,
 /// or, with [owner] (an account's own upload), `<owner>/<Country>_<phone>_…`:
-/// since get.ride migration 0095 a non-admin may only write under a folder
+/// since migration 0095 a non-admin may only write under a folder
 /// named after their own auth uid.
 String idImagePath({
   required String country,

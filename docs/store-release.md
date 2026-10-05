@@ -12,9 +12,8 @@ Admin console (Flutter or Expo)
   → .github/workflows/android-release.yml  (Ubuntu, ~8 min) → Google Play
 ```
 
-The edge functions live in `getgroupmy/get.ride` (`supabase/functions/`),
-next to the rest of the backend. The workflows and the signing secrets
-live here. The consoles never see a signing key or a token.
+The edge functions live in this repository (`supabase/functions/`), with
+the rest of the backend, next to the workflows and the signing secrets. The consoles never see a signing key or a token.
 
 ## The app identity
 
@@ -63,7 +62,7 @@ Supabase dashboard → Edge Functions → Secrets:
 | `GITHUB_RELEASE_REPOSITORY` | Optional. Defaults to `getgroupmy/get-ride`. |
 | `GITHUB_RELEASE_REF` | Optional. Unset, the repository's default branch is built. |
 
-Then deploy the two functions from the `get.ride` repository:
+Then deploy the two functions from this repository's root:
 
 ```
 supabase functions deploy ios-release --no-verify-jwt
@@ -154,7 +153,7 @@ step the apps build and work, just without notifications.
 5. **Sending: the service account.** Firebase → Project settings → Service
    accounts → *Generate new private key*. Put the whole JSON in Supabase →
    Edge Functions → Secrets as **`FCM_SERVICE_ACCOUNT`**. The `send-push`
-   function (in `getgroupmy/get.ride`) uses it for every Flutter device.
+   function (`supabase/functions/send-push`) uses it for every Flutter device.
 
 The next store build picks up the variables. Notifications reach a phone once
 someone signs in there and allows notifications.

@@ -1,5 +1,5 @@
 /// AI check of an uploaded document — the client half of the
-/// `document-ai-verify` edge function (getgroupmy/get.ride). The function
+/// `document-ai-verify` edge function (supabase/functions). The function
 /// owns the prompt and the provider; this side builds the request, reads the
 /// verdict, and fills in what the partner left blank (Expo
 /// `DocumentUploadModal.runAiVerification`). Pure: see test/document_ai_test.dart.

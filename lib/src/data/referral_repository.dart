@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/referral.dart';
 import '../providers.dart';
 
-/// Referral RPCs (get.ride migrations 0078 / 0079).
+/// Referral RPCs (migrations 0078 / 0079).
 class ReferralRepository {
   ReferralRepository(this._db);
   final SupabaseClient _db;

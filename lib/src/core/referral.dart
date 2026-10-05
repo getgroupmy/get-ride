@@ -1,4 +1,4 @@
-/// Referrals (Expo `utils/referral.ts`, get.ride migrations 0078 / 0079):
+/// Referrals (Expo `utils/referral.ts`, migrations 0078 / 0079):
 /// invite a friend with your code, and both accounts earn the bonus GET.coin
 /// the admin set. The server (`apply_referral`) resolves a code to an
 /// explicit `profiles.referral_code` first, else to the account whose id
