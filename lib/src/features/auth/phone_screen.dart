@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../config.dart';
+import '../../core/app_display.dart';
 import '../../core/auth_utils.dart';
+import '../../data/app_display_repository.dart';
 import '../../data/device_access.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -49,6 +51,14 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
       if (lookup.isDeleted) {
         showInfo(context, 'This account has been deleted. Contact support to restore it.');
         return;
+      }
+      if (!lookup.hasProfile) {
+        final display = await ref.read(appDisplayProvider.future);
+        if (!mounted) return;
+        if (!mayContinueSignIn(hasAccount: false, display: display)) {
+          showInfo(context, registrationClosedMessage);
+          return;
+        }
       }
       if (lookup.hasPin) {
         context.push(Uri(path: '/login/pin', queryParameters: {'phone': phone}).toString());
