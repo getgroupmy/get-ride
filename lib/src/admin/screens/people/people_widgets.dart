@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/document_ai.dart';
+import '../../../data/document_ai_repository.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
 import 'people_data.dart';
@@ -719,6 +723,13 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
   bool _busy = false;
   List<({String id, Map<String, dynamic> values})> _insurers = const [];
 
+  // The AI check of the picked photo(s), run on the server.
+  DocumentAiResult? _ai;
+  bool _aiRunning = false;
+  String? _aiUnavailable;
+  List<String> _aiFilled = const [];
+  int _aiRun = 0;
+
   @override
   void initState() {
     super.initState();
@@ -778,6 +789,9 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
         fileUrl: frontUrl,
         fileUrlBack: backUrl,
         uploadedAt: DateTime.now().toUtc().toIso8601String(),
+        aiVerification: _ai?.raw,
+        issuanceCountry: _ai?.issuanceCountry,
+        detectedDocumentName: _ai?.detectedDocumentName,
       );
       if (vehicleId == null) {
         await repo.saveProviderDocument(payload);
@@ -792,7 +806,123 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
 
   Future<void> _pick(bool back) async {
     final file = await pickPeopleFile();
-    if (file != null) setState(() => back ? _back = file : _front = file);
+    if (file == null) return;
+    setState(() => back ? _back = file : _front = file);
+    unawaited(_runAi());
+  }
+
+  /// Sends the picked photo(s) to the AI check and fills in what the partner
+  /// left blank. Never blocks the upload: without a verdict an admin reviews
+  /// it, as before.
+  Future<void> _runAi() async {
+    final front = _front;
+    if (front == null) return;
+    final f = widget.doc.flags;
+    final run = ++_aiRun;
+    setState(() {
+      _aiRunning = true;
+      _aiUnavailable = null;
+    });
+    final repo = ref.read(documentAiRepositoryProvider);
+    final frontUrl = await repo.prepare(front.bytes, front.name);
+    final back = f.requireFrontBack ? _back : null;
+    final backUrl = back == null ? null : await repo.prepare(back.bytes, back.name);
+    ({DocumentAiResult? result, String? reason}) outcome;
+    if (frontUrl == null || (back != null && backUrl == null)) {
+      outcome = (result: null, reason: 'image_too_large');
+    } else {
+      final insurer = _insurers.where((e) => e.id == _insurerId).firstOrNull;
+      outcome = await repo.verify(docAiRequestBody(
+        frontDataUrl: frontUrl,
+        backDataUrl: backUrl,
+        docName: widget.doc.name,
+        documentNumber: f.requireDocumentNumber ? _number.text : null,
+        insuranceProviderName: insurer == null ? null : '${insurer.values['name'] ?? ''}',
+        isPwd: f.isPwd && _pwd,
+        startDate: f.requireStartDate ? _start.text : null,
+        expiryDate: f.requireExpiryDate ? _expiry.text : null,
+      ));
+    }
+    if (!mounted || run != _aiRun) return;
+    final r = outcome.result;
+    setState(() {
+      _aiRunning = false;
+      _ai = r;
+      _aiUnavailable = r == null ? docAiUnavailableText(outcome.reason) : null;
+      if (r == null) return;
+      final fill = docAiAutofill(
+        r,
+        requireDocumentNumber: f.requireDocumentNumber,
+        requireStartDate: f.requireStartDate,
+        requireExpiryDate: f.requireExpiryDate,
+        requireInsuranceProvider: f.requireInsuranceProvider,
+        pwdFlag: f.isPwd,
+        documentNumber: _number.text,
+        startDate: _start.text,
+        expiryDate: _expiry.text,
+        insurerId: _insurerId,
+        isPwd: _pwd,
+        insurers: [for (final e in _insurers) (id: e.id, name: '${e.values['name'] ?? ''}')],
+      );
+      if (fill.documentNumber != null) _number.text = fill.documentNumber!;
+      if (fill.startDate != null) _start.text = fill.startDate!;
+      if (fill.expiryDate != null) _expiry.text = fill.expiryDate!;
+      if (fill.insurerId != null) _insurerId = fill.insurerId;
+      if (fill.isPwd != null) _pwd = fill.isPwd!;
+      _aiFilled = fill.filled;
+    });
+  }
+
+  Widget _aiCard(BuildContext context) {
+    final t = Theme.of(context);
+    final r = _ai;
+    if (_aiRunning) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          LinearProgressIndicator(),
+          SizedBox(height: 4),
+          Text('Checking the document…'),
+        ]),
+      );
+    }
+    if (r == null && _aiUnavailable == null) return const SizedBox.shrink();
+    final passed = r?.matchesTitle == true;
+    final color = r == null ? t.colorScheme.outline : (passed ? Colors.green : Colors.orange);
+    return Card(
+      key: const ValueKey('doc-ai-result'),
+      margin: const EdgeInsets.only(top: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(r == null ? Icons.info_outline : (passed ? Icons.verified : Icons.report_problem_outlined), color: color),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                r == null
+                    ? 'Not checked'
+                    : '${passed ? 'Looks right' : 'Please check'} · ${(r.confidence * 100).round()}%',
+                style: t.textTheme.titleSmall?.copyWith(color: color),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text(r == null ? _aiUnavailable! : (r.reason.isEmpty ? 'No additional details.' : r.reason)),
+          if (r != null && r.detectedTitle.isNotEmpty) Text('Detected: ${r.detectedTitle}', style: t.textTheme.bodySmall),
+          if (r != null && !passed)
+            Text('You can still upload it; an admin will review it.', style: t.textTheme.bodySmall),
+          if (_aiFilled.isNotEmpty)
+            Text('Filled in from the document: ${_aiFilled.join(', ')}. Check before saving.',
+                style: t.textTheme.bodySmall),
+          if (r != null && widget.doc.flags.requireDocumentNumber && r.candidateNumbers.length > 1)
+            Wrap(spacing: 6, children: [
+              for (final n in r.candidateNumbers)
+                ActionChip(label: Text(n), onPressed: () => setState(() => _number.text = n)),
+            ]),
+        ]),
+      ),
+    );
   }
 
   @override
@@ -831,6 +961,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
                 ),
               ],
             ]),
+            _aiCard(context),
             const SizedBox(height: 12),
             if (f.requireDocumentNumber)
               PeopleField(controller: _number, label: 'Document number', capitalization: TextCapitalization.characters),
@@ -865,7 +996,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
       ),
       actions: [
         TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: _busy ? null : _save, child: Text(_busy ? 'Uploading…' : 'Save')),
+        FilledButton(onPressed: _busy || _aiRunning ? null : _save, child: Text(_busy ? 'Uploading…' : 'Save')),
       ],
     );
   }
