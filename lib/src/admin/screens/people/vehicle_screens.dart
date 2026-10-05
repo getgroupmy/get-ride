@@ -10,6 +10,7 @@ import '../../widgets/admin_widgets.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
+import 'vehicle_drivers.dart';
 
 class VehicleFormData {
   const VehicleFormData({required this.partners, required this.geo, required this.requiredDocs, required this.vehicleDocTypeIds});
@@ -267,6 +268,7 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
             if (_isEdit) ...[
               _VehiclePhotos(row: r!, enabled: canEdit),
               _VehicleDocumentsList(vehicleId: r!['id'] as String),
+              VehicleDriversSection(vehicleId: r!['id'] as String, canEdit: canEdit),
               const SectionTitle('Status'),
               ChoiceChips(
                   options: vehicleStatusOptions, value: _status, enabled: canEdit, onChanged: (s) => setState(() => _status = s)),
