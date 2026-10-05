@@ -20,6 +20,7 @@ import 'features/auth/phone_screen.dart';
 import 'features/auth/pin_screen.dart';
 import 'features/auth/set_pin_screen.dart';
 import 'features/partner/partner_onboarding_screen.dart';
+import 'features/partner/driver_permit_screen.dart';
 import 'features/partner/partner_screen.dart';
 import 'features/partner/vehicle_screens.dart';
 import 'features/partner/partner_trip_screen.dart';
@@ -179,6 +180,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
       GoRoute(path: '/meter/printer', builder: (_, _) => const PrinterScreen()),
       GoRoute(path: '/meter/vehicle', builder: (_, _) => const VehicleInfoScreen()),
+      GoRoute(path: '/drive/permit', builder: (_, _) => const DriverPermitScreen()),
       GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
       GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
       GoRoute(
