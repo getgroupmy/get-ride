@@ -85,6 +85,14 @@ class RideRequest {
   double? get partnerLiveLng => _d(raw['partner_live_lng']);
   String? get otp => raw['otp'] as String?;
   DateTime? get createdAt => _t(raw['created_at']);
+  DateTime? get acceptedAt => _t(raw['accepted_at']);
+  DateTime? get arrivedAt => _t(raw['arrived_at']);
+  DateTime? get startedAt => _t(raw['started_at']);
+  DateTime? get completedAt => _t(raw['completed_at']);
+  DateTime? get cancelledAt => _t(raw['cancelled_at']);
+  String? get cancelReason => raw['cancel_reason'] as String?;
+  double? get tollCharges => _d(raw['toll_charges']);
+  double? get otherCharges => _d(raw['other_charges']);
   DateTime? get cancelRequestedAt => _t(raw['cancel_requested_at']);
   String? get cancelRequestedBy => raw['cancel_requested_by'] as String?;
 
