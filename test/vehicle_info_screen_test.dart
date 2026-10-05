@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/obd_adapters.dart';
+import 'package:get_ride/src/data/vehicle_fuel_store.dart';
 import 'package:get_ride/src/data/obd/obd_session.dart';
 import 'package:get_ride/src/data/obd/obd_transport.dart';
 import 'package:get_ride/src/features/meter/vehicle_info_screen.dart';
@@ -23,7 +24,9 @@ class _ScriptedElm implements ObdTransport {
     'ATDPN' => 'A6',
     'ATDP' => 'ISO 15765-4 (CAN 11/500)',
     'ATRV' => '12.6V',
-    '0100' => '41 00 80 18 00 00',
+    '0100' => '41 00 80 18 00 01',
+    '0120' => '41 20 00 02 00 00',
+    '012F' => '41 2F 80',
     '0101' => '41 01 81 07 65 00',
     '010C' => '41 0C 1A F8',
     '010D' => '41 0D ${speed.toRadixString(16).padLeft(2, '0').toUpperCase()}',
@@ -145,6 +148,36 @@ void main() {
     final reset = tester.widget<ListTile>(find.byKey(const ValueKey('write-reset-adapter')));
     expect(reset.enabled, isTrue, reason: 'reader-only writes stay available');
     expect(elm.written, isNot(contains('04')));
+    await container.read(obdSessionProvider.notifier).disconnect();
+  });
+
+  testWidgets('fuel card: level from the bus, range from the tank the driver enters', (tester) async {
+    final elm = _ScriptedElm();
+    final container = await _pump(tester, elm);
+    unawaited(container.read(obdSessionProvider.notifier).connect(_adapter));
+    await _settle(tester);
+
+    String text(String key) => tester.widget<Text>(find.byKey(ValueKey(key))).data!;
+    expect(text('fuel-level'), '50');
+    expect(text('fuel-odometer'), '—', reason: 'this car does not publish PID A6');
+    final before = text('fuel-range');
+    expect(before, isNot('—'));
+    expect(find.textContaining('This vehicle does not answer the odometer parameter'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('fuel-edit')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    await tester.enterText(find.byKey(const ValueKey('fuel-tank')), '3');
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    expect(find.textContaining('5'), findsWidgets, reason: 'the limit is named');
+    expect(find.text('Tank & consumption'), findsWidgets, reason: 'the editor stays open');
+
+    await tester.enterText(find.byKey(const ValueKey('fuel-tank')), '90');
+    await tester.tap(find.text('Save'));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('fuel-tank')), findsNothing);
+    expect((await container.read(vehicleFuelStoreProvider).load()).tankCapacityL, 90);
+    expect(text('fuel-range'), isNot(before), reason: 'a bigger tank goes further');
     await container.read(obdSessionProvider.notifier).disconnect();
   });
 }

@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/fuel_range.dart';
 import '../../core/obd.dart';
 import '../../core/obd_pid_catalog.dart';
 import '../../core/vehicle_info.dart';
 import '../../core/vehicle_scan.dart';
 import '../../data/obd/obd_session.dart';
+import '../../data/vehicle_fuel_store.dart';
 
 /// Everything the linked OBD-II reader can tell about the vehicle it is
 /// plugged into (Expo `app/vehicle-information.tsx`): identity (VIN,
@@ -19,10 +21,7 @@ import '../../data/obd/obd_session.dart';
 /// It borrows the shared reader session rather than opening its own: a
 /// dongle serves one client at a time.
 class VehicleInfoScreen extends ConsumerStatefulWidget {
-  const VehicleInfoScreen({super.key, this.fuelCard});
-
-  /// The odometer & fuel card, which needs the scan's readings.
-  final Widget Function(VehicleScanReport? report)? fuelCard;
+  const VehicleInfoScreen({super.key});
 
   @override
   ConsumerState<VehicleInfoScreen> createState() => _VehicleInfoScreenState();
@@ -33,10 +32,15 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
   ScanProgress? _progress;
   String? _scanError;
   bool _scanning = false;
+  FuelProfile _fuelProfile = defaultFuelProfile();
 
   @override
   void initState() {
     super.initState();
+    // The range maths rests on the stored profile, scan or no scan.
+    ref.read(vehicleFuelStoreProvider).load().then((p) {
+      if (mounted) setState(() => _fuelProfile = p);
+    }, onError: (Object _) {});
     // Read the vehicle as soon as the screen opens on a live link, and again
     // after a dropped link comes back.
     ref.listenManual(obdSessionProvider, (prev, next) {
@@ -74,6 +78,23 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
         shouldContinue: () => mounted,
       );
       if (mounted) setState(() => _report = report);
+      // Odometer + fuel level together are one measurement of this vehicle's
+      // own burn: the profile learns from it once enough ground is covered.
+      final snap = readFuelSnapshot(report.readings);
+      final odo = snap.odometerKm, level = snap.fuelLevelPercent;
+      try {
+        final r = await ref
+            .read(vehicleFuelStoreProvider)
+            .recordFuelSample(
+              report.vin,
+              odo != null && level != null
+                  ? FuelSample(odometerKm: odo, fuelLevelPercent: level, at: DateTime.now().millisecondsSinceEpoch)
+                  : null,
+            );
+        if (mounted) setState(() => _fuelProfile = r.profile);
+      } catch (_) {
+        // A storage failure is not a failed scan: the vehicle answered.
+      }
     } catch (e) {
       if (mounted) setState(() => _scanError = _message(e, 'Could not read from the vehicle.'));
     } finally {
@@ -85,6 +106,16 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
         });
       }
     }
+  }
+
+  Future<void> _editFuel() async {
+    final saved = await showDialog<FuelProfile>(
+      context: context,
+      builder: (_) => _FuelEditor(profile: _fuelProfile),
+    );
+    if (saved == null) return;
+    final p = await ref.read(vehicleFuelStoreProvider).save(saved);
+    if (mounted) setState(() => _fuelProfile = p);
   }
 
   static String _message(Object e, String fallback) {
@@ -109,7 +140,17 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
         children: [
           _ReaderCard(obd: obd, scanning: _scanning, progress: _progress, error: _scanError, report: report),
           if (obd.linked || report != null) ...[
-            if (widget.fuelCard != null) ...[const _Header('Odometer & fuel'), widget.fuelCard!(report)],
+            const _Header('Odometer & fuel'),
+            _FuelCard(
+              report: report,
+              obd: obd,
+              profile: _fuelProfile,
+              onEdit: _editFuel,
+              onResetMeasured: () async {
+                final p = await ref.read(vehicleFuelStoreProvider).resetMeasuredConsumption();
+                if (mounted) setState(() => _fuelProfile = p);
+              },
+            ),
             if (report != null) ..._reportSections(report),
           ],
           const _Header('Write to vehicle'),
@@ -211,6 +252,209 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
     final ok = years.where((y) => y <= now + 1).toList();
     return '${ok.isEmpty ? years.first : ok.last}';
   }
+}
+
+/// Odometer, fuel level and distance to empty. The first two come off the
+/// bus; the third is not an OBD-II parameter at all, so it is worked out from
+/// the tank size the driver entered and a consumption figure — and the card
+/// always says which figure it used.
+class _FuelCard extends StatelessWidget {
+  const _FuelCard({
+    required this.report,
+    required this.obd,
+    required this.profile,
+    required this.onEdit,
+    required this.onResetMeasured,
+  });
+
+  final VehicleScanReport? report;
+  final ObdSessionState obd;
+  final FuelProfile profile;
+  final VoidCallback onEdit;
+  final VoidCallback onResetMeasured;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final snap = readFuelSnapshot(report?.readings ?? const []);
+    // The level and speed are in the 1 Hz sweep, so they stay live between scans.
+    final liveLevel = obd.linked ? obd.telemetry['fuelLevel'] : null;
+    final liveSpeed = obd.linked ? obd.telemetry['speed'] : null;
+    final fuel = computeFuelRange(
+      snap.copyWith(fuelLevelPercent: liveLevel ?? snap.fuelLevelPercent, speedKmh: liveSpeed ?? snap.speedKmh),
+      profile,
+    );
+    Widget stat(IconData icon, Color? color, String value, String label, Key key) => Expanded(
+      child: Column(
+        children: [
+          Icon(icon, size: 18, color: color ?? t.colorScheme.outline),
+          FittedBox(
+            child: Text(
+              value,
+              key: key,
+              style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+            ),
+          ),
+          Text(label, style: t.textTheme.bodySmall, textAlign: TextAlign.center),
+        ],
+      ),
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  stat(Icons.speed, null, formatKm(fuel.odometerKm), 'km odometer', const ValueKey('fuel-odometer')),
+                  stat(
+                    Icons.local_gas_station,
+                    fuelLevelColor(fuel.fuelLevelPercent),
+                    formatPercent(fuel.fuelLevelPercent),
+                    '% in the tank',
+                    const ValueKey('fuel-level'),
+                  ),
+                  stat(
+                    Icons.navigation_outlined,
+                    null,
+                    fuel.rangeKm == null ? '—' : '${fuel.estimated ? '≈' : ''}${formatKm(fuel.rangeKm)}',
+                    'km remaining',
+                    const ValueKey('fuel-range'),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  minHeight: 8,
+                  value: fuelBarFraction(fuel.fuelLevelPercent),
+                  color: fuelLevelColor(fuel.fuelLevelPercent),
+                ),
+              ),
+            ),
+            if (fuel.fuelLevelPercent == null)
+              const _Row('Fuel level', 'Not reported by this vehicle')
+            else
+              _Row(
+                'Fuel remaining',
+                '${formatLitres(fuel.litresRemaining)} L of ${formatLitres(profile.tankCapacityL)} L',
+              ),
+            _Row('Consumption used', '${formatConsumption(fuel.consumption.l100)} L/100 km'),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Text(
+                'Range is worked out from a ${formatLitres(profile.tankCapacityL)} L tank at '
+                '${formatConsumption(fuel.consumption.l100)} L/100 km — ${fuel.consumption.source.label}. OBD-II '
+                "publishes neither tank size nor distance to empty, so this is the app's own estimate, not the "
+                'figure on your dashboard.',
+                style: t.textTheme.bodySmall,
+              ),
+            ),
+            if (fuel.odometerKm == null && report != null) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Text(
+                  'This vehicle does not answer the odometer parameter (mode 01 PID A6). Most cars built before the '
+                  'late 2010s keep the odometer on the instrument cluster and never put it on the diagnostic bus.',
+                  style: t.textTheme.bodySmall,
+                ),
+              ),
+              if (fuel.distanceSinceClearedKm != null)
+                _Row('Distance since codes cleared', '${formatKm(fuel.distanceSinceClearedKm)} km'),
+            ],
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  TextButton.icon(
+                    key: const ValueKey('fuel-edit'),
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Tank & consumption'),
+                  ),
+                  if (profile.measuredL100 != null)
+                    TextButton(onPressed: onResetMeasured, child: const Text('Forget measured consumption')),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FuelEditor extends StatefulWidget {
+  const _FuelEditor({required this.profile});
+  final FuelProfile profile;
+
+  @override
+  State<_FuelEditor> createState() => _FuelEditorState();
+}
+
+class _FuelEditorState extends State<_FuelEditor> {
+  late final _tank = TextEditingController(text: formatLitres(widget.profile.tankCapacityL));
+  late final _consumption = TextEditingController(text: formatConsumption(widget.profile.consumptionL100));
+  String? _error;
+
+  @override
+  void dispose() {
+    _tank.dispose();
+    _consumption.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final check = validateFuelProfileInput(_tank.text, _consumption.text);
+    final v = check.value;
+    if (!check.ok || v == null) {
+      setState(() => _error = check.error ?? 'Check the values and try again.');
+      return;
+    }
+    Navigator.pop(context, widget.profile.copyWith(tankCapacityL: v.tankCapacityL, consumptionL100: v.consumptionL100));
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Tank & consumption'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'OBD-II does not report the tank size, so enter it from the owner\'s manual. The consumption is used '
+          'until the app has measured this vehicle\'s own.',
+        ),
+        TextField(
+          key: const ValueKey('fuel-tank'),
+          controller: _tank,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Tank size', suffixText: 'L'),
+        ),
+        TextField(
+          key: const ValueKey('fuel-consumption'),
+          controller: _consumption,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Average consumption', suffixText: 'L/100 km'),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 8),
+          Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        ],
+      ],
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      FilledButton(onPressed: _save, child: const Text('Save')),
+    ],
+  );
 }
 
 class _ReaderCard extends StatelessWidget {
