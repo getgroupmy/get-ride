@@ -43,3 +43,19 @@ class WalletPayRepository {
 }
 
 final walletPayRepositoryProvider = Provider((ref) => WalletPayRepository(ref.watch(supabaseProvider)));
+
+/// GET.wallet → GET.credit for partners (Expo `rechargeCredit`), through the
+/// owner-scoped `wallet_recharge_credit` RPC. Throws with the RPC's error on
+/// refusal (map it with `rechargeCreditErrorMessage`).
+class CreditRechargeRepository {
+  CreditRechargeRepository(this._db);
+  final SupabaseClient _db;
+
+  Future<void> recharge(double amount) async {
+    final uid = _db.auth.currentUser?.id;
+    if (uid == null) throw StateError('not_authorized');
+    await _db.rpc('wallet_recharge_credit', params: {'p_user': uid, 'p_amount': amount});
+  }
+}
+
+final creditRechargeRepositoryProvider = Provider((ref) => CreditRechargeRepository(ref.watch(supabaseProvider)));
