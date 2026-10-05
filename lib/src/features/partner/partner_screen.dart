@@ -128,6 +128,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final partner = ref.watch(partnerProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Drive'), actions: [
+        if (partner.value != null && hasTeksiPartnerType(partner.value!.raw['partner_types']))
+          IconButton(
+            tooltip: 'Driver permit',
+            icon: const Icon(Icons.badge_outlined),
+            onPressed: () => context.push('/drive/permit'),
+          ),
         if (partner.value != null && partnerCanDrive(partner.value!) && hasTeksiPartnerType(partner.value!.raw['partner_types']))
           IconButton(
             tooltip: 'Meter Digital',
