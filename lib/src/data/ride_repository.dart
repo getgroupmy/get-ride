@@ -239,6 +239,7 @@ class RideRepository {
     'partner_vehicle',
     'partner_plate',
     'partner_rating',
+    'vehicle_id',
     'partner_accept_lat',
     'partner_accept_lng',
   ];
