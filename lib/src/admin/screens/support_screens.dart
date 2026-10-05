@@ -11,6 +11,7 @@ import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
+import '../widgets/trip_audio_panel.dart';
 
 /// Ticket statuses and the labels the Expo panel shows for them.
 const ticketStatusLabels = {
@@ -239,6 +240,8 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
               title: Text('Assigned: ${ticket['assigned_admin_name'] ?? 'nobody'}'),
               subtitle: Text('Opened ${dateText(ticket['created_at'])}'),
             ),
+          if (ticket != null && ticket['profile_id'] != null)
+            TripAudioPanel(profileId: '${ticket['profile_id']}', ticketId: widget.ticketId, canEdit: canEdit),
           Expanded(
             child: _messages.isEmpty
                 ? const EmptyState(icon: Icons.forum_outlined, title: 'No messages yet')

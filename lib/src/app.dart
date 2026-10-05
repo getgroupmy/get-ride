@@ -30,6 +30,7 @@ import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trips_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
+import 'features/safety/voice_protection_controller.dart';
 import 'features/support/support_chat_screen.dart';
 import 'features/support/support_screen.dart';
 import 'features/wallet/coin_trade_screen.dart';
@@ -222,7 +223,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       darkTheme: _theme(Brightness.dark),
       themeMode: ref.watch(themeModeProvider),
       routerConfig: ref.watch(routerProvider),
-      builder: (_, child) => IncomingTransferListener(child: child ?? const SizedBox.shrink()),
+      builder: (_, child) => VoiceProtectionHost(
+        child: IncomingTransferListener(child: child ?? const SizedBox.shrink()),
+      ),
     );
   }
 }

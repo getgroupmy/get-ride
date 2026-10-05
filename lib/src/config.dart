@@ -30,4 +30,7 @@ class AppConfig {
   /// Open ride requests expire after this long without a partner
   /// (`REQUEST_EXPIRY_MS` in the Expo app).
   static const requestExpiry = Duration(minutes: 7);
+
+  /// The Privacy Notice (the same page the Expo app links).
+  static const privacyUrl = String.fromEnvironment('PRIVACY_URL', defaultValue: 'https://getride.my/privacy');
 }
