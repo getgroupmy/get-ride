@@ -101,11 +101,7 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
         title: const Text('Vehicle information'),
         actions: [
           if (obd.linked)
-            IconButton(
-              tooltip: 'Read again',
-              icon: const Icon(Icons.refresh),
-              onPressed: _scanning ? null : _scan,
-            ),
+            IconButton(tooltip: 'Read again', icon: const Icon(Icons.refresh), onPressed: _scanning ? null : _scan),
         ],
       ),
       body: ListView(
@@ -113,19 +109,11 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
         children: [
           _ReaderCard(obd: obd, scanning: _scanning, progress: _progress, error: _scanError, report: report),
           if (obd.linked || report != null) ...[
-            if (widget.fuelCard != null) ...[
-              const _Header('Odometer & fuel'),
-              widget.fuelCard!(report),
-            ],
+            if (widget.fuelCard != null) ...[const _Header('Odometer & fuel'), widget.fuelCard!(report)],
             if (report != null) ..._reportSections(report),
           ],
           const _Header('Write to vehicle'),
-          _WritesCard(
-            obd: obd,
-            send: _send,
-            onVehicleChanged: () => setState(() => _report = null),
-            rescan: _scan,
-          ),
+          _WritesCard(obd: obd, send: _send, onVehicleChanged: () => setState(() => _report = null), rescan: _scan),
         ],
       ),
     );
@@ -138,64 +126,79 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
     return [
       const _Header('Vehicle identity'),
       Card(
-        child: Column(children: [
-          if (r.identity.isEmpty) const _Row('Identity', 'The vehicle did not report any (mode 09).'),
-          for (final v in r.identity) _Row(v.label, v.value),
-          if (vin != null) ...[
-            _Row('Manufacturer code', '${vin.wmi}${vin.region == null ? '' : ' · ${vin.region}'}'),
-            if (vin.modelYears.isNotEmpty) _Row('Model year', _modelYear(vin.modelYears)),
-            _Row('Plant · serial', '${vin.plantCode} · ${vin.serial}'),
+        child: Column(
+          children: [
+            if (r.identity.isEmpty) const _Row('Identity', 'The vehicle did not report any (mode 09).'),
+            for (final v in r.identity) _Row(v.label, v.value),
+            if (vin != null) ...[
+              _Row('Manufacturer code', '${vin.wmi}${vin.region == null ? '' : ' · ${vin.region}'}'),
+              if (vin.modelYears.isNotEmpty) _Row('Model year', _modelYear(vin.modelYears)),
+              _Row('Plant · serial', '${vin.plantCode} · ${vin.serial}'),
+            ],
           ],
-        ]),
+        ),
       ),
       _Header('Diagnostic trouble codes', trailing: codes.isEmpty ? null : '${codes.length}'),
       Card(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (final m in dtcModes)
-            ListTile(
-              key: ValueKey('dtc-${m.key.name}'),
-              title: Text(m.label),
-              subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(m.hint),
-                if (r.dtcs[m.key] == null)
-                  const Text('Could not be read.')
-                else if (r.dtcs[m.key]!.isEmpty)
-                  const Text('None')
-                else
-                  for (final c in r.dtcs[m.key]!)
-                    Text('$c — ${describeDtc(c)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-              ]),
-            ),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final m in dtcModes)
+              ListTile(
+                key: ValueKey('dtc-${m.key.name}'),
+                title: Text(m.label),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(m.hint),
+                    if (r.dtcs[m.key] == null)
+                      const Text('Could not be read.')
+                    else if (r.dtcs[m.key]!.isEmpty)
+                      const Text('None')
+                    else
+                      for (final c in r.dtcs[m.key]!)
+                        Text('$c — ${describeDtc(c)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
       if (monitor != null) ...[
         const _Header('Emissions readiness'),
         Card(
-          child: Column(children: [
-            _Row('Check-engine light', monitor.milOn ? 'On' : 'Off'),
-            _Row('Confirmed faults', '${monitor.dtcCount}'),
-            _Row('Engine type', monitor.compressionIgnition ? 'Diesel (compression)' : 'Petrol (spark)'),
-            for (final m in monitor.monitors.where((m) => m.supported))
-              _Row(m.label, m.complete ? 'Ready' : 'Not ready'),
-          ]),
+          child: Column(
+            children: [
+              _Row('Check-engine light', monitor.milOn ? 'On' : 'Off'),
+              _Row('Confirmed faults', '${monitor.dtcCount}'),
+              _Row('Engine type', monitor.compressionIgnition ? 'Diesel (compression)' : 'Petrol (spark)'),
+              for (final m in monitor.monitors.where((m) => m.supported))
+                _Row(m.label, m.complete ? 'Ready' : 'Not ready'),
+            ],
+          ),
         ),
       ],
       _Header('Live parameters', trailing: '${r.readings.length} of ${r.supportedPids.length}'),
       for (final g in groupReadings(r.readings, pidGroupOrder))
         Card(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Text(g.group.label, style: Theme.of(context).textTheme.titleSmall),
-            ),
-            for (final v in g.readings) _Row(v.known ? v.label : '${v.label} (PID ${v.pid})', v.value),
-          ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Text(g.group.label, style: Theme.of(context).textTheme.titleSmall),
+              ),
+              for (final v in g.readings) _Row(v.known ? v.label : '${v.label} (PID ${v.pid})', v.value),
+            ],
+          ),
         ),
       if (r.unreadablePids.isNotEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text('Listed as supported but did not answer: ${r.unreadablePids.join(', ')}',
-              style: Theme.of(context).textTheme.bodySmall),
+          child: Text(
+            'Listed as supported but did not answer: ${r.unreadablePids.join(', ')}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ),
       const _Header('Reader'),
       Card(child: Column(children: [for (final a in r.adapter) _Row(a.label, a.value)])),
@@ -232,44 +235,49 @@ class _ReaderCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Icon(Icons.circle, size: 12, color: obd.linked ? Colors.green : t.colorScheme.outline),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                obd.linked ? 'Connected${obd.adapter == null ? '' : ' — ${obd.adapter!.name}'}' : 'Not connected',
-                style: t.textTheme.titleMedium,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.circle, size: 12, color: obd.linked ? Colors.green : t.colorScheme.outline),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    obd.linked ? 'Connected${obd.adapter == null ? '' : ' — ${obd.adapter!.name}'}' : 'Not connected',
+                    style: t.textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
+            if (!obd.linked) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Plug the OBD-II reader in with the ignition on and connect it. This screen reads everything the '
+                'reader can tell about the vehicle.',
               ),
-            ),
-          ]),
-          if (!obd.linked) ...[
-            const SizedBox(height: 8),
-            const Text(
-              'Plug the OBD-II reader in with the ignition on and connect it. This screen reads everything the '
-              'reader can tell about the vehicle.',
-            ),
-            const SizedBox(height: 8),
-            FilledButton.tonal(onPressed: () => context.push('/meter/reader'), child: const Text('OBD-II reader')),
+              const SizedBox(height: 8),
+              FilledButton.tonal(onPressed: () => context.push('/meter/reader'), child: const Text('OBD-II reader')),
+            ],
+            if (scanning && p != null) ...[
+              const SizedBox(height: 12),
+              LinearProgressIndicator(value: p.total <= 0 ? null : (p.done / p.total).clamp(0.0, 1.0)),
+              const SizedBox(height: 4),
+              Text('Reading: ${p.label}', style: t.textTheme.bodySmall),
+            ],
+            if (error != null) ...[
+              const SizedBox(height: 8),
+              Text(error!, style: TextStyle(color: t.colorScheme.error)),
+            ],
+            if (report != null && !scanning) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Read ${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(report!.finishedAt)).format(context)}',
+                style: t.textTheme.bodySmall,
+              ),
+            ],
           ],
-          if (scanning && p != null) ...[
-            const SizedBox(height: 12),
-            LinearProgressIndicator(value: p.total <= 0 ? null : (p.done / p.total).clamp(0.0, 1.0)),
-            const SizedBox(height: 4),
-            Text('Reading: ${p.label}', style: t.textTheme.bodySmall),
-          ],
-          if (error != null) ...[
-            const SizedBox(height: 8),
-            Text(error!, style: TextStyle(color: t.colorScheme.error)),
-          ],
-          if (report != null && !scanning) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Read ${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(report!.finishedAt)).format(context)}',
-              style: t.textTheme.bodySmall,
-            ),
-          ],
-        ]),
+        ),
       ),
     );
   }
@@ -308,30 +316,34 @@ class _WritesCardState extends ConsumerState<_WritesCard> {
   Widget build(BuildContext context) {
     final ctx = _context(widget.obd);
     return Card(
-      child: Column(children: [
-        for (final a in vehicleWriteActions)
-          Builder(builder: (context) {
-            final avail = evaluateWriteAvailability(a, ctx);
-            return ListTile(
-              key: ValueKey('write-${a.id.id}'),
-              enabled: avail.allowed,
-              leading: Icon(_icon(a.id), color: a.destructive && avail.allowed ? Colors.red : null),
-              title: Text(a.label),
-              subtitle: Text(avail.reason ?? a.description),
-              trailing: Chip(label: Text(a.target == WriteTarget.vehicle ? 'ECU' : 'Reader')),
-              onTap: avail.allowed ? () => _open(a) : null,
-            );
-          }),
-      ]),
+      child: Column(
+        children: [
+          for (final a in vehicleWriteActions)
+            Builder(
+              builder: (context) {
+                final avail = evaluateWriteAvailability(a, ctx);
+                return ListTile(
+                  key: ValueKey('write-${a.id.id}'),
+                  enabled: avail.allowed,
+                  leading: Icon(_icon(a.id), color: a.destructive && avail.allowed ? Colors.red : null),
+                  title: Text(a.label),
+                  subtitle: Text(avail.reason ?? a.description),
+                  trailing: Chip(label: Text(a.target == WriteTarget.vehicle ? 'ECU' : 'Reader')),
+                  onTap: avail.allowed ? () => _open(a) : null,
+                );
+              },
+            ),
+        ],
+      ),
     );
   }
 
   static IconData _icon(VehicleWriteId id) => switch (id) {
-        VehicleWriteId.clearDtc => Icons.cleaning_services_outlined,
-        VehicleWriteId.setProtocol => Icons.memory,
-        VehicleWriteId.resetAdapter => Icons.restart_alt,
-        VehicleWriteId.rawCommand => Icons.terminal,
-      };
+    VehicleWriteId.clearDtc => Icons.cleaning_services_outlined,
+    VehicleWriteId.setProtocol => Icons.memory,
+    VehicleWriteId.resetAdapter => Icons.restart_alt,
+    VehicleWriteId.rawCommand => Icons.terminal,
+  };
 }
 
 class _WriteDialog extends ConsumerStatefulWidget {
@@ -382,7 +394,8 @@ class _WriteDialogState extends ConsumerState<_WriteDialog> {
           result = isWriteAcknowledged(raw, '44')
               ? (
                   ok: true,
-                  message: 'Codes cleared. The readiness monitors are now "not ready" until the vehicle completes a '
+                  message:
+                      'Codes cleared. The readiness monitors are now "not ready" until the vehicle completes a '
                       'drive cycle.',
                 )
               : (ok: false, message: 'The vehicle refused the request: ${raw.trim()}');
@@ -412,7 +425,8 @@ class _WriteDialogState extends ConsumerState<_WriteDialog> {
       }
       if (mounted) setState(() => _result = result);
     } catch (e) {
-      if (mounted) setState(() => _result = (ok: false, message: _VehicleInfoScreenState._message(e, 'The command failed.')));
+      if (mounted)
+        setState(() => _result = (ok: false, message: _VehicleInfoScreenState._message(e, 'The command failed.')));
     } finally {
       session.setPollingPaused(false);
       if (mounted) setState(() => _busy = false);
@@ -431,45 +445,54 @@ class _WriteDialogState extends ConsumerState<_WriteDialog> {
     return AlertDialog(
       title: Text(a.warningTitle),
       content: SingleChildScrollView(
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(a.warningBody),
-          if (a.id == VehicleWriteId.setProtocol) ...[
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _protocol,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Protocol'),
-              items: [
-                for (final e in elmProtocolNames.entries) DropdownMenuItem(value: e.key, child: Text(e.value)),
-              ],
-              onChanged: _busy ? null : (v) => setState(() => _protocol = v ?? '0'),
-            ),
-          ],
-          if (a.id == VehicleWriteId.rawCommand) ...[
-            const SizedBox(height: 12),
-            TextField(
-              key: const ValueKey('raw-command'),
-              controller: _raw,
-              enabled: !_busy,
-              textCapitalization: TextCapitalization.characters,
-              decoration: InputDecoration(
-                labelText: 'Command',
-                hintText: 'e.g. ATRV or 0100',
-                helperText: check == null || !check.ok
-                    ? null
-                    : (check.write == true ? 'Writes to the vehicle' : (check.target == WriteTarget.adapter ? 'Reader command' : 'Vehicle read')),
-                errorText: check != null && !check.ok ? check.error : null,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(a.warningBody),
+            if (a.id == VehicleWriteId.setProtocol) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _protocol,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Protocol'),
+                items: [for (final e in elmProtocolNames.entries) DropdownMenuItem(value: e.key, child: Text(e.value))],
+                onChanged: _busy ? null : (v) => setState(() => _protocol = v ?? '0'),
               ),
-              onChanged: (_) => setState(() {}),
-            ),
-          ],
-          if (result != null) ...[
-            const SizedBox(height: 12),
-            Text(result.message,
+            ],
+            if (a.id == VehicleWriteId.rawCommand) ...[
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey('raw-command'),
+                controller: _raw,
+                enabled: !_busy,
+                textCapitalization: TextCapitalization.characters,
+                decoration: InputDecoration(
+                  labelText: 'Command',
+                  hintText: 'e.g. ATRV or 0100',
+                  helperText: check == null || !check.ok
+                      ? null
+                      : (check.write == true
+                            ? 'Writes to the vehicle'
+                            : (check.target == WriteTarget.adapter ? 'Reader command' : 'Vehicle read')),
+                  errorText: check != null && !check.ok ? check.error : null,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
+            if (result != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                result.message,
                 key: const ValueKey('write-result'),
-                style: TextStyle(color: result.ok ? Colors.green : t.colorScheme.error, fontFamily: a.id == VehicleWriteId.rawCommand ? 'monospace' : null)),
+                style: TextStyle(
+                  color: result.ok ? Colors.green : t.colorScheme.error,
+                  fontFamily: a.id == VehicleWriteId.rawCommand ? 'monospace' : null,
+                ),
+              ),
+            ],
           ],
-        ]),
+        ),
       ),
       actions: done
           ? [FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Close'))]
@@ -497,12 +520,14 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 20, 4, 6),
-        child: Row(children: [
-          Expanded(child: Text(text.toUpperCase(), style: Theme.of(context).textTheme.labelLarge)),
-          if (trailing != null) Text(trailing!, style: Theme.of(context).textTheme.labelLarge),
-        ]),
-      );
+    padding: const EdgeInsets.fromLTRB(4, 20, 4, 6),
+    child: Row(
+      children: [
+        Expanded(child: Text(text.toUpperCase(), style: Theme.of(context).textTheme.labelLarge)),
+        if (trailing != null) Text(trailing!, style: Theme.of(context).textTheme.labelLarge),
+      ],
+    ),
+  );
 }
 
 class _Row extends StatelessWidget {
@@ -512,13 +537,20 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyMedium)),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Text(value, textAlign: TextAlign.end, style: const TextStyle(fontWeight: FontWeight.w600)),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: Text(label, style: Theme.of(context).textTheme.bodyMedium)),
+        const SizedBox(width: 12),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: const TextStyle(fontWeight: FontWeight.w600),
           ),
-        ]),
-      );
+        ),
+      ],
+    ),
+  );
 }
