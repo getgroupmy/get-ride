@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy · GET.ride</title>
+  <meta name="description" content="How GET.ride collects, uses and protects your personal data.">
+  <link rel="icon" type="image/png" href="/favicon.png">
+  <!--
+    A plain page rather than a screen of the Flutter app, so it opens
+    instantly, is readable without JavaScript, and can be linked from the
+    app stores and the apps themselves. Served at /privacy (see the routes
+    in .github/workflows/deploy-web.yml).
+  -->
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #1b1d21;
+      --muted: #5b616b;
+      --rule: #e3e5e8;
+      --accent: #0b6bcb;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121417;
+        --text: #e8eaed;
+        --muted: #a3a9b2;
+        --rule: #2a2e34;
+        --accent: #6cb0ff;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+    header { border-bottom: 1px solid var(--rule); margin-bottom: 24px; padding-bottom: 16px; }
+    .brand { font-weight: 700; letter-spacing: .02em; color: var(--text); text-decoration: none; }
+    h1 { font-size: 1.9rem; line-height: 1.25; margin: 16px 0 4px; }
+    h2 { font-size: 1.2rem; margin: 32px 0 8px; }
+    h3 { font-size: 1rem; margin: 20px 0 4px; }
+    p, li { color: var(--text); }
+    .muted { color: var(--muted); }
+    ul { padding-left: 1.25rem; }
+    li { margin: 4px 0; }
+    a { color: var(--accent); }
+    footer { border-top: 1px solid var(--rule); margin-top: 40px; padding-top: 16px; font-size: .9rem; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <a class="brand" href="/">GET.ride</a>
+    <h1>Privacy Policy</h1>
+    <p class="muted">Effective 4 October 2026</p>
+  </header>
+
+  <p>
+    This policy explains what personal data GET.ride collects when you use our
+    mobile apps and website (getride.my), why we collect it, who we share it with
+    and the choices you have. It applies to passengers and to partners (drivers),
+    and is written with Malaysia's Personal Data Protection Act 2010 (PDPA) in mind.
+  </p>
+
+  <h2>1. Data we collect</h2>
+
+  <h3>Account</h3>
+  <ul>
+    <li>Your mobile number, which we verify by SMS one-time code.</li>
+    <li>Your name, and optionally email, profile photo, gender, date of birth, nationality and address.</li>
+    <li>Your sign-in PIN, stored only as a one-way (bcrypt) hash. We never see or store the PIN itself.</li>
+  </ul>
+
+  <h3>Identity and verification</h3>
+  <ul>
+    <li>Your identity document (for example MyKad or passport) number, type, expiry date and photos you take of it.</li>
+    <li>For partners: licences, permits, insurance and vehicle documents, and vehicle details such as plate, make and model.</li>
+    <li>Documents may be checked automatically with an AI service before a person reviews them.</li>
+  </ul>
+
+  <h3>Location</h3>
+  <ul>
+    <li>Your location while you use the app, to show the map, find pickups and estimate fares.</li>
+    <li>During a ride, the live location of the passenger and the partner, shared with each other so each can follow the trip.</li>
+    <li>For partners, location in the background while you are online or on a trip, so you can be offered and complete rides with the app closed.</li>
+    <li>A location history linked to your account, used for safety and fraud prevention.</li>
+  </ul>
+
+  <h3>Trips and payments</h3>
+  <ul>
+    <li>Pickup and drop-off points, routes, times, fares, offers, ratings and cancellation reasons.</li>
+    <li>Balances and transactions in GET.wallet, GET.credit and GET.coin, including transfers between accounts and commissions.</li>
+    <li>Payments are processed by our payment partners. We do not store your full card details.</li>
+  </ul>
+
+  <h3>Device and connection</h3>
+  <ul>
+    <li>Device model and identifier, operating system, app version and push-notification token.</li>
+    <li>Your IP address, internet or mobile provider, approximate location derived from the IP, and network type, recorded for each session.</li>
+    <li>Signals from Google Play Integrity or Apple App Attest that the app is genuine and unmodified.</li>
+  </ul>
+
+  <h3>Things you choose to give us</h3>
+  <ul>
+    <li><strong>Emergency contacts</strong>: names and numbers of people to alert when you use SOS.</li>
+    <li><strong>Voice Protection</strong>: if you turn it on, audio is recorded during your trips and stored privately for safety review. It is off unless you enable it.</li>
+    <li><strong>Support</strong>: messages, photos and voice notes you send to our support team, and records of support calls.</li>
+    <li><strong>Referrals</strong>: who invited you and whom you invite.</li>
+  </ul>
+
+  <h3>Taxi meter and vehicle data</h3>
+  <p>
+    The in-app taxi meter can read speed, odometer and diagnostic data from a
+    vehicle's OBD-II reader, and print receipts to a nearby printer. Reader and
+    printer settings and the meter's trip log are kept on your device.
+  </p>
+
+  <h3>Website</h3>
+  <p>
+    getride.my uses Vercel Web Analytics and Speed Insights, which count page
+    views and measure performance without cookies and without identifying you.
+  </p>
+
+  <h2>2. How we use your data</h2>
+  <ul>
+    <li>To create and secure your account and verify who you are.</li>
+    <li>To match passengers with partners, run trips, calculate fares and process payments and commissions.</li>
+    <li>To approve partners and their vehicles, and keep their documents current.</li>
+    <li>To keep riders and partners safe, including SOS, live trip sharing and Voice Protection.</li>
+    <li>To detect and prevent fraud, abuse and unauthorised access.</li>
+    <li>To send you notifications about your trips and account and, where allowed, service announcements.</li>
+    <li>To provide support and resolve disputes.</li>
+    <li>To meet our legal, tax and regulatory obligations.</li>
+  </ul>
+
+  <h2>3. Who we share it with</h2>
+  <ul>
+    <li><strong>The other side of your trip.</strong> Passengers see their partner's name, photo, vehicle and live location. Partners see the passenger's name, pickup and drop-off points and live location during the trip.</li>
+    <li><strong>Service providers</strong> who process data for us under contract: cloud hosting and database (Supabase), web hosting (Vercel), maps and routing (Google Maps and OpenStreetMap services), SMS delivery, push notifications (Expo, Apple and Google), AI services used for fare estimates and document checks, and payment partners.</li>
+    <li><strong>Authorities</strong>, when the law requires it or to protect someone's safety.</li>
+    <li><strong>A buyer or successor</strong>, if GET.ride's business is transferred, under the same protections.</li>
+  </ul>
+  <p>We do not sell your personal data.</p>
+
+  <h2>4. Transfers outside Malaysia</h2>
+  <p>
+    Some of our service providers store or process data outside Malaysia. Where
+    that happens we rely on providers that protect personal data to a standard
+    comparable to the PDPA.
+  </p>
+
+  <h2>5. How long we keep it</h2>
+  <p>
+    We keep your data while your account is active and for as long as needed for
+    the purposes above, including resolving disputes and meeting legal and tax
+    record-keeping requirements. When it is no longer needed we delete or
+    anonymise it. Voice Protection recordings and location history are kept only
+    as long as they are needed for safety and fraud review.
+  </p>
+
+  <h2>6. How we protect it</h2>
+  <p>
+    Data is encrypted in transit, access is restricted to the account owner and
+    authorised staff by database-level rules, PINs are stored only as hashes, and
+    wallet balances can only be changed through checked server-side operations. No
+    system is perfectly secure, so please keep your PIN private.
+  </p>
+
+  <h2>7. Your choices and rights</h2>
+  <ul>
+    <li>You can view and edit your profile in the app.</li>
+    <li>You can turn off location access, notifications, camera and microphone in your phone's settings. Some features, such as booking or driving, need location to work.</li>
+    <li>You can turn Voice Protection off at any time.</li>
+    <li>Under the PDPA you may ask to access or correct your personal data, withdraw consent, or ask us to limit how we process it. You may also ask us to close your account and delete your data, subject to what we must keep by law.</li>
+  </ul>
+  <p>To make a request, contact us using the details below. We will respond within the time the law requires.</p>
+
+  <h2>8. Children</h2>
+  <p>
+    GET.ride accounts are not intended for children. If you believe a child has
+    given us personal data, contact us and we will delete it.
+  </p>
+
+  <h2>9. Changes to this policy</h2>
+  <p>
+    We may update this policy. When we make significant changes we will tell you
+    in the app or by notification, and the date at the top of this page will change.
+  </p>
+
+  <h2>10. Contact us</h2>
+  <p>
+    Questions or requests about your personal data:
+    <a href="mailto:support@getride.my">support@getride.my</a>
+  </p>
+
+  <footer class="muted">
+    &copy; 2026 GET.ride · <a href="/">getride.my</a>
+  </footer>
+</main>
+</body>
+</html>

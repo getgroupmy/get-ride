@@ -74,12 +74,15 @@ jobs:
           cp -r build/web .vercel/output/static
           # Serve real files first, then hand every other path to the app so
           # deep links and refreshes reach the router instead of a 404. Vercel's
-          # own /_vercel/* endpoints (Speed Insights) are left alone.
+          # own /_vercel/* endpoints (Speed Insights) are left alone. /privacy
+          # is a static page (web/privacy.html), linked from the apps and the
+          # store listings, so it gets its clean URL here rather than the app.
           cat > .vercel/output/config.json <<'JSON'
           {
             "version": 3,
             "routes": [
               { "src": "/(flutter_service_worker\\.js|index\\.html)", "headers": { "cache-control": "no-cache" }, "continue": true },
+              { "src": "/privacy/?", "dest": "/privacy.html" },
               { "handle": "filesystem" },
               { "src": "/(?!_vercel/).*", "dest": "/index.html" }
             ]

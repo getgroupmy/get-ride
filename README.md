@@ -98,7 +98,7 @@ CI (`.github/workflows/flutter.yml`) analyses, tests and builds every platform.
 
 ## Deploy (web → Vercel)
 
-Production is **https://getride.my**. `www.getride.my` redirects there, and `getride-snowy.vercel.app` is the project's own Vercel address for the same deployment. Both domains are attached in the Vercel project (Settings → Domains), so no workflow names them: every production deploy is served on them automatically.
+Production is **https://getride.my**. `www.getride.my` redirects there, and `getride-snowy.vercel.app` is the project's own Vercel address for the same deployment. Both domains are attached in the Vercel project (Settings → Domains), so no workflow names them: every production deploy is served on them automatically. The privacy policy is a plain static page, `web/privacy.html`, served at https://getride.my/privacy; the apps and the store listings link to it.
 
 Deploying is the last step of CI. Every push to `main` whose `flutter analyze` and tests pass (`.github/workflows/flutter.yml`) runs `.github/workflows/deploy-web.yml`, which builds the web app and uploads it to Vercel **production**. Other branches and pull requests get the checks only: the team is on Vercel's free plan (100 deployments a day, shared with every project on the team), and per-branch previews used that up. Running *Deploy web* by hand on another branch still makes a preview. Vercel has no Flutter builder, so the site is built in GitHub Actions and shipped prebuilt (`vercel deploy --prebuilt`); every unknown path falls back to `index.html` so deep links reach the router. It can also be run by hand from the Actions tab (*Deploy web*).
 
