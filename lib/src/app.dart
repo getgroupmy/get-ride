@@ -10,6 +10,7 @@ import 'admin/admin_routes.dart';
 import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
 import 'data/push_service.dart';
+import 'data/session_tracker.dart';
 import 'features/auth/otp_screen.dart';
 import 'features/ev/ev_order_screen.dart';
 import 'features/meter/meter_screen.dart';
@@ -207,10 +208,13 @@ class GetRideApp extends ConsumerStatefulWidget {
 class _GetRideAppState extends ConsumerState<GetRideApp> {
   final _messenger = GlobalKey<ScaffoldMessengerState>();
   final _subs = <StreamSubscription<Object?>>[];
+  SessionTracker? _tracker;
+  AppLifecycleListener? _lifecycle;
 
   @override
   void initState() {
     super.initState();
+    _startSessionTracking();
     final push = PushService.instance;
     if (push == null) return;
     _subs.add(push.taps.listen(_open));
@@ -222,8 +226,28 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     });
   }
 
+  /// Session and location rows for the admin Session History and fraud
+  /// screens (see `data/session_tracker.dart`).
+  void _startSessionTracking() {
+    final db = ref.read(supabaseProvider);
+    final tracker = SessionTracker(
+      sink: SupabaseSessionSink(db),
+      location: GeolocatorTelemetryLocation(),
+      deviceId: ref.read(authRepositoryProvider).deviceIdentifier,
+      device: currentDevice(),
+    );
+    _tracker = tracker;
+    unawaited(tracker.launched());
+    ref.listenManual<String?>(currentUserIdProvider, (_, id) {
+      unawaited(tracker.userChanged(id, phone: db.auth.currentUser?.phone));
+    }, fireImmediately: true);
+    _lifecycle = AppLifecycleListener(onResume: () => unawaited(tracker.resumed()));
+  }
+
   @override
   void dispose() {
+    _lifecycle?.dispose();
+    _tracker?.dispose();
     for (final sub in _subs) {
       sub.cancel();
     }
