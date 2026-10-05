@@ -39,6 +39,27 @@ Two things follow from sharing the listing:
   production → *Keystore: Download*, and use it below. A new key would be
   refused, and only Google can reset it.
 
+### Upload key reset (October 2026)
+
+The first Flutter release (5 Oct 2026, run 37354331936) was refused by Play:
+the bundle was signed with the key in the `ANDROID_KEYSTORE_*` secrets, not
+the upload key the listing was registered with (the Expo app's EAS key).
+An upload key reset was requested the same day, and Google confirmed it
+for **TEKSI. Bid, Agree & Ride (`com.taxxee.teksi`)**:
+
+| | |
+| --- | --- |
+| New key valid from | **2026-10-07 11:29 UTC** |
+| MD5 | `3A:2B:1A:B5:CF:89:2E:A2:D1:9C:22:B3:BE:E6:90:40` |
+| SHA-1 | `18:6A:59:BA:4F:D5:C8:59:BD:32:66:F4:BE:60:5B:09:7A:36:B2:0C` |
+
+Until then Play takes no new bundle, so `android-release.yml` refuses to
+build before that time (its first step, *Upload key reset hold*). Before the
+next release, make sure the `ANDROID_KEYSTORE_*` secrets hold the key with the
+fingerprints above (`keytool -list -v -keystore upload.jks`); keep that
+keystore safe, because it is now the listing's upload key. Delete the hold
+step once it has passed.
+
 The marketing version (`1.0.0`) comes from `version:` in `pubspec.yaml`.
 Raise it there for a new store version.
 
