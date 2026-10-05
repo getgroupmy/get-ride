@@ -10,6 +10,7 @@ import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import 'vehicle_picker.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -144,6 +145,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   subtitle: Text([p.name, p.vehicle, p.plate].whereType<String>().join(' · ')),
                 ),
               ),
+              const CurrentVehicleCard(),
               Expanded(child: _online ? _queue(p) : const EmptyState(
                 icon: Icons.local_taxi_outlined,
                 title: 'Go online to receive ride requests',
