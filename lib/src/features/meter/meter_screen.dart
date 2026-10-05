@@ -468,6 +468,12 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
               icon: const Icon(Icons.print_outlined, color: _muted),
               onPressed: () => _openSettings('/meter/printer'),
             ),
+            if (obd.linked)
+              IconButton(
+                tooltip: 'Vehicle information',
+                icon: const Icon(Icons.directions_car_outlined, color: _muted),
+                onPressed: () => _openSettings('/meter/vehicle'),
+              ),
             IconButton(
               tooltip: 'OBD-II reader',
               icon: Icon(Icons.settings_input_component, color: obd.linked ? _lcd : _muted),

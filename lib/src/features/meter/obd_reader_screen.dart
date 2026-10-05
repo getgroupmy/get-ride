@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/obd.dart';
@@ -250,6 +251,15 @@ class _StatusCard extends StatelessWidget {
               Text(session.error!, style: TextStyle(color: scheme.error)),
               const Text(
                 'Retrying every few seconds. Check the ignition is on and the phone is on the reader\'s Wi-Fi.',
+              ),
+            ],
+            if (session.linked) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                key: const ValueKey('open-vehicle-info'),
+                icon: const Icon(Icons.directions_car_outlined),
+                label: const Text('Vehicle information'),
+                onPressed: () => context.push('/meter/vehicle'),
               ),
             ],
             if (session.linked && values.isNotEmpty) ...[
