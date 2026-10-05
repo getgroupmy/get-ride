@@ -18,7 +18,7 @@ Map<String, dynamic> upload(String docId, {Map<String, dynamic>? taxiPermit, Str
   'document_number': 'DOC-1',
   'expiry_date': '2027-01-31',
   'ai_verification': {
-    'extracted': {'documentNumber': 'AI-1', if (taxiPermit != null) 'taxiPermit': taxiPermit},
+    'extracted': {'documentNumber': 'AI-1', 'taxiPermit': ?taxiPermit},
   },
 };
 
@@ -72,7 +72,7 @@ void main() {
     final today = DateTime(2026, 10, 5);
     DriverPermit permit({String? ic, String? to}) => resolveDriverPermit(
       profile: {'ic': ic ?? '900101145678'},
-      document: upload('doc-permit', taxiPermit: {..._tp, if (to != null) 'validityTo': to}),
+      document: upload('doc-permit', taxiPermit: {..._tp, 'validityTo': ?to}),
     );
 
     test('IC compared ignoring punctuation and case', () {
