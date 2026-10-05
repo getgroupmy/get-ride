@@ -36,6 +36,7 @@ import 'features/support/support_chat_screen.dart';
 import 'features/support/support_screen.dart';
 import 'features/wallet/coin_trade_screen.dart';
 import 'features/wallet/incoming_transfer_listener.dart';
+import 'features/wallet/wallet_history_screen.dart';
 import 'features/wallet/wallet_qr_screens.dart';
 import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
@@ -141,6 +142,7 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ),
             GoRoute(path: 'scan', builder: (_, _) => const ScanPayScreen()),
+            GoRoute(path: 'history', builder: (_, _) => const WalletHistoryScreen()),
             GoRoute(
               path: 'receive',
               builder: (_, s) => ReceiveQrScreen(coin: s.uri.queryParameters['coin'] == '1'),

@@ -53,12 +53,21 @@ class AccountRepository {
     return rows.map(WalletBalance.fromRow).toList();
   }
 
-  Future<List<WalletTransaction>> walletTransactions({String? walletType, int limit = 100}) async {
+  /// Newest first. [from] (inclusive) and [to] (exclusive) bound the
+  /// creation time, for the history screen's month pages.
+  Future<List<WalletTransaction>> walletTransactions({
+    String? walletType,
+    int limit = 100,
+    DateTime? from,
+    DateTime? to,
+  }) async {
     var q = _db
         .from('wallet_transactions')
         .select('id, wallet_type, kind, amount, balance_after, method, note, status, created_at')
         .eq('user_id', _uid);
     if (walletType != null) q = q.eq('wallet_type', walletType);
+    if (from != null) q = q.gte('created_at', from.toUtc().toIso8601String());
+    if (to != null) q = q.lt('created_at', to.toUtc().toIso8601String());
     final rows = await q.order('created_at', ascending: false).limit(limit);
     return rows.map(WalletTransaction.new).toList();
   }

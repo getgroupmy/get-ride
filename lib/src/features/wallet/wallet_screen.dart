@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/format.dart';
+import '../../core/wallet_history.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -119,7 +120,14 @@ class WalletScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              Text('Transactions', style: t.textTheme.titleMedium),
+              Row(children: [
+                Expanded(child: Text('Recent transactions', style: t.textTheme.titleMedium)),
+                TextButton(
+                  key: const ValueKey('wallet-history'),
+                  onPressed: () => context.push('/wallet/history'),
+                  child: const Text('See all'),
+                ),
+              ]),
               const SizedBox(height: 8),
               AsyncView(
                 value: ref.watch(walletTxProvider),
@@ -128,17 +136,15 @@ class WalletScreen extends ConsumerWidget {
                     ? const EmptyState(icon: Icons.history, title: 'No transactions yet')
                     : Card(
                         child: Column(children: [
-                          for (final tx in txs)
+                          for (final tx in txs.take(5))
                             ListTile(
                               leading: Icon(tx.amount >= 0 ? Icons.south_west : Icons.north_east,
                                   color: tx.amount >= 0 ? Colors.green : t.colorScheme.error),
-                              title: Text(tx.note ?? tx.kind),
-                              subtitle: Text('${formatDateTime(tx.createdAt)}'
+                              title: Text(walletTxLabel(tx.kind, tx.note)),
+                              subtitle: Text('${walletTypeLabel(tx.walletType)} · ${formatDateTime(tx.createdAt)}'
                                   '${tx.status != null && tx.status != 'completed' ? ' · ${tx.status}' : ''}'),
                               trailing: Text(
-                                tx.walletType == 'get_coin'
-                                    ? '${tx.amount >= 0 ? '+' : ''}${tx.amount.toStringAsFixed(2)}'
-                                    : '${tx.amount >= 0 ? '+' : ''}${formatMoney(tx.amount)}',
+                                walletAmountText(tx.walletType, tx.amount),
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   color: tx.amount >= 0 ? Colors.green : null,
