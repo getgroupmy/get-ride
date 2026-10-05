@@ -62,6 +62,14 @@ class AccountScreen extends ConsumerWidget {
                   onTap: () => context.push('/ev'),
                 ),
                 ListTile(
+                  key: const ValueKey('account-safety'),
+                  leading: const Icon(Icons.health_and_safety_outlined),
+                  title: const Text('Safety'),
+                  subtitle: const Text('Emergency SOS and VoiceProtection'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/account/safety'),
+                ),
+                ListTile(
                   leading: const Icon(Icons.contact_emergency_outlined),
                   title: const Text('Emergency contacts'),
                   trailing: const Icon(Icons.chevron_right),
