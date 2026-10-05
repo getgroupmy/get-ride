@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin/admin_providers.dart';
+import '../../core/referral.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 
@@ -39,17 +39,17 @@ class AccountScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            if (profile.value?.referralCode != null)
+            if (profile.value != null)
               Card(
                 child: ListTile(
+                  key: const ValueKey('account-referral'),
                   leading: const Icon(Icons.card_giftcard),
-                  title: const Text('Your referral code'),
-                  subtitle: Text(profile.value!.referralCode!),
-                  trailing: const Icon(Icons.copy),
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: profile.value!.referralCode!));
-                    showInfo(context, 'Referral code copied');
-                  },
+                  title: const Text('Invite friends'),
+                  subtitle: Text(
+                    'Your code ${referralCodeFor(userId: profile.value!.id, explicitCode: profile.value!.referralCode)}',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/account/referral'),
                 ),
               ),
             Card(
