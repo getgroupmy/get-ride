@@ -7,10 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/format.dart';
 import '../../core/ride_bidding.dart';
+import '../../core/sos.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
+import '../profile/emergency_contacts_screen.dart';
+import '../safety/safety_screen.dart';
 import '../wallet/wallet_screen.dart';
 
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>(
@@ -141,6 +144,46 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Emergency options during a ride: call the emergency number (Expo's
+  /// SOS button dialled 999) or alert emergency contacts with the location,
+  /// driver and car.
+  Future<void> _sos(RideRequest r) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            key: const ValueKey('sos-call'),
+            leading: const Icon(Icons.call),
+            title: const Text('Call $emergencyNumber'),
+            subtitle: const Text('Police, ambulance and fire'),
+            onTap: () => Navigator.pop(c, 'call'),
+          ),
+          ListTile(
+            key: const ValueKey('sos-contacts'),
+            leading: const Icon(Icons.sms_outlined),
+            title: const Text('Alert my emergency contacts'),
+            subtitle: const Text('SMS with your location, driver and car'),
+            onTap: () => Navigator.pop(c, 'contacts'),
+          ),
+        ]),
+      ),
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'call') {
+      await launchUrl(Uri(scheme: 'tel', path: emergencyNumber));
+      return;
+    }
+    List<EmergencyContact> contacts;
+    try {
+      contacts = await ref.read(emergencyContactsProvider.future);
+    } catch (_) {
+      contacts = const [];
+    }
+    if (!mounted) return;
+    await sendSos(context, contacts, driver: r.partnerName, plate: r.partnerPlate);
   }
 
   Future<void> _cancel() async {
@@ -389,6 +432,20 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             ),
           ),
           const SizedBox(height: 12),
+          if (r.status.isOngoing && r.status != RideStatus.open)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: FilledButton.icon(
+                key: const ValueKey('ride-sos'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: t.colorScheme.error,
+                  foregroundColor: t.colorScheme.onError,
+                ),
+                icon: const Icon(Icons.sos),
+                label: const Text('SOS · Emergency'),
+                onPressed: () => _sos(r),
+              ),
+            ),
           if (r.status.isOngoing && r.status != RideStatus.onTrip && !riderCancelAsk)
             OutlinedButton.icon(
               icon: const Icon(Icons.close),

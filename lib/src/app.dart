@@ -28,6 +28,7 @@ import 'features/profile/account_screen.dart';
 import 'features/profile/edit_profile_screen.dart';
 import 'features/profile/emergency_contacts_screen.dart';
 import 'features/profile/referral_screen.dart';
+import 'features/safety/safety_screen.dart';
 import 'features/ride/home_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
@@ -161,6 +162,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(path: '/account', builder: (_, _) => const AccountScreen(), routes: [
               GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
               GoRoute(path: 'referral', builder: (_, _) => const ReferralScreen()),
+              GoRoute(path: 'safety', builder: (_, _) => const SafetyScreen()),
               GoRoute(path: 'emergency', builder: (_, _) => const EmergencyContactsScreen()),
               GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen(), routes: [
                 GoRoute(path: 'phone', builder: (_, _) => const ChangePhoneScreen()),
