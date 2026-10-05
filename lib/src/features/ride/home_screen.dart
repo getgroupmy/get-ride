@@ -5,9 +5,11 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
+import '../../core/app_display.dart';
 import '../../core/fare.dart';
 import '../../core/format.dart';
 import '../../core/route_estimate.dart';
+import '../../data/app_display_repository.dart';
 import '../../data/device_access.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
@@ -153,6 +155,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (mounted) showInfo(context, '$serviceNotAvailable. This device is not permitted to place a request.');
       return;
     }
+    if (!(await ref.read(appDisplayProvider.future)).serviceEnabled) {
+      if (mounted) showInfo(context, serviceComingSoonMessage);
+      return;
+    }
     setState(() => _booking = true);
     try {
       final profile = await ref.read(profileProvider.future);
@@ -237,6 +243,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       drop: _drop,
       route: _route,
       ai: _ai,
+      showTolls: ref.watch(appDisplayProvider).value?.showAiTollCharges ?? true,
       routing: _routing,
       service: _service,
       payment: _payment,
@@ -308,6 +315,7 @@ class _BookingPanel extends StatelessWidget {
     required this.drop,
     required this.route,
     this.ai,
+    this.showTolls = true,
     required this.routing,
     required this.service,
     required this.payment,
@@ -328,6 +336,7 @@ class _BookingPanel extends StatelessWidget {
   final Place? drop;
   final RouteInfo? route;
   final RouteEstimate? ai;
+  final bool showTolls;
   final bool routing;
   final RideService service;
   final String payment;
@@ -393,7 +402,7 @@ class _BookingPanel extends StatelessWidget {
             key: const ValueKey('route-basis'),
             style: t.textTheme.bodyMedium,
           ),
-          if (ai?.tollsToShow != null)
+          if (showTolls && ai?.tollsToShow != null)
             Text(
               'Est. toll charges ${formatMoney(ai!.tollsToShow, AppConfig.currency)}, not included in the fare',
               key: const ValueKey('route-tolls'),
