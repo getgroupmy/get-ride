@@ -7,8 +7,10 @@ import 'package:latlong2/latlong.dart';
 import '../../config.dart';
 import '../../core/fare.dart';
 import '../../core/format.dart';
+import '../../core/route_estimate.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
+import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
@@ -31,6 +33,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Place? _pickup;
   Place? _drop;
   RouteInfo? _route;
+  RouteEstimate? _ai;
+  int _routeSeq = 0;
   RideService _service = rideServices.first;
   String _payment = 'Cash';
   final _note = TextEditingController();
@@ -79,18 +83,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _updateRoute() async {
     final a = _pickup, b = _drop;
+    final seq = ++_routeSeq;
     if (a == null || b == null) {
-      setState(() => _route = null);
+      setState(() {
+        _route = null;
+        _ai = null;
+      });
       return;
     }
-    setState(() => _routing = true);
+    setState(() {
+      _routing = true;
+      _ai = null;
+    });
+    // The map route draws the line; the AI's traffic-aware estimate, when
+    // there is one, is what the fare is priced on (Expo ride-confirm).
+    final aiFuture = ref.read(routeEstimateRepositoryProvider).estimate(a.point, b.point);
     final r = await ref.read(geoServiceProvider).route(a.point, b.point);
-    if (mounted) {
-      setState(() {
-        _route = r;
-        _routing = false;
-      });
-    }
+    if (!mounted || seq != _routeSeq) return;
+    setState(() {
+      _route = r;
+      _routing = false;
+    });
+    final ai = await aiFuture;
+    if (mounted && seq == _routeSeq) setState(() => _ai = ai);
+  }
+
+  ({double distanceKm, double durationMin})? get _basis {
+    final r = _route;
+    return r == null ? null : fareBasis(routeKm: r.distanceKm, routeMin: r.durationMin, ai: _ai);
   }
 
   Future<void> _choose(_PinTarget target) async {
@@ -120,11 +140,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _updateRoute();
   }
 
-  double _fareFor(RideService s) =>
-      _route == null ? 0 : calculateFare(_route!.distanceKm, _route!.durationMin, multiplier: s.multiplier);
+  double _fareFor(RideService s) {
+    final b = _basis;
+    return b == null ? 0 : calculateFare(b.distanceKm, b.durationMin, multiplier: s.multiplier);
+  }
 
   Future<void> _book() async {
-    final a = _pickup, b = _drop, r = _route;
+    final a = _pickup, b = _drop, r = _basis;
     if (a == null || b == null || r == null) return;
     setState(() => _booking = true);
     try {
@@ -209,6 +231,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       pickup: _pickup,
       drop: _drop,
       route: _route,
+      ai: _ai,
       routing: _routing,
       service: _service,
       payment: _payment,
@@ -279,6 +302,7 @@ class _BookingPanel extends StatelessWidget {
     required this.pickup,
     required this.drop,
     required this.route,
+    this.ai,
     required this.routing,
     required this.service,
     required this.payment,
@@ -298,6 +322,7 @@ class _BookingPanel extends StatelessWidget {
   final Place? pickup;
   final Place? drop;
   final RouteInfo? route;
+  final RouteEstimate? ai;
   final bool routing;
   final RideService service;
   final String payment;
@@ -356,8 +381,19 @@ class _BookingPanel extends StatelessWidget {
         if (routing) const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator()),
         if (route != null && !routing) ...[
           const SizedBox(height: 12),
-          Text('${formatDistance(route!.distanceKm)} · ${formatDuration(route!.durationMin)}',
-              style: t.textTheme.bodyMedium),
+          Text(
+            ai == null
+                ? '${formatDistance(route!.distanceKm)} · ${formatDuration(route!.durationMin)}'
+                : '${formatDistance(ai!.distanceKm)} · ${formatDuration(ai!.durationMin)} with traffic',
+            key: const ValueKey('route-basis'),
+            style: t.textTheme.bodyMedium,
+          ),
+          if (ai?.tollsToShow != null)
+            Text(
+              'Est. toll charges ${formatMoney(ai!.tollsToShow, AppConfig.currency)}, not included in the fare',
+              key: const ValueKey('route-tolls'),
+              style: t.textTheme.bodySmall,
+            ),
           const SizedBox(height: 8),
           for (final s in rideServices)
             Card(
