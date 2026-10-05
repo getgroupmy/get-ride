@@ -81,6 +81,7 @@ String applyReferralMessage(ApplyReferralResult r, {String Function(double)? coi
     'self_referral' => "You can't use your own referral code.",
     'already_referred' => 'A referral code was already applied to this account.',
     'disabled' => 'Referral rewards are switched off right now.',
+    'not_new_account' => 'Referral codes can only be used when an account is new.',
     'not_authenticated' => 'Sign in again to apply the referral code.',
     _ => "The referral code couldn't be applied.",
   };

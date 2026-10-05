@@ -72,7 +72,7 @@ void main() {
       expect(ok.referrerCoins, 25);
       expect(applyReferralMessage(ok), contains('50 GC'));
       expect(applyReferralMessage(const ApplyReferralResult(ok: true)), 'Referral applied.');
-      for (final e in ['code_not_found', 'self_referral', 'already_referred', 'disabled', 'weird']) {
+      for (final e in ['code_not_found', 'self_referral', 'already_referred', 'disabled', 'not_new_account', 'weird']) {
         final r = ApplyReferralResult.fromRpc({'ok': false, 'error': e});
         expect(r.ok, isFalse);
         expect(applyReferralMessage(r), isNotEmpty);
@@ -81,6 +81,8 @@ void main() {
         applyReferralMessage(ApplyReferralResult.fromRpc({'ok': false, 'error': 'self_referral'})),
         "You can't use your own referral code.",
       );
+      expect(applyReferralMessage(ApplyReferralResult.fromRpc({'ok': false, 'error': 'not_new_account'})),
+          contains('when an account is new'));
       expect(ApplyReferralResult.fromRpc(null).ok, isFalse);
     });
 
