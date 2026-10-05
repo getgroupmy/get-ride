@@ -7,12 +7,13 @@ import 'package:get_ride/src/data/coin_trade_repository.dart';
 import 'package:get_ride/src/features/wallet/coin_trade_screen.dart';
 
 class _FakeRepo implements CoinTradeRepository {
-  _FakeRepo({this.settings = const GetCoinSettings(coinsPerCurrency: 10), this.fail});
+  _FakeRepo({this.settings = const GetCoinSettings(coinsPerCurrency: 10), this.fail, this.serverPrices});
 
   double wallet = 50;
   double coin = 30;
   final GetCoinSettings settings;
   final Object? fail;
+  final CoinTradePrices? serverPrices;
   final trades = <(CoinTradeDirection, double, double)>[];
 
   @override
@@ -21,6 +22,7 @@ class _FakeRepo implements CoinTradeRepository {
     coinBalance: coin,
     settings: settings,
     stats: const CoinMarketStats(circulatingSupply: 900),
+    serverPrices: serverPrices,
   );
 
   @override
@@ -88,7 +90,9 @@ void main() {
         stats: stats,
       );
       expect(p(CoinTradeDirection.buy, 0), 'Enter an amount greater than 0.');
-      expect(p(CoinTradeDirection.buy, 0.01), 'Amount is too small to trade.');
+      // 0.01 GC × RM0.10 = 0.1 sen: a buy rounds up to RM0.01, a sell down to nothing.
+      expect(p(CoinTradeDirection.buy, 0.01), isNull);
+      expect(p(CoinTradeDirection.sell, 0.01), 'Amount is too small to trade.');
       expect(p(CoinTradeDirection.buy, 50), isNull);
       expect(p(CoinTradeDirection.buy, 150), 'Not enough balance in GET.wallet.');
       expect(p(CoinTradeDirection.sell, 150), 'Not enough GET.coin to sell.');
@@ -102,6 +106,61 @@ void main() {
       );
       // The supply cap never limits a sell.
       expect(p(CoinTradeDirection.sell, 5, settings: s.copyWith(maxSupply: 900)), isNull);
+    });
+
+    test('trade amount rounds buys up and sells down, like the server', () {
+      expect(coinTradeAmount(0.05, 0.7, CoinTradeDirection.buy), 0.04);
+      expect(coinTradeAmount(0.05, 0.7, CoinTradeDirection.sell), 0.03);
+      // No over-rounding from float noise.
+      expect(coinTradeAmount(3, 0.1, CoinTradeDirection.buy), 0.3);
+      expect(coinTradeAmount(3, 0.1, CoinTradeDirection.sell), 0.3);
+      expect(coinTradeAmount(100, 1.1, CoinTradeDirection.buy), 110);
+      expect(coinTradeAmount(0, 1, CoinTradeDirection.buy), 0);
+    });
+
+    test('max buy steps back when rounding up would overshoot GET.wallet', () {
+      final max = maxTradeCoins(
+        direction: CoinTradeDirection.buy,
+        walletBalance: 1,
+        coinBalance: 0,
+        ratePerGC: 0.33,
+        settings: s,
+        stats: stats,
+      );
+      expect(max, 3.03);
+      expect(coinTradeAmount(max, 0.33, CoinTradeDirection.buy), lessThanOrEqualTo(1));
+    });
+
+    test('prices: buy at max(market, peg), sell at min(market, peg)', () {
+      const market = GetCoinSettings(coinsPerCurrency: 10, marketEnabled: true, maxSupply: 1000);
+      final above = CoinTradePrices.fromMarket(computeMarketRate(market, stats));
+      expect(above.peg, closeTo(0.1, 1e-9));
+      expect(above.marketRate, greaterThan(0.1));
+      expect(above.buyRate, above.marketRate);
+      expect(above.sellRate, above.peg);
+      expect(above.fromServer, isFalse);
+
+      final below = CoinTradePrices.fromMarket(
+        computeMarketRate(
+          const GetCoinSettings(coinsPerCurrency: 10, marketEnabled: true),
+          const CoinMarketStats(mintedGc: 10000),
+        ),
+      );
+      expect(below.marketRate, lessThan(0.1));
+      expect(below.buyRate, below.peg);
+      expect(below.sellRate, below.marketRate);
+
+      final fixed = CoinTradePrices.fromMarket(computeMarketRate(s, stats));
+      expect((fixed.buyRate, fixed.sellRate), (0.1, 0.1));
+      expect(fixed.rateFor(CoinTradeDirection.buy), 0.1);
+    });
+
+    test('server prices parse, and are null without a usable rate', () {
+      final p = CoinTradePrices.fromRpc({'peg': 1, 'market_rate': '1.2', 'buy_rate': 1.2, 'sell_rate': 1});
+      expect((p!.peg, p.marketRate, p.buyRate, p.sellRate, p.fromServer), (1.0, 1.2, 1.2, 1.0, true));
+      expect(p.rateFor(CoinTradeDirection.sell), 1.0);
+      expect(CoinTradePrices.fromRpc(null), isNull);
+      expect(CoinTradePrices.fromRpc({'peg': 0, 'market_rate': 0, 'buy_rate': 0, 'sell_rate': 0}), isNull);
     });
 
     test('RPC errors map to plain words', () {
@@ -187,6 +246,55 @@ void main() {
       expect(find.text("What's moving the price"), findsOneWidget);
       expect(find.textContaining('Supply scarcity'), findsOneWidget);
       expect(find.textContaining('100 GC left'), findsOneWidget);
+    });
+
+    testWidgets('market pricing shows buy and sell prices and trades at the selected one', (tester) async {
+      final repo = await pump(
+        tester,
+        _FakeRepo(
+          settings: const GetCoinSettings(coinsPerCurrency: 10, marketEnabled: true),
+          serverPrices: const CoinTradePrices(
+            peg: 0.1,
+            marketRate: 0.12,
+            buyRate: 0.12,
+            sellRate: 0.1,
+            fromServer: true,
+          ),
+        ),
+      );
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('coin-price-buy')), matching: find.text('RM0.1200')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('coin-price-sell')), matching: find.text('RM0.1000')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Above the peg'), findsOneWidget);
+
+      await tester.enterText(find.byKey(const ValueKey('coin-amount')), '50');
+      await tester.pump();
+      expect(find.text('at RM0.1200/GC'), findsOneWidget);
+      expect(find.text('RM6.00'), findsOneWidget);
+
+      // The Sell price tile comes first; the tab is the second "Sell".
+      await tester.ensureVisible(find.text('Sell').last);
+      await tester.tap(find.text('Sell').last);
+      await tester.pump();
+      expect(find.text('at RM0.1000/GC'), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('coin-amount')), '20');
+      await tester.pump();
+      await tester.ensureVisible(find.text('Sell GET.coin'));
+      await tester.tap(find.text('Sell GET.coin'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Sell'));
+      await tester.pumpAndSettle();
+      expect(repo.trades, [(CoinTradeDirection.sell, 20.0, 0.1)]);
+    });
+
+    testWidgets('fixed pricing shows no buy/sell split', (tester) async {
+      await pump(tester, _FakeRepo());
+      expect(find.byKey(const ValueKey('coin-price-buy')), findsNothing);
     });
   });
 }
