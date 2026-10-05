@@ -36,6 +36,7 @@ import 'features/support/support_chat_screen.dart';
 import 'features/support/support_screen.dart';
 import 'features/wallet/coin_trade_screen.dart';
 import 'features/wallet/incoming_transfer_listener.dart';
+import 'features/wallet/wallet_qr_screens.dart';
 import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
 
@@ -132,7 +133,18 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [GoRoute(path: '/', builder: (_, _) => const HomeScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: '/trips', builder: (_, _) => const TripsScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen(), routes: [
-            GoRoute(path: 'trade', builder: (_, _) => const CoinTradeScreen()),
+            GoRoute(
+              path: 'trade',
+              builder: (_, s) => CoinTradeScreen(
+                sendTo: s.uri.queryParameters['to'],
+                requestedAmount: double.tryParse(s.uri.queryParameters['amt'] ?? ''),
+              ),
+            ),
+            GoRoute(path: 'scan', builder: (_, _) => const ScanPayScreen()),
+            GoRoute(
+              path: 'receive',
+              builder: (_, s) => ReceiveQrScreen(coin: s.uri.queryParameters['coin'] == '1'),
+            ),
           ])]),
           StatefulShellBranch(routes: [GoRoute(path: '/drive', builder: (_, _) => const PartnerScreen())]),
           StatefulShellBranch(routes: [

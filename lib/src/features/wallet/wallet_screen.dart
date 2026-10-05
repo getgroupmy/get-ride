@@ -80,6 +80,35 @@ class WalletScreen extends ConsumerWidget {
                 },
               ),
               const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: _QuickAction(
+                    key: const ValueKey('wallet-scan'),
+                    icon: Icons.qr_code_scanner,
+                    label: 'Scan & Pay',
+                    onTap: () => context.push('/wallet/scan'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _QuickAction(
+                    key: const ValueKey('wallet-receive'),
+                    icon: Icons.qr_code_2,
+                    label: 'Receive',
+                    onTap: () => context.push('/wallet/receive'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _QuickAction(
+                    key: const ValueKey('wallet-coin-qr'),
+                    icon: Icons.toll_outlined,
+                    label: 'GET.coin QR',
+                    onTap: () => context.push('/wallet/receive?coin=1'),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 12),
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.swap_horiz),
@@ -123,6 +152,32 @@ class WalletScreen extends ConsumerWidget {
             ]),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({super.key, required this.icon, required this.label, required this.onTap});
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+          child: Column(children: [
+            Icon(icon, size: 28),
+            const SizedBox(height: 6),
+            Text(label, textAlign: TextAlign.center, maxLines: 2, style: Theme.of(context).textTheme.labelLarge),
+          ]),
+        ),
       ),
     );
   }
