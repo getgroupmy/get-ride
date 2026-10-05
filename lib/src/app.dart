@@ -41,7 +41,10 @@ import 'providers.dart';
 
 const brandAccent = Color(0xFF2DABE2);
 
-ThemeData _theme(Brightness b) {
+/// The app theme. Note that [FilledButton]s are full width by default
+/// (`Size.fromHeight`): one placed in a row or a list tile's `trailing` needs
+/// its own `minimumSize`.
+ThemeData appTheme(Brightness b) {
   final scheme = ColorScheme.fromSeed(
     seedColor: brandAccent,
     brightness: b,
@@ -221,8 +224,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       title: 'GET.ride',
       scaffoldMessengerKey: _messenger,
       debugShowCheckedModeBanner: false,
-      theme: _theme(Brightness.light),
-      darkTheme: _theme(Brightness.dark),
+      theme: appTheme(Brightness.light),
+      darkTheme: appTheme(Brightness.dark),
       themeMode: ref.watch(themeModeProvider),
       routerConfig: ref.watch(routerProvider),
       builder: (_, child) => VoiceProtectionHost(

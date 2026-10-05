@@ -83,18 +83,34 @@ class _CurrentVehicleCardState extends ConsumerState<CurrentVehicleCard> {
       ];
     } else {
       subtitle = const Text('No vehicle selected');
-      actions = [FilledButton.tonal(onPressed: _busy ? null : () => _pick(list), child: const Text('Select'))];
+      actions = [
+        FilledButton.tonal(
+          key: const ValueKey('select-vehicle'),
+          // The theme makes filled buttons full width; this one sits in a row.
+          style: FilledButton.styleFrom(minimumSize: const Size(96, 40)),
+          onPressed: _busy ? null : () => _pick(list),
+          child: const Text('Select'),
+        ),
+      ];
     }
     return Card(
       key: const ValueKey('current-vehicle'),
-      child: ListTile(
-        leading: _busy
-            ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
-            : Icon(current != null ? Icons.directions_car : Icons.directions_car_outlined),
-        title: Text(current != null ? 'Driving' : 'Vehicle'),
-        subtitle: subtitle,
-        trailing: Row(mainAxisSize: MainAxisSize.min, children: actions),
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ListTile(
+          leading: _busy
+              ? const SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))
+              : Icon(current != null ? Icons.directions_car : Icons.directions_car_outlined),
+          title: Text(current != null ? 'Driving' : 'Vehicle'),
+          subtitle: subtitle,
+        ),
+        // The actions get a row of their own, so the plate and model keep the
+        // tile's full width on a narrow phone.
+        if (actions.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Wrap(alignment: WrapAlignment.end, spacing: 8, runSpacing: 4, children: actions),
+          ),
+      ]),
     );
   }
 }

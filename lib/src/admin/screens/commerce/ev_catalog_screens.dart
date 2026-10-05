@@ -162,6 +162,7 @@ class EvOrderFeeScreen extends ConsumerWidget {
                   title: const Text('Start with the default'),
                   subtitle: const Text('$defaultOrderFeeCountry · $defaultOrderFeeCurrency $defaultOrderFeeAmount (default country)'),
                   trailing: FilledButton(
+                    style: FilledButton.styleFrom(minimumSize: const Size(72, 40)),
                     onPressed: () => _saveEntry(context, ref, catKey, Map.of(orderFeeSeed), all: all),
                     child: const Text('Add'),
                   ),
@@ -346,6 +347,7 @@ class EvFinanceOptionsScreen extends ConsumerWidget {
                   title: const Text('Start with the default plans'),
                   subtitle: Text(financeOptionSeeds.map((s) => s['name']).join(' · ')),
                   trailing: FilledButton(
+                    style: FilledButton.styleFrom(minimumSize: const Size(72, 40)),
                     onPressed: () => runAdminAction(context, () async {
                       final repo = ref.read(commerceRepositoryProvider);
                       for (var i = 0; i < financeOptionSeeds.length; i++) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/vehicle_drivers.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/vehicle_assignment.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
 import 'package:get_ride/src/features/partner/vehicle_picker.dart';
@@ -201,6 +202,23 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('Another driver is using this vehicle'), findsOneWidget);
       expect(repo.claimed, isEmpty);
+    });
+
+    testWidgets('with the app theme the text keeps its width beside the Select button', (tester) async {
+      // The theme makes filled buttons full width (Size.fromHeight); in the
+      // tile's trailing slot that squeezed the text to one letter per line.
+      await tester.pumpWidget(ProviderScope(
+        overrides: [vehicleAssignmentRepositoryProvider.overrideWithValue(_FakeRepo(_list()))],
+        child: MaterialApp(
+          theme: appTheme(Brightness.light),
+          home: const Scaffold(body: Center(child: SizedBox(width: 900, child: CurrentVehicleCard()))),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final text = tester.getSize(find.text('No vehicle selected'));
+      expect(text.height, lessThan(40), reason: 'one line, not a column of letters');
+      expect(text.width, greaterThan(100));
+      expect(tester.getSize(find.byKey(const ValueKey('select-vehicle'))).width, lessThan(300));
     });
 
     testWidgets('no vehicles points to My vehicles', (tester) async {
