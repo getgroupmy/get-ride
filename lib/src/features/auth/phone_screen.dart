@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../config.dart';
 import '../../core/auth_utils.dart';
+import '../../data/device_access.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 
@@ -29,6 +30,12 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   }
 
   Future<void> _continue() async {
+    final blocked = await ref.read(deviceBlockedProvider.future);
+    if (!mounted) return;
+    if (blocked) {
+      showInfo(context, serviceNotAvailable);
+      return;
+    }
     final phone = composePhone(_dial, _number.text);
     if (phone.length < 9) {
       showInfo(context, 'Enter a valid phone number.');
@@ -60,6 +67,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final blocked = ref.watch(deviceBlockedProvider).value ?? false;
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -101,8 +109,16 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                 ),
               ]),
               const SizedBox(height: 24),
+              if (blocked) ...[
+                Card(
+                  key: const ValueKey('device-blocked'),
+                  color: t.colorScheme.errorContainer,
+                  child: const ListTile(leading: Icon(Icons.gpp_bad_outlined), title: Text(serviceNotAvailable)),
+                ),
+                const SizedBox(height: 12),
+              ],
               FilledButton(
-                onPressed: _busy ? null : _continue,
+                onPressed: _busy || blocked ? null : _continue,
                 child: _busy
                     ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Text('Continue'),
