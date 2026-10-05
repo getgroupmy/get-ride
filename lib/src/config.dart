@@ -35,7 +35,7 @@ class AppConfig {
   static const privacyUrl = String.fromEnvironment('PRIVACY_URL', defaultValue: 'https://getride.my/privacy');
 
   /// The Terms of Service, beside the Privacy Notice on the same site.
-  static const termsUrl = String.fromEnvironment('TERMS_URL', defaultValue: 'https://getride.my/terms');
+  static const termsUrl = String.fromEnvironment('TERMS_URL', defaultValue: 'https://getride.my/terms-of-service');
 
   /// Shown on the licences page (keep in step with `pubspec.yaml`).
   static const appVersion = '1.4.3';
