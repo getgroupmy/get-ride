@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'core/navigation_app.dart';
 import 'data/account_repository.dart';
 import 'data/auth_repository.dart';
 import 'data/geo_service.dart';
@@ -62,3 +63,25 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
 }
 
 final themeModeProvider = NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
+
+/// The app the driver's Navigate button opens, persisted per device.
+class NavigationAppNotifier extends Notifier<NavigationApp> {
+  static const _key = 'navigation_app';
+
+  @override
+  NavigationApp build() {
+    SharedPreferences.getInstance().then((p) {
+      final v = p.getString(_key);
+      if (v != null) state = NavigationApp.fromName(v);
+    });
+    return NavigationApp.google;
+  }
+
+  Future<void> set(NavigationApp app) async {
+    state = app;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_key, app.name);
+  }
+}
+
+final navigationAppProvider = NotifierProvider<NavigationAppNotifier, NavigationApp>(NavigationAppNotifier.new);
