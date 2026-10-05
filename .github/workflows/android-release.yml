@@ -55,6 +55,29 @@ jobs:
     timeout-minutes: 60
 
     steps:
+      # Hold: Google is resetting this listing's upload key (requested
+      # 2026-10-05 after Play refused the release key in our secrets). Play
+      # takes no new bundle until the new key is valid, so no build runs
+      # before then. See docs/store-release.md -> "Upload key reset".
+      # Remove this step once the hold has passed.
+      - name: Upload key reset hold
+        env:
+          VALID_FROM: "2026-10-07T11:29:00Z"
+        run: |
+          now=$(date -u +%s)
+          from=$(date -u -d "$VALID_FROM" +%s)
+          if [ "$now" -lt "$from" ]; then
+            {
+              echo "### Android builds are on hold"
+              echo
+              echo "Google is resetting the Play upload key for com.taxxee.teksi."
+              echo "The new key becomes valid at **$VALID_FROM** (UTC); until then"
+              echo "Play refuses every bundle, so nothing is built."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Android builds are on hold until $VALID_FROM (Play upload key reset)."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Is this set up yet
