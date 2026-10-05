@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/avatar.dart';
 import 'models.dart';
 
 /// Profile, partner record, wallet, emergency contacts and support — the
@@ -29,6 +31,20 @@ class AccountRepository {
       'email': ?email,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', _uid);
+  }
+
+  /// Uploads a profile photo to this account's folder in `avatars` and
+  /// saves its public URL on the profile. Returns the URL.
+  Future<String> uploadAvatar(Uint8List bytes, {required String ext, required String contentType}) async {
+    final path = avatarStoragePath(_uid, ext, DateTime.now());
+    final bucket = _db.storage.from('avatars');
+    await bucket.uploadBinary(path, bytes, fileOptions: FileOptions(upsert: true, contentType: contentType));
+    final url = bucket.getPublicUrl(path);
+    await _db.from('profiles').update({
+      'avatar_url': url,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', _uid);
+    return url;
   }
 
   /// The partner (driver) record linked to this login, if any.

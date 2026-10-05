@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../admin/screens/meterapp/pick_image.dart';
+import '../../core/avatar.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
-  const EditProfileScreen({super.key});
+  const EditProfileScreen({super.key, this.pickPhoto = pickImage});
+
+  /// Photo picker (overridden in tests).
+  final Future<PickedImage?> Function() pickPhoto;
 
   @override
   ConsumerState<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -17,6 +22,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   final _email = TextEditingController();
   bool _loaded = false;
   bool _busy = false;
+  bool _uploading = false;
 
   @override
   void dispose() {
@@ -46,6 +52,33 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     }
   }
 
+  /// Picks a photo and saves it straight away, apart from the form: the
+  /// name and email still need Save, the photo does not.
+  Future<void> _changePhoto() async {
+    final PickedImage? photo;
+    try {
+      photo = await widget.pickPhoto();
+    } catch (e) {
+      if (mounted) showError(context, e);
+      return;
+    }
+    if (photo == null || !mounted) return;
+    final problem = avatarProblem(photo.bytes.length);
+    if (problem != null) return showInfo(context, problem);
+    setState(() => _uploading = true);
+    try {
+      await ref
+          .read(accountRepositoryProvider)
+          .uploadAvatar(photo.bytes, ext: photo.ext, contentType: photo.contentType);
+      ref.invalidate(profileProvider);
+      if (mounted) showInfo(context, 'Profile photo updated');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = ref.watch(profileProvider).value;
@@ -60,6 +93,27 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         ResponsiveCenter(
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Center(
+              child: CircleAvatar(
+                key: const ValueKey('profile-photo'),
+                radius: 44,
+                backgroundImage: p?.avatarUrl != null ? NetworkImage(p!.avatarUrl!) : null,
+                child: _uploading
+                    ? const CircularProgressIndicator()
+                    : p?.avatarUrl == null
+                        ? const Icon(Icons.person, size: 44)
+                        : null,
+              ),
+            ),
+            Center(
+              child: TextButton.icon(
+                key: const ValueKey('profile-photo-change'),
+                onPressed: _uploading || _busy ? null : _changePhoto,
+                icon: const Icon(Icons.photo_camera_outlined),
+                label: Text(p?.avatarUrl == null ? 'Add photo' : 'Change photo'),
+              ),
+            ),
+            const SizedBox(height: 8),
             TextField(
               controller: _name,
               textCapitalization: TextCapitalization.words,
