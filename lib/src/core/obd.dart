@@ -29,6 +29,9 @@ const _protocolNames = {
   'A': 'SAE J1939 CAN (29-bit, 250 kbps)',
 };
 
+/// ELM327 protocol codes (ATSPn) and their names, for picking one by hand.
+const elmProtocolNames = _protocolNames;
+
 const _protocolBitrate = {'6': 500, '7': 500, '8': 250, '9': 250, 'A': 250};
 
 /// The protocol name and bit rate for an `ATDPN` answer ("6", or "A6" when

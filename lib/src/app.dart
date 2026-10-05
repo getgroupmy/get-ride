@@ -15,6 +15,7 @@ import 'features/ev/ev_order_screen.dart';
 import 'features/meter/meter_screen.dart';
 import 'features/meter/obd_reader_screen.dart';
 import 'features/meter/printer_screen.dart';
+import 'features/meter/vehicle_info_screen.dart';
 import 'features/auth/phone_screen.dart';
 import 'features/auth/pin_screen.dart';
 import 'features/auth/set_pin_screen.dart';
@@ -152,6 +153,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
       GoRoute(path: '/meter/printer', builder: (_, _) => const PrinterScreen()),
+      GoRoute(path: '/meter/vehicle', builder: (_, _) => const VehicleInfoScreen()),
       GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
       GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
       GoRoute(
