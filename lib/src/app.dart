@@ -30,6 +30,7 @@ import 'features/ride/home_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
 import 'features/ride/trips_screen.dart';
+import 'features/settings/change_phone_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/safety/voice_protection_controller.dart';
@@ -158,7 +159,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(path: '/account', builder: (_, _) => const AccountScreen(), routes: [
               GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
               GoRoute(path: 'emergency', builder: (_, _) => const EmergencyContactsScreen()),
-              GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen()),
+              GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen(), routes: [
+                GoRoute(path: 'phone', builder: (_, _) => const ChangePhoneScreen()),
+              ]),
               GoRoute(path: 'support', builder: (_, _) => const SupportScreen(), routes: [
                 GoRoute(
                   path: ':ticketId',

@@ -40,6 +40,15 @@ class SettingsScreen extends ConsumerWidget {
             const VoiceProtectionCard(),
             Card(
               child: ListTile(
+                key: const ValueKey('change-phone'),
+                leading: const Icon(Icons.phone_iphone),
+                title: const Text('Change phone number'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/account/settings/phone'),
+              ),
+            ),
+            Card(
+              child: ListTile(
                 leading: const Icon(Icons.password),
                 title: const Text('Change sign-in PIN'),
                 trailing: const Icon(Icons.chevron_right),
