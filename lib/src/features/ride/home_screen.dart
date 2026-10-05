@@ -129,7 +129,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() => _booking = true);
     try {
       final profile = await ref.read(profileProvider.future);
-      final req = await ref.read(rideRepositoryProvider).createRequest(
+      final rides = ref.read(rideRepositoryProvider);
+      final offerMe = await rides.biddingEnabledFor(a.point, () => ref.read(geoServiceProvider).reverseArea(a.point));
+      final req = await rides.createRequest(
             service: _service.name,
             pickupName: a.name,
             pickupAddress: a.address,
@@ -147,6 +149,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             riderName: profile?.name,
             riderPhone: profile?.phone,
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
+            offerMe: offerMe,
           );
       if (mounted) context.push('/ride/${req.id}').then((_) => _checkOngoing());
     } catch (e) {
