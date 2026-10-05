@@ -134,13 +134,26 @@ List<AssignableVehicle> buildAssignableVehicles({
   return list;
 }
 
+/// True when the database refused the caller rather than the request: the
+/// vehicle-session RPCs only act on the signed-in user's own id
+/// (`not_authorized`, 42501) and can't be called without a session at all.
+bool _vehicleSessionRefusedCaller(String msg) =>
+    msg.contains('not_authorized') || msg.contains('42501') || msg.contains('permission denied');
+
 /// The words for a `claim_vehicle` refusal.
 String claimVehicleErrorMessage(Object error) {
   final msg = '$error';
+  if (_vehicleSessionRefusedCaller(msg)) return 'Sign in again to use a vehicle.';
   if (msg.contains('vehicle_in_use')) return 'Another driver is using this vehicle. Ask them to hand it back first.';
   if (msg.contains('user_busy')) return "You're already driving another vehicle. Hand that one back first.";
   if (msg.contains('not_assigned')) return "You're not assigned to this vehicle any more.";
   return "Couldn't select this vehicle. Please try again.";
+}
+
+/// The words for a `release_vehicle` failure.
+String releaseVehicleErrorMessage(Object error) {
+  if (_vehicleSessionRefusedCaller('$error')) return 'Sign in again to hand the vehicle back.';
+  return "Couldn't hand the vehicle back. Try again.";
 }
 
 // ---- Admin -------------------------------------------------------------------

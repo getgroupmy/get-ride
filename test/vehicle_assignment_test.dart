@@ -150,6 +150,11 @@ void main() {
       expect(claimVehicleErrorMessage('P0001: vehicle_in_use'), contains('Another driver'));
       expect(claimVehicleErrorMessage('user_busy'), contains('already driving'));
       expect(claimVehicleErrorMessage('not_assigned'), contains('not assigned'));
+      expect(claimVehicleErrorMessage('PostgrestException(message: not_authorized, code: 42501)'), contains('Sign in again'));
+      expect(claimVehicleErrorMessage('permission denied for function claim_vehicle'), contains('Sign in again'));
+      expect(claimVehicleErrorMessage('boom'), contains('Please try again'));
+      expect(releaseVehicleErrorMessage('PostgrestException(message: not_authorized, code: 42501)'), contains('Sign in again'));
+      expect(releaseVehicleErrorMessage('boom'), "Couldn't hand the vehicle back. Try again.");
     });
 
     test('phone matching and the assignment row', () {
