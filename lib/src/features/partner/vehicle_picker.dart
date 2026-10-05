@@ -51,7 +51,7 @@ class _CurrentVehicleCardState extends ConsumerState<CurrentVehicleCard> {
       await action();
     } catch (e) {
       if (mounted) {
-        showInfo(context, claim ? claimVehicleErrorMessage(e) : "Couldn't hand the vehicle back. Try again.");
+        showInfo(context, claim ? claimVehicleErrorMessage(e) : releaseVehicleErrorMessage(e));
       }
     } finally {
       ref.invalidate(assignableVehiclesProvider);
