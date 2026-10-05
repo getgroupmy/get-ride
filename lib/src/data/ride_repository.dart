@@ -350,7 +350,7 @@ class RideRepository {
 
   /// Claims the GET.coin ride reward for the rider of a completed ride
   /// (`wallet_award_ride_coins`). The server prices it on the ride's stored
-  /// fare (get.ride migration 0093), checks the caller is the rider and pays
+  /// fare (migration 0093), checks the caller is the rider and pays
   /// once per ride, so calling again is harmless and answers 0. Answers 0
   /// when there is nothing to claim or the call fails.
   Future<double> claimRideReward(RideRequest r) async {

@@ -73,7 +73,7 @@ class AuthRepository {
   Future<void> requestPhoneChange(String phone) => _db.auth.updateUser(UserAttributes(phone: phone));
 
   /// Confirms the change with the code sent to [phone]. The account's
-  /// `profiles.phone` follows by trigger (get.ride migration 0092).
+  /// `profiles.phone` follows by trigger (migration 0092).
   Future<void> confirmPhoneChange(String phone, String code) async {
     await _db.auth.verifyOTP(type: OtpType.phoneChange, phone: phone, token: code);
   }

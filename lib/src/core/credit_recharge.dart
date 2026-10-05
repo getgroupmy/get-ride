@@ -1,5 +1,5 @@
 /// Recharging GET.credit from GET.wallet (Expo `rechargeCredit`). The
-/// `wallet_recharge_credit` RPC (get.ride migration 0066) moves the money
+/// `wallet_recharge_credit` RPC (migration 0066) moves the money
 /// under a row lock; these checks only stop a request that cannot succeed.
 library;
 

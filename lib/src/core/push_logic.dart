@@ -11,7 +11,7 @@
 //   --dart-define=FIREBASE_IOS_APP_ID=...       --dart-define=FIREBASE_IOS_API_KEY=...
 //
 // These are Firebase's public client identifiers, not secrets. The server
-// side (sending) is the send-push edge function in getgroupmy/get.ride.
+// side (sending) is the send-push edge function (supabase/functions/send-push).
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -87,7 +87,7 @@ String? pushPlatformName(TargetPlatform platform) => switch (platform) {
     };
 
 /// Where tapping a notification opens, from the `data` the database
-/// triggers attach (migrations 0067 / 0077 in getgroupmy/get.ride). Null
+/// triggers attach (migrations 0067 / 0077). Null
 /// opens the app wherever it was.
 String? pushRouteFor(Map<String, dynamic> data) {
   switch (data['type']) {

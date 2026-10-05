@@ -125,7 +125,7 @@ class EvOrderRepository {
 
   /// Stores a photo of the owner's ID and answers its URL.
   Future<String> uploadIdImage(String orderId, Uint8List bytes, String ext) async {
-    // Under the account's own folder: since get.ride migration 0095 a
+    // Under the account's own folder: since migration 0095 a
     // non-admin may only write `ID_Image/<auth uid>/…`.
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to upload your ID.');
