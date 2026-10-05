@@ -161,16 +161,38 @@ String safeSegment(String s) =>
 String _ddmmyyyy(DateTime d) =>
     '${d.day.toString().padLeft(2, '0')}${d.month.toString().padLeft(2, '0')}${d.year}';
 
-/// `ID_Image` bucket path: `<Country>/<phone>_<idNumber>_<ddmmyyyy>.<ext>`.
-String idImagePath({required String country, required String phone, required String idNumber, required String ext, DateTime? now}) =>
-    '${safeSegment(country.trim().isEmpty ? 'Unknown' : country.trim())}/'
-    '${safeSegment(phone)}_${safeSegment(idNumber)}_${_ddmmyyyy(now ?? DateTime.now())}.$ext';
+/// `ID_Image` bucket path: `<Country>/<phone>_<idNumber>_<ddmmyyyy>.<ext>`,
+/// or, with [owner] (an account's own upload), `<owner>/<Country>_<phone>_…`:
+/// since get.ride migration 0095 a non-admin may only write under a folder
+/// named after their own auth uid.
+String idImagePath({
+  required String country,
+  required String phone,
+  required String idNumber,
+  required String ext,
+  String? owner,
+  DateTime? now,
+}) {
+  final c = safeSegment(country.trim().isEmpty ? 'Unknown' : country.trim());
+  final file = '${safeSegment(phone)}_${safeSegment(idNumber)}_${_ddmmyyyy(now ?? DateTime.now())}.$ext';
+  return owner == null ? '$c/$file' : '$owner/${c}_$file';
+}
 
-/// `avatars` bucket path: `<Country>/<phone>_<name>_<ddmmyyyy>.<ext>`.
-String avatarPath({required String country, required String phone, required String name, required String ext, DateTime? now}) {
+/// `avatars` bucket path: `<Country>/<phone>_<name>_<ddmmyyyy>.<ext>`, or
+/// `<owner>/<Country>_<phone>_…` for an account's own upload (see
+/// [idImagePath]).
+String avatarPath({
+  required String country,
+  required String phone,
+  required String name,
+  required String ext,
+  String? owner,
+  DateTime? now,
+}) {
   final n = safeSegment(name.trim().toLowerCase());
-  return '${safeSegment(country.trim().isEmpty ? 'Unknown' : country.trim())}/'
-      '${safeSegment(phone)}_${n.isEmpty ? 'user' : n}_${_ddmmyyyy(now ?? DateTime.now())}.$ext';
+  final c = safeSegment(country.trim().isEmpty ? 'Unknown' : country.trim());
+  final file = '${safeSegment(phone)}_${n.isEmpty ? 'user' : n}_${_ddmmyyyy(now ?? DateTime.now())}.$ext';
+  return owner == null ? '$c/$file' : '$owner/${c}_$file';
 }
 
 /// `provider-documents` / `vehicle-documents` path:

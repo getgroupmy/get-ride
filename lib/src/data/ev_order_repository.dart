@@ -125,7 +125,11 @@ class EvOrderRepository {
 
   /// Stores a photo of the owner's ID and answers its URL.
   Future<String> uploadIdImage(String orderId, Uint8List bytes, String ext) async {
-    final path = 'ev-orders/${_uid ?? 'anon'}/$orderId-${DateTime.now().millisecondsSinceEpoch}.$ext';
+    // Under the account's own folder: since get.ride migration 0095 a
+    // non-admin may only write `ID_Image/<auth uid>/…`.
+    final uid = _uid;
+    if (uid == null) throw StateError('Sign in to upload your ID.');
+    final path = '$uid/ev-orders/$orderId-${DateTime.now().millisecondsSinceEpoch}.$ext';
     await _db.storage.from('ID_Image').uploadBinary(
           path,
           bytes,

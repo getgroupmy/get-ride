@@ -77,6 +77,14 @@ void main() {
           'Malaysia/+60_12-345_990101-14_07032025.jpg');
       expect(avatarPath(country: '', phone: '+6012', name: 'Jane Doe', ext: 'png', now: d), 'Unknown/+6012_jane_doe_07032025.png');
       expect(avatarPath(country: 'MY', phone: '1', name: ' ', ext: 'png', now: d), 'MY/1_user_07032025.png');
+      expect(
+        avatarPath(country: 'MY', phone: '1', name: 'Jo', ext: 'png', owner: 'u-1', now: d),
+        'u-1/MY_1_jo_07032025.png',
+      );
+      expect(
+        idImagePath(country: '', phone: '1', idNumber: '9', ext: 'jpg', owner: 'u-1', now: d),
+        'u-1/Unknown_1_9_07032025.jpg',
+      );
       expect(docFilePath('p1', 'd1', 'front', 'jpg', ms: 5), 'p1/d1/front-5.jpg');
       expect(vehiclePhotoPath('v1', 'left', 'png', ms: 9), 'v1/photos/left-9.png');
     });
