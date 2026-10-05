@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
 import '../../providers.dart';
 
@@ -66,6 +67,8 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   }
 
   void _onChanged(String q) {
+    // Typing hides the recent destinations; clearing shows them again.
+    setState(() {});
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 450), () async {
       setState(() => _loading = true);
@@ -122,6 +125,24 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             onTap: () => Navigator.pop(context, const PlacePick.onMap()),
           ),
           const Divider(),
+          if (_query.text.trim().isEmpty)
+            ...switch (ref.watch(recentPlacesProvider).value ?? const <Place>[]) {
+              final List<Place> recent when recent.isNotEmpty => [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                    child: Text('Recent', style: Theme.of(context).textTheme.titleSmall),
+                  ),
+                  for (final p in recent)
+                    ListTile(
+                      key: ValueKey('recent-${p.point.latitude},${p.point.longitude}'),
+                      leading: const Icon(Icons.history),
+                      title: Text(p.name),
+                      subtitle: Text(p.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      onTap: () => Navigator.pop(context, PlacePick.place(p)),
+                    ),
+                ],
+              _ => const <Widget>[],
+            },
           for (final p in _results)
             ListTile(
               leading: const Icon(Icons.place_outlined),

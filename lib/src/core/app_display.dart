@@ -5,7 +5,13 @@
 library;
 
 class AppDisplay {
-  const AppDisplay({this.serviceEnabled = true, this.registrationEnabled = true, this.showAiTollCharges = true});
+  const AppDisplay({
+    this.serviceEnabled = true,
+    this.registrationEnabled = true,
+    this.showAiTollCharges = true,
+    this.recentLocations = true,
+    this.recentLocationsCount = 4,
+  });
 
   /// Master service switch. Off: booking shows "coming soon" instead of
   /// placing a request.
@@ -17,6 +23,11 @@ class AppDisplay {
   /// Whether the AI route estimate's toll charges are shown on the booking
   /// panel.
   final bool showAiTollCharges;
+
+  /// Whether the place picker lists the rider's recent destinations, and how
+  /// many (Admin → Display → Recent Locations, 0–8).
+  final bool recentLocations;
+  final int recentLocationsCount;
 
   /// Reads the stored blob. Anything missing or unreadable keeps its default,
   /// so a half-written or older row never switches the service off.
@@ -38,8 +49,16 @@ class AppDisplay {
       serviceEnabled: flag('serviceEnabled'),
       registrationEnabled: flag('registrationEnabled'),
       showAiTollCharges: flag('showAiTollCharges'),
+      recentLocations: flag('recentLocations'),
+      recentLocationsCount: _count(raw['recentLocationsCount']),
     );
   }
+}
+
+int _count(Object? v) {
+  final n = v is num ? v : num.tryParse('${v ?? ''}');
+  if (n == null) return 4;
+  return n.round().clamp(0, 8);
 }
 
 /// Shown instead of a booking while the service switch is off (Expo's
