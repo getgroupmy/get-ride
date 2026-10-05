@@ -33,4 +33,10 @@ class AppConfig {
 
   /// The Privacy Notice (the same page the Expo app links).
   static const privacyUrl = String.fromEnvironment('PRIVACY_URL', defaultValue: 'https://getride.my/privacy');
+
+  /// The Terms of Service, beside the Privacy Notice on the same site.
+  static const termsUrl = String.fromEnvironment('TERMS_URL', defaultValue: 'https://getride.my/terms');
+
+  /// Shown on the licences page (keep in step with `pubspec.yaml`).
+  static const appVersion = '1.4.3';
 }

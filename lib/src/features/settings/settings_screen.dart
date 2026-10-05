@@ -7,6 +7,7 @@ import '../../data/auth_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../safety/voice_protection_card.dart';
+import 'rules_terms_card.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -58,6 +59,7 @@ class SettingsScreen extends ConsumerWidget {
                 },
               ),
             ),
+            const RulesTermsCard(),
             Card(
               child: ListTile(
                 leading: const Icon(Icons.storage_outlined),
