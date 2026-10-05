@@ -42,7 +42,12 @@ class TripsScreen extends ConsumerWidget {
                           subtitle: Text('${formatDateTime(r.createdAt)} · ${r.status.label}'
                               '${asDriver ? ' · as driver' : ''}'),
                           trailing: Text(formatMoney(r.effectiveFare, r.currency)),
-                          onTap: () => context.push(asDriver ? '/drive/trip/${r.id}' : '/ride/${r.id}'),
+                          // A finished trip opens its receipt; one still under way, the live screen.
+                          onTap: () => context.push(
+                            r.status.isFinished
+                                ? '/trips/${r.id}'
+                                : (asDriver ? '/drive/trip/${r.id}' : '/ride/${r.id}'),
+                          ),
                         ),
                       ),
                     );

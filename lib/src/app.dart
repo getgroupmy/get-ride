@@ -28,6 +28,7 @@ import 'features/profile/edit_profile_screen.dart';
 import 'features/profile/emergency_contacts_screen.dart';
 import 'features/ride/home_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
+import 'features/ride/trip_receipt_screen.dart';
 import 'features/ride/trips_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
@@ -132,7 +133,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, _, shell) => AppShell(shell: shell),
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: '/', builder: (_, _) => const HomeScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: '/trips', builder: (_, _) => const TripsScreen())]),
+          StatefulShellBranch(routes: [
+            GoRoute(path: '/trips', builder: (_, _) => const TripsScreen(), routes: [
+              GoRoute(path: ':id', builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!)),
+            ]),
+          ]),
           StatefulShellBranch(routes: [GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen(), routes: [
             GoRoute(
               path: 'trade',
