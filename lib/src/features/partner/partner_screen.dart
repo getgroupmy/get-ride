@@ -3,15 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/destination_mode.dart';
 import '../../core/format.dart';
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_queue.dart';
 import '../../core/taxi_meter.dart';
+import '../../data/destination_store.dart';
 import '../../data/device_access.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../ride/place_search.dart';
 import 'fare_offer.dart';
 import 'vehicle_picker.dart';
 
@@ -69,8 +72,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     if (!_online || !_autoAccept || !mounted) return;
     final partner = ref.read(partnerProvider).value;
     if (partner == null || !partnerCanDrive(partner)) return;
+    // In destination mode only trips heading that way are taken unasked.
+    final eligible = _destinationOn ? open.where(_towardDestination).toList() : open;
     final pick = autoAcceptPick(
-      [for (final r in open) (id: r.id, offerMe: r.offerMe, awayKm: _distanceTo(r))],
+      [for (final r in eligible) (id: r.id, offerMe: r.offerMe, awayKm: _distanceTo(r))],
       _seen,
       busy: _accepting != null,
     );
@@ -153,6 +158,50 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       builder: (_) => OfferPendingDialog(repo: repo, ride: r, me: me, amount: amount),
     );
     if (won != null && mounted) context.push('/drive/trip/${won.id}');
+  }
+
+  bool get _destinationOn {
+    final d = ref.read(destinationModeProvider);
+    return d.on && d.place != null;
+  }
+
+  bool _towardDestination(RideRequest r) {
+    final dest = ref.read(destinationModeProvider).place;
+    if (dest == null || r.pickupLat == null || r.pickupLng == null || r.dropLat == null || r.dropLng == null) {
+      return false;
+    }
+    return headsToward(
+      pickup: LatLng(r.pickupLat!, r.pickupLng!),
+      drop: LatLng(r.dropLat!, r.dropLng!),
+      destination: dest.point,
+    );
+  }
+
+  Future<void> _chooseDestination() async {
+    final pick = await showPlaceSearch(context, title: 'Your destination', near: _me);
+    final place = pick?.place;
+    if (place != null) await ref.read(destinationModeProvider.notifier).setPlace(place);
+  }
+
+  Widget _destinationTile() {
+    final d = ref.watch(destinationModeProvider);
+    final place = d.place;
+    return ListTile(
+      key: const ValueKey('queue-destination'),
+      leading: const Icon(Icons.flag_outlined),
+      title: Text(place == null ? 'Destination mode' : 'Heading to ${place.name}'),
+      subtitle: Text(place == null
+          ? 'Set where you are heading to see trips that way first'
+          : d.on
+              ? 'Trips toward it come first; auto-accept takes only those'
+              : 'Off. Tap to change the destination'),
+      onTap: _chooseDestination,
+      trailing: Switch(
+        key: const ValueKey('queue-destination-switch'),
+        value: d.on && place != null,
+        onChanged: place == null ? null : (v) => ref.read(destinationModeProvider.notifier).setOn(v),
+      ),
+    );
   }
 
   double? _distanceTo(RideRequest r) {
@@ -254,6 +303,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                           ? 'You can offer your own price where the rider allows it'
                           : 'Take requests at the rider\'s price only'),
                     ),
+                    _destinationTile(),
                   ]),
                 ),
               const CurrentVehicleCard(),
@@ -277,8 +327,13 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         if (list.isEmpty) {
           return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');
         }
-        final sorted = [...list]
-          ..sort((a, b) => (_distanceTo(a) ?? 1e9).compareTo(_distanceTo(b) ?? 1e9));
+        ref.watch(destinationModeProvider);
+        final destinationOn = _destinationOn;
+        final sorted = destinationOrder(
+          list,
+          toward: (r) => destinationOn && _towardDestination(r),
+          awayKm: _distanceTo,
+        );
         return ListView.builder(
           itemCount: sorted.length,
           itemBuilder: (_, i) {
@@ -293,6 +348,17 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     Text(formatMoney(r.effectiveFare, r.currency),
                         style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
                   ]),
+                  if (destinationOn && _towardDestination(r))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(children: [
+                        Icon(Icons.flag, size: 16, color: t.colorScheme.primary),
+                        const SizedBox(width: 6),
+                        Text('Toward your destination',
+                            key: ValueKey('toward-${r.id}'),
+                            style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.primary)),
+                      ]),
+                    ),
                   const SizedBox(height: 4),
                   Text([
                     if (away != null) '${formatDistance(away)} away',
