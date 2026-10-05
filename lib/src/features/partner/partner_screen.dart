@@ -7,6 +7,7 @@ import '../../core/format.dart';
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_queue.dart';
 import '../../core/taxi_meter.dart';
+import '../../data/device_access.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
@@ -79,6 +80,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   }
 
   Future<void> _toggle(bool v) async {
+    if (v && await ref.read(deviceBlockedProvider.future)) {
+      if (mounted) showInfo(context, '$serviceNotAvailable. This device cannot go online.');
+      return;
+    }
     if (v && _autoAccept) _markQueueSeen();
     setState(() => _online = v);
     if (v) {

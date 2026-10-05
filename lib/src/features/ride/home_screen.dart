@@ -8,6 +8,7 @@ import '../../config.dart';
 import '../../core/fare.dart';
 import '../../core/format.dart';
 import '../../core/route_estimate.dart';
+import '../../data/device_access.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
@@ -148,6 +149,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _book() async {
     final a = _pickup, b = _drop, r = _basis;
     if (a == null || b == null || r == null) return;
+    if (await ref.read(deviceBlockedProvider.future)) {
+      if (mounted) showInfo(context, '$serviceNotAvailable. This device is not permitted to place a request.');
+      return;
+    }
     setState(() => _booking = true);
     try {
       final profile = await ref.read(profileProvider.future);
