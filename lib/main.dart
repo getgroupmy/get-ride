@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'src/app.dart';
 import 'src/config.dart';
+import 'src/core/referral.dart';
 import 'src/data/push_service.dart';
 
 Future<void> main() async {
@@ -12,6 +13,9 @@ Future<void> main() async {
   // cleanly and Vercel Analytics can tell screens apart. No-op elsewhere.
   usePathUrlStrategy();
   WidgetsFlutterBinding.ensureInitialized();
+  // An invite link (getride.my/?ref=CODE) carries the friend's code; it is
+  // offered on the set-PIN step of a new account.
+  PendingReferral.code = referralCodeFromUri(Uri.base);
   await Supabase.initialize(url: AppConfig.supabaseUrl, publishableKey: AppConfig.supabaseAnonKey);
   // Push notifications, on Android and iOS builds that carry a Firebase
   // project. A no-op everywhere else.
