@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/format.dart';
+import '../../core/navigation_app.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -125,7 +126,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   }
 
   void _navigate(LatLng to) {
-    final url = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${to.latitude},${to.longitude}');
+    final url = navigationUri(ref.read(navigationAppProvider), to.latitude, to.longitude);
     launchUrl(url, mode: LaunchMode.externalApplication);
   }
 

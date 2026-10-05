@@ -7,6 +7,7 @@ import '../../data/auth_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../safety/voice_protection_card.dart';
+import 'navigation_app_card.dart';
 import 'rules_terms_card.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -39,6 +40,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
             const VoiceProtectionCard(),
+            const NavigationAppCard(),
             Card(
               child: ListTile(
                 key: const ValueKey('change-phone'),
