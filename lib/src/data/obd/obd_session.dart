@@ -202,6 +202,10 @@ class ObdSession extends Notifier<ObdSessionState> {
     return c.request(command);
   }
 
+  /// Holds the 1 Hz sweep while something else needs the reader to itself
+  /// (the vehicle scan): the adapter answers one command at a time.
+  void setPollingPaused(bool paused) => _client?.setPollingPaused(paused);
+
   Future<void> disconnect() async {
     _wanted = false;
     _retry?.cancel();
