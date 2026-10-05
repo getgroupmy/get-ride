@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../config.dart';
 import '../../core/app_display.dart';
@@ -74,6 +75,14 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
     }
   }
 
+  Future<void> _openLink(String url) async {
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) showInfo(context, 'Could not open $url');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -139,6 +148,18 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                 textAlign: TextAlign.center,
                 style: t.textTheme.bodySmall,
               ),
+              Wrap(alignment: WrapAlignment.center, children: [
+                TextButton(
+                  key: const ValueKey('phone-terms'),
+                  onPressed: () => _openLink(AppConfig.termsUrl),
+                  child: const Text('Terms of Service'),
+                ),
+                TextButton(
+                  key: const ValueKey('phone-privacy'),
+                  onPressed: () => _openLink(AppConfig.privacyUrl),
+                  child: const Text('Privacy Policy'),
+                ),
+              ]),
             ]),
           ),
         ),
