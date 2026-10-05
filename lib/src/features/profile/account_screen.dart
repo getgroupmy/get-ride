@@ -76,6 +76,13 @@ class AccountScreen extends ConsumerWidget {
                   onTap: () => context.go('/account/emergency'),
                 ),
                 ListTile(
+                  key: const ValueKey('account-guide'),
+                  leading: const Icon(Icons.menu_book_outlined),
+                  title: const Text('User guide'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/account/guide'),
+                ),
+                ListTile(
                   leading: const Icon(Icons.support_agent),
                   title: const Text('Help & support'),
                   trailing: const Icon(Icons.chevron_right),
