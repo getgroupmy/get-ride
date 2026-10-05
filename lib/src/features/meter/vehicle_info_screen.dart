@@ -425,8 +425,9 @@ class _WriteDialogState extends ConsumerState<_WriteDialog> {
       }
       if (mounted) setState(() => _result = result);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() => _result = (ok: false, message: _VehicleInfoScreenState._message(e, 'The command failed.')));
+      }
     } finally {
       session.setPollingPaused(false);
       if (mounted) setState(() => _busy = false);
