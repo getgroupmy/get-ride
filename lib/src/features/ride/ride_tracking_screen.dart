@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/format.dart';
+import '../../core/ride_bidding.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -67,6 +68,33 @@ class _RidePanel extends ConsumerStatefulWidget {
 class _RidePanelState extends ConsumerState<_RidePanel> {
   bool _busy = false;
 
+  /// The fare first seen on this screen: raises are capped against it.
+  late final double? _quoted = widget.ride.fare;
+
+  Future<void> _raise(double step) async {
+    final r = widget.ride;
+    final current = r.fare ?? 0;
+    final next = raisedFare(current, step, quoted: _quoted ?? current);
+    if (next <= current) {
+      showInfo(context, 'The fare cannot go any higher.');
+      return;
+    }
+    await _run(() async {
+      final updated = await ref.read(rideRepositoryProvider).raiseFare(r.id, next);
+      if (updated == null && mounted) showInfo(context, 'This request is no longer open.');
+    });
+  }
+
+  Future<void> _acceptOffer(RideOffer o) async {
+    await _run(() async {
+      final won = await ref.read(rideRepositoryProvider).acceptOffer(widget.ride.id, partnerId: o.partnerId, amount: o.amount);
+      if (won == null && mounted) showInfo(context, 'That offer changed before you accepted it.');
+    });
+  }
+
+  Future<void> _declineOffer(RideOffer o) =>
+      _run(() => ref.read(rideRepositoryProvider).declineOffer(widget.ride.id, partnerId: o.partnerId));
+
   Future<void> _run(Future<void> Function() action) async {
     setState(() => _busy = true);
     try {
@@ -127,6 +155,68 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             child: Text('Notifying nearby drivers…', style: t.textTheme.bodyMedium),
           ),
         const SizedBox(height: 16),
+        if (standingOffer(r) case final offer?)
+          Card(
+            key: const ValueKey('ride-offer'),
+            color: t.colorScheme.primaryContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text('${offer.name ?? 'A driver'} offers ${formatMoney(offer.amount, r.currency)}',
+                    style: t.textTheme.titleMedium),
+                Text(
+                  [
+                    offer.vehicle,
+                    offer.plate,
+                    if (offer.rating != null) '★ ${offer.rating!.toStringAsFixed(1)}',
+                  ].whereType<String>().join(' · '),
+                  style: t.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : () => _declineOffer(offer),
+                      child: const Text('Decline'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton(
+                      key: const ValueKey('accept-offer'),
+                      onPressed: _busy ? null : () => _acceptOffer(offer),
+                      child: Text('Accept ${formatMoney(offer.amount, r.currency)}'),
+                    ),
+                  ),
+                ]),
+              ]),
+            ),
+          ),
+        if (r.status == RideStatus.open)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text('No takers yet? Raise your fare', style: t.textTheme.titleSmall),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, children: [
+                  for (final step in fareRaiseSteps)
+                    ActionChip(
+                      key: ValueKey('raise-${step.toStringAsFixed(0)}'),
+                      avatar: const Icon(Icons.arrow_upward, size: 16),
+                      label: Text('+${formatMoney(step, r.currency)}'),
+                      onPressed: _busy ? null : () => _raise(step),
+                    ),
+                ]),
+                if (r.offerMe)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text('Drivers can also offer you a price. You choose whether to accept.',
+                        style: t.textTheme.bodySmall),
+                  ),
+              ]),
+            ),
+          ),
         if (r.partnerId != null && r.status.isOngoing)
           Card(
             child: Column(children: [

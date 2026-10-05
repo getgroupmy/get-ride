@@ -10,6 +10,7 @@ import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import 'fare_offer.dart';
 import 'vehicle_picker.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
@@ -77,6 +78,44 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     } finally {
       if (mounted) setState(() => _accepting = null);
     }
+  }
+
+  Future<void> _offer(RideRequest r, Partner partner) async {
+    final amount = await askCounterOffer(context, r);
+    if (amount == null || !mounted) return;
+    setState(() => _accepting = r.id);
+    final repo = ref.read(rideRepositoryProvider);
+    RideRequest? sent;
+    try {
+      final profile = await ref.read(profileProvider.future);
+      sent = await repo.submitOffer(
+        r.id,
+        amount,
+        partner,
+        lat: _me?.latitude,
+        lng: _me?.longitude,
+        fallbackName: profile?.name,
+        fallbackPhone: profile?.phone,
+      );
+    } catch (e) {
+      if (mounted) showError(context, e);
+      return;
+    } finally {
+      if (mounted) setState(() => _accepting = null);
+    }
+    if (!mounted) return;
+    if (sent == null) {
+      showInfo(context, 'This request is no longer open.');
+      return;
+    }
+    final me = ref.read(currentUserIdProvider);
+    if (me == null) return;
+    final won = await showDialog<RideRequest>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => OfferPendingDialog(repo: repo, ride: r, me: me, amount: amount),
+    );
+    if (won != null && mounted) context.push('/drive/trip/${won.id}');
   }
 
   double? _distanceTo(RideRequest r) {
@@ -204,13 +243,33 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     padding: const EdgeInsets.only(top: 6),
                     child: Text('“${r.note}”', style: t.textTheme.bodySmall),
                   ),
+                  if (r.offeredFare != null && r.partnerId != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text('A driver has offered ${formatMoney(r.offeredFare, r.currency)}',
+                          style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
+                    ),
                   const SizedBox(height: 8),
-                  FilledButton(
-                    onPressed: _accepting != null ? null : () => _accept(r, partner),
-                    child: _accepting == r.id
-                        ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Accept'),
-                  ),
+                  Row(children: [
+                    if (r.offerMe) ...[
+                      Expanded(
+                        child: OutlinedButton(
+                          key: ValueKey('offer-${r.id}'),
+                          onPressed: _accepting != null ? null : () => _offer(r, partner),
+                          child: const Text('Offer price'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _accepting != null ? null : () => _accept(r, partner),
+                        child: _accepting == r.id
+                            ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                            : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}'),
+                      ),
+                    ),
+                  ]),
                 ]),
               ),
             );

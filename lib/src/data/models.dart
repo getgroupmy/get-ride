@@ -70,6 +70,7 @@ class RideRequest {
   int? get durationMin => _i(raw['duration_min']);
   double? get fare => _d(raw['fare']);
   double? get offeredFare => _d(raw['offered_fare']);
+  bool get offerMe => raw['offer_me'] == true;
   String get currency => (raw['currency'] as String?) ?? 'MYR';
   int get passengers => _i(raw['passengers']) ?? 1;
   String? get note => raw['note'] as String?;

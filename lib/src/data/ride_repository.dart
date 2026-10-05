@@ -5,7 +5,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../config.dart';
+import 'package:latlong2/latlong.dart';
+
 import '../core/commission.dart';
+import '../core/ride_bidding.dart';
+import 'geo_service.dart';
 import 'models.dart';
 
 /// Ride booking + dispatch over `public.ride_requests`, mirroring the Expo
@@ -37,6 +41,7 @@ class RideRepository {
     String? riderName,
     String? riderPhone,
     String? deviceOs,
+    bool offerMe = false,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -65,7 +70,7 @@ class RideRepository {
       'passengers': passengers,
       'luggage': 0,
       'note': note,
-      'offer_me': false,
+      'offer_me': offerMe,
       'otp': otp,
       'device_os': deviceOs,
       'user_accept_lat': pickupLat,
@@ -185,12 +190,155 @@ class RideRepository {
           'partner_rating': partner?.rating,
           'partner_accept_lat': lat,
           'partner_accept_lng': lng,
+          // Taking the rider's own fare supersedes any bid still on the row.
+          'offered_fare': null,
         })
         .eq('id', id)
         .eq('status', 'open')
         .select()
         .maybeSingle();
     return row == null ? null : RideRequest(row);
+  }
+
+  // ---- Fare bidding (see core/ride_bidding.dart for the shared contract) ----
+
+  /// The admin's region list (`country-states-cities`) with each region's
+  /// bidding switch. Empty when it cannot be read: bidding then stays on.
+  Future<List<BiddingRegion>> biddingRegions() async {
+    try {
+      final rows = await _db.from('settings_entries').select('values').eq('category', 'country-states-cities');
+      return [
+        for (final r in rows)
+          if (r['values'] is Map) BiddingRegion.fromValues(Map<String, dynamic>.from(r['values'] as Map)),
+      ].whereType<BiddingRegion>().toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Whether the rider may be bid on at [pickup] (Expo `useRegionBidding`).
+  /// Names are only looked up when no mapped boundary decides.
+  Future<bool> biddingEnabledFor(LatLng pickup, Future<AreaInfo?> Function() area) async {
+    final regions = await biddingRegions();
+    if (regions.isEmpty) return true;
+    final byBoundary = biddingByBoundary(regions, pickup);
+    if (byBoundary != null) return byBoundary;
+    AreaInfo? names;
+    try {
+      names = await area().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    return biddingEnabledAt(regions, pickup, area: names);
+  }
+
+  static const _bidFields = [
+    'offered_fare',
+    'partner_id',
+    'partner_name',
+    'partner_phone',
+    'partner_photo',
+    'partner_vehicle',
+    'partner_plate',
+    'partner_rating',
+    'vehicle_id',
+    'partner_accept_lat',
+    'partner_accept_lng',
+  ];
+
+  static Map<String, dynamic> get _noBid => {for (final f in _bidFields) f: null};
+
+  /// A partner's counter-offer on an open request. Null when the request is
+  /// no longer open (taken, cancelled, expired).
+  Future<RideRequest?> submitOffer(
+    String id,
+    double amount,
+    Partner? partner, {
+    double? lat,
+    double? lng,
+    String? fallbackName,
+    String? fallbackPhone,
+  }) async {
+    final row = await _db
+        .from(_table)
+        .update({
+          'offered_fare': amount,
+          'partner_id': _uid,
+          'partner_name': partner?.name ?? fallbackName,
+          'partner_phone': partner?.phone ?? fallbackPhone,
+          'partner_photo': partner?.avatarUrl,
+          'partner_vehicle': partner?.vehicle,
+          'partner_plate': partner?.plate,
+          'partner_rating': partner?.rating,
+          'partner_accept_lat': lat,
+          'partner_accept_lng': lng,
+        })
+        .eq('id', id)
+        .eq('status', 'open')
+        .select()
+        .maybeSingle();
+    return row == null ? null : RideRequest(row);
+  }
+
+  /// Takes this partner's own standing offer back off the row.
+  Future<void> withdrawOffer(String id) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await _db.from(_table).update(_noBid).eq('id', id).eq('status', 'open').eq('partner_id', uid);
+  }
+
+  /// The rider raises the fare on their open request. Every standing bid is
+  /// cleared, and partners are told the fare went up. Null when the request
+  /// is no longer open.
+  Future<RideRequest?> raiseFare(String id, double fare) async {
+    final row = await _db
+        .from(_table)
+        .update({'fare': fare, 'ride_fare': fare, ..._noBid})
+        .eq('id', id)
+        .eq('status', 'open')
+        .select()
+        .maybeSingle();
+    if (row == null) return null;
+    final r = RideRequest(row);
+    unawaited(_notifyFareRaised(r));
+    return r;
+  }
+
+  Future<void> _notifyFareRaised(RideRequest r) async {
+    try {
+      await _db.functions.invoke('send-push', body: {
+        'title': 'Fare increased',
+        'body': '${r.currency} ${r.fare?.round() ?? ''} , ${r.pickupLabel} -> ${r.dropLabel}',
+        'audience': 'partners',
+        'data': {'type': 'ride_request_fare_raised', 'requestId': r.id},
+      });
+    } catch (_) {}
+  }
+
+  /// The rider takes [partnerId]'s offer of [amount]: their own row moves
+  /// to `accepted` with that partner, billed at the offer. Matched on the
+  /// exact partner and amount, so a bid that changed since it was shown is
+  /// never accepted; null in that case.
+  Future<RideRequest?> acceptOffer(String id, {required String partnerId, required double amount}) async {
+    final row = await _db
+        .from(_table)
+        .update({
+          'status': 'accepted',
+          'accepted_at': DateTime.now().toUtc().toIso8601String(),
+          'fare': amount,
+          'ride_fare': amount,
+        })
+        .eq('id', id)
+        .eq('status', 'open')
+        .eq('partner_id', partnerId)
+        .eq('offered_fare', amount.toStringAsFixed(2))
+        .select()
+        .maybeSingle();
+    return row == null ? null : RideRequest(row);
+  }
+
+  /// The rider turns [partnerId]'s offer down, leaving the request open for
+  /// other partners.
+  Future<void> declineOffer(String id, {required String partnerId}) async {
+    await _db.from(_table).update(_noBid).eq('id', id).eq('status', 'open').eq('partner_id', partnerId);
   }
 
   Future<void> updateStatus(String id, RideStatus status) async {
