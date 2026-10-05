@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../config.dart';
+
 import 'package:latlong2/latlong.dart';
 
 import '../core/commission.dart';
@@ -87,12 +88,15 @@ class RideRepository {
   /// function (same payload as the Expo app).
   Future<void> _notifyPartners(RideRequest r) async {
     try {
-      await _db.functions.invoke('send-push', body: {
-        'title': 'New Request',
-        'body': '${r.currency} ${r.fare?.round() ?? ''} , ${r.pickupLabel} -> ${r.dropLabel}',
-        'audience': 'partners',
-        'data': {'type': 'new_ride_request', 'requestId': r.id},
-      });
+      await _db.functions.invoke(
+        'send-push',
+        body: {
+          'title': 'New Request',
+          'body': '${r.currency} ${r.fare?.round() ?? ''} , ${r.pickupLabel} -> ${r.dropLabel}',
+          'audience': 'partners',
+          'data': {'type': 'new_ride_request', 'requestId': r.id},
+        },
+      );
     } catch (_) {}
   }
 
@@ -304,12 +308,15 @@ class RideRepository {
 
   Future<void> _notifyFareRaised(RideRequest r) async {
     try {
-      await _db.functions.invoke('send-push', body: {
-        'title': 'Fare increased',
-        'body': '${r.currency} ${r.fare?.round() ?? ''} , ${r.pickupLabel} -> ${r.dropLabel}',
-        'audience': 'partners',
-        'data': {'type': 'ride_request_fare_raised', 'requestId': r.id},
-      });
+      await _db.functions.invoke(
+        'send-push',
+        body: {
+          'title': 'Fare increased',
+          'body': '${r.currency} ${r.fare?.round() ?? ''} , ${r.pickupLabel} -> ${r.dropLabel}',
+          'audience': 'partners',
+          'data': {'type': 'ride_request_fare_raised', 'requestId': r.id},
+        },
+      );
     } catch (_) {}
   }
 
@@ -341,6 +348,23 @@ class RideRepository {
     await _db.from(_table).update(_noBid).eq('id', id).eq('status', 'open').eq('partner_id', partnerId);
   }
 
+  /// Claims the GET.coin ride reward for the rider of a completed ride
+  /// (`wallet_award_ride_coins`). The server prices it on the ride's stored
+  /// fare (get.ride migration 0093), checks the caller is the rider and pays
+  /// once per ride, so calling again is harmless and answers 0. Answers 0
+  /// when there is nothing to claim or the call fails.
+  Future<double> claimRideReward(RideRequest r) async {
+    final uid = _uid;
+    final fare = r.effectiveFare ?? 0;
+    if (uid == null || r.status != RideStatus.completed || r.riderId != uid || fare <= 0) return 0;
+    try {
+      final v = await _db.rpc('wallet_award_ride_coins', params: {'p_ride': r.id, 'p_user': uid, 'p_fare': fare});
+      return v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<void> updateStatus(String id, RideStatus status) async {
     final now = DateTime.now().toUtc().toIso8601String();
     final patch = <String, dynamic>{'status': status.db};
@@ -364,11 +388,14 @@ class RideRepository {
   /// approve (Expo `requestRideCancellation`).
   Future<void> cancel(RideRequest r, {String? reason, required String by}) async {
     if (r.status == RideStatus.open) {
-      await _db.from(_table).update({
-        'status': 'cancelled',
-        'cancelled_at': DateTime.now().toUtc().toIso8601String(),
-        'cancel_reason': reason,
-      }).eq('id', r.id);
+      await _db
+          .from(_table)
+          .update({
+            'status': 'cancelled',
+            'cancelled_at': DateTime.now().toUtc().toIso8601String(),
+            'cancel_reason': reason,
+          })
+          .eq('id', r.id);
       return;
     }
     await _db
@@ -384,24 +411,23 @@ class RideRepository {
 
   Future<void> approveCancellation(String id) => updateStatus(id, RideStatus.cancelled);
 
-  Future<void> declineCancellation(String id) => _db
-      .from(_table)
-      .update({'cancel_requested_at': null, 'cancel_requested_by': null}).eq('id', id);
+  Future<void> declineCancellation(String id) =>
+      _db.from(_table).update({'cancel_requested_at': null, 'cancel_requested_by': null}).eq('id', id);
 
-  Future<void> publishPartnerLocation(String id, double lat, double lng, double? heading) =>
-      _db.from(_table).update({
+  Future<void> publishPartnerLocation(String id, double lat, double lng, double? heading) => _db
+      .from(_table)
+      .update({
         'partner_live_lat': lat,
         'partner_live_lng': lng,
         'partner_live_heading': heading,
         'partner_live_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', id);
+      })
+      .eq('id', id);
 
-  Future<void> publishRiderLocation(String id, double lat, double lng) =>
-      _db.from(_table).update({
-        'user_live_lat': lat,
-        'user_live_lng': lng,
-        'user_live_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', id);
+  Future<void> publishRiderLocation(String id, double lat, double lng) => _db
+      .from(_table)
+      .update({'user_live_lat': lat, 'user_live_lng': lng, 'user_live_at': DateTime.now().toUtc().toIso8601String()})
+      .eq('id', id);
 
   /// Completes the trip and charges the partner's commission through the
   /// shared `wallet_charge_ride_commission` RPC (idempotent per ride).
@@ -426,12 +452,10 @@ class RideRepository {
         ),
       );
       if (rate <= 0 || rate >= 1) return;
-      await _db.rpc('wallet_charge_ride_commission', params: {
-        'p_ride': r.id,
-        'p_partner': uid,
-        'p_fare': fare,
-        'p_rate': rate,
-      });
+      await _db.rpc(
+        'wallet_charge_ride_commission',
+        params: {'p_ride': r.id, 'p_partner': uid, 'p_fare': fare, 'p_rate': rate},
+      );
     } catch (_) {
       // Commission is reconciled by the back office if this best-effort call fails.
     }
@@ -450,11 +474,7 @@ class RideRepository {
             event: PostgresChangeEvent.update,
             schema: 'public',
             table: _table,
-            filter: PostgresChangeFilter(
-              type: PostgresChangeFilterType.eq,
-              column: 'id',
-              value: id,
-            ),
+            filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'id', value: id),
             callback: (p) {
               if (!controller.isClosed && p.newRecord.isNotEmpty) {
                 controller.add(RideRequest(p.newRecord));

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,9 +13,14 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 
-final tripProvider = FutureProvider.autoDispose.family<RideRequest?, String>(
-  (ref, id) => ref.watch(rideRepositoryProvider).fetch(id),
-);
+final tripProvider = FutureProvider.autoDispose.family<RideRequest?, String>((ref, id) async {
+  final repo = ref.watch(rideRepositoryProvider);
+  final r = await repo.fetch(id);
+  // A rider who wasn't on the live screen at drop-off still gets the ride
+  // reward; the server pays it once per ride, so this is a no-op otherwise.
+  if (r != null) unawaited(repo.claimRideReward(r));
+  return r;
+});
 
 /// A finished trip's receipt (Expo `app/ride-detail.tsx`): route, times,
 /// the other party, the fare lines, and print / share as a PDF or copy as
