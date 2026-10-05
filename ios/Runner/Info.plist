@@ -6,6 +6,8 @@
 	<string>GET.ride connects to your Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>GET.ride connects to your Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>GET.ride uses the camera to scan payment and wallet QR codes.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>With VoiceProtection on, GET.ride records trip audio during your rides. Recordings stay on your phone for 24 hours and are only sent to support if a ride is reported.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

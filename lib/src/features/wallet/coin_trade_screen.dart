@@ -19,7 +19,13 @@ import 'wallet_screen.dart';
 /// buy price of max(market, peg) and a sell price of min(market, peg) — the
 /// prices the server settles at.
 class CoinTradeScreen extends ConsumerStatefulWidget {
-  const CoinTradeScreen({super.key});
+  const CoinTradeScreen({super.key, this.sendTo, this.requestedAmount});
+
+  /// Opens on the Send tab addressed to this account (a scanned GET QR).
+  final String? sendTo;
+
+  /// The RM amount a scanned fixed-amount code asked for.
+  final double? requestedAmount;
 
   @override
   ConsumerState<CoinTradeScreen> createState() => _CoinTradeScreenState();
@@ -33,6 +39,15 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
   var _busy = false;
   String? _error;
   String? _done;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.sendTo != null) {
+      _tab = _Tab.send;
+      _recipient.text = widget.sendTo!;
+    }
+  }
 
   @override
   void dispose() {
@@ -175,6 +190,23 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
         ),
         onChanged: changed,
       ),
+      if (widget.requestedAmount != null && q.settings.coinsPerCurrency > 0) ...[
+        const SizedBox(height: 8),
+        Builder(builder: (_) {
+          final gc = (widget.requestedAmount! * q.settings.coinsPerCurrency * 100).roundToDouble() / 100;
+          return Card(
+            child: ListTile(
+              leading: const Icon(Icons.qr_code_2),
+              title: Text('The code asks for ${formatMoney(widget.requestedAmount!)}'),
+              subtitle: Text('That is ${formatCoins(gc)} at the GET.coin rate.'),
+              trailing: TextButton(
+                onPressed: _busy ? null : () => _setAmount(gc),
+                child: const Text('Use'),
+              ),
+            ),
+          );
+        }),
+      ],
       const SizedBox(height: 8),
       TextField(
         key: const ValueKey('coin-amount'),

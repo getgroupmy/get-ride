@@ -53,6 +53,8 @@ dependencies:
   universal_ble: ^2.3.0
   record: ^7.1.1
   path_provider: ^2.1.6
+  mobile_scanner: ^7.4.2
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:
