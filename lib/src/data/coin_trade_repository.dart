@@ -6,13 +6,15 @@ import '../core/coin_trade.dart';
 import '../providers.dart';
 
 /// What the trade screen prices against: the two balances it moves between,
-/// the admin's GET.coin settings and the 30-day market signals.
+/// the admin's GET.coin settings, the 30-day market signals and the server's
+/// buy/sell prices.
 class CoinTradeQuote {
   const CoinTradeQuote({
     required this.walletBalance,
     required this.coinBalance,
     required this.settings,
     required this.stats,
+    this.serverPrices,
   });
 
   final double walletBalance;
@@ -20,13 +22,21 @@ class CoinTradeQuote {
   final GetCoinSettings settings;
   final CoinMarketStats stats;
 
+  /// `get_coin_trade_quote` (migration 0089); null on an older database.
+  final CoinTradePrices? serverPrices;
+
   CoinMarketRate get market => computeMarketRate(settings, stats);
+
+  /// The server's prices, or the same rule applied on the device. A
+  /// pre-0089 server still settles at the rate the app sends, so this keeps
+  /// an unmodified app on the spread there too.
+  CoinTradePrices get prices => serverPrices ?? CoinTradePrices.fromMarket(market);
 }
 
 /// Buying and selling GET.coin against GET.wallet (Expo `tradeCoins`). The
 /// balances only ever move through the owner-scoped `wallet_trade_coins`
-/// RPC, which re-anchors the rate to the admin peg and re-checks the
-/// balances and supply cap server-side.
+/// RPC, which prices the trade itself (buy at max(market, peg), sell at
+/// min(market, peg)) and re-checks the balances and supply cap server-side.
 class CoinTradeRepository {
   CoinTradeRepository(this._db);
   final SupabaseClient _db;
@@ -42,6 +52,7 @@ class CoinTradeRepository {
       _db.from('wallets').select('wallet_type, balance').eq('user_id', _uid),
       _db.from('get_coin_settings').select().eq('id', 'master').maybeSingle(),
       _db.rpc('get_coin_market_stats').then<Object?>((v) => v, onError: (_) => null),
+      _db.rpc('get_coin_trade_quote').then<Object?>((v) => v, onError: (_) => null),
     ]);
     double balance(String type) {
       for (final r in results[0] as List) {
@@ -59,17 +70,24 @@ class CoinTradeRepository {
       coinBalance: balance('get_coin'),
       settings: row == null ? const GetCoinSettings() : GetCoinSettings.fromRow(row),
       stats: CoinMarketStats.fromRpc(results[2]),
+      serverPrices: CoinTradePrices.fromRpc(results[3]),
     );
   }
 
-  /// Settles a trade; throws with the RPC's error string on refusal (map it
-  /// with [coinTradeErrorMessage]).
+  /// Settles a trade at the server's price for [direction] ([ratePerGC] is
+  /// only a fallback for the result figures); throws with the RPC's error
+  /// string on refusal (map it with [coinTradeErrorMessage]).
   Future<CoinTradeResult> trade(CoinTradeDirection direction, double coins, double ratePerGC) async {
     final data = await _db.rpc(
       'wallet_trade_coins',
       params: {'p_user': _uid, 'p_direction': direction.name, 'p_coins': coins, 'p_rate_per_gc': ratePerGC},
     );
-    return CoinTradeResult.fromRpc(data, coins: coins, amount: coinTradeValue(coins, ratePerGC), rate: ratePerGC);
+    return CoinTradeResult.fromRpc(
+      data,
+      coins: coins,
+      amount: coinTradeAmount(coins, ratePerGC, direction),
+      rate: ratePerGC,
+    );
   }
 }
 

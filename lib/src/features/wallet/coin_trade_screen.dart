@@ -15,8 +15,9 @@ import '../../widgets/common.dart';
 import 'wallet_screen.dart';
 
 /// Buy and sell GET.coin against GET.wallet (Expo `app/wallet-trade.tsx`,
-/// Buy / Sell tabs). Priced at the admin rate, or the market rate when
-/// market pricing is on; the server settles at its own anchored rate.
+/// Buy / Sell tabs). Priced at the admin rate, or with market pricing on, a
+/// buy price of max(market, peg) and a sell price of min(market, peg) — the
+/// prices the server settles at.
 class CoinTradeScreen extends ConsumerStatefulWidget {
   const CoinTradeScreen({super.key});
 
@@ -57,7 +58,7 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
 
   Future<void> _confirm(CoinTradeQuote q, double rate) async {
     final coins = _coins;
-    final value = coinTradeValue(coins, rate);
+    final value = coinTradeAmount(coins, rate, _direction);
     final buy = _direction == CoinTradeDirection.buy;
     final ok = await showDialog<bool>(
       context: context,
@@ -270,10 +271,10 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
   Widget _body(CoinTradeQuote q) {
     final t = Theme.of(context);
     final market = q.market;
-    final rate = market.ratePerGC;
+    final rate = q.prices.rateFor(_direction);
     final buy = _direction == CoinTradeDirection.buy;
     final coins = _coins;
-    final value = coinTradeValue(coins, rate);
+    final value = coinTradeAmount(coins, rate, _direction);
     final max = maxTradeCoins(
       direction: _direction,
       walletBalance: q.walletBalance,
@@ -366,7 +367,7 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'The final rate is checked by the server when the trade settles.',
+          'The server settles at its own buy or sell price.',
           style: t.textTheme.bodySmall,
           textAlign: TextAlign.center,
         ),
@@ -517,6 +518,25 @@ class _RateCard extends StatelessWidget {
                   ),
               ],
             ),
+            if (s.marketEnabled) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(child: _PriceTile(label: 'Buy', rate: quote.prices.buyRate)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _PriceTile(label: 'Sell', rate: quote.prices.sellRate)),
+                ],
+              ),
+              if (quote.prices.buyRate != quote.prices.sellRate) ...[
+                const SizedBox(height: 4),
+                Text(
+                  quote.prices.marketRate >= quote.prices.peg
+                      ? 'Above the peg, buying costs the market price and selling pays the peg.'
+                      : 'Below the peg, selling pays the market price and buying costs the peg.',
+                  style: t.textTheme.bodySmall,
+                ),
+              ],
+            ],
             const SizedBox(height: 4),
             if (!s.marketEnabled)
               const Text('Fixed rate — set by admin, market pricing is off.')
@@ -546,6 +566,33 @@ class _RateCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PriceTile extends StatelessWidget {
+  const _PriceTile({required this.label, required this.rate});
+
+  final String label;
+  final double rate;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Container(
+      key: ValueKey('coin-price-${label.toLowerCase()}'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        border: Border.all(color: t.colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: t.textTheme.labelMedium),
+          Text(formatCoinRate(rate, 'RM'), style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+        ],
       ),
     );
   }
