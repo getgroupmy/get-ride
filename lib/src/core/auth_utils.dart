@@ -44,3 +44,15 @@ String pinLockMessage(int seconds) {
 bool isRegistrationBlocked(String? message) =>
     RegExp(r'DEVICE_LIMIT|EMULATOR|REGISTRATION_BLOCKED', caseSensitive: false)
         .hasMatch(message ?? '');
+
+/// Why [newPhone] cannot replace [currentPhone], or null when it can.
+/// [takenByAnother] is the `profile_phone_lookup` answer: a live profile
+/// already holds the number.
+String? phoneChangeProblem(String newPhone, String? currentPhone, {required bool takenByAnother}) {
+  final digits = newPhone.replaceAll(RegExp(r'\D'), '');
+  if (digits.length < 8 || digits.length > 15) return 'Enter a valid phone number.';
+  final current = (currentPhone ?? '').replaceAll(RegExp(r'\D'), '');
+  if (current.isNotEmpty && current == digits) return 'That is already your number.';
+  if (takenByAnother) return 'This number is already linked to another account.';
+  return null;
+}

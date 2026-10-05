@@ -68,6 +68,16 @@ class AuthRepository {
 
   Future<void> sendOtp(String phone) => _db.auth.signInWithOtp(phone: phone);
 
+  /// Starts moving the signed-in account to [phone]: Supabase Auth texts a
+  /// code to the new number (Expo `sendPhoneChangeOtp`).
+  Future<void> requestPhoneChange(String phone) => _db.auth.updateUser(UserAttributes(phone: phone));
+
+  /// Confirms the change with the code sent to [phone]. The account's
+  /// `profiles.phone` follows by trigger (get.ride migration 0092).
+  Future<void> confirmPhoneChange(String phone, String code) async {
+    await _db.auth.verifyOTP(type: OtpType.phoneChange, phone: phone, token: code);
+  }
+
   Future<void> verifyOtp(String phone, String code) async {
     final res = await _db.auth.verifyOTP(type: OtpType.sms, phone: phone, token: code);
     if (res.session == null) {
