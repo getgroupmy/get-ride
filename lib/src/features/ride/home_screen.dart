@@ -11,6 +11,7 @@ import '../../config.dart';
 import '../../core/app_display.dart';
 import '../../core/fare.dart';
 import '../../core/fare_coins.dart';
+import '../../core/fare_offer.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/ride_request_metadata.dart';
@@ -29,6 +30,7 @@ import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
+import 'fare_offer_controls.dart';
 import 'home_parts.dart';
 import 'place_search.dart';
 import '../meter/meter_auto_launch.dart';
@@ -78,6 +80,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _note = TextEditingController();
   _PinTarget _pinTarget = _PinTarget.none;
   bool _booking = false;
+
+  /// The rider's own fare offer on the selected service, against the
+  /// recommended fare, where bidding is on at the pickup (Expo ride-confirm).
+  double _adjust = 0;
+  bool _biddingOn = false;
+  LatLng? _biddingAt;
   bool _routing = false;
   RideRequest? _ongoing;
 
@@ -156,6 +164,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _updateRoute() async {
     final a = _pickup, b = _drop;
     final seq = ++_routeSeq;
+    // A new route is a new recommended fare: any offer starts again from it.
+    _adjust = 0;
+    if (a != null) unawaited(_checkBidding(a.point));
     if (a == null || b == null) {
       setState(() {
         _route = null;
@@ -237,9 +248,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _updateRoute();
   }
 
-  double _fareFor(RideService s) {
+  /// Whether riders may set their own fare at [pickup]; checked once per
+  /// pickup. Unknown is off, which is today's fixed fare.
+  Future<void> _checkBidding(LatLng pickup) async {
+    if (_biddingAt == pickup) return;
+    _biddingAt = pickup;
+    var on = false;
+    try {
+      on = await ref
+          .read(rideRepositoryProvider)
+          .biddingEnabledFor(pickup, () => ref.read(geoServiceProvider).reverseArea(pickup));
+    } catch (_) {}
+    if (mounted && _biddingAt == pickup) setState(() => _biddingOn = on);
+  }
+
+  double _recommendedFor(RideService s) {
     final b = _basis;
     return b == null ? 0 : calculateFare(b.distanceKm, b.durationMin, multiplier: s.multiplier);
+  }
+
+  /// What [s] is booked at: the rider's offer on the selected service where
+  /// bidding is on, else the recommended fare.
+  double _fareFor(RideService s, {bool? biddingOn}) {
+    final recommended = _recommendedFor(s);
+    if (s.name != _service.name) return recommended;
+    return offeredFare(recommended: recommended, adjust: _adjust, biddingOn: biddingOn ?? _biddingOn);
   }
 
   Future<void> _book() async {
@@ -284,7 +317,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             dropLng: b.point.longitude,
             distanceKm: r.distanceKm,
             durationMin: r.durationMin.round(),
-            fare: _fareFor(_service),
+            // The booking-time check decides: an offer made where bidding has
+            // since turned out to be off goes out at the recommended fare.
+            fare: _fareFor(_service, biddingOn: offerMe),
             paymentMode: _payment,
             note: _note.text.trim().isEmpty ? null : _note.text.trim(),
             riderName: profile?.name,
@@ -295,7 +330,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             metadata: metadata,
           );
       final coins = _coins;
-      if (_useCoins && coins != null && fareCoinOffer(_fareFor(_service), coins.balance, coins.rate) != null) {
+      if (_useCoins && coins != null && fareCoinOffer(_fareFor(_service, biddingOn: offerMe), coins.balance, coins.rate) != null) {
         try {
           await ref.read(fareCoinChoiceStoreProvider).choose(req.id);
         } catch (_) {}
@@ -484,7 +519,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       stops: _stops,
       onAddStop: _addStop,
       onRemoveStop: _removeStop,
-      onService: (s) => setState(() => _serviceName = s.name),
+      onService: (s) => setState(() {
+        if (s.name != _serviceName) _adjust = 0;
+        _serviceName = s.name;
+      }),
+      fareOffer: _biddingOn && _basis != null && !_routing
+          ? FareOfferRow(
+              recommended: _recommendedFor(_service),
+              adjust: _adjust,
+              money: (v) => formatMoney(v, AppConfig.currency),
+              onAdjust: (v) => setState(() => _adjust = v),
+            )
+          : null,
       onPayment: (p) => setState(() => _payment = p),
       onBook: _book,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
@@ -560,6 +606,7 @@ class _BookingPanel extends StatelessWidget {
     required this.onDrop,
     required this.onSwap,
     required this.onService,
+    this.fareOffer,
     required this.onPayment,
     required this.onBook,
     required this.onOpenOngoing,
@@ -592,6 +639,9 @@ class _BookingPanel extends StatelessWidget {
   final double Function(RideService) fareFor;
   final VoidCallback onPickup, onDrop, onSwap, onBook, onOpenOngoing;
   final ValueChanged<RideService> onService;
+
+  /// The −/+ fare offer for the selected service, where bidding is on.
+  final Widget? fareOffer;
   final ValueChanged<String> onPayment;
 
   /// What the panel shows before a destination is chosen (the Expo home
@@ -709,6 +759,7 @@ class _BookingPanel extends StatelessWidget {
                 onTap: () => onService(s),
               ),
             ),
+          ?fareOffer,
           const SizedBox(height: 8),
           SegmentedButton<String>(
             segments: const [
