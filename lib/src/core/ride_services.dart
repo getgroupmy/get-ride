@@ -34,6 +34,7 @@ List<RideService> rideServicesFromCatalogue(List<CatalogueEntry> entries, Map<St
         cost != null && cost > 0 ? cost / baseCostPerKm : 1.0,
         seats != null && seats > 0 ? seats : 4,
         id: e.id,
+        image: _image(v['heroImageUri']) ?? _image(v['iconUri']),
       ),
     );
   }
@@ -43,3 +44,8 @@ List<RideService> rideServicesFromCatalogue(List<CatalogueEntry> entries, Map<St
 List<String> _strings(Object? raw) => raw is List ? raw.map((x) => '$x').toList() : const [];
 
 double? _num(Object? raw) => raw is num ? raw.toDouble() : double.tryParse('${raw ?? ''}');
+
+String? _image(Object? raw) {
+  final s = '${raw ?? ''}'.trim();
+  return s.isEmpty ? null : s;
+}

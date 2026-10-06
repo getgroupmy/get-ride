@@ -65,3 +65,22 @@ final recentPlacesProvider = FutureProvider.autoDispose<List<Place>>((ref) async
     return const [];
   }
 });
+
+/// Names of the admin services a home service box can be linked to (public
+/// read of `settings_entries`, category `service-settings`), by entry id.
+final serviceBoxNamesProvider = FutureProvider<Map<String, String>>((ref) async {
+  try {
+    final rows = await ref
+        .watch(supabaseProvider)
+        .from('settings_entries')
+        .select('id, values')
+        .eq('category', 'service-settings');
+    return {
+      for (final r in rows)
+        if (r['values'] is Map && '${(r['values'] as Map)['name'] ?? ''}'.trim().isNotEmpty)
+          '${r['id']}': '${(r['values'] as Map)['name']}'.trim(),
+    };
+  } catch (_) {
+    return const {};
+  }
+});
