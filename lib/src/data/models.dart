@@ -116,6 +116,10 @@ class Profile {
   String? get referralCode => raw['referral_code'] as String?;
   int get totalRides => _i(raw['total_rides']) ?? 0;
   String? get status => raw['status'] as String?;
+  String? get nationality => raw['nationality'] as String?;
+  String? get idNumber => raw['ic'] as String?;
+  String? get address => raw['address'] as String?;
+  String? get idImage => raw['id_image'] as String?;
 }
 
 class Partner {

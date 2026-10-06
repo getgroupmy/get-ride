@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/avatar.dart';
+import '../core/profile_identity.dart';
 import 'models.dart';
 
 /// Profile, partner record, wallet, emergency contacts and support — the
@@ -25,10 +26,13 @@ class AccountRepository {
     return row == null ? null : Profile(row);
   }
 
-  Future<void> updateProfile({String? name, String? email}) async {
+  /// [identity] is written as given (see `identityPatch`), so a blank field
+  /// clears its column.
+  Future<void> updateProfile({String? name, String? email, Map<String, String?>? identity}) async {
     await _db.from('profiles').update({
       'name': ?name,
       'email': ?email,
+      ...?identity,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', _uid);
   }
@@ -42,6 +46,20 @@ class AccountRepository {
     final url = bucket.getPublicUrl(path);
     await _db.from('profiles').update({
       'avatar_url': url,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', _uid);
+    return url;
+  }
+
+  /// Uploads a photo of the rider's passport or ID to their folder in
+  /// `ID_Image` and saves its public URL on `profiles.id_image`.
+  Future<String> uploadIdImage(Uint8List bytes, {required String ext, required String contentType}) async {
+    final path = idImageStoragePath(_uid, ext, DateTime.now());
+    final bucket = _db.storage.from('ID_Image');
+    await bucket.uploadBinary(path, bytes, fileOptions: FileOptions(upsert: true, contentType: contentType));
+    final url = bucket.getPublicUrl(path);
+    await _db.from('profiles').update({
+      'id_image': url,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', _uid);
     return url;

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/avatar.dart';
+import '../../core/profile_identity.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 
@@ -20,14 +21,20 @@ class EditProfileScreen extends ConsumerStatefulWidget {
 class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   final _name = TextEditingController();
   final _email = TextEditingController();
+  final _idNumber = TextEditingController();
+  final _address = TextEditingController();
+  String _country = '';
   bool _loaded = false;
   bool _busy = false;
   bool _uploading = false;
+  bool _uploadingId = false;
 
   @override
   void dispose() {
     _name.dispose();
     _email.dispose();
+    _idNumber.dispose();
+    _address.dispose();
     super.dispose();
   }
 
@@ -42,6 +49,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       await ref.read(accountRepositoryProvider).updateProfile(
             name: _name.text.trim(),
             email: email.isEmpty ? null : email,
+            identity: identityPatch(country: _country, idNumber: _idNumber.text, address: _address.text),
           );
       ref.invalidate(profileProvider);
       if (mounted) context.pop();
@@ -79,14 +87,56 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     }
   }
 
+  /// Photographs the passport or ID and saves it straight away, like the
+  /// profile photo; the number and address still need Save.
+  Future<void> _changeIdPhoto() async {
+    final PickedImage? photo;
+    try {
+      photo = await widget.pickPhoto();
+    } catch (e) {
+      if (mounted) showError(context, e);
+      return;
+    }
+    if (photo == null || !mounted) return;
+    final problem = avatarProblem(photo.bytes.length);
+    if (problem != null) return showInfo(context, problem);
+    setState(() => _uploadingId = true);
+    try {
+      await ref
+          .read(accountRepositoryProvider)
+          .uploadIdImage(photo.bytes, ext: photo.ext, contentType: photo.contentType);
+      ref.invalidate(profileProvider);
+      if (mounted) showInfo(context, 'ID photo saved');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _uploadingId = false);
+    }
+  }
+
+  Future<void> _chooseCountry() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => FractionallySizedBox(heightFactor: 0.85, child: _CountryPicker(selected: _country)),
+    );
+    if (picked != null && mounted) setState(() => _country = picked);
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = ref.watch(profileProvider).value;
     if (!_loaded && p != null) {
       _name.text = p.name ?? '';
       _email.text = p.email ?? '';
+      _country = p.nationality ?? '';
+      _idNumber.text = p.idNumber ?? '';
+      _address.text = p.address ?? '';
       _loaded = true;
     }
+    final t = Theme.of(context);
+    final idImage = p?.idImage;
     return Scaffold(
       appBar: AppBar(title: const Text('Edit profile')),
       body: ListView(children: [
@@ -132,10 +182,104 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
               decoration: const InputDecoration(labelText: 'Mobile number'),
             ),
             const SizedBox(height: 24),
+            Text('Identity', style: t.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            ListTile(
+              key: const ValueKey('profile-country'),
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.public),
+              title: const Text('Country'),
+              subtitle: Text(_country.isEmpty ? 'Select country' : _country),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _busy ? null : _chooseCountry,
+            ),
+            if (idImage != null && idImage.startsWith('http'))
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AspectRatio(
+                  aspectRatio: 1.6,
+                  child: Image.network(
+                    idImage,
+                    key: const ValueKey('profile-id-image'),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const ColoredBox(
+                      color: Colors.black12,
+                      child: Center(child: Icon(Icons.badge_outlined, size: 40)),
+                    ),
+                  ),
+                ),
+              ),
+            OutlinedButton.icon(
+              key: const ValueKey('profile-id-photo'),
+              onPressed: _uploadingId || _busy ? null : _changeIdPhoto,
+              icon: _uploadingId
+                  ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.document_scanner_outlined),
+              label: Text(idImage == null ? 'Photograph passport or ID' : 'Retake ID photo'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('profile-id-number'),
+              controller: _idNumber,
+              textCapitalization: TextCapitalization.characters,
+              autocorrect: false,
+              decoration: const InputDecoration(labelText: 'Passport / ID number', hintText: 'As printed on your ID'),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              key: const ValueKey('profile-address'),
+              controller: _address,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Address', hintText: 'As printed on your ID'),
+            ),
+            const SizedBox(height: 24),
             FilledButton(onPressed: _busy ? null : _save, child: const Text('Save')),
           ]),
         ),
       ]),
     );
+  }
+}
+
+/// Searchable country list (Expo's country picker).
+class _CountryPicker extends StatefulWidget {
+  const _CountryPicker({required this.selected});
+  final String selected;
+
+  @override
+  State<_CountryPicker> createState() => _CountryPickerState();
+}
+
+class _CountryPickerState extends State<_CountryPicker> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final countries = searchCountries(_query);
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: TextField(
+          key: const ValueKey('country-search'),
+          autofocus: true,
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search country'),
+          onChanged: (v) => setState(() => _query = v),
+        ),
+      ),
+      Expanded(
+        child: countries.isEmpty
+            ? Center(child: Text('No countries match "$_query".'))
+            : ListView.builder(
+                itemCount: countries.length,
+                itemBuilder: (_, i) => ListTile(
+                  key: ValueKey('country-${countries[i]}'),
+                  title: Text(countries[i]),
+                  trailing: countries[i] == widget.selected ? const Icon(Icons.check) : null,
+                  onTap: () => Navigator.pop(context, countries[i]),
+                ),
+              ),
+      ),
+    ]);
   }
 }
