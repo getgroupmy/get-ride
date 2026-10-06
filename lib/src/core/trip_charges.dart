@@ -1,11 +1,11 @@
 /// Tolls and other charges the driver declares when completing a trip (Expo
 /// ride-running's tolls popup). Stored on the ride (`toll_charges`,
-/// `other_charges`, `other_charges_note`; guarded by migration 0099) so the
+/// `other_charges`, `other_charges_note`; guarded by migration 0100) so the
 /// rider sees them line by line, and kept out of the fare the commission is
 /// charged on.
 library;
 
-/// Largest single charge accepted (migration 0099's check).
+/// Largest single charge accepted (migration 0100's check).
 const tripChargeMax = 10000.0;
 
 /// Longest note accepted with "other charges".

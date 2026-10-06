@@ -491,7 +491,7 @@ class RideRepository {
     try {
       await _db.from(_table).update(patch).eq('id', r.id);
     } on PostgrestException catch (e) {
-      // Without migration 0099 there is no note column; the amounts (0047)
+      // Without migration 0100 there is no note column; the amounts (0047)
       // still go on the ride.
       if (!'${e.message} ${e.details}'.contains('other_charges_note')) rethrow;
       patch.remove('other_charges_note');
