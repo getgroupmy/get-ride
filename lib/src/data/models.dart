@@ -123,7 +123,7 @@ class RideRequest {
   String get pickupLabel => pickupName ?? pickupAddress ?? 'Pickup';
   String get dropLabel => dropName ?? dropAddress ?? 'Drop-off';
 
-  /// Stops between pickup and drop-off, in order (migration 0098).
+  /// Stops between pickup and drop-off, in order (migration 0102).
   List<Place> get stops => parseRideStops(raw['stops']);
 
   /// The fare the trip will actually be billed at.
