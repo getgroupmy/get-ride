@@ -94,3 +94,22 @@ class CoinTradeRepository {
 final coinTradeRepositoryProvider = Provider((ref) => CoinTradeRepository(ref.watch(supabaseProvider)));
 
 final coinTradeQuoteProvider = FutureProvider.autoDispose((ref) => ref.watch(coinTradeRepositoryProvider).quote());
+
+/// The last 48 recorded GET.coin rates, oldest first, for the price line.
+/// Empty when they can't be read: the chart then says it is still building.
+final coinRateHistoryProvider = FutureProvider.autoDispose<List<double>>((ref) async {
+  try {
+    final rows = await ref
+        .watch(supabaseProvider)
+        .from('get_coin_rate_history')
+        .select('rate_per_gc, recorded_at')
+        .order('recorded_at', ascending: false)
+        .limit(48);
+    return [
+      for (final r in rows.reversed)
+        if (r['rate_per_gc'] is num) (r['rate_per_gc'] as num).toDouble(),
+    ];
+  } catch (_) {
+    return const [];
+  }
+});

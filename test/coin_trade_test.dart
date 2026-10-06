@@ -189,7 +189,10 @@ void main() {
     Future<_FakeRepo> pump(WidgetTester tester, _FakeRepo repo) async {
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [coinTradeRepositoryProvider.overrideWithValue(repo)],
+          overrides: [
+            coinTradeRepositoryProvider.overrideWithValue(repo),
+            coinRateHistoryProvider.overrideWith((ref) async => const [0.09, 0.1, 0.11]),
+          ],
           child: const MaterialApp(home: CoinTradeScreen()),
         ),
       );
@@ -201,11 +204,14 @@ void main() {
       final repo = await pump(tester, _FakeRepo());
       expect(find.textContaining('Fixed rate'), findsOneWidget);
       expect(find.text('RM0.1000'), findsOneWidget);
+      expect(find.byKey(const ValueKey('coin-rate-chart')), findsOneWidget);
 
       await tester.tap(find.text('50'));
       await tester.pump();
       expect(find.text('RM5.00'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Buy GET.coin'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Buy GET.coin'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Buy'));
@@ -229,6 +235,8 @@ void main() {
 
       await tester.tap(find.text('MAX'));
       await tester.pump();
+      await tester.ensureVisible(find.text('Sell GET.coin'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Sell GET.coin'));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Sell'));
