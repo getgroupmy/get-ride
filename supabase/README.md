@@ -183,4 +183,4 @@ Add new settings categories by inserting rows into `settings_entries` with a
 new `category` string — the app's `AdminDataContext` already groups entries
 by category.
 
-<!-- Preview-branch test (2026-10-06): this PR only exists to trigger a Supabase preview; it will be closed, not merged. -->
+<!-- Preview-branch test (2026-10-06, after the branching setting was re-saved): this PR only exists to trigger a Supabase preview; it will be closed, not merged. -->
