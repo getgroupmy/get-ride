@@ -7,9 +7,36 @@ library;
 
 /// One toll plaza on the route.
 class TollBooth {
-  const TollBooth({this.name, required this.charge});
+  const TollBooth({this.name, required this.charge, this.lat, this.lng});
   final String? name;
   final double charge;
+
+  /// Where the booth is, when the model gave a usable position.
+  final double? lat;
+  final double? lng;
+  bool get located => lat != null && lng != null;
+}
+
+/// A toll mark for the map: each located booth, or — when the model listed
+/// tolls but placed none — one "Toll road" mark at the middle of [route]
+/// (Expo's ride-confirm fallback).
+typedef TollMark = ({double lat, double lng, String label});
+
+List<TollMark> tollMarks(RouteEstimate? e, List<({double lat, double lng})> route) {
+  if (e == null) return const [];
+  final located = [for (final t in e.tolls) if (t.located) (lat: t.lat!, lng: t.lng!, label: t.name ?? 'Toll')];
+  if (located.isNotEmpty) return located;
+  final any = e.tolls.isNotEmpty || (e.tollCount ?? 0) > 0;
+  if (!any || route.isEmpty) return const [];
+  final mid = route[route.length ~/ 2];
+  return [(lat: mid.lat, lng: mid.lng, label: 'Toll road')];
+}
+
+/// How many booths to report: the model's count, else the booths it listed.
+int tollBoothCount(RouteEstimate? e) {
+  if (e == null) return 0;
+  final c = e.tollCount ?? 0;
+  return c > 0 ? c : e.tolls.length;
 }
 
 class RouteEstimate {
@@ -59,7 +86,18 @@ RouteEstimate? parseRouteEstimate(Object? payload) {
       final charge = _num(t['charge']);
       if (charge == null || charge < 0) continue;
       final name = t['name'];
-      tolls.add(TollBooth(name: name is String && name.trim().isNotEmpty ? name.trim() : null, charge: charge));
+      double? coord(Object? v) {
+        final d = _num(v);
+        return d == null || !d.isFinite || d == 0 ? null : d;
+      }
+
+      final lat = coord(t['lat']), lng = coord(t['lng']);
+      tolls.add(TollBooth(
+        name: name is String && name.trim().isNotEmpty ? name.trim() : null,
+        charge: charge,
+        lat: lat != null && lng != null ? lat : null,
+        lng: lat != null && lng != null ? lng : null,
+      ));
     }
   }
   final summary = e['summary'];

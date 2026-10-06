@@ -18,6 +18,7 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../ride/place_search.dart';
 import 'fare_offer.dart';
+import 'partner_menu.dart';
 import 'vehicle_picker.dart';
 import '../../core/partner_modes.dart';
 import '../../core/vehicle_assignment.dart';
@@ -336,6 +337,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     });
     return Scaffold(
       appBar: AppBar(title: const Text('Drive'), actions: [
+        IconButton(
+          key: const ValueKey('partner-menu-button'),
+          tooltip: 'Menu',
+          icon: const Icon(Icons.menu),
+          onPressed: () => showPartnerMenu(context),
+        ),
         if (partner.value != null && hasTeksiPartnerType(partner.value!.raw['partner_types']))
           IconButton(
             tooltip: 'Driver permit',
