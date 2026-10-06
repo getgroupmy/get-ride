@@ -31,7 +31,7 @@ attestation ensures the device is real to begin with.
 
 ## What's committed
 
-- `supabase/migrations/0073_device_attestation.sql` — `device_attestations`
+- `supabase/migrations_archive/0073_device_attestation.sql` — `device_attestations`
   log table (admin-read; service-role write), applied to the DB. Inert on its
   own.
 - `supabase/functions/attest-device/index.ts` — edge function that verifies a

@@ -1,4 +1,29 @@
 -- ============================================================================
+-- 0098 — squashed baseline
+-- ----------------------------------------------------------------------------
+-- The whole schema as of migration 0097, in one file. It replaces the 101
+-- files now kept (for history only; nothing reads them) in
+-- supabase/migrations_archive/.
+--
+-- Why: Supabase preview branches and `supabase db reset` build a fresh
+-- database by running supabase/migrations/ in order, and the old chain could
+-- not do that — 0001 altered `profiles`, which no migration created (the
+-- early schema only ever came from schema.sql), and older files were not safe
+-- to replay on top of each other.
+--
+-- Content: a copy of supabase/schema.sql at the time of the squash. A
+-- database built from it was compared object by object (columns, constraints,
+-- indexes, triggers, policies, function bodies, grants, RLS flags, realtime
+-- publication, storage buckets) with the live project; the only differences
+-- were 0097 (merged, not yet pushed) and 0076's user_sessions.cellular_generation
+-- (in the repo, missing on live).
+--
+-- Existing databases already have all of this. After merging, mark it applied
+-- without running it: ./supabase/baseline-migration-history.sh (see
+-- supabase/README.md → "The 0098 squash"). New migrations start at 0099.
+-- ============================================================================
+
+-- ============================================================================
 -- Teksi / Rork app — Supabase schema
 -- ----------------------------------------------------------------------------
 -- Safe to run on a fresh Supabase project. Idempotent: re-runs do not destroy
