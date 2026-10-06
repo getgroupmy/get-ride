@@ -12,6 +12,7 @@ import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
 import 'core/connection_check.dart';
+import 'core/demo_mode.dart';
 import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
@@ -29,6 +30,7 @@ import 'features/auth/pin_screen.dart';
 import 'features/auth/registration_closed_screen.dart';
 import 'features/auth/signup_photo_screen.dart';
 import 'features/auth/set_pin_screen.dart';
+import 'features/partner/demo_jobs.dart';
 import 'features/partner/partner_onboarding_screen.dart';
 import 'features/partner/driver_permit_screen.dart';
 import 'features/partner/partner_screen.dart';
@@ -40,14 +42,17 @@ import 'features/profile/emergency_contacts_screen.dart';
 import 'features/profile/referral_screen.dart';
 import 'features/profile/user_guide_screen.dart';
 import 'features/safety/safety_screen.dart';
+import 'features/ride/demo_ride.dart';
 import 'features/ride/home_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
 import 'features/ride/trips_screen.dart';
 import 'features/settings/change_phone_screen.dart';
+import 'features/settings/auth_diagnostics_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/shell/brand_splash.dart';
+import 'features/shell/update_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
 import 'features/support/support_chat_screen.dart';
 import 'features/support/support_screen.dart';
@@ -122,6 +127,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final signedIn = db.auth.currentSession != null;
       final loc = state.matchedLocation;
       final onAuth = loc.startsWith('/login');
+      // Diagnostics are for people who can't sign in, so they work either way.
+      if (loc == '/diagnostics') return null;
       if (!signedIn && !onAuth) return '/login';
       // A fresh OTP session still has to choose a PIN before entering the app.
       if (signedIn && AuthRepository.pinSetupPending) {
@@ -195,8 +202,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           ]),
         ],
       ),
+      GoRoute(
+        path: '/ride/demo',
+        builder: (_, s) => s.extra is DemoTripArgs ? DemoTripScreen(args: s.extra! as DemoTripArgs) : const HomeScreen(),
+      ),
       GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
       GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
+      GoRoute(
+        path: '/drive/demo',
+        builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
+      ),
       GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
       GoRoute(
         path: '/signup/photo',
@@ -205,6 +220,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           next: signupLanding(s.uri.queryParameters['next'] == '/drive' ? 'driver' : null),
         ),
       ),
+      GoRoute(path: '/diagnostics', builder: (_, _) => const AuthDiagnosticsScreen()),
       GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
       GoRoute(path: '/meter/printer', builder: (_, _) => const PrinterScreen()),
@@ -369,8 +385,10 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       builder: (_, child) => SplashGate(
         cached: widget.branding,
         live: _branding?.latest,
-        child: VoiceProtectionHost(
-          child: IncomingTransferListener(child: child ?? const SizedBox.shrink()),
+        child: UpdateGate(
+          child: VoiceProtectionHost(
+            child: IncomingTransferListener(child: child ?? const SizedBox.shrink()),
+          ),
         ),
       ),
     );

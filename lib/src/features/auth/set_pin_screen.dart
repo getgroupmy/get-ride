@@ -25,6 +25,7 @@ class SetPinScreen extends ConsumerStatefulWidget {
 }
 
 class _SetPinScreenState extends ConsumerState<SetPinScreen> {
+  final _current = TextEditingController();
   final _pin = TextEditingController();
   final _confirm = TextEditingController();
   final _name = TextEditingController();
@@ -37,6 +38,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
 
   @override
   void dispose() {
+    _current.dispose();
     _pin.dispose();
     _confirm.dispose();
     _name.dispose();
@@ -45,8 +47,12 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   }
 
   Future<void> _save() async {
+    if (widget.changing && !isValidPin(_current.text)) return showInfo(context, 'Enter your current 6-digit PIN.');
     if (!isValidPin(_pin.text)) return showInfo(context, 'PIN must be 6 digits.');
     if (_pin.text != _confirm.text) return showInfo(context, 'PINs do not match.');
+    if (widget.changing && _pin.text == _current.text) {
+      return showInfo(context, 'New PIN must be different from current PIN.');
+    }
     final referral = widget.changing ? '' : normalizeReferralCode(_referral.text);
     if (referral.isNotEmpty && !isPlausibleReferralCode(referral)) {
       return showInfo(context, "That referral code wasn't found.");
@@ -56,6 +62,16 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
     final hasPhoto = before?.avatarUrl != null;
     setState(() => _busy = true);
     try {
+      if (widget.changing) {
+        // Someone holding an unlocked phone must not be able to take the
+        // account's PIN without knowing it.
+        final problem = await ref.read(authRepositoryProvider).checkCurrentPin(_current.text);
+        if (problem != null) {
+          _current.clear();
+          if (mounted) showInfo(context, problem);
+          return;
+        }
+      }
       await ref.read(authRepositoryProvider).setPin(_pin.text);
       final name = _name.text.trim();
       if (name.isNotEmpty) await ref.read(accountRepositoryProvider).updateProfile(name: name);
@@ -143,7 +159,17 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
               ),
               const SizedBox(height: 16),
             ],
-            CodeField(controller: _pin, length: 6, obscure: true, label: 'New PIN'),
+            if (widget.changing) ...[
+              CodeField(
+                key: const ValueKey('current-pin'),
+                controller: _current,
+                length: 6,
+                obscure: true,
+                label: 'Current PIN',
+              ),
+              const SizedBox(height: 16),
+            ],
+            CodeField(controller: _pin, length: 6, obscure: true, autofocus: !widget.changing, label: 'New PIN'),
             const SizedBox(height: 16),
             CodeField(controller: _confirm, length: 6, obscure: true, autofocus: false, label: 'Confirm PIN'),
             if (!widget.changing) ...[

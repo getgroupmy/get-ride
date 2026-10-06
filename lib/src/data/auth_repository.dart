@@ -107,6 +107,26 @@ class AuthRepository {
     }
   }
 
+  /// Checks [pin] against the signed-in account's current PIN before it may
+  /// be changed (Expo `change-pin.tsx`). Uses the same rate-limited server
+  /// check as sign-in, so guessing is locked out the same way. Null when it
+  /// matches, else what to tell the user; fails closed when it can't check.
+  Future<String?> checkCurrentPin(String pin) async {
+    final user = _db.auth.currentUser;
+    final phone = user?.phone ?? '';
+    if (user == null || phone.isEmpty) return 'Sign in again to change your PIN.';
+    try {
+      final id = await _db.rpc('verify_pin_for_login', params: {'p_phone': normalizeE164(phone), 'p_pin': pin});
+      return id != null && '$id' == user.id ? null : 'Incorrect PIN. Please try again.';
+    } on PostgrestException catch (pe) {
+      final lock = parsePinLockSeconds(pe.message);
+      if (lock != null) return pinLockMessage(lock);
+      return "Couldn't check your PIN. Please try again.";
+    } catch (_) {
+      return "Couldn't check your PIN. Please try again.";
+    }
+  }
+
   /// Saves the PIN server-side (bcrypt via `set_login_pin`) and syncs the
   /// derived Auth password so future PIN logins mint a real session.
   /// Requires an active session (call after OTP verification).
