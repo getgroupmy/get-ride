@@ -14,10 +14,12 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
+import 'demo_ride.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../profile/emergency_contacts_screen.dart';
 import '../safety/safety_screen.dart';
 import '../wallet/wallet_screen.dart';
+import '../../core/demo_mode.dart';
 
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>(
   (ref, id) => ref.watch(rideRepositoryProvider).watch(id),
@@ -209,6 +211,26 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     await sendSos(context, contacts, driver: r.partnerName, plate: r.partnerPlate);
   }
 
+  /// A demo offer taken (Admin → Demo → mock driver offers): the real
+  /// request is withdrawn, so no real driver turns up, and the demo trip
+  /// plays out on the phone alone.
+  Future<void> _acceptDemo(DemoOffer o) async {
+    final r = widget.ride;
+    final pickup = _ll(r.pickupLat, r.pickupLng), drop = _ll(r.dropLat, r.dropLng);
+    if (pickup == null || drop == null) return;
+    await _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: 'Took a demo offer', by: 'rider'));
+    if (!mounted) return;
+    context.go('/ride/demo',
+        extra: DemoTripArgs(
+          pickup: pickup,
+          pickupName: r.pickupLabel,
+          drop: drop,
+          dropName: r.dropLabel,
+          offer: o,
+          currency: r.currency,
+        ));
+  }
+
   Future<void> _cancel() async {
     final r = widget.ride;
     final reason = await showDialog<String>(
@@ -267,6 +289,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               padding: const EdgeInsets.only(top: 4),
               child: Text('Notifying nearby drivers…', style: t.textTheme.bodyMedium),
             ),
+          if (r.status == RideStatus.open && ref.watch(demoSettingsProvider).riderOffers)
+            DemoOffersFeed(fare: r.fare ?? 0, currency: r.currency, onAccept: _acceptDemo),
           const SizedBox(height: 16),
           if (standingOffer(r) case final offer?)
             Card(

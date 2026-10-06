@@ -36,6 +36,7 @@ import 'features/profile/emergency_contacts_screen.dart';
 import 'features/profile/referral_screen.dart';
 import 'features/profile/user_guide_screen.dart';
 import 'features/safety/safety_screen.dart';
+import 'features/ride/demo_ride.dart';
 import 'features/ride/home_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
@@ -189,6 +190,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             ]),
           ]),
         ],
+      ),
+      GoRoute(
+        path: '/ride/demo',
+        builder: (_, s) => s.extra is DemoTripArgs ? DemoTripScreen(args: s.extra! as DemoTripArgs) : const HomeScreen(),
       ),
       GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
       GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
