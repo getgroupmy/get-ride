@@ -11,6 +11,7 @@ class RideMap extends StatefulWidget {
     super.key,
     this.pickup,
     this.drop,
+    this.stops = const [],
     this.driver,
     this.me,
     this.route = const [],
@@ -20,6 +21,9 @@ class RideMap extends StatefulWidget {
 
   final LatLng? pickup;
   final LatLng? drop;
+
+  /// Stops on the way, in order (numbered pins).
+  final List<LatLng> stops;
   final LatLng? driver;
   final LatLng? me;
   final List<LatLng> route;
@@ -35,13 +39,16 @@ class _RideMapState extends State<RideMap> {
   bool _ready = false;
 
   List<LatLng> get _points =>
-      [widget.pickup, widget.drop, widget.driver, widget.me].whereType<LatLng>().toList();
+      [widget.pickup, ...widget.stops, widget.drop, widget.driver, widget.me].whereType<LatLng>().toList();
 
   @override
   void didUpdateWidget(covariant RideMap old) {
     super.didUpdateWidget(old);
     if (_ready &&
-        (old.pickup != widget.pickup || old.drop != widget.drop || old.route.length != widget.route.length)) {
+        (old.pickup != widget.pickup ||
+            old.drop != widget.drop ||
+            old.stops.length != widget.stops.length ||
+            old.route.length != widget.route.length)) {
       _fit();
     }
   }
@@ -92,6 +99,17 @@ class _RideMapState extends State<RideMap> {
               ),
             ),
           if (widget.pickup != null) _pin(widget.pickup!, Colors.green.shade700, Icons.trip_origin),
+          for (var i = 0; i < widget.stops.length; i++)
+            Marker(
+              point: widget.stops[i],
+              width: 26,
+              height: 26,
+              child: CircleAvatar(
+                backgroundColor: Colors.orange.shade800,
+                child: Text('${i + 1}',
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+              ),
+            ),
           if (widget.drop != null) _pin(widget.drop!, Colors.red.shade700, Icons.location_on),
           if (widget.driver != null)
             Marker(

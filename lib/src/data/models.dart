@@ -2,6 +2,9 @@
 /// `public` schema of the get.ride project exactly.
 library;
 
+import '../core/ride_stops.dart';
+import 'geo_service.dart';
+
 double? _d(Object? v) => v == null ? null : (v as num).toDouble();
 int? _i(Object? v) => v == null ? null : (v as num).toInt();
 DateTime? _t(Object? v) => v == null ? null : DateTime.tryParse(v as String);
@@ -98,6 +101,9 @@ class RideRequest {
 
   String get pickupLabel => pickupName ?? pickupAddress ?? 'Pickup';
   String get dropLabel => dropName ?? dropAddress ?? 'Drop-off';
+
+  /// Stops between pickup and drop-off, in order (migration 0098).
+  List<Place> get stops => parseRideStops(raw['stops']);
 
   /// The fare the trip will actually be billed at.
   double? get effectiveFare => _d(raw['ride_fare']) ?? fare;

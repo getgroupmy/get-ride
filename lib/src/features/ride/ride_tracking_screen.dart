@@ -14,6 +14,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
+import '../../widgets/ride_stop_tiles.dart';
 import '../profile/emergency_contacts_screen.dart';
 import '../safety/safety_screen.dart';
 import '../wallet/wallet_screen.dart';
@@ -44,6 +45,7 @@ class RideTrackingScreen extends ConsumerWidget {
           final map = RideMap(
             pickup: _ll(r.pickupLat, r.pickupLng),
             drop: _ll(r.dropLat, r.dropLng),
+            stops: [for (final s in r.stops) s.point],
             driver: _ll(r.partnerLiveLat, r.partnerLiveLng),
           );
           final panel = _RidePanel(ride: r);
@@ -433,6 +435,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   title: Text(r.pickupLabel),
                   subtitle: r.pickupAddress == null ? null : Text(r.pickupAddress!, maxLines: 2),
                 ),
+                RideStopTiles(stops: r.stops),
                 ListTile(
                   leading: Icon(Icons.location_on, color: Colors.red.shade700),
                   title: Text(r.dropLabel),

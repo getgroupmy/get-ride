@@ -149,10 +149,13 @@ class GeoService {
 
   /// Driving route; falls back to a straight-line estimate when the router is
   /// unreachable so booking never dead-ends.
-  Future<RouteInfo> route(LatLng from, LatLng to) async {
+  ///
+  /// [via] are stops visited in order on the way.
+  Future<RouteInfo> route(LatLng from, LatLng to, {List<LatLng> via = const []}) async {
+    final points = [from, ...via, to];
     try {
       final uri = Uri.parse(
-        '$_osrm/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}'
+        '$_osrm/route/v1/driving/${points.map((p) => '${p.longitude},${p.latitude}').join(';')}'
         '?overview=full&geometries=geojson',
       );
       final res = await _http.get(uri, headers: _headers);
@@ -172,7 +175,15 @@ class GeoService {
         }
       }
     } catch (_) {}
-    return straightLine(from, to);
+    if (via.isEmpty) return straightLine(from, to);
+    // Leg by leg, so the estimate still goes through every stop.
+    var km = 0.0, min = 0.0;
+    for (var i = 0; i + 1 < points.length; i++) {
+      final leg = straightLine(points[i], points[i + 1]);
+      km += leg.distanceKm;
+      min += leg.durationMin;
+    }
+    return RouteInfo(distanceKm: km, durationMin: min, points: points);
   }
 
   static RouteInfo straightLine(LatLng from, LatLng to) {

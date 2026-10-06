@@ -10,6 +10,7 @@ import '../../core/fare.dart';
 import '../../core/fare_coins.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
+import '../../core/ride_stops.dart';
 import '../../core/route_estimate.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/coin_trade_repository.dart';
@@ -39,6 +40,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Place? _here;
   Place? _pickup;
   Place? _drop;
+
+  /// Stops on the way, in order (up to [maxRideStops]).
+  final List<Place> _stops = [];
   RouteInfo? _route;
   RouteEstimate? _ai;
   int _routeSeq = 0;
@@ -121,9 +125,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _ai = null;
     });
     // The map route draws the line; the AI's traffic-aware estimate, when
-    // there is one, is what the fare is priced on (Expo ride-confirm).
-    final aiFuture = ref.read(routeEstimateRepositoryProvider).estimate(a.point, b.point);
-    final r = await ref.read(geoServiceProvider).route(a.point, b.point);
+    // there is one, is what the fare is priced on (Expo ride-confirm). It
+    // only knows pickup to drop-off, so a trip with stops is priced on the
+    // route through them instead.
+    final via = [for (final p in _stops) p.point];
+    final aiFuture =
+        via.isEmpty ? ref.read(routeEstimateRepositoryProvider).estimate(a.point, b.point) : Future.value(null);
+    final r = await ref.read(geoServiceProvider).route(a.point, b.point, via: via);
     if (!mounted || seq != _routeSeq) return;
     setState(() {
       _route = r;
@@ -136,6 +144,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   ({double distanceKm, double durationMin})? get _basis {
     final r = _route;
     return r == null ? null : fareBasis(routeKm: r.distanceKm, routeMin: r.durationMin, ai: _ai);
+  }
+
+  Future<void> _addStop() async {
+    if (_stops.length >= maxRideStops) return;
+    final pick = await showPlaceSearch(
+      context,
+      title: 'Add a stop',
+      near: _me ?? _pickup?.point,
+      usage: GateUsage.drop,
+    );
+    if (pick == null || !mounted) return;
+    final place = pick.place;
+    if (place == null) return showInfo(context, 'Search for the stop by name or address.');
+    setState(() => _stops.add(place));
+    _updateRoute();
+  }
+
+  void _removeStop(int index) {
+    setState(() => _stops.removeAt(index));
+    _updateRoute();
   }
 
   Future<void> _choose(_PinTarget target) async {
@@ -206,6 +234,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             riderPhone: profile?.phone,
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
             offerMe: offerMe,
+            stops: List.of(_stops),
           );
       final coins = _coins;
       if (_useCoins && coins != null && fareCoinOffer(_fareFor(_service), coins.balance, coins.rate) != null) {
@@ -229,6 +258,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         me: _me,
         pickup: _pickup?.point,
         drop: _drop?.point,
+        stops: [for (final p in _stops) p.point],
         route: _route?.points ?? const [],
         onTap: _onMapTap,
       ),
@@ -292,9 +322,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final t = _pickup;
           _pickup = _drop;
           _drop = t;
+          // The way back visits the stops the other way round.
+          final back = _stops.reversed.toList();
+          _stops
+            ..clear()
+            ..addAll(back);
         });
         _updateRoute();
       },
+      stops: _stops,
+      onAddStop: _addStop,
+      onRemoveStop: _removeStop,
       onService: (s) => setState(() => _serviceName = s.name),
       onPayment: (p) => setState(() => _payment = p),
       onBook: _book,
@@ -348,6 +386,9 @@ class _BookingPanel extends StatelessWidget {
     required this.ongoing,
     required this.pickup,
     required this.drop,
+    this.stops = const [],
+    this.onAddStop,
+    this.onRemoveStop,
     required this.route,
     this.ai,
     this.showTolls = true,
@@ -373,6 +414,9 @@ class _BookingPanel extends StatelessWidget {
   final RideRequest? ongoing;
   final Place? pickup;
   final Place? drop;
+  final List<Place> stops;
+  final VoidCallback? onAddStop;
+  final ValueChanged<int>? onRemoveStop;
   final RouteInfo? route;
   final RouteEstimate? ai;
   final bool showTolls;
@@ -426,6 +470,23 @@ class _BookingPanel extends StatelessWidget {
               const Expanded(child: Divider(indent: 56)),
               IconButton(tooltip: 'Swap', icon: const Icon(Icons.swap_vert), onPressed: onSwap),
             ]),
+            for (var i = 0; i < stops.length; i++)
+              ListTile(
+                key: ValueKey('stop-$i'),
+                leading: CircleAvatar(
+                  radius: 12,
+                  backgroundColor: Colors.orange.shade800,
+                  child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                ),
+                title: Text(stops[i].name),
+                subtitle: Text(stops[i].address, maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: IconButton(
+                  key: ValueKey('stop-remove-$i'),
+                  tooltip: 'Remove ${stopLabel(i).toLowerCase()}',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => onRemoveStop?.call(i),
+                ),
+              ),
             ListTile(
               leading: Icon(Icons.location_on, color: Colors.red.shade700),
               title: Text(drop?.name ?? 'Where to?'),
@@ -433,6 +494,16 @@ class _BookingPanel extends StatelessWidget {
                   drop == null ? null : Text(drop!.address, maxLines: 1, overflow: TextOverflow.ellipsis),
               onTap: onDrop,
             ),
+            if (drop != null && stops.length < maxRideStops && onAddStop != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const ValueKey('add-stop'),
+                  onPressed: onAddStop,
+                  icon: const Icon(Icons.add_location_alt_outlined),
+                  label: Text(stops.isEmpty ? 'Add a stop' : 'Add another stop'),
+                ),
+              ),
           ]),
         ),
         if (routing) const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator()),
