@@ -57,6 +57,12 @@ RideRequest _req(String id, {double fare = 12}) => RideRequest({
 
 void main() {
   group('rules', () {
+    test('a declined request comes back only on a raise', () {
+      final declined = {'a': 12.0, 'b': 12.0, 'c': 12.0};
+      expect(raisedAfterDecline(declined, [(id: 'a', fare: 15), (id: 'b', fare: 12), (id: 'c', fare: 10)]), ['a']);
+      expect(raisedAfterDecline(declined, [(id: 'd', fare: 99), (id: 'a', fare: null)]), isEmpty);
+    });
+
     test('the next alert is the first unseen, unhidden request', () {
       expect(nextRequestAlert(openIds: ['a', 'b'], seen: {}, hidden: {}), 'a');
       expect(nextRequestAlert(openIds: ['a', 'b'], seen: {'a'}, hidden: {}), 'b');
@@ -195,6 +201,30 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.byKey(const ValueKey('request-alert')), findsNothing);
+    });
+
+    testWidgets('a declined request pops back up when the passenger raises the fare', (tester) async {
+      await pump(tester);
+      open.add([_req('r1')]);
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('request-alert-decline')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('request-alert')), findsNothing);
+      open.add([_req('r1')]);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('request-alert')), findsNothing, reason: 'same fare stays declined');
+      open.add([_req('r1', fare: 17)]);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('request-alert')), findsOneWidget);
+      expect(find.text('Fare raised'), findsOneWidget);
+      expect(find.text('The passenger raised the fare from RM12.00 to RM17.00.'), findsOneWidget);
+      expect(find.text('35 s'), findsOneWidget, reason: 'a fresh window');
+      await tester.tap(find.byKey(const ValueKey('request-alert-accept')));
+      await tester.pumpAndSettle();
+      expect(rides.accepted, ['r1']);
     });
   });
 }

@@ -38,3 +38,11 @@ int requestAlertSecondsLeft(Duration shownFor) =>
 /// A rough drive time to the pickup, at an average city speed of 25 km/h
 /// (Expo's request card shows "~N min"); never under a minute.
 int pickupMinutes(double km) => math.max(1, (km / 25 * 60).ceil());
+
+/// Requests the driver declined whose passenger has since raised the fare
+/// (Expo re-surfaces them): those in [declined] (id → the fare when declined)
+/// now asking more. A fare that dropped or stayed put leaves them declined.
+List<String> raisedAfterDecline(Map<String, double> declined, Iterable<({String id, double? fare})> open) => [
+  for (final r in open)
+    if (declined[r.id] case final was? when r.fare != null && r.fare! > was) r.id,
+];

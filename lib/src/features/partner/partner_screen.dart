@@ -70,6 +70,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   DateTime? _alertAt;
   final _alertSeen = <String>{};
   final _hidden = <String>{};
+
+  /// The fare each declined request asked when it was declined; a raise
+  /// over it brings the request back (Expo). [_raisedFrom] keeps the old fare
+  /// of those brought back, for the alert's "was" line.
+  final _declinedFare = <String, double>{};
+  final _raisedFrom = <String, double>{};
   Timer? _alertTick;
   late DateTime _alertNow = ref.read(requestAlertClockProvider)();
 
@@ -83,6 +89,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// none (offline, auto-accept on, or nothing new).
   void _syncAlert(List<RideRequest> open) {
     if (!mounted) return;
+    for (final id in raisedAfterDecline(_declinedFare, [for (final r in open) (id: r.id, fare: r.effectiveFare)])) {
+      _raisedFrom[id] = _declinedFare.remove(id)!;
+      _hidden.remove(id);
+      _alertSeen.remove(id);
+    }
     String? next;
     if (_online && !_autoAccept) {
       final ordered = destinationOrder(open, toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo);
@@ -121,7 +132,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   void _dismissAlert({required bool hide}) {
     final id = _alertId;
     if (id == null) return;
-    if (hide) _hidden.add(id);
+    if (hide) {
+      _hidden.add(id);
+      final fare = (ref.read(openRequestsProvider).value ?? const <RideRequest>[])
+          .where((r) => r.id == id)
+          .firstOrNull
+          ?.effectiveFare;
+      if (fare != null) _declinedFare[id] = fare;
+    }
     setState(() => _alertId = null);
     _syncAlert(ref.read(openRequestsProvider).value ?? const []);
   }
@@ -677,11 +695,27 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           Row(children: [
             Icon(Icons.notifications_active, color: t.colorScheme.primary),
             const SizedBox(width: 8),
-            Expanded(child: Text('New request', style: t.textTheme.titleMedium)),
+            Expanded(
+              child: Text(
+                _raisedFrom.containsKey(r.id) ? 'Fare raised' : 'New request',
+                key: const ValueKey('request-alert-title'),
+                style: t.textTheme.titleMedium,
+              ),
+            ),
             Text('${requestAlertSecondsLeft(shown)} s', style: t.textTheme.labelLarge),
           ]),
           const SizedBox(height: 6),
           LinearProgressIndicator(key: const ValueKey('request-alert-countdown'), value: requestAlertProgress(shown)),
+          if (_raisedFrom[r.id] case final was?)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'The passenger raised the fare from ${formatMoney(was, r.currency)} '
+                'to ${formatMoney(r.effectiveFare, r.currency)}.',
+                key: const ValueKey('request-alert-raised'),
+                style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
           if (_destinationOn && _towardDestination(r))
             Padding(
               padding: const EdgeInsets.only(top: 6),
