@@ -538,13 +538,7 @@ class _BookingPanel extends StatelessWidget {
         if (routing) const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator()),
         if (route != null && !routing) ...[
           const SizedBox(height: 12),
-          Text(
-            ai == null
-                ? '${formatDistance(route!.distanceKm)} · ${formatDuration(route!.durationMin)}'
-                : '${formatDistance(ai!.distanceKm)} · ${formatDuration(ai!.durationMin)} with traffic',
-            key: const ValueKey('route-basis'),
-            style: t.textTheme.bodyMedium,
-          ),
+          RouteBasisLine(route: route!, ai: ai),
           if (showTolls && ai?.tollsToShow != null)
             Text(
               'Est. toll charges ${formatMoney(ai!.tollsToShow, AppConfig.currency)}, not included in the fare',
@@ -622,5 +616,52 @@ class _BookingPanel extends StatelessWidget {
         ],
       ]),
     );
+  }
+}
+
+/// The distance and time the fares are priced on. When they came from the
+/// AI Fare Service (`ai-route-proxy`, traffic-aware) the line says so with
+/// the AI mark; the plain road route has none.
+class RouteBasisLine extends StatelessWidget {
+  const RouteBasisLine({super.key, required this.route, this.ai});
+
+  final RouteInfo route;
+  final RouteEstimate? ai;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final a = ai;
+    final text = a == null
+        ? '${formatDistance(route.distanceKm)} · ${formatDuration(route.durationMin)}'
+        : '${formatDistance(a.distanceKm)} · ${formatDuration(a.durationMin)} with traffic';
+    return Row(children: [
+      Flexible(child: Text(text, key: const ValueKey('route-basis'), style: t.textTheme.bodyMedium)),
+      if (a != null) ...[
+        const SizedBox(width: 6),
+        Tooltip(
+          message: 'Estimated by the AI Fare Service',
+          child: Container(
+            key: const ValueKey('route-ai'),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: t.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.auto_awesome, size: 14, color: t.colorScheme.onPrimaryContainer),
+              const SizedBox(width: 3),
+              Text(
+                'AI',
+                style: t.textTheme.labelSmall?.copyWith(
+                  color: t.colorScheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ],
+    ]);
   }
 }

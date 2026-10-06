@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/voice_protection.dart';
 import '../../data/voice_protection_repository.dart';
 import '../../providers.dart';
 import 'admin_widgets.dart';
+import '../../widgets/in_app_page.dart';
 
 /// The user's VoiceProtection trip recordings, inside a support ticket
 /// (Expo `AdminTripAudioPanel`). The audio lives on the user's phone: an
@@ -76,7 +76,8 @@ class _TripAudioPanelState extends ConsumerState<TripAudioPanel> {
     setState(() => _busyId = r.id);
     try {
       final url = await _repo.signedUrl(r.mediaUrl!);
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      if (!mounted) return;
+      await openInApp(context, url, title: 'Trip recording');
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open: $e')));
     } finally {

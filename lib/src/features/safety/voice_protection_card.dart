@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../config.dart';
 import '../../data/voice_protection_repository.dart';
 import 'voice_protection_controller.dart';
+import '../../widgets/in_app_page.dart';
 
 /// The VoiceProtection switch and what it means (Expo `app/safety.tsx`).
 class VoiceProtectionCard extends ConsumerWidget {
@@ -51,7 +51,7 @@ class VoiceProtectionCard extends ConsumerWidget {
                   ),
                   TextButton(
                     style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                    onPressed: () => launchUrl(Uri.parse(AppConfig.privacyUrl), mode: LaunchMode.externalApplication),
+                    onPressed: () => openInApp(context, AppConfig.privacyUrl, title: 'Privacy Notice'),
                     child: const Text('Privacy Notice'),
                   ),
                 ],

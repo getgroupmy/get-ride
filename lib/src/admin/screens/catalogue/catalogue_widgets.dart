@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
@@ -8,6 +7,7 @@ import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
+import '../../../widgets/in_app_page.dart';
 
 bool canEditPage(WidgetRef ref, String page) => ref.watch(pageAccessProvider(page)) == AccessLevel.edit;
 
@@ -99,9 +99,9 @@ class DataUrlImageField extends StatelessWidget {
                   ),
                 if (value.startsWith('http'))
                   TextButton.icon(
-                    onPressed: () => launchUrl(Uri.parse(value), mode: LaunchMode.externalApplication),
-                    icon: const Icon(Icons.open_in_new),
-                    label: const Text('Open'),
+                    onPressed: () => openInApp(context, value),
+                    icon: const Icon(Icons.visibility_outlined),
+                    label: const Text('View'),
                   ),
               ]),
             ),

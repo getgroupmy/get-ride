@@ -2,12 +2,12 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
+import '../../widgets/in_app_page.dart';
 
 final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
   (ref, table) => ref.watch(adminRepositoryProvider).documents(table),
@@ -69,12 +69,12 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
           'Reviewed': dateText(d['reviewed_at']),
         }),
         Wrap(spacing: 8, children: [
-          for (final (label, key) in [('Open front', 'file_url'), ('Open back', 'file_url_back')])
+          for (final (label, key) in [('View front', 'file_url'), ('View back', 'file_url_back')])
             if ((d[key] as String?)?.startsWith('http') == true)
               OutlinedButton.icon(
-                icon: const Icon(Icons.open_in_new),
+                icon: const Icon(Icons.visibility_outlined),
                 label: Text(label),
-                onPressed: () => launchUrl(Uri.parse(d[key] as String), mode: LaunchMode.externalApplication),
+                onPressed: () => openInApp(context, d[key] as String),
               ),
         ]),
         if (ai != null) ...[

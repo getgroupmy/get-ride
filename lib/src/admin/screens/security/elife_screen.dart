@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
@@ -8,6 +7,7 @@ import '../../widgets/admin_widgets.dart';
 import 'api_keys_screens.dart' show apiKeysPage;
 import 'elife_logic.dart';
 import 'security_data.dart';
+import '../../../widgets/in_app_page.dart';
 
 const _page = 'admin-settings-api-elife';
 
@@ -118,9 +118,7 @@ class _ElifeState extends ConsumerState<AdminElifeScreen> {
   }
 
   Future<void> _openDocs() async {
-    if (!await launchUrl(Uri.parse(elifeDocsUrl), mode: LaunchMode.externalApplication) && mounted) {
-      showError(context, "Couldn't open documentation.");
-    }
+    await openInApp(context, elifeDocsUrl, title: 'eLife documentation');
   }
 
   @override
@@ -275,7 +273,7 @@ class _ElifeState extends ConsumerState<AdminElifeScreen> {
             leading: const Icon(Icons.menu_book_outlined),
             title: const Text('API documentation'),
             subtitle: const Text('app.theneo.io/elifetransfer'),
-            trailing: const Icon(Icons.open_in_new),
+            trailing: const Icon(Icons.chevron_right),
             onTap: _openDocs,
           ),
         ),

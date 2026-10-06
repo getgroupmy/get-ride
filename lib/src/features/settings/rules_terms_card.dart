@@ -1,29 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../config.dart';
+import '../../widgets/in_app_page.dart';
 
-typedef LinkLauncher = Future<bool> Function(Uri uri);
-
-Future<bool> _openExternal(Uri uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
+typedef LinkOpener = Future<void> Function(BuildContext context, String url, {String? title});
 
 /// Settings → Rules & terms (Expo `rules-terms.tsx`, whose three rows did
-/// nothing when tapped): the Terms of Service and Privacy Notice open in the
-/// browser, and Licenses lists the open-source packages the app ships with.
+/// nothing when tapped): the Terms of Service and Privacy Notice open on a
+/// screen of the app with a back button, and Licenses lists the open-source
+/// packages the app ships with.
 class RulesTermsCard extends StatelessWidget {
-  const RulesTermsCard({super.key, this.launch = _openExternal});
+  const RulesTermsCard({super.key, this.open = openInApp});
 
-  final LinkLauncher launch;
-
-  Future<void> _open(BuildContext context, String url) async {
-    var ok = false;
-    try {
-      ok = await launch(Uri.parse(url));
-    } catch (_) {}
-    if (!ok && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open $url')));
-    }
-  }
+  final LinkOpener open;
 
   @override
   Widget build(BuildContext context) {
@@ -39,15 +27,15 @@ class RulesTermsCard extends StatelessWidget {
             key: const ValueKey('terms-of-service'),
             leading: const Icon(Icons.gavel_outlined),
             title: const Text('Terms and conditions'),
-            trailing: const Icon(Icons.open_in_new, size: 18),
-            onTap: () => _open(context, AppConfig.termsUrl),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => open(context, AppConfig.termsUrl, title: 'Terms and conditions'),
           ),
           ListTile(
             key: const ValueKey('privacy-policy'),
             leading: const Icon(Icons.privacy_tip_outlined),
             title: const Text('Privacy Policy'),
-            trailing: const Icon(Icons.open_in_new, size: 18),
-            onTap: () => _open(context, AppConfig.privacyUrl),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => open(context, AppConfig.privacyUrl, title: 'Privacy Policy'),
           ),
           ListTile(
             key: const ValueKey('licenses'),

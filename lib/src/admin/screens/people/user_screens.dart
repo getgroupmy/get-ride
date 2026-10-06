@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
@@ -10,6 +9,7 @@ import '../../widgets/admin_widgets.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
+import '../../../widgets/in_app_page.dart';
 
 void _leave(BuildContext context) => context.canPop() ? context.pop(true) : context.go('/admin/users');
 
@@ -492,7 +492,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No ID image uploaded')))
       else
         InkWell(
-          onTap: img.startsWith('http') ? () => launchUrl(Uri.parse(img)) : null,
+          onTap: img.startsWith('http') ? () => openInApp(context, img) : null,
           child: isPdfUri(img) || !img.startsWith('http')
               ? const SizedBox(height: 120, child: Center(child: Icon(Icons.picture_as_pdf_outlined, size: 48)))
               : ClipRRect(

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_filters.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
+import '../../widgets/in_app_page.dart';
 
 final adminUsersProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).users());
 final adminPartnersProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).partners());
@@ -173,7 +173,7 @@ class AdminUsersScreen extends ConsumerWidget {
           TextButton.icon(
             icon: const Icon(Icons.badge_outlined),
             label: const Text('Open ID image'),
-            onPressed: () => launchUrl(Uri.parse(u['id_image'] as String)),
+            onPressed: () => openInApp(context, u['id_image'] as String),
           ),
         _statusPicker(
           context: ctx,
