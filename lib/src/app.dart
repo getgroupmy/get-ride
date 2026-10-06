@@ -10,6 +10,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'admin/admin_routes.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
+import 'core/demo_mode.dart';
 import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
 import 'data/branding_cache.dart';
@@ -25,6 +26,7 @@ import 'features/auth/phone_screen.dart';
 import 'features/auth/pin_screen.dart';
 import 'features/auth/registration_closed_screen.dart';
 import 'features/auth/set_pin_screen.dart';
+import 'features/partner/demo_jobs.dart';
 import 'features/partner/partner_onboarding_screen.dart';
 import 'features/partner/driver_permit_screen.dart';
 import 'features/partner/partner_screen.dart';
@@ -197,6 +199,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
       GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
+      GoRoute(
+        path: '/drive/demo',
+        builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
+      ),
       GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
       GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),

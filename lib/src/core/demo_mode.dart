@@ -170,3 +170,98 @@ const demoTripFor = Duration(seconds: 20);
 
 /// Where the demo driver starts: a little south-west of the pickup.
 LatLng demoDriverStart(LatLng pickup) => LatLng(pickup.latitude - 0.012, pickup.longitude - 0.009);
+
+/// Places demo requests run between (Expo `POPULAR_LOCATIONS`).
+const demoPlaces = <(String, String, double, double)>[
+  ('KLCC', 'Petronas Twin Towers, Kuala Lumpur City Centre', 3.1579, 101.7116),
+  ('Pavilion KL', 'Bukit Bintang, Kuala Lumpur', 3.1493, 101.7142),
+  ('Batu Caves', 'Gombak, Selangor', 3.2379, 101.6840),
+  ('KL Sentral', 'KL Sentral Station, Kuala Lumpur', 3.1345, 101.6869),
+  ('Mid Valley', 'Mid Valley City, Kuala Lumpur', 3.1184, 101.6774),
+  ('Bukit Bintang', 'Jalan Bukit Bintang, Kuala Lumpur', 3.1478, 101.7123),
+  ('KLIA', 'Kuala Lumpur International Airport, Sepang', 2.7456, 101.7072),
+  ('Sunway Pyramid', 'Bandar Sunway, Selangor', 3.0733, 101.6069),
+  ('The Curve', 'Mutiara Damansara, Selangor', 3.1533, 101.6105),
+  ('1 Utama', 'Bandar Utama, Selangor', 3.1506, 101.6147),
+];
+
+const demoPassengers = ['Ahmad R.', 'Siti N.', 'Wei Ming', 'Priya S.', 'Daniel L.', 'Aisha K.', 'Hafiz B.', 'Mei Ling'];
+const demoPayments = ['Cash', 'Card', 'E-Wallet', 'Get Pay'];
+
+/// A demo request for an online driver (Expo `generateRandomRequest`).
+class DemoJob {
+  const DemoJob({
+    required this.id,
+    required this.passenger,
+    required this.rating,
+    required this.pickupName,
+    required this.pickupAddress,
+    required this.pickup,
+    required this.dropName,
+    required this.dropAddress,
+    required this.drop,
+    required this.km,
+    required this.minutes,
+    required this.fare,
+    required this.payment,
+    required this.pax,
+    required this.luggage,
+    required this.timeout,
+  });
+
+  final String id;
+  final String passenger;
+  final double rating;
+  final String pickupName, pickupAddress, dropName, dropAddress;
+  final LatLng pickup, drop;
+  final double km;
+  final int minutes;
+  final double fare;
+  final String payment;
+  final int pax;
+  final int luggage;
+
+  /// How long the card waits for an answer (30–45 s).
+  final Duration timeout;
+}
+
+/// One demo request between two different [demoPlaces]: distance as the
+/// crow flies (at least 1.2 km), ~2.6 min a km (at least 5), fare
+/// 3 + 1.5/km + 0.2/min (at least 6), as Expo priced them.
+DemoJob demoJob(math.Random rnd, {required String id}) {
+  final a = demoPlaces[rnd.nextInt(demoPlaces.length)];
+  var b = demoPlaces[rnd.nextInt(demoPlaces.length)];
+  while (b == a) {
+    b = demoPlaces[rnd.nextInt(demoPlaces.length)];
+  }
+  final p = LatLng(a.$3, a.$4), d = LatLng(b.$3, b.$4);
+  final km = math.max(1.2, const Distance().as(LengthUnit.Meter, p, d) / 1000);
+  final minutes = math.max(5, (km * 2.6).round());
+  final fare = math.max(6, (3 + 1.5 * km + 0.2 * minutes).round()).toDouble();
+  return DemoJob(
+    id: id,
+    passenger: demoPassengers[rnd.nextInt(demoPassengers.length)],
+    rating: 4.4 + rnd.nextInt(7) / 10,
+    pickupName: a.$1,
+    pickupAddress: a.$2,
+    pickup: p,
+    dropName: b.$1,
+    dropAddress: b.$2,
+    drop: d,
+    km: double.parse(km.toStringAsFixed(1)),
+    minutes: minutes,
+    fare: fare,
+    payment: demoPayments[rnd.nextInt(demoPayments.length)],
+    pax: 1 + rnd.nextInt(4),
+    luggage: rnd.nextInt(4),
+    timeout: Duration(seconds: 30 + rnd.nextInt(16)),
+  );
+}
+
+/// The gap before the next demo request (6–14 s).
+Duration demoJobGap(math.Random rnd) => Duration(seconds: 6 + rnd.nextInt(9));
+
+/// A demo job's drive: [demoToPickupFor] to the pickup, the driver starts the
+/// trip, then [demoJobTripFor] to the drop (Expo `ride-running` simulation).
+const demoToPickupFor = Duration(seconds: 30);
+const demoJobTripFor = Duration(seconds: 45);
