@@ -28,6 +28,7 @@ import 'features/meter/vehicle_info_screen.dart';
 import 'features/auth/phone_screen.dart';
 import 'features/auth/pin_screen.dart';
 import 'features/auth/registration_closed_screen.dart';
+import 'features/auth/signup_photo_screen.dart';
 import 'features/auth/set_pin_screen.dart';
 import 'features/partner/demo_jobs.dart';
 import 'features/partner/partner_onboarding_screen.dart';
@@ -212,6 +213,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
       ),
       GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
+      GoRoute(
+        path: '/signup/photo',
+        // Only the two sign-up landings, never an arbitrary route from the URL.
+        builder: (_, s) => SignupPhotoScreen(
+          next: signupLanding(s.uri.queryParameters['next'] == '/drive' ? 'driver' : null),
+        ),
+      ),
       GoRoute(path: '/diagnostics', builder: (_, _) => const AuthDiagnosticsScreen()),
       GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
