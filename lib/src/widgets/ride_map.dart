@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -13,6 +15,7 @@ class RideMap extends StatefulWidget {
     this.drop,
     this.stops = const [],
     this.driver,
+    this.driverHeading,
     this.me,
     this.route = const [],
     this.onTap,
@@ -26,6 +29,10 @@ class RideMap extends StatefulWidget {
   /// Stops on the way, in order (numbered pins).
   final List<LatLng> stops;
   final LatLng? driver;
+
+  /// Compass heading of the driver's car in degrees (0 = north), turning
+  /// the car marker to face where it is going.
+  final double? driverHeading;
   final LatLng? me;
   final List<LatLng> route;
   final void Function(LatLng)? onTap;
@@ -134,9 +141,15 @@ class _RideMapState extends State<RideMap> {
               point: widget.driver!,
               width: 40,
               height: 40,
-              child: const CircleAvatar(
+              child: CircleAvatar(
                 backgroundColor: Colors.black,
-                child: Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22),
+                child: widget.driverHeading == null
+                    ? const Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22)
+                    : Transform.rotate(
+                        key: const ValueKey('driver-heading'),
+                        angle: widget.driverHeading! * math.pi / 180,
+                        child: const Icon(Icons.navigation, color: Color(0xFFFFD400), size: 22),
+                      ),
               ),
             ),
         ]),

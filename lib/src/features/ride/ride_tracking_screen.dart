@@ -20,8 +20,8 @@ import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
-import '../../widgets/ride_map.dart';
 import 'demo_ride.dart';
+import 'live_ride_map.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../profile/emergency_contacts_screen.dart';
 import '../safety/safety_screen.dart';
@@ -67,12 +67,7 @@ class RideTrackingScreen extends ConsumerWidget {
         value: ride,
         onRetry: () => ref.invalidate(rideStreamProvider(requestId)),
         data: (r) {
-          final map = RideMap(
-            pickup: _ll(r.pickupLat, r.pickupLng),
-            drop: _ll(r.dropLat, r.dropLng),
-            stops: [for (final s in r.stops) s.point],
-            driver: _ll(r.partnerLiveLat, r.partnerLiveLng),
-          );
+          final map = LiveRideMap(ride: r);
           final panel = _RidePanel(ride: r);
           if (MediaQuery.sizeOf(context).width >= 900) {
             return Row(
