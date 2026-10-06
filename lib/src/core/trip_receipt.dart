@@ -39,6 +39,9 @@ class TripReceipt {
     this.counterpart,
     this.vehicle,
     this.cancelReason,
+    this.asDriver = false,
+    this.commission,
+    this.commissionRate,
   });
 
   final String bookingNo;
@@ -65,6 +68,29 @@ class TripReceipt {
   final String? counterpart;
   final String? vehicle;
   final String? cancelReason;
+
+  /// The driver's copy, which adds what they keep ([earnings]).
+  final bool asDriver;
+
+  /// The platform commission charged on this ride, once it has been.
+  final double? commission;
+  final double? commissionRate;
+
+  /// What the passenger owed the driver: every charge, before any GET.coin
+  /// (coins paid towards the fare are credited to the driver's GET.wallet).
+  double get gross => charged ? lines.where((l) => l.amount > 0).fold(0, (s, l) => s + l.amount) : 0;
+
+  /// What the driver keeps: [gross] less the commission. Tolls and other
+  /// charges pass through untouched; only the fare is commissioned.
+  double get earnings => gross - (commission ?? 0);
+
+  /// "Commission (15%)", or plain "Commission" without a stored rate.
+  String get commissionLabel {
+    final rate = commissionRate;
+    if (rate == null) return 'Commission';
+    final pct = rate * 100;
+    return 'Commission (${pct == pct.roundToDouble() ? pct.round() : pct.toStringAsFixed(1)}%)';
+  }
 
   double get total => charged ? lines.fold(0, (s, l) => s + l.amount) : 0;
 
@@ -121,6 +147,9 @@ class TripReceipt {
       counterpart: asDriver ? r.riderName : r.partnerName,
       vehicle: asDriver || vehicle.isEmpty ? null : vehicle,
       cancelReason: r.status == RideStatus.cancelled ? cancelReasonLabel(r.cancelReason) : null,
+      asDriver: asDriver,
+      commission: asDriver ? r.commissionAmount : null,
+      commissionRate: asDriver ? r.commissionRate : null,
     );
   }
 
@@ -153,6 +182,10 @@ class TripReceipt {
         b.writeln('${l.label}: ${formatMoney(l.amount, currency)}');
       }
       b.writeln('$totalLabel: ${formatMoney(total, currency)}');
+      if (asDriver) {
+        if (commission != null) b.writeln('$commissionLabel: −${formatMoney(commission, currency)}');
+        b.writeln('You earn: ${formatMoney(earnings, currency)}');
+      }
     } else {
       b.writeln('No charge');
     }

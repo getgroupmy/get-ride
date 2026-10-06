@@ -112,6 +112,11 @@ class RideRequest {
   /// What the rider's GET.coin paid towards [totalDue] (migration 0101; the
   /// driver is credited the same amount).
   double get fareCoinsValue => _d(raw['fare_coins_value']) ?? 0;
+
+  /// The platform's cut, stamped on the ride when it was charged to the
+  /// driver's GET.credit (`wallet_charge_ride_commission`).
+  double? get commissionAmount => _d(raw['commission_amount']);
+  double? get commissionRate => _d(raw['commission_rate']);
   double? get fareCoinsUsed => _d(raw['fare_coins_used']);
 
   /// What is left for the driver to collect after GET.coin.

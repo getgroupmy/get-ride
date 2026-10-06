@@ -9,7 +9,13 @@ import 'package:get_ride/src/providers.dart';
 const _rider = '11111111-1111-1111-1111-111111111111';
 const _driver = '22222222-2222-2222-2222-222222222222';
 
-RideRequest trip({String status = 'completed', double? tolls, double? other, String? reason}) => RideRequest({
+RideRequest trip({
+  String status = 'completed',
+  double? tolls,
+  double? other,
+  String? reason,
+  Map<String, dynamic> extra = const {},
+}) => RideRequest({
   'id': 'a1b2c3d4-e5f6-7890-abcd-ef0123456789',
   'rider_id': _rider,
   'rider_name': 'Aina',
@@ -33,6 +39,7 @@ RideRequest trip({String status = 'completed', double? tolls, double? other, Str
   'completed_at': '2026-10-05T01:34:00Z',
   'cancelled_at': status == 'cancelled' ? '2026-10-05T01:05:00Z' : null,
   'cancel_reason': reason,
+  ...extra,
 });
 
 void main() {
@@ -86,5 +93,48 @@ void main() {
     expect(find.text('GR-A1B2C3D4'), findsWidgets);
     expect(find.text('Ali'), findsOneWidget);
     expect(find.byKey(const ValueKey('receipt-print')), findsOneWidget);
+  });
+
+  test("the driver's copy shows the commission and what they keep", () {
+    final charged = TripReceipt.fromRide(
+      trip(tolls: 3, extra: {'commission_rate': 0.15, 'commission_amount': 3.38, 'fare_coins_value': 5}),
+      asDriver: true,
+    );
+    expect(charged.gross, 25.5, reason: 'fare and tolls; coins still reach the driver');
+    expect(charged.commissionLabel, 'Commission (15%)');
+    expect(charged.earnings, closeTo(22.12, 1e-9));
+    expect(charged.text, contains('You earn: RM22.12'));
+
+    final pending = TripReceipt.fromRide(trip(), asDriver: true);
+    expect(pending.commission, isNull);
+    expect(pending.earnings, 22.5);
+    expect(TripReceipt.fromRide(trip(extra: {'commission_rate': 0.125}), asDriver: true).commissionLabel,
+        'Commission (12.5%)');
+
+    final rider = TripReceipt.fromRide(trip(extra: {'commission_amount': 3.38}));
+    expect(rider.commission, isNull, reason: "the passenger's copy never shows it");
+    expect(rider.text, isNot(contains('You earn')));
+  });
+
+  testWidgets("the driver's receipt screen shows their earnings", (tester) async {
+    tester.view.physicalSize = const Size(1000, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentUserIdProvider.overrideWithValue(_driver),
+          tripProvider.overrideWith(
+            (ref, id) async => trip(extra: {'commission_rate': 0.2, 'commission_amount': 4.5}),
+          ),
+        ],
+        child: const MaterialApp(home: TripReceiptScreen(requestId: 'x')),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Commission (20%)'), findsOneWidget);
+    expect(find.text('−RM4.50'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('receipt-earnings')), matching: find.text('RM18.00')),
+        findsOneWidget);
   });
 }

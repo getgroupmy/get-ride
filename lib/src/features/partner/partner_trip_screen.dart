@@ -418,6 +418,13 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             child: Text(r.cancelRequestedBy == 'partner' ? 'Cancellation requested' : 'Ask passenger to cancel'),
           ),
         if (r.status == RideStatus.completed) _CollectCard(ride: r),
+        if (r.status == RideStatus.completed)
+          OutlinedButton.icon(
+            key: const ValueKey('trip-receipt'),
+            icon: const Icon(Icons.receipt_long_outlined),
+            label: const Text('View receipt'),
+            onPressed: () => context.push('/trips/${r.id}'),
+          ),
         if (r.status.isFinished)
           FilledButton(onPressed: () => context.go('/drive'), child: const Text('Back to requests')),
       ]),
