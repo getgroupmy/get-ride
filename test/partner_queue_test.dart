@@ -11,6 +11,7 @@ import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
 import 'package:get_ride/src/features/partner/partner_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
+import 'package:get_ride/src/data/partner_doc_check.dart';
 
 class _FakeRides implements RideRepository {
   final accepted = <String>[];
@@ -101,6 +102,10 @@ void main() {
             rideRepositoryProvider.overrideWithValue(rides),
             profileProvider.overrideWith((ref) async => Profile({'id': 'me'})),
             assignableVehiclesProvider.overrideWith((ref) async => const <AssignableVehicle>[]),
+            // These drivers have no vehicle; the vehicle check has its own test.
+            partnerTypeEntriesProvider.overrideWith((ref) async => [
+              (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false}),
+            ]),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
