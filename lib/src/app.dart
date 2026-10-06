@@ -47,6 +47,7 @@ import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
 import 'features/ride/trips_screen.dart';
 import 'features/settings/change_phone_screen.dart';
+import 'features/settings/auth_diagnostics_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/shell/brand_splash.dart';
@@ -125,6 +126,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final signedIn = db.auth.currentSession != null;
       final loc = state.matchedLocation;
       final onAuth = loc.startsWith('/login');
+      // Diagnostics are for people who can't sign in, so they work either way.
+      if (loc == '/diagnostics') return null;
       if (!signedIn && !onAuth) return '/login';
       // A fresh OTP session still has to choose a PIN before entering the app.
       if (signedIn && AuthRepository.pinSetupPending) {
@@ -209,6 +212,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
       ),
       GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
+      GoRoute(path: '/diagnostics', builder: (_, _) => const AuthDiagnosticsScreen()),
       GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
       GoRoute(path: '/meter/printer', builder: (_, _) => const PrinterScreen()),
