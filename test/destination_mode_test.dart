@@ -13,6 +13,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:get_ride/src/data/partner_doc_check.dart';
 
 const klcc = LatLng(3.1579, 101.7123);
 const putrajaya = LatLng(2.9264, 101.6964);
@@ -117,6 +118,12 @@ void main() {
             rideRepositoryProvider.overrideWithValue(rides),
             profileProvider.overrideWith((ref) async => Profile({'id': 'me'})),
             assignableVehiclesProvider.overrideWith((ref) async => const <AssignableVehicle>[]),
+            // These drivers have no vehicle; the vehicle check has its own test.
+            partnerTypeEntriesProvider.overrideWith(
+              (ref) async => [
+                (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false}),
+              ],
+            ),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),

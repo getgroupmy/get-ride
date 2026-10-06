@@ -20,6 +20,10 @@ import '../ride/place_search.dart';
 import 'fare_offer.dart';
 import 'partner_menu.dart';
 import 'vehicle_picker.dart';
+import '../../core/partner_modes.dart';
+import '../../core/vehicle_assignment.dart';
+import '../../data/vehicle_assignment_repository.dart';
+import '../../admin/screens/people/people_logic.dart' show parseStringList;
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -96,6 +100,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       final partner = ref.read(partnerProvider).value;
       if (partner != null && !await _documentsCleared(partner, teksi: false)) return;
       if (!mounted) return;
+      if (partner != null && !await _vehicleReady(partner, teksi: false)) return;
+      if (!mounted) return;
     }
     if (v && _autoAccept) _markQueueSeen();
     setState(() => _online = v);
@@ -144,7 +150,70 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
 
   Future<void> _openMeter(Partner partner) async {
     if (!await _documentsCleared(partner, teksi: true)) return;
+    if (!mounted || !await _vehicleReady(partner, teksi: true)) return;
     if (mounted) context.push('/meter');
+  }
+
+  /// Admin → Partner Type → Vehicle required (Expo `isVehicleRequiredForMode`):
+  /// a mode that needs a vehicle starts only once the driver has taken one.
+  /// When the catalogue or the vehicles cannot be read it lets them through,
+  /// as the document check does.
+  Future<bool> _vehicleReady(Partner partner, {required bool teksi}) async {
+    List<AssignableVehicle> vehicles;
+    bool required;
+    try {
+      final entries = await ref.read(partnerTypeEntriesProvider.future);
+      final modes = [
+        for (final m in partnerModeOptions(parseStringList(partner.raw['partner_types']), entries))
+          if (m.isTeksi == teksi) m.name,
+      ];
+      required = (modes.isEmpty ? [teksi ? 'teksi' : 'ehailing'] : modes).any((m) => vehicleRequiredFor(m, entries));
+      if (!required) return true;
+      vehicles = await ref.read(assignableVehiclesProvider.future);
+    } catch (_) {
+      return true;
+    }
+    if (vehicles.any((v) => v.inUseByMe)) return true;
+    if (!mounted) return false;
+    final usable = vehicles.where((v) => v.selectable).toList();
+    final choose = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        key: const ValueKey('vehicle-required'),
+        title: const Text('Choose a vehicle'),
+        content: Text(usable.isEmpty
+            ? 'You need a vehicle before you can ${teksi ? 'start the meter' : 'go online'}. Add the vehicle you drive.'
+            : 'You need a vehicle before you can ${teksi ? 'start the meter' : 'go online'}. Pick the one you are driving.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(usable.isEmpty ? 'Add a vehicle' : 'Choose vehicle'),
+          ),
+        ],
+      ),
+    );
+    if (choose != true || !mounted) return false;
+    if (usable.isEmpty) {
+      context.push('/drive/vehicles/new');
+      return false;
+    }
+    final picked = await showModalBottomSheet<AssignableVehicle>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => VehiclePickerSheet(vehicles: vehicles),
+    );
+    if (picked == null || !mounted) return false;
+    if (picked.inUseByMe) return true;
+    try {
+      await ref.read(vehicleAssignmentRepositoryProvider).claim(picked.id);
+      ref.invalidate(assignableVehiclesProvider);
+      return true;
+    } catch (e) {
+      if (mounted) showInfo(context, claimVehicleErrorMessage(e));
+      return false;
+    }
   }
 
   Future<void> _accept(RideRequest r, Partner partner) async {
@@ -324,9 +393,34 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               action: OutlinedButton(onPressed: openOnboarding, child: const Text('View application')),
             );
           }
+          final modes = partnerModeOptions(
+            parseStringList(p.raw['partner_types']),
+            ref.watch(partnerTypeEntriesProvider).value ?? const [],
+          );
           return ResponsiveCenter(
             maxWidth: 760,
             child: Column(children: [
+              if (modes.length > 1 || modes.any((m) => m.isTeksi))
+                Card(
+                  key: const ValueKey('partner-modes'),
+                  child: Column(children: [
+                    for (final m in modes)
+                      ListTile(
+                        key: ValueKey('partner-mode-${m.name}'),
+                        leading: m.iconUrl == null
+                            ? Icon(m.isTeksi ? Icons.local_taxi : Icons.directions_car_outlined)
+                            : SizedBox.square(
+                                dimension: 36,
+                                child: Image.network(m.iconUrl!,
+                                    errorBuilder: (_, _, _) => const Icon(Icons.directions_car_outlined)),
+                              ),
+                        title: Text(m.name),
+                        subtitle: m.description == null ? null : Text(m.description!),
+                        trailing: Icon(m.isTeksi ? Icons.speed : (_online ? Icons.check_circle : Icons.chevron_right)),
+                        onTap: () => m.isTeksi ? _openMeter(p) : (_online ? null : _toggle(true)),
+                      ),
+                  ]),
+                ),
               Card(
                 child: SwitchListTile(
                   value: _online,
