@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/airport_areas.dart';
 import '../../core/place_gates.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
@@ -193,7 +194,14 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                 ],
               _ => const <Widget>[],
             },
-          for (final p in _results) _result(p, catalogue),
+          for (final p in collapseAirports<Place>(
+            _results,
+            ref.watch(airportAreasProvider).value ?? const [],
+            point: (p) => p.point,
+            text: (p) => '${p.name} ${p.address}',
+            airport: (a) => Place(name: a.name, address: a.code.isEmpty ? 'Airport' : '${a.code} · Airport', point: a.centroid),
+          ))
+            _result(p, catalogue),
         ]),
       ),
     ]);
