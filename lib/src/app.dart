@@ -8,11 +8,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'admin/admin_routes.dart';
+import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
+import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
 import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
+import 'data/app_display_repository.dart';
 import 'data/branding_cache.dart';
 import 'data/push_service.dart';
 import 'data/session_tracker.dart';
@@ -56,6 +59,7 @@ import 'features/wallet/wallet_history_screen.dart';
 import 'features/wallet/wallet_qr_screens.dart';
 import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
+import 'widgets/connection_status_dialog.dart';
 
 const brandAccent = Color(0xFF2DABE2);
 
@@ -247,6 +251,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     unawaited(_branding!.start());
     _startSessionTracking();
     _startAlwaysOn();
+    unawaited(_connectionPopup());
     final push = PushService.instance;
     if (push == null) return;
     _subs.add(push.taps.listen(_open));
@@ -256,6 +261,28 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       final route = push.takePendingRoute();
       if (route != null) _open(route);
     });
+  }
+
+  /// Admin → Display Settings → Connection Status Popups: once per launch,
+  /// tell the user whether the server answered. Shown once the router's
+  /// navigator exists, so after the splash.
+  Future<void> _connectionPopup() async {
+    final check = await checkBackend(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey);
+    final display = await ref.read(appDisplayProvider.future);
+    final popup = connectionPopupFor(
+      check,
+      connectedOn: display.connectedPopup,
+      failedOn: display.connectionFailedPopup,
+    );
+    if (popup == null) return;
+    for (var i = 0; i < 40 && mounted; i++) {
+      final ctx = ref.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        await showConnectionStatus(ctx, popup, check);
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
   }
 
   /// Session and location rows for the admin Session History and fraud

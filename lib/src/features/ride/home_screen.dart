@@ -12,6 +12,7 @@ import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/ride_request_metadata.dart';
 import '../../core/ride_stops.dart';
+import '../../widgets/toll_booths.dart';
 import '../../core/route_estimate.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/coin_trade_repository.dart';
@@ -270,6 +271,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
+    final display = ref.watch(appDisplayProvider).value;
+    final ai = _ai;
+    final tolls = display?.showAiTollBooths ?? true
+        ? tollMarks(ai, [for (final p in _route?.points ?? const <LatLng>[]) (lat: p.latitude, lng: p.longitude)])
+        : const <TollMark>[];
     final map = Stack(children: [
       RideMap(
         me: _me,
@@ -278,6 +284,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         stops: [for (final p in _stops) p.point],
         route: _route?.points ?? const [],
         onTap: _onMapTap,
+        extraMarkers: [
+          for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
+        ],
       ),
       if (_pinTarget != _PinTarget.none)
         Positioned(
@@ -299,7 +308,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-      Positioned(
+      if (display?.recenterButton ?? true)
+        Positioned(
         right: 16,
         bottom: wide ? 16 : null,
         top: wide ? null : 16,
@@ -321,7 +331,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       drop: _drop,
       route: _route,
       ai: _ai,
-      showTolls: ref.watch(appDisplayProvider).value?.showAiTollCharges ?? true,
+      showTolls: display?.showAiTollCharges ?? true,
+      showBooths: display?.showAiTollBooths ?? true,
       routing: _routing,
       services: _services,
       service: _service,
@@ -410,6 +421,7 @@ class _BookingPanel extends StatelessWidget {
     required this.route,
     this.ai,
     this.showTolls = true,
+    this.showBooths = true,
     required this.routing,
     required this.services,
     required this.service,
@@ -442,6 +454,7 @@ class _BookingPanel extends StatelessWidget {
   final RouteInfo? route;
   final RouteEstimate? ai;
   final bool showTolls;
+  final bool showBooths;
   final bool routing;
   final List<RideService> services;
   final RideService service;
@@ -537,6 +550,20 @@ class _BookingPanel extends StatelessWidget {
               'Est. toll charges ${formatMoney(ai!.tollsToShow, AppConfig.currency)}, not included in the fare',
               key: const ValueKey('route-tolls'),
               style: t.textTheme.bodySmall,
+            ),
+          if (showBooths && tollBoothCount(ai) > 0)
+            InkWell(
+              key: const ValueKey('route-toll-booths'),
+              onTap: () => showTollBooths(context, ai!),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(children: [
+                  const Icon(Icons.toll, size: 16, color: Color(0xFFF59E0B)),
+                  const SizedBox(width: 6),
+                  Text('Est. toll booths: ${tollBoothCount(ai)}',
+                      style: t.textTheme.bodySmall?.copyWith(decoration: TextDecoration.underline)),
+                ]),
+              ),
             ),
           const SizedBox(height: 8),
           for (final s in services)
