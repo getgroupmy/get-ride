@@ -88,6 +88,8 @@ class VoiceProtectionController extends Notifier<VoiceProtectionState> {
 
   /// Stops the recording (if any), files it and writes its metadata row.
   Future<void> stopTrip() async {
+    // The trip screen files on its way out; by then the whole scope may be gone.
+    if (!ref.mounted) return;
     final id = _recordingId;
     final uid = _profileId;
     final startedAt = _startedAt;

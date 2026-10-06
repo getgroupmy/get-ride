@@ -16,9 +16,14 @@ LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : Lat
 /// plus — once a driver is on the way — the road still ahead of them, an
 /// ETA chip and the car turned to the way it is heading.
 class LiveRideMap extends ConsumerStatefulWidget {
-  const LiveRideMap({super.key, required this.ride, this.now});
+  const LiveRideMap({super.key, required this.ride, this.now, this.driverAt, this.driverHeading});
 
   final RideRequest ride;
+
+  /// Where the driver is when this map is the driver's own (their phone's
+  /// fix, fresher than the published one); null reads the ride row.
+  final LatLng? driverAt;
+  final double? driverHeading;
 
   /// The clock; null is [DateTime.now]. For tests.
   final DateTime Function()? now;
@@ -47,7 +52,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
     _maybeReroute();
   }
 
-  LatLng? get _driver => _ll(widget.ride.partnerLiveLat, widget.ride.partnerLiveLng);
+  LatLng? get _driver => widget.driverAt ?? _ll(widget.ride.partnerLiveLat, widget.ride.partnerLiveLng);
 
   LatLng? get _target => etaTarget(
     widget.ride.status,
@@ -88,7 +93,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
           drop: _ll(r.dropLat, r.dropLng),
           stops: [for (final s in r.stops) s.point],
           driver: _driver,
-          driverHeading: r.partnerLiveHeading,
+          driverHeading: widget.driverAt != null ? widget.driverHeading : r.partnerLiveHeading,
           route: route?.points ?? const [],
         ),
         if (route != null)
