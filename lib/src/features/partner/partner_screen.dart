@@ -17,6 +17,8 @@ import '../../data/partner_doc_check.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../ride/place_search.dart';
+import '../ride/demo_ride.dart';
+import 'demo_jobs.dart';
 import 'fare_offer.dart';
 import 'partner_menu.dart';
 import 'vehicle_picker.dart';
@@ -457,6 +459,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   ]),
                 ),
               const CurrentVehicleCard(),
+              if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
               Expanded(child: _online ? _queue(p) : const EmptyState(
                 icon: Icons.local_taxi_outlined,
                 title: 'Go online to receive ride requests',

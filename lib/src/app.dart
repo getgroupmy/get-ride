@@ -12,6 +12,7 @@ import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
 import 'core/connection_check.dart';
+import 'core/demo_mode.dart';
 import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
@@ -28,6 +29,7 @@ import 'features/auth/phone_screen.dart';
 import 'features/auth/pin_screen.dart';
 import 'features/auth/registration_closed_screen.dart';
 import 'features/auth/set_pin_screen.dart';
+import 'features/partner/demo_jobs.dart';
 import 'features/partner/partner_onboarding_screen.dart';
 import 'features/partner/driver_permit_screen.dart';
 import 'features/partner/partner_screen.dart';
@@ -39,6 +41,7 @@ import 'features/profile/emergency_contacts_screen.dart';
 import 'features/profile/referral_screen.dart';
 import 'features/profile/user_guide_screen.dart';
 import 'features/safety/safety_screen.dart';
+import 'features/ride/demo_ride.dart';
 import 'features/ride/home_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
@@ -195,8 +198,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           ]),
         ],
       ),
+      GoRoute(
+        path: '/ride/demo',
+        builder: (_, s) => s.extra is DemoTripArgs ? DemoTripScreen(args: s.extra! as DemoTripArgs) : const HomeScreen(),
+      ),
       GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
       GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
+      GoRoute(
+        path: '/drive/demo',
+        builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
+      ),
       GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
       GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
