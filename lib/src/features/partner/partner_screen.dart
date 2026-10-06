@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
@@ -8,6 +11,7 @@ import '../../core/format.dart';
 import '../../core/partner_doc_check.dart';
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_queue.dart';
+import '../../core/request_alert.dart';
 import '../../core/taxi_meter.dart';
 import '../../data/destination_store.dart';
 import '../../data/device_access.dart';
@@ -45,6 +49,9 @@ class PartnerScreen extends ConsumerStatefulWidget {
   ConsumerState<PartnerScreen> createState() => _PartnerScreenState();
 }
 
+/// The clock the request alert's countdown reads (overridden in tests).
+final requestAlertClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool _online = false;
   LatLng? _me;
@@ -55,6 +62,69 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// Requests auto-accept must not take: those already queued when it was
   /// switched on (or when going online with it on), and those it has tried.
   final _seen = <String>{};
+
+  /// The incoming-request alert (Expo's request modal): the request being
+  /// spotlighted, since when, those already spotlighted, and those the
+  /// driver declined (gone from the queue on this device).
+  String? _alertId;
+  DateTime? _alertAt;
+  final _alertSeen = <String>{};
+  final _hidden = <String>{};
+  Timer? _alertTick;
+  late DateTime _alertNow = ref.read(requestAlertClockProvider)();
+
+  @override
+  void dispose() {
+    _alertTick?.cancel();
+    super.dispose();
+  }
+
+  /// Spotlights the next new request, or clears the alert when there is
+  /// none (offline, auto-accept on, or nothing new).
+  void _syncAlert(List<RideRequest> open) {
+    if (!mounted) return;
+    String? next;
+    if (_online && !_autoAccept) {
+      final ordered = destinationOrder(open, toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo);
+      next = nextRequestAlert(
+        openIds: [for (final r in ordered) r.id],
+        seen: _alertSeen,
+        hidden: _hidden,
+        current: _alertId,
+      );
+    }
+    if (next == _alertId) return;
+    setState(() {
+      _alertId = next;
+      _alertAt = _alertNow = ref.read(requestAlertClockProvider)();
+    });
+    if (next != null) {
+      _alertSeen.add(next);
+      unawaited(HapticFeedback.heavyImpact());
+      unawaited(SystemSound.play(SystemSoundType.alert));
+      _alertTick ??= Timer.periodic(const Duration(seconds: 1), (_) => _onAlertTick());
+    } else {
+      _alertTick?.cancel();
+      _alertTick = null;
+    }
+  }
+
+  void _onAlertTick() {
+    if (!mounted || _alertAt == null) return;
+    setState(() => _alertNow = ref.read(requestAlertClockProvider)());
+    // Left alone, the request drops back into the queue below.
+    if (requestAlertExpired(_alertNow.difference(_alertAt!))) _dismissAlert(hide: false);
+  }
+
+  /// Ends the spotlight: a decline also takes the request off this
+  /// driver's queue; a timeout leaves it there.
+  void _dismissAlert({required bool hide}) {
+    final id = _alertId;
+    if (id == null) return;
+    if (hide) _hidden.add(id);
+    setState(() => _alertId = null);
+    _syncAlert(ref.read(openRequestsProvider).value ?? const []);
+  }
 
   @override
   void initState() {
@@ -106,7 +176,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       if (!mounted) return;
     }
     if (v && _autoAccept) _markQueueSeen();
+    // Requests already waiting are in the list; only new ones pop up.
+    if (v) _alertSeen.addAll(ref.read(openRequestsProvider).value?.map((r) => r.id) ?? const <String>[]);
     setState(() => _online = v);
+    if (!v) _syncAlert(const []);
     if (v) {
       final p = await currentPosition();
       if (mounted) setState(() => _me = p);
@@ -335,7 +408,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final partner = ref.watch(partnerProvider);
     ref.listen(openRequestsProvider, (_, next) {
       final open = next.value;
-      if (open != null) _maybeAutoAccept(open);
+      if (open != null) {
+        _maybeAutoAccept(open);
+        _syncAlert(open);
+      }
     });
     return Scaffold(
       appBar: AppBar(title: const Text('Drive'), actions: [
@@ -477,19 +553,23 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       value: ref.watch(openRequestsProvider),
       onRetry: () => ref.invalidate(openRequestsProvider),
       data: (list) {
-        if (list.isEmpty) {
+        final alert = list.where((r) => r.id == _alertId).firstOrNull;
+        final queued = [for (final r in list) if (!_hidden.contains(r.id) && r.id != _alertId) r];
+        if (alert == null && queued.isEmpty) {
           return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');
         }
         ref.watch(destinationModeProvider);
         final destinationOn = _destinationOn;
         final sorted = destinationOrder(
-          list,
+          queued,
           toward: (r) => destinationOn && _towardDestination(r),
           awayKm: _distanceTo,
         );
         return ListView.builder(
-          itemCount: sorted.length,
-          itemBuilder: (_, i) {
+          itemCount: sorted.length + (alert == null ? 0 : 1),
+          itemBuilder: (_, index) {
+            if (alert != null && index == 0) return _alertCard(alert, partner);
+            final i = alert == null ? index : index - 1;
             final r = sorted[i];
             final away = _distanceTo(r);
             return Card(
@@ -578,6 +658,131 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           },
         );
       },
+    );
+  }
+
+  /// The spotlighted request (Expo's incoming-request modal): who is asking,
+  /// how far and how long to the pickup, the trip, and a countdown.
+  Widget _alertCard(RideRequest r, Partner partner) {
+    final t = Theme.of(context);
+    final shown = _alertNow.difference(_alertAt ?? _alertNow);
+    final away = _distanceTo(r);
+    return Card(
+      key: const ValueKey('request-alert'),
+      color: t.colorScheme.primaryContainer,
+      elevation: 6,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Icon(Icons.notifications_active, color: t.colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(child: Text('New request', style: t.textTheme.titleMedium)),
+            Text('${requestAlertSecondsLeft(shown)} s', style: t.textTheme.labelLarge),
+          ]),
+          const SizedBox(height: 6),
+          LinearProgressIndicator(key: const ValueKey('request-alert-countdown'), value: requestAlertProgress(shown)),
+          if (_destinationOn && _towardDestination(r))
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(children: [
+                Icon(Icons.flag, size: 16, color: t.colorScheme.primary),
+                const SizedBox(width: 6),
+                Text('Toward your destination',
+                    key: ValueKey('toward-${r.id}'),
+                    style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.primary)),
+              ]),
+            ),
+          const SizedBox(height: 10),
+          Row(children: [
+            const CircleAvatar(radius: 20, child: Icon(Icons.person)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(r.riderName ?? 'Passenger', style: t.textTheme.titleSmall),
+                Text(
+                  [
+                    if (r.riderRating != null) '★ ${r.riderRating!.toStringAsFixed(1)}',
+                    if (away != null) '${formatDistance(away)} away',
+                    if (away != null) '~${pickupMinutes(away)} min',
+                  ].join(' · '),
+                  style: t.textTheme.bodySmall,
+                ),
+              ]),
+            ),
+            Text(formatMoney(r.effectiveFare, r.currency),
+                style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 10),
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
+            title: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: r.pickupAddress == null ? null : Text(r.pickupAddress!, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.location_on, color: Colors.red.shade700),
+            title: Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(
+              [
+                '${formatDistance(r.distanceKm)} trip',
+                if (r.durationMin != null) '${r.durationMin} min',
+              ].join(' · '),
+            ),
+          ),
+          Wrap(spacing: 6, runSpacing: 6, children: [
+            Chip(label: Text(r.paymentMode), visualDensity: VisualDensity.compact),
+            Chip(label: Text('${r.passengers} pax'), visualDensity: VisualDensity.compact),
+            if ((r.luggage ?? 0) > 0)
+              Chip(
+                label: Text('${r.luggage} ${r.luggage == 1 ? 'bag' : 'bags'}'),
+                visualDensity: VisualDensity.compact,
+              ),
+            if (r.stops.isNotEmpty)
+              Chip(
+                label: Text('${r.stops.length} stop${r.stops.length == 1 ? '' : 's'}'),
+                visualDensity: VisualDensity.compact,
+              ),
+          ]),
+          if (r.note != null) Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text('“${r.note}”', style: t.textTheme.bodySmall),
+          ),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                key: const ValueKey('request-alert-decline'),
+                onPressed: _accepting != null ? null : () => _dismissAlert(hide: true),
+                child: const Text('Decline'),
+              ),
+            ),
+            if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  key: ValueKey('offer-${r.id}'),
+                  onPressed: _accepting != null ? null : () => _offer(r, partner),
+                  child: const Text('Offer price'),
+                ),
+              ),
+            ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton(
+                key: const ValueKey('request-alert-accept'),
+                onPressed: _accepting != null ? null : () => _accept(r, partner),
+                child: _accepting == r.id
+                    ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}'),
+              ),
+            ),
+          ]),
+        ]),
+      ),
     );
   }
 }
