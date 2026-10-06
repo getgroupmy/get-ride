@@ -104,6 +104,19 @@ class RideRequest {
     if (f == null) return null;
     return f + (tollCharges ?? 0) + (otherCharges ?? 0);
   }
+
+  /// What the rider's GET.coin paid towards [totalDue] (migration 0101; the
+  /// driver is credited the same amount).
+  double get fareCoinsValue => _d(raw['fare_coins_value']) ?? 0;
+  double? get fareCoinsUsed => _d(raw['fare_coins_used']);
+
+  /// What is left for the driver to collect after GET.coin.
+  double? get cashDue {
+    final t = totalDue;
+    if (t == null) return null;
+    final left = t - fareCoinsValue;
+    return left < 0 ? 0 : (left * 100).roundToDouble() / 100;
+  }
   DateTime? get cancelRequestedAt => _t(raw['cancel_requested_at']);
   String? get cancelRequestedBy => raw['cancel_requested_by'] as String?;
 

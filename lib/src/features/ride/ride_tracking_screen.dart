@@ -476,7 +476,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               label: const Text('Cancel ride'),
               onPressed: _busy ? null : _cancel,
             ),
-          if (r.status == RideStatus.completed && ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0))
+          if (r.status == RideStatus.completed &&
+              ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0 || r.fareCoinsValue > 0))
             Card(
               key: const ValueKey('ride-charges'),
               child: Column(children: [
@@ -492,10 +493,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                     subtitle: r.otherChargesNote == null ? null : Text(r.otherChargesNote!),
                     trailing: Text(formatMoney(r.otherCharges, r.currency)),
                   ),
+                if (r.fareCoinsValue > 0)
+                  ListTile(dense: true, title: const Text('Paid with GET.coin'),
+                      trailing: Text('−${formatMoney(r.fareCoinsValue, r.currency)}')),
                 const Divider(height: 1),
                 ListTile(
-                  title: const Text('Total to pay', style: TextStyle(fontWeight: FontWeight.w700)),
-                  trailing: Text(formatMoney(r.totalDue, r.currency),
+                  title: Text(r.fareCoinsValue > 0 ? 'Left to pay' : 'Total to pay',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  trailing: Text(formatMoney(r.cashDue, r.currency),
                       style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                 ),
               ]),

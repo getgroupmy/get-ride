@@ -51,4 +51,24 @@ void main() {
     expect(receipt.total, 28.5);
     expect(RideRequest({'id': 'x', 'fare': 20}).totalDue, 20);
   });
+
+  test('GET.coin paid towards the ride is taken off what the driver collects', () {
+    final r = RideRequest({
+      'id': 'abcdef12-0000',
+      'status': 'completed',
+      'ride_fare': 20,
+      'toll_charges': 5,
+      'fare_coins_value': 7.5,
+      'currency': 'MYR',
+    });
+    expect(r.totalDue, 25);
+    expect(r.fareCoinsValue, 7.5);
+    expect(r.cashDue, 17.5);
+    final receipt = TripReceipt.fromRide(r);
+    expect(receipt.lines.last, (label: 'Paid with GET.coin', amount: -7.5));
+    expect(receipt.total, 17.5);
+    expect(receipt.totalLabel, 'Balance paid');
+    expect(TripReceipt.fromRide(RideRequest({'id': 'x', 'status': 'completed', 'fare': 10})).totalLabel, 'Total');
+    expect(RideRequest({'id': 'x', 'fare': 5, 'fare_coins_value': 9}).cashDue, 0);
+  });
 }
