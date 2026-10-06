@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../admin/screens/commerce/get_coin.dart';
+import '../../core/coin_rate_chart.dart';
 import '../../core/coin_trade.dart';
 import '../../core/coin_transfer.dart';
 import '../../core/format.dart';
@@ -328,7 +330,10 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_tab != _Tab.send) ...[_RateCard(quote: q, market: market), const SizedBox(height: 16)],
+        if (_tab != _Tab.send) ...[
+          _RateCard(quote: q, market: market, history: ref.watch(coinRateHistoryProvider).value ?? const []),
+          const SizedBox(height: 16),
+        ],
         SegmentedButton<_Tab>(
           segments: const [
             ButtonSegment(value: _Tab.buy, label: Text('Buy'), icon: Icon(Icons.add_circle_outline)),
@@ -514,10 +519,13 @@ class _TransferWaitingDialogState extends State<TransferWaitingDialog> {
 }
 
 class _RateCard extends StatelessWidget {
-  const _RateCard({required this.quote, required this.market});
+  const _RateCard({required this.quote, required this.market, this.history = const []});
 
   final CoinTradeQuote quote;
   final CoinMarketRate market;
+
+  /// Recorded rates, oldest first, for the price line.
+  final List<double> history;
 
   @override
   Widget build(BuildContext context) {
@@ -569,6 +577,11 @@ class _RateCard extends StatelessWidget {
                 ),
               ],
             ],
+            const SizedBox(height: 8),
+            _RateSparkline(
+              rates: chartRates(history, market.ratePerGC),
+              color: change > 0 ? Colors.green : (change < 0 ? t.colorScheme.error : t.colorScheme.outline),
+            ),
             const SizedBox(height: 4),
             if (!s.marketEnabled)
               const Text('Fixed rate — set by admin, market pricing is off.')
@@ -628,4 +641,64 @@ class _PriceTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The recorded GET.coin rates as a line (Expo `RateSparkline`).
+class _RateSparkline extends StatelessWidget {
+  const _RateSparkline({required this.rates, required this.color});
+  final List<double> rates;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    if (rates.length < 2) {
+      return SizedBox(
+        height: 64,
+        child: Center(
+          child: Text('Price chart builds as rates are recorded', style: t.textTheme.bodySmall),
+        ),
+      );
+    }
+    return SizedBox(
+      key: const ValueKey('coin-rate-chart'),
+      height: 64,
+      width: double.infinity,
+      child: CustomPaint(painter: _SparklinePainter(rates, color, t.colorScheme.outlineVariant)),
+    );
+  }
+}
+
+class _SparklinePainter extends CustomPainter {
+  _SparklinePainter(this.rates, this.color, this.grid);
+  final List<double> rates;
+  final Color color, grid;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final dash = Paint()
+      ..color = grid
+      ..strokeWidth = 1;
+    for (var x = 0.0; x < size.width; x += 8) {
+      canvas.drawLine(Offset(x, size.height / 2), Offset(math.min(x + 4, size.width), size.height / 2), dash);
+    }
+    final pts = sparklineOffsets(rates, size);
+    if (pts.length < 2) return;
+    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (final p in pts.skip(1)) {
+      path.lineTo(p.dx, p.dy);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SparklinePainter old) => old.rates != rates || old.color != color;
 }
