@@ -3069,6 +3069,9 @@ drop policy if exists "wallet_transfer_requests read" on public.wallet_transfer_
 
 revoke select on public.wallet_transfer_requests from anon;
 grant select on public.wallet_transfer_requests to authenticated;
+-- 0097: clients only read this table; drop the default write grants.
+revoke insert, update, delete, truncate, references, trigger
+  on public.wallet_transfer_requests from anon, authenticated;
 
 alter table public.wallet_transfer_requests replica identity full;
 
