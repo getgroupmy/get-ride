@@ -8,10 +8,12 @@ import '../admin_access.dart';
 import '../admin_categories.g.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
+import '../../data/live_tables.dart';
 
 typedef _GrantsView = ({List<AdminGrant> grants, Map<String, Map<String, dynamic>> people});
 
 final _grantsProvider = FutureProvider.autoDispose<_GrantsView>((ref) async {
+  ref.watchLive('admin_access');
   final repo = ref.watch(adminRepositoryProvider);
   final grants = (await repo.allGrants()).map(AdminGrant.fromRow).toList();
   final people = await repo.profilesByIds(grants.map((g) => g.profileId).whereType<String>());

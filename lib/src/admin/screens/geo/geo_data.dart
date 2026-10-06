@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../../providers.dart';
 import 'geo_logic.dart';
+import '../../../data/live_tables.dart';
 
 /// A `{id, values, position}` row of `airport_areas` / `multi_gate`.
 class GeoEntry {
@@ -127,19 +128,35 @@ class GeoAdminRepository {
 
 final geoAdminRepositoryProvider = Provider((ref) => GeoAdminRepository(ref.watch(supabaseProvider)));
 
-final regionsProvider = FutureProvider.autoDispose((ref) => ref.watch(geoAdminRepositoryProvider).regions());
+final regionsProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('countries');
+  ref.watchLive('states');
+  ref.watchLive('cities');
+  ref.watchLive('suburbs');
+  return ref.watch(geoAdminRepositoryProvider).regions();
+});
 final regionServicesProvider = FutureProvider.autoDispose<List<ServiceOption>>((ref) async {
+  ref.watchLive('settings_entries');
   try {
     return await ref.watch(geoAdminRepositoryProvider).services();
   } catch (_) {
     return const [];
   }
 });
-final airportsProvider = FutureProvider.autoDispose((ref) => ref.watch(geoAdminRepositoryProvider).airports());
+final airportsProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('airport_areas');
+  return ref.watch(geoAdminRepositoryProvider).airports();
+});
 final multiGatePlacesProvider =
-    FutureProvider.autoDispose((ref) => ref.watch(geoAdminRepositoryProvider).multiGate('place'));
+    FutureProvider.autoDispose((ref) {
+  ref.watchLive('multi_gate');
+  return ref.watch(geoAdminRepositoryProvider).multiGate('place');
+});
 final multiGateGatesProvider =
-    FutureProvider.autoDispose((ref) => ref.watch(geoAdminRepositoryProvider).multiGate('gate'));
+    FutureProvider.autoDispose((ref) {
+  ref.watchLive('multi_gate');
+  return ref.watch(geoAdminRepositoryProvider).multiGate('gate');
+});
 
 /// OpenStreetMap Nominatim lookups the shared `GeoService` doesn't cover:
 /// boundary polygons (`polygon_geojson`) and worldwide searches with address

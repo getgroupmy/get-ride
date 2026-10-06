@@ -6,10 +6,14 @@ import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
 import 'ip_access_logic.dart';
 import 'security_data.dart';
+import '../../../data/live_tables.dart';
 
 const _page = 'admin-settings-ip-access';
 
-final _rulesProvider = FutureProvider.autoDispose((ref) => ref.watch(securityRepositoryProvider).ipRules());
+final _rulesProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('ip_access_rules');
+  return ref.watch(securityRepositoryProvider).ipRules();
+});
 final _myIpProvider = FutureProvider.autoDispose((ref) => lookupPublicIp());
 
 class AdminIpAccessScreen extends ConsumerStatefulWidget {

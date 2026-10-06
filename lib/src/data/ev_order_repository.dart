@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../providers.dart';
+import 'live_tables.dart';
 
 typedef EvEntry = ({String id, Map<String, dynamic> values});
 typedef EvOrder = ({String id, Map<String, dynamic> values, DateTime createdAt});
@@ -152,4 +153,7 @@ class EvOrderRepository {
 
 final evOrderRepositoryProvider = Provider((ref) => EvOrderRepository(ref.watch(supabaseProvider)));
 
-final evCatalogProvider = FutureProvider.autoDispose((ref) => ref.watch(evOrderRepositoryProvider).catalog());
+final evCatalogProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('settings_entries');
+  return ref.watch(evOrderRepositoryProvider).catalog();
+});

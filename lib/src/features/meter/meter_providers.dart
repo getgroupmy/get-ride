@@ -9,6 +9,7 @@ import '../../admin/screens/meterapp/meter_store.dart';
 import '../../data/meter_launch_store.dart';
 import '../../data/meter_trips_store.dart';
 import '../../providers.dart';
+import '../../data/live_tables.dart';
 
 /// One GPS fix as the meter uses it.
 class MeterFix {
@@ -79,6 +80,7 @@ final meterLaunchStoreProvider = Provider((_) => MeterLaunchStore());
 /// meter has to keep pricing with no signal at all (and the launch decision
 /// is made before the network answers): offline, the cached cards decide.
 final meterCardsProvider = FutureProvider<List<MeterProfile>>((ref) async {
+  ref.watchLive('meter_digital_settings');
   final cache = ref.watch(meterLaunchStoreProvider);
   try {
     final cards = await MeterSettingsStore(ref.watch(supabaseProvider)).fetch();

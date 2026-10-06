@@ -1,29 +1,38 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../admin/screens/meterapp/display_logic.dart' show displaySettingsTable, displaySettingsRowId;
 import '../core/app_display.dart';
 import '../core/fare.dart';
 import '../core/recent_places.dart';
 import '../core/ride_services.dart';
 import 'geo_service.dart';
+import 'live_tables.dart';
 import '../providers.dart';
 
 /// The admin display settings the rider app honours (public read of
 /// `admin_display_settings`, row `global`). Unreachable or missing means the
-/// defaults: the service stays on and sign-up stays open.
+/// defaults: the service stays on and sign-up stays open. Live: an admin's
+/// change re-reads it on every open app (see `live_tables.dart`).
 final displaySettingsBlobProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  ref.watchLive(displaySettingsTable);
   try {
     final row = await ref
         .watch(supabaseProvider)
-        .from('admin_display_settings')
+        .from(displaySettingsTable)
         .select('settings')
-        .eq('id', 'global')
+        .eq('id', displaySettingsRowId)
         .maybeSingle();
-    final raw = row?['settings'];
-    return raw is Map ? Map<String, dynamic>.from(raw) : const {};
+    return displaySettingsFromRow(row);
   } catch (_) {
     return const {};
   }
 });
+
+/// The settings blob off a row, or the defaults (empty) without one.
+Map<String, dynamic> displaySettingsFromRow(Map<String, dynamic>? row) {
+  final raw = row?['settings'];
+  return raw is Map ? Map<String, dynamic>.from(raw) : const {};
+}
 
 final appDisplayProvider = FutureProvider<AppDisplay>(
   (ref) async => AppDisplay.fromSettings(await ref.watch(displaySettingsBlobProvider.future)),
@@ -33,6 +42,7 @@ final appDisplayProvider = FutureProvider<AppDisplay>(
 /// (public read of `settings_entries`), arranged by Admin → Display. When the
 /// catalogue cannot be read, the built-in list keeps booking working.
 final rideServicesProvider = FutureProvider<List<RideService>>((ref) async {
+  ref.watchLive('settings_entries');
   final display = await ref.watch(displaySettingsBlobProvider.future);
   try {
     final rows = await ref
@@ -69,6 +79,7 @@ final recentPlacesProvider = FutureProvider.autoDispose<List<Place>>((ref) async
 /// Names of the admin services a home service box can be linked to (public
 /// read of `settings_entries`, category `service-settings`), by entry id.
 final serviceBoxNamesProvider = FutureProvider<Map<String, String>>((ref) async {
+  ref.watchLive('settings_entries');
   try {
     final rows = await ref
         .watch(supabaseProvider)

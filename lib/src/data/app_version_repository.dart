@@ -4,10 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../config.dart';
 import '../core/app_version.dart';
 import '../providers.dart';
+import 'live_tables.dart';
 
 /// Admin → Settings → App Version rows. Empty when unreadable, which means
 /// no update is asked for: an outage must never lock drivers out.
 final appVersionRulesProvider = FutureProvider<List<AppVersionRule>>((ref) async {
+  ref.watchLive('settings_entries');
   try {
     final rows = await ref
         .watch(supabaseProvider)

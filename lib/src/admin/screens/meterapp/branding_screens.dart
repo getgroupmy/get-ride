@@ -17,6 +17,7 @@ import 'site_logic.dart';
 import '../../../core/app_branding.dart';
 import '../../../data/branding_cache.dart';
 import '../../../features/shell/brand_splash.dart';
+import '../../../data/live_tables.dart';
 
 const appIconPage = 'admin-settings-app-icon';
 const splashPage = 'admin-settings-splash';
@@ -49,7 +50,10 @@ class BrandingStore {
 }
 
 final brandingStoreProvider = Provider((ref) => BrandingStore(ref.watch(supabaseProvider)));
-final brandingProvider = FutureProvider.autoDispose((ref) => ref.watch(brandingStoreProvider).fetch());
+final brandingProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('app_branding');
+  return ref.watch(brandingStoreProvider).fetch();
+});
 
 /// Shows a picked (not yet uploaded) image or a stored URL.
 class _ImageBox extends StatelessWidget {

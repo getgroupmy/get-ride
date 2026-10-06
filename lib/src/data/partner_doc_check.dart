@@ -5,6 +5,7 @@ import '../admin/screens/people/people_logic.dart';
 import '../core/partner_doc_check.dart';
 import '../core/partner_onboarding.dart';
 import '../core/vehicle_onboarding.dart';
+import 'live_tables.dart';
 
 /// The document issues for [partner] in one service mode: the admin's
 /// required-document rules (partner types, service area; per-vehicle
@@ -49,6 +50,7 @@ final partnerDocCheckProvider = Provider<PartnerDocCheck>((ref) {
 /// Admin → Partner Type entries, for the Drive screen's service modes and
 /// the "vehicle required" check. Empty when unreadable.
 final partnerTypeEntriesProvider = FutureProvider.autoDispose<List<({String id, Map<String, dynamic> values})>>((ref) async {
+  ref.watchLive('settings_entries');
   try {
     return await ref.watch(peopleRepositoryProvider).partnerTypes();
   } catch (_) {

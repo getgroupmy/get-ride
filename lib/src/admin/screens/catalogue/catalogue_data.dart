@@ -11,6 +11,7 @@ import '../../../providers.dart';
 import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
 import 'catalogue_logic.dart';
+import '../../../data/live_tables.dart';
 
 /// Settings categories owned by this module. Only `key`/`table` matter to the
 /// shared repository's `settings()` / `saveSetting()` / `deleteSetting()`.
@@ -57,21 +58,34 @@ const requiredDocumentsCategory = SettingsCategory(
 
 /// Entries of one category, refreshed by invalidating with the category key.
 final catalogueEntriesProvider = FutureProvider.autoDispose.family<List<SettingEntry>, SettingsCategory>(
-  (ref, c) => ref.watch(adminRepositoryProvider).settings(c),
+  (ref, c) {
+  ref.watchLive('settings_entries');
+  return ref.watch(adminRepositoryProvider).settings(c);
+},
 );
 
 final catalogueRepositoryProvider = Provider((ref) => CatalogueRepository(ref.watch(supabaseProvider)));
 
 final vehicleMakeModelsProvider = FutureProvider.autoDispose<List<VehicleMakeModel>>(
-  (ref) => ref.watch(catalogueRepositoryProvider).vehicleMakeModels(),
+  (ref) {
+  ref.watchLive('vehicle_make_models');
+  return ref.watch(catalogueRepositoryProvider).vehicleMakeModels();
+},
 );
 
 final regionOptionsProvider = FutureProvider.autoDispose<List<RegionSelection>>(
-  (ref) => ref.watch(catalogueRepositoryProvider).regionOptions(),
+  (ref) {
+  ref.watchLive('countries');
+  ref.watchLive('states');
+  return ref.watch(catalogueRepositoryProvider).regionOptions();
+},
 );
 
 final apiProvidersProvider = FutureProvider.autoDispose<List<ApiProviderInfo>>(
-  (ref) => ref.watch(catalogueRepositoryProvider).apiProviders(),
+  (ref) {
+  ref.watchLive('app_settings');
+  return ref.watch(catalogueRepositoryProvider).apiProviders();
+},
 );
 
 final assignmentsProvider = FutureProvider.autoDispose<AssignmentsMap>((ref) => AssignmentStore.load());

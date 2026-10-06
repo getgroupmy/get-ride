@@ -13,6 +13,7 @@ import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import 'meter_logic.dart';
 import 'meter_store.dart';
+import '../../../data/live_tables.dart';
 
 const meterDigitalPage = 'admin-settings-meter-digital';
 
@@ -23,6 +24,10 @@ final meterProfilesProvider =
 
 /// Place-name suggestions from the shared geography tables (best effort).
 final _geoNamesProvider = FutureProvider.autoDispose<_GeoNames>((ref) async {
+  ref.watchLive('countries');
+  ref.watchLive('states');
+  ref.watchLive('cities');
+  ref.watchLive('suburbs');
   final db = ref.watch(supabaseProvider);
   Future<List<Map<String, dynamic>>> read(String table, String cols) async {
     try {

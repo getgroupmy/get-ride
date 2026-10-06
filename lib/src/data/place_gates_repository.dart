@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/place_gates.dart';
 import '../providers.dart';
 import '../core/airport_areas.dart';
+import 'live_tables.dart';
 
 /// The admin's multi-gate places (plus airports, which count as places) and
 /// their gates, for the place picker. Empty when they can't be read, so
@@ -10,6 +11,7 @@ import '../core/airport_areas.dart';
 typedef GateCatalogue = ({List<GateRow> places, List<GateRow> gates});
 
 final placeGatesProvider = FutureProvider<GateCatalogue>((ref) async {
+  ref.watchLive('multi_gate');
   final db = ref.watch(supabaseProvider);
   GateRow row(Map<String, dynamic> r) =>
       (id: '${r['id']}', values: Map<String, dynamic>.from((r['values'] as Map?) ?? const {}));
@@ -42,6 +44,7 @@ final placeGatesProvider = FutureProvider<GateCatalogue>((ref) async {
 /// Admin → Airport Areas with a drawn boundary, for collapsing search results
 /// inside an airport into the airport itself. Empty when unreadable.
 final airportAreasProvider = FutureProvider<List<AirportArea>>((ref) async {
+  ref.watchLive('airport_areas');
   try {
     final rows = await ref.watch(supabaseProvider).from('airport_areas').select('id, values').order('position');
     return [

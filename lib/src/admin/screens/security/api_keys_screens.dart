@@ -8,11 +8,15 @@ import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
 import 'api_keys_logic.dart';
 import 'security_data.dart';
+import '../../../data/live_tables.dart';
 
 /// Expo gates the provider, service and key screens (and Elife) on this key.
 const apiKeysPage = 'admin-settings-api-keys';
 
-final apiProvidersProvider = FutureProvider.autoDispose((ref) => ref.watch(securityRepositoryProvider).apiProviders());
+final apiProvidersProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('app_settings');
+  return ref.watch(securityRepositoryProvider).apiProviders();
+});
 
 bool _canEdit(WidgetRef ref, String page) =>
     ref.watch(securityLevelProvider('$apiKeysPage,$page')) == AccessLevel.edit;

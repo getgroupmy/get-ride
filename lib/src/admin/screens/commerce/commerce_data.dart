@@ -8,6 +8,7 @@ import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
 import 'commerce_logic.dart';
 import 'get_coin.dart';
+import '../../../data/live_tables.dart';
 
 SettingsCategory _cat(String key, String page, String title, String table) =>
     SettingsCategory(key: key, page: page, title: title, subtitle: '', table: table, fields: const []);
@@ -37,6 +38,7 @@ typedef Entry = ({String id, Map<String, dynamic> values});
 
 /// Entries of one category, in `position` order.
 final commerceEntriesProvider = FutureProvider.autoDispose.family<List<Entry>, String>((ref, key) async {
+  ref.watchLive('settings_entries');
   final rows = await ref.watch(adminRepositoryProvider).settings(commerceCategories[key]!);
   return [for (final r in rows) (id: r.id, values: r.values)];
 });
@@ -44,6 +46,7 @@ final commerceEntriesProvider = FutureProvider.autoDispose.family<List<Entry>, S
 /// Active gateway accounts for the picker. Only the reference fields are
 /// selected (JSON-path projection), so credentials never reach this client.
 final gatewayAccountsProvider = FutureProvider.autoDispose<List<SelectedGateway>>((ref) async {
+  ref.watchLive('settings_entries');
   final rows = await ref
       .watch(supabaseProvider)
       .from('settings_entries')
@@ -177,6 +180,7 @@ final commerceRepositoryProvider = Provider((ref) => CommerceRepository(ref.watc
 
 final getCoinProvider = FutureProvider.autoDispose(
   (ref) async {
+  ref.watchLive('get_coin_settings');
     final repo = ref.watch(commerceRepositoryProvider);
     final results = await Future.wait([repo.getCoinSettings(), repo.coinMarketStats()]);
     return (settings: results[0] as GetCoinSettings, stats: results[1] as CoinMarketStats);

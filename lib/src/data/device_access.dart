@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../admin/screens/security/ip_access_logic.dart';
 import '../admin/screens/security/security_data.dart';
+import 'live_tables.dart';
 
 /// What a blacklisted device is told (Expo `phone-auth` / `ride-confirm`).
 const serviceNotAvailable = 'Service Not Available';
@@ -13,6 +14,7 @@ const serviceNotAvailable = 'Service Not Available';
 /// Expo's other use of the rules, letting a whitelisted IP skip the admin
 /// PIN, is deliberately not ported: an IP address is not a credential.
 final deviceBlockedProvider = FutureProvider<bool>((ref) async {
+  ref.watchLive('ip_access_rules');
   try {
     final ip = await lookupPublicIp();
     if (ip == null) return false;
