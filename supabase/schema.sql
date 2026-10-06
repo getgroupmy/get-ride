@@ -4036,7 +4036,7 @@ exception when duplicate_object then null;
 end$$;
 
 -- ============================================================================
--- Folded-in migrations (added 2026-10-06 with the 0098 squash)
+-- Folded-in migrations (added 2026-10-06 with the 0097 squash)
 -- ----------------------------------------------------------------------------
 -- Until the squash, these migrations' objects existed only on databases that
 -- had run the migration files: schema.sql never created them (tables such as
