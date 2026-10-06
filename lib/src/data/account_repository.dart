@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../core/avatar.dart';
 import '../core/profile_identity.dart';
+import '../core/support_media.dart';
 import 'models.dart';
 
 /// Profile, partner record, wallet, emergency contacts and support — the
@@ -184,10 +186,44 @@ class AccountRepository {
       'body': text,
       'status': 'sent',
     });
-    // Bump the ticket summary; the admin-side unread counter goes up.
+    await _bumpTicket(ticketId, text);
+  }
+
+  /// Sends a photo or video: uploads it to the ticket's folder in
+  /// `support-media`, then posts it as an `image` / `video` message.
+  Future<void> sendAttachment(
+    String ticketId,
+    Uint8List bytes, {
+    required String name,
+    String? senderName,
+  }) async {
+    final ext = fileExt(name);
+    final kind = supportMediaKind(ext);
+    if (kind == null) throw StateError('Send a photo or a video.');
+    final path = supportMediaPath(ticketId, kind, ext, DateTime.now(), const Uuid().v4().substring(0, 8));
+    final bucket = _db.storage.from('support-media');
+    await bucket.uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(upsert: true, contentType: supportContentType(kind, ext)),
+    );
+    await _db.from('support_messages').insert({
+      'ticket_id': ticketId,
+      'sender_role': 'user',
+      'sender_id': _uid,
+      'sender_name': senderName,
+      'type': kind,
+      'media_url': bucket.getPublicUrl(path),
+      'status': 'sent',
+    });
+    await _bumpTicket(ticketId, supportSummary(kind, null));
+  }
+
+  /// Bumps the ticket summary; the admin-side unread counter goes up.
+  Future<void> _bumpTicket(String ticketId, String preview) async {
     final t = await _db.from('support_tickets').select('unread_admin').eq('id', ticketId).maybeSingle();
     await _db.from('support_tickets').update({
-      'last_message': text,
+      'last_message': preview,
       'last_message_at': DateTime.now().toUtc().toIso8601String(),
       'last_sender_role': 'user',
       'unread_admin': ((t?['unread_admin'] as num?)?.toInt() ?? 0) + 1,
