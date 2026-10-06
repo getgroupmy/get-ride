@@ -181,6 +181,7 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'serviceBoxBadge': true,
       'serviceEnabled': true,
       'registrationEnabled': true,
+      'signInLogo': true,
       'userMockEnabled': true,
       'partnerMockEnabled': true,
       'riderTripSimEnabled': true,
