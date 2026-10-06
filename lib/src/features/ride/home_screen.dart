@@ -7,10 +7,13 @@ import 'package:latlong2/latlong.dart';
 import '../../config.dart';
 import '../../core/app_display.dart';
 import '../../core/fare.dart';
+import '../../core/fare_coins.dart';
 import '../../core/format.dart';
 import '../../core/route_estimate.dart';
 import '../../data/app_display_repository.dart';
+import '../../data/coin_trade_repository.dart';
 import '../../data/device_access.dart';
+import '../../data/fare_coin_store.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
@@ -50,6 +53,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return services.firstWhere((s) => s.name == _serviceName, orElse: () => services.first);
   }
   String _payment = 'Cash';
+  bool _useCoins = false;
+
+  /// The rider's GET.coin balance and the admin rate, for the "Use GET.coin"
+  /// switch. Null while loading or when it can't be read: no switch then.
+  ({double balance, double rate})? get _coins {
+    final q = ref.read(coinTradeQuoteProvider).value;
+    return q == null ? null : (balance: q.coinBalance, rate: q.settings.coinsPerCurrency);
+  }
   final _note = TextEditingController();
   _PinTarget _pinTarget = _PinTarget.none;
   bool _booking = false;
@@ -194,6 +205,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
             offerMe: offerMe,
           );
+      final coins = _coins;
+      if (_useCoins && coins != null && fareCoinOffer(_fareFor(_service), coins.balance, coins.rate) != null) {
+        try {
+          await ref.read(fareCoinChoiceStoreProvider).choose(req.id);
+        } catch (_) {}
+      }
       if (mounted) context.push('/ride/${req.id}').then((_) => _checkOngoing());
     } catch (e) {
       if (mounted) showError(context, e);
@@ -248,6 +265,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ]);
 
     ref.watch(rideServicesProvider); // rebuild when the catalogue arrives
+    ref.watch(coinTradeQuoteProvider); // and when the GET.coin balance does
     final panel = _BookingPanel(
       ongoing: _ongoing,
       pickup: _pickup,
@@ -259,6 +277,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       services: _services,
       service: _service,
       payment: _payment,
+      coins: _coins,
+      useCoins: _useCoins,
+      onUseCoins: (v) => setState(() => _useCoins = v),
       note: _note,
       booking: _booking,
       fareFor: _fareFor,
@@ -332,6 +353,9 @@ class _BookingPanel extends StatelessWidget {
     required this.services,
     required this.service,
     required this.payment,
+    this.coins,
+    this.useCoins = false,
+    this.onUseCoins,
     required this.note,
     required this.booking,
     required this.fareFor,
@@ -354,6 +378,9 @@ class _BookingPanel extends StatelessWidget {
   final List<RideService> services;
   final RideService service;
   final String payment;
+  final ({double balance, double rate})? coins;
+  final bool useCoins;
+  final ValueChanged<bool>? onUseCoins;
   final TextEditingController note;
   final bool booking;
   final double Function(RideService) fareFor;
@@ -446,6 +473,22 @@ class _BookingPanel extends StatelessWidget {
             selected: {payment},
             onSelectionChanged: (v) => onPayment(v.first),
           ),
+          if (coins != null && fareCoinOffer(fareFor(service), coins!.balance, coins!.rate) != null)
+            SwitchListTile(
+              key: const ValueKey('use-coins'),
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.toll_outlined),
+              title: const Text('Use GET.coin'),
+              subtitle: Text(fareCoinSubtitle(
+                on: useCoins,
+                fare: fareFor(service),
+                coinBalance: coins!.balance,
+                coinsPerCurrency: coins!.rate,
+                currency: AppConfig.currency,
+              )),
+              value: useCoins,
+              onChanged: onUseCoins,
+            ),
           const SizedBox(height: 12),
           TextField(
             controller: note,

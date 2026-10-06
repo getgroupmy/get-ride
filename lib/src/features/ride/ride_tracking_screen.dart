@@ -5,9 +5,11 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
+import '../../core/fare_coins.dart';
 import '../../core/format.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/sos.dart';
+import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -81,9 +83,17 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   double? _reward;
   bool _rewardClaimed = false;
 
+  /// Whether this ride was booked with "Use GET.coin" on, and what the coins
+  /// paid once applied at drop-off.
+  bool _coinsChosen = false;
+  FareCoinRedemption? _redeemed;
+
   @override
   void initState() {
     super.initState();
+    ref.read(fareCoinChoiceStoreProvider).chosen(widget.ride.id).then((v) {
+      if (mounted && v) setState(() => _coinsChosen = true);
+    }, onError: (_) {});
     _maybeClaimReward();
   }
 
@@ -96,13 +106,24 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   void _maybeClaimReward() {
     if (_rewardClaimed || widget.ride.status != RideStatus.completed) return;
     _rewardClaimed = true;
-    ref.read(rideRepositoryProvider).claimRideReward(widget.ride).then((coins) {
+    final repo = ref.read(rideRepositoryProvider);
+    final ride = widget.ride;
+    // Coins toward the fare and the ride reward are independent (the reward
+    // is priced on the stored fare server-side), so each shows as it lands.
+    void refreshWallet() {
+      ref.invalidate(walletBalancesProvider);
+      ref.invalidate(walletTxProvider);
+    }
+
+    repo.claimRideReward(ride).then((coins) {
       if (!mounted) return;
       setState(() => _reward = coins);
-      if (coins > 0) {
-        ref.invalidate(walletBalancesProvider);
-        ref.invalidate(walletTxProvider);
-      }
+      if (coins > 0) refreshWallet();
+    });
+    redeemChosenFareCoins(repo, ref.read(fareCoinChoiceStoreProvider), ride).then((redeemed) {
+      if (!mounted || redeemed == null || redeemed.coinsUsed <= 0) return;
+      setState(() => _redeemed = redeemed);
+      refreshWallet();
     });
   }
 
@@ -451,6 +472,23 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               icon: const Icon(Icons.close),
               label: const Text('Cancel ride'),
               onPressed: _busy ? null : _cancel,
+            ),
+          if (_coinsChosen && r.status.isOngoing)
+            const ListTile(
+              key: ValueKey('coins-pending'),
+              dense: true,
+              leading: Icon(Icons.toll_outlined, color: Color(0xFFB8860B)),
+              title: Text('GET.coin will be applied at drop-off'),
+            ),
+          if (_redeemed != null)
+            Card(
+              key: const ValueKey('coins-redeemed'),
+              color: const Color(0xFFF5B301).withValues(alpha: 0.18),
+              child: ListTile(
+                leading: const Icon(Icons.toll_outlined, color: Color(0xFFB8860B)),
+                title: Text('${formatMoney(_redeemed!.coinValue, r.currency)} paid with GET.coin'),
+                subtitle: Text('${formatCoins(_redeemed!.coinsUsed)} used · pay the rest as usual'),
+              ),
             ),
           if (_reward != null && _reward! > 0)
             Card(

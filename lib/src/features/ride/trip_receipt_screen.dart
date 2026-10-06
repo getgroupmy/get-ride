@@ -9,6 +9,7 @@ import 'package:printing/printing.dart';
 
 import '../../core/format.dart';
 import '../../core/trip_receipt.dart';
+import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -18,7 +19,11 @@ final tripProvider = FutureProvider.autoDispose.family<RideRequest?, String>((re
   final r = await repo.fetch(id);
   // A rider who wasn't on the live screen at drop-off still gets the ride
   // reward; the server pays it once per ride, so this is a no-op otherwise.
-  if (r != null) unawaited(repo.claimRideReward(r));
+  // Coins chosen at booking are applied the same way.
+  if (r != null) {
+    unawaited(repo.claimRideReward(r));
+    unawaited(redeemChosenFareCoins(repo, ref.read(fareCoinChoiceStoreProvider), r));
+  }
   return r;
 });
 
