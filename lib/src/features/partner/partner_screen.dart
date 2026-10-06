@@ -421,6 +421,17 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     const SizedBox(width: 8),
                     Expanded(child: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
                   ]),
+                  if (r.stops.isNotEmpty)
+                    Row(key: ValueKey('queue-stops-${r.id}'), children: [
+                      Icon(Icons.more_vert, size: 16, color: Colors.orange.shade800),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${r.stops.length} stop${r.stops.length == 1 ? '' : 's'} on the way',
+                          style: t.textTheme.bodySmall,
+                        ),
+                      ),
+                    ]),
                   Row(children: [
                     Icon(Icons.location_on, size: 16, color: Colors.red.shade700),
                     const SizedBox(width: 8),

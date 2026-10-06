@@ -15,6 +15,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
+import '../../widgets/ride_stop_tiles.dart';
 import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
 import '../safety/voice_protection_controller.dart';
 
@@ -187,6 +188,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             me: _me,
             pickup: _ll(r.pickupLat, r.pickupLng),
             drop: _ll(r.dropLat, r.dropLng),
+            stops: [for (final s in r.stops) s.point],
           );
           final panel = _panel(r);
           if (MediaQuery.sizeOf(context).width >= 900) {
@@ -265,6 +267,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
               title: Text(r.pickupLabel),
               subtitle: r.pickupAddress == null ? null : Text(r.pickupAddress!, maxLines: 2),
             ),
+            RideStopTiles(stops: r.stops, onNavigate: r.status.isOngoing ? (s) => _navigate(s.point) : null),
             ListTile(
               leading: Icon(Icons.location_on, color: Colors.red.shade700),
               title: Text(r.dropLabel),

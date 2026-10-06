@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import '../core/commission.dart';
 import '../core/fare_coins.dart';
 import '../core/ride_bidding.dart';
+import '../core/ride_stops.dart';
 import '../core/trip_checkpoint.dart';
 import 'geo_service.dart';
 import 'models.dart';
@@ -45,6 +46,7 @@ class RideRepository {
     String? riderPhone,
     String? deviceOs,
     bool offerMe = false,
+    List<Place> stops = const [],
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -79,8 +81,18 @@ class RideRepository {
       'user_accept_lat': pickupLat,
       'user_accept_lng': pickupLng,
       'status': 'open',
+      if (stops.isNotEmpty) 'stops': [for (final p in stops.take(maxRideStops)) stopToJson(p)],
     };
-    final data = await _db.from(_table).insert(row).select().single();
+    Map<String, dynamic> data;
+    try {
+      data = await _db.from(_table).insert(row).select().single();
+    } on PostgrestException catch (e) {
+      // A database without migration 0097 books the ride without its stops
+      // (the route and fare already went through them) rather than failing.
+      if (!row.containsKey('stops') || !'${e.message} ${e.details}'.contains('stops')) rethrow;
+      row.remove('stops');
+      data = await _db.from(_table).insert(row).select().single();
+    }
     final req = RideRequest(data);
     unawaited(_notifyPartners(req));
     return req;
