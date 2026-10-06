@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/place_gates.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
+import '../../data/place_gates_repository.dart';
 import '../../providers.dart';
 
 /// Result of the place picker: either a concrete place or a request to drop
@@ -24,9 +26,10 @@ Future<PlacePick?> showPlaceSearch(
   required String title,
   LatLng? near,
   Place? current,
+  GateUsage? usage,
 }) {
   final wide = MediaQuery.sizeOf(context).width >= 720;
-  final body = _PlaceSearch(title: title, near: near, current: current);
+  final body = _PlaceSearch(title: title, near: near, current: current, usage: usage);
   if (wide) {
     return showDialog<PlacePick>(
       context: context,
@@ -44,10 +47,13 @@ Future<PlacePick?> showPlaceSearch(
 }
 
 class _PlaceSearch extends ConsumerStatefulWidget {
-  const _PlaceSearch({required this.title, this.near, this.current});
+  const _PlaceSearch({required this.title, this.near, this.current, this.usage});
   final String title;
   final LatLng? near;
   final Place? current;
+
+  /// Whether this is a pickup or a drop-off, so only gates open for it show.
+  final GateUsage? usage;
 
   @override
   ConsumerState<_PlaceSearch> createState() => _PlaceSearchState();
@@ -81,8 +87,52 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     });
   }
 
+  /// A search result, with the admin's gates under it when it is a
+  /// multi-gate place (Expo `PlaceGatesList`). Where the place requires a
+  /// gate, the place itself can't be picked — only one of its gates.
+  Widget _result(Place p, GateCatalogue? catalogue) {
+    final gated = catalogue == null
+        ? null
+        : matchGatedPlace(
+            places: catalogue.places,
+            gates: catalogue.gates,
+            point: p.point,
+            name: p.name,
+            usage: widget.usage,
+          );
+    final gates = gated?.gates ?? const <GateOption>[];
+    final blocked = gated?.blocksPlace ?? false;
+    return ListTile(
+      key: ValueKey('result-${p.point.latitude},${p.point.longitude}'),
+      leading: Icon(gates.isEmpty ? Icons.place_outlined : Icons.door_front_door_outlined),
+      title: Text(p.name),
+      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(p.address, maxLines: 2, overflow: TextOverflow.ellipsis),
+        if (gates.isNotEmpty) ...[
+          if (blocked)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('Choose a gate', style: Theme.of(context).textTheme.labelMedium),
+            ),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final g in gates)
+              ActionChip(
+                key: ValueKey('gate-${g.id}'),
+                avatar: const Icon(Icons.door_front_door_outlined, size: 16),
+                label: Text(g.name),
+                onPressed: () => Navigator.pop(context, PlacePick.place(gatePlace(p, gated!, g))),
+              ),
+          ]),
+        ],
+      ]),
+      onTap: blocked ? null : () => Navigator.pop(context, PlacePick.place(p)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final catalogue = ref.watch(placeGatesProvider).value;
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -143,13 +193,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                 ],
               _ => const <Widget>[],
             },
-          for (final p in _results)
-            ListTile(
-              leading: const Icon(Icons.place_outlined),
-              title: Text(p.name),
-              subtitle: Text(p.address, maxLines: 2, overflow: TextOverflow.ellipsis),
-              onTap: () => Navigator.pop(context, PlacePick.place(p)),
-            ),
+          for (final p in _results) _result(p, catalogue),
         ]),
       ),
     ]);
