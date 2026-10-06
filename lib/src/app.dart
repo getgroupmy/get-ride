@@ -26,6 +26,7 @@ import 'features/meter/printer_screen.dart';
 import 'features/meter/vehicle_info_screen.dart';
 import 'features/auth/phone_screen.dart';
 import 'features/auth/pin_screen.dart';
+import 'features/auth/registration_closed_screen.dart';
 import 'features/auth/set_pin_screen.dart';
 import 'features/partner/partner_onboarding_screen.dart';
 import 'features/partner/driver_permit_screen.dart';
@@ -139,6 +140,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ),
         GoRoute(path: 'pin', builder: (_, s) => PinScreen(phone: s.uri.queryParameters['phone'] ?? '')),
+        GoRoute(
+          path: 'closed',
+          builder: (_, s) => RegistrationClosedScreen(phone: s.uri.queryParameters['phone'] ?? ''),
+        ),
         GoRoute(
           path: 'set-pin',
           builder: (_, s) => SetPinScreen(changing: s.uri.queryParameters['change'] == '1'),
