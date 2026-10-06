@@ -32,6 +32,10 @@ const liveSettingTables = <String>[
   'states',
   'cities',
   'suburbs',
+  // Not settings, but the balances on screen: a commission or a transfer
+  // lands without a pull to refresh (row-level security limits it to the
+  // signed-in account's own wallets).
+  'wallets',
 ];
 
 /// Changes landing this close together are one refetch, not one each (an

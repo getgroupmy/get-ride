@@ -26,6 +26,7 @@ import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
 import 'driver_home_map.dart';
 import 'driver_permit_screen.dart' show currentPlateProvider, driverPermitProvider, showPermitBlock;
+import 'driver_wallet_pills.dart';
 import 'fare_offer.dart';
 import 'partner_menu.dart';
 import 'vehicle_picker.dart';
@@ -596,6 +597,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     _destinationTile(),
                   ]),
                 ),
+              const DriverWalletPills(),
               const CurrentVehicleCard(),
               if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
               if (!wide) SizedBox(height: 200, child: ClipRRect(borderRadius: BorderRadius.circular(12), child: map)),
