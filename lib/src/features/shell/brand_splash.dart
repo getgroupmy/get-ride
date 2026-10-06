@@ -1,74 +1,107 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/app_branding.dart';
 import '../../data/branding_cache.dart';
 
-/// The admin's splash image on its background colour, laid over the app for
-/// [splashHold] after launch and then faded out (Expo `SplashScreenComponent`).
-/// The app builds underneath from the first frame, so the splash costs no
-/// start-up time. Without a cached image there is no splash at all.
-class BrandSplash extends StatefulWidget {
-  const BrandSplash({super.key, required this.cached, required this.child, this.hold = splashHold});
+/// Holds the app behind the splash for what is left of [splashHold] since the
+/// process started, then shows it (iAkauntan's `SplashGate`). In the Android
+/// and iOS apps only; elsewhere this is its child and nothing else.
+///
+/// The app is not built until the splash is done, so nothing it asks for on
+/// its first screen (a location prompt, a restored ride) appears over it.
+class SplashGate extends StatefulWidget {
+  const SplashGate({super.key, required this.child, this.cached, this.live, this.held, this.now});
 
-  final CachedBranding? cached;
   final Widget child;
-  final Duration hold;
+
+  /// The branding the last launch cached, so the picture paints at once.
+  final CachedBranding? cached;
+
+  /// The branding fetched by this launch, which wins once it arrives — so a
+  /// fresh install, with nothing cached, still shows the admin's picture.
+  final ValueListenable<AppBranding?>? live;
+
+  /// Whether this surface holds a splash; null asks [splashHeld]. For tests.
+  final bool? held;
+
+  /// The clock; null is [DateTime.now]. For tests.
+  final DateTime Function()? now;
 
   @override
-  State<BrandSplash> createState() => _BrandSplashState();
+  State<SplashGate> createState() => _SplashGateState();
 }
 
-class _BrandSplashState extends State<BrandSplash> {
-  late bool _visible = widget.cached?.branding.showsSplash ?? false;
-  late bool _mounted = _visible;
+class _SplashGateState extends State<SplashGate> {
+  bool _done = false;
 
   @override
   void initState() {
     super.initState();
-    if (_visible) {
-      Future.delayed(widget.hold, () {
-        if (mounted) setState(() => _visible = false);
-      });
+    final held = widget.held ?? splashHeld(isWeb: kIsWeb, platform: defaultTargetPlatform);
+    final left = held ? splashRemaining((widget.now ?? DateTime.now)()) : Duration.zero;
+    if (left == Duration.zero) {
+      _done = true;
+      return;
     }
+    Future<void>.delayed(left, () {
+      if (mounted) setState(() => _done = true);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final cached = widget.cached;
-    if (!_mounted || cached == null) return widget.child;
-    final b = cached.branding;
-    final bytes = cached.imageBytes;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        widget.child,
-        IgnorePointer(
-          ignoring: !_visible,
-          child: AnimatedOpacity(
-            key: const ValueKey('brand-splash'),
-            opacity: _visible ? 1 : 0,
-            duration: splashFade,
-            onEnd: () {
-              if (!_visible && mounted) setState(() => _mounted = false);
-            },
-            child: ColoredBox(
-              color: b.background,
-              child: Center(
-                child: SizedBox.square(
-                  dimension: 280,
-                  child: bytes != null
-                      ? Image.memory(bytes, fit: BoxFit.contain, gaplessPlayback: true)
-                      : Image.network(
-                          b.splashImageUrl!,
-                          fit: BoxFit.contain,
-                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
-                        ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
+    if (_done) return widget.child;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final live = widget.live;
+    if (live == null) return SplashView(cached: widget.cached, dark: dark);
+    return ValueListenableBuilder<AppBranding?>(
+      valueListenable: live,
+      builder: (_, latest, _) => SplashView(cached: widget.cached, latest: latest, dark: dark),
+    );
+  }
+}
+
+/// The splash itself: the admin's picture, else the app's logo, else its
+/// name, on white or black.
+class SplashView extends StatelessWidget {
+  const SplashView({super.key, this.cached, this.latest, required this.dark});
+
+  final CachedBranding? cached;
+  final AppBranding? latest;
+  final bool dark;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = Text(
+      splashWordmark,
+      key: const ValueKey('splash-wordmark'),
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        color: splashInk(dark: dark),
+        fontSize: 26,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.5,
+      ),
+    );
+    Widget fallback(BuildContext _, Object _, StackTrace? _) => name;
+
+    final url = (latest ?? cached?.branding)?.splashImageUrl;
+    final bytes = cached?.imageBytes;
+    final Widget picture;
+    if (url == null) {
+      picture = Image.asset(splashLogoAsset, key: const ValueKey('splash-logo'), height: 120, errorBuilder: fallback);
+    } else if (bytes != null && url == cached?.branding.splashImageUrl) {
+      picture = Image.memory(bytes, key: const ValueKey('splash-image'), height: 120, errorBuilder: fallback);
+    } else {
+      picture = Image.network(url, key: const ValueKey('splash-image'), height: 120, errorBuilder: fallback);
+    }
+    return Container(
+      key: const ValueKey('splash'),
+      color: splashBackground(dark: dark),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(32),
+      child: picture,
     );
   }
 }

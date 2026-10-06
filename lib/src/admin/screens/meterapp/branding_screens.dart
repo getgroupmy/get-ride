@@ -14,6 +14,9 @@ import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import 'pick_image.dart';
 import 'site_logic.dart';
+import '../../../core/app_branding.dart';
+import '../../../data/branding_cache.dart';
+import '../../../features/shell/brand_splash.dart';
 
 const appIconPage = 'admin-settings-app-icon';
 const splashPage = 'admin-settings-splash';
@@ -50,30 +53,27 @@ final brandingProvider = FutureProvider.autoDispose((ref) => ref.watch(brandingS
 
 /// Shows a picked (not yet uploaded) image or a stored URL.
 class _ImageBox extends StatelessWidget {
-  const _ImageBox({this.bytes, this.url, required this.size, required this.radius, this.color, this.fit = BoxFit.cover, this.placeholder});
+  const _ImageBox({this.bytes, this.url, required this.size, required this.radius});
   final Uint8List? bytes;
   final String? url;
   final double size;
   final double radius;
-  final Color? color;
-  final BoxFit fit;
-  final IconData? placeholder;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    Widget fallback() => Icon(placeholder ?? Icons.apps, size: size * 0.4, color: t.colorScheme.outline);
+    Widget fallback() => Icon(Icons.apps, size: size * 0.4, color: t.colorScheme.outline);
     final child = bytes != null
-        ? Image.memory(bytes!, fit: fit)
+        ? Image.memory(bytes!, fit: BoxFit.cover)
         : url != null
-            ? Image.network(url!, fit: fit, errorBuilder: (_, _, _) => fallback())
+            ? Image.network(url!, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback())
             : fallback();
     return Container(
       width: size,
       height: size,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: color ?? t.colorScheme.surfaceContainerHighest,
+        color: t.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: t.colorScheme.outlineVariant),
       ),
@@ -253,28 +253,17 @@ class AdminSplashScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminSplashScreenState extends ConsumerState<AdminSplashScreen> {
-  final _bg = TextEditingController();
   bool _loaded = false;
   PickedImage? _picked;
   String? _url;
   bool _saving = false;
 
-  @override
-  void dispose() {
-    _bg.dispose();
-    super.dispose();
-  }
-
   Future<void> _save() async {
-    if (!isValidHex(_bg.text)) {
-      showInfo(context, 'Background color must be a valid #RRGGBB hex.');
-      return;
-    }
     setState(() => _saving = true);
     final store = ref.read(brandingStoreProvider);
     final ok = await runAdminAction(context, () async {
       final url = _picked != null ? await store.upload(_picked!, 'splash') : _url;
-      await store.update({'splash_image_url': url, 'splash_bg_color': _bg.text.trim()});
+      await store.update({'splash_image_url': url});
       _url = url;
       _picked = null;
     }, success: 'Splash saved');
@@ -289,59 +278,50 @@ class _AdminSplashScreenState extends ConsumerState<AdminSplashScreen> {
     return AdminPage(
       title: 'Splash Screen',
       page: splashPage,
-      actions: [
-        if (canEdit)
-          IconButton(
-            tooltip: 'Reset',
-            icon: const Icon(Icons.restart_alt),
-            onPressed: () async {
-              if (!await confirm(context, 'Reset', 'Restore the default splash image and background?', ok: 'Reset')) return;
-              setState(() {
-                _picked = null;
-                _url = null;
-                _bg.text = defaultSplashBgColor;
-              });
-            },
-          ),
-      ],
       body: AsyncView(
         value: ref.watch(brandingProvider),
         onRetry: () => ref.invalidate(brandingProvider),
         data: (row) {
           if (!_loaded) {
             _loaded = true;
-            _url = row['splash_image_url'] as String?;
-            _bg.text = (row['splash_bg_color'] as String?) ?? defaultSplashBgColor;
+            _url = AppBranding.fromRow(row).splashImageUrl;
           }
-          final color = hexToColor(_bg.text);
+          // The previews are the real splash, on both backgrounds it sits on.
+          final picked = _picked;
+          final preview = picked != null
+              ? CachedBranding(const AppBranding(splashImageUrl: 'https://preview'), picked.bytes)
+              : CachedBranding(AppBranding(splashImageUrl: _url));
+          Widget phone(bool dark, String label) => Column(children: [
+                Container(
+                  width: 150,
+                  height: 270,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                  ),
+                  child: SplashView(cached: preview, dark: dark),
+                ),
+                const SizedBox(height: 6),
+                Text(label, style: Theme.of(context).textTheme.labelMedium),
+              ]);
           return ListView(padding: const EdgeInsets.symmetric(vertical: 24), children: [
             ResponsiveCenter(
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Center(
-                  child: Container(
-                    width: 200,
-                    height: 360,
-                    decoration: BoxDecoration(
-                      color: color ?? Theme.of(context).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                    ),
-                    child: Center(
-                      child: _ImageBox(
-                        bytes: _picked?.bytes,
-                        url: _url,
-                        size: 120,
-                        radius: 0,
-                        color: Colors.transparent,
-                        fit: BoxFit.contain,
-                        placeholder: Icons.auto_awesome,
-                      ),
-                    ),
-                  ),
+                Text(
+                  'Shown for ${splashHold.inSeconds} seconds when the Android and iOS apps start, on white — or '
+                  'black in dark mode. Without a picture the app logo is shown. The website has no splash screen.',
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
+                const SizedBox(height: 16),
+                Wrap(alignment: WrapAlignment.center, spacing: 16, runSpacing: 16, children: [
+                  phone(false, 'Light mode'),
+                  phone(true, 'Dark mode'),
+                ]),
                 const SizedBox(height: 16),
                 Wrap(spacing: 8, children: [
                   FilledButton.tonalIcon(
+                    key: const ValueKey('splash-upload'),
                     icon: const Icon(Icons.upload),
                     label: Text(_picked != null || _url != null ? 'Replace image' : 'Upload image'),
                     onPressed: canEdit
@@ -353,6 +333,7 @@ class _AdminSplashScreenState extends ConsumerState<AdminSplashScreen> {
                   ),
                   if (_picked != null || _url != null)
                     TextButton.icon(
+                      key: const ValueKey('splash-clear'),
                       icon: const Icon(Icons.delete_outline),
                       label: const Text('Remove image'),
                       onPressed: canEdit
@@ -361,38 +342,6 @@ class _AdminSplashScreenState extends ConsumerState<AdminSplashScreen> {
                                 _url = null;
                               })
                           : null,
-                    ),
-                ]),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _bg,
-                  enabled: canEdit,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    labelText: 'Background color',
-                    hintText: '#RRGGBB',
-                    errorText: isValidHex(_bg.text) ? null : 'Use a #RRGGBB hex colour',
-                    prefixIcon: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: CircleAvatar(radius: 10, backgroundColor: color ?? Colors.transparent),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final c in splashPresetColors)
-                    InkWell(
-                      onTap: canEdit ? () => setState(() => _bg.text = c) : null,
-                      customBorder: const CircleBorder(),
-                      child: CircleAvatar(
-                        radius: 16,
-                        backgroundColor: Theme.of(context).colorScheme.outlineVariant,
-                        child: CircleAvatar(
-                          radius: 14,
-                          backgroundColor: hexToColor(c),
-                          child: _bg.text.trim().toLowerCase() == c.toLowerCase() ? const Icon(Icons.check, size: 16) : null,
-                        ),
-                      ),
                     ),
                 ]),
                 const SizedBox(height: 24),
