@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/destination_mode.dart';
 import '../../core/format.dart';
+import '../../core/partner_doc_check.dart';
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_queue.dart';
 import '../../core/taxi_meter.dart';
@@ -12,6 +13,7 @@ import '../../data/destination_store.dart';
 import '../../data/device_access.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
+import '../../data/partner_doc_check.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../ride/place_search.dart';
@@ -89,12 +91,59 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       if (mounted) showInfo(context, '$serviceNotAvailable. This device cannot go online.');
       return;
     }
+    if (v) {
+      final partner = ref.read(partnerProvider).value;
+      if (partner != null && !await _documentsCleared(partner, teksi: false)) return;
+      if (!mounted) return;
+    }
     if (v && _autoAccept) _markQueueSeen();
     setState(() => _online = v);
     if (v) {
       final p = await currentPosition();
       if (mounted) setState(() => _me = p);
     }
+  }
+
+  /// Expo's check before a service mode: compulsory documents that are
+  /// missing, rejected or expired keep the partner offline, with a way to
+  /// update them. When the documents cannot be read it lets them through, as
+  /// Expo did, rather than locking a driver out over a network error.
+  Future<bool> _documentsCleared(Partner partner, {required bool teksi}) async {
+    List<DocIssue> blocking;
+    try {
+      blocking = blockingDocIssues(await ref.read(partnerDocCheckProvider)(partner.raw, teksi: teksi));
+    } catch (_) {
+      return true;
+    }
+    if (blocking.isEmpty) return true;
+    if (!mounted) return false;
+    final update = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const ValueKey('docs-blocked'),
+        title: const Text('Update required documents'),
+        content: Text(
+          'Before you can ${teksi ? 'start the meter' : 'go online'}, please update the following:\n\n'
+          '${summarizeDocIssues(blocking)}',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+          FilledButton(
+            key: const ValueKey('docs-update'),
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Update documents'),
+          ),
+        ],
+      ),
+    );
+    if (update == true && mounted) context.push('/drive/onboarding');
+    return false;
+  }
+
+  Future<void> _openMeter(Partner partner) async {
+    if (!await _documentsCleared(partner, teksi: true)) return;
+    if (mounted) context.push('/meter');
   }
 
   Future<void> _accept(RideRequest r, Partner partner) async {
@@ -228,7 +277,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           IconButton(
             tooltip: 'Meter Digital',
             icon: const Icon(Icons.speed),
-            onPressed: () => context.push('/meter'),
+            onPressed: () => _openMeter(partner.value!),
           ),
         if (partner.value != null)
           IconButton(
