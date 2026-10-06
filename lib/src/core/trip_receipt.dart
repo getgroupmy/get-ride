@@ -43,7 +43,12 @@ class TripReceipt {
     this.asDriver = false,
     this.commission,
     this.commissionRate,
+    this.endedEarly = false,
   });
+
+  /// The driver ended the trip before the drop-off; the fare is the
+  /// recalculated one (migration 0104).
+  final bool endedEarly;
 
   final String bookingNo;
   final RideStatus status;
@@ -107,6 +112,7 @@ class TripReceipt {
   }
 
   String get statusLabel => switch (status) {
+    RideStatus.completed when endedEarly => 'Ended early',
     RideStatus.completed => 'Completed',
     RideStatus.cancelled => 'Cancelled',
     RideStatus.expired => 'Expired',
@@ -124,6 +130,7 @@ class TripReceipt {
     return TripReceipt(
       bookingNo: tripBookingNo(r.id),
       status: r.status,
+      endedEarly: r.endedEarlyAt != null,
       currency: r.currency,
       pickup: r.pickupLabel,
       drop: r.dropLabel,

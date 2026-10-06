@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/early_end.dart';
+import 'package:get_ride/src/core/trip_charges.dart';
+import 'package:get_ride/src/core/trip_checkpoint.dart';
 import 'package:get_ride/src/core/trip_progress.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/models.dart';
@@ -38,6 +41,13 @@ class _FakeRides implements RideRepository {
 
   @override
   Future<void> approveCancellation(String id) async => log.add('approve');
+
+  @override
+  Future<void> complete(RideRequest r, {TripCharges charges = TripCharges.none, double? earlyFare}) async =>
+      log.add('complete:${earlyFare ?? 'full'}');
+
+  @override
+  Future<bool> recordCheckpoint(String id, TripCheckpoint checkpoint, double? lat, double? lng) async => true;
 
   @override
   Future<void> publishPartnerLocation(String id, double lat, double lng, double? heading) async {}
@@ -103,6 +113,27 @@ void main() {
       expect(passengerCancelNotice(null, cancelled, approvedHere: false), isNull, reason: 'opened on a cancelled ride');
       expect(passengerCancelNotice(RideStatus.cancelled, cancelled, approvedHere: false), isNull);
       expect(passengerCancelNotice(RideStatus.onTrip, ride('completed'), approvedHere: false), isNull);
+    });
+  });
+
+  group('ending early', () {
+    test('only away from the drop-off, and only when both points are known', () {
+      expect(endsEarly(drop, drop), isFalse);
+      expect(endsEarly(const LatLng(3.1360, 101.6860), drop), isFalse, reason: '~220 m: arriving');
+      expect(endsEarly(pickup, drop), isTrue);
+      expect(endsEarly(null, drop), isFalse);
+      expect(endsEarly(pickup, null), isFalse);
+    });
+
+    test('the fare follows the distance covered, between the flag fall and the agreed fare', () {
+      expect(earlyEndFare(agreed: 20, plannedKm: 10, drivenKm: 4), 8);
+      expect(earlyEndFare(agreed: 20, plannedKm: 10, drivenKm: 0.5), 4, reason: 'flag fall');
+      expect(earlyEndFare(agreed: 3, plannedKm: 10, drivenKm: 0.5), 3, reason: 'never above the agreed fare');
+      expect(earlyEndFare(agreed: 20, plannedKm: 10, drivenKm: 14), 20, reason: 'a detour is not billed past the fare');
+      expect(earlyEndFare(agreed: 20, plannedKm: 7, drivenKm: 2), 5.71);
+      expect(earlyEndFare(agreed: 20, plannedKm: null, drivenKm: 2), 20);
+      expect(earlyEndFare(agreed: 20, plannedKm: 10, drivenKm: null), 20);
+      expect(earlyEndFare(agreed: 0, plannedKm: 10, drivenKm: 2), 0);
     });
   });
 
@@ -234,6 +265,53 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('trip-receipt')));
       await tester.pumpAndSettle();
       expect(find.text('receipt r1'), findsOneWidget);
+    });
+
+    testWidgets('completing short of the drop-off recalculates and stores the fare', (tester) async {
+      await pump(tester);
+      rows.add(ride('on_trip', extra: {'distance_km': 10}));
+      await tester.pump();
+      await fix(tester, const LatLng(3.15, 101.70));
+      await tester.tap(find.byKey(const ValueKey('trip-complete')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('early-end')), findsOneWidget);
+      expect(find.textContaining('2.3 km driven of the 10.0 km booked: RM4.68 instead of RM20.00'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('early-end-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.text('Collect RM4.68'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('charges-confirm')));
+      await tester.pump();
+      await tester.pump();
+      expect(rides.log, contains('complete:4.68'));
+    });
+
+    testWidgets('keep driving leaves the trip running', (tester) async {
+      await pump(tester);
+      rows.add(ride('on_trip', extra: {'distance_km': 10}));
+      await tester.pump();
+      await fix(tester, const LatLng(3.15, 101.70));
+      await tester.tap(find.byKey(const ValueKey('trip-complete')));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.text('Keep driving'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('charges-confirm')), findsNothing);
+      expect(rides.log, isNot(contains(startsWith('complete'))));
+    });
+
+    testWidgets('at the drop-off it completes at the booked fare', (tester) async {
+      await pump(tester);
+      rows.add(ride('on_trip'));
+      await tester.pump();
+      await fix(tester, drop);
+      await tester.tap(find.byKey(const ValueKey('trip-complete')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('early-end')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('charges-confirm')));
+      await tester.pump();
+      await tester.pump();
+      expect(rides.log, contains('complete:full'));
     });
   });
 }

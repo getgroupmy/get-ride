@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/early_end.dart';
 import '../../core/format.dart';
 import '../../core/navigation_app.dart';
 import '../../core/trip_charges.dart';
@@ -236,18 +237,79 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
 
   /// Completing asks first for the tolls and other charges the meter of a
   /// fare can't know (Expo's tolls popup); they go on the ride for the rider.
+  ///
+  /// Completing away from the drop-off ends the trip early (Expo's "End ride
+  /// early?"): the fare is recalculated for the distance actually covered and
+  /// confirmed first, then stored on the ride.
   Future<void> _complete(RideRequest r) async {
+    double? earlyFare;
+    final here = _me;
+    if (endsEarly(here, _ll(r.dropLat, r.dropLng))) {
+      earlyFare = await _confirmEarlyEnd(r, here!);
+      if (earlyFare == null || !mounted) return;
+    }
     final charges = await showDialog<TripCharges>(
       context: context,
-      builder: (_) => _ChargesDialog(fare: r.effectiveFare ?? 0, currency: r.currency),
+      builder: (_) => _ChargesDialog(fare: earlyFare ?? r.effectiveFare ?? 0, currency: r.currency),
     );
     if (charges == null || !mounted) return;
     await _run(() async {
       // Stamped before the status change, as Expo does, so the drop point is
       // where the driver stood when they pressed complete.
       unawaited(_checkpoint(r.id, TripCheckpoint.drop));
-      await ref.read(rideRepositoryProvider).complete(r, charges: charges);
+      await ref.read(rideRepositoryProvider).complete(r, charges: charges, earlyFare: earlyFare);
     });
+  }
+
+  /// Works out the early-end fare and asks the driver to confirm it; null
+  /// keeps driving. The distance covered is the road route from the pickup
+  /// to here (as Expo measured it), else what this screen counted.
+  Future<double?> _confirmEarlyEnd(RideRequest r, LatLng here) async {
+    final geo = ref.read(geoServiceProvider);
+    final pickup = _ll(r.pickupLat, r.pickupLng), drop = _ll(r.dropLat, r.dropLng);
+    Future<double?> km(LatLng? a, LatLng? b) async {
+      if (a == null || b == null) return null;
+      try {
+        return (await geo.route(a, b)).distanceKm;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    setState(() => _busy = true);
+    final (routed, planned) = await (km(pickup, here), r.distanceKm != null ? Future.value(r.distanceKm) : km(pickup, drop)).wait;
+    if (!mounted) return null;
+    setState(() => _busy = false);
+    final driven = routed ?? (_metres > 0 ? _metres / 1000 : null);
+    final agreed = r.effectiveFare ?? 0;
+    final fare = earlyEndFare(agreed: agreed, plannedKm: planned, drivenKm: driven);
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const ValueKey('early-end'),
+        title: const Text('End ride early?'),
+        content: Text(
+          [
+            "You haven't reached the drop-off yet.",
+            if (driven != null && planned != null)
+              'The fare is recalculated for the ${driven.toStringAsFixed(1)} km driven of the '
+                  '${planned.toStringAsFixed(1)} km booked: ${formatMoney(fare, r.currency)} '
+                  'instead of ${formatMoney(agreed, r.currency)}.'
+            else
+              "The distance driven can't be measured, so the booked fare of ${formatMoney(agreed, r.currency)} stands.",
+          ].join('\n\n'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep driving')),
+          FilledButton(
+            key: const ValueKey('early-end-confirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('End ride here'),
+          ),
+        ],
+      ),
+    );
+    return go == true ? fare : null;
   }
 
   void _navigate(LatLng to) {

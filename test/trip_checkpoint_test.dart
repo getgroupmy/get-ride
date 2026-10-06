@@ -34,7 +34,7 @@ class _FakeRides implements RideRepository {
   Future<void> updateStatus(String id, RideStatus status) async => log.add('status:${status.db}');
 
   @override
-  Future<void> complete(RideRequest r, {TripCharges charges = TripCharges.none}) async =>
+  Future<void> complete(RideRequest r, {TripCharges charges = TripCharges.none, double? earlyFare}) async =>
       log.add(charges.isEmpty ? 'complete' : 'complete:${charges.tolls}+${charges.other}');
 
   @override
