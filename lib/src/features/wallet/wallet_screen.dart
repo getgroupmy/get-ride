@@ -5,14 +5,16 @@ import 'package:go_router/go_router.dart';
 import '../../core/credit_recharge.dart';
 import '../../core/format.dart';
 import '../../core/wallet_history.dart';
+import '../../data/live_tables.dart';
 import '../../data/models.dart';
 import '../../data/wallet_pay_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 
-final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>(
-  (ref) => ref.watch(accountRepositoryProvider).walletBalances(),
-);
+final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>((ref) {
+  ref.watchLive('wallets');
+  return ref.watch(accountRepositoryProvider).walletBalances();
+});
 
 final walletTxProvider = FutureProvider.autoDispose<List<WalletTransaction>>(
   (ref) => ref.watch(accountRepositoryProvider).walletTransactions(),

@@ -187,7 +187,7 @@ class WalletBalance {
   String get label => switch (walletType) {
         'get_wallet' => 'GET.wallet',
         'get_coin' => 'GET.coin',
-        'credit' => 'Credit',
+        'get_credit' || 'credit' => 'GET.credit',
         _ => walletType,
       };
 }
