@@ -1,4 +1,9 @@
--- 0098: intermediate stops on a ride request.
+-- 0102: intermediate stops on a ride request.
+--
+-- First merged as 0098_ride_request_stops, the same version the migration
+-- squash (getgroupmy/get-ride#69) gave its baseline; renumbered so every
+-- version is unique again. Idempotent, so a database that already ran it
+-- as 0098 (the live project did) is unaffected.
 --
 -- The Expo booking screen let a rider add stops between pickup and drop-off;
 -- they changed the route and the fare, but were never stored on the request,
@@ -15,4 +20,4 @@ alter table public.ride_requests
   add column if not exists stops jsonb not null default '[]'::jsonb;
 
 comment on column public.ride_requests.stops is
-  'Intermediate stops between pickup and drop-off, in order: [{name, address, lat, lng}]. Migration 0098.';
+  'Intermediate stops between pickup and drop-off, in order: [{name, address, lat, lng}]. Migration 0102.';

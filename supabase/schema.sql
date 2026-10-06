@@ -9821,7 +9821,7 @@ revoke select on public.wallet_transfer_requests from anon;
 grant select on public.wallet_transfer_requests to authenticated;
 
 
--- ---- Ride stops (0098) and driver-declared charges (0100) -------------------
+-- ---- Ride stops (0102) and driver-declared charges (0100) -------------------
 
 alter table public.ride_requests
   add column if not exists stops jsonb not null default '[]'::jsonb;
