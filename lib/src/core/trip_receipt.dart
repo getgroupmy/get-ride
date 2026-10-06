@@ -4,6 +4,7 @@
 library;
 
 import 'package:intl/intl.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../data/models.dart';
 import 'format.dart';
@@ -191,4 +192,16 @@ class TripReceipt {
     }
     return b.toString().trimRight();
   }
+}
+
+/// The trip drawn on the receipt map (Expo `ride-detail`): pickup, any stops,
+/// drop-off. Empty unless both ends were recorded — a map of one end of a
+/// trip is not its route.
+List<LatLng> receiptRoute(RideRequest r) {
+  if (r.pickupLat == null || r.pickupLng == null || r.dropLat == null || r.dropLng == null) return const [];
+  return [
+    LatLng(r.pickupLat!, r.pickupLng!),
+    for (final s in r.stops) s.point,
+    LatLng(r.dropLat!, r.dropLng!),
+  ];
 }
