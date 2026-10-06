@@ -11,6 +11,7 @@ import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/obd/obd_session.dart';
 import 'package:get_ride/src/data/printer/printer_service.dart';
+import 'package:get_ride/src/features/meter/meter_leave_launcher.dart';
 import 'package:get_ride/src/features/meter/meter_providers.dart';
 import 'package:get_ride/src/features/meter/meter_screen.dart';
 import 'package:get_ride/src/providers.dart';
@@ -42,6 +43,27 @@ class _FakeOrientation implements MeterOrientation {
   Future<void> release() async => calls.add('release');
 }
 
+/// Records what the leave popup asked of the device.
+class _FakeLauncher implements MeterLeaveLauncher {
+  _FakeLauncher({this.os = 'android', this.opens = const {}});
+  @override
+  final String os;
+  final Set<String> opens;
+  final calls = <String>[];
+
+  @override
+  bool get canExit => os == 'android';
+
+  @override
+  Future<void> exit() async => calls.add('exit');
+
+  @override
+  Future<bool> open(String url) async {
+    calls.add(url);
+    return opens.contains(url);
+  }
+}
+
 /// Noon, so the DAY key is preselected.
 var _clock = DateTime(2026, 10, 4, 12).millisecondsSinceEpoch;
 
@@ -64,6 +86,7 @@ Future<_FakeLocation> _pump(WidgetTester tester, {
   Size size = const Size(900, 1600),
   _FakeOrientation? orientation,
   Widget? app,
+  MeterLeaveLauncher? launcher,
 }) async {
   // A reader is "saved" on the phone when the test brings one.
   SharedPreferences.setMockInitialValues({
@@ -90,6 +113,7 @@ Future<_FakeLocation> _pump(WidgetTester tester, {
       geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
       partnerProvider.overrideWith((_) async => Partner({'id': 'p1', 'name': 'Aina', 'plate': 'WXY 1'})),
       meterOrientationProvider.overrideWithValue(orientation ?? _FakeOrientation()),
+      meterLeaveLauncherProvider.overrideWithValue(launcher ?? _FakeLauncher()),
     ],
     child: app ?? const MaterialApp(home: MeterScreen()),
   ));
@@ -342,5 +366,87 @@ void main() {
     expect(find.text('1.00'), findsOneWidget);
     expect(find.text('5.00'), findsOneWidget);
     expect(find.text('incl. extras RM 1.00'), findsOneWidget);
+  });
+
+  group('leaving the meter', () {
+    GoRouter routerFor() => GoRouter(initialLocation: '/meter', routes: [
+          GoRoute(path: '/', builder: (_, _) => const Scaffold(body: Text('PASSENGER HOME'))),
+          GoRoute(path: '/drive', builder: (_, _) => const Scaffold(body: Text('E-HAILING QUEUE'))),
+          GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
+        ]);
+
+    testWidgets('back asks where to; staying keeps the console', (tester) async {
+      final router = routerFor();
+      addTearDown(router.dispose);
+      await _pump(tester, size: const Size(1600, 900), app: MaterialApp.router(routerConfig: router));
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Leave the meter?'), findsOneWidget);
+      expect(find.text('PASSENGER MODE'), findsOneWidget);
+      expect(find.text('E-HAILING'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('meter-leave-stay')));
+      await tester.pumpAndSettle();
+      expect(find.text('FOR HIRE'), findsOneWidget);
+    });
+
+    testWidgets('the in-app keys go to passenger mode or the e-hailing queue', (tester) async {
+      final router = routerFor();
+      addTearDown(router.dispose);
+      await _pump(tester, size: const Size(1600, 900), app: MaterialApp.router(routerConfig: router));
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('meter-leave-ehailing')));
+      await tester.pumpAndSettle();
+      expect(find.text('E-HAILING QUEUE'), findsOneWidget);
+    });
+
+    testWidgets('a running hire cannot be left', (tester) async {
+      final loc = await _pump(tester, size: const Size(1600, 900));
+      loc.controller.add(_fixAt(0));
+      await tester.pump();
+      await tester.tap(find.text('START'));
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.text('Leave the meter?'), findsNothing);
+      expect(find.text('End the hire before leaving the meter.'), findsOneWidget);
+    });
+
+    testWidgets("the card's dispatch app opens, and its store when it isn't installed", (tester) async {
+      final launcher = _FakeLauncher(opens: {'https://play.google.com/store/apps/details?id=com.jobtepi.app'});
+      final card = _card().copyWith(
+        leave: const MeterLeaveConfig(passenger: 'exit', ehailing: 'link', ehailingAppId: 'gvride'),
+      );
+      await _pump(tester, size: const Size(1600, 900), card: card, launcher: launcher);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('EXIT'), findsOneWidget);
+      expect(find.text('GVRIDE'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('meter-leave-ehailing')));
+      await tester.pumpAndSettle();
+      expect(launcher.calls, [
+        'intent://#Intent;package=com.jobtepi.app;end',
+        'https://play.google.com/store/apps/details?id=com.jobtepi.app',
+      ]);
+      expect(find.text('Could not open the app'), findsNothing);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('meter-leave-passenger')));
+      await tester.pumpAndSettle();
+      expect(launcher.calls.last, 'exit');
+    });
+
+    testWidgets('iOS is told how to leave instead of the app closing itself', (tester) async {
+      final launcher = _FakeLauncher(os: 'ios');
+      final card = _card().copyWith(leave: const MeterLeaveConfig(passenger: 'exit'));
+      await _pump(tester, size: const Size(1600, 900), card: card, launcher: launcher);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('meter-leave-passenger')));
+      await tester.pumpAndSettle();
+      expect(launcher.calls, isEmpty);
+      expect(find.textContaining('iOS does not let an app close itself'), findsOneWidget);
+    });
   });
 }

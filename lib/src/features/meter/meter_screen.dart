@@ -18,6 +18,7 @@ import '../../data/obd/obd_session.dart';
 import '../../data/printer/printer_service.dart';
 import '../../providers.dart';
 import 'landscape_stage.dart';
+import 'meter_leave_launcher.dart';
 import 'meter_providers.dart';
 
 // The console is deliberately not themed: a white screen on a windscreen
@@ -365,6 +366,59 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     });
   }
 
+  /// LEAVE THE METER (Expo's back-key popup): passenger mode or closing the
+  /// app, e-hailing here or the operator's dispatch app, or staying put —
+  /// what the two keys do is the rate card's (`resolveMeterLeave`).
+  Future<void> _offerLeave() async {
+    if (!mounted) return;
+    final launcher = ref.read(meterLeaveLauncherProvider);
+    final keys = resolveMeterLeave(_profile.leave, storePlatformFor(launcher.os));
+    final pick = await showDialog<MeterLeaveOption>(
+      context: _stageContext,
+      useRootNavigator: false,
+      builder: (c) => AlertDialog(
+        key: const ValueKey('meter-leave'),
+        title: const Text('Leave the meter?'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final k in [keys.passenger, keys.ehailing])
+            ListTile(
+              key: ValueKey('meter-leave-${k.key}'),
+              leading: Icon(k.key == 'passenger'
+                  ? (k.action == 'exit' ? Icons.power_settings_new : Icons.person_outline)
+                  : (k.action == 'link' ? Icons.open_in_new : Icons.local_taxi_outlined)),
+              title: Text(k.label),
+              subtitle: Text(k.hint),
+              onTap: () => Navigator.pop(c, k),
+            ),
+        ]),
+        actions: [
+          TextButton(
+            key: const ValueKey('meter-leave-stay'),
+            onPressed: () => Navigator.pop(c),
+            child: const Text('STAY ON THE METER'),
+          ),
+        ],
+      ),
+    );
+    if (pick == null || !mounted) return;
+    switch (pick.action) {
+      case 'exit':
+        final exit = describeMeterExit(launcher.os, launcher.canExit);
+        if (!exit.supported) return _explain('Leave the app', exit.note);
+        await launcher.exit();
+      case 'link':
+        final url = pick.url;
+        if (url != null && await launcher.open(url)) return;
+        final store = pick.store;
+        if (store != null && await launcher.open(store)) return;
+        if (mounted) _explain('Could not open the app', describeMeterLinkFailure(url ?? store ?? ''));
+      default:
+        // The in-app screens: passenger mode is home, e-hailing is the drive tab.
+        final route = pick.route == '/partner-ehailing' ? '/drive' : (pick.route ?? '/');
+        if (mounted) GoRouter.of(context).go(route);
+    }
+  }
+
   void _explain(String title, String message) => showDialog<void>(
         context: _stageContext,
         useRootNavigator: false,
@@ -417,15 +471,23 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     final obd = ref.watch(obdSessionProvider);
     final locked = _m.hasHire || _ending;
     return PopScope(
-      // A running or unfinished hire cannot be walked out of, and back from
-      // the trip log returns to the meter.
-      canPop: !locked && _tab == 0,
+      // A running or unfinished hire cannot be walked out of, and back from the
+      // trip log returns to the meter. Leaving the console is a mode change,
+      // so back from the meter itself asks where to (Expo `resolveMeterBack`).
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_tab != 0) return setState(() => _tab = 0);
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('End the hire before leaving the meter.')));
+        if (locked) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(const SnackBar(content: Text('End the hire before leaving the meter.')));
+          return;
+        }
+        // After the stage's own pop handler has looked for a dialog to
+        // close; opening one under it mid-pop would hand it a route that
+        // isn't built yet.
+        unawaited(Future<void>.delayed(Duration.zero, _offerLeave));
       },
       child: Theme(
         data: ThemeData(brightness: Brightness.dark, colorSchemeSeed: _lcd, scaffoldBackgroundColor: _bg),
