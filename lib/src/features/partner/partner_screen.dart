@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/destination_mode.dart';
+import '../../core/driver_permit.dart';
 import '../../core/format.dart';
 import '../../core/partner_doc_check.dart';
 import '../../core/partner_onboarding.dart';
@@ -24,6 +25,7 @@ import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
 import 'driver_home_map.dart';
+import 'driver_permit_screen.dart' show currentPlateProvider, driverPermitProvider, showPermitBlock;
 import 'driver_wallet_pills.dart';
 import 'fare_offer.dart';
 import 'partner_menu.dart';
@@ -256,7 +258,33 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Future<void> _openMeter(Partner partner) async {
     if (!await _documentsCleared(partner, teksi: true)) return;
     if (!mounted || !await _vehicleReady(partner, teksi: true)) return;
+    if (!mounted || !await _permitCleared()) return;
     if (mounted) context.push('/meter');
+  }
+
+  /// The permit checks the Driver permit screen holds a hire to (Expo
+  /// `attemptStartPickup`): IC matches the profile, not expired, and the
+  /// vehicle driven is the one on the permit. When the permit cannot be read
+  /// it lets the driver through, as the document check does.
+  Future<bool> _permitCleared() async {
+    // Both are auto-dispose: held open for the length of the check.
+    final permitSub = ref.listenManual(driverPermitProvider.future, (_, _) {});
+    final plateSub = ref.listenManual(currentPlateProvider.future, (_, _) {});
+    final DriverPermit permit;
+    final String? plate;
+    try {
+      permit = await permitSub.read();
+      plate = await plateSub.read();
+    } catch (_) {
+      return true;
+    } finally {
+      permitSub.close();
+      plateSub.close();
+    }
+    final block = permitStartBlock(permit, today: ref.read(requestAlertClockProvider)(), vehiclePlate: plate);
+    if (block == null) return true;
+    if (mounted) await showPermitBlock(context, block, permit, plate);
+    return false;
   }
 
   /// Admin → Partner Type → Vehicle required (Expo `isVehicleRequiredForMode`):
