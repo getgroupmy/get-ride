@@ -17,7 +17,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/migrations"
 
 # The second file of each duplicate pair from before this check was renamed
 # with a trailing digit (00241_, 00421_, 00641_, 00891_). Those files moved to
-# migrations_archive/ with the 0098 squash; list any future exception here.
+# migrations_archive/ with the 0097 squash; list any future exception here.
 # New migrations use NNNN.
 SUFFIXED=()
 

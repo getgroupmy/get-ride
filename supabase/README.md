@@ -11,7 +11,7 @@ Everything needed to bring up a brand-new Supabase project for this app.
 | `reset.sql`  | Destructive teardown (keeps storage buckets).                    |
 | `setup.sh`   | One-shot bootstrap script (`psql` wrapper).                      |
 | `config.toml` | Supabase CLI config (`supabase link` / `supabase db push`).     |
-| `migrations/` | Numbered migrations, starting from the `0098` squashed baseline; `supabase db push` applies the new ones. |
+| `migrations/` | Numbered migrations, starting from the `0097` squashed baseline; `supabase db push` applies the new ones. |
 | `migrations_archive/` | The 101 migrations (`0001`–`0097`) the baseline replaced. History only: nothing reads them. |
 | `baseline-migration-history.sh` | Marks every migration as applied in the database's history (see below). |
 | `check-migration-numbers.sh` | CI check: unique, well-named migration versions.       |
@@ -61,32 +61,34 @@ npx supabase link --project-ref rqlavogkgywxspuxgiwk
 The commands in this section have no trailing `# comments`: zsh passes them
 to the CLI as arguments unless `interactive_comments` is set.
 
-**The 0098 squash (one-time, right after it merges).** `migrations/` now
-starts from one squashed baseline, `0098_squashed_baseline.sql` (a copy of
-`schema.sql` at the time), because Supabase preview branches and
+**The squash (one-time).** `migrations/` now starts from one squashed
+baseline, `0097_squashed_baseline.sql` (a copy of `schema.sql` at the time;
+the old `0097` file is in the archive), because Supabase preview branches and
 `supabase db reset` build a fresh database by replaying `migrations/` and the
 old 101-file chain could not do that. Existing databases already contain
-everything in it, so it must be recorded as applied, never run. After merging,
-from an up-to-date `main`:
+everything in it, so it must be recorded as applied, never run. `0099`
+re-applies the two changes the live project was missing at the squash
+(`0076`'s `user_sessions.cellular_generation` and the old `0097`'s grant
+revoke; both idempotent), so it has to actually run. From an up-to-date
+`main`:
 
 ```bash
 export SUPABASE_DB_URL="postgres://postgres:PASSWORD@db.REF.supabase.co:5432/postgres"
 ./supabase/baseline-migration-history.sh
+npx supabase migration repair --status reverted 0099
 npx supabase db push --dry-run
+npx supabase db push
 ```
 
-The script removes the `0001`–`0097` history rows and records `0098`; the dry
-run should then list only `0099`, which re-applies the two changes the live
-project was missing at the squash (`0076`'s `user_sessions.cellular_generation`
-and `0097`'s grant revoke; both idempotent). Push it with
-`npx supabase db push`. Before merging, check that the GitHub
-integration's **Deploy to production** option is off (Project Settings →
-Integrations): if it is on, the merge itself would try to apply `0098` to
-production. Preview branches additionally need **Automatic branching** turned
-on there, with the working directory set to `.`.
+The script removes the old history rows and records every file in
+`migrations/` as applied — `0099` included, which is why the repair step
+un-records it again. The dry run should then list only `0099`. Keep the
+GitHub integration's **Deploy to production** option off (Project Settings →
+Integrations). Preview branches need **Automatic branching** turned on there,
+with the working directory set to `.`.
 
 **Baseline.** The live project was baselined on 2026-10-05 (and again for the
-0098 squash): its history holds exactly the files in `migrations/`. A project whose history is out of step
+squash): its history holds exactly the files in `migrations/`. A project whose history is out of step
 (hand-applied migrations, or one bootstrapped from `schema.sql`) is lined up
 with:
 
