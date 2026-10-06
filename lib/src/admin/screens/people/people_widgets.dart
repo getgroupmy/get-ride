@@ -9,6 +9,7 @@ import '../../../core/document_ai.dart';
 import '../../../data/document_ai_repository.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
+import 'doc_pdf.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
 
@@ -715,6 +716,11 @@ class DocUploadDialog extends ConsumerStatefulWidget {
 
 class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
   PickedPeopleFile? _front, _back;
+
+  /// The front is a PDF's first page (see doc_pdf.dart): a single file, so
+  /// no back is asked for.
+  bool _frontIsPdf = false;
+  bool _rasterizing = false;
   late final _number = TextEditingController(text: '${widget.existing?['document_number'] ?? ''}');
   late final _start = TextEditingController(text: '${widget.existing?['start_date'] ?? ''}');
   late final _expiry = TextEditingController(text: '${widget.existing?['expiry_date'] ?? ''}');
@@ -754,7 +760,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
       f,
       hasFront: _front != null,
       hasBack: _back != null,
-      frontIsPdf: false,
+      frontIsPdf: _frontIsPdf,
       documentNumber: _number.text,
       startDate: _start.text,
       expiryDate: _expiry.text,
@@ -770,7 +776,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
       final frontUrl =
           await repo.upload(bucket, docFilePath(owner, widget.doc.id, 'front', guessExt(_front!.name)), _front!);
       String? backUrl;
-      if (f.requireFrontBack && _back != null) {
+      if (f.requireFrontBack && !_frontIsPdf && _back != null) {
         backUrl = await repo.upload(bucket, docFilePath(owner, widget.doc.id, 'back', guessExt(_back!.name)), _back!);
       }
       final insurer = _insurers.where((e) => e.id == _insurerId).firstOrNull;
@@ -807,7 +813,40 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
   Future<void> _pick(bool back) async {
     final file = await pickPeopleFile();
     if (file == null) return;
-    setState(() => back ? _back = file : _front = file);
+    setState(() {
+      if (back) {
+        _back = file;
+      } else {
+        _front = file;
+        _frontIsPdf = false;
+      }
+    });
+    unawaited(_runAi());
+  }
+
+  /// Uploads a PDF in place of the photos: its first page becomes the front.
+  Future<void> _pickPdf() async {
+    final tools = ref.read(docPdfToolsProvider);
+    final PickedPeopleFile? pdf;
+    try {
+      pdf = await tools.pick();
+    } catch (e) {
+      if (mounted) showError(context, e);
+      return;
+    }
+    if (pdf == null || !mounted) return;
+    final problem = docPdfProblem(pdf.name, pdf.bytes.length);
+    if (problem != null) return showError(context, problem);
+    setState(() => _rasterizing = true);
+    final png = await tools.firstPagePng(pdf.bytes);
+    if (!mounted) return;
+    setState(() => _rasterizing = false);
+    if (png == null) return showError(context, "That PDF couldn't be opened. Upload a photo of the document instead.");
+    setState(() {
+      _front = (bytes: png, name: pdfPreviewName(pdf!.name));
+      _frontIsPdf = true;
+      _back = null;
+    });
     unawaited(_runAi());
   }
 
@@ -825,7 +864,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
     });
     final repo = ref.read(documentAiRepositoryProvider);
     final frontUrl = await repo.prepare(front.bytes, front.name);
-    final back = f.requireFrontBack ? _back : null;
+    final back = f.requireFrontBack && !_frontIsPdf ? _back : null;
     final backUrl = back == null ? null : await repo.prepare(back.bytes, back.name);
     ({DocumentAiResult? result, String? reason}) outcome;
     if (frontUrl == null || (back != null && backUrl == null)) {
@@ -949,7 +988,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
                   onPick: () => _pick(false),
                 ),
               ),
-              if (f.requireFrontBack) ...[
+              if (f.requireFrontBack && !_frontIsPdf) ...[
                 const SizedBox(width: 12),
                 Expanded(
                   child: ImageSlot(
@@ -961,6 +1000,21 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
                 ),
               ],
             ]),
+            if (f.allowPdfUpload)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const ValueKey('doc-upload-pdf'),
+                    onPressed: _busy || _rasterizing ? null : _pickPdf,
+                    icon: _rasterizing
+                        ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.picture_as_pdf_outlined),
+                    label: Text(_frontIsPdf ? 'PDF first page added — choose another PDF' : 'Upload a PDF instead'),
+                  ),
+                ),
+              ),
             _aiCard(context),
             const SizedBox(height: 12),
             if (f.requireDocumentNumber)
