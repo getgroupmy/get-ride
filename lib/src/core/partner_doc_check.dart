@@ -74,3 +74,20 @@ String summarizeDocIssues(List<DocIssue> issues) {
   final more = issues.length > 4 ? ['• +${issues.length - 4} more'] : const <String>[];
   return [...top, ...more].join('\n');
 }
+
+/// How long before expiry an approved document can be renewed (Expo
+/// `RENEWAL_WINDOW_DAYS`).
+const renewalWindowDays = 14;
+
+/// The day an approved document's renewal opens, while it is still shut:
+/// [windowDays] before its expiry. Null when it can be replaced now — it is
+/// not approved (pending, rejected, expired), has no expiry date, or is
+/// already inside the window. Pure.
+DateTime? renewalOpensOn(Map<String, dynamic> upload, {required DateTime now, int windowDays = renewalWindowDays}) {
+  if (docDisplayStatus(upload, now: now) != 'Approved') return null;
+  final expiry = DateTime.tryParse('${upload['expiry_date'] ?? ''}');
+  if (expiry == null) return null;
+  final day = DateTime(expiry.year, expiry.month, expiry.day);
+  final today = DateTime(now.year, now.month, now.day);
+  return day.difference(today).inDays > windowDays ? day.subtract(Duration(days: windowDays)) : null;
+}

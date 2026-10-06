@@ -11,6 +11,7 @@ import '../../core/vehicle_onboarding.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../core/partner_doc_check.dart' show renewalWindowDays;
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 
@@ -414,9 +415,15 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         docs: docs,
         authUserId: s.partner['auth_user_id'] as String?,
         title: 'Your documents',
+        renewalLock: true,
+        actionSummary: true,
       ),
       const SizedBox(height: 8),
-      Text('A rejected or expired document can be uploaded again here.', style: t.textTheme.bodySmall),
+      Text(
+        "You can update any document that isn't approved. Approved documents with an expiry date can be renewed "
+        'in the $renewalWindowDays days before they expire; uploading a new file moves it back to Pending Review.',
+        style: t.textTheme.bodySmall,
+      ),
       const SizedBox(height: 16),
       FilledButton.icon(
         onPressed: () => context.push('/drive/vehicles'),

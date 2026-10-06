@@ -11,6 +11,7 @@ import '../../widgets/admin_widgets.dart';
 import 'doc_pdf.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
+import '../../../core/partner_doc_check.dart';
 import '../../../widgets/in_app_page.dart';
 
 /// Wide screens get a two-column form, phones one column.
@@ -580,9 +581,9 @@ class RequiredDocsChecklist extends StatelessWidget {
   }
 }
 
-/// Partner document list with upload (Expo `RequiredDocsUploader`: no AI
-/// verification, no renewal lock). Used by the admin panel and by partners
-/// themselves during onboarding.
+/// Partner document list with upload (Expo `RequiredDocsUploader`). Used by
+/// the admin panel and by partners themselves; the partner's own documents
+/// page adds the renewal lock and the action-needed summary.
 class PartnerDocsUploader extends ConsumerStatefulWidget {
   const PartnerDocsUploader({
     super.key,
@@ -594,6 +595,9 @@ class PartnerDocsUploader extends ConsumerStatefulWidget {
     this.authUserId,
     this.onUploads,
     this.vehicleId,
+    this.renewalLock = false,
+    this.actionSummary = false,
+    this.now,
   });
   final String partnerId;
   final List<RequiredDoc> docs;
@@ -611,6 +615,18 @@ class PartnerDocsUploader extends ConsumerStatefulWidget {
   /// When set, these are the vehicle's documents (`vehicle_documents`,
   /// Expo `VehicleDocsUploader`) rather than the partner's own.
   final String? vehicleId;
+
+  /// An approved document with an expiry date opens for replacement only in
+  /// the [renewalWindowDays] before it expires (Expo
+  /// `lockApprovedUntilExpiryWithinDays`); until then a tap shows the file.
+  final bool renewalLock;
+
+  /// Lists what still needs attention — missing, rejected, expired — above
+  /// the documents (Expo's "Action needed" card).
+  final bool actionSummary;
+
+  /// Clock override for tests.
+  final DateTime? now;
 
   @override
   ConsumerState<PartnerDocsUploader> createState() => _PartnerDocsUploaderState();
@@ -651,7 +667,10 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
           if (!snap.hasData) return const LinearProgressIndicator();
           final uploads = latestUploadByDoc(snap.data!);
           final p = uploadProgress(widget.docs, uploads);
+          final now = widget.now ?? DateTime.now();
+          final issues = widget.actionSummary ? partnerDocIssues(widget.docs, snap.data!, now: now) : const <DocIssue>[];
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (issues.isNotEmpty) _ActionNeeded(issues: issues),
             SectionTitle(widget.title),
             Text(widget.subtitle ?? '${p.uploaded} uploaded · ${p.compulsoryLeft} compulsory left',
                 style: t.textTheme.bodySmall),
@@ -660,7 +679,8 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
             for (final d in widget.docs)
               Builder(builder: (context) {
                 final u = uploads[d.id];
-                final status = u == null ? null : docDisplayStatus(u);
+                final status = u == null ? null : docDisplayStatus(u, now: now);
+                final opens = widget.renewalLock && u != null ? renewalOpensOn(u, now: now) : null;
                 return Card(
                   child: ListTile(
                     leading: Icon(d.compulsory ? Icons.gpp_maybe_outlined : Icons.verified_user_outlined,
@@ -670,6 +690,8 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
                       if (d.description.isNotEmpty) d.description,
                       d.labels.join(' · '),
                       if (u?['expiry_date'] != null) 'Expires: ${u!['expiry_date']}',
+                      if (opens != null)
+                        'Renewal opens ${opens.year}-${'${opens.month}'.padLeft(2, '0')}-${'${opens.day}'.padLeft(2, '0')}',
                       d.compulsory ? 'Compulsory' : 'Optional',
                     ].join('\n')),
                     isThreeLine: true,
@@ -680,7 +702,9 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
                             labelStyle: TextStyle(color: docStatusColor(status), fontSize: 12),
                             visualDensity: VisualDensity.compact,
                           ),
-                    onTap: widget.enabled ? () => _open(d, u) : (u?['file_url'] != null ? () => openInApp(context, '${u!['file_url']}') : null),
+                    onTap: widget.enabled && opens == null
+                        ? () => _open(d, u)
+                        : (u?['file_url'] != null ? () => openInApp(context, '${u!['file_url']}') : null),
                   ),
                 );
               }),
@@ -1072,3 +1096,62 @@ Widget pagedAsync<T>({
             page: page,
             body: AsyncView(value: value, onRetry: onRetry, data: (_) => const SizedBox.shrink()),
           );
+
+/// What still needs the partner's attention (Expo "Action needed"):
+/// compulsory first, each with what to do about it.
+class _ActionNeeded extends StatelessWidget {
+  const _ActionNeeded({required this.issues});
+  final List<DocIssue> issues;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final compulsory = issues.where((i) => i.compulsory).length;
+    return Card(
+      key: const ValueKey('docs-action-needed'),
+      color: t.colorScheme.errorContainer.withValues(alpha: 0.5),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Icon(Icons.gpp_bad_outlined, size: 18, color: t.colorScheme.error),
+            const SizedBox(width: 6),
+            Text('Action needed', style: t.textTheme.titleSmall),
+          ]),
+          const SizedBox(height: 4),
+          Text(
+            compulsory > 0
+                ? '$compulsory compulsory document${compulsory == 1 ? '' : 's'} still need${compulsory == 1 ? 's' : ''} your attention.'
+                : 'Some optional documents are missing or need re-upload.',
+            style: t.textTheme.bodySmall,
+          ),
+          const SizedBox(height: 6),
+          for (final i in issues)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(children: [
+                Icon(Icons.circle, size: 8, color: i.compulsory ? t.colorScheme.error : t.colorScheme.outline),
+                const SizedBox(width: 8),
+                Expanded(child: Text(i.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Text(
+                  switch (i.reason) {
+                    DocIssueReason.missing => 'Not uploaded',
+                    DocIssueReason.rejected => 'Rejected — re-upload',
+                    DocIssueReason.expired => 'Expired — renew',
+                  },
+                  key: ValueKey('docs-issue-${i.id}'),
+                  style: t.textTheme.labelSmall?.copyWith(
+                    color: switch (i.reason) {
+                      DocIssueReason.missing => t.colorScheme.primary,
+                      DocIssueReason.rejected => Colors.red,
+                      DocIssueReason.expired => Colors.orange.shade800,
+                    },
+                  ),
+                ),
+              ]),
+            ),
+        ]),
+      ),
+    );
+  }
+}
