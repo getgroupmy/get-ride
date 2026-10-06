@@ -9,6 +9,7 @@ import 'package:get_ride/src/core/vehicle_assignment.dart';
 import 'package:get_ride/src/features/auth/phone_screen.dart';
 import 'package:get_ride/src/features/partner/partner_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/data/partner_doc_check.dart';
 
 class _NoTrip implements RideRepository {
   @override
@@ -63,6 +64,10 @@ void main() {
           partnerProvider.overrideWith((ref) async => Partner({'id': 'p1', 'status': 'approved'})),
           openRequestsProvider.overrideWith((ref) => const Stream<List<RideRequest>>.empty()),
           assignableVehiclesProvider.overrideWith((ref) async => const <AssignableVehicle>[]),
+          // These drivers have no vehicle; the vehicle check has its own test.
+          partnerTypeEntriesProvider.overrideWith((ref) async => [
+            (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false}),
+          ]),
         ],
         child: const MaterialApp(home: PartnerScreen()),
       ),

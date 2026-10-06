@@ -449,4 +449,18 @@ void main() {
       expect(find.textContaining('iOS does not let an app close itself'), findsOneWidget);
     });
   });
+
+  testWidgets('the rate card hides and locks console panels', (tester) async {
+    await _pump(tester, card: _card().copyWith(panels: {
+      ...allPanelsOn(),
+      'trips': const MeterPanelAccess(show: false, tap: false),
+      'printer': const MeterPanelAccess(show: true, tap: false),
+      'obd': const MeterPanelAccess(show: false, tap: false),
+    }));
+    await tester.pump();
+    expect(find.text('Trip log'), findsNothing);
+    expect(find.byKey(const ValueKey('meter-panel-obd')), findsNothing);
+    final printer = tester.widget<IconButton>(find.byKey(const ValueKey('meter-panel-printer')));
+    expect(printer.onPressed, isNull);
+  });
 }

@@ -113,3 +113,14 @@ final coinRateHistoryProvider = FutureProvider.autoDispose<List<double>>((ref) a
     return const [];
   }
 });
+
+/// The admin's GET.coin settings alone (no wallets or market), for screens
+/// that only show what the programme pays. Null when unreadable.
+final coinSettingsProvider = FutureProvider.autoDispose<GetCoinSettings?>((ref) async {
+  try {
+    final row = await ref.watch(supabaseProvider).from('get_coin_settings').select().eq('id', 'master').maybeSingle();
+    return row == null ? const GetCoinSettings() : GetCoinSettings.fromRow(row);
+  } catch (_) {
+    return null;
+  }
+});

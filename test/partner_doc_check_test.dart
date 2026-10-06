@@ -126,6 +126,12 @@ void main() {
             rideRepositoryProvider.overrideWithValue(_NoTrip()),
             openRequestsProvider.overrideWith((ref) => const Stream<List<RideRequest>>.empty()),
             assignableVehiclesProvider.overrideWith((ref) async => const <AssignableVehicle>[]),
+            // These drivers have no vehicle; the vehicle check has its own test.
+            partnerTypeEntriesProvider.overrideWith(
+              (ref) async => [
+                (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false}),
+              ],
+            ),
             partnerDocCheckProvider.overrideWithValue(check),
           ],
           child: MaterialApp.router(routerConfig: router),
