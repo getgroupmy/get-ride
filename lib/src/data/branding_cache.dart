@@ -43,7 +43,7 @@ class BrandingCache {
       final b = AppBranding.fromRow((jsonDecode(raw) as Map).cast<String, dynamic>());
       Uint8List? bytes;
       final f = await _imageFile();
-      if (b.showsSplash && f != null && await f.exists()) bytes = await f.readAsBytes();
+      if (b.splashImageUrl != null && f != null && await f.exists()) bytes = await f.readAsBytes();
       return CachedBranding(b, bytes);
     } catch (_) {
       return null;
@@ -61,10 +61,10 @@ class BrandingCache {
         final sameImage =
             previous != null &&
             AppBranding.fromRow((jsonDecode(previous) as Map).cast<String, dynamic>()).splashImageUrl == url;
-        if (!b.showsSplash) {
+        if (url == null) {
           if (await f.exists()) await f.delete();
         } else if (!sameImage || !await f.exists()) {
-          final res = await http.get(Uri.parse(url!)).timeout(const Duration(seconds: 20));
+          final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 20));
           // Without the image on disk, the next launch falls back to the network.
           if (res.statusCode == 200) {
             await f.writeAsBytes(res.bodyBytes, flush: true);
@@ -85,14 +85,18 @@ class BrandingSync {
   final SupabaseClient _db;
   RealtimeChannel? _channel;
 
+  /// This launch's branding once fetched, for a splash still on screen.
+  final latest = ValueNotifier<AppBranding?>(null);
+
+  Future<void> _apply(AppBranding b) async {
+    latest.value = b;
+    await BrandingCache.save(b);
+  }
+
   Future<void> start() async {
     try {
-      final row = await _db
-          .from(brandingTable)
-          .select('splash_image_url, splash_bg_color')
-          .eq('id', brandingRowId)
-          .maybeSingle();
-      await BrandingCache.save(AppBranding.fromRow(row));
+      final row = await _db.from(brandingTable).select('splash_image_url').eq('id', brandingRowId).maybeSingle();
+      await _apply(AppBranding.fromRow(row));
     } catch (_) {}
     try {
       _channel = _db
@@ -102,7 +106,7 @@ class BrandingSync {
             schema: 'public',
             table: brandingTable,
             callback: (p) {
-              if (p.newRecord['id'] == brandingRowId) unawaited(BrandingCache.save(AppBranding.fromRow(p.newRecord)));
+              if (p.newRecord['id'] == brandingRowId) unawaited(_apply(AppBranding.fromRow(p.newRecord)));
             },
           )
           .subscribe();
@@ -113,5 +117,6 @@ class BrandingSync {
     final c = _channel;
     if (c != null) unawaited(_db.removeChannel(c));
     _channel = null;
+    latest.dispose();
   }
 }

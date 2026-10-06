@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'src/app.dart';
 import 'src/config.dart';
+import 'src/core/app_branding.dart';
 import 'src/core/referral.dart';
 import 'src/data/branding_cache.dart';
 import 'src/data/push_service.dart';
@@ -14,6 +15,9 @@ Future<void> main() async {
   // cleanly and Vercel Analytics can tell screens apart. No-op elsewhere.
   usePathUrlStrategy();
   WidgetsFlutterBinding.ensureInitialized();
+  // The splash is held for what is LEFT of five seconds from here, not five
+  // seconds from the first frame, so a slow start is not made slower still.
+  markSplashStart();
   // An invite link (getride.my/?ref=CODE) carries the friend's code; it is
   // offered on the set-PIN step of a new account.
   PendingReferral.code = referralCodeFromUri(Uri.base);
@@ -22,7 +26,7 @@ Future<void> main() async {
   // project. A no-op everywhere else.
   await PushService.start(Supabase.instance.client);
   // The admin's splash, as cached by the last launch, so it paints on the
-  // first frame (see BrandSplash).
+  // first frame (see SplashGate).
   final branding = await BrandingCache.load();
   runApp(ProviderScope(child: GetRideApp(branding: branding)));
 }
