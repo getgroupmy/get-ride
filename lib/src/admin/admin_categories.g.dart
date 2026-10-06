@@ -41,6 +41,7 @@ const crudCategories = <SettingsCategory>[
       SettingsField("version", "Latest Version", FieldKind.text, required: true),
       SettingsField("minVersion", "Min Version", FieldKind.text),
       SettingsField("forceUpdate", "Force Update", FieldKind.boolean),
+      SettingsField("storeUrl", "Store Link", FieldKind.text),
     ],
   ),
   SettingsCategory(
