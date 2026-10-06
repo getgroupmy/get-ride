@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'admin/admin_routes.dart';
+import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
+import 'core/always_on.dart';
 import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
 import 'data/push_service.dart';
@@ -212,11 +215,14 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   final _subs = <StreamSubscription<Object?>>[];
   SessionTracker? _tracker;
   AppLifecycleListener? _lifecycle;
+  AlwaysOnController? _alwaysOn;
+  VoidCallback? _routeListener;
 
   @override
   void initState() {
     super.initState();
     _startSessionTracking();
+    _startAlwaysOn();
     final push = PushService.instance;
     if (push == null) return;
     _subs.add(push.taps.listen(_open));
@@ -243,11 +249,40 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     ref.listenManual<String?>(currentUserIdProvider, (_, id) {
       unawaited(tracker.userChanged(id, phone: db.auth.currentUser?.phone));
     }, fireImmediately: true);
-    _lifecycle = AppLifecycleListener(onResume: () => unawaited(tracker.resumed()));
+    _lifecycle = AppLifecycleListener(
+      onResume: () {
+        unawaited(tracker.resumed());
+        unawaited(_alwaysOn?.reload());
+      },
+    );
+  }
+
+  /// Keeps the screen awake on the admin's Always ON pages (see
+  /// `core/always_on.dart`). The set is re-read whenever the app comes back
+  /// to the foreground, so an admin's change lands without a relaunch.
+  void _startAlwaysOn() {
+    final controller = AlwaysOnController(
+      setAwake: (on) => WakelockPlus.toggle(enable: on),
+      loadRoutes: () async {
+        try {
+          return (await ref.read(alwaysOnStoreProvider).fetch()).routes;
+        } catch (_) {
+          return defaultAlwaysOnRoutes;
+        }
+      },
+    );
+    _alwaysOn = controller;
+    final router = ref.read(routerProvider);
+    void onRoute() => unawaited(controller.navigated(router.routerDelegate.currentConfiguration.uri.path));
+    _routeListener = onRoute;
+    router.routerDelegate.addListener(onRoute);
+    unawaited(controller.reload().then((_) => onRoute()));
   }
 
   @override
   void dispose() {
+    if (_routeListener != null) ref.read(routerProvider).routerDelegate.removeListener(_routeListener!);
+    unawaited(_alwaysOn?.dispose());
     _lifecycle?.dispose();
     _tracker?.dispose();
     for (final sub in _subs) {
