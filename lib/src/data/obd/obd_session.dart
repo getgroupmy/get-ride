@@ -10,6 +10,7 @@ import '../../core/taxi_meter.dart' show obdStaleMs;
 import 'obd_ble_transport.dart';
 import 'obd_client.dart';
 import 'obd_transport.dart';
+import 'obd_mfi_transport.dart';
 
 /// The saved readers, on this device (Expo `canbusAdapterStore`).
 class ObdAdapterStore {
@@ -51,6 +52,7 @@ final obdTransportFactoryProvider = Provider<ObdTransport Function(SavedObdAdapt
   (_) => (a) => switch (a.transport) {
         'wifi' => WifiObdTransport(a.host ?? wifiAdapterHost, a.port ?? wifiAdapterPort),
         'bluetooth' when a.deviceId != null => BleObdTransport(a.deviceId!, name: a.name),
+        'mfi' when a.deviceId != null => MfiObdTransport(a.deviceId!, name: a.name),
         _ => throw UnsupportedError(
             '${obdTransportLabels[a.transport] ?? a.transport} readers are not supported in this version of the app yet.'),
       },

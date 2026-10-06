@@ -131,10 +131,34 @@ final _hostname = RegExp(r'^[A-Za-z0-9._-]+$');
   );
 }
 
+/// A Bluetooth MFi reader picked from the accessories paired with the
+/// iPhone. [key] is what it is remembered by (its serial number, else its
+/// name: the connection id changes every time it reconnects).
+({String? error, SavedObdAdapter? value}) normalizeMfiAdapter({
+  required String id,
+  required String createdAt,
+  required String key,
+  String? accessoryName,
+}) {
+  final k = key.trim();
+  if (k.isEmpty) return (error: 'Pick the reader from the paired accessories.', value: null);
+  final name = (accessoryName ?? '').trim();
+  return (
+    error: null,
+    value: SavedObdAdapter(
+      id: id,
+      name: name.isNotEmpty ? name : 'Bluetooth MFi OBD-II reader',
+      transport: 'mfi',
+      deviceId: k,
+      createdAt: createdAt,
+    ),
+  );
+}
+
 String describeAdapter(SavedObdAdapter a) {
   final label = obdTransportLabels[a.transport] ?? a.transport;
   if (a.transport == 'wifi' && a.host != null) return '$label · ${a.host}:${a.port ?? wifiAdapterPort}';
-  if (a.transport == 'bluetooth' && a.deviceId != null) return '$label · ${a.deviceId}';
+  if ((a.transport == 'bluetooth' || a.transport == 'mfi') && a.deviceId != null) return '$label · ${a.deviceId}';
   return label;
 }
 
@@ -142,7 +166,7 @@ bool _sameDevice(SavedObdAdapter a, SavedObdAdapter b) {
   if (a.id == b.id) return true;
   if (a.transport != b.transport) return false;
   if (b.transport == 'wifi') return a.host == b.host && a.port == b.port;
-  if (b.transport == 'bluetooth') return a.deviceId != null && a.deviceId == b.deviceId;
+  if (b.transport == 'bluetooth' || b.transport == 'mfi') return a.deviceId != null && a.deviceId == b.deviceId;
   return true;
 }
 

@@ -11,9 +11,14 @@ import '../../core/obd.dart';
 import '../../core/obd_adapters.dart';
 import '../../core/obd_ble.dart';
 import '../../core/fuel_range.dart' show odometerAbsentReads, odometerRefreshMs, readOdometerKm;
+import '../../core/obd_mfi.dart';
 import '../../data/ble.dart';
+import '../../data/obd/obd_mfi_transport.dart';
 import '../../data/obd/obd_session.dart';
 import 'ble_scan_sheet.dart';
+
+/// The MFi accessories paired with this iPhone. Overridden in tests.
+final mfiAccessoriesProvider = Provider<Future<List<MfiAccessory>> Function()>((_) => listMfiAccessories);
 
 /// Reads the odometer off the live reader (mode 01 PID A6), retrying as the
 /// meter does; null when the car does not answer. Overridden in tests.
@@ -140,6 +145,14 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
             subtitle: const Text('Plugged in and powered by the car; found with a scan'),
             onTap: () => Navigator.pop(c, 'bluetooth'),
           ),
+          if (mfiSupported)
+            ListTile(
+              key: const ValueKey('add-mfi-reader'),
+              leading: const Icon(Icons.bluetooth_connected),
+              title: const Text('Bluetooth MFi reader'),
+              subtitle: const Text('Certified readers such as OBDLink MX+, paired in Settings → Bluetooth'),
+              onTap: () => Navigator.pop(c, 'mfi'),
+            ),
           ListTile(
             leading: const Icon(Icons.wifi),
             title: const Text('Wi-Fi reader'),
@@ -150,9 +163,11 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
       ),
     );
     if (kind == null || !mounted) return;
-    final added = kind == 'wifi'
-        ? await showDialog<SavedObdAdapter>(context: context, builder: (_) => const _AddWifiReaderDialog())
-        : await _pickBleReader();
+    final added = switch (kind) {
+      'wifi' => await showDialog<SavedObdAdapter>(context: context, builder: (_) => const _AddWifiReaderDialog()),
+      'mfi' => await _pickMfiReader(),
+      _ => await _pickBleReader(),
+    };
     if (added == null) return;
     final store = ref.read(obdAdapterStoreProvider);
     final list = upsertAdapter(await store.load(), added);
@@ -163,6 +178,56 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
     await store.select(saved.id);
     await _reload();
     await ref.read(obdSessionProvider.notifier).connect(saved);
+  }
+
+  /// The MFi accessories paired with this iPhone (Expo's MFi picker): they
+  /// are paired in the Settings app, not found by a scan, so the list is
+  /// what iOS already knows. Readers by name come first.
+  Future<SavedObdAdapter?> _pickMfiReader() async {
+    List<MfiAccessory> paired;
+    try {
+      paired = await ref.read(mfiAccessoriesProvider)();
+    } catch (_) {
+      paired = const [];
+    }
+    if (!mounted) return null;
+    final ordered = [...paired.where(isLikelyMfiReader), ...paired.where((a) => !isLikelyMfiReader(a))];
+    final picked = await showModalBottomSheet<MfiAccessory>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(
+          key: const ValueKey('mfi-sheet'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const ListTile(title: Text('Paired MFi readers')),
+            if (ordered.isEmpty)
+              const ListTile(
+                leading: Icon(Icons.info_outline),
+                title: Text('No MFi reader is connected'),
+                subtitle: Text(
+                  'Pair the reader in Settings → Bluetooth with the ignition on, then come back here. '
+                  'Readers that are not MFi-certified are added as Bluetooth readers instead.',
+                ),
+              ),
+            for (final a in ordered)
+              ListTile(
+                leading: const Icon(Icons.settings_input_component),
+                title: Text(a.name.isEmpty ? 'MFi accessory' : a.name),
+                subtitle: a.serial.isEmpty ? null : Text('Serial ${a.serial}'),
+                onTap: () => Navigator.pop(c, a),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return null;
+    return normalizeMfiAdapter(
+      id: const Uuid().v4(),
+      createdAt: DateTime.now().toUtc().toIso8601String(),
+      key: mfiAccessoryKey(picked),
+      accessoryName: picked.name,
+    ).value;
   }
 
   Future<SavedObdAdapter?> _pickBleReader() async {
