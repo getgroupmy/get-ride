@@ -57,7 +57,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
         final display = await ref.read(appDisplayProvider.future);
         if (!mounted) return;
         if (!mayContinueSignIn(hasAccount: false, display: display)) {
-          showInfo(context, registrationClosedMessage);
+          context.push(Uri(path: '/login/closed', queryParameters: {'phone': phone}).toString());
           return;
         }
       }
@@ -87,6 +87,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final blocked = ref.watch(deviceBlockedProvider).value ?? false;
+    final showLogo = ref.watch(appDisplayProvider).value?.showSignInLogo ?? true;
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -95,8 +96,10 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
             padding: const EdgeInsets.all(24),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               const SizedBox(height: 48),
-              const Center(child: BrandMark(size: 40)),
-              const SizedBox(height: 8),
+              if (showLogo) ...[
+                const Center(key: ValueKey('sign-in-logo'), child: BrandMark(size: 40)),
+                const SizedBox(height: 8),
+              ],
               Text('Your ride, your way.', textAlign: TextAlign.center, style: t.textTheme.bodyLarge),
               const SizedBox(height: 48),
               Text('Enter your mobile number', style: t.textTheme.titleLarge),

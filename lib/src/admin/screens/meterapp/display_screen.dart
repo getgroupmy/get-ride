@@ -199,6 +199,19 @@ class _DisplayBody extends ConsumerWidget {
                 toggle(label, desc, displayBool(s, key), (v) => set(key, v)),
             ]),
           ),
+          const _Section('Sign-in Screen'),
+          Card(
+            child: Column(children: [
+              toggle(
+                  'Allow new registrations',
+                  'When off, a phone number not already in the user list is shown a "New registrations are closed" '
+                      'page asking them to contact the Administrator. Existing accounts still sign in.',
+                  displayBool(s, 'registrationEnabled'),
+                  (v) => set('registrationEnabled', v)),
+              toggle('Show logo', 'Show the GET.ride logo at the top of the sign-in screen',
+                  displayBool(s, 'signInLogo'), (v) => set('signInLogo', v)),
+            ]),
+          ),
           const _Section('Connection Status Popups'),
           Card(
             child: Column(children: [
@@ -246,12 +259,6 @@ class _DisplayBody extends ConsumerWidget {
                       'confirmation',
                   displayBool(s, 'serviceEnabled'),
                   (v) => set('serviceEnabled', v)),
-              toggle(
-                  'Turn off Registration',
-                  'When on, phone numbers not already in the user list are blocked at login with a "contact '
-                      'Administrator" popup',
-                  !displayBool(s, 'registrationEnabled'),
-                  (v) => set('registrationEnabled', !v)),
             ]),
           ),
           const _Section('Demo / Mockup Data'),

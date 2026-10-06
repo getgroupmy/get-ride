@@ -8,6 +8,7 @@ class AppDisplay {
   const AppDisplay({
     this.serviceEnabled = true,
     this.registrationEnabled = true,
+    this.showSignInLogo = true,
     this.showAiTollCharges = true,
     this.recentLocations = true,
     this.recentLocationsCount = 4,
@@ -19,6 +20,9 @@ class AppDisplay {
 
   /// Off: a phone number with no account is not offered sign-up.
   final bool registrationEnabled;
+
+  /// Whether the sign-in screen shows the GET.ride logo.
+  final bool showSignInLogo;
 
   /// Whether the AI route estimate's toll charges are shown on the booking
   /// panel.
@@ -48,6 +52,7 @@ class AppDisplay {
     return AppDisplay(
       serviceEnabled: flag('serviceEnabled'),
       registrationEnabled: flag('registrationEnabled'),
+      showSignInLogo: flag('signInLogo'),
       showAiTollCharges: flag('showAiTollCharges'),
       recentLocations: flag('recentLocations'),
       recentLocationsCount: _count(raw['recentLocationsCount']),
@@ -66,7 +71,8 @@ int _count(Object? v) {
 const serviceComingSoonMessage = "This service isn't available yet. Please check back later.";
 
 /// Shown to a number with no account while registration is closed (Expo's
-/// "contact Administrator" popup).
+/// "contact Administrator" popup), on a page of its own.
+const registrationClosedTitle = 'New registrations are closed';
 const registrationClosedMessage = 'This number has no account. For new registration please contact Administrator.';
 
 /// Whether [hasAccount] may continue to sign in or sign up.
