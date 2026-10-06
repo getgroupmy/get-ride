@@ -29,6 +29,7 @@ import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 import 'fare_offer_controls.dart';
 import 'home_parts.dart';
@@ -432,6 +433,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         stops: [for (final p in _stops) p.point],
         route: _route?.points ?? const [],
         onTap: _onMapTap,
+        satellite: ref.watch(mapSatelliteProvider),
         extraMarkers: [
           for (final c in _cars) demoCarMarker(c, serviceIndex),
           for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
@@ -466,16 +468,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Center(child: PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup))),
           ),
         ),
-      if (display?.recenterButton ?? true)
-        Positioned(
+      Positioned(
         right: 16,
         bottom: wide ? 16 : null,
         top: wide ? null : 16,
         child: SafeArea(
-          child: FloatingActionButton.small(
-            heroTag: 'locate',
-            onPressed: _locate,
-            child: const Icon(Icons.my_location),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const MapTypeButton(),
+              if (display?.recenterButton ?? true) ...[
+                const SizedBox(height: 8),
+                FloatingActionButton.small(
+                  heroTag: 'locate',
+                  onPressed: _locate,
+                  child: const Icon(Icons.my_location),
+                ),
+              ],
+            ],
           ),
         ),
       ),

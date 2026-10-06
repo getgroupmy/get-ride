@@ -120,4 +120,13 @@ void main() {
     expect(identical(layer.tileProvider, appTileProvider), isTrue);
     expect(layer.errorTileCallback, isNotNull);
   });
+
+  test('satellite is imagery in both themes, never darkened', () {
+    for (final dark in [false, true]) {
+      final s = resolveTileSource(dark: dark, satellite: true, light: 'https://l/{z}', darkUrl: 'https://d/{z}', satelliteUrl: '');
+      expect(s.url, satelliteTileUrl);
+      expect(s.darken, isFalse);
+    }
+    expect(resolveTileSource(dark: true, satellite: true, satelliteUrl: ' https://sat/{z}/{x}/{y} ').url, 'https://sat/{z}/{x}/{y}');
+  });
 }

@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/format.dart';
 import '../../data/models.dart';
+import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 
 /// The driver's home map (Expo `partner-ehailing`): where they are and,
 /// while online, where each open request is waiting, with its fare. Tapping
 /// a pin opens that request in [onSelect].
-class DriverHomeMap extends StatelessWidget {
+class DriverHomeMap extends ConsumerWidget {
   const DriverHomeMap({super.key, required this.me, required this.requests, this.onSelect});
 
   final LatLng? me;
@@ -19,15 +21,16 @@ class DriverHomeMap extends StatelessWidget {
   final void Function(RideRequest)? onSelect;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final pickups = [
       for (final r in requests)
         if (r.pickupLat != null && r.pickupLng != null) LatLng(r.pickupLat!, r.pickupLng!),
     ];
-    return RideMap(
+    final map = RideMap(
       me: me,
       framed: pickups,
+      satellite: ref.watch(mapSatelliteProvider),
       extraMarkers: [
         for (final r in requests)
           if (r.pickupLat != null && r.pickupLng != null)
@@ -62,6 +65,12 @@ class DriverHomeMap extends StatelessWidget {
                 ),
               ),
             ),
+      ],
+    );
+    return Stack(
+      children: [
+        map,
+        const Positioned(right: 12, top: 12, child: SafeArea(child: MapTypeButton())),
       ],
     );
   }
