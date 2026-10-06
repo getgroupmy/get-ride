@@ -1,6 +1,6 @@
 /// Stops on the way (Expo ride-confirm's multi-destination list): up to four
 /// places between the pickup and the drop-off, visited in order. Stored on
-/// the request as `ride_requests.stops` (migration 0102), so the partner sees
+/// the request as `ride_requests.stops` (migration 0098), so the partner sees
 /// them; the route and the fare go through them.
 library;
 

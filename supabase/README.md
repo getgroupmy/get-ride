@@ -79,11 +79,7 @@ The script removes the `0001`–`0097` history rows and records `0098`; the dry
 run should then list only `0099`, which re-applies the two changes the live
 project was missing at the squash (`0076`'s `user_sessions.cellular_generation`
 and `0097`'s grant revoke; both idempotent). Push it with
-`npx supabase db push`. `0100`–`0102` (driver charges, the GET.coin payout,
-ride stops) were applied to the live project by hand on 2026-10-06; `0102`
-first went in as a second `0098`, so the history there holds `0098`, `0100`
-and `0101` and needs `0102` recorded (it is idempotent, so pushing it is
-harmless too). Before merging, check that the GitHub
+`npx supabase db push`. Before merging, check that the GitHub
 integration's **Deploy to production** option is off (Project Settings →
 Integrations): if it is on, the merge itself would try to apply `0098` to
 production. Preview branches additionally need **Automatic branching** turned
