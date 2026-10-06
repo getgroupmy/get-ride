@@ -502,22 +502,33 @@ class RideRepository {
   ///
   /// [charges] are the tolls and other charges the driver declared; they are
   /// stored with the completion and are not part of the commissionable fare.
-  Future<void> complete(RideRequest r, {TripCharges charges = TripCharges.none}) async {
+  ///
+  /// [earlyFare] ends the trip before the drop-off: the ride is stored at
+  /// that fare (`ride_fare`) and stamped `ended_early_at`, and commission is
+  /// charged on it rather than on the booked fare.
+  Future<void> complete(RideRequest r, {TripCharges charges = TripCharges.none, double? earlyFare}) async {
+    final now = DateTime.now().toUtc().toIso8601String();
     final patch = <String, dynamic>{
       'status': RideStatus.completed.db,
-      'completed_at': DateTime.now().toUtc().toIso8601String(),
+      'completed_at': now,
       ...charges.toPatch(),
+      if (earlyFare != null) ...{'ride_fare': earlyFare, 'ended_early_at': now},
     };
-    try {
-      await _db.from(_table).update(patch).eq('id', r.id);
-    } on PostgrestException catch (e) {
-      // Without migration 0100 there is no note column; the amounts (0047)
-      // still go on the ride.
-      if (!'${e.message} ${e.details}'.contains('other_charges_note')) rethrow;
-      patch.remove('other_charges_note');
-      await _db.from(_table).update(patch).eq('id', r.id);
+    // Columns a database without the newer migrations lacks: dropped one at
+    // a time, so the fare and the amounts still land.
+    const optional = ['other_charges_note', 'ended_early_at']; // 0100, 0104
+    while (true) {
+      try {
+        await _db.from(_table).update(patch).eq('id', r.id);
+        break;
+      } on PostgrestException catch (e) {
+        final text = '${e.message} ${e.details}';
+        final missing = optional.where((c) => patch.containsKey(c) && text.contains(c)).firstOrNull;
+        if (missing == null) rethrow;
+        patch.remove(missing);
+      }
     }
-    final fare = r.effectiveFare ?? 0;
+    final fare = earlyFare ?? r.effectiveFare ?? 0;
     final uid = _uid;
     if (fare <= 0 || uid == null) return;
     try {

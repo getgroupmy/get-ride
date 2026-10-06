@@ -96,6 +96,9 @@ class RideRequest {
   DateTime? get arrivedAt => _t(raw['arrived_at']);
   DateTime? get startedAt => _t(raw['started_at']);
   DateTime? get completedAt => _t(raw['completed_at']);
+
+  /// When the driver ended the trip before the drop-off (migration 0104).
+  DateTime? get endedEarlyAt => _t(raw['ended_early_at']);
   DateTime? get cancelledAt => _t(raw['cancelled_at']);
   String? get cancelReason => raw['cancel_reason'] as String?;
   double? get tollCharges => _d(raw['toll_charges']);

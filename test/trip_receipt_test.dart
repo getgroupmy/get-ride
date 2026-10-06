@@ -179,4 +179,11 @@ void main() {
     await open(trip());
     expect(find.byKey(const ValueKey('receipt-map')), findsNothing);
   });
+
+  test('a trip the driver ended early says so, at the fare it was stored at', () {
+    final early = TripReceipt.fromRide(trip(extra: {'ride_fare': 9.4, 'ended_early_at': '2026-10-05T01:20:00Z'}));
+    expect(early.statusLabel, 'Ended early');
+    expect(early.total, 9.4);
+    expect(TripReceipt.fromRide(trip()).statusLabel, 'Completed');
+  });
 }
