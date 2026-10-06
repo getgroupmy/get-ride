@@ -1,7 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_native_contact_picker/flutter_native_contact_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/picked_contact.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -9,6 +12,24 @@ import '../../widgets/common.dart';
 final emergencyContactsProvider = FutureProvider.autoDispose<List<EmergencyContact>>(
   (ref) => ref.watch(accountRepositoryProvider).emergencyContacts(),
 );
+
+typedef PickedContact = ({String? name, String? phone});
+
+/// Opens the phone's own contact picker and returns the person chosen, or
+/// null when they backed out. The system picker hands back only that one
+/// contact, so no address-book permission is asked for. Null on the web and
+/// desktop, which have no picker (the button is not shown there); overridden
+/// in tests.
+final contactPickerProvider = Provider<Future<PickedContact?> Function()?>((ref) {
+  if (kIsWeb || !(defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
+    return null;
+  }
+  return () async {
+    final c = await FlutterNativeContactPicker().selectPhoneNumber();
+    if (c == null) return null;
+    return pickedContact(fullName: c.fullName, selected: c.selectedPhoneNumber, numbers: c.phoneNumbers);
+  };
+});
 
 class EmergencyContactsScreen extends ConsumerWidget {
   const EmergencyContactsScreen({super.key});
@@ -18,11 +39,41 @@ class EmergencyContactsScreen extends ConsumerWidget {
   Future<void> _edit(BuildContext context, WidgetRef ref, [EmergencyContact? c]) async {
     final name = TextEditingController(text: c?.name);
     final phone = TextEditingController(text: c?.phone);
+    final pick = ref.read(contactPickerProvider);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(c == null ? 'Add contact' : 'Edit contact'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (pick != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                key: const ValueKey('contact-pick'),
+                icon: const Icon(Icons.contacts_outlined),
+                label: const Text('Contacts'),
+                onPressed: () async {
+                  try {
+                    final p = await pick();
+                    if (p == null) return;
+                    if (p.name != null) name.text = p.name!;
+                    if (p.phone != null) {
+                      phone.text = p.phone!;
+                    } else if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('The selected contact has no phone number.')),
+                      );
+                    }
+                  } catch (_) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text("Couldn't open your contacts. Please try again.")),
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
           TextField(controller: name, decoration: const InputDecoration(labelText: 'Name')),
           const SizedBox(height: 12),
           TextField(
