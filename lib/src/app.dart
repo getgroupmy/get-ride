@@ -47,6 +47,7 @@ import 'features/settings/change_phone_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/shell/brand_splash.dart';
+import 'features/shell/update_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
 import 'features/support/support_chat_screen.dart';
 import 'features/support/support_screen.dart';
@@ -361,8 +362,10 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       builder: (_, child) => SplashGate(
         cached: widget.branding,
         live: _branding?.latest,
-        child: VoiceProtectionHost(
-          child: IncomingTransferListener(child: child ?? const SizedBox.shrink()),
+        child: UpdateGate(
+          child: VoiceProtectionHost(
+            child: IncomingTransferListener(child: child ?? const SizedBox.shrink()),
+          ),
         ),
       ),
     );
