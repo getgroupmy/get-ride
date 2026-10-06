@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/launch_destination.dart';
 import '../../core/meter_auto_launch.dart';
 import '../../core/taxi_meter.dart';
 import '../../providers.dart';
@@ -24,6 +25,23 @@ final rideInProgressProvider = FutureProvider<bool>((ref) async {
 
   final found = await Future.wait([has(rides.ongoingForRider), has(rides.ongoingForPartner)]);
   return found.contains(true);
+});
+
+/// The rider's and the driver's ride in progress, looked up for the launch
+/// decision. A seam so tests can answer it.
+final ongoingRidesProvider = FutureProvider<({bool rider, String? partnerTripId})>((ref) async {
+  final rides = ref.watch(rideRepositoryProvider);
+  Future<T?> safe<T>(Future<T?> Function() lookup) async {
+    try {
+      return await lookup();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  final rider = await safe(rides.ongoingForRider);
+  final partner = await safe(rides.ongoingForPartner);
+  return (rider: rider != null, partnerTripId: partner?.id);
 });
 
 /// Whether this launch opens on Meter Digital (Expo `resolveMeterAutoLaunch`
@@ -70,21 +88,41 @@ final meterLaunchHandledProvider = NotifierProvider<MeterLaunchHandled, String?>
 /// launch is never held hostage to them: past this, the driver stays home.
 const meterLaunchTimeout = Duration(seconds: 10);
 
-/// Opens the meter when this launch should land on it. Called from the home
-/// screen, which every sign-in and relaunch reaches first.
+/// Takes this launch where it should land (Expo's welcome-back buffer):
+/// back into a driver's trip in progress, else onto the meter when the rate
+/// card asks for it. Called from the home screen, which every sign-in and
+/// relaunch reaches first; decided once per sign-in.
 Future<void> maybeAutoLaunchMeter(BuildContext context, WidgetRef ref) async {
   final session = ref.read(meterLaunchSessionProvider);
   if (session == null || ref.read(meterLaunchHandledProvider) == session) return;
   ref.read(meterLaunchHandledProvider.notifier).mark(session);
   // Fresh answers for this sign-in, not ones cached from an earlier one.
   ref
+    ..invalidate(ongoingRidesProvider)
     ..invalidate(rideInProgressProvider)
     ..invalidate(meterAutoLaunchProvider);
-  final bool launch;
+  final LaunchTarget target;
   try {
-    launch = await ref.read(meterAutoLaunchProvider.future).timeout(meterLaunchTimeout);
+    final ongoing = await ref.read(ongoingRidesProvider.future).timeout(meterLaunchTimeout);
+    // The meter rule is only asked when no ride is in progress.
+    final meter = ongoing.rider || ongoing.partnerTripId != null
+        ? false
+        : await ref.read(meterAutoLaunchProvider.future).timeout(meterLaunchTimeout);
+    target = resolveLaunchTarget(
+      riderRideInProgress: ongoing.rider,
+      partnerTripId: ongoing.partnerTripId,
+      meterAutoLaunch: meter,
+    );
   } catch (_) {
     return;
   }
-  if (launch && context.mounted) unawaited(GoRouter.of(context).push('/meter'));
+  if (!context.mounted) return;
+  switch (target) {
+    case LaunchPartnerTrip(:final requestId):
+      unawaited(GoRouter.of(context).push('/drive/trip/$requestId'));
+    case LaunchMeter():
+      unawaited(GoRouter.of(context).push('/meter'));
+    case LaunchHome():
+      break;
+  }
 }
