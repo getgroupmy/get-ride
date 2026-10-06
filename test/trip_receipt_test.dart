@@ -5,6 +5,7 @@ import 'package:get_ride/src/core/trip_receipt.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ride/trip_receipt_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:latlong2/latlong.dart';
 
 const _rider = '11111111-1111-1111-1111-111111111111';
 const _driver = '22222222-2222-2222-2222-222222222222';
@@ -136,5 +137,46 @@ void main() {
     expect(find.text('−RM4.50'), findsOneWidget);
     expect(find.descendant(of: find.byKey(const ValueKey('receipt-earnings')), matching: find.text('RM18.00')),
         findsOneWidget);
+  });
+
+  test('the receipt map runs pickup, stops, drop-off, and needs both ends', () {
+    final ends = {'pickup_lat': 3.15, 'pickup_lng': 101.71, 'drop_lat': 3.13, 'drop_lng': 101.68};
+    expect(receiptRoute(trip(extra: ends)), const [LatLng(3.15, 101.71), LatLng(3.13, 101.68)]);
+    expect(
+      receiptRoute(trip(extra: {
+        ...ends,
+        'stops': [
+          {'name': 'Bangsar', 'lat': 3.14, 'lng': 101.67},
+        ],
+      })),
+      const [LatLng(3.15, 101.71), LatLng(3.14, 101.67), LatLng(3.13, 101.68)],
+    );
+    expect(receiptRoute(trip(extra: {'pickup_lat': 3.15, 'pickup_lng': 101.71})), isEmpty);
+    expect(receiptRoute(trip()), isEmpty);
+  });
+
+  testWidgets('the receipt shows the trip on a map when both ends are known', (tester) async {
+    tester.view.physicalSize = const Size(1000, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Future<void> open(RideRequest r) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          key: UniqueKey(),
+          overrides: [
+            currentUserIdProvider.overrideWithValue(_rider),
+            tripProvider.overrideWith((ref, id) async => r),
+          ],
+          child: const MaterialApp(home: TripReceiptScreen(requestId: 'x')),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    await open(trip(extra: {'pickup_lat': 3.15, 'pickup_lng': 101.71, 'drop_lat': 3.13, 'drop_lng': 101.68}));
+    expect(find.byKey(const ValueKey('receipt-map')), findsOneWidget);
+    await open(trip());
+    expect(find.byKey(const ValueKey('receipt-map')), findsNothing);
   });
 }

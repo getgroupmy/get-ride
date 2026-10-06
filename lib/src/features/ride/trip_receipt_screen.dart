@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -13,6 +14,7 @@ import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/ride_map.dart';
 
 final tripProvider = FutureProvider.autoDispose.family<RideRequest?, String>((ref, id) async {
   final repo = ref.watch(rideRepositoryProvider);
@@ -47,7 +49,7 @@ class TripReceiptScreen extends ConsumerWidget {
             return const EmptyState(icon: Icons.receipt_long_outlined, title: 'Trip not found');
           }
           final asDriver = r.partnerId == uid && r.riderId != uid;
-          return _ReceiptBody(receipt: TripReceipt.fromRide(r, asDriver: asDriver));
+          return _ReceiptBody(receipt: TripReceipt.fromRide(r, asDriver: asDriver), route: receiptRoute(r));
         },
       ),
     );
@@ -55,8 +57,11 @@ class TripReceiptScreen extends ConsumerWidget {
 }
 
 class _ReceiptBody extends StatelessWidget {
-  const _ReceiptBody({required this.receipt});
+  const _ReceiptBody({required this.receipt, this.route = const []});
   final TripReceipt receipt;
+
+  /// Pickup, stops, drop-off ([receiptRoute]); no map when empty.
+  final List<LatLng> route;
 
   @override
   Widget build(BuildContext context) {
@@ -94,6 +99,24 @@ class _ReceiptBody extends StatelessWidget {
                   ),
                 ),
               ),
+              if (route.length > 1)
+                Card(
+                  key: const ValueKey('receipt-map'),
+                  clipBehavior: Clip.antiAlias,
+                  child: SizedBox(
+                    height: 200,
+                    // A picture of the trip, not a map to explore: Expo's
+                    // receipt map takes no gestures either.
+                    child: IgnorePointer(
+                      child: RideMap(
+                        pickup: route.first,
+                        drop: route.last,
+                        stops: route.sublist(1, route.length - 1),
+                        route: route,
+                      ),
+                    ),
+                  ),
+                ),
               Card(
                 child: Column(
                   children: [
