@@ -10,6 +10,7 @@ import 'package:get_ride/src/features/meter/meter_providers.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:get_ride/src/core/launch_destination.dart';
 
 MeterProfile _card({String level = 'master', String? city, bool autoLaunch = true, String id = 'm'}) =>
     defaultMeterProfile.copyWith(id: id, level: level, city: () => city, autoLaunch: autoLaunch);
@@ -30,6 +31,16 @@ class _User extends Notifier<String?> {
 final _user = NotifierProvider<_User, String?>(_User.new);
 
 void main() {
+  test('where a launch lands: rider ride, then driver trip, then meter, then home', () {
+    expect(resolveLaunchTarget(riderRideInProgress: true, partnerTripId: 'r1', meterAutoLaunch: true), isA<LaunchHome>());
+    expect(
+      resolveLaunchTarget(riderRideInProgress: false, partnerTripId: 'r1', meterAutoLaunch: true),
+      isA<LaunchPartnerTrip>().having((t) => t.requestId, 'id', 'r1'),
+    );
+    expect(resolveLaunchTarget(riderRideInProgress: false, meterAutoLaunch: true), isA<LaunchMeter>());
+    expect(resolveLaunchTarget(riderRideInProgress: false, partnerTripId: '', meterAutoLaunch: false), isA<LaunchHome>());
+  });
+
   group('the rule', () {
     test('a TEKSI partner whose card asks for it lands on the meter', () {
       final r = resolveMeterAutoLaunch(profiles: [_card()], partnerTypes: _teksi, canDrive: true);
@@ -114,16 +125,22 @@ void main() {
   group('once per launch', () {
     late int decisions;
 
-    Future<GoRouter> pump(WidgetTester tester, {required bool launch}) async {
+    Future<GoRouter> pump(
+      WidgetTester tester, {
+      required bool launch,
+      ({bool rider, String? partnerTripId}) ongoing = (rider: false, partnerTripId: null),
+    }) async {
       decisions = 0;
       final router = GoRouter(routes: [
         GoRoute(path: '/', builder: (_, _) => const _Home()),
         GoRoute(path: '/meter', builder: (_, _) => const Scaffold(body: Text('METER'))),
+        GoRoute(path: '/drive/trip/:id', builder: (_, s) => Scaffold(body: Text('TRIP ${s.pathParameters['id']}'))),
       ]);
       addTearDown(router.dispose);
       await tester.pumpWidget(ProviderScope(
         overrides: [
           meterLaunchSessionProvider.overrideWith((ref) => ref.watch(_user)),
+          ongoingRidesProvider.overrideWith((_) async => ongoing),
           meterAutoLaunchProvider.overrideWith((_) async {
             decisions++;
             return launch;
@@ -148,6 +165,18 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('HOME'), findsOneWidget);
       expect(decisions, 1);
+    });
+
+    testWidgets('a driver mid-trip goes back to the trip, not the meter', (tester) async {
+      await pump(tester, launch: true, ongoing: (rider: false, partnerTripId: 'r9'));
+      expect(find.text('TRIP r9'), findsOneWidget);
+      expect(decisions, 0, reason: 'the meter is not even asked');
+    });
+
+    testWidgets("a rider's ride in progress keeps the launch home", (tester) async {
+      await pump(tester, launch: true, ongoing: (rider: true, partnerTripId: 'r9'));
+      expect(find.text('HOME'), findsOneWidget);
+      expect(find.textContaining('TRIP'), findsNothing);
     });
 
     testWidgets('a card that does not ask for it leaves the driver home', (tester) async {
