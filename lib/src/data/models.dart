@@ -96,6 +96,14 @@ class RideRequest {
   String? get cancelReason => raw['cancel_reason'] as String?;
   double? get tollCharges => _d(raw['toll_charges']);
   double? get otherCharges => _d(raw['other_charges']);
+  String? get otherChargesNote => raw['other_charges_note'] as String?;
+
+  /// Fare plus the tolls and other charges the driver declared.
+  double? get totalDue {
+    final f = effectiveFare;
+    if (f == null) return null;
+    return f + (tollCharges ?? 0) + (otherCharges ?? 0);
+  }
   DateTime? get cancelRequestedAt => _t(raw['cancel_requested_at']);
   String? get cancelRequestedBy => raw['cancel_requested_by'] as String?;
 
