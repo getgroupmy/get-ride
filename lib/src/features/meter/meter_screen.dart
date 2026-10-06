@@ -80,6 +80,10 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   int _now() => ref.read(meterClockProvider)();
   MeterProfile get _profile => _card.profile;
 
+  /// Admin → Meter Digital → panels: whether a console panel shows, and
+  /// whether it opens. The meter itself is always on.
+  MeterPanelAccess _access(String id) => _profile.panels[id] ?? const MeterPanelAccess();
+
   /// The navigator inside the stage: dialogs and sheets open here so they
   /// are turned with the console.
   final _stageNav = GlobalKey<NavigatorState>();
@@ -525,39 +529,48 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
               padding: const EdgeInsets.only(right: 4),
               child: Center(child: Text(_connection, style: const TextStyle(color: _muted, fontSize: 12))),
             ),
-            IconButton(
-              tooltip: 'Receipt printer',
-              icon: const Icon(Icons.print_outlined, color: _muted),
-              onPressed: () => _openSettings('/meter/printer'),
-            ),
-            if (obd.linked)
+            if (_access('printer').show)
+              IconButton(
+                key: const ValueKey('meter-panel-printer'),
+                tooltip: 'Receipt printer',
+                icon: const Icon(Icons.print_outlined, color: _muted),
+                onPressed: _access('printer').tap ? () => _openSettings('/meter/printer') : null,
+              ),
+            if (obd.linked && _access('obd').show)
               IconButton(
                 tooltip: 'Vehicle information',
                 icon: const Icon(Icons.directions_car_outlined, color: _muted),
-                onPressed: () => _openSettings('/meter/vehicle'),
+                onPressed: _access('obd').tap ? () => _openSettings('/meter/vehicle') : null,
               ),
-            IconButton(
-              tooltip: 'OBD-II reader',
-              icon: Icon(Icons.settings_input_component, color: obd.linked ? _lcd : _muted),
-              onPressed: () => _openSettings('/meter/reader'),
-            ),
+            if (_access('obd').show)
+              IconButton(
+                key: const ValueKey('meter-panel-obd'),
+                tooltip: 'OBD-II reader',
+                icon: Icon(Icons.settings_input_component, color: obd.linked ? _lcd : _muted),
+                onPressed: _access('obd').tap ? () => _openSettings('/meter/reader') : null,
+              ),
           ],
         ),
         body: SafeArea(
           top: false,
           child: Row(children: [
-            NavigationRail(
-              backgroundColor: _panel,
-              selectedIndex: _tab,
-              labelType: NavigationRailLabelType.all,
-              minWidth: 64,
-              onDestinationSelected: (i) => setState(() => _tab = i),
-              destinations: const [
-                NavigationRailDestination(icon: Icon(Icons.speed), label: Text('Meter')),
-                NavigationRailDestination(icon: Icon(Icons.receipt_long_outlined), label: Text('Trip log')),
-              ],
-            ),
-            Expanded(child: _tab == 0 ? _console() : _tripLog()),
+            if (_access('trips').show)
+              NavigationRail(
+                backgroundColor: _panel,
+                selectedIndex: _tab,
+                labelType: NavigationRailLabelType.all,
+                minWidth: 64,
+                onDestinationSelected: (i) => setState(() => _tab = i),
+                destinations: [
+                  const NavigationRailDestination(icon: Icon(Icons.speed), label: Text('Meter')),
+                  NavigationRailDestination(
+                    icon: const Icon(Icons.receipt_long_outlined),
+                    label: const Text('Trip log'),
+                    disabled: !_access('trips').tap,
+                  ),
+                ],
+              ),
+            Expanded(child: _tab == 0 || !_access('trips').tap ? _console() : _tripLog()),
           ]),
         ),
       );
