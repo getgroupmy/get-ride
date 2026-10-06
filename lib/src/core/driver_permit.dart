@@ -179,3 +179,18 @@ String permitBlockMessage(PermitBlock block, DriverPermit p, {String? vehiclePla
     'The vehicle you are driving (${vehiclePlate ?? '—'}) is not the one on your permit '
         '(${p.vehiclePlate}). Choose the matching vehicle.',
 };
+
+/// What the permit's QR code carries (Expo `partner-teksi`):
+/// `PERMIT:…|IC:…|PLATE:…|NAME:…|EXP:dd/MM/yyyy`, a blank for a field the
+/// permit doesn't have. Null without a permit number, since then there is
+/// nothing for an officer to verify. Pure.
+String? permitQrPayload(DriverPermit p) {
+  final number = (p.permitNumber ?? '').trim();
+  if (number.isEmpty) return null;
+  String v(String? s) => (s ?? '').trim().replaceAll('|', '/');
+  final e = p.expiryDate;
+  final exp = e == null
+      ? ''
+      : '${e.day.toString().padLeft(2, '0')}/${e.month.toString().padLeft(2, '0')}/${e.year}';
+  return 'PERMIT:${v(number)}|IC:${v(p.icNumber)}|PLATE:${v(p.vehiclePlate)}|NAME:${v(p.name)}|EXP:$exp';
+}

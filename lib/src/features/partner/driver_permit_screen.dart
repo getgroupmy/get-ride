@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../admin/screens/people/people_data.dart';
 import '../../core/driver_permit.dart';
@@ -159,6 +160,36 @@ class _PermitBody extends StatelessWidget {
                   ],
                 ),
               ),
+              if (permitQrPayload(p) case final qr?)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Row(
+                    children: [
+                      Container(
+                        key: const ValueKey('permit-qr'),
+                        color: Colors.white,
+                        padding: const EdgeInsets.all(6),
+                        // Drawn on the device: the payload carries the IC number,
+                        // so it is never sent to a QR-image service.
+                        child: QrImageView(data: qr, size: 112, padding: EdgeInsets.zero),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('SCAN TO VERIFY', style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Authorities can scan this to check your permit number, IC, vehicle and expiry.',
+                              style: t.textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),

@@ -116,9 +116,24 @@ void main() {
     expect(find.text('TAXI DRIVER PERMIT · TEKSI MAJU'), findsOneWidget);
     expect(find.text('Review: Pending Review'), findsOneWidget);
     expect(find.text('Expires in 15 days'), findsOneWidget);
+    expect(find.byKey(const ValueKey('permit-qr')), findsOneWidget);
     expect(find.textContaining('is not the one on your permit'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('permit-open-meter')));
     await tester.pumpAndSettle();
     expect(find.text('Vehicle mismatch'), findsOneWidget);
+  });
+
+  test('the QR carries the permit fields, and needs a permit number', () {
+    final p = DriverPermit(
+      name: 'ALI BIN ABU',
+      icNumber: '900101-14-5678',
+      permitNumber: 'TP 123',
+      vehiclePlate: 'WXY 1234',
+      expiryDate: DateTime(2026, 10, 20),
+    );
+    expect(permitQrPayload(p), 'PERMIT:TP 123|IC:900101-14-5678|PLATE:WXY 1234|NAME:ALI BIN ABU|EXP:20/10/2026');
+    expect(permitQrPayload(const DriverPermit(permitNumber: 'A|B')), 'PERMIT:A/B|IC:|PLATE:|NAME:|EXP:');
+    expect(permitQrPayload(const DriverPermit(name: 'X')), isNull);
+    expect(permitQrPayload(const DriverPermit(permitNumber: '  ')), isNull);
   });
 }
