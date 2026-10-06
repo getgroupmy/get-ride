@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'src/app.dart';
 import 'src/config.dart';
 import 'src/core/referral.dart';
+import 'src/data/branding_cache.dart';
 import 'src/data/push_service.dart';
 
 Future<void> main() async {
@@ -20,5 +21,8 @@ Future<void> main() async {
   // Push notifications, on Android and iOS builds that carry a Firebase
   // project. A no-op everywhere else.
   await PushService.start(Supabase.instance.client);
-  runApp(const ProviderScope(child: GetRideApp()));
+  // The admin's splash, as cached by the last launch, so it paints on the
+  // first frame (see BrandSplash).
+  final branding = await BrandingCache.load();
+  runApp(ProviderScope(child: GetRideApp(branding: branding)));
 }

@@ -12,6 +12,7 @@ import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider
 import 'core/always_on.dart';
 import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
+import 'data/branding_cache.dart';
 import 'data/push_service.dart';
 import 'data/session_tracker.dart';
 import 'features/auth/otp_screen.dart';
@@ -41,6 +42,7 @@ import 'features/ride/trips_screen.dart';
 import 'features/settings/change_phone_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
+import 'features/shell/brand_splash.dart';
 import 'features/safety/voice_protection_controller.dart';
 import 'features/support/support_chat_screen.dart';
 import 'features/support/support_screen.dart';
@@ -204,7 +206,10 @@ final routerProvider = Provider<GoRouter>((ref) {
 });
 
 class GetRideApp extends ConsumerStatefulWidget {
-  const GetRideApp({super.key});
+  const GetRideApp({super.key, this.branding});
+
+  /// The splash cached by the previous launch (see [BrandSplash]).
+  final CachedBranding? branding;
 
   @override
   ConsumerState<GetRideApp> createState() => _GetRideAppState();
@@ -217,10 +222,13 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   AppLifecycleListener? _lifecycle;
   AlwaysOnController? _alwaysOn;
   VoidCallback? _routeListener;
+  BrandingSync? _branding;
 
   @override
   void initState() {
     super.initState();
+    _branding = BrandingSync(ref.read(supabaseProvider));
+    unawaited(_branding!.start());
     _startSessionTracking();
     _startAlwaysOn();
     final push = PushService.instance;
@@ -285,6 +293,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     unawaited(_alwaysOn?.dispose());
     _lifecycle?.dispose();
     _tracker?.dispose();
+    _branding?.stop();
     for (final sub in _subs) {
       sub.cancel();
     }
@@ -317,8 +326,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       darkTheme: appTheme(Brightness.dark),
       themeMode: ref.watch(themeModeProvider),
       routerConfig: ref.watch(routerProvider),
-      builder: (_, child) => VoiceProtectionHost(
-        child: IncomingTransferListener(child: child ?? const SizedBox.shrink()),
+      builder: (_, child) => BrandSplash(
+        cached: widget.branding,
+        child: VoiceProtectionHost(
+          child: IncomingTransferListener(child: child ?? const SizedBox.shrink()),
+        ),
       ),
     );
   }
