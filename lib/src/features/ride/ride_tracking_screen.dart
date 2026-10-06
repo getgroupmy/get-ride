@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +11,7 @@ import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare_coins.dart';
 import '../../core/format.dart';
 import '../../core/ride_bidding.dart';
+import '../../core/ride_cancel.dart';
 import '../../core/sos.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
@@ -24,6 +28,19 @@ import '../../core/demo_mode.dart';
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>(
   (ref, id) => ref.watch(rideRepositoryProvider).watch(id),
 );
+
+/// The rider's own position while a driver is on the way, for sharing on the
+/// request row (overridden in tests). Empty when location is refused.
+final riderPositionStreamProvider = Provider<Stream<LatLng> Function()>((ref) => () async* {
+  try {
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+    yield* Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium, distanceFilter: 10),
+    ).map((p) => LatLng(p.latitude, p.longitude));
+  } catch (_) {}
+});
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
 
@@ -92,6 +109,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   bool _coinsChosen = false;
   FareCoinRedemption? _redeemed;
 
+  /// The rider's live position, shared with the driver at most every 5 s.
+  StreamSubscription<LatLng>? _position;
+  DateTime _lastShare = DateTime.fromMillisecondsSinceEpoch(0);
+
   @override
   void initState() {
     super.initState();
@@ -99,12 +120,41 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       if (mounted && v) setState(() => _coinsChosen = true);
     }, onError: (_) {});
     _maybeClaimReward();
+    _syncLocationShare();
   }
 
   @override
   void didUpdateWidget(covariant _RidePanel old) {
     super.didUpdateWidget(old);
     _maybeClaimReward();
+    _syncLocationShare();
+    if (riderCancelDeclined(old.ride, widget.ride)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) showInfo(context, 'Your driver declined the cancellation. The ride continues.');
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _position?.cancel();
+    super.dispose();
+  }
+
+  void _syncLocationShare() {
+    final share = shareRiderLocation(widget.ride.status) && !widget.ride.id.startsWith('demo');
+    if (share && _position == null) {
+      _position = ref.read(riderPositionStreamProvider)().listen(_share, onError: (_) {});
+    } else if (!share && _position != null) {
+      _position!.cancel();
+      _position = null;
+    }
+  }
+
+  void _share(LatLng p) {
+    if (DateTime.now().difference(_lastShare) < const Duration(seconds: 5)) return;
+    _lastShare = DateTime.now();
+    ref.read(rideRepositoryProvider).publishRiderLocation(widget.ride.id, p.latitude, p.longitude).catchError((_) {});
   }
 
   void _maybeClaimReward() {
@@ -233,30 +283,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   Future<void> _cancel() async {
     final r = widget.ride;
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        final c = TextEditingController();
-        return AlertDialog(
-          title: Text(r.status == RideStatus.open ? 'Cancel request?' : 'Request cancellation?'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (r.status != RideStatus.open)
-                const Text('Your driver has accepted. They will be asked to approve the cancellation.'),
-              TextField(
-                controller: c,
-                decoration: const InputDecoration(labelText: 'Reason (optional)'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Keep ride')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Cancel ride')),
-          ],
-        );
-      },
-    );
+    final reason = await showDialog<String>(context: context, builder: (_) => _CancelReasonDialog(status: r.status));
     if (reason == null) return;
     await _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: reason, by: 'rider'));
   }
@@ -494,10 +521,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 onPressed: () => _sos(r),
               ),
             ),
-          if (r.status.isOngoing && r.status != RideStatus.onTrip && !riderCancelAsk)
+          // On the trip itself the X only asks: the driver approves it.
+          if (r.status.isOngoing && !riderCancelAsk)
             OutlinedButton.icon(
               icon: const Icon(Icons.close),
-              label: const Text('Cancel ride'),
+              label: Text(r.status == RideStatus.onTrip ? 'Request cancellation' : 'Cancel ride'),
               onPressed: _busy ? null : _cancel,
             ),
           if (r.status == RideStatus.completed &&
@@ -559,6 +587,85 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (r.status.isFinished) FilledButton(onPressed: () => context.go('/'), child: const Text('Done')),
         ],
       ),
+    );
+  }
+}
+
+/// Expo's "Why are you cancelling?" sheet: one reason, required; "Other"
+/// needs the rider's own words. Pops the value to store, or null to keep
+/// the ride.
+class _CancelReasonDialog extends StatefulWidget {
+  const _CancelReasonDialog({required this.status});
+  final RideStatus status;
+
+  @override
+  State<_CancelReasonDialog> createState() => _CancelReasonDialogState();
+}
+
+class _CancelReasonDialogState extends State<_CancelReasonDialog> {
+  String? _picked;
+  final _other = TextEditingController();
+
+  @override
+  void dispose() {
+    _other.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = widget.status;
+    final value = cancelReasonValue(_picked, _other.text);
+    return AlertDialog(
+      title: Text(status == RideStatus.open ? 'Cancel request?' : 'Request cancellation?'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (status != RideStatus.open)
+              Text(
+                status == RideStatus.onTrip
+                    ? "You're on your trip. Your driver will be asked to approve the cancellation."
+                    : 'Your driver has accepted. They will be asked to approve the cancellation.',
+              ),
+            const SizedBox(height: 8),
+            Text('Why are you cancelling?', style: Theme.of(context).textTheme.titleSmall),
+            RadioGroup<String>(
+              groupValue: _picked,
+              onChanged: (v) => setState(() => _picked = v),
+              child: Column(
+                children: [
+                  for (final reason in cancelReasonsFor(status))
+                    RadioListTile<String>(
+                      key: ValueKey('cancel-reason-${reason.id}'),
+                      value: reason.id,
+                      title: Text(reason.label),
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                ],
+              ),
+            ),
+            if (_picked == otherCancelReason)
+              TextField(
+                key: const ValueKey('cancel-reason-text'),
+                controller: _other,
+                autofocus: true,
+                maxLength: 200,
+                decoration: const InputDecoration(labelText: 'Tell us more'),
+                onChanged: (_) => setState(() {}),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Keep ride')),
+        FilledButton(
+          onPressed: value == null ? null : () => Navigator.pop(context, value),
+          child: Text(status == RideStatus.onTrip ? 'Request cancellation' : 'Cancel ride'),
+        ),
+      ],
     );
   }
 }

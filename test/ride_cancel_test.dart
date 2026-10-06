@@ -1,0 +1,195 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/ride_cancel.dart';
+import 'package:get_ride/src/data/fare_coin_store.dart';
+import 'package:get_ride/src/data/models.dart';
+import 'package:get_ride/src/data/ride_repository.dart';
+import 'package:get_ride/src/features/ride/ride_tracking_screen.dart';
+import 'package:get_ride/src/features/wallet/wallet_screen.dart';
+import 'package:get_ride/src/providers.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+RideRequest ride(String status, {String? askedBy, String? reason}) => RideRequest({
+  'id': 'r1',
+  'rider_id': 'me',
+  'partner_id': 'driver',
+  'partner_name': 'Ali',
+  'status': status,
+  'fare': 20,
+  'currency': 'MYR',
+  'pickup_name': 'KLCC',
+  'drop_name': 'KL Sentral',
+  'cancel_requested_at': askedBy == null ? null : '2026-10-06T08:00:00Z',
+  'cancel_requested_by': askedBy,
+  'cancel_reason': reason,
+});
+
+class _FakeRides implements RideRepository {
+  final cancels = <(String, String?)>[];
+  final shared = <(double, double)>[];
+
+  @override
+  Future<void> cancel(RideRequest r, {String? reason, required String by}) async => cancels.add((r.status.db, reason));
+
+  @override
+  Future<void> publishRiderLocation(String id, double lat, double lng) async => shared.add((lat, lng));
+
+  @override
+  Future<double> claimRideReward(RideRequest r) async => 0;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+void main() {
+  group('rules', () {
+    test('driver reasons are not offered before a driver accepts', () {
+      expect(cancelReasonsFor(RideStatus.open).map((r) => r.id), ['changed_plans', 'booked_by_mistake', 'other']);
+      expect(cancelReasonsFor(RideStatus.onTrip), hasLength(6));
+    });
+
+    test('the stored value is the Expo id, or the rider\'s words for Other', () {
+      expect(cancelReasonValue('changed_plans', ''), 'changed_plans');
+      expect(cancelReasonValue('other', '  wrong car  '), 'wrong car');
+      expect(cancelReasonValue('other', '  '), isNull);
+      expect(cancelReasonValue(null, 'x'), isNull);
+    });
+
+    test('stored reasons read back as labels; free text as written', () {
+      expect(cancelReasonLabel('driver_too_long'), 'Driver taking too long');
+      expect(cancelReasonLabel('wrong car'), 'wrong car');
+      expect(cancelReasonLabel(''), isNull);
+      expect(cancelReasonLabel(null), isNull);
+    });
+
+    test('a declined request is the rider ask disappearing from a live ride', () {
+      final asked = ride('on_trip', askedBy: 'rider');
+      expect(riderCancelDeclined(asked, ride('on_trip')), isTrue);
+      expect(riderCancelDeclined(asked, ride('cancelled')), isFalse, reason: 'approved, not declined');
+      expect(riderCancelDeclined(ride('on_trip', askedBy: 'partner'), ride('on_trip')), isFalse);
+      expect(riderCancelDeclined(null, ride('on_trip')), isFalse);
+    });
+
+    test('location is shared only while a driver is assigned', () {
+      expect(shareRiderLocation(RideStatus.open), isFalse);
+      expect(shareRiderLocation(RideStatus.accepted), isTrue);
+      expect(shareRiderLocation(RideStatus.onTrip), isTrue);
+      expect(shareRiderLocation(RideStatus.completed), isFalse);
+    });
+  });
+
+  group('screen', () {
+    Future<(_FakeRides, StreamController<RideRequest>, StreamController<LatLng>)> pump(WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      tester.view.physicalSize = const Size(1200, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final rides = _FakeRides();
+      final rows = StreamController<RideRequest>();
+      final gps = StreamController<LatLng>.broadcast();
+      addTearDown(rows.close);
+      addTearDown(gps.close);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            rideRepositoryProvider.overrideWithValue(rides),
+            rideStreamProvider.overrideWith((ref, id) => rows.stream),
+            riderPositionStreamProvider.overrideWithValue(() => gps.stream),
+            fareCoinChoiceStoreProvider.overrideWithValue(FareCoinChoiceStore()),
+            walletBalancesProvider.overrideWith((ref) async => const []),
+            walletTxProvider.overrideWith((ref) async => const []),
+          ],
+          child: const MaterialApp(home: RideTrackingScreen(requestId: 'r1')),
+        ),
+      );
+      return (rides, rows, gps);
+    }
+
+    Future<void> settle(WidgetTester tester) async {
+      for (var i = 0; i < 4; i++) {
+        await tester.pump();
+      }
+    }
+
+    testWidgets('on the trip the rider can ask to cancel, with a reason', (tester) async {
+      final (rides, rows, _) = await pump(tester);
+      rows.add(ride('on_trip'));
+      await settle(tester);
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Request cancellation'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining("You're on your trip"), findsOneWidget);
+
+      FilledButton confirm() => tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Request cancellation'));
+      expect(confirm().onPressed, isNull, reason: 'a reason is required');
+      await tester.tap(find.byKey(const ValueKey('cancel-reason-driver_not_moving')));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Request cancellation'));
+      await tester.pumpAndSettle();
+      expect(rides.cancels, [('on_trip', 'driver_not_moving')]);
+    });
+
+    testWidgets('Other needs the rider\'s own words', (tester) async {
+      final (rides, rows, _) = await pump(tester);
+      rows.add(ride('accepted'));
+      await settle(tester);
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel ride'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('cancel-reason-other')));
+      await tester.pump();
+      FilledButton confirm() => tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Cancel ride'));
+      expect(confirm().onPressed, isNull);
+      await tester.enterText(find.byKey(const ValueKey('cancel-reason-text')), 'Found another ride');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Cancel ride'));
+      await tester.pumpAndSettle();
+      expect(rides.cancels, [('accepted', 'Found another ride')]);
+    });
+
+    testWidgets('Keep ride cancels nothing', (tester) async {
+      final (rides, rows, _) = await pump(tester);
+      rows.add(ride('open'));
+      await settle(tester);
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel ride'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('cancel-reason-driver_too_long')), findsNothing);
+      await tester.tap(find.text('Keep ride'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(rides.cancels, isEmpty);
+    });
+
+    testWidgets('a declined request is announced', (tester) async {
+      final (_, rows, _) = await pump(tester);
+      rows.add(ride('on_trip', askedBy: 'rider', reason: 'changed_plans'));
+      await settle(tester);
+      expect(find.text('Cancellation requested'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Request cancellation'), findsNothing);
+      rows.add(ride('on_trip'));
+      await settle(tester);
+      expect(find.text('Your driver declined the cancellation. The ride continues.'), findsOneWidget);
+    });
+
+    testWidgets('the rider\'s position is shared while a driver is assigned, throttled', (tester) async {
+      final (rides, rows, gps) = await pump(tester);
+      rows.add(ride('open'));
+      await settle(tester);
+      gps.add(const LatLng(3.1, 101.6));
+      await tester.pump();
+      expect(rides.shared, isEmpty, reason: 'nobody to share with yet');
+
+      rows.add(ride('accepted'));
+      await settle(tester);
+      gps.add(const LatLng(3.1, 101.6));
+      gps.add(const LatLng(3.2, 101.7));
+      await tester.pump();
+      expect(rides.shared, [(3.1, 101.6)], reason: 'at most every 5 s');
+
+      rows.add(ride('completed'));
+      await settle(tester);
+      expect(gps.hasListener, isFalse, reason: 'stops when the ride ends');
+    });
+  });
+}

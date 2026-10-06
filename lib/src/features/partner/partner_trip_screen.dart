@@ -12,6 +12,7 @@ import '../../core/format.dart';
 import '../../core/navigation_app.dart';
 import '../../core/trip_charges.dart';
 import '../../core/trip_checkpoint.dart';
+import '../../core/ride_cancel.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -239,7 +240,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Text('The passenger asked to cancel${r.raw['cancel_reason'] != null ? ': ${r.raw['cancel_reason']}' : '.'}'),
+                Text(() {
+                  final why = cancelReasonLabel(r.cancelReason);
+                  return why == null ? 'The passenger asked to cancel.' : 'The passenger asked to cancel: $why';
+                }()),
                 const SizedBox(height: 8),
                 Row(children: [
                   Expanded(
