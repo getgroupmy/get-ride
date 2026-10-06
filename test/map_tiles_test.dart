@@ -1,7 +1,11 @@
 // The base map tiles: keyless OpenStreetMap by default, darkened on the
 // device in dark mode, and a configured provider when one is set.
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/widgets/map_tiles.dart';
+import 'package:get_ride/src/widgets/ride_map.dart';
+import 'package:latlong2/latlong.dart';
 
 void main() {
   test('defaults to OpenStreetMap, darkened only in dark mode', () {
@@ -32,5 +36,27 @@ void main() {
 
   test('the default build no longer uses the keyed CARTO tiles', () {
     expect(resolveTileSource(dark: true).url, isNot(contains('cartocdn')));
+  });
+
+  testWidgets('the OSM layer uses one host and retries refused tiles', (tester) async {
+    late TileLayer layer;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(builder: (context) {
+        layer = baseTileLayer(context);
+        return const SizedBox();
+      }),
+    ));
+    expect(layer.urlTemplate, osmTileUrl);
+    expect(layer.subdomains, isEmpty);
+    expect(layer.evictErrorTileStrategy, EvictErrorTileStrategy.notVisibleRespectMargin);
+  });
+
+  testWidgets('a trip map opens already framing pickup and drop-off', (tester) async {
+    const klia = LatLng(2.7456, 101.7072), klcc = LatLng(3.1579, 101.7116);
+    await tester.pumpWidget(const MaterialApp(home: RideMap(pickup: klia, drop: klcc)));
+    final options = tester.widget<FlutterMap>(find.byType(FlutterMap)).options;
+    final fit = options.initialCameraFit;
+    expect(fit, isA<FitCoordinates>());
+    expect((fit! as FitCoordinates).coordinates, containsAll([klia, klcc]));
   });
 }

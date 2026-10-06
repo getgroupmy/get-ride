@@ -12,6 +12,7 @@
 //                      with its key in the query string
 //   MAP_TILE_URL_DARK  optional dark-style tiles; when unset, the light
 //                      tiles are darkened instead
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 
@@ -47,8 +48,18 @@ TileLayer baseTileLayer(BuildContext context) {
   final source = resolveTileSource(dark: Theme.of(context).brightness == Brightness.dark);
   return TileLayer(
     urlTemplate: source.url,
-    subdomains: const ['a', 'b', 'c', 'd'],
+    // Only a configured URL with an {s} placeholder spreads over subdomains;
+    // OSM's own server is a single host.
+    subdomains: source.url.contains('{s}') ? const ['a', 'b', 'c', 'd'] : const [],
     userAgentPackageName: 'com.taxxee.teksi',
+    // OSM's public server throttles heavy users, and a browser cannot name
+    // the app in its requests. On the web, skip prefetching the ring of
+    // tiles just off screen: it multiplies the requests for every view.
+    panBuffer: kIsWeb ? 0 : 1,
+    // A tile the server refused or throttled is dropped once it is off
+    // screen, so it is fetched again when scrolled back rather than staying
+    // blank for good.
+    evictErrorTileStrategy: EvictErrorTileStrategy.notVisibleRespectMargin,
     // flutter_map's own dark-mode filter: inverts and hue-rotates each tile.
     tileBuilder: source.darken ? darkModeTileBuilder : null,
   );

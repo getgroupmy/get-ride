@@ -57,14 +57,22 @@ class _RideMapState extends State<RideMap> {
     }
   }
 
+  /// The camera that shows every point, or null for none or one.
+  CameraFit? get _cameraFit {
+    final pts = [..._points, ...widget.route];
+    if (pts.length < 2) return null;
+    return CameraFit.coordinates(coordinates: pts, padding: const EdgeInsets.all(64), maxZoom: 16);
+  }
+
   void _fit() {
     final pts = [..._points, ...widget.route];
     if (pts.isEmpty) return;
-    if (pts.length == 1) {
+    final fit = _cameraFit;
+    if (fit == null) {
       _controller.move(pts.first, 15);
       return;
     }
-    _controller.fitCamera(CameraFit.coordinates(coordinates: pts, padding: const EdgeInsets.all(64), maxZoom: 16));
+    _controller.fitCamera(fit);
   }
 
   @override
@@ -74,7 +82,12 @@ class _RideMapState extends State<RideMap> {
       mapController: _controller,
       options: MapOptions(
         initialCenter: center,
-        initialZoom: 14,
+        initialZoom: _points.length == 1 ? 15 : 14,
+        // Open already framing the trip. Starting zoomed in on the pickup and
+        // fitting a frame later requested a screenful of close-up tiles that
+        // were thrown away at once, and on a long trip those queued requests
+        // held up (or used up the server's allowance for) the tiles shown.
+        initialCameraFit: _cameraFit,
         onTap: widget.onTap == null ? null : (_, p) => widget.onTap!(p),
         onMapReady: () {
           _ready = true;
