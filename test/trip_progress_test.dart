@@ -135,6 +135,10 @@ void main() {
             path: '/trip',
             builder: (_, _) => const PartnerTripScreen(requestId: 'r1'),
           ),
+          GoRoute(
+            path: '/trips/:id',
+            builder: (_, st) => Scaffold(body: Text('receipt ${st.pathParameters['id']}')),
+          ),
         ],
       );
       await tester.pumpWidget(
@@ -220,6 +224,16 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.byKey(const ValueKey('trip-cancelled')), findsNothing);
+    });
+
+    testWidgets('a completed trip links to its receipt', (tester) async {
+      await pump(tester);
+      rows.add(ride('completed'));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('trip-receipt')));
+      await tester.pumpAndSettle();
+      expect(find.text('receipt r1'), findsOneWidget);
     });
   });
 }

@@ -123,6 +123,19 @@ class _ReceiptBody extends StatelessWidget {
                         const SizedBox(height: 4),
                         _row(t, rc.totalLabel, formatMoney(rc.total, rc.currency), bold: true),
                       ],
+                      if (rc.charged && rc.asDriver) ...[
+                        const Divider(height: 24),
+                        _row(
+                          t,
+                          rc.commissionLabel,
+                          rc.commission == null ? 'Not charged yet' : '−${formatMoney(rc.commission, rc.currency)}',
+                        ),
+                        const SizedBox(height: 4),
+                        KeyedSubtree(
+                          key: const ValueKey('receipt-earnings'),
+                          child: _row(t, 'You earn', formatMoney(rc.earnings, rc.currency), bold: true),
+                        ),
+                      ],
                     ],
                   ),
                 ),
