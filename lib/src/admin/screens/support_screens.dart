@@ -12,6 +12,7 @@ import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import '../widgets/trip_audio_panel.dart';
+import 'support_agents.dart';
 
 /// Ticket statuses and the labels the Expo panel shows for them.
 const ticketStatusLabels = {
@@ -185,6 +186,31 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
     await _load();
   }
 
+  /// Assign the ticket to yourself or another support agent (Expo's assign
+  /// sheet). Taking it yourself also moves it to in progress.
+  Future<void> _assign(String? currentId) async {
+    final repo = ref.read(adminRepositoryProvider);
+    final meId = ref.read(currentUserIdProvider);
+    var agents = const <SupportAgent>[];
+    try {
+      agents = await repo.supportAgents();
+    } catch (_) {
+      // Roster unreadable (older database): the picker still offers "me".
+    }
+    if (!mounted) return;
+    final pick = await showSupportAgentPicker(context, agents: agents, meId: meId, meName: _myName, currentId: currentId);
+    if (pick == null || pick.id == currentId || !mounted) return;
+    await runAdminAction(
+      context,
+      () => pick.id == meId
+          ? repo.assignTicketToMe(widget.ticketId, _myName)
+          : repo.assignTicket(widget.ticketId, pick.id, pick.name),
+      success: pick.id == meId ? 'Assigned to you' : 'Assigned to ${pick.name}',
+    );
+    ref.invalidate(adminTicketsProvider);
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -195,19 +221,12 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
         leading: BackButton(onPressed: () => context.go('/admin/support')),
         title: Text(ticket == null ? 'Ticket' : '#${ticket['ticket_number'] ?? ''} · ${ticket['subject'] ?? 'Support'}'),
         actions: [
-          if (canEdit && ticket != null && ticket['assigned_admin_id'] != ref.read(currentUserIdProvider))
+          if (canEdit && ticket != null)
             TextButton.icon(
+              key: const ValueKey('ticket-assign'),
               icon: const Icon(Icons.person_add_alt),
-              label: const Text('Assign to me'),
-              onPressed: () async {
-                await runAdminAction(
-                  context,
-                  () => ref.read(adminRepositoryProvider).assignTicketToMe(widget.ticketId, _myName),
-                  success: 'Assigned to you',
-                );
-                ref.invalidate(adminTicketsProvider);
-                await _load();
-              },
+              label: Text(ticket['assigned_admin_id'] == null ? 'Assign' : 'Reassign'),
+              onPressed: () => _assign(ticket['assigned_admin_id'] as String?),
             ),
           if (canEdit && ticket != null)
             PopupMenuButton<String>(

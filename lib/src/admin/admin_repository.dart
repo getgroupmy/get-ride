@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'admin_access.dart';
 import 'admin_settings_models.dart';
+import 'screens/support_agents.dart';
 
 /// Data access for the admin panel. Every call runs with the signed-in
 /// user's session, so the database's `caller_is_admin()` RLS policies are the
@@ -169,6 +170,18 @@ class AdminRepository {
 
   Future<void> setTicketStatus(String id, String status) =>
       _updateOne('support_tickets', id, {'status': status, 'updated_at': _now});
+
+  /// Admins who can handle support (`support_agents()` RPC, 0069).
+  Future<List<SupportAgent>> supportAgents() async =>
+      supportAgentsFromRows(List<dynamic>.from(await _db.rpc('support_agents') as List));
+
+  /// Hands a ticket to [agentId] (Expo `assignTicket`); the status is left
+  /// as it is.
+  Future<void> assignTicket(String id, String agentId, String agentName) => _updateOne('support_tickets', id, {
+        'assigned_admin_id': agentId,
+        'assigned_admin_name': agentName,
+        'assigned_at': _now,
+      });
 
   Future<void> assignTicketToMe(String id, String myName) => _updateOne('support_tickets', id, {
         'assigned_admin_id': _uid,
