@@ -7546,8 +7546,13 @@ create policy "fare_ai_responses delete"
 
 grant select on public.fare_ai_key_states to anon, authenticated, service_role;
 grant select, insert, delete on public.fare_ai_responses to anon, authenticated, service_role;
+-- Service role only (0103): its one real caller is the ai-route-proxy edge
+-- function, and with no caller check anyone could otherwise put every key on
+-- cooldown.
+revoke execute on function public.fare_ai_record_usage(text, text, boolean, timestamptz, text)
+  from public, anon, authenticated;
 grant execute on function public.fare_ai_record_usage(text, text, boolean, timestamptz, text)
-  to anon, authenticated, service_role;
+  to service_role;
 
 -- ---------------------------------------------------------------------------
 -- Realtime so the admin stats screen updates live.
@@ -8107,7 +8112,9 @@ begin
 end;
 $$;
 
-grant execute on function public.admin_access_bootstrap() to anon, authenticated;
+-- Signed-in only (0103): a signed-out caller can never bootstrap anyway.
+revoke execute on function public.admin_access_bootstrap() from public, anon;
+grant execute on function public.admin_access_bootstrap() to authenticated;
 
 -- Support-agent roster for the in-app support flow. Regular users used to
 -- read admin_access (+ joined profiles) directly; this returns only the
@@ -9407,7 +9414,9 @@ begin
 end;
 $$;
 
-grant execute on function public.expire_documents_daily() to anon, authenticated, service_role;
+-- Cron (as postgres) and the service role only (0103).
+revoke execute on function public.expire_documents_daily() from public, anon, authenticated;
+grant execute on function public.expire_documents_daily() to service_role;
 
 -- Schedule daily at 00:00 UTC. Unlike 0033, the extension is created inside
 -- the guarded block, so a Postgres without pg_cron (local or self-hosted)
