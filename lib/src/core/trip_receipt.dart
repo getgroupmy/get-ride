@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../data/models.dart';
 import 'format.dart';
+import 'ride_cancel.dart';
 
 /// A stable booking number for a request: "GR-" and the first eight
 /// characters of its id. Expo made one up at random on every open, so the
@@ -119,7 +120,7 @@ class TripReceipt {
       counterpartLabel: asDriver ? 'Passenger' : 'Driver',
       counterpart: asDriver ? r.riderName : r.partnerName,
       vehicle: asDriver || vehicle.isEmpty ? null : vehicle,
-      cancelReason: r.status == RideStatus.cancelled ? r.cancelReason : null,
+      cancelReason: r.status == RideStatus.cancelled ? cancelReasonLabel(r.cancelReason) : null,
     );
   }
 
