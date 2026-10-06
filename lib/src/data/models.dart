@@ -76,6 +76,8 @@ class RideRequest {
   bool get offerMe => raw['offer_me'] == true;
   String get currency => (raw['currency'] as String?) ?? 'MYR';
   int get passengers => _i(raw['passengers']) ?? 1;
+  int? get luggage => _i(raw['luggage']);
+  double? get riderRating => _d(raw['rider_rating']);
   String? get note => raw['note'] as String?;
   RideStatus get status => RideStatus.parse(raw['status'] as String?);
   String? get partnerId => raw['partner_id'] as String?;
