@@ -1,7 +1,7 @@
 -- ============================================================================
--- 0098 — squashed baseline
+-- 0097 — squashed baseline
 -- ----------------------------------------------------------------------------
--- The whole schema as of migration 0097, in one file. It replaces the 101
+-- The whole schema as of the old 0097, in one file. It replaces the 101
 -- files now kept (for history only; nothing reads them) in
 -- supabase/migrations_archive/.
 --
@@ -20,8 +20,9 @@
 --
 -- Existing databases already have all of this. After merging, mark it applied
 -- without running it: ./supabase/baseline-migration-history.sh (see
--- supabase/README.md → "The 0098 squash"); 0099 then re-applies the two
--- changes the live project was missing.
+-- supabase/README.md → "The squash"); 0099 then re-applies the two
+-- changes the live project was missing. (Numbered 0097, the old revoke's
+-- slot, because 0098 was taken on main and on live by ride_request_stops.)
 -- ============================================================================
 
 -- ============================================================================
@@ -4062,7 +4063,7 @@ exception when duplicate_object then null;
 end$$;
 
 -- ============================================================================
--- Folded-in migrations (added 2026-10-06 with the 0098 squash)
+-- Folded-in migrations (added 2026-10-06 with the 0097 squash)
 -- ----------------------------------------------------------------------------
 -- Until the squash, these migrations' objects existed only on databases that
 -- had run the migration files: schema.sql never created them (tables such as
