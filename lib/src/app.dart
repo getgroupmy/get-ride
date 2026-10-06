@@ -208,7 +208,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 class GetRideApp extends ConsumerStatefulWidget {
   const GetRideApp({super.key, this.branding});
 
-  /// The splash cached by the previous launch (see [BrandSplash]).
+  /// The splash cached by the previous launch (see [SplashGate]).
   final CachedBranding? branding;
 
   @override
@@ -326,8 +326,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       darkTheme: appTheme(Brightness.dark),
       themeMode: ref.watch(themeModeProvider),
       routerConfig: ref.watch(routerProvider),
-      builder: (_, child) => BrandSplash(
+      builder: (_, child) => SplashGate(
         cached: widget.branding,
+        live: _branding?.latest,
         child: VoiceProtectionHost(
           child: IncomingTransferListener(child: child ?? const SizedBox.shrink()),
         ),

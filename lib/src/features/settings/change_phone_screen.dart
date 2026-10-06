@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config.dart';
 import '../../core/auth_utils.dart';
+import '../../core/phone_input.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 
@@ -123,7 +124,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
                           controller: _number,
                           enabled: !_busy,
                           keyboardType: TextInputType.phone,
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly, const NoTrunkZeroFormatter()],
                           decoration: const InputDecoration(labelText: 'New phone number'),
                           onSubmitted: (_) => _send(),
                         ),

@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../config.dart';
 import '../../core/app_display.dart';
 import '../../core/auth_utils.dart';
+import '../../core/phone_input.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/device_access.dart';
 import '../../providers.dart';
@@ -121,7 +122,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                     autofocus: true,
                     keyboardType: TextInputType.phone,
                     autofillHints: const [AutofillHints.telephoneNumberNational],
-                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s-]'))],
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s-]')), const NoTrunkZeroFormatter()],
                     decoration: const InputDecoration(hintText: '12 345 6789'),
                     onSubmitted: (_) => _continue(),
                   ),

@@ -1,43 +1,69 @@
-/// The admin-set splash (Admin → Settings → Splash Screen, the `app_branding`
-/// row), as the app shows it at launch (Expo `BrandingContext` +
-/// `SplashScreenComponent`). Pure: parsing, the cached copy, and the colour.
+/// The splash the Android and iOS apps hold for a moment at launch, worked
+/// the way iAkauntan's is (`core/splash.dart` there): five seconds counted
+/// from when the process started, in the apps only, the admin's picture
+/// (Admin → Settings → Splash Screen, `app_branding.splash_image_url`) on
+/// white — or black in dark mode — falling back to the app's logo and then
+/// its name. Pure: every answer here is testable without a widget.
 library;
 
 import 'dart:ui' show Color;
 
-import '../admin/screens/meterapp/site_logic.dart' show defaultSplashBgColor, hexToColor;
+import 'package:flutter/foundation.dart' show TargetPlatform;
 
 class AppBranding {
-  const AppBranding({this.splashImageUrl, this.splashBgColor = defaultSplashBgColor});
+  const AppBranding({this.splashImageUrl});
 
+  /// The admin's splash picture, or null where none was uploaded.
   final String? splashImageUrl;
-  final String splashBgColor;
 
-  /// The `app_branding` row; null or blank fields fall back to the defaults.
+  /// The `app_branding` row; a blank or non-web URL counts as none.
   static AppBranding fromRow(Map<String, dynamic>? row) {
-    String? s(Object? v) => v is String && v.trim().isNotEmpty ? v.trim() : null;
-    return AppBranding(
-      splashImageUrl: s(row?['splash_image_url']),
-      splashBgColor: s(row?['splash_bg_color']) ?? defaultSplashBgColor,
-    );
+    final v = row?['splash_image_url'];
+    final url = v is String ? v.trim() : '';
+    return AppBranding(splashImageUrl: url.startsWith('http') ? url : null);
   }
 
-  Map<String, dynamic> toJson() => {'splash_image_url': splashImageUrl, 'splash_bg_color': splashBgColor};
-
-  /// Like Expo, there is no splash without an image: a bare colour would only
-  /// delay the app.
-  bool get showsSplash => splashImageUrl != null && splashImageUrl!.startsWith('http');
-
-  Color get background => hexToColor(splashBgColor) ?? hexToColor(defaultSplashBgColor)!;
+  Map<String, dynamic> toJson() => {'splash_image_url': splashImageUrl};
 
   @override
-  bool operator ==(Object other) =>
-      other is AppBranding && other.splashImageUrl == splashImageUrl && other.splashBgColor == splashBgColor;
+  bool operator ==(Object other) => other is AppBranding && other.splashImageUrl == splashImageUrl;
 
   @override
-  int get hashCode => Object.hash(splashImageUrl, splashBgColor);
+  int get hashCode => splashImageUrl.hashCode;
 }
 
-/// How long the splash stays up before it fades, and the fade.
-const splashHold = Duration(milliseconds: 1500);
-const splashFade = Duration(milliseconds: 350);
+/// How long the splash is held, once.
+const splashHold = Duration(seconds: 5);
+
+/// When this process started, near enough: stamped by [markSplashStart] at
+/// the top of `main`, before anything slow. A top-level `final` would be
+/// initialised lazily on its first read — the first frame, after start-up
+/// has already taken its time — and the splash would then run its full five
+/// seconds on top of the slowest starts.
+DateTime splashStarted = DateTime.now();
+
+void markSplashStart() => splashStarted = DateTime.now();
+
+/// What is left of [splashHold] at [now]; never negative, so a start slow
+/// enough to have used it all goes straight to the app.
+Duration splashRemaining(DateTime now, {DateTime? started}) {
+  final left = splashHold - now.difference(started ?? splashStarted);
+  return left.isNegative ? Duration.zero : left;
+}
+
+/// The apps hold a splash; the website and desktop builds do not — a browser
+/// tab that sits on a logo for five seconds is a tab somebody closes.
+bool splashHeld({required bool isWeb, required TargetPlatform platform}) =>
+    !isWeb && (platform == TargetPlatform.android || platform == TargetPlatform.iOS);
+
+/// White in light mode and black in dark: what a logo is drawn to sit on.
+Color splashBackground({required bool dark}) => dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF);
+
+/// The app name's colour where there is no picture: legible on either.
+Color splashInk({required bool dark}) => dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);
+
+/// The bundled logo the splash falls back to where nobody uploaded a picture.
+const splashLogoAsset = 'assets/branding/icon.png';
+
+/// What the app calls itself, drawn where neither picture will load.
+const splashWordmark = 'GET.ride';
