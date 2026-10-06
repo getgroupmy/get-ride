@@ -476,6 +476,30 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               label: const Text('Cancel ride'),
               onPressed: _busy ? null : _cancel,
             ),
+          if (r.status == RideStatus.completed && ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0))
+            Card(
+              key: const ValueKey('ride-charges'),
+              child: Column(children: [
+                ListTile(dense: true, title: const Text('Trip fare'),
+                    trailing: Text(formatMoney(r.effectiveFare, r.currency))),
+                if ((r.tollCharges ?? 0) > 0)
+                  ListTile(dense: true, title: const Text('Tolls'),
+                      trailing: Text(formatMoney(r.tollCharges, r.currency))),
+                if ((r.otherCharges ?? 0) > 0)
+                  ListTile(
+                    dense: true,
+                    title: const Text('Other charges'),
+                    subtitle: r.otherChargesNote == null ? null : Text(r.otherChargesNote!),
+                    trailing: Text(formatMoney(r.otherCharges, r.currency)),
+                  ),
+                const Divider(height: 1),
+                ListTile(
+                  title: const Text('Total to pay', style: TextStyle(fontWeight: FontWeight.w700)),
+                  trailing: Text(formatMoney(r.totalDue, r.currency),
+                      style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+              ]),
+            ),
           if (_coinsChosen && r.status.isOngoing)
             const ListTile(
               key: ValueKey('coins-pending'),

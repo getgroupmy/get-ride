@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/trip_charges.dart';
 import 'package:get_ride/src/core/trip_checkpoint.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
@@ -33,7 +34,8 @@ class _FakeRides implements RideRepository {
   Future<void> updateStatus(String id, RideStatus status) async => log.add('status:${status.db}');
 
   @override
-  Future<void> complete(RideRequest r) async => log.add('complete');
+  Future<void> complete(RideRequest r, {TripCharges charges = TripCharges.none}) async =>
+      log.add(charges.isEmpty ? 'complete' : 'complete:${charges.tolls}+${charges.other}');
 
   @override
   Future<bool> recordCheckpoint(String id, TripCheckpoint checkpoint, double? lat, double? lng) async {
@@ -105,9 +107,43 @@ void main() {
       rows.add(ride('on_trip'));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('trip-complete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('charges-confirm')));
       await tester.pump();
       await tester.pump();
       expect(rides.log, containsAll(['complete', 'drop:3.134,101.686']));
+    });
+
+    testWidgets('declared tolls and other charges go with the completion', (tester) async {
+      final (rides, rows) = await pump(tester, fix: const LatLng(3.134, 101.686));
+      rows.add(ride('on_trip'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('trip-complete')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('charges-tolls')), '5.50');
+      await tester.enterText(find.byKey(const ValueKey('charges-other')), '3');
+      await tester.pump();
+      expect(find.text('Collect RM28.50'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('charges-confirm')));
+      await tester.pump();
+      expect(find.text('Say what the other charges are for.'), findsOneWidget);
+      expect(rides.log, isNot(contains(startsWith('complete'))));
+
+      await tester.enterText(find.byKey(const ValueKey('charges-note')), 'Parking');
+      await tester.tap(find.byKey(const ValueKey('charges-confirm')));
+      await tester.pumpAndSettle();
+      expect(rides.log, contains('complete:5.5+3.0'));
+    });
+
+    testWidgets('cancelling the charges leaves the trip running', (tester) async {
+      final (rides, rows) = await pump(tester, fix: const LatLng(3.134, 101.686));
+      rows.add(ride('on_trip'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('trip-complete')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(rides.log, isEmpty);
     });
 
     testWidgets('no fix, no checkpoint — the trip still advances', (tester) async {

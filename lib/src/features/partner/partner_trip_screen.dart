@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/format.dart';
 import '../../core/navigation_app.dart';
+import '../../core/trip_charges.dart';
 import '../../core/trip_checkpoint.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
@@ -160,12 +161,21 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     unawaited(_checkpoint(r.id, TripCheckpoint.arrive));
   });
 
-  Future<void> _complete(RideRequest r) => _run(() async {
-    // Stamped before the status change, as Expo does, so the drop point is
-    // where the driver stood when they pressed complete.
-    unawaited(_checkpoint(r.id, TripCheckpoint.drop));
-    await ref.read(rideRepositoryProvider).complete(r);
-  });
+  /// Completing asks first for the tolls and other charges the meter of a
+  /// fare can't know (Expo's tolls popup); they go on the ride for the rider.
+  Future<void> _complete(RideRequest r) async {
+    final charges = await showDialog<TripCharges>(
+      context: context,
+      builder: (_) => _ChargesDialog(fare: r.effectiveFare ?? 0, currency: r.currency),
+    );
+    if (charges == null || !mounted) return;
+    await _run(() async {
+      // Stamped before the status change, as Expo does, so the drop point is
+      // where the driver stood when they pressed complete.
+      unawaited(_checkpoint(r.id, TripCheckpoint.drop));
+      await ref.read(rideRepositoryProvider).complete(r, charges: charges);
+    });
+  }
 
   void _navigate(LatLng to) {
     final url = navigationUri(ref.read(navigationAppProvider), to.latitude, to.longitude);
@@ -342,6 +352,91 @@ class _VoiceProtectionPill extends ConsumerWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+/// Tolls and other charges, declared on Complete. Blank means none.
+class _ChargesDialog extends StatefulWidget {
+  const _ChargesDialog({required this.fare, required this.currency});
+  final double fare;
+  final String currency;
+
+  @override
+  State<_ChargesDialog> createState() => _ChargesDialogState();
+}
+
+class _ChargesDialogState extends State<_ChargesDialog> {
+  final _tolls = TextEditingController();
+  final _other = TextEditingController();
+  final _note = TextEditingController();
+  String? _problem;
+
+  @override
+  void dispose() {
+    _tolls.dispose();
+    _other.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  ({TripCharges? charges, String? problem}) get _resolved =>
+      resolveTripCharges(tolls: _tolls.text, other: _other.text, note: _note.text);
+
+  @override
+  Widget build(BuildContext context) {
+    // The running total counts whatever amounts read, before the note is in.
+    final total = widget.fare + (parseChargeAmount(_tolls.text) ?? 0) + (parseChargeAmount(_other.text) ?? 0);
+    const amount = TextInputType.numberWithOptions(decimal: true);
+    return AlertDialog(
+      key: const ValueKey('trip-charges'),
+      title: const Text('Complete trip'),
+      content: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('Add any tolls or other charges the passenger owes on top of the fare.'),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('charges-tolls'),
+            controller: _tolls,
+            keyboardType: amount,
+            decoration: const InputDecoration(labelText: 'Tolls', hintText: '0.00'),
+            onChanged: (_) => setState(() => _problem = null),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('charges-other'),
+            controller: _other,
+            keyboardType: amount,
+            decoration: const InputDecoration(labelText: 'Other charges', hintText: '0.00'),
+            onChanged: (_) => setState(() => _problem = null),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('charges-note'),
+            controller: _note,
+            maxLength: tripChargeNoteMax,
+            decoration: const InputDecoration(labelText: 'What the other charges are for', hintText: 'e.g. Parking'),
+            onChanged: (_) => setState(() => _problem = null),
+          ),
+          if (_problem != null)
+            Text(_problem!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          const SizedBox(height: 4),
+          Text('Collect ${formatMoney(total, widget.currency)}',
+              key: const ValueKey('charges-total'), style: Theme.of(context).textTheme.titleMedium),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(
+          key: const ValueKey('charges-confirm'),
+          onPressed: () {
+            final r = _resolved;
+            if (r.charges == null) return setState(() => _problem = r.problem);
+            Navigator.pop(context, r.charges);
+          },
+          child: const Text('Complete'),
+        ),
+      ],
     );
   }
 }

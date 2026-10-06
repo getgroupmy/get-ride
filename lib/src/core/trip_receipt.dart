@@ -98,7 +98,11 @@ class TripReceipt {
       lines: [
         (label: 'Trip fare', amount: fare),
         if (tolls > 0) (label: 'Tolls', amount: tolls),
-        if (other > 0) (label: 'Other charges', amount: other),
+        if (other > 0)
+          (
+            label: (r.otherChargesNote ?? '').trim().isEmpty ? 'Other charges' : 'Other charges (${r.otherChargesNote!.trim()})',
+            amount: other,
+          ),
       ],
       charged: charged,
       date: r.completedAt ?? r.cancelledAt ?? r.createdAt,

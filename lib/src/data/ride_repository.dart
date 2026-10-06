@@ -12,6 +12,7 @@ import '../core/commission.dart';
 import '../core/fare_coins.dart';
 import '../core/ride_bidding.dart';
 import '../core/ride_stops.dart';
+import '../core/trip_charges.dart';
 import '../core/trip_checkpoint.dart';
 import 'geo_service.dart';
 import 'models.dart';
@@ -478,8 +479,24 @@ class RideRepository {
 
   /// Completes the trip and charges the partner's commission through the
   /// shared `wallet_charge_ride_commission` RPC (idempotent per ride).
-  Future<void> complete(RideRequest r) async {
-    await updateStatus(r.id, RideStatus.completed);
+  ///
+  /// [charges] are the tolls and other charges the driver declared; they are
+  /// stored with the completion and are not part of the commissionable fare.
+  Future<void> complete(RideRequest r, {TripCharges charges = TripCharges.none}) async {
+    final patch = <String, dynamic>{
+      'status': RideStatus.completed.db,
+      'completed_at': DateTime.now().toUtc().toIso8601String(),
+      ...charges.toPatch(),
+    };
+    try {
+      await _db.from(_table).update(patch).eq('id', r.id);
+    } on PostgrestException catch (e) {
+      // Without migration 0100 there is no note column; the amounts (0047)
+      // still go on the ride.
+      if (!'${e.message} ${e.details}'.contains('other_charges_note')) rethrow;
+      patch.remove('other_charges_note');
+      await _db.from(_table).update(patch).eq('id', r.id);
+    }
     final fare = r.effectiveFare ?? 0;
     final uid = _uid;
     if (fare <= 0 || uid == null) return;
