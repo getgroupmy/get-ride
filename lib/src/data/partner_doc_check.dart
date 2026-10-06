@@ -45,3 +45,13 @@ final partnerDocCheckProvider = Provider<PartnerDocCheck>((ref) {
   final people = ref.watch(peopleRepositoryProvider);
   return (partner, {required teksi}) => loadPartnerDocIssues(people, partner, teksi: teksi);
 });
+
+/// Admin → Partner Type entries, for the Drive screen's service modes and
+/// the "vehicle required" check. Empty when unreadable.
+final partnerTypeEntriesProvider = FutureProvider.autoDispose<List<({String id, Map<String, dynamic> values})>>((ref) async {
+  try {
+    return await ref.watch(peopleRepositoryProvider).partnerTypes();
+  } catch (_) {
+    return const [];
+  }
+});
