@@ -9,6 +9,7 @@ import '../config.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../core/commission.dart';
+import '../core/fare_coins.dart';
 import '../core/ride_bidding.dart';
 import '../core/trip_checkpoint.dart';
 import 'geo_service.dart';
@@ -363,6 +364,25 @@ class RideRepository {
       return v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
     } catch (_) {
       return 0;
+    }
+  }
+
+  /// Pays part of a completed ride's fare with the rider's GET.coin
+  /// (`wallet_redeem_fare_coins`). The server takes as much as the balance
+  /// covers at the admin rate, checks the caller is the rider and redeems
+  /// once per ride (`fare_coins_redeemed_at`), so asking again answers zero.
+  /// Null when the call fails, so the caller can try again later.
+  Future<FareCoinRedemption?> redeemFareCoins(RideRequest r) async {
+    final uid = _uid;
+    final fare = r.effectiveFare ?? 0;
+    if (uid == null || r.status != RideStatus.completed || r.riderId != uid || fare <= 0) {
+      return (coinsUsed: 0.0, coinValue: 0.0);
+    }
+    try {
+      final data = await _db.rpc('wallet_redeem_fare_coins', params: {'p_user': uid, 'p_fare': fare, 'p_ride': r.id});
+      return fareCoinRedemptionFrom(data);
+    } catch (_) {
+      return null;
     }
   }
 
