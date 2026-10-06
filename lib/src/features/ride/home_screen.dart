@@ -9,6 +9,7 @@ import '../../core/app_display.dart';
 import '../../core/fare.dart';
 import '../../core/fare_coins.dart';
 import '../../core/format.dart';
+import '../../core/place_gates.dart';
 import '../../core/route_estimate.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/coin_trade_repository.dart';
@@ -143,6 +144,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       title: target == _PinTarget.pickup ? 'Pickup' : 'Where to?',
       near: _me ?? _pickup?.point,
       current: _here,
+      usage: target == _PinTarget.pickup ? GateUsage.pickup : GateUsage.drop,
     );
     if (pick == null || !mounted) return;
     if (pick.pickOnMap) {
