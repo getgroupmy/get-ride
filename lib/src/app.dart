@@ -27,6 +27,7 @@ import 'features/meter/vehicle_info_screen.dart';
 import 'features/auth/phone_screen.dart';
 import 'features/auth/pin_screen.dart';
 import 'features/auth/registration_closed_screen.dart';
+import 'features/auth/signup_photo_screen.dart';
 import 'features/auth/set_pin_screen.dart';
 import 'features/partner/partner_onboarding_screen.dart';
 import 'features/partner/driver_permit_screen.dart';
@@ -197,6 +198,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
       GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
       GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
+      GoRoute(
+        path: '/signup/photo',
+        // Only the two sign-up landings, never an arbitrary route from the URL.
+        builder: (_, s) => SignupPhotoScreen(
+          next: signupLanding(s.uri.queryParameters['next'] == '/drive' ? 'driver' : null),
+        ),
+      ),
       GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
       GoRoute(path: '/meter/printer', builder: (_, _) => const PrinterScreen()),

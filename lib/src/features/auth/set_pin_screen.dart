@@ -10,6 +10,7 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../data/coin_trade_repository.dart';
+import 'signup_photo_screen.dart' show signupLanding;
 
 /// Choose (or change) the 6-digit sign-in PIN. Requires an active session.
 class SetPinScreen extends ConsumerStatefulWidget {
@@ -30,6 +31,10 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   late final _referral = TextEditingController(text: PendingReferral.code ?? '');
   bool _busy = false;
 
+  /// Expo `role-selection`: where a brand-new account lands. Either mode
+  /// stays a tap away later.
+  String _role = 'passenger';
+
   @override
   void dispose() {
     _pin.dispose();
@@ -46,6 +51,9 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
     if (referral.isNotEmpty && !isPlausibleReferralCode(referral)) {
       return showInfo(context, "That referral code wasn't found.");
     }
+    final before = ref.read(profileProvider).value;
+    final isNew = !widget.changing && before?.name?.trim().isNotEmpty != true;
+    final hasPhoto = before?.avatarUrl != null;
     setState(() => _busy = true);
     try {
       await ref.read(authRepositoryProvider).setPin(_pin.text);
@@ -54,7 +62,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
       AuthRepository.pinSetupPending = false;
       ref.invalidate(profileProvider);
       final referralNotice = referral.isEmpty ? null : await _applyReferral(referral);
-      if (mounted) context.go(widget.changing ? '/account/settings' : '/');
+      if (mounted) context.go(_nextRoute(isNew: isNew, hasPhoto: hasPhoto));
       if (widget.changing && mounted) showInfo(context, 'PIN updated');
       if (referralNotice != null && mounted) showInfo(context, referralNotice);
     } catch (e) {
@@ -62,6 +70,15 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Settings when changing; a new account gets the optional photo step
+  /// (unless it already has one) and then its chosen mode.
+  String _nextRoute({required bool isNew, required bool hasPhoto}) {
+    if (widget.changing) return '/account/settings';
+    if (!isNew) return '/';
+    final landing = signupLanding(_role);
+    return hasPhoto ? landing : Uri(path: '/signup/photo', queryParameters: {'next': landing}).toString();
   }
 
   /// Applies the referral code after sign-up. Never blocks it: a refusal or
@@ -102,6 +119,22 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
             Text('Use this 6-digit PIN to sign in on any device — no SMS needed.',
                 style: t.textTheme.bodyLarge),
             const SizedBox(height: 24),
+            if (needsName && !widget.changing) ...[
+              Text('Are you a passenger or a driver?', style: t.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                key: const ValueKey('signup-role'),
+                segments: const [
+                  ButtonSegment(value: 'passenger', icon: Icon(Icons.person_outline), label: Text('Passenger')),
+                  ButtonSegment(value: 'driver', icon: Icon(Icons.local_taxi_outlined), label: Text('Driver')),
+                ],
+                selected: {_role},
+                onSelectionChanged: (v) => setState(() => _role = v.first),
+              ),
+              const SizedBox(height: 4),
+              Text('You can change the mode later', style: t.textTheme.bodySmall),
+              const SizedBox(height: 16),
+            ],
             if (needsName) ...[
               TextField(
                 controller: _name,
