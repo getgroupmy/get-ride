@@ -9,6 +9,10 @@ class AppDisplay {
     this.serviceEnabled = true,
     this.registrationEnabled = true,
     this.showAiTollCharges = true,
+    this.showAiTollBooths = true,
+    this.recenterButton = true,
+    this.connectedPopup = true,
+    this.connectionFailedPopup = true,
     this.recentLocations = true,
     this.recentLocationsCount = 4,
   });
@@ -23,6 +27,17 @@ class AppDisplay {
   /// Whether the AI route estimate's toll charges are shown on the booking
   /// panel.
   final bool showAiTollCharges;
+
+  /// Whether the toll booths on the AI route estimate are marked on the map.
+  final bool showAiTollBooths;
+
+  /// Whether the home map shows its recenter (my location) button.
+  final bool recenterButton;
+
+  /// Whether launch shows the "Connected" popup when the backend answers, and
+  /// the "Not Connected" one when it does not.
+  final bool connectedPopup;
+  final bool connectionFailedPopup;
 
   /// Whether the place picker lists the rider's recent destinations, and how
   /// many (Admin → Display → Recent Locations, 0–8).
@@ -49,6 +64,10 @@ class AppDisplay {
       serviceEnabled: flag('serviceEnabled'),
       registrationEnabled: flag('registrationEnabled'),
       showAiTollCharges: flag('showAiTollCharges'),
+      showAiTollBooths: flag('showAiTollBooths'),
+      recenterButton: flag('recenterButton'),
+      connectedPopup: flag('connectedPopupEnabled'),
+      connectionFailedPopup: flag('connectionFailedPopupEnabled'),
       recentLocations: flag('recentLocations'),
       recentLocationsCount: _count(raw['recentLocationsCount']),
     );

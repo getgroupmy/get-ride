@@ -298,7 +298,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-      Positioned(
+      if (ref.watch(appDisplayProvider).value?.recenterButton ?? true)
+        Positioned(
         right: 16,
         bottom: wide ? 16 : null,
         top: wide ? null : 16,
