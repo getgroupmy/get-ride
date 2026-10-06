@@ -219,28 +219,7 @@ class _PermitBody extends StatelessWidget {
       context.push('/meter');
       return;
     }
-    await showDialog<void>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text(switch (block) {
-          PermitBlock.icMismatch => 'IC number mismatch',
-          PermitBlock.expired => 'Permit expired',
-          PermitBlock.plateMismatch => 'Vehicle mismatch',
-        }),
-        content: Text(permitBlockMessage(block, permit, vehiclePlate: plate)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
-            onPressed: () {
-              Navigator.pop(c);
-              context.go(block == PermitBlock.plateMismatch ? '/drive' : '/drive/onboarding');
-            },
-            child: Text(block == PermitBlock.plateMismatch ? 'Choose vehicle' : 'Update documents'),
-          ),
-        ],
-      ),
-    );
+    await showPermitBlock(context, block, permit, plate);
   }
 
   Widget _field(ThemeData t, String label, String? value) => Padding(
@@ -275,3 +254,34 @@ class _PermitBody extends StatelessWidget {
     _ => Colors.orange,
   };
 }
+
+/// Why the meter can't open (Expo's Start Pickup popups), with the way to fix
+/// it: update the documents, or pick the vehicle the permit names.
+Future<void> showPermitBlock(BuildContext context, PermitBlock block, DriverPermit permit, String? plate) =>
+    showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        key: const ValueKey('permit-block'),
+        title: Text(switch (block) {
+          PermitBlock.icMismatch => 'IC number mismatch',
+          PermitBlock.expired => 'Permit expired',
+          PermitBlock.plateMismatch => 'Vehicle mismatch',
+        }),
+        content: Text(permitBlockMessage(block, permit, vehiclePlate: plate)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close')),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+            onPressed: () {
+              Navigator.pop(c);
+              if (block == PermitBlock.plateMismatch) {
+                context.go('/drive');
+              } else {
+                context.push('/drive/onboarding');
+              }
+            },
+            child: Text(block == PermitBlock.plateMismatch ? 'Choose vehicle' : 'Update documents'),
+          ),
+        ],
+      ),
+    );
