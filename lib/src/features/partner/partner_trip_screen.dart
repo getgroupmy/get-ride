@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -9,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/format.dart';
 import '../../core/navigation_app.dart';
+import '../../core/trip_checkpoint.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -17,6 +19,24 @@ import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
 import '../safety/voice_protection_controller.dart';
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
+
+/// A one-off fix for a trip checkpoint when the screen's own GPS stream has
+/// not produced one yet. Null when location is unavailable.
+final tripFixProvider = Provider<Future<LatLng?> Function()>((ref) => () async {
+  try {
+    final p = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    ).timeout(const Duration(seconds: 8));
+    return LatLng(p.latitude, p.longitude);
+  } catch (_) {
+    try {
+      final last = kIsWeb ? null : await Geolocator.getLastKnownPosition();
+      return last == null ? null : LatLng(last.latitude, last.longitude);
+    } catch (_) {
+      return null;
+    }
+  }
+});
 
 /// Driver view of an accepted trip: navigate, arrive, verify code, start, complete.
 class PartnerTripScreen extends ConsumerStatefulWidget {
@@ -124,6 +144,27 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     }
     await _run(() => ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.onTrip));
   }
+
+  /// Records where the driver is at [checkpoint] (Expo
+  /// `recordPartnerCheckpoint`) for the admin fraud checks. Fire-and-forget:
+  /// the trip never waits on it.
+  Future<void> _checkpoint(String id, TripCheckpoint checkpoint) async {
+    final fix = _me ?? await ref.read(tripFixProvider)();
+    if (fix == null) return;
+    await ref.read(rideRepositoryProvider).recordCheckpoint(id, checkpoint, fix.latitude, fix.longitude);
+  }
+
+  Future<void> _arrive(RideRequest r) => _run(() async {
+    await ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.arrived);
+    unawaited(_checkpoint(r.id, TripCheckpoint.arrive));
+  });
+
+  Future<void> _complete(RideRequest r) => _run(() async {
+    // Stamped before the status change, as Expo does, so the drop point is
+    // where the driver stood when they pressed complete.
+    unawaited(_checkpoint(r.id, TripCheckpoint.drop));
+    await ref.read(rideRepositoryProvider).complete(r);
+  });
 
   void _navigate(LatLng to) {
     final url = navigationUri(ref.read(navigationAppProvider), to.latitude, to.longitude);
@@ -250,14 +291,16 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         const SizedBox(height: 8),
         if (r.status == RideStatus.accepted)
           FilledButton(
-            onPressed: _busy ? null : () => _run(() => repo.updateStatus(r.id, RideStatus.arrived)),
+            key: const ValueKey('trip-arrive'),
+            onPressed: _busy ? null : () => _arrive(r),
             child: const Text("I've arrived"),
           ),
         if (r.status == RideStatus.arrived)
           FilledButton(onPressed: _busy ? null : () => _start(r), child: const Text('Start trip')),
         if (r.status == RideStatus.onTrip)
           FilledButton(
-            onPressed: _busy ? null : () => _run(() => repo.complete(r)),
+            key: const ValueKey('trip-complete'),
+            onPressed: _busy ? null : () => _complete(r),
             child: Text('Complete trip · collect ${formatMoney(r.effectiveFare, r.currency)}'),
           ),
         if (r.status == RideStatus.accepted || r.status == RideStatus.arrived)

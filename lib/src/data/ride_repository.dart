@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/commission.dart';
 import '../core/ride_bidding.dart';
+import '../core/trip_checkpoint.dart';
 import 'geo_service.dart';
 import 'models.dart';
 
@@ -423,6 +424,20 @@ class RideRepository {
         'partner_live_at': DateTime.now().toUtc().toIso8601String(),
       })
       .eq('id', id);
+
+  /// Stamps where the driver was at a trip milestone (see
+  /// core/trip_checkpoint.dart). Best-effort: a failed write never holds up
+  /// the trip, so this answers false instead of throwing.
+  Future<bool> recordCheckpoint(String id, TripCheckpoint checkpoint, double? lat, double? lng) async {
+    final patch = checkpointPatch(checkpoint, lat, lng);
+    if (patch == null) return false;
+    try {
+      await _db.from(_table).update(patch).eq('id', id);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<void> publishRiderLocation(String id, double lat, double lng) => _db
       .from(_table)
