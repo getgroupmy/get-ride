@@ -38,7 +38,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   RouteInfo? _route;
   RouteEstimate? _ai;
   int _routeSeq = 0;
-  RideService _service = rideServices.first;
+  String? _serviceName;
+
+  /// What the booking sheet offers: the admin Vehicle Services catalogue,
+  /// or the built-in list while it loads or when it cannot be read.
+  List<RideService> get _services => ref.read(rideServicesProvider).value ?? rideServices;
+
+  /// The chosen service, or the first one offered.
+  RideService get _service {
+    final services = _services;
+    return services.firstWhere((s) => s.name == _serviceName, orElse: () => services.first);
+  }
   String _payment = 'Cash';
   final _note = TextEditingController();
   _PinTarget _pinTarget = _PinTarget.none;
@@ -237,6 +247,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     ]);
 
+    ref.watch(rideServicesProvider); // rebuild when the catalogue arrives
     final panel = _BookingPanel(
       ongoing: _ongoing,
       pickup: _pickup,
@@ -245,6 +256,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ai: _ai,
       showTolls: ref.watch(appDisplayProvider).value?.showAiTollCharges ?? true,
       routing: _routing,
+      services: _services,
       service: _service,
       payment: _payment,
       note: _note,
@@ -260,7 +272,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         });
         _updateRoute();
       },
-      onService: (s) => setState(() => _service = s),
+      onService: (s) => setState(() => _serviceName = s.name),
       onPayment: (p) => setState(() => _payment = p),
       onBook: _book,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
@@ -317,6 +329,7 @@ class _BookingPanel extends StatelessWidget {
     this.ai,
     this.showTolls = true,
     required this.routing,
+    required this.services,
     required this.service,
     required this.payment,
     required this.note,
@@ -338,6 +351,7 @@ class _BookingPanel extends StatelessWidget {
   final RouteEstimate? ai;
   final bool showTolls;
   final bool routing;
+  final List<RideService> services;
   final RideService service;
   final String payment;
   final TextEditingController note;
@@ -409,9 +423,10 @@ class _BookingPanel extends StatelessWidget {
               style: t.textTheme.bodySmall,
             ),
           const SizedBox(height: 8),
-          for (final s in rideServices)
+          for (final s in services)
             Card(
-              color: s == service ? t.colorScheme.secondaryContainer : null,
+              key: ValueKey('service-${s.name}'),
+              color: s.name == service.name ? t.colorScheme.secondaryContainer : null,
               child: ListTile(
                 leading: Icon(s.name == 'Teksi' ? Icons.local_taxi : Icons.directions_car),
                 title: Text(s.name),

@@ -33,13 +33,17 @@ double _round2(double v) => double.parse(v.toStringAsFixed(2));
 /// Ride services offered on the booking sheet. `name` is what lands in
 /// `ride_requests.service`.
 class RideService {
-  const RideService(this.name, this.description, this.multiplier, this.seats);
+  const RideService(this.name, this.description, this.multiplier, this.seats, {this.id});
   final String name;
   final String description;
   final double multiplier;
   final int seats;
+
+  /// The admin Vehicle Services entry this came from, when it did.
+  final String? id;
 }
 
+/// Used only when the admin Vehicle Services catalogue cannot be read.
 const rideServices = <RideService>[
   RideService('Teksi', 'Metered taxi', 1.0, 4),
   RideService('GET Car', 'Everyday rides', 1.1, 4),
