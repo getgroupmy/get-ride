@@ -32,6 +32,7 @@ import '../../widgets/ride_map.dart';
 import 'home_parts.dart';
 import 'place_search.dart';
 import '../meter/meter_auto_launch.dart';
+import '../../admin/screens/commerce/get_coin.dart' show formatCoins, rideRewardCoins;
 
 enum _PinTarget { none, pickup, drop }
 
@@ -488,6 +489,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       onBook: _book,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
       idle: _drop == null ? _homeParts(sections, blob, display) : null,
+      earnRate: ref.watch(coinTradeQuoteProvider).value?.settings.earnCoinsPerCurrency ?? 0,
     );
 
     if (wide) {
@@ -562,10 +564,11 @@ class _BookingPanel extends StatelessWidget {
     required this.onBook,
     required this.onOpenOngoing,
     this.idle,
+    this.earnRate = 0,
   });
 
-  /// What the panel shows before a destination is chosen (the Expo home
-  /// parts); null keeps the plain pickup / destination card.
+  /// GC earned per unit of fare (Admin → Get Coin → earn rate).
+  final double earnRate;
 
   final RideRequest? ongoing;
   final Place? pickup;
@@ -590,6 +593,9 @@ class _BookingPanel extends StatelessWidget {
   final VoidCallback onPickup, onDrop, onSwap, onBook, onOpenOngoing;
   final ValueChanged<RideService> onService;
   final ValueChanged<String> onPayment;
+
+  /// What the panel shows before a destination is chosen (the Expo home
+  /// parts); null keeps the plain pickup / destination card.
   final Widget? idle;
 
   @override
@@ -734,6 +740,17 @@ class _BookingPanel extends StatelessWidget {
             controller: note,
             decoration: const InputDecoration(labelText: 'Note to driver (optional)'),
           ),
+          if (earnRate > 0 && rideRewardCoins(fareFor(service), earnRate) > 0) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Chip(
+                key: const ValueKey('booking-coin-earn'),
+                avatar: const Icon(Icons.toll, size: 16, color: Color(0xFFB45309)),
+                label: Text('Earn ${formatCoins(rideRewardCoins(fareFor(service), earnRate))} on this booking'),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           FilledButton(
             onPressed: booking || ongoing != null ? null : onBook,

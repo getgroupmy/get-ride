@@ -106,3 +106,21 @@ class PendingReferral {
   PendingReferral._();
   static String? code;
 }
+
+/// What the invite card promises, from Admin → Get Coin → referral rewards
+/// (Expo `referral-card`): each side's real bonus, or nothing when the
+/// programme is off or pays nothing, so the app never promises a reward it
+/// will not pay.
+String? referralBonusLine({required bool enabled, required double referrer, required double referred, required String Function(double) coins}) {
+  if (!enabled) return null;
+  if (referred > 0 && referrer > 0) {
+    return 'Invite a friend: they get ${coins(referred)} and you get ${coins(referrer)} when they sign up with your code.';
+  }
+  if (referred > 0) return 'Invite a friend: they get ${coins(referred)} when they sign up with your code.';
+  if (referrer > 0) return 'Invite a friend: you get ${coins(referrer)} when they sign up with your code.';
+  return null;
+}
+
+/// The sign-up hint under the referral code field.
+String? referralSignupHint({required bool enabled, required double referred, required String Function(double) coins}) =>
+    enabled && referred > 0 ? 'Invited by a friend? You get ${coins(referred)}.' : null;

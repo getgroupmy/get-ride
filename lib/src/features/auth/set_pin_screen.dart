@@ -8,6 +8,8 @@ import '../../data/auth_repository.dart';
 import '../../data/referral_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
+import '../../data/coin_trade_repository.dart';
 
 /// Choose (or change) the 6-digit sign-in PIN. Requires an active session.
 class SetPinScreen extends ConsumerStatefulWidget {
@@ -117,9 +119,18 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
                 key: const ValueKey('signup-referral'),
                 controller: _referral,
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Referral code (optional)',
-                  helperText: 'Invited by a friend? You both earn bonus GET.coin.',
+                  helperText: () {
+                    final coin = ref.watch(coinSettingsProvider).value;
+                    return coin == null
+                        ? null
+                        : referralSignupHint(
+                            enabled: coin.referralEnabled,
+                            referred: coin.referralReferredCoins,
+                            coins: formatCoins,
+                          );
+                  }(),
                 ),
               ),
             ],
