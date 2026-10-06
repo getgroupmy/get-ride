@@ -15,6 +15,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/retry.dart';
 
 const osmTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
@@ -43,6 +45,35 @@ TileSource resolveTileSource({
   return d.isNotEmpty ? TileSource(d, darken: false) : TileSource(lightUrl, darken: true);
 }
 
+/// Whether a failed tile request is worth asking again: the server
+/// throttling (429) or failing (5xx). Anything else (a 404, a block page)
+/// would fail the same way again.
+bool retryTileResponse(int statusCode) => statusCode == 429 || statusCode >= 500;
+
+/// Whether a request that never got an answer is worth asking again: a
+/// dropped connection is, a request the map cancelled itself is not.
+bool retryTileError(Object error) => error is http.ClientException && error is! http.RequestAbortedException;
+
+/// How long to wait before retry [attempt] (0-based): 0.5 s, 1 s, 2 s, 4 s,
+/// so a throttled burst spreads itself out instead of failing at once.
+Duration tileRetryDelay(int attempt) => Duration(milliseconds: 500 * (1 << attempt));
+
+/// One tile provider for every map in the app. flutter_map's default retries
+/// only a 503 and never a dropped request, so on the web a map that opens
+/// with a burst of 20–30 tile requests to OSM's throttled server kept the
+/// few that got through and showed grey for the rest, for good. It is also
+/// built once rather than on every rebuild, each of which used to open (and
+/// never close) its own HTTP client.
+final appTileProvider = NetworkTileProvider(
+  httpClient: RetryClient(
+    http.Client(),
+    retries: 4,
+    when: (r) => retryTileResponse(r.statusCode),
+    whenError: (e, _) => retryTileError(e),
+    delay: tileRetryDelay,
+  ),
+);
+
 /// The base tile layer for [context]'s theme.
 TileLayer baseTileLayer(BuildContext context) {
   final source = resolveTileSource(dark: Theme.of(context).brightness == Brightness.dark);
@@ -52,6 +83,10 @@ TileLayer baseTileLayer(BuildContext context) {
     // OSM's own server is a single host.
     subdomains: source.url.contains('{s}') ? const ['a', 'b', 'c', 'd'] : const [],
     userAgentPackageName: 'com.taxxee.teksi',
+    tileProvider: appTileProvider,
+    // A tile that still fails names itself and the reason in the console
+    // (the browser's, on the web), which is how a grey map gets diagnosed.
+    errorTileCallback: (tile, error, _) => debugPrint('Map tile ${tile.coordinates} failed: $error'),
     // OSM's public server throttles heavy users, and a browser cannot name
     // the app in its requests. On the web, skip prefetching the ring of
     // tiles just off screen: it multiplies the requests for every view.
