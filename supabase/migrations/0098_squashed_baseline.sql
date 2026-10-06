@@ -20,7 +20,8 @@
 --
 -- Existing databases already have all of this. After merging, mark it applied
 -- without running it: ./supabase/baseline-migration-history.sh (see
--- supabase/README.md → "The 0098 squash"). New migrations start at 0099.
+-- supabase/README.md → "The 0098 squash"); 0099 then re-applies the two
+-- changes the live project was missing.
 -- ============================================================================
 
 -- ============================================================================

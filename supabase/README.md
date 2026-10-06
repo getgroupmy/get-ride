@@ -76,7 +76,10 @@ npx supabase db push --dry-run
 ```
 
 The script removes the `0001`–`0097` history rows and records `0098`; the dry
-run should then report nothing to push. Before merging, check that the GitHub
+run should then list only `0099`, which re-applies the two changes the live
+project was missing at the squash (`0076`'s `user_sessions.cellular_generation`
+and `0097`'s grant revoke; both idempotent). Push it with
+`npx supabase db push`. Before merging, check that the GitHub
 integration's **Deploy to production** option is off (Project Settings →
 Integrations): if it is on, the merge itself would try to apply `0098` to
 production. Preview branches additionally need **Automatic branching** turned
@@ -102,7 +105,7 @@ special characters in the password (`@` → `%40`, `:` → `%3A`, `/` → `%2F`,
 **Each new migration:**
 
 1. Add `migrations/NNNN_name.sql` with the next number after the highest on
-   `main` (`0099` onward; CI's `check-migration-numbers.sh` rejects a reused
+   `main` (`0100` onward; CI's `check-migration-numbers.sh` rejects a reused
    number), and update `schema.sql` to match. CI's **Migrations replay** job
    builds a fresh database from `migrations/` + `seed.sql` (exactly what a
    preview branch does) and runs `tests/*.sql` on it, so a migration that only
