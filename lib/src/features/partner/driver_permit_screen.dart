@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../admin/screens/people/people_data.dart';
 import '../../core/driver_permit.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/in_app_page.dart';
 
 /// The signed-in partner's taxi driver permit, read from their uploads.
 final driverPermitProvider = FutureProvider.autoDispose<DriverPermit>((ref) async {
@@ -194,7 +194,7 @@ class _PermitBody extends StatelessWidget {
               OutlinedButton.icon(
                 icon: const Icon(Icons.description_outlined),
                 label: const Text('View uploaded permit'),
-                onPressed: () => launchUrl(Uri.parse(p.fileUrl!), mode: LaunchMode.externalApplication),
+                onPressed: () => openInApp(context, p.fileUrl!, title: 'Driver permit'),
               ),
             OutlinedButton.icon(
               icon: const Icon(Icons.upload_file),

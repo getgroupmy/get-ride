@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
@@ -11,6 +10,7 @@ import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
 import 'vehicle_drivers.dart';
+import '../../../widgets/in_app_page.dart';
 
 class VehicleFormData {
   const VehicleFormData({required this.partners, required this.geo, required this.requiredDocs, required this.vehicleDocTypeIds});
@@ -399,7 +399,7 @@ class _VehicleDocumentsList extends ConsumerWidget {
                   final s = docDisplayStatus(d);
                   return Text(s, style: TextStyle(color: docStatusColor(s), fontWeight: FontWeight.w600));
                 }),
-                onTap: d['file_url'] == null ? null : () => launchUrl(Uri.parse('${d['file_url']}')),
+                onTap: d['file_url'] == null ? null : () => openInApp(context, '${d['file_url']}'),
               ),
           ]);
         },

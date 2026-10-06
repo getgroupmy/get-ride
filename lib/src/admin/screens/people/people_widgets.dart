@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/document_ai.dart';
 import '../../../data/document_ai_repository.dart';
@@ -12,6 +11,7 @@ import '../../widgets/admin_widgets.dart';
 import 'doc_pdf.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
+import '../../../widgets/in_app_page.dart';
 
 /// Wide screens get a two-column form, phones one column.
 class FormColumns extends StatelessWidget {
@@ -680,7 +680,7 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
                             labelStyle: TextStyle(color: docStatusColor(status), fontSize: 12),
                             visualDensity: VisualDensity.compact,
                           ),
-                    onTap: widget.enabled ? () => _open(d, u) : (u?['file_url'] != null ? () => launchUrl(Uri.parse('${u!['file_url']}')) : null),
+                    onTap: widget.enabled ? () => _open(d, u) : (u?['file_url'] != null ? () => openInApp(context, '${u!['file_url']}') : null),
                   ),
                 );
               }),
