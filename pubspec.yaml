@@ -59,6 +59,7 @@ dependencies:
   printing: ^5.15.1
   wakelock_plus: ^1.8.0
   android_intent_plus: ^6.1.0
+  webview_flutter: ^4.14.1
 
 dev_dependencies:
   flutter_test:

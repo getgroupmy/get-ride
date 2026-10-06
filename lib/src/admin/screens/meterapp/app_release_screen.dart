@@ -9,13 +9,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../providers.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../widgets/in_app_page.dart';
 
 const appReleasePage = 'admin-settings-app-release';
 
@@ -340,7 +340,7 @@ class _ReleaseCardState extends ConsumerState<_ReleaseCard> {
                             style: TextStyle(color: _toneColor(d.tone, theme.colorScheme), fontWeight: FontWeight.w700)),
                         onTap: run.url.isEmpty
                             ? null
-                            : () => launchUrl(Uri.parse(run.url), mode: LaunchMode.externalApplication),
+                            : () => openInApp(context, run.url, title: 'Build #${run.number}'),
                       );
                     }),
               ]);

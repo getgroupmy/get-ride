@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../config.dart';
 import '../../core/app_display.dart';
@@ -11,6 +10,7 @@ import '../../data/app_display_repository.dart';
 import '../../data/device_access.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/in_app_page.dart';
 
 const _dialCodes = ['+60', '+65', '+62', '+66', '+63', '+84', '+673', '+91', '+44', '+1'];
 
@@ -75,13 +75,6 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
     }
   }
 
-  Future<void> _openLink(String url) async {
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (_) {
-      if (mounted) showInfo(context, 'Could not open $url');
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -151,12 +144,12 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
               Wrap(alignment: WrapAlignment.center, children: [
                 TextButton(
                   key: const ValueKey('phone-terms'),
-                  onPressed: () => _openLink(AppConfig.termsUrl),
+                  onPressed: () => openInApp(context, AppConfig.termsUrl, title: 'Terms of Service'),
                   child: const Text('Terms of Service'),
                 ),
                 TextButton(
                   key: const ValueKey('phone-privacy'),
-                  onPressed: () => _openLink(AppConfig.privacyUrl),
+                  onPressed: () => openInApp(context, AppConfig.privacyUrl, title: 'Privacy Policy'),
                   child: const Text('Privacy Policy'),
                 ),
               ]),

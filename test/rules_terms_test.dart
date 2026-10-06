@@ -4,19 +4,16 @@ import 'package:get_ride/src/config.dart';
 import 'package:get_ride/src/features/settings/rules_terms_card.dart';
 
 void main() {
-  Future<List<Uri>> pumpCard(WidgetTester tester, {bool opens = true}) async {
+  Future<List<(String, String?)>> pumpCard(WidgetTester tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(700, 1400);
     addTearDown(tester.view.reset);
-    final opened = <Uri>[];
+    final opened = <(String, String?)>[];
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: RulesTermsCard(
-            launch: (uri) async {
-              opened.add(uri);
-              return opens;
-            },
+            open: (context, url, {title}) async => opened.add((url, title)),
           ),
         ),
       ),
@@ -24,19 +21,12 @@ void main() {
     return opened;
   }
 
-  testWidgets('terms and privacy open their pages', (tester) async {
+  testWidgets('terms and privacy open their pages in the app', (tester) async {
     final opened = await pumpCard(tester);
     await tester.tap(find.byKey(const ValueKey('terms-of-service')));
     await tester.tap(find.byKey(const ValueKey('privacy-policy')));
     await tester.pump();
-    expect(opened, [Uri.parse(AppConfig.termsUrl), Uri.parse(AppConfig.privacyUrl)]);
-  });
-
-  testWidgets('a link that cannot open says so', (tester) async {
-    await pumpCard(tester, opens: false);
-    await tester.tap(find.byKey(const ValueKey('terms-of-service')));
-    await tester.pump();
-    expect(find.text('Could not open ${AppConfig.termsUrl}'), findsOneWidget);
+    expect(opened, [(AppConfig.termsUrl, 'Terms and conditions'), (AppConfig.privacyUrl, 'Privacy Policy')]);
   });
 
   testWidgets('licenses lists the packages', (tester) async {

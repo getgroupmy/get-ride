@@ -2,7 +2,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/format.dart';
 import '../../core/support_media.dart';
@@ -10,6 +9,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import 'support_screen.dart';
+import '../../widgets/in_app_page.dart';
 
 final supportMessagesProvider = StreamProvider.autoDispose.family<List<SupportMessage>, String>(
   (ref, ticketId) => ref.watch(accountRepositoryProvider).watchMessages(ticketId),
@@ -99,7 +99,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> {
     final fg = mine ? t.colorScheme.onPrimary : null;
     final url = m.mediaUrl;
     if (url != null && url.isNotEmpty && (m.type == 'image' || m.type == 'video')) {
-      void open() => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      void open() => openInApp(context, url, title: m.type == 'image' ? 'Photo' : 'Video');
       if (m.type == 'image') {
         return GestureDetector(
           key: ValueKey('support-image-${m.id}'),
