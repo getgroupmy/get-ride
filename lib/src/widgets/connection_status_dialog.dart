@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/connection_check.dart';
@@ -139,7 +140,29 @@ class _ConnectionStatusDialogState extends State<ConnectionStatusDialog> {
                       ),
                 ],
                 const SizedBox(height: 16),
-                FilledButton(onPressed: () => Navigator.of(context).pop(), child: Text(ok ? 'OK' : 'Continue')),
+                Row(
+                  children: [
+                    if (!ok) ...[
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            final router = GoRouter.maybeOf(context);
+                            Navigator.of(context).pop();
+                            router?.push('/diagnostics');
+                          },
+                          child: const Text('Diagnose'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: Text(ok ? 'OK' : 'Continue'),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
