@@ -93,11 +93,14 @@ void main() {
     });
     tearDown(() => open.close());
 
-    Future<void> pump(WidgetTester tester, {bool on = true}) async {
-      SharedPreferences.setMockInitialValues({
-        'partner_destination':
-            '{"name":"Home","address":"KLCC","lat":${klcc.latitude},"lng":${klcc.longitude},"on":$on}',
-      });
+    Future<void> pump(WidgetTester tester, {bool on = true, Map<String, Object>? prefs}) async {
+      SharedPreferences.setMockInitialValues(
+        prefs ??
+            {
+              'partner_destination':
+                  '{"name":"Home","address":"KLCC","lat":${klcc.latitude},"lng":${klcc.longitude},"on":$on}',
+            },
+      );
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(700, 1600);
       addTearDown(tester.view.reset);
@@ -165,6 +168,38 @@ void main() {
       open.add([_req('home', putrajaya, cheras)]);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('toward-home')), findsNothing);
+    });
+
+    testWidgets('saved destinations: pick one, forget one, room to add', (tester) async {
+      String saved(String name, LatLng p) => '{"name":"$name","address":"","lat":${p.latitude},"lng":${p.longitude}}';
+      await pump(
+        tester,
+        prefs: {
+          'partner_destinations':
+              '{"saved":[${saved('Home', klcc)},${saved('Cheras', cheras)}],"active":null,"on":false}',
+        },
+      );
+      open.add(const []);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('2 saved. Tap to pick where you are heading'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('queue-destination')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byKey(const ValueKey('destination-sheet')), findsOneWidget);
+      expect(find.byKey(const ValueKey('destination-add')), findsOneWidget, reason: 'room for a third');
+
+      await tester.tap(find.byKey(const ValueKey('destination-1')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.tap(find.byKey(const ValueKey('destination-remove-0')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.byKey(const ValueKey('destination-1')), findsNothing);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(find.text('Heading to Cheras'), findsOneWidget);
     });
   });
 }

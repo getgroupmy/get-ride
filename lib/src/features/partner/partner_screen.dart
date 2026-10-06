@@ -429,10 +429,68 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     );
   }
 
-  Future<void> _chooseDestination() async {
+  Future<void> _addDestination() async {
     final pick = await showPlaceSearch(context, title: 'Your destination', near: _me);
     final place = pick?.place;
     if (place != null) await ref.read(destinationModeProvider.notifier).setPlace(place);
+  }
+
+  /// The saved destinations (Expo's destination sheet): pick the one being
+  /// headed to, forget one, or add another while there is room. With none
+  /// saved yet it goes straight to the search.
+  Future<void> _chooseDestination() async {
+    if (ref.read(destinationModeProvider).saved.isEmpty) return _addDestination();
+    final add = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => Consumer(
+        builder: (context, ref, _) {
+          final d = ref.watch(destinationModeProvider);
+          final notifier = ref.read(destinationModeProvider.notifier);
+          bool active(Place p) => d.on && d.place != null && samePlace(d.place!, p);
+          return SafeArea(
+            child: Column(
+              key: const ValueKey('destination-sheet'),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const ListTile(
+                  title: Text('Your destinations'),
+                  subtitle: Text("Save up to $maxSavedDestinations. Requests heading to the one you pick come first."),
+                ),
+                for (final (i, p) in d.saved.indexed)
+                  ListTile(
+                    key: ValueKey('destination-$i'),
+                    leading: Icon(active(p) ? Icons.flag : Icons.outlined_flag,
+                        color: active(p) ? Theme.of(context).colorScheme.primary : null),
+                    title: Text(p.name),
+                    subtitle: p.address.isEmpty ? null : Text(p.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    selected: active(p),
+                    onTap: () => notifier.select(p),
+                    trailing: IconButton(
+                      key: ValueKey('destination-remove-$i'),
+                      tooltip: 'Remove',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => notifier.remove(p),
+                    ),
+                  ),
+                if (d.saved.length < maxSavedDestinations)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('destination-add'),
+                      icon: const Icon(Icons.add_location_alt_outlined),
+                      label: const Text('Add destination'),
+                      onPressed: () => Navigator.pop(sheet, true),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (add == true && mounted) await _addDestination();
   }
 
   Widget _destinationTile() {
@@ -443,7 +501,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       leading: const Icon(Icons.flag_outlined),
       title: Text(place == null ? 'Destination mode' : 'Heading to ${place.name}'),
       subtitle: Text(place == null
-          ? 'Set where you are heading to see trips that way first'
+          ? (d.saved.isEmpty
+              ? 'Set where you are heading to see trips that way first'
+              : '${d.saved.length} saved. Tap to pick where you are heading')
           : d.on
               ? 'Trips toward it come first; auto-accept takes only those'
               : 'Off. Tap to change the destination'),
