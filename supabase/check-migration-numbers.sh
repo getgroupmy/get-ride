@@ -15,19 +15,15 @@ set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/migrations"
 
-# The second file of each duplicate pair from before this check, renamed with
-# a trailing digit so its version is unique and still sorts right after its
-# pair. The only five-digit versions allowed; new migrations use NNNN.
-SUFFIXED=(
-  00241_partner_profile_columns.sql
-  00421_push_notifications.sql
-  00641_settings_entries_write_policy_reapply.sql
-  00891_wallet_transfer_requests_participant_rls.sql
-)
+# The second file of each duplicate pair from before this check was renamed
+# with a trailing digit (00241_, 00421_, 00641_, 00891_). Those files moved to
+# migrations_archive/ with the 0098 squash; list any future exception here.
+# New migrations use NNNN.
+SUFFIXED=()
 
 is_suffixed() {
   local f
-  for f in "${SUFFIXED[@]}"; do
+  for f in "${SUFFIXED[@]+"${SUFFIXED[@]}"}"; do
     [[ "$f" == "$1" ]] && return 0
   done
   return 1

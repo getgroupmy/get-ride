@@ -11,7 +11,8 @@ Everything needed to bring up a brand-new Supabase project for this app.
 | `reset.sql`  | Destructive teardown (keeps storage buckets).                    |
 | `setup.sh`   | One-shot bootstrap script (`psql` wrapper).                      |
 | `config.toml` | Supabase CLI config (`supabase link` / `supabase db push`).     |
-| `migrations/` | Numbered migrations; `supabase db push` applies the new ones.   |
+| `migrations/` | Numbered migrations, starting from the `0098` squashed baseline; `supabase db push` applies the new ones. |
+| `migrations_archive/` | The 101 migrations (`0001`–`0097`) the baseline replaced. History only: nothing reads them. |
 | `baseline-migration-history.sh` | Marks every migration as applied in the database's history (see below). |
 | `check-migration-numbers.sh` | CI check: unique, well-named migration versions.       |
 
@@ -60,8 +61,32 @@ npx supabase link --project-ref rqlavogkgywxspuxgiwk
 The commands in this section have no trailing `# comments`: zsh passes them
 to the CLI as arguments unless `interactive_comments` is set.
 
-**Baseline.** The live project was baselined on 2026-10-05: its history holds
-exactly the files in `migrations/`. A project whose history is out of step
+**The 0098 squash (one-time, right after it merges).** `migrations/` now
+starts from one squashed baseline, `0098_squashed_baseline.sql` (a copy of
+`schema.sql` at the time), because Supabase preview branches and
+`supabase db reset` build a fresh database by replaying `migrations/` and the
+old 101-file chain could not do that. Existing databases already contain
+everything in it, so it must be recorded as applied, never run. After merging,
+from an up-to-date `main`:
+
+```bash
+export SUPABASE_DB_URL="postgres://postgres:PASSWORD@db.REF.supabase.co:5432/postgres"
+./supabase/baseline-migration-history.sh
+npx supabase db push --dry-run
+```
+
+The script removes the `0001`–`0097` history rows and records `0098`; the dry
+run should then list only `0099`, which re-applies the two changes the live
+project was missing at the squash (`0076`'s `user_sessions.cellular_generation`
+and `0097`'s grant revoke; both idempotent). Push it with
+`npx supabase db push`. Before merging, check that the GitHub
+integration's **Deploy to production** option is off (Project Settings →
+Integrations): if it is on, the merge itself would try to apply `0098` to
+production. Preview branches additionally need **Automatic branching** turned
+on there, with the working directory set to `.`.
+
+**Baseline.** The live project was baselined on 2026-10-05 (and again for the
+0098 squash): its history holds exactly the files in `migrations/`. A project whose history is out of step
 (hand-applied migrations, or one bootstrapped from `schema.sql`) is lined up
 with:
 
@@ -80,8 +105,11 @@ special characters in the password (`@` → `%40`, `:` → `%3A`, `/` → `%2F`,
 **Each new migration:**
 
 1. Add `migrations/NNNN_name.sql` with the next number after the highest on
-   `main` (CI's `check-migration-numbers.sh` rejects a reused number), and
-   update `schema.sql` to match.
+   `main` (`0100` onward; CI's `check-migration-numbers.sh` rejects a reused
+   number), and update `schema.sql` to match. CI's **Migrations replay** job
+   builds a fresh database from `migrations/` + `seed.sql` (exactly what a
+   preview branch does) and runs `tests/*.sql` on it, so a migration that only
+   works on top of a hand-fixed database fails the PR.
 2. After it merges, from an up-to-date `main`:
 
    ```bash
@@ -117,7 +145,7 @@ file in `migrations/`.
 
 Push delivery goes through Expo's push service for Expo tokens and Firebase
 Cloud Messaging for the Flutter app's tokens. The schema adds two tables
-(`push_tokens`, `push_notifications` — see `migrations/00421_push_notifications.sql`,
+(`push_tokens`, `push_notifications` — see `migrations_archive/00421_push_notifications.sql`,
 already folded into `schema.sql`) and the `send-push` edge function that fans
 messages out.
 
