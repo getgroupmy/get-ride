@@ -87,6 +87,7 @@ class RideRequest {
   String? get partnerPhoto => raw['partner_photo'] as String?;
   double? get partnerLiveLat => _d(raw['partner_live_lat']);
   double? get partnerLiveLng => _d(raw['partner_live_lng']);
+  double? get partnerLiveHeading => _d(raw['partner_live_heading']);
   String? get otp => raw['otp'] as String?;
   DateTime? get createdAt => _t(raw['created_at']);
   DateTime? get acceptedAt => _t(raw['accepted_at']);
