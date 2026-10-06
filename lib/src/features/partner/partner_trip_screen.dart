@@ -12,12 +12,13 @@ import '../../core/format.dart';
 import '../../core/navigation_app.dart';
 import '../../core/trip_charges.dart';
 import '../../core/trip_checkpoint.dart';
+import '../../core/trip_progress.dart';
 import '../../core/ride_cancel.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
-import '../../widgets/ride_map.dart';
 import '../../widgets/ride_stop_tiles.dart';
+import '../ride/live_ride_map.dart';
 import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
 import '../safety/voice_protection_controller.dart';
 
@@ -41,6 +42,25 @@ final tripFixProvider = Provider<Future<LatLng?> Function()>((ref) => () async {
   }
 });
 
+/// One fix from the driver's phone: where, which way, and how loose.
+typedef TripFix = ({LatLng at, double? heading, double? accuracy});
+
+/// The driver's own position stream while on the trip screen. Empty when
+/// location is unavailable or refused.
+final tripPositionStreamProvider = Provider<Stream<TripFix> Function()>((ref) => () async* {
+  try {
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+    yield* Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 15),
+    ).map((p) => (at: LatLng(p.latitude, p.longitude), heading: p.heading < 0 ? null : p.heading, accuracy: p.accuracy));
+  } catch (_) {}
+});
+
+/// The trip screen's clock, for the running trip time. For tests.
+final tripClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 /// Driver view of an accepted trip: navigate, arrive, verify code, start, complete.
 class PartnerTripScreen extends ConsumerStatefulWidget {
   const PartnerTripScreen({super.key, required this.requestId});
@@ -51,8 +71,20 @@ class PartnerTripScreen extends ConsumerStatefulWidget {
 }
 
 class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
-  StreamSubscription<Position>? _gps;
+  StreamSubscription<TripFix>? _gps;
   LatLng? _me;
+  double? _heading;
+  // The running trip: when this screen first saw it on trip (the row's
+  // started_at wins), the distance driven since, and the last fix it counted.
+  DateTime? _onTripSince;
+  double _metres = 0;
+  LatLng? _legFrom;
+  DateTime? _legAt;
+  Timer? _tick;
+  RideStatus? _status;
+  // Set when the driver approves the passenger's cancel here, so the end of
+  // the ride isn't announced back to them.
+  bool _approvedHere = false;
   DateTime _lastPublish = DateTime.fromMillisecondsSinceEpoch(0);
   bool _busy = false;
   late final VoiceProtectionController _voice;
@@ -61,50 +93,90 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   void initState() {
     super.initState();
     _voice = ref.read(voiceProtectionProvider.notifier);
-    _startGps();
+    _gps = ref.read(tripPositionStreamProvider)().listen(_onPosition, onError: (_) {});
     // VoiceProtection records the trip from the moment it starts (gated by the
     // driver's own switch inside the controller) and files it when it ends.
     ref.listenManual(rideStreamProvider(widget.requestId), (_, next) {
       final r = next.value;
       if (r == null) return;
+      final before = _status;
+      _status = r.status;
       if (r.status == RideStatus.onTrip) {
         unawaited(_voice.startTrip(rideId: r.id, label: _tripLabel(r)));
-      } else if (r.status.isFinished) {
-        unawaited(_voice.stopTrip());
+        if (before != RideStatus.onTrip) _beginTrip();
+      } else {
+        _tick?.cancel();
+        _tick = null;
+        if (r.status.isFinished) unawaited(_voice.stopTrip());
       }
+      final notice = passengerCancelNotice(before, r, approvedHere: _approvedHere);
+      if (notice != null) WidgetsBinding.instance.addPostFrameCallback((_) => _showCancelled(notice));
     }, fireImmediately: true);
+  }
+
+  DateTime get _now => ref.read(tripClockProvider)();
+
+  void _beginTrip() {
+    _onTripSince = _now;
+    _metres = 0;
+    _legFrom = _me;
+    _legAt = _me == null ? null : _onTripSince;
+    _tick?.cancel();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _showCancelled(String notice) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        key: const ValueKey('trip-cancelled'),
+        title: const Text('Ride cancelled'),
+        content: Text(notice),
+        actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Back to requests'))],
+      ),
+    );
+    if (mounted) context.go('/drive');
   }
 
   static String _tripLabel(RideRequest r) => '${r.pickupLabel} → ${r.dropLabel}';
 
-  Future<void> _startGps() async {
-    try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
-      _gps = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 15),
-      ).listen(_onPosition, onError: (_) {});
-    } catch (_) {}
-  }
-
-  void _onPosition(Position p) {
+  void _onPosition(TripFix p) {
     if (!mounted) return;
-    setState(() => _me = LatLng(p.latitude, p.longitude));
+    final now = _now;
+    setState(() {
+      _me = p.at;
+      _heading = p.heading;
+      // Only the trip itself counts toward the distance driven.
+      if (_status == RideStatus.onTrip) {
+        if (_legFrom != null && _legAt != null) {
+          _metres += tripLegMetres(_legFrom!, p.at, now.difference(_legAt!), accuracy: p.accuracy);
+        }
+        if (p.accuracy == null || p.accuracy! <= tripFixMaxAccuracyMetres) {
+          _legFrom = p.at;
+          _legAt = now;
+        }
+      }
+    });
     // Share the driver's live position with the rider at most every 5 s.
-    if (DateTime.now().difference(_lastPublish) < const Duration(seconds: 5)) return;
-    _lastPublish = DateTime.now();
+    if (now.difference(_lastPublish) < const Duration(seconds: 5)) return;
+    _lastPublish = now;
     ref
         .read(rideRepositoryProvider)
-        .publishPartnerLocation(widget.requestId, p.latitude, p.longitude, p.heading)
+        .publishPartnerLocation(widget.requestId, p.at.latitude, p.at.longitude, p.heading)
         .catchError((_) {});
   }
 
   @override
   void dispose() {
     _gps?.cancel();
-    // Leaving the trip screen always files whatever was recorded.
-    unawaited(_voice.stopTrip());
+    _tick?.cancel();
+    // Leaving the trip screen always files whatever was recorded — after the
+    // unmount, since a provider can't change while the tree is being torn down.
+    unawaited(Future.microtask(_voice.stopTrip));
     super.dispose();
   }
 
@@ -195,12 +267,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         value: ride,
         onRetry: () => ref.invalidate(rideStreamProvider(widget.requestId)),
         data: (r) {
-          final map = RideMap(
-            me: _me,
-            pickup: _ll(r.pickupLat, r.pickupLng),
-            drop: _ll(r.dropLat, r.dropLng),
-            stops: [for (final s in r.stops) s.point],
-          );
+          final map = LiveRideMap(ride: r, driverAt: _me, driverHeading: _heading, now: ref.read(tripClockProvider));
           final panel = _panel(r);
           if (MediaQuery.sizeOf(context).width >= 900) {
             return Row(children: [
@@ -255,7 +322,17 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: FilledButton(
-                      onPressed: _busy ? null : () => _run(() => repo.approveCancellation(r.id)),
+                      onPressed: _busy
+                          ? null
+                          : () => _run(() async {
+                              _approvedHere = true;
+                              try {
+                                await repo.approveCancellation(r.id);
+                              } catch (_) {
+                                _approvedHere = false;
+                                rethrow;
+                              }
+                            }),
                       child: const Text('Approve'),
                     ),
                   ),
@@ -297,6 +374,19 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             ),
           ]),
         ),
+        if (r.status == RideStatus.onTrip) ...[
+          const SizedBox(height: 8),
+          Row(key: const ValueKey('trip-meter'), children: [
+            const Icon(Icons.timer_outlined, size: 18),
+            const SizedBox(width: 6),
+            Text(formatTripElapsed(tripElapsed(startedAt: r.startedAt, firstSeen: _onTripSince, now: _now)),
+                style: t.textTheme.titleMedium),
+            const SizedBox(width: 16),
+            const Icon(Icons.route_outlined, size: 18),
+            const SizedBox(width: 6),
+            Text('${(_metres / 1000).toStringAsFixed(1)} km driven', style: t.textTheme.titleMedium),
+          ]),
+        ],
         const SizedBox(height: 12),
         const _VoiceProtectionPill(),
         if (r.status.isOngoing && target != null)
