@@ -23,6 +23,7 @@ import '../../widgets/common.dart';
 import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
+import 'driver_home_map.dart';
 import 'fare_offer.dart';
 import 'partner_menu.dart';
 import 'vehicle_picker.dart';
@@ -49,6 +50,10 @@ class PartnerScreen extends ConsumerStatefulWidget {
   ConsumerState<PartnerScreen> createState() => _PartnerScreenState();
 }
 
+/// The driver's position for the home map and request distances
+/// (overridden in tests).
+final driverPositionProvider = Provider<Future<LatLng?> Function()>((ref) => currentPosition);
+
 /// The clock the request alert's countdown reads (overridden in tests).
 final requestAlertClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
@@ -58,6 +63,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   String? _accepting;
   bool _autoAccept = false;
   bool _allowOfferMe = true;
+
+  /// The request whose pin was tapped on the map, shown first in the queue.
+  String? _focusId;
 
   /// Requests auto-accept must not take: those already queued when it was
   /// switched on (or when going online with it on), and those it has tried.
@@ -130,6 +138,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   void initState() {
     super.initState();
     _resume();
+    _locate();
+  }
+
+  Future<void> _locate() async {
+    final p = await ref.read(driverPositionProvider)();
+    if (p != null && mounted) setState(() => _me = p);
   }
 
   Future<void> _resume() async {
@@ -180,10 +194,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     if (v) _alertSeen.addAll(ref.read(openRequestsProvider).value?.map((r) => r.id) ?? const <String>[]);
     setState(() => _online = v);
     if (!v) _syncAlert(const []);
-    if (v) {
-      final p = await currentPosition();
-      if (mounted) setState(() => _me = p);
-    }
+    if (v) unawaited(_locate());
   }
 
   /// Expo's check before a service mode: compulsory documents that are
@@ -475,9 +486,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             parseStringList(p.raw['partner_types']),
             ref.watch(partnerTypeEntriesProvider).value ?? const [],
           );
-          return ResponsiveCenter(
-            maxWidth: 760,
-            child: Column(children: [
+          final wide = MediaQuery.sizeOf(context).width >= 900;
+          final map = DriverHomeMap(
+            key: const ValueKey('driver-home-map'),
+            me: _me,
+            requests: _online ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const [],
+            onSelect: (r) => setState(() => _focusId = r.id),
+          );
+          final panel = Column(children: [
               if (modes.length > 1 || modes.any((m) => m.isTeksi))
                 Card(
                   key: const ValueKey('partner-modes'),
@@ -536,16 +552,28 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 ),
               const CurrentVehicleCard(),
               if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
+              if (!wide) SizedBox(height: 200, child: ClipRRect(borderRadius: BorderRadius.circular(12), child: map)),
               Expanded(child: _online ? _queue(p) : const EmptyState(
                 icon: Icons.local_taxi_outlined,
                 title: 'Go online to receive ride requests',
               )),
-            ]),
-          );
+            ]);
+          if (wide) {
+            return Row(children: [
+              SizedBox(width: 520, child: panel),
+              const VerticalDivider(width: 1),
+              Expanded(child: map),
+            ]);
+          }
+          return ResponsiveCenter(maxWidth: 760, child: panel);
         },
       ),
     );
   }
+
+  /// The requests on this driver's queue (all open ones but those declined
+  /// here), which are also the map's pins.
+  List<RideRequest> _pinned(List<RideRequest> open) => [for (final r in open) if (!_hidden.contains(r.id)) r];
 
   Widget _queue(Partner partner) {
     final t = Theme.of(context);
@@ -554,16 +582,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       onRetry: () => ref.invalidate(openRequestsProvider),
       data: (list) {
         final alert = list.where((r) => r.id == _alertId).firstOrNull;
-        final queued = [for (final r in list) if (!_hidden.contains(r.id) && r.id != _alertId) r];
+        final queued = [for (final r in _pinned(list)) if (r.id != _alertId) r];
         if (alert == null && queued.isEmpty) {
           return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');
         }
         ref.watch(destinationModeProvider);
         final destinationOn = _destinationOn;
-        final sorted = destinationOrder(
-          queued,
-          toward: (r) => destinationOn && _towardDestination(r),
-          awayKm: _distanceTo,
+        final sorted = focusFirst(
+          destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+          _focusId,
         );
         return ListView.builder(
           itemCount: sorted.length + (alert == null ? 0 : 1),
@@ -572,7 +599,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             final i = alert == null ? index : index - 1;
             final r = sorted[i];
             final away = _distanceTo(r);
+            final focused = r.id == _focusId;
             return Card(
+              key: ValueKey('queue-${r.id}'),
+              shape: focused
+                  ? RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: t.colorScheme.primary, width: 2),
+                    )
+                  : null,
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

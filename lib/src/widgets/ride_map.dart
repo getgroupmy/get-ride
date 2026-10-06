@@ -21,6 +21,7 @@ class RideMap extends StatefulWidget {
     this.onTap,
     this.controller,
     this.extraMarkers = const [],
+    this.framed = const [],
   });
 
   final LatLng? pickup;
@@ -41,6 +42,10 @@ class RideMap extends StatefulWidget {
   /// Further marks drawn above the route (toll booths and the like).
   final List<Marker> extraMarkers;
 
+  /// Further points the camera keeps in frame (the driver home map's
+  /// request pickups).
+  final List<LatLng> framed;
+
   @override
   State<RideMap> createState() => _RideMapState();
 }
@@ -50,7 +55,7 @@ class _RideMapState extends State<RideMap> {
   bool _ready = false;
 
   List<LatLng> get _points =>
-      [widget.pickup, ...widget.stops, widget.drop, widget.driver, widget.me].whereType<LatLng>().toList();
+      [widget.pickup, ...widget.stops, widget.drop, widget.driver, widget.me, ...widget.framed].whereType<LatLng>().toList();
 
   @override
   void didUpdateWidget(covariant RideMap old) {
@@ -59,7 +64,10 @@ class _RideMapState extends State<RideMap> {
         (old.pickup != widget.pickup ||
             old.drop != widget.drop ||
             old.stops.length != widget.stops.length ||
-            old.route.length != widget.route.length)) {
+            old.route.length != widget.route.length ||
+            old.framed.length != widget.framed.length ||
+            // The first fix: a map opened before it was centred on nothing.
+            (old.me == null && widget.me != null))) {
       _fit();
     }
   }
