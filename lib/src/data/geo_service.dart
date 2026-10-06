@@ -15,7 +15,7 @@ class Place {
 
 /// Where a point is, as a rate card is scoped: country, state, city, suburb.
 class AreaInfo {
-  const AreaInfo({this.country, this.state, this.city, this.suburb, this.label});
+  const AreaInfo({this.country, this.state, this.city, this.suburb, this.label, this.address});
   final String? country;
   final String? state;
   final String? city;
@@ -23,6 +23,9 @@ class AreaInfo {
 
   /// A short place name ("Jalan Ampang, KLCC").
   final String? label;
+
+  /// The geocoder's full one-line address.
+  final String? address;
 
   static AreaInfo fromNominatim(Map<String, dynamic> m) {
     final a = (m['address'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -42,6 +45,7 @@ class AreaInfo {
       city: pick(['city', 'town', 'municipality', 'village']),
       suburb: pick(['suburb', 'neighbourhood', 'quarter', 'city_district']),
       label: parts.isEmpty ? null : parts.join(', '),
+      address: display.trim().isEmpty ? null : display.trim(),
     );
   }
 }
