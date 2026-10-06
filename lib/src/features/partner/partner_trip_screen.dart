@@ -323,6 +323,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                 : () => _run(() => repo.cancel(r, by: 'partner', reason: 'Cancelled by driver')),
             child: Text(r.cancelRequestedBy == 'partner' ? 'Cancellation requested' : 'Ask passenger to cancel'),
           ),
+        if (r.status == RideStatus.completed) _CollectCard(ride: r),
         if (r.status.isFinished)
           FilledButton(onPressed: () => context.go('/drive'), child: const Text('Back to requests')),
       ]),
@@ -437,6 +438,43 @@ class _ChargesDialogState extends State<_ChargesDialog> {
           child: const Text('Complete'),
         ),
       ],
+    );
+  }
+}
+
+/// What the driver collects once the trip is complete: the total due, less
+/// whatever the rider paid with GET.coin, which is credited to the driver's
+/// GET.wallet (migration 0101) and updates here live when it lands.
+class _CollectCard extends StatelessWidget {
+  const _CollectCard({required this.ride});
+  final RideRequest ride;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = ride, t = Theme.of(context);
+    final coins = r.fareCoinsValue;
+    return Card(
+      key: const ValueKey('trip-collect'),
+      child: Column(children: [
+        ListTile(
+          title: const Text('Total due'),
+          trailing: Text(formatMoney(r.totalDue, r.currency)),
+        ),
+        if (coins > 0)
+          ListTile(
+            key: const ValueKey('trip-collect-coins'),
+            leading: const Icon(Icons.toll_outlined, color: Color(0xFFB8860B)),
+            title: const Text('Paid with GET.coin'),
+            subtitle: const Text('Added to your GET.wallet'),
+            trailing: Text('−${formatMoney(coins, r.currency)}'),
+          ),
+        const Divider(height: 1),
+        ListTile(
+          title: const Text('Collect from passenger', style: TextStyle(fontWeight: FontWeight.w700)),
+          trailing: Text(formatMoney(r.cashDue, r.currency),
+              style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        ),
+      ]),
     );
   }
 }

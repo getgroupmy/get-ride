@@ -121,7 +121,7 @@ class _ReceiptBody extends StatelessWidget {
                         const Divider(height: 24),
                         for (final l in rc.lines) _row(t, l.label, formatMoney(l.amount, rc.currency)),
                         const SizedBox(height: 4),
-                        _row(t, 'Total', formatMoney(rc.total, rc.currency), bold: true),
+                        _row(t, rc.totalLabel, formatMoney(rc.total, rc.currency), bold: true),
                       ],
                     ],
                   ),
@@ -225,7 +225,7 @@ Future<Uint8List> buildTripReceiptPdf(TripReceipt rc, {PdfPageFormat format = Pd
           if (rc.charged) ...[
             pw.Divider(height: 24),
             for (final l in rc.lines) row(l.label, formatMoney(l.amount, rc.currency)),
-            row('Total', formatMoney(rc.total, rc.currency), bold: true),
+            row(rc.totalLabel, formatMoney(rc.total, rc.currency), bold: true),
           ],
           pw.Spacer(),
           pw.Text(

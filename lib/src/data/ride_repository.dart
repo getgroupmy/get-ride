@@ -387,7 +387,9 @@ class RideRepository {
   /// Null when the call fails, so the caller can try again later.
   Future<FareCoinRedemption?> redeemFareCoins(RideRequest r) async {
     final uid = _uid;
-    final fare = r.effectiveFare ?? 0;
+    // What the rider owes on the ride, tolls and charges included; the server
+    // caps it the same way and credits the coin value to the driver (0101).
+    final fare = r.totalDue ?? 0;
     if (uid == null || r.status != RideStatus.completed || r.riderId != uid || fare <= 0) {
       return (coinsUsed: 0.0, coinValue: 0.0);
     }

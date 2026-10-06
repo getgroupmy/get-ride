@@ -135,6 +135,24 @@ void main() {
       expect(rides.log, contains('complete:5.5+3.0'));
     });
 
+    testWidgets('a completed trip shows what GET.coin paid and what to collect', (tester) async {
+      final (_, rows) = await pump(tester);
+      rows.add(RideRequest({
+        ...ride('completed').raw,
+        'ride_fare': 20,
+        'toll_charges': 5,
+        'fare_coins_value': 7.5,
+      }));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('trip-collect-coins')), findsOneWidget);
+      expect(find.text('Added to your GET.wallet'), findsOneWidget);
+      expect(find.text('RM17.50'), findsOneWidget);
+
+      rows.add(RideRequest({...ride('completed').raw, 'ride_fare': 20}));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('trip-collect-coins')), findsNothing);
+    });
+
     testWidgets('cancelling the charges leaves the trip running', (tester) async {
       final (rides, rows) = await pump(tester, fix: const LatLng(3.134, 101.686));
       rows.add(ride('on_trip'));

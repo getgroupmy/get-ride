@@ -67,6 +67,10 @@ class TripReceipt {
 
   double get total => charged ? lines.fold(0, (s, l) => s + l.amount) : 0;
 
+  /// "Total", or "Balance paid" once GET.coin covered part of it (the coins
+  /// are a negative line, so [total] is then what was paid otherwise).
+  String get totalLabel => lines.any((l) => l.amount < 0) ? 'Balance paid' : 'Total';
+
   /// Minutes between pickup and drop-off, when both were stamped.
   int? get tripMinutes {
     if (startedAt == null || endedAt == null) return null;
@@ -103,6 +107,7 @@ class TripReceipt {
             label: (r.otherChargesNote ?? '').trim().isEmpty ? 'Other charges' : 'Other charges (${r.otherChargesNote!.trim()})',
             amount: other,
           ),
+        if (r.fareCoinsValue > 0) (label: 'Paid with GET.coin', amount: -r.fareCoinsValue),
       ],
       charged: charged,
       date: r.completedAt ?? r.cancelledAt ?? r.createdAt,
@@ -146,7 +151,7 @@ class TripReceipt {
       for (final l in lines) {
         b.writeln('${l.label}: ${formatMoney(l.amount, currency)}');
       }
-      b.writeln('Total: ${formatMoney(total, currency)}');
+      b.writeln('$totalLabel: ${formatMoney(total, currency)}');
     } else {
       b.writeln('No charge');
     }
