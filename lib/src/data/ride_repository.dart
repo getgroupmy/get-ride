@@ -9,6 +9,8 @@ import '../config.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../core/commission.dart';
+import '../core/ride_request_metadata.dart';
+import '../core/session_telemetry.dart';
 import '../core/fare_coins.dart';
 import '../core/ride_bidding.dart';
 import '../core/ride_stops.dart';
@@ -48,6 +50,7 @@ class RideRepository {
     String? deviceOs,
     bool offerMe = false,
     List<Place> stops = const [],
+    Map<String, Object> metadata = const {},
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -83,20 +86,35 @@ class RideRepository {
       'user_accept_lng': pickupLng,
       'status': 'open',
       if (stops.isNotEmpty) 'stops': [for (final p in stops.take(maxRideStops)) stopToJson(p)],
+      ...metadata,
     };
+    // Stops and the metadata are extras: a database without one of their
+    // columns (stops needs 0098) books the ride without it rather than failing.
+    final optional = {'stops', ...metadata.keys};
     Map<String, dynamic> data;
-    try {
-      data = await _db.from(_table).insert(row).select().single();
-    } on PostgrestException catch (e) {
-      // A database without migration 0098 books the ride without its stops
-      // (the route and fare already went through them) rather than failing.
-      if (!row.containsKey('stops') || !'${e.message} ${e.details}'.contains('stops')) rethrow;
-      row.remove('stops');
-      data = await _db.from(_table).insert(row).select().single();
+    for (var attempt = 0;; attempt++) {
+      try {
+        data = await _db.from(_table).insert(row).select().single();
+        break;
+      } on PostgrestException catch (e) {
+        final col = droppableRideColumn('${e.message} ${e.details}', optional, row.keys);
+        if (attempt >= optional.length || col == null) rethrow;
+        row.remove(col);
+      }
     }
     final req = RideRequest(data);
     unawaited(_notifyPartners(req));
     return req;
+  }
+
+  /// The caller's public IP as the `ip-lookup` edge function sees it, or null.
+  Future<String?> publicIp() async {
+    try {
+      final res = await _db.functions.invoke('ip-lookup', body: {}).timeout(const Duration(seconds: 4));
+      return IpInfo.fromResponse(res.data)?.publicIp;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Best-effort push to online partners through the shared `send-push` edge

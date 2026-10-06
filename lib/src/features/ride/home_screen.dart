@@ -10,6 +10,7 @@ import '../../core/fare.dart';
 import '../../core/fare_coins.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
+import '../../core/ride_request_metadata.dart';
 import '../../core/ride_stops.dart';
 import '../../core/route_estimate.dart';
 import '../../data/app_display_repository.dart';
@@ -214,7 +215,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     try {
       final profile = await ref.read(profileProvider.future);
       final rides = ref.read(rideRepositoryProvider);
-      final offerMe = await rides.biddingEnabledFor(a.point, () => ref.read(geoServiceProvider).reverseArea(a.point));
+      // One geocode of the pickup serves the bidding check and the row's
+      // geography; it and the IP lookup run alongside the bidding check.
+      final areaLookup = ref.read(geoServiceProvider).reverseArea(a.point);
+      final ipLookup = rides.publicIp();
+      final offerMe = await rides.biddingEnabledFor(a.point, () => areaLookup);
+      AreaInfo? area;
+      try {
+        area = await areaLookup.timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      final metadata = rideRequestMetadata(
+        area: area,
+        ipAddress: await ipLookup,
+        gender: profile?.raw['gender'] as String?,
+        riderPhoto: profile?.avatarUrl,
+      );
       final req = await rides.createRequest(
             service: _service.name,
             pickupName: a.name,
@@ -235,6 +250,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
             offerMe: offerMe,
             stops: List.of(_stops),
+            metadata: metadata,
           );
       final coins = _coins;
       if (_useCoins && coins != null && fareCoinOffer(_fareFor(_service), coins.balance, coins.rate) != null) {
