@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +13,8 @@ import '../../core/fare_coins.dart';
 import '../../core/format.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_cancel.dart';
+import '../../core/search_timer.dart';
+import '../../config.dart';
 import '../../core/sos.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
@@ -28,6 +31,9 @@ import '../../core/demo_mode.dart';
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>(
   (ref, id) => ref.watch(rideRepositoryProvider).watch(id),
 );
+
+/// The clock the search countdowns read (overridden in tests).
+final searchClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
 /// The rider's own position while a driver is on the way, for sharing on the
 /// request row (overridden in tests). Empty when location is refused.
@@ -113,6 +119,17 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   StreamSubscription<LatLng>? _position;
   DateTime _lastShare = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// The search's one-second clock (Expo ride-confirm): the first-minute
+  /// bar, the "Raise your fare?" prompt, the expiry and the offer window.
+  Timer? _tick;
+  late DateTime _now = ref.read(searchClockProvider)();
+  bool _askedRaise = false;
+  bool _expiryShown = false;
+
+  /// The offer on screen, and when the rider first saw it.
+  String? _offerKey;
+  DateTime? _offerSeen;
+
   @override
   void initState() {
     super.initState();
@@ -121,6 +138,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     }, onError: (_) {});
     _maybeClaimReward();
     _syncLocationShare();
+    _syncSearch();
   }
 
   @override
@@ -128,6 +146,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     super.didUpdateWidget(old);
     _maybeClaimReward();
     _syncLocationShare();
+    _syncSearch();
     if (riderCancelDeclined(old.ride, widget.ride)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) showInfo(context, 'Your driver declined the cancellation. The ride continues.');
@@ -137,8 +156,104 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   @override
   void dispose() {
+    _tick?.cancel();
     _position?.cancel();
     super.dispose();
+  }
+
+  /// Runs the one-second clock while the request is open and notes a new
+  /// offer (a chime and a fresh 45-second window, as Expo's offer cards).
+  void _syncSearch() {
+    final open = widget.ride.status == RideStatus.open;
+    if (open && _tick == null) {
+      _tick = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
+    } else if (!open) {
+      _tick?.cancel();
+      _tick = null;
+    }
+    final key = standingOffer(widget.ride)?.key;
+    if (key != _offerKey) {
+      _offerKey = key;
+      _offerSeen = key == null ? null : ref.read(searchClockProvider)();
+      if (key != null) {
+        unawaited(SystemSound.play(SystemSoundType.alert));
+        unawaited(HapticFeedback.mediumImpact());
+      }
+    }
+  }
+
+  /// The offer still inside its window, or null.
+  RideOffer? get _visibleOffer {
+    final offer = standingOffer(widget.ride);
+    final seen = _offerSeen;
+    if (offer == null || seen == null) return offer;
+    return offerLapsed(_now.difference(seen), counterOfferWindow) ? null : offer;
+  }
+
+  void _onTick() {
+    if (!mounted) return;
+    setState(() => _now = ref.read(searchClockProvider)());
+    final r = widget.ride;
+    if (r.status != RideStatus.open) return;
+    final elapsed = searchElapsed(r.createdAt, _now);
+    if (!_expiryShown && elapsed >= AppConfig.requestExpiry) {
+      _expiryShown = true;
+      _askedRaise = true;
+      unawaited(ref.read(rideRepositoryProvider).expireStaleOpen().catchError((_) {}));
+      unawaited(_showExpired());
+      return;
+    }
+    if (shouldPromptRaise(elapsed: elapsed, offerStanding: _visibleOffer != null, alreadyAsked: _askedRaise)) {
+      _askedRaise = true;
+      unawaited(_promptRaise());
+    }
+  }
+
+  /// Expo's sheet at the end of the first minute: raise by
+  /// [searchPromptRaise], or keep the fare and go on waiting.
+  Future<void> _promptRaise() async {
+    final r = widget.ride;
+    final fare = r.fare ?? 0;
+    final raise = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('No driver yet', style: Theme.of(c).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              const Text("Drivers nearby haven't taken your request. A higher fare can help."),
+              const SizedBox(height: 16),
+              FilledButton(
+                key: const ValueKey('prompt-raise'),
+                onPressed: () => Navigator.pop(c, true),
+                child: Text('Raise fare to ${formatMoney(fare + searchPromptRaise, r.currency)}'),
+              ),
+              TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep my fare')),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (raise == true && mounted && widget.ride.status == RideStatus.open) {
+      await _raise(searchPromptRaise);
+      if (mounted) showInfo(context, 'You raised the fare to ${formatMoney(fare + searchPromptRaise, r.currency)}');
+    }
+  }
+
+  Future<void> _showExpired() async {
+    await showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Request expired'),
+        content: const Text("We couldn't find a driver in time. Try again, perhaps with a higher fare."),
+        actions: [FilledButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
+      ),
+    );
+    if (mounted) context.go('/');
   }
 
   void _syncLocationShare() {
@@ -311,15 +426,29 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               Expanded(child: Text(r.status.label, style: t.textTheme.headlineSmall)),
             ],
           ),
-          if (r.status == RideStatus.open)
+          if (r.status == RideStatus.open) ...[
             Padding(
               padding: const EdgeInsets.only(top: 4),
-              child: Text('Notifying nearby drivers…', style: t.textTheme.bodyMedium),
+              child: Text(
+                'Notifying nearby drivers… · '
+                '${formatCountdown(searchTimeLeft(searchElapsed(r.createdAt, _now), AppConfig.requestExpiry))} left',
+                key: const ValueKey('search-time-left'),
+                style: t.textTheme.bodyMedium,
+              ),
             ),
+            if (searchPhaseProgress(searchElapsed(r.createdAt, _now)) > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(
+                  key: const ValueKey('search-progress'),
+                  value: searchPhaseProgress(searchElapsed(r.createdAt, _now)),
+                ),
+              ),
+          ],
           if (r.status == RideStatus.open && ref.watch(demoSettingsProvider).riderOffers)
             DemoOffersFeed(fare: r.fare ?? 0, currency: r.currency, onAccept: _acceptDemo),
           const SizedBox(height: 16),
-          if (standingOffer(r) case final offer?)
+          if (_visibleOffer case final offer?)
             Card(
               key: const ValueKey('ride-offer'),
               color: t.colorScheme.primaryContainer,
@@ -328,9 +457,30 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      '${offer.name ?? 'A driver'} offers ${formatMoney(offer.amount, r.currency)}',
-                      style: t.textTheme.titleMedium,
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 20,
+                          child: offer.photo == null
+                              ? const Icon(Icons.person)
+                              : ClipOval(
+                                  child: Image.network(
+                                    offer.photo!,
+                                    width: 40,
+                                    height: 40,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => const Icon(Icons.person),
+                                  ),
+                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            '${offer.name ?? 'A driver'} offers ${formatMoney(offer.amount, r.currency)}',
+                            style: t.textTheme.titleMedium,
+                          ),
+                        ),
+                      ],
                     ),
                     Text(
                       [
@@ -339,6 +489,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                         if (offer.rating != null) '★ ${offer.rating!.toStringAsFixed(1)}',
                       ].whereType<String>().join(' · '),
                       style: t.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 8),
+                    // The offer's 45 s, as the driver's own app counts it.
+                    LinearProgressIndicator(
+                      key: const ValueKey('offer-countdown'),
+                      value: _offerSeen == null
+                          ? null
+                          : offerProgress(_now.difference(_offerSeen!), counterOfferWindow),
                     ),
                     const SizedBox(height: 8),
                     Row(

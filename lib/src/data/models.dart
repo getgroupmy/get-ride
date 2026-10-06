@@ -84,6 +84,7 @@ class RideRequest {
   String? get partnerVehicle => raw['partner_vehicle'] as String?;
   String? get partnerPlate => raw['partner_plate'] as String?;
   double? get partnerRating => _d(raw['partner_rating']);
+  String? get partnerPhoto => raw['partner_photo'] as String?;
   double? get partnerLiveLat => _d(raw['partner_live_lat']);
   double? get partnerLiveLng => _d(raw['partner_live_lng']);
   String? get otp => raw['otp'] as String?;

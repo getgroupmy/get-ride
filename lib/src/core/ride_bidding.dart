@@ -185,7 +185,15 @@ const counterOfferWindow = Duration(seconds: 45);
 
 /// The bid a rider is looking at, read off their open request.
 class RideOffer {
-  const RideOffer({required this.partnerId, required this.amount, this.name, this.vehicle, this.plate, this.rating});
+  const RideOffer({
+    required this.partnerId,
+    required this.amount,
+    this.name,
+    this.vehicle,
+    this.plate,
+    this.rating,
+    this.photo,
+  });
 
   final String partnerId;
   final double amount;
@@ -193,6 +201,7 @@ class RideOffer {
   final String? vehicle;
   final String? plate;
   final double? rating;
+  final String? photo;
 
   /// Same bidder and amount: what an accept is matched on.
   String get key => '$partnerId:${amount.toStringAsFixed(2)}';
@@ -210,6 +219,7 @@ RideOffer? standingOffer(RideRequest r) {
     vehicle: r.partnerVehicle,
     plate: r.partnerPlate,
     rating: r.partnerRating,
+    photo: r.partnerPhoto,
   );
 }
 
