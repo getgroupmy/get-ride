@@ -1,4 +1,4 @@
--- 0097: intermediate stops on a ride request.
+-- 0098: intermediate stops on a ride request.
 --
 -- The Expo booking screen let a rider add stops between pickup and drop-off;
 -- they changed the route and the fare, but were never stored on the request,
@@ -15,4 +15,4 @@ alter table public.ride_requests
   add column if not exists stops jsonb not null default '[]'::jsonb;
 
 comment on column public.ride_requests.stops is
-  'Intermediate stops between pickup and drop-off, in order: [{name, address, lat, lng}]. Migration 0097.';
+  'Intermediate stops between pickup and drop-off, in order: [{name, address, lat, lng}]. Migration 0098.';

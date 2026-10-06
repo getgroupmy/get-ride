@@ -87,7 +87,7 @@ class RideRepository {
     try {
       data = await _db.from(_table).insert(row).select().single();
     } on PostgrestException catch (e) {
-      // A database without migration 0097 books the ride without its stops
+      // A database without migration 0098 books the ride without its stops
       // (the route and fare already went through them) rather than failing.
       if (!row.containsKey('stops') || !'${e.message} ${e.details}'.contains('stops')) rethrow;
       row.remove('stops');
