@@ -17,6 +17,7 @@ class RideMap extends StatefulWidget {
     this.route = const [],
     this.onTap,
     this.controller,
+    this.extraMarkers = const [],
   });
 
   final LatLng? pickup;
@@ -29,6 +30,9 @@ class RideMap extends StatefulWidget {
   final List<LatLng> route;
   final void Function(LatLng)? onTap;
   final MapController? controller;
+
+  /// Further marks drawn above the route (toll booths and the like).
+  final List<Marker> extraMarkers;
 
   @override
   State<RideMap> createState() => _RideMapState();
@@ -83,6 +87,7 @@ class _RideMapState extends State<RideMap> {
           PolylineLayer(polylines: [
             Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
           ]),
+        if (widget.extraMarkers.isNotEmpty) MarkerLayer(markers: widget.extraMarkers),
         MarkerLayer(markers: [
           if (widget.me != null)
             Marker(

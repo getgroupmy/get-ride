@@ -4,17 +4,48 @@ import 'package:go_router/go_router.dart';
 
 import '../../admin/admin_providers.dart';
 import '../../core/referral.dart';
+import '../../core/side_menu.dart';
+import '../../data/app_display_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/side_menu_tiles.dart';
 
 class AccountScreen extends ConsumerWidget {
   const AccountScreen({super.key});
+
+  /// The built-in rider menu items (Expo `MenuSideSheet`), on this app's
+  /// screens. Expo's City, Freight and Notifications only went home.
+  static bool _builtIn(BuildContext context, WidgetRef ref, String id) {
+    const routes = {
+      'teksi-ev': '/ev',
+      'city': '/',
+      'request-history': '/trips',
+      'freight': '/',
+      'wallet': '/wallet',
+      'notifications': '/',
+      'safety': '/account/safety',
+      'settings': '/account/settings',
+      'user-guide': '/account/guide',
+      'support': '/account/support',
+    };
+    if (id == 'logout') {
+      ref.read(authRepositoryProvider).signOut();
+      return true;
+    }
+    final r = routes[id];
+    if (r == null) return false;
+    openAppRoute(context, r);
+    return true;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final profile = ref.watch(profileProvider);
     final isAdmin = ref.watch(adminAccessProvider).value?.isAdmin ?? false;
+    final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
+    final menu = resolveSideMenu(blob, 'user');
+    final mode = sideMenuModeButton(blob, 'user');
     return Scaffold(
       appBar: AppBar(title: const Text('Account')),
       body: ListView(children: [
@@ -54,40 +85,24 @@ class AccountScreen extends ConsumerWidget {
               ),
             Card(
               child: Column(children: [
-                ListTile(
-                  leading: const Icon(Icons.electric_car_outlined),
-                  title: const Text('Book TEKSI EV'),
-                  subtitle: const Text('Order an electric car, or follow your order'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.push('/ev'),
-                ),
-                ListTile(
-                  key: const ValueKey('account-safety'),
-                  leading: const Icon(Icons.health_and_safety_outlined),
-                  title: const Text('Safety'),
-                  subtitle: const Text('Emergency SOS and VoiceProtection'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.go('/account/safety'),
-                ),
+                for (final e in menu)
+                  if (e.id != 'logout')
+                    SideMenuTile(entry: e, builtIn: (context, id) => _builtIn(context, ref, id)),
+                // Flutter's own rows, which the Expo menu does not list.
                 ListTile(
                   leading: const Icon(Icons.contact_emergency_outlined),
                   title: const Text('Emergency contacts'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.go('/account/emergency'),
                 ),
-                ListTile(
-                  key: const ValueKey('account-guide'),
-                  leading: const Icon(Icons.menu_book_outlined),
-                  title: const Text('User guide'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.go('/account/guide'),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.support_agent),
-                  title: const Text('Help & support'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.go('/account/support'),
-                ),
+                if (mode != null)
+                  ListTile(
+                    key: const ValueKey('menu-partner-mode'),
+                    leading: const Icon(Icons.local_taxi_outlined),
+                    title: Text(mode.label),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => mode.comingSoon ? showComingSoon(context) : context.go('/drive'),
+                  ),
                 if (isAdmin)
                   ListTile(
                     leading: const Icon(Icons.admin_panel_settings_outlined),
@@ -95,21 +110,17 @@ class AccountScreen extends ConsumerWidget {
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => context.go('/admin'),
                   ),
-                ListTile(
-                  leading: const Icon(Icons.settings_outlined),
-                  title: const Text('Settings'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.go('/account/settings'),
-                ),
               ]),
             ),
-            Card(
-              child: ListTile(
-                leading: Icon(Icons.logout, color: t.colorScheme.error),
-                title: Text('Sign out', style: TextStyle(color: t.colorScheme.error)),
-                onTap: () => ref.read(authRepositoryProvider).signOut(),
-              ),
-            ),
+            for (final e in menu)
+              if (e.id == 'logout')
+                Card(
+                  child: SideMenuTile(
+                    entry: e,
+                    color: t.colorScheme.error,
+                    builtIn: (context, id) => _builtIn(context, ref, id),
+                  ),
+                ),
           ]),
         ),
       ]),
