@@ -25,6 +25,7 @@ import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
 import 'place_search.dart';
 import '../meter/meter_auto_launch.dart';
+import '../../admin/screens/commerce/get_coin.dart' show formatCoins, rideRewardCoins;
 
 enum _PinTarget { none, pickup, drop }
 
@@ -353,6 +354,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       onPayment: (p) => setState(() => _payment = p),
       onBook: _book,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
+      earnRate: ref.watch(coinTradeQuoteProvider).value?.settings.earnCoinsPerCurrency ?? 0,
     );
 
     if (wide) {
@@ -425,7 +427,11 @@ class _BookingPanel extends StatelessWidget {
     required this.onPayment,
     required this.onBook,
     required this.onOpenOngoing,
+    this.earnRate = 0,
   });
+
+  /// GC earned per unit of fare (Admin → Get Coin → earn rate).
+  final double earnRate;
 
   final RideRequest? ongoing;
   final Place? pickup;
@@ -577,6 +583,17 @@ class _BookingPanel extends StatelessWidget {
             controller: note,
             decoration: const InputDecoration(labelText: 'Note to driver (optional)'),
           ),
+          if (earnRate > 0 && rideRewardCoins(fareFor(service), earnRate) > 0) ...[
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Chip(
+                key: const ValueKey('booking-coin-earn'),
+                avatar: const Icon(Icons.toll, size: 16, color: Color(0xFFB45309)),
+                label: Text('Earn ${formatCoins(rideRewardCoins(fareFor(service), earnRate))} on this booking'),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           FilledButton(
             onPressed: booking || ongoing != null ? null : onBook,
