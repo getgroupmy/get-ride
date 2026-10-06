@@ -15,6 +15,7 @@ import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../data/live_tables.dart';
 
 const alwaysOnPage = 'admin-settings-always-on';
 const alwaysOnCategory = 'always-on-pages';
@@ -122,7 +123,10 @@ class AlwaysOnStore {
 }
 
 final alwaysOnStoreProvider = Provider((ref) => AlwaysOnStore(ref.watch(supabaseProvider)));
-final _configProvider = FutureProvider.autoDispose((ref) => ref.watch(alwaysOnStoreProvider).fetch());
+final _configProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('settings_entries');
+  return ref.watch(alwaysOnStoreProvider).fetch();
+});
 
 // --- Screen -------------------------------------------------------------------------
 

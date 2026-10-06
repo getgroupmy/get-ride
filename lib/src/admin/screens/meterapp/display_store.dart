@@ -8,8 +8,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../data/app_display_repository.dart';
 import '../../../providers.dart';
 import 'display_logic.dart';
+import '../../../data/live_tables.dart';
 
 typedef DisplayEdit = Map<String, dynamic> Function(Map<String, dynamic> settings);
 
@@ -47,7 +49,10 @@ final displayStoreProvider = Provider((ref) => DisplaySettingsStore(ref.watch(su
 
 class DisplaySettingsController extends AsyncNotifier<Map<String, dynamic>> {
   @override
-  Future<Map<String, dynamic>> build() => ref.watch(displayStoreProvider).fetch();
+  Future<Map<String, dynamic>> build() {
+    ref.watchLive(displaySettingsTable);
+    return ref.watch(displayStoreProvider).fetch();
+  }
 
   /// Applies [edit] optimistically, then writes it; reverts and rethrows on a
   /// refused write.
@@ -57,6 +62,9 @@ class DisplaySettingsController extends AsyncNotifier<Map<String, dynamic>> {
     try {
       final next = await ref.read(displayStoreProvider).update(edit);
       state = AsyncData(next);
+      // The rest of this app reads the row live; refresh it now rather than
+      // wait for the realtime echo of the admin's own write.
+      ref.invalidate(displaySettingsBlobProvider);
     } catch (_) {
       if (prev != null) state = AsyncData(prev);
       rethrow;
@@ -68,5 +76,8 @@ final displaySettingsProvider =
     AsyncNotifierProvider.autoDispose<DisplaySettingsController, Map<String, dynamic>>(DisplaySettingsController.new);
 
 final settingsEntriesProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
-  (ref, category) => ref.watch(displayStoreProvider).entries(category),
+  (ref, category) {
+  ref.watchLive('settings_entries');
+  return ref.watch(displayStoreProvider).entries(category);
+},
 );

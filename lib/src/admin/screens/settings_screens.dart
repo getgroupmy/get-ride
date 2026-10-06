@@ -11,6 +11,7 @@ import '../admin_providers.dart';
 import '../admin_registry.dart';
 import '../admin_settings_models.dart';
 import '../widgets/admin_widgets.dart';
+import '../../data/live_tables.dart';
 
 /// Looks up a category; unknown keys become a raw `settings_entries` editor.
 SettingsCategory categoryFor(String key) =>
@@ -25,6 +26,7 @@ SettingsCategory categoryFor(String key) =>
     );
 
 final _otherCategoriesProvider = FutureProvider.autoDispose<List<String>>((ref) async {
+  ref.watchLive('settings_entries');
   final known = {...crudCategories.map((c) => c.key), ...allOwnedCategories};
   final names = await ref.watch(adminRepositoryProvider).settingCategoryNames();
   return names.where((n) => !known.contains(n)).toList();
@@ -111,7 +113,10 @@ class AdminSettingsScreen extends ConsumerWidget {
 }
 
 final _entriesProvider = FutureProvider.autoDispose.family<List<SettingEntry>, String>(
-  (ref, key) => ref.watch(adminRepositoryProvider).settings(categoryFor(key)),
+  (ref, key) {
+  ref.watchLive('settings_entries');
+  return ref.watch(adminRepositoryProvider).settings(categoryFor(key));
+},
 );
 
 /// List + editor for one category, optionally scoped to a parent row

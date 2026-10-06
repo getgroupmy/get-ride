@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../admin/screens/commerce/get_coin.dart';
 import '../core/coin_trade.dart';
 import '../providers.dart';
+import 'live_tables.dart';
 
 /// What the trade screen prices against: the two balances it moves between,
 /// the admin's GET.coin settings, the 30-day market signals and the server's
@@ -93,7 +94,10 @@ class CoinTradeRepository {
 
 final coinTradeRepositoryProvider = Provider((ref) => CoinTradeRepository(ref.watch(supabaseProvider)));
 
-final coinTradeQuoteProvider = FutureProvider.autoDispose((ref) => ref.watch(coinTradeRepositoryProvider).quote());
+final coinTradeQuoteProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('get_coin_settings');
+  return ref.watch(coinTradeRepositoryProvider).quote();
+});
 
 /// The last 48 recorded GET.coin rates, oldest first, for the price line.
 /// Empty when they can't be read: the chart then says it is still building.
@@ -117,6 +121,7 @@ final coinRateHistoryProvider = FutureProvider.autoDispose<List<double>>((ref) a
 /// The admin's GET.coin settings alone (no wallets or market), for screens
 /// that only show what the programme pays. Null when unreadable.
 final coinSettingsProvider = FutureProvider.autoDispose<GetCoinSettings?>((ref) async {
+  ref.watchLive('get_coin_settings');
   try {
     final row = await ref.watch(supabaseProvider).from('get_coin_settings').select().eq('id', 'master').maybeSingle();
     return row == null ? const GetCoinSettings() : GetCoinSettings.fromRow(row);

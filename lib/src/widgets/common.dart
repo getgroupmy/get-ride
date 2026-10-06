@@ -86,6 +86,9 @@ class AsyncView<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => value.when(
+        // A live settings change re-reads in place: the screen keeps what it
+        // shows until the fresh data lands instead of flashing a spinner.
+        skipLoadingOnReload: true,
         data: data,
         loading: () => const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator())),
         error: (e, _) => EmptyState(

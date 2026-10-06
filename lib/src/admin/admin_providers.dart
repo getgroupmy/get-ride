@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
 import 'admin_access.dart';
 import 'admin_repository.dart';
+import '../data/live_tables.dart';
 
 final adminRepositoryProvider = Provider((ref) => AdminRepository(ref.watch(supabaseProvider)));
 
 /// The signed-in user's admin grants; re-resolved on every auth change.
 final adminAccessProvider = FutureProvider<AdminAccess>((ref) async {
+  ref.watchLive('admin_access');
   if (ref.watch(currentUserIdProvider) == null) return AdminAccess.none;
   try {
     return await ref.watch(adminRepositoryProvider).myAccess();
