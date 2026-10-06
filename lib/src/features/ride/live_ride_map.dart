@@ -8,6 +8,7 @@ import '../../core/live_eta.dart';
 import '../../data/geo_service.dart';
 import '../../providers.dart';
 import '../../data/models.dart';
+import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
@@ -95,7 +96,9 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
           driver: _driver,
           driverHeading: widget.driverAt != null ? widget.driverHeading : r.partnerLiveHeading,
           route: route?.points ?? const [],
+          satellite: ref.watch(mapSatelliteProvider),
         ),
+        const Positioned(right: 12, bottom: 12, child: MapTypeButton()),
         if (route != null)
           Positioned(
             top: 12,

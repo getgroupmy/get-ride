@@ -12,6 +12,9 @@
 //                      with its key in the query string
 //   MAP_TILE_URL_DARK  optional dark-style tiles; when unset, the light
 //                      tiles are darkened instead
+//   MAP_TILE_URL_SATELLITE  imagery for the satellite view (Expo's
+//                      map-type toggle); defaults to Esri World Imagery,
+//                      the same keyless source the Expo web map uses
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -22,6 +25,10 @@ const osmTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 const _configuredLight = String.fromEnvironment('MAP_TILE_URL');
 const _configuredDark = String.fromEnvironment('MAP_TILE_URL_DARK');
+const _configuredSatellite = String.fromEnvironment('MAP_TILE_URL_SATELLITE');
+
+/// Esri World Imagery: keyless satellite tiles (note the {y}/{x} order).
+const satelliteTileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
 
 /// Which tiles to load, and whether they need darkening on the device.
 class TileSource {
@@ -33,12 +40,20 @@ class TileSource {
 /// Picks the tile source for the current theme from the configured URLs.
 ///
 /// A dark-style URL is used as-is in dark mode. Without one, dark mode reuses
-/// the light tiles and darkens them; light mode never darkens.
+/// the light tiles and darkens them; light mode never darkens. Satellite
+/// imagery is the same in both modes and never darkened (an inverted photo
+/// of the ground is not a map).
 TileSource resolveTileSource({
   required bool dark,
+  bool satellite = false,
   String light = _configuredLight,
   String darkUrl = _configuredDark,
+  String satelliteUrl = _configuredSatellite,
 }) {
+  if (satellite) {
+    final s = satelliteUrl.trim();
+    return TileSource(s.isEmpty ? satelliteTileUrl : s, darken: false);
+  }
   final lightUrl = light.trim().isEmpty ? osmTileUrl : light.trim();
   if (!dark) return TileSource(lightUrl, darken: false);
   final d = darkUrl.trim();
@@ -74,10 +89,13 @@ final appTileProvider = NetworkTileProvider(
   ),
 );
 
-/// The base tile layer for [context]'s theme.
-TileLayer baseTileLayer(BuildContext context) {
-  final source = resolveTileSource(dark: Theme.of(context).brightness == Brightness.dark);
+/// The base tile layer for [context]'s theme, or satellite imagery.
+TileLayer baseTileLayer(BuildContext context, {bool satellite = false}) {
+  final source = resolveTileSource(dark: Theme.of(context).brightness == Brightness.dark, satellite: satellite);
   return TileLayer(
+    // A new layer, not the old one re-pointed, so the street tiles already
+    // drawn are not kept under the imagery while it loads (or vice versa).
+    key: ValueKey(source.url),
     urlTemplate: source.url,
     // Only a configured URL with an {s} placeholder spreads over subdomains;
     // OSM's own server is a single host.

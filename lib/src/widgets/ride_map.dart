@@ -22,6 +22,7 @@ class RideMap extends StatefulWidget {
     this.controller,
     this.extraMarkers = const [],
     this.framed = const [],
+    this.satellite = false,
   });
 
   final LatLng? pickup;
@@ -45,6 +46,9 @@ class RideMap extends StatefulWidget {
   /// Further points the camera keeps in frame (the driver home map's
   /// request pickups).
   final List<LatLng> framed;
+
+  /// Satellite imagery instead of the street map ([MapTypeButton]).
+  final bool satellite;
 
   @override
   State<RideMap> createState() => _RideMapState();
@@ -110,7 +114,7 @@ class _RideMapState extends State<RideMap> {
         },
       ),
       children: [
-        baseTileLayer(context),
+        baseTileLayer(context, satellite: widget.satellite),
         if (widget.route.length > 1)
           PolylineLayer(polylines: [
             Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
