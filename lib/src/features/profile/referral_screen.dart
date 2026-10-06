@@ -6,6 +6,8 @@ import '../../core/referral.dart';
 import '../../data/referral_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
+import '../../data/coin_trade_repository.dart';
 
 final myReferrerProvider = FutureProvider.autoDispose<MyReferrer?>(
   (ref) => ref.watch(referralRepositoryProvider).myReferrer(),
@@ -40,6 +42,15 @@ class ReferralScreen extends ConsumerWidget {
                 final link = referralLink(code);
                 final count = ref.watch(myReferralCountProvider).value;
                 final referrer = ref.watch(myReferrerProvider).value;
+                final coin = ref.watch(coinSettingsProvider).value;
+                final bonus = coin == null
+                    ? null
+                    : referralBonusLine(
+                        enabled: coin.referralEnabled,
+                        referrer: coin.referralReferrerCoins,
+                        referred: coin.referralReferredCoins,
+                        coins: formatCoins,
+                      );
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -50,11 +61,13 @@ class ReferralScreen extends ConsumerWidget {
                           children: [
                             const Icon(Icons.card_giftcard, size: 40),
                             const SizedBox(height: 8),
-                            Text(
-                              'Invite a friend and you both earn bonus GET.coin when they sign up with your code.',
-                              textAlign: TextAlign.center,
-                              style: t.textTheme.bodyMedium,
-                            ),
+                            if (bonus != null)
+                              Text(
+                                bonus,
+                                key: const ValueKey('referral-bonus'),
+                                textAlign: TextAlign.center,
+                                style: t.textTheme.bodyMedium,
+                              ),
                             const SizedBox(height: 16),
                             Text('Your referral code', style: t.textTheme.labelLarge),
                             SelectableText(
