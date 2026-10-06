@@ -1,15 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/obd.dart';
 import '../../core/obd_adapters.dart';
 import '../../core/obd_ble.dart';
+import '../../core/fuel_range.dart' show odometerAbsentReads, odometerRefreshMs, readOdometerKm;
 import '../../data/ble.dart';
 import '../../data/obd/obd_session.dart';
 import 'ble_scan_sheet.dart';
+
+/// Reads the odometer off the live reader (mode 01 PID A6), retrying as the
+/// meter does; null when the car does not answer. Overridden in tests.
+final readerOdometerProvider = Provider<Future<double?> Function()>((ref) => () {
+  final session = ref.read(obdSessionProvider.notifier);
+  return readOdometerKm((command) async => await session.request(command) ?? (throw StateError('offline')));
+});
 
 /// The telemetry shown on the status card, in this order.
 const _liveKeys = ['speed', 'rpm', 'coolantTemp', 'moduleVoltage', 'engineLoad', 'fuelLevel'];
@@ -30,10 +41,52 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
   String? _selectedId;
   bool _loaded = false;
 
+  // The odometer, read on demand (it is not in the 1 Hz sweep): on link-up,
+  // then every [odometerRefreshMs] while the page is open.
+  double? _odometerKm;
+  int _odometerMisses = 0;
+  bool _readingOdometer = false;
+  Timer? _odometerTimer;
+
   @override
   void initState() {
     super.initState();
     _reload();
+    // Opening the page reconnects the selected reader, as Expo's useCanbus
+    // does wherever it is mounted.
+    if (!kIsWeb) Future.microtask(() => ref.read(obdSessionProvider.notifier).ensureConnected());
+    ref.listenManual(obdSessionProvider.select((s) => s.linked), (_, linked) {
+      _odometerTimer?.cancel();
+      if (!linked) return;
+      _odometerMisses = 0;
+      unawaited(_readOdometer());
+      _odometerTimer = Timer.periodic(const Duration(milliseconds: odometerRefreshMs), (_) => _readOdometer());
+    }, fireImmediately: true);
+  }
+
+  @override
+  void dispose() {
+    _odometerTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _readOdometer() async {
+    if (_readingOdometer) return;
+    _readingOdometer = true;
+    try {
+      final km = await ref.read(readerOdometerProvider)();
+      if (!mounted) return;
+      setState(() {
+        if (km != null) {
+          _odometerKm = km;
+          _odometerMisses = 0;
+        } else {
+          _odometerMisses++;
+        }
+      });
+    } finally {
+      _readingOdometer = false;
+    }
   }
 
   Future<void> _reload() async {
@@ -156,7 +209,11 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
                 subtitle: Text('A browser cannot talk to an OBD-II reader. Open GET.ride on the phone in the car.'),
               ),
             ),
-          _StatusCard(session: session),
+          _StatusCard(
+            session: session,
+            odometerKm: _odometerKm,
+            odometerAbsent: _odometerKm == null && _odometerMisses >= odometerAbsentReads,
+          ),
           const SizedBox(height: 16),
           Text('Saved readers', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
@@ -212,9 +269,16 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
 }
 
 class _StatusCard extends StatelessWidget {
-  const _StatusCard({required this.session});
+  const _StatusCard({required this.session, this.odometerKm, this.odometerAbsent = false});
 
   final ObdSessionState session;
+
+  /// The last odometer the car answered with.
+  final double? odometerKm;
+
+  /// The car has not answered PID A6 over repeated reads: it does not publish
+  /// its odometer on the diagnostic bus.
+  final bool odometerAbsent;
 
   @override
   Widget build(BuildContext context) {
@@ -260,6 +324,24 @@ class _StatusCard extends StatelessWidget {
                 icon: const Icon(Icons.directions_car_outlined),
                 label: const Text('Vehicle information'),
                 onPressed: () => context.push('/meter/vehicle'),
+              ),
+            ],
+            if (session.linked && (odometerKm != null || odometerAbsent)) ...[
+              const SizedBox(height: 12),
+              Row(
+                key: const ValueKey('reader-odometer'),
+                children: [
+                  const Icon(Icons.speed, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      odometerKm != null
+                          ? 'Odometer ${NumberFormat('#,##0.0').format(odometerKm)} km'
+                          : 'This vehicle does not publish its odometer (PID A6).',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                ],
               ),
             ],
             if (session.linked && values.isNotEmpty) ...[
