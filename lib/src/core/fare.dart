@@ -33,11 +33,14 @@ double _round2(double v) => double.parse(v.toStringAsFixed(2));
 /// Ride services offered on the booking sheet. `name` is what lands in
 /// `ride_requests.service`.
 class RideService {
-  const RideService(this.name, this.description, this.multiplier, this.seats, {this.id});
+  const RideService(this.name, this.description, this.multiplier, this.seats, {this.id, this.image});
   final String name;
   final String description;
   final double multiplier;
   final int seats;
+
+  /// The catalogue's picture of the vehicle (hero image, else icon).
+  final String? image;
 
   /// The admin Vehicle Services entry this came from, when it did.
   final String? id;

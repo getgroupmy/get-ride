@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,7 +14,9 @@ import '../../core/fare_coins.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/ride_request_metadata.dart';
+import '../../core/home_sections.dart';
 import '../../core/ride_stops.dart';
+import '../../widgets/side_menu_tiles.dart';
 import '../../widgets/toll_booths.dart';
 import '../../core/route_estimate.dart';
 import '../../data/app_display_repository.dart';
@@ -24,6 +29,7 @@ import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
+import 'home_parts.dart';
 import 'place_search.dart';
 import '../meter/meter_auto_launch.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins, rideRewardCoins;
@@ -75,6 +81,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _routing = false;
   RideRequest? _ongoing;
 
+  /// Admin → Display → On-map vehicle icons: simulated cars around the
+  /// pickup, as Expo drew them (not real drivers).
+  List<DemoCar> _cars = const [];
+  LatLng? _carsAround;
+  String? _carsFor;
+  Timer? _carsTimer;
+  final _rnd = math.Random();
+
+  void _syncCars(bool on) {
+    final center = _pickup?.point ?? _me;
+    if (!on || center == null || _drop != null) {
+      _carsTimer?.cancel();
+      _carsTimer = null;
+      if (_cars.isNotEmpty) _cars = const [];
+      return;
+    }
+    final service = _service;
+    final moved = _carsAround == null ||
+        (_carsAround!.latitude - center.latitude).abs() + (_carsAround!.longitude - center.longitude).abs() >
+            demoCarRadius;
+    if (moved || _carsFor != service.name || _cars.isEmpty) {
+      _carsAround = center;
+      _carsFor = service.name;
+      _cars = spawnDemoCars(center.latitude, center.longitude,
+          demoCarCount(_services.indexWhere((s) => s.name == service.name)), _rnd);
+    }
+    _carsTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      final c = _carsAround;
+      if (!mounted || c == null) return;
+      setState(() => _cars = [for (final car in _cars) stepDemoCar(car, c.latitude, c.longitude, _rnd)]);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -89,6 +128,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _carsTimer?.cancel();
     _note.dispose();
     super.dispose();
   }
@@ -268,10 +308,83 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  /// The Expo home parts shown before a destination is chosen, as Admin →
+  /// Display Settings switches them: vehicle-type bar, search bar, recent
+  /// places and the service boxes.
+  Widget _homeParts(HomeSections sections, Map<String, dynamic> blob, AppDisplay? display) {
+    final serviceOn = display?.serviceEnabled ?? true;
+    final recent = sections.recentPlaces ? (ref.watch(recentPlacesProvider).value ?? const <Place>[]) : const <Place>[];
+    final boxes = sections.serviceBoxes
+        ? serviceBoxViews(
+            blob,
+            serviceNames: ref.watch(serviceBoxNamesProvider).value ?? const {},
+            serviceEnabled: serviceOn,
+            newBadge: sections.newBadge,
+          )
+        : const <ServiceBoxView>[];
+    void comingSoon(String body) => showDialog<void>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: const Text('Coming Soon'),
+            content: Text(body),
+            actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
+          ),
+        );
+    void whereTo() => serviceOn ? _choose(_PinTarget.drop) : comingSoon(serviceComingSoonMessage);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (sections.vehicleBar) ...[
+        VehicleTypeBar(
+          services: _services,
+          selected: _service,
+          onSelect: (s) => setState(() => _serviceName = s.name),
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (!sections.addressBar)
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
+          title: Text(_pickup?.name ?? 'Set pickup'),
+          onTap: () => _choose(_PinTarget.pickup),
+        ),
+      if (sections.searchBar)
+        HomeSearchPill(onTap: whereTo)
+      else
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(Icons.location_on, color: Colors.red.shade700),
+          title: const Text('Where to?'),
+          onTap: whereTo,
+        ),
+      if (recent.isNotEmpty) ...[
+        const SizedBox(height: 4),
+        HomeRecentPlaces(
+          places: recent,
+          onTap: (p) {
+            if (!serviceOn) return comingSoon(serviceComingSoonMessage);
+            setState(() => _drop = p);
+            _updateRoute();
+          },
+        ),
+      ],
+      if (boxes.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        ServiceBoxesGrid(
+          boxes: boxes,
+          onOpen: (b) => b.route == null ? comingSoon(serviceBoxComingSoon(b.title)) : openAppRoute(context, b.route!),
+        ),
+      ],
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final display = ref.watch(appDisplayProvider).value;
+    final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
+    final sections = HomeSections.fromSettings(blob);
+    _syncCars(sections.vehicleMarkers);
+    final serviceIndex = _services.indexWhere((s) => s.name == _service.name);
     final ai = _ai;
     final tolls = display?.showAiTollBooths ?? true
         ? tollMarks(ai, [for (final p in _route?.points ?? const <LatLng>[]) (lat: p.latitude, lng: p.longitude)])
@@ -285,6 +398,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         route: _route?.points ?? const [],
         onTap: _onMapTap,
         extraMarkers: [
+          for (final c in _cars) demoCarMarker(c, serviceIndex),
           for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
         ],
       ),
@@ -306,6 +420,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
             ),
+          ),
+        ),
+      if (sections.addressBar && _drop == null && _pinTarget == _PinTarget.none)
+        Positioned(
+          top: 16,
+          left: 72,
+          right: 72,
+          child: SafeArea(
+            child: Center(child: PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup))),
           ),
         ),
       if (display?.recenterButton ?? true)
@@ -365,6 +488,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       onPayment: (p) => setState(() => _payment = p),
       onBook: _book,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
+      idle: _drop == null ? _homeParts(sections, blob, display) : null,
       earnRate: ref.watch(coinTradeQuoteProvider).value?.settings.earnCoinsPerCurrency ?? 0,
     );
 
@@ -439,6 +563,7 @@ class _BookingPanel extends StatelessWidget {
     required this.onPayment,
     required this.onBook,
     required this.onOpenOngoing,
+    this.idle,
     this.earnRate = 0,
   });
 
@@ -469,6 +594,10 @@ class _BookingPanel extends StatelessWidget {
   final ValueChanged<RideService> onService;
   final ValueChanged<String> onPayment;
 
+  /// What the panel shows before a destination is chosen (the Expo home
+  /// parts); null keeps the plain pickup / destination card.
+  final Widget? idle;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -489,9 +618,10 @@ class _BookingPanel extends StatelessWidget {
           ),
           const SizedBox(height: 12),
         ],
-        Text('Where are you going?', style: t.textTheme.titleLarge),
-        const SizedBox(height: 12),
-        Card(
+        ?idle,
+        if (idle == null) Text('Where are you going?', style: t.textTheme.titleLarge),
+        if (idle == null) const SizedBox(height: 12),
+        if (idle == null) Card(
           child: Column(children: [
             ListTile(
               leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
