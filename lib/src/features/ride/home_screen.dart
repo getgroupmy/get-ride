@@ -911,7 +911,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       routing: _routing,
       services: _services,
       service: _service,
-      note: _note,
       fareFor: _fareFor,
       onPickup: () => _choose(_PinTarget.pickup),
       onDrop: () => _choose(_PinTarget.drop),
@@ -987,7 +986,6 @@ class _BookingPanel extends StatelessWidget {
     required this.routing,
     required this.services,
     required this.service,
-    required this.note,
     required this.fareFor,
     required this.onPickup,
     required this.onDrop,
@@ -1021,7 +1019,6 @@ class _BookingPanel extends StatelessWidget {
   final bool routing;
   final List<RideService> services;
   final RideService service;
-  final TextEditingController note;
   final double Function(RideService) fareFor;
   final VoidCallback onPickup, onDrop, onOpenOngoing;
   final ValueChanged<RideService> onService;
@@ -1118,11 +1115,7 @@ class _BookingPanel extends StatelessWidget {
             ),
           const SizedBox(height: 12),
           ?whoRiding,
-          const SizedBox(height: 12),
-          TextField(
-            controller: note,
-            decoration: const InputDecoration(labelText: 'Note to driver (optional)'),
-          ),
+          // The note to the driver is Options → Comments.
           const SizedBox(height: 16),
           const ConfirmDisclaimer(),
           if (footer != null) ...[const SizedBox(height: 16), footer!],

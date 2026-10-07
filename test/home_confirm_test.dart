@@ -211,6 +211,7 @@ void main() {
       find.descendant(of: find.byKey(const ValueKey('confirm-options')), matching: find.byType(Badge)),
     );
     expect(badge().isLabelVisible, isFalse);
+    expect(find.text('Note to driver (optional)'), findsNothing, reason: 'the note is Options → Comments');
     expect(
       tester.getCenter(find.byKey(const ValueKey('confirm-options'))).dx,
       greaterThan(tester.getCenter(find.byKey(const ValueKey('book'))).dx),
