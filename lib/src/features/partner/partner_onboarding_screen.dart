@@ -13,6 +13,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../core/partner_doc_check.dart' show renewalWindowDays;
+import '../../widgets/side_menu_host.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 
@@ -214,7 +215,10 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       );
     }
     return Scaffold(
-      appBar: AppBar(title: Text(s?.step == OnboardingStep.done ? 'Partner application' : 'Become a partner')),
+      appBar: AppBar(
+        leading: sideMenuLeading(context),
+        title: Text(s?.step == OnboardingStep.done ? 'Partner application' : 'Become a partner'),
+      ),
       body: body,
     );
   }

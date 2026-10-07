@@ -6,7 +6,7 @@ import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/shell/app_shell.dart';
 import 'package:get_ride/src/providers.dart';
-import 'package:get_ride/src/features/shell/rider_side_menu.dart';
+import 'package:get_ride/src/features/shell/app_side_menu.dart';
 import 'package:get_ride/src/widgets/side_menu_host.dart';
 import 'package:go_router/go_router.dart';
 
@@ -89,12 +89,19 @@ void main() {
     expect(find.byKey(const ValueKey('menu')), findsNothing);
   });
 
-  test('the rider menu applies on phones outside driver mode', () {
-    expect(RiderSideMenuHost.appliesAt('/wallet', 400), isTrue);
-    expect(RiderSideMenuHost.appliesAt('/account/settings', 400), isTrue);
-    expect(RiderSideMenuHost.appliesAt('/drive', 400), isFalse);
-    expect(RiderSideMenuHost.appliesAt('/driver-guide', 400), isTrue);
-    expect(RiderSideMenuHost.appliesAt('/wallet', 900), isFalse);
+  test('each mode has its menu; shared pages keep the mode that led there', () {
+    const rider = SideMenuMode.rider, partner = SideMenuMode.partner;
+    expect(sideMenuModeAt('/', partner), rider);
+    expect(sideMenuModeAt('/trips/r1', partner), rider);
+    expect(sideMenuModeAt('/ride/r1', partner), rider);
+    expect(sideMenuModeAt('/drive', rider), partner);
+    expect(sideMenuModeAt('/drive/vehicles', rider), partner);
+    expect(sideMenuModeAt('/meter/vehicle', rider), partner);
+    expect(sideMenuModeAt('/wallet', partner), partner, reason: 'the wallet opened from the driver menu');
+    expect(sideMenuModeAt('/account/settings', rider), rider);
+    expect(sideMenuModeAt('/driver-guide', rider), rider, reason: 'not under /drive');
+    expect(AppSideMenuHost.appliesAt(400), isTrue);
+    expect(AppSideMenuHost.appliesAt(900), isFalse, reason: 'the rail');
   });
 
   routerTests();
@@ -106,7 +113,7 @@ void main() {
     final router = GoRouter(
       routes: [
         ShellRoute(
-          builder: (_, state, child) => RiderSideMenuHost(location: state.uri.path, child: child),
+          builder: (_, state, child) => AppSideMenuHost(location: state.uri.path, child: child),
           routes: [
             GoRoute(path: '/', builder: (_, _) => const _Page()),
             GoRoute(
@@ -156,7 +163,7 @@ void routerTests() {
     final router = GoRouter(
       routes: [
         ShellRoute(
-          builder: (_, state, child) => RiderSideMenuHost(location: state.uri.path, child: child),
+          builder: (_, state, child) => AppSideMenuHost(location: state.uri.path, child: child),
           routes: [
             StatefulShellRoute.indexedStack(
               builder: (_, _, shell) => AppShell(shell: shell),
@@ -179,17 +186,35 @@ void routerTests() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('side-menu-button')), findsOneWidget);
 
+    await tester.tap(find.byKey(const ValueKey('side-menu-button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(RiderSideMenu), findsOneWidget);
+    await tester.tapAt(const Offset(380, 400));
+    await tester.pumpAndSettle();
+
+    // Driver mode: the same side menu, with the driver's rows.
     router.go('/drive');
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('side-menu-button')), findsNothing, reason: 'driver mode has its own menu');
+    await tester.tap(find.byKey(const ValueKey('side-menu-button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(PartnerSideMenu), findsOneWidget);
+    expect(find.byKey(const ValueKey('menu-passenger-mode')), findsOneWidget);
+    await tester.tapAt(const Offset(380, 400));
+    await tester.pumpAndSettle();
 
     router.go('/wallet');
     await tester.pumpAndSettle();
+    await tester.dragFrom(const Offset(5, 400), const Offset(250, 0));
+    await tester.pumpAndSettle();
+    expect(find.byType(PartnerSideMenu), findsOneWidget, reason: 'the wallet was opened in driver mode');
+    await tester.tapAt(const Offset(380, 400));
+    await tester.pumpAndSettle();
+
     router.push('/ride/1');
     await tester.pumpAndSettle();
     expect(find.text('ride'), findsOneWidget);
     await tester.dragFrom(const Offset(5, 400), const Offset(250, 0));
     await tester.pumpAndSettle();
-    expect(find.byType(RiderSideMenu), findsOneWidget, reason: 'every rider page swipes it open');
+    expect(find.byType(RiderSideMenu), findsOneWidget, reason: 'every page swipes it open; a ride is user mode');
   });
 }

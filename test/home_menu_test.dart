@@ -12,7 +12,7 @@ import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/features/ride/home_screen.dart';
-import 'package:get_ride/src/features/shell/rider_side_menu.dart';
+import 'package:get_ride/src/features/shell/app_side_menu.dart';
 import 'package:get_ride/src/widgets/side_menu_host.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:http/http.dart' as http;

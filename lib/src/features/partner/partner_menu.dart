@@ -21,48 +21,56 @@ Future<void> showPartnerMenu(BuildContext context) => showModalBottomSheet<void>
   builder: (_) => const PartnerMenuSheet(),
 );
 
+/// Built-in driver items on this app's screens; false for one with no
+/// screen here ("coming soon"). Expo's Earnings, Trip history and
+/// Notifications said "coming soon"; Vehicle opens the vehicles this app
+/// does have. [close] shuts the menu the row is in first.
+bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required VoidCallback close}) {
+  const routes = {
+    'teksi-ev': '/ev',
+    'wallet': '/wallet',
+    'vehicle': '/drive/vehicles',
+    vehicleInfoMenuItemId: '/meter/vehicle',
+    'documents': '/drive/onboarding',
+    'support': '/account/support',
+    'settings': '/account/settings',
+  };
+  if (id == 'dashboard') {
+    final router = GoRouter.of(context);
+    close();
+    router.go('/drive');
+    return true;
+  }
+  if (id == 'sign-out') {
+    showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Sign out?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Sign out')),
+        ],
+      ),
+    ).then((ok) {
+      if (ok == true) ref.read(authRepositoryProvider).signOut();
+    });
+    return true;
+  }
+  final r = routes[id];
+  if (r == null) return false;
+  final router = GoRouter.of(context);
+  close();
+  openRoute(router, r);
+  return true;
+}
+
+/// The driver menu as a bottom sheet, where there is no side menu (wide
+/// screens).
 class PartnerMenuSheet extends ConsumerWidget {
   const PartnerMenuSheet({super.key});
 
-  /// Built-in driver items on this app's screens. Expo's Earnings, Trip
-  /// history and Notifications said "coming soon"; Vehicle opens the
-  /// vehicles this app does have.
-  static bool _builtIn(BuildContext context, WidgetRef ref, String id) {
-    const routes = {
-      'teksi-ev': '/ev',
-      'wallet': '/wallet',
-      'vehicle': '/drive/vehicles',
-      vehicleInfoMenuItemId: '/meter/vehicle',
-      'documents': '/drive/onboarding',
-      'support': '/account/support',
-      'settings': '/account/settings',
-    };
-    if (id == 'dashboard') {
-      Navigator.pop(context);
-      return true;
-    }
-    if (id == 'sign-out') {
-      showDialog<bool>(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('Sign out?'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Sign out')),
-          ],
-        ),
-      ).then((ok) {
-        if (ok == true) ref.read(authRepositoryProvider).signOut();
-      });
-      return true;
-    }
-    final r = routes[id];
-    if (r == null) return false;
-    final router = GoRouter.of(context);
-    Navigator.pop(context);
-    openRoute(router, r);
-    return true;
-  }
+  static bool _builtIn(BuildContext context, WidgetRef ref, String id) =>
+      partnerMenuAction(context, ref, id, close: () => Navigator.pop(context));
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

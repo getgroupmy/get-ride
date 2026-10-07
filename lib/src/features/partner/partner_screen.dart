@@ -40,6 +40,7 @@ import '../../core/partner_modes.dart';
 import '../../core/vehicle_assignment.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../admin/screens/people/people_logic.dart' show parseStringList;
+import '../../widgets/side_menu_host.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -755,7 +756,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   tooltip: 'Menu',
                   icon: Icons.menu,
                   onPressed: () {
-                    showPartnerMenu(context);
+                    // The side menu on phones; a sheet where there is none.
+                    final menu = SideMenuHost.of(context);
+                    menu == null ? showPartnerMenu(context) : menu.open();
                   },
                 ),
               ]),

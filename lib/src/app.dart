@@ -54,7 +54,7 @@ import 'features/settings/auth_diagnostics_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/shell/brand_splash.dart';
-import 'features/shell/rider_side_menu.dart';
+import 'features/shell/app_side_menu.dart';
 import 'features/shell/update_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
 import 'features/support/support_chat_screen.dart';
@@ -168,10 +168,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, s) => SetPinScreen(changing: s.uri.queryParameters['change'] == '1'),
         ),
       ]),
-      // The rider's pages, under the Expo side menu that pushes them aside
-      // ([RiderSideMenuHost]).
+      // The rider's and the driver's pages, under the Expo side menu that
+      // pushes them aside: the rider menu or the driver menu by mode
+      // ([AppSideMenuHost]).
       ShellRoute(
-        builder: (_, state, child) => RiderSideMenuHost(location: state.uri.path, child: child),
+        builder: (_, state, child) => AppSideMenuHost(location: state.uri.path, child: child),
         routes: [
           StatefulShellRoute.indexedStack(
             builder: (_, _, shell) => AppShell(shell: shell),
@@ -224,12 +225,22 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
           GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
+          // Driver mode's pages, under the driver menu.
+          GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
+          GoRoute(
+            path: '/drive/demo',
+            builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
+          ),
+          GoRoute(path: '/meter/vehicle', builder: (_, _) => const VehicleInfoScreen()),
+          GoRoute(path: '/drive/permit', builder: (_, _) => const DriverPermitScreen()),
+          GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
+          GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
+          GoRoute(
+            path: '/drive/vehicles/:id',
+            builder: (_, s) => VehicleOnboardingScreen(vehicleId: s.pathParameters['id']),
+          ),
+          GoRoute(path: '/drive/trip/:id', builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!)),
         ],
-      ),
-      GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
-      GoRoute(
-        path: '/drive/demo',
-        builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
       ),
       GoRoute(
         path: '/signup/photo',
@@ -249,15 +260,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         redirect: (_, st) => st.extra is HailDestinationArgs ? null : '/meter',
         builder: (_, st) => HailDestinationScreen(args: st.extra! as HailDestinationArgs),
       ),
-      GoRoute(path: '/meter/vehicle', builder: (_, _) => const VehicleInfoScreen()),
-      GoRoute(path: '/drive/permit', builder: (_, _) => const DriverPermitScreen()),
-      GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
-      GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
-      GoRoute(
-        path: '/drive/vehicles/:id',
-        builder: (_, s) => VehicleOnboardingScreen(vehicleId: s.pathParameters['id']),
-      ),
-      GoRoute(path: '/drive/trip/:id', builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!)),
       GoRoute(
         path: '/call/:id',
         builder: (_, s) => CallScreen(callId: s.pathParameters['id']!, peerName: s.uri.queryParameters['name']),
