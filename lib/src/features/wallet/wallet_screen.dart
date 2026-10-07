@@ -11,6 +11,7 @@ import '../../data/wallet_pay_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../shell/app_shell.dart' show shellHomeButton;
 
 final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>((ref) {
   ref.watchLive('wallets');
@@ -36,7 +37,7 @@ class WalletScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Wallet')),
+      appBar: AppBar(leading: shellHomeButton(context), title: const Text('Wallet')),
       body: RefreshIndicator(
         onRefresh: refresh,
         child: ListView(

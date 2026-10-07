@@ -9,13 +9,47 @@ import '../../data/app_display_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
+import '../shell/app_shell.dart' show shellHomeButton;
 
-class AccountScreen extends ConsumerWidget {
+/// The rider's account: the same profile card and menu the home screen's
+/// side drawer shows ([RiderMenu]).
+class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(leading: shellHomeButton(context), title: const Text('Account')),
+    body: ListView(children: const [ResponsiveCenter(maxWidth: 760, child: RiderMenu())]),
+  );
+}
+
+/// The side drawer the home screen's menu button opens on phones (Expo
+/// `MenuSideSheet`): who is signed in, then the admin's rider menu.
+class RiderMenuDrawer extends StatelessWidget {
+  const RiderMenuDrawer({super.key});
+
+  @override
+  Widget build(BuildContext context) => Drawer(
+    key: const ValueKey('rider-menu-drawer'),
+    child: SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [RiderMenu(beforeOpen: () => Navigator.pop(context))],
+      ),
+    ),
+  );
+}
+
+/// The rider menu: profile, invite, the admin's items and this app's own.
+/// [beforeOpen] runs before any of them navigates (closing the drawer).
+class RiderMenu extends ConsumerWidget {
+  const RiderMenu({super.key, this.beforeOpen});
+
+  final VoidCallback? beforeOpen;
 
   /// The built-in rider menu items (Expo `MenuSideSheet`), on this app's
   /// screens. Expo's City, Freight and Notifications only went home.
-  static bool _builtIn(BuildContext context, WidgetRef ref, String id) {
+  bool _builtIn(BuildContext context, WidgetRef ref, String id) {
     const routes = {
       'teksi-ev': '/ev',
       'city': '/',
@@ -29,12 +63,15 @@ class AccountScreen extends ConsumerWidget {
       'support': '/account/support',
     };
     if (id == 'logout') {
+      beforeOpen?.call();
       ref.read(authRepositoryProvider).signOut();
       return true;
     }
     final r = routes[id];
     if (r == null) return false;
-    openAppRoute(context, r);
+    final router = GoRouter.of(context);
+    beforeOpen?.call();
+    openRoute(router, r);
     return true;
   }
 
@@ -46,84 +83,84 @@ class AccountScreen extends ConsumerWidget {
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final menu = resolveSideMenu(blob, 'user');
     final mode = sideMenuModeButton(blob, 'user');
-    return Scaffold(
-      appBar: AppBar(title: const Text('Account')),
-      body: ListView(children: [
-        ResponsiveCenter(
-          maxWidth: 760,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            AsyncView(
-              value: profile,
-              onRetry: () => ref.invalidate(profileProvider),
-              data: (p) => Card(
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  leading: CircleAvatar(
-                    radius: 28,
-                    backgroundImage: p?.avatarUrl != null ? NetworkImage(p!.avatarUrl!) : null,
-                    child: p?.avatarUrl == null ? const Icon(Icons.person, size: 28) : null,
-                  ),
-                  title: Text(p?.name ?? 'Add your name', style: t.textTheme.titleLarge),
-                  subtitle: Text([p?.phone, p?.displayId].whereType<String>().join(' · ')),
-                  trailing: const Icon(Icons.edit_outlined),
-                  onTap: () => context.go('/account/edit'),
-                ),
-              ),
+    void go(String route) {
+      final router = GoRouter.of(context);
+      beforeOpen?.call();
+      router.go(route);
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      AsyncView(
+        value: profile,
+        onRetry: () => ref.invalidate(profileProvider),
+        data: (p) => Card(
+          child: ListTile(
+            key: const ValueKey('menu-profile'),
+            contentPadding: const EdgeInsets.all(16),
+            leading: CircleAvatar(
+              radius: 28,
+              backgroundImage: p?.avatarUrl != null ? NetworkImage(p!.avatarUrl!) : null,
+              child: p?.avatarUrl == null ? const Icon(Icons.person, size: 28) : null,
             ),
-            if (profile.value != null)
-              Card(
-                child: ListTile(
-                  key: const ValueKey('account-referral'),
-                  leading: const Icon(Icons.card_giftcard),
-                  title: const Text('Invite friends'),
-                  subtitle: Text(
-                    'Your code ${referralCodeFor(userId: profile.value!.id, explicitCode: profile.value!.referralCode)}',
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.go('/account/referral'),
-                ),
-              ),
-            Card(
-              child: Column(children: [
-                for (final e in menu)
-                  if (e.id != 'logout')
-                    SideMenuTile(entry: e, builtIn: (context, id) => _builtIn(context, ref, id)),
-                // Flutter's own rows, which the Expo menu does not list.
-                ListTile(
-                  leading: const Icon(Icons.contact_emergency_outlined),
-                  title: const Text('Emergency contacts'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.go('/account/emergency'),
-                ),
-                if (mode != null)
-                  ListTile(
-                    key: const ValueKey('menu-partner-mode'),
-                    leading: const Icon(Icons.local_taxi_outlined),
-                    title: Text(mode.label),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => mode.comingSoon ? showComingSoon(context) : context.go('/drive'),
-                  ),
-                if (isAdmin)
-                  ListTile(
-                    leading: const Icon(Icons.admin_panel_settings_outlined),
-                    title: const Text('Admin panel'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context.go('/admin'),
-                  ),
-              ]),
-            ),
-            for (final e in menu)
-              if (e.id == 'logout')
-                Card(
-                  child: SideMenuTile(
-                    entry: e,
-                    color: t.colorScheme.error,
-                    builtIn: (context, id) => _builtIn(context, ref, id),
-                  ),
-                ),
-          ]),
+            title: Text(p?.name ?? 'Add your name', style: t.textTheme.titleLarge),
+            subtitle: Text([p?.phone, p?.displayId].whereType<String>().join(' · ')),
+            trailing: const Icon(Icons.edit_outlined),
+            onTap: () => go('/account/edit'),
+          ),
         ),
-      ]),
-    );
+      ),
+      if (profile.value != null)
+        Card(
+          child: ListTile(
+            key: const ValueKey('account-referral'),
+            leading: const Icon(Icons.card_giftcard),
+            title: const Text('Invite friends'),
+            subtitle: Text(
+              'Your code ${referralCodeFor(userId: profile.value!.id, explicitCode: profile.value!.referralCode)}',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => go('/account/referral'),
+          ),
+        ),
+      Card(
+        child: Column(children: [
+          for (final e in menu)
+            if (e.id != 'logout')
+              SideMenuTile(entry: e, beforeOpen: beforeOpen, builtIn: (context, id) => _builtIn(context, ref, id)),
+          // Flutter's own rows, which the Expo menu does not list.
+          ListTile(
+            leading: const Icon(Icons.contact_emergency_outlined),
+            title: const Text('Emergency contacts'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => go('/account/emergency'),
+          ),
+          if (mode != null)
+            ListTile(
+              key: const ValueKey('menu-partner-mode'),
+              leading: const Icon(Icons.local_taxi_outlined),
+              title: Text(mode.label),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => mode.comingSoon ? showComingSoon(context) : go('/drive'),
+            ),
+          if (isAdmin)
+            ListTile(
+              leading: const Icon(Icons.admin_panel_settings_outlined),
+              title: const Text('Admin panel'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => go('/admin'),
+            ),
+        ]),
+      ),
+      for (final e in menu)
+        if (e.id == 'logout')
+          Card(
+            child: SideMenuTile(
+              entry: e,
+              color: t.colorScheme.error,
+              beforeOpen: beforeOpen,
+              builtIn: (context, id) => _builtIn(context, ref, id),
+            ),
+          ),
+    ]);
   }
 }

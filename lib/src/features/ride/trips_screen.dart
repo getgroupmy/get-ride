@@ -6,6 +6,7 @@ import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../shell/app_shell.dart' show shellHomeButton;
 
 final tripsProvider = FutureProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).history(),
@@ -18,7 +19,7 @@ class TripsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final uid = ref.watch(currentUserIdProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Trips')),
+      appBar: AppBar(leading: shellHomeButton(context), title: const Text('Trips')),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(tripsProvider.future),
         child: AsyncView(

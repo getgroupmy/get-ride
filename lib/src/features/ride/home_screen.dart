@@ -22,6 +22,8 @@ import '../../core/ride_request_metadata.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_stops.dart';
 import '../../widgets/side_menu_tiles.dart';
+import '../profile/account_screen.dart' show RiderMenuDrawer;
+import '../shell/app_shell.dart' show ShellWithoutBar;
 import '../../widgets/toll_booths.dart';
 import '../../core/route_estimate.dart';
 import '../../data/app_display_repository.dart';
@@ -35,6 +37,7 @@ import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_drag_pin.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_type_button.dart';
@@ -94,6 +97,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _map = MapController();
   _PinTarget _pinTarget = _PinTarget.none;
   bool _booking = false;
+
+  /// The pickup pin is up off the map while the rider drags the map under
+  /// it ([MapDragPin]); its marker and the box above it hide meanwhile.
+  bool _pinMoving = false;
+
+  /// The last pickup set by dragging the map: the map doesn't reframe on
+  /// it, since the rider just put the camera where they want it.
+  LatLng? _dragged;
 
   /// The rider's own fare offer on the selected service, against the
   /// recommended fare, where bidding is on at the pickup (Expo ride-confirm).
@@ -289,6 +300,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
     setState(() => target == _PinTarget.pickup ? _pickup = place : _drop = place);
+    _updateRoute();
+  }
+
+  /// The map was dragged under the pickup pin and it dropped at [p]: that
+  /// is the pickup now, named once the geocoder answers.
+  Future<void> _onPinDropped(LatLng p) async {
+    setState(() {
+      _dragged = p;
+      _pickup = Place(name: 'Finding address…', address: '', point: p);
+    });
+    final place = await ref.read(geoServiceProvider).reverse(p);
+    // A later drag, search or swap has moved the pickup on since.
+    if (!mounted || _pickup?.point != p) return;
+    setState(() => _pickup = place);
     _updateRoute();
   }
 
@@ -531,26 +556,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         : const <TollMark>[];
     final showPill = sections.addressBar && _drop == null && _pinTarget == _PinTarget.none;
     final map = Stack(children: [
-      RideMap(
+      MapDragPin(
         controller: _map,
-        me: _me,
-        pickup: _pickup?.point,
-        drop: _drop?.point,
-        stops: [for (final p in _stops) p.point],
-        route: _route?.points ?? const [],
-        onTap: _onMapTap,
-        satellite: ref.watch(mapSatelliteProvider),
-        extraMarkers: [
-          for (final c in _cars) demoCarMarker(c, serviceIndex),
-          // The pickup box stands 5 px above the pickup pin and moves with it.
-          if (showPill && _pickup != null)
-            labelAbovePin(
-              _pickup!.point,
-              PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup)),
-              width: math.min(320, MediaQuery.sizeOf(context).width - 32),
-            ),
-          for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
-        ],
+        pin: _pickup?.point,
+        // Dragging the map sets the pickup until a destination is chosen.
+        enabled: _drop == null && _pinTarget == _PinTarget.none,
+        onMoving: (v) {
+          if (mounted && v != _pinMoving) setState(() => _pinMoving = v);
+        },
+        onDropped: _onPinDropped,
+        child: RideMap(
+          controller: _map,
+          me: _me,
+          pickup: _pickup?.point,
+          showPickup: !_pinMoving,
+          autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
+          drop: _drop?.point,
+          stops: [for (final p in _stops) p.point],
+          route: _route?.points ?? const [],
+          onTap: _onMapTap,
+          satellite: ref.watch(mapSatelliteProvider),
+          extraMarkers: [
+            for (final c in _cars) demoCarMarker(c, serviceIndex),
+            // The pickup box stands 5 px above the pickup pin and moves with
+            // it; it hides while the pin is lifted, until it lands.
+            if (showPill && _pickup != null && !_pinMoving)
+              labelAbovePin(
+                _pickup!.point,
+                PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup)),
+                width: math.min(320, MediaQuery.sizeOf(context).width - 32),
+              ),
+            for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
+          ],
+        ),
       ),
       if (_pinTarget != _PinTarget.none)
         Positioned(
@@ -583,11 +621,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Center(child: PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup))),
           ),
         ),
+      // The menu button (Expo's top-left hamburger): the side menu, on
+      // phones, where there is no tab bar. It slides off with the others.
+      if (ShellWithoutBar.of(context))
+        Positioned(
+          left: 16,
+          top: 16,
+          child: IgnorePointer(
+            ignoring: _pinMoving,
+            child: AnimatedSlide(
+              offset: Offset(0, _pinMoving ? -3 : 0),
+              duration: MapSheetLayout.hideDuration,
+              curve: _pinMoving ? Curves.easeIn : Curves.easeOut,
+              child: AnimatedOpacity(
+                opacity: _pinMoving ? 0 : 1,
+                duration: MapSheetLayout.hideDuration,
+                child: SafeArea(
+                  child: Builder(
+                    builder: (context) => FloatingActionButton.small(
+                      key: const ValueKey('home-menu'),
+                      heroTag: 'home-menu',
+                      tooltip: 'Menu',
+                      onPressed: () => Scaffold.of(context).openDrawer(),
+                      child: const Icon(Icons.menu),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       Positioned(
         right: 16,
         bottom: wide ? mapAttributionClearance : null,
         top: wide ? null : 16,
-        child: SafeArea(
+        // While the map is dragged under the pickup pin these slide off the
+        // top, alongside the sheet sliding off the bottom, and back after.
+        child: IgnorePointer(
+          ignoring: _pinMoving,
+          child: AnimatedSlide(
+            key: const ValueKey('map-buttons'),
+            offset: Offset(0, _pinMoving ? (wide ? 3 : -3) : 0),
+            duration: MapSheetLayout.hideDuration,
+            curve: _pinMoving ? Curves.easeIn : Curves.easeOut,
+            child: AnimatedOpacity(
+              opacity: _pinMoving ? 0 : 1,
+              duration: MapSheetLayout.hideDuration,
+              child: SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -603,6 +683,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ],
             ],
+          ),
+        ),
+            ),
           ),
         ),
       ),
@@ -689,7 +772,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
     return Scaffold(
-      body: MapSheetLayout(map: map, sheet: panel, min: 0.22),
+      drawer: ShellWithoutBar.of(context) ? const RiderMenuDrawer() : null,
+      body: MapSheetLayout(map: map, sheet: panel, min: 0.22, hidden: _pinMoving),
     );
   }
 }

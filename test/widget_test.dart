@@ -30,33 +30,41 @@ Future<ProviderContainer> _pumpAt(WidgetTester tester, Size size) async {
 }
 
 void main() {
-  testWidgets('phones get a bottom navigation bar', (tester) async {
+  testWidgets('phones get no tab bar: the home screen menu opens the rest, and back returns home', (tester) async {
     await _pumpAt(tester, const Size(400, 800));
-    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
     expect(find.byType(NavigationRail), findsNothing);
-    await tester.tap(find.text('Wallet'));
+    final router = GoRouter.of(tester.element(find.text('page /')));
+    router.go('/wallet');
     await tester.pumpAndSettle();
     expect(find.text('page /wallet'), findsOneWidget);
+    // System back from a page off the home screen goes home, not out of the app.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('page /'), findsOneWidget);
   });
 
-  testWidgets('a driver online cannot open Ride until they go offline', (tester) async {
-    final container = await _pumpAt(tester, const Size(400, 800));
-    await tester.tap(find.text('Drive'));
+  testWidgets('a tab page shows a back arrow home on phones', (tester) async {
+    GoRouter router(Size size) => GoRouter(initialLocation: '/trips', routes: [
+          StatefulShellRoute.indexedStack(
+            builder: (_, _, shell) => AppShell(shell: shell),
+            branches: [
+              for (final p in ['/', '/trips', '/wallet', '/drive', '/account'])
+                StatefulShellBranch(routes: [
+                  GoRoute(
+                    path: p,
+                    builder: (c, _) => Scaffold(appBar: AppBar(leading: shellHomeButton(c)), body: Text('page $p')),
+                  ),
+                ]),
+            ],
+          ),
+        ]);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(400, 800);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(child: MaterialApp.router(routerConfig: router(const Size(400, 800)))));
     await tester.pumpAndSettle();
-    container.read(driverOnlineProvider.notifier).set(true);
-    await tester.pump();
-    expect(
-      tester.widget<NavigationDestination>(find.byKey(const ValueKey('nav-ride'))).enabled,
-      isFalse,
-      reason: 'greyed out',
-    );
-    await tester.tap(find.text('Ride'), warnIfMissed: false);
-    await tester.pumpAndSettle();
-    expect(find.text('page /drive'), findsOneWidget);
-
-    container.read(driverOnlineProvider.notifier).set(false);
-    await tester.pump();
-    await tester.tap(find.text('Ride'));
+    await tester.tap(find.byKey(const ValueKey('shell-home')));
     await tester.pumpAndSettle();
     expect(find.text('page /'), findsOneWidget);
   });

@@ -23,8 +23,31 @@ const _destinations = [
 /// The Ride tab's place in [_destinations].
 const rideTab = 0;
 
-/// Adaptive navigation: bottom bar on phones, rail on tablets, extended rail
-/// on desktop and wide web windows. While the account is online as a driver
+/// The Drive tab's place in [_destinations].
+const driveTab = 3;
+
+/// Whether the shell draws no navigation of its own here: on phones, where
+/// the home screen's menu button opens the side menu instead (as the Expo
+/// app did) and the other tabs are pages reached from it.
+class ShellWithoutBar extends InheritedWidget {
+  const ShellWithoutBar({super.key, required super.child});
+
+  static bool of(BuildContext context) => context.getInheritedWidgetOfExactType<ShellWithoutBar>() != null;
+
+  @override
+  bool updateShouldNotify(ShellWithoutBar old) => false;
+}
+
+/// The back arrow a tab's root page shows on phones, where there is no bar
+/// to leave it by: back to the home screen. Null (the app bar's default)
+/// where the shell has its rail.
+Widget? shellHomeButton(BuildContext context) => ShellWithoutBar.of(context) && !Navigator.of(context).canPop()
+    ? BackButton(key: const ValueKey('shell-home'), onPressed: () => GoRouter.of(context).go('/'))
+    : null;
+
+/// Adaptive navigation: a side menu on phones (the home screen's menu
+/// button), a rail on tablets, an extended rail on desktop and wide web
+/// windows. While the account is online as a driver
 /// the Ride tab is greyed out and can't be opened ([driverOnlineProvider]).
 class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.shell});
@@ -40,23 +63,15 @@ class AppShell extends ConsumerWidget {
     }
 
     if (width < 720) {
-      return Scaffold(
-        body: shell,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: shell.currentIndex,
-          onDestinationSelected: go,
-          destinations: [
-            for (final (i, d) in _destinations.indexed)
-              NavigationDestination(
-                key: ValueKey('nav-${d.label.toLowerCase()}'),
-                enabled: !(online && i == rideTab),
-                tooltip: online && i == rideTab ? 'Go offline to book a ride' : null,
-                icon: Icon(d.icon),
-                selectedIcon: Icon(d.selectedIcon),
-                label: d.label,
-              ),
-          ],
-        ),
+      // Trips, Wallet and Account are pages off the home screen here: back
+      // from one returns home. Drive is a mode, left from its own menu.
+      final page = shell.currentIndex != rideTab && shell.currentIndex != driveTab;
+      return PopScope(
+        canPop: !page,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && page) shell.goBranch(rideTab);
+        },
+        child: ShellWithoutBar(child: shell),
       );
     }
     final extended = width >= 1100;
