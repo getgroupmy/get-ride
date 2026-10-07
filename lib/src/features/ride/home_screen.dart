@@ -40,6 +40,7 @@ import '../../widgets/ride_map.dart';
 import 'fare_offer_controls.dart';
 import 'home_parts.dart';
 import 'place_search.dart';
+import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../meter/meter_auto_launch.dart';
 import '../profile/emergency_contacts_screen.dart' show contactPickerProvider;
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins, rideRewardCoins;
@@ -489,6 +490,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The ride card follows its ride: a ride that is cancelled, expires or
+    // ends (on this device or anywhere else) leaves the home screen, and one
+    // that moves on shows its new status, however the rider came back here
+    // (the tracking screen's Done goes straight home, so the push it was
+    // opened with never reports back).
+    final ongoing = _ongoing;
+    if (ongoing != null) {
+      ref.listen(rideStreamProvider(ongoing.id), (_, next) {
+        final r = next.value;
+        if (r == null || !mounted || _ongoing?.id != r.id) return;
+        setState(() => _ongoing = r.status.isOngoing ? r : null);
+      });
+    }
+    // The same for every ride booked for someone else.
+    for (final other in _forOthers) {
+      ref.listen(rideStreamProvider(other.id), (_, next) {
+        final r = next.value;
+        if (r == null || !mounted || !_forOthers.any((o) => o.id == r.id)) return;
+        setState(() => _forOthers = [
+              for (final o in _forOthers)
+                if (o.id != r.id)
+                  o
+                else if (r.status.isOngoing)
+                  r,
+            ]);
+      });
+    }
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final display = ref.watch(appDisplayProvider).value;
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
