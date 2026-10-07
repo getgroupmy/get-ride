@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/user_guide.dart';
 import '../../widgets/common.dart';
+import '../../widgets/side_menu_host.dart';
 
 /// Account → User guide: how each part of the app works, searchable.
 class UserGuideScreen extends StatefulWidget {
@@ -26,7 +27,7 @@ class _UserGuideScreenState extends State<UserGuideScreen> {
     final query = _query.text.trim();
     final sections = searchGuide(query);
     return Scaffold(
-      appBar: AppBar(title: const Text('User guide')),
+      appBar: AppBar(leading: sideMenuLeading(context), title: const Text('User guide')),
       body: ListView(
         children: [
           ResponsiveCenter(

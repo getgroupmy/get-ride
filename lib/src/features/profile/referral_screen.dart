@@ -8,6 +8,7 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../data/coin_trade_repository.dart';
+import '../../widgets/side_menu_host.dart';
 
 final myReferrerProvider = FutureProvider.autoDispose<MyReferrer?>(
   (ref) => ref.watch(referralRepositoryProvider).myReferrer(),
@@ -27,7 +28,7 @@ class ReferralScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Invite friends')),
+      appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Invite friends')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

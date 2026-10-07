@@ -9,6 +9,7 @@ import '../../widgets/common.dart';
 import '../safety/voice_protection_card.dart';
 import 'navigation_app_card.dart';
 import 'rules_terms_card.dart';
+import '../../widgets/side_menu_host.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -17,7 +18,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(themeModeProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Settings')),
       body: ListView(children: [
         ResponsiveCenter(
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

@@ -8,6 +8,7 @@ import '../../core/ev_wizard.dart';
 import '../../data/ev_order_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/side_menu_host.dart';
 
 /// Book TEKSI EV (Expo `app/teksi-ev.tsx`): the customer's nine-step car
 /// order, from choosing a model to accepting the handover. The order is
@@ -214,6 +215,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
     final key = evStepKeys[_step];
     return Scaffold(
       appBar: AppBar(
+        leading: sideMenuLeading(context),
         title: const Text('Book TEKSI EV'),
         actions: [
           if (_orderId != null)
