@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/avatar.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 
 /// Where a new account lands after sign-up: Driver opens the Drive tab, where
@@ -101,10 +102,10 @@ class _SignupPhotoScreenState extends ConsumerState<SignupPhotoScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-              OutlinedButton.icon(
+              BusyButton.outlined(
                 onPressed: _uploading ? null : _pick,
                 icon: const Icon(Icons.photo_camera_outlined),
-                label: Text(url == null ? 'Choose photo' : 'Change photo'),
+                child: Text(url == null ? 'Choose photo' : 'Change photo'),
               ),
               const SizedBox(height: 12),
               FilledButton(onPressed: url == null || _uploading ? null : _done, child: const Text('Continue')),

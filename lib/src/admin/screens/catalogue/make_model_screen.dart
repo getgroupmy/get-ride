@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
@@ -131,7 +132,7 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
   // ---- rendering -----------------------------------------------------------
 
   Widget _modelTile(List<VehicleMakeModel> all, VehicleMakeModel m, bool canEdit) => Card(
-        child: ListTile(
+        child: BusyListTile(
           onTap: () => _editModel(all, m),
           leading: StoredImage(m.iconUri, fallback: Icons.directions_car_outlined),
           title: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -140,7 +141,7 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
           ]),
           subtitle: Text('${m.make} • ${m.energyType} • ${m.vehicleType}'),
           trailing: canEdit
-              ? IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete', onPressed: () => _deleteModel(m))
+              ? BusyIconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete', onPressed: () => _deleteModel(m))
               : null,
         ),
       );
@@ -216,12 +217,12 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
                       subtitle: Text('${c.count} $unit${c.count == 1 ? '' : 's'}'),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                         if (canEdit) ...[
-                          IconButton(
+                          BusyIconButton(
                             tooltip: 'Rename',
                             icon: const Icon(Icons.edit_outlined),
                             onPressed: () => _renameCategory(all, level, c.name),
                           ),
-                          IconButton(
+                          BusyIconButton(
                             tooltip: 'Delete',
                             icon: const Icon(Icons.delete_outline),
                             onPressed: () => _deleteCategory(all, level, c.name),
@@ -262,10 +263,11 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
                           title: emptyTitle,
                           message: emptyDesc,
                           action: canEdit && !searching
-                              ? FilledButton.icon(
+                              ? BusyButton.filled(
                                   onPressed: () => level == 3 ? _editModel(all) : _addCategory(all, level),
                                   icon: const Icon(Icons.add),
-                                  label: Text('Add ${_levelSingular[level]}'),
+                                  child: Text('Add ${_levelSingular[level]}'),
+
                                 )
                               : null,
                         )

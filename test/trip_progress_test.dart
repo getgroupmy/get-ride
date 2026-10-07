@@ -272,7 +272,8 @@ void main() {
       await tester.pump();
       rides.cancelled = ride('cancelled', extra: {'cancel_requested_by': 'partner'});
       await tester.tap(find.byKey(const ValueKey('trip-cancel')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       final confirm = find.byKey(const ValueKey('driver-cancel-confirm'));
       expect(tester.widget<FilledButton>(confirm).onPressed, isNull, reason: 'a reason is required');
       await tester.tap(find.byKey(const ValueKey('driver-cancel-reason-passenger_no_show')));
@@ -288,7 +289,8 @@ void main() {
       rows.add(ride('accepted'));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('trip-cancel')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       await tester.tap(find.byKey(const ValueKey('driver-cancel-reason-other')));
       await tester.pump();
       final confirm = find.byKey(const ValueKey('driver-cancel-confirm'));
@@ -307,7 +309,8 @@ void main() {
       rows.add(ride('arrived'));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('trip-cancel')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       await tester.tap(find.byKey(const ValueKey('driver-cancel-reason-vehicle_issue')));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('driver-cancel-confirm')));
@@ -434,7 +437,8 @@ void main() {
       expect(find.byKey(const ValueKey('early-end')), findsOneWidget);
       expect(find.textContaining('2.3 km driven of the 10.0 km booked: RM4.68 instead of RM20.00'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('early-end-confirm')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       expect(find.text('Collect RM4.68'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('charges-confirm')));
       await tester.pump();
@@ -462,7 +466,8 @@ void main() {
       await tester.pump();
       await fix(tester, drop);
       await tester.tap(find.byKey(const ValueKey('trip-complete')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       expect(find.byKey(const ValueKey('early-end')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('charges-confirm')));
       await tester.pump();
@@ -470,4 +475,12 @@ void main() {
       expect(rides.log, contains('complete:full'));
     });
   });
+}
+
+/// Lets a dialog or sheet open over a busy control: the control's spinner
+/// keeps turning until the dialog is answered, so pumpAndSettle can't settle.
+Future<void> _pumpOpen(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }

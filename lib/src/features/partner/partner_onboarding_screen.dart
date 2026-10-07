@@ -10,6 +10,7 @@ import '../../core/partner_onboarding.dart';
 import '../../core/vehicle_onboarding.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../core/partner_doc_check.dart' show renewalWindowDays;
 
@@ -196,7 +197,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         icon: Icons.cloud_off,
         title: 'Could not load your partner profile',
         message: errorText(_loadError!),
-        action: FilledButton(onPressed: _load, child: const Text('Try again')),
+        action: BusyButton.filled(onPressed: _load, child: const Text('Try again')),
       );
     } else if (s == null) {
       body = const Center(child: CircularProgressIndicator());
@@ -296,8 +297,8 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     ]);
   }
 
-  Widget _continue(VoidCallback onPressed, {String label = 'Save and continue'}) =>
-      FilledButton(onPressed: _busy ? null : onPressed, child: Text(label));
+  Widget _continue(BusyAction onPressed, {String label = 'Save and continue'}) =>
+      BusyButton.filled(onPressed: _busy ? null : onPressed, child: Text(label));
 
   Widget _avatarStep(OnboardingState s) {
     final url = [s.partner['avatar_url'], s.profile?['avatar_url'], s.profile?['profile_image']]
@@ -315,10 +316,10 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
           ),
         ),
         const SizedBox(height: 16),
-        FilledButton.icon(
+        BusyButton.filled(
           onPressed: _busy ? null : _pickAvatar,
           icon: const Icon(Icons.photo_camera_outlined),
-          label: Text(url.isEmpty ? 'Choose photo' : 'Change photo'),
+          child: Text(url.isEmpty ? 'Choose photo' : 'Change photo'),
         ),
         if (url.isNotEmpty && _viewing == OnboardingStep.avatar) ...[
           const SizedBox(height: 8),
@@ -340,10 +341,10 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
           decoration: const InputDecoration(labelText: 'ID number', border: OutlineInputBorder()),
         ),
         const SizedBox(height: 12),
-        OutlinedButton.icon(
+        BusyButton.outlined(
           onPressed: _busy ? null : _uploadIdImage,
           icon: Icon(idImage.isEmpty ? Icons.upload_file : Icons.check_circle_outline),
-          label: Text(idImage.isEmpty ? 'Upload a photo of your ID (optional)' : 'ID photo saved — replace'),
+          child: Text(idImage.isEmpty ? 'Upload a photo of your ID (optional)' : 'ID photo saved — replace'),
         ),
         const SizedBox(height: 16),
         _continue(_saveId),
@@ -356,7 +357,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     required String subtitle,
     required TextEditingController controller,
     required String label,
-    required VoidCallback onSave,
+    required BusyAction onSave,
     int maxLines = 1,
   }) =>
       _section(title: title, subtitle: subtitle, children: [

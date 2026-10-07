@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers.dart';
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -199,12 +200,12 @@ class AdminMeterDigitalScreen extends ConsumerWidget {
                           ),
                           onTap: () => _open(context, ref, p, profiles),
                           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                            Switch(
+                            BusySwitch(
                               value: p.active,
                               onChanged: canEdit ? (_) => _toggleActive(context, ref, p) : null,
                             ),
                             if (canEdit)
-                              IconButton(
+                              BusyIconButton(
                                 tooltip: 'Delete',
                                 icon: const Icon(Icons.delete_outline),
                                 onPressed: () => _delete(context, ref, p),
@@ -502,7 +503,7 @@ class _MeterCardEditorState extends ConsumerState<MeterCardEditor> {
           if (canEdit)
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: FilledButton(
+              child: BusyButton.filled(
                 onPressed: _busy ? null : _submit,
                 child: Text(_busy ? 'Saving…' : (d.id.isNotEmpty ? 'Save rate card' : 'Create rate card')),
               ),
@@ -717,14 +718,14 @@ class _MeterCardEditorState extends ConsumerState<MeterCardEditor> {
                 Expanded(child: Text('${meterPanelLabels[id]}${id == 'meter' ? ' (always on)' : ''}')),
                 SizedBox(
                   width: 64,
-                  child: Switch(
+                  child: BusySwitch(
                     value: d.panels[id]?.show ?? true,
                     onChanged: !canEdit || id == 'meter' || _panelBusy == id ? null : (v) => _applyPanel(id, show: v),
                   ),
                 ),
                 SizedBox(
                   width: 64,
-                  child: Switch(
+                  child: BusySwitch(
                     value: d.panels[id]?.tap ?? true,
                     onChanged: !canEdit || id == 'meter' || !(d.panels[id]?.show ?? true) || _panelBusy == id
                         ? null

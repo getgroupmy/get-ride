@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/commission.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
@@ -74,15 +75,16 @@ class AdminCommissionScreen extends ConsumerWidget {
             if (sorted.isEmpty) const EmptyState(icon: Icons.percent, title: 'No commission rules yet'),
             for (final r in sorted)
               Card(
-                child: ListTile(
+                child: BusyListTile(
                   leading: CircleAvatar(child: Text('${r['level']}'.substring(0, 1).toUpperCase())),
                   title: Text('${(((r['rate'] as num?) ?? 0) * 100).toStringAsFixed(2)}% · ${r['level']}'),
                   subtitle: Text(commissionScopeLabel(r)),
                   trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                     if (r['active'] == false) const StatusChip('inactive'),
                     if (canEdit)
-                      IconButton(
+                      BusyIconButton(
                         icon: const Icon(Icons.delete_outline),
+
                         onPressed: () async {
                           if (!await confirm(context, 'Delete rule?', commissionScopeLabel(r), ok: 'Delete')) return;
                           if (!context.mounted) return;

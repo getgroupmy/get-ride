@@ -324,7 +324,9 @@ void main() {
     final loc = await _pump(tester);
     await recordShortHire(tester, loc);
     await tester.tap(find.widgetWithText(TextButton, 'Print'));
-    await tester.pumpAndSettle();
+    // Print shows its spinner until the dialog is answered, so it never settles.
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     expect(find.text('No printer set up'), findsOneWidget);
     await tester.tap(find.text('Not now'));
     await tester.pumpAndSettle();

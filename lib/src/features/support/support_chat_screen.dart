@@ -7,6 +7,7 @@ import '../../core/format.dart';
 import '../../core/support_media.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import 'call/call_screen.dart';
 import 'support_screen.dart';
@@ -139,7 +140,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> {
     final t = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Support chat'), actions: [
-        IconButton(
+        BusyIconButton(
           key: const ValueKey('call-support'),
           tooltip: 'Call support',
           icon: const Icon(Icons.call_outlined),
@@ -202,7 +203,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> {
             child: Padding(
               padding: const EdgeInsets.all(8),
               child: Row(children: [
-                IconButton(
+                BusyIconButton(
                   key: const ValueKey('support-attach'),
                   tooltip: 'Send a photo or video',
                   onPressed: _sending ? null : _attach,

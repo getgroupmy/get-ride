@@ -213,7 +213,9 @@ void main() {
       await tester.ensureVisible(find.text('Buy GET.coin'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Buy GET.coin'));
-      await tester.pumpAndSettle();
+      // The key spins behind the confirm dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.widgetWithText(FilledButton, 'Buy'));
       await tester.pumpAndSettle();
 
@@ -238,7 +240,9 @@ void main() {
       await tester.ensureVisible(find.text('Sell GET.coin'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sell GET.coin'));
-      await tester.pumpAndSettle();
+      // The key spins behind the confirm dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.widgetWithText(FilledButton, 'Sell'));
       await tester.pumpAndSettle();
       expect(find.text('Not enough GET.coin to sell.'), findsOneWidget);
@@ -294,7 +298,9 @@ void main() {
       await tester.pump();
       await tester.ensureVisible(find.text('Sell GET.coin'));
       await tester.tap(find.text('Sell GET.coin'));
-      await tester.pumpAndSettle();
+      // The key spins behind the confirm dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.widgetWithText(FilledButton, 'Sell'));
       await tester.pumpAndSettle();
       expect(repo.trades, [(CoinTradeDirection.sell, 20.0, 0.1)]);

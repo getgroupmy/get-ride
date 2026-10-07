@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
@@ -96,17 +97,18 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
         if (canEdit)
           Row(children: [
             Expanded(
-              child: OutlinedButton.icon(
+              child: BusyButton.outlined(
                 icon: const Icon(Icons.close),
-                label: const Text('Reject'),
+                child: const Text('Reject'),
                 onPressed: () => _review(ctx, d, 'Rejected', notes.text),
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: FilledButton.icon(
+              child: BusyButton.filled(
                 icon: const Icon(Icons.check),
-                label: const Text('Approve'),
+                child: const Text('Approve'),
+
                 onPressed: () => _review(ctx, d, 'Approved', notes.text),
               ),
             ),

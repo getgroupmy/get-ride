@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -268,12 +269,11 @@ class _GetCoinFormState extends ConsumerState<_GetCoinForm> {
         if (widget.canEdit)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: FilledButton.icon(
+            child: BusyButton.filled(
               onPressed: _saving || !_dirty ? null : _save,
-              icon: _saving
-                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.check),
-              label: const Text('Save'),
+              icon: const Icon(Icons.check),
+              child: const Text('Save'),
+
             ),
           ),
       ]),

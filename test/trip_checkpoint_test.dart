@@ -107,7 +107,8 @@ void main() {
       rows.add(ride('on_trip'));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('trip-complete')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       await tester.tap(find.byKey(const ValueKey('charges-confirm')));
       await tester.pump();
       await tester.pump();
@@ -119,7 +120,8 @@ void main() {
       rows.add(ride('on_trip'));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('trip-complete')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       await tester.enterText(find.byKey(const ValueKey('charges-tolls')), '5.50');
       await tester.enterText(find.byKey(const ValueKey('charges-other')), '3');
       await tester.pump();
@@ -158,7 +160,8 @@ void main() {
       rows.add(ride('on_trip'));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('trip-complete')));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       expect(rides.log, isEmpty);
@@ -174,4 +177,12 @@ void main() {
       expect(rides.log, ['status:arrived']);
     });
   });
+}
+
+/// Lets a dialog or sheet open over a busy control: the control's spinner
+/// keeps turning until the dialog is answered, so pumpAndSettle can't settle.
+Future<void> _pumpOpen(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }

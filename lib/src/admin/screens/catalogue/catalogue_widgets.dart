@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -86,10 +87,10 @@ class DataUrlImageField extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Wrap(spacing: 8, runSpacing: 8, children: [
-                FilledButton.tonalIcon(
+                BusyButton.tonal(
                   onPressed: enabled ? () => _pick(context) : null,
                   icon: const Icon(Icons.upload),
-                  label: Text(value.isEmpty ? 'Upload' : 'Replace'),
+                  child: Text(value.isEmpty ? 'Upload' : 'Replace'),
                 ),
                 if (value.isNotEmpty)
                   OutlinedButton.icon(
@@ -111,11 +112,12 @@ class DataUrlImageField extends StatelessWidget {
 }
 
 /// Body of an editor sheet: the form plus an error line and the save button
-/// (disabled for read-only viewers).
+/// (disabled for read-only viewers). A save that returns a Future shows a
+/// spinner on the button until it completes.
 class EditorBody extends StatelessWidget {
   const EditorBody({super.key, required this.children, required this.onSave, this.error, required this.saveLabel});
   final List<Widget> children;
-  final VoidCallback? onSave;
+  final BusyAction? onSave;
   final String? error;
   final String saveLabel;
 
@@ -128,7 +130,7 @@ class EditorBody extends StatelessWidget {
             child: Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ),
         const SizedBox(height: 8),
-        FilledButton.icon(onPressed: onSave, icon: const Icon(Icons.save), label: Text(saveLabel)),
+        BusyButton.filled(onPressed: onSave, icon: const Icon(Icons.save), child: Text(saveLabel)),
       ]);
 }
 
@@ -201,28 +203,32 @@ class AllTokenChips extends StatelessWidget {
   }
 }
 
-/// Up/down reorder controls.
+/// Up/down reorder controls. A move that returns a Future (a save) shows a
+/// spinner on its arrow until it completes.
 class ReorderButtons extends StatelessWidget {
   const ReorderButtons({super.key, required this.onUp, required this.onDown});
-  final VoidCallback? onUp;
-  final VoidCallback? onDown;
+  final BusyAction? onUp;
+  final BusyAction? onDown;
 
   @override
-  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, children: [
-        IconButton(
-          visualDensity: VisualDensity.compact,
-          tooltip: 'Move up',
-          icon: const Icon(Icons.keyboard_arrow_up),
-          onPressed: onUp,
-        ),
-        IconButton(
-          visualDensity: VisualDensity.compact,
-          tooltip: 'Move down',
-          icon: const Icon(Icons.keyboard_arrow_down),
-          onPressed: onDown,
-        ),
-      ]);
+  Widget build(BuildContext context) => Theme(
+        // Compact density, as the plain IconButtons had.
+        data: Theme.of(context).copyWith(visualDensity: VisualDensity.compact),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          BusyIconButton(
+            tooltip: 'Move up',
+            icon: const Icon(Icons.keyboard_arrow_up),
+            onPressed: onUp,
+          ),
+          BusyIconButton(
+            tooltip: 'Move down',
+            icon: const Icon(Icons.keyboard_arrow_down),
+            onPressed: onDown,
+          ),
+        ]),
+      );
 }
+
 
 /// Opens an editor in the admin side/bottom sheet.
 Future<T?> openEditor<T>(BuildContext context, String title, Widget editor) =>

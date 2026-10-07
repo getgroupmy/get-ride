@@ -75,11 +75,15 @@ void main() {
       final repo = _FakeRecharge();
       await pump(tester, repo);
       await tester.tap(find.byKey(const ValueKey('wallet-recharge-open')));
-      await tester.pumpAndSettle();
+      // The row spins behind the dialog until it closes.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(find.text('GET.wallet balance: RM40.00'), findsOneWidget);
       await tester.enterText(find.byKey(const ValueKey('recharge-amount')), '41');
       await tester.tap(find.byKey(const ValueKey('recharge-confirm')));
-      await tester.pumpAndSettle();
+      // The row behind the dialog spins until the dialog closes.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(find.text('Not enough balance in GET.wallet.'), findsOneWidget);
       expect(repo.calls, isEmpty);
     });
@@ -88,10 +92,14 @@ void main() {
       final repo = _FakeRecharge();
       await pump(tester, repo);
       await tester.tap(find.byKey(const ValueKey('wallet-recharge-open')));
-      await tester.pumpAndSettle();
+      // The row spins behind the dialog until it closes.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.enterText(find.byKey(const ValueKey('recharge-amount')), '25.50');
       await tester.tap(find.byKey(const ValueKey('recharge-confirm')));
-      await tester.pumpAndSettle();
+      // The row behind the dialog spins until the dialog closes.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(repo.calls, [25.5]);
       expect(find.byKey(const ValueKey('recharge-amount')), findsNothing);
     });
@@ -100,10 +108,14 @@ void main() {
       final repo = _FakeRecharge(error: Exception('insufficient_balance'));
       await pump(tester, repo);
       await tester.tap(find.byKey(const ValueKey('wallet-recharge-open')));
-      await tester.pumpAndSettle();
+      // The row spins behind the dialog until it closes.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.enterText(find.byKey(const ValueKey('recharge-amount')), '10');
       await tester.tap(find.byKey(const ValueKey('recharge-confirm')));
-      await tester.pumpAndSettle();
+      // The row behind the dialog spins until the dialog closes.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(repo.calls, [10]);
       expect(find.text('Not enough balance in GET.wallet.'), findsOneWidget);
     });

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
@@ -159,7 +160,7 @@ class _ApiProvidersState extends ConsumerState<AdminApiProvidersScreen> {
                     ]),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       if (canEdit)
-                        IconButton(tooltip: 'Delete provider', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(p)),
+                        BusyIconButton(tooltip: 'Delete provider', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(p)),
                       const Icon(Icons.chevron_right),
                     ]),
                     onTap: () => context.push('/admin/m/api-keys-services?providerId=${Uri.encodeQueryComponent(p.id)}'),
@@ -230,7 +231,7 @@ class _ApiServicesState extends ConsumerState<AdminApiServicesScreen> {
       page: apiKeysPage,
       actions: [
         if (canEdit && provider != null && provider.services.isNotEmpty)
-          IconButton(
+          BusyIconButton(
               tooltip: 'Add one key to several services',
               icon: const Icon(Icons.library_add_outlined),
               onPressed: () => _bulkAdd(provider)),
@@ -275,7 +276,7 @@ class _ApiServicesState extends ConsumerState<AdminApiServicesScreen> {
                     ]),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       if (canEdit)
-                        IconButton(tooltip: 'Delete service', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(s)),
+                        BusyIconButton(tooltip: 'Delete service', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(s)),
                       const Icon(Icons.chevron_right),
                     ]),
                     onTap: () => context.push('/admin/m/api-keys-keys?providerId=${Uri.encodeQueryComponent(provider.id)}'
@@ -509,29 +510,29 @@ class AdminApiKeysScreen extends ConsumerWidget {
                           '${k.lastUsedAt != null ? ' · last used ${dateText(DateTime.fromMillisecondsSinceEpoch(k.lastUsedAt!).toIso8601String())}' : ''}'),
                       if (canEdit)
                         Wrap(spacing: 4, children: [
-                          TextButton.icon(
+                          BusyButton.text(
                             icon: const Icon(Icons.check_circle_outline, size: 16),
-                            label: const Text('+ Use'),
+                            child: const Text('+ Use'),
                             onPressed: () => _mutate(context, ref, (l) => reportKeyUsage(l, providerId, serviceId, k.id, true)),
                           ),
-                          TextButton.icon(
+                          BusyButton.text(
                             icon: const Icon(Icons.highlight_off, size: 16),
-                            label: const Text('+ Fail'),
+                            child: const Text('+ Fail'),
                             onPressed: () => _mutate(context, ref, (l) => reportKeyUsage(l, providerId, serviceId, k.id, false)),
                           ),
-                          TextButton.icon(
+                          BusyButton.text(
                             icon: const Icon(Icons.restart_alt, size: 16),
-                            label: const Text('Reset'),
+                            child: const Text('Reset'),
                             onPressed: () => _patch(context, ref, k, (x) => x.copyWith(useCount: 0, failedCount: 0)),
                           ),
-                          TextButton.icon(
+                          BusyButton.text(
                             icon: const Icon(Icons.power_settings_new, size: 16),
-                            label: Text(k.isDisabled ? 'Enable' : 'Disable'),
+                            child: Text(k.isDisabled ? 'Enable' : 'Disable'),
                             onPressed: () => _patch(context, ref, k, (x) => x.copyWith(disabled: !x.isDisabled)),
                           ),
-                          TextButton.icon(
+                          BusyButton.text(
                             icon: const Icon(Icons.delete_outline, size: 16),
-                            label: const Text('Delete'),
+                            child: const Text('Delete'),
                             onPressed: () => _delete(context, ref, k),
                           ),
                         ]),

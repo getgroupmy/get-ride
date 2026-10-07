@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
@@ -135,7 +136,7 @@ class _ElifeState extends ConsumerState<AdminElifeScreen> {
                   icon: Icons.cloud_off,
                   title: 'Something went wrong',
                   message: errorText(_loadError!),
-                  action: TextButton(onPressed: _load, child: const Text('Retry')),
+                  action: BusyButton.text(onPressed: _load, child: const Text('Retry')),
                 )
               : const Center(child: CircularProgressIndicator()))
           : _body(cfg, canEdit),
@@ -202,7 +203,7 @@ class _ElifeState extends ConsumerState<AdminElifeScreen> {
           ),
         ),
         Card(
-          child: SwitchListTile(
+          child: BusySwitchListTile(
             title: const Text('Integration enabled'),
             subtitle: const Text('When off, no rides are dispatched to or accepted from Elife.'),
             value: cfg['enabled'] == true,
@@ -234,18 +235,16 @@ class _ElifeState extends ConsumerState<AdminElifeScreen> {
         _field(_clientSecret, 'Client Secret', 'Enter client secret', canEdit, secret: true),
         _field(_webhookUrl, 'Webhook URL (optional)', 'https://your-domain.com/elife/webhook', canEdit),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          OutlinedButton.icon(
+          BusyButton.outlined(
             onPressed: _testing ? null : () => _test(canEdit),
-            icon: _testing
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.sync),
-            label: const Text('Test connection'),
+            icon: const Icon(Icons.sync),
+            child: const Text('Test connection'),
           ),
           if (canEdit)
-            FilledButton.icon(
+            BusyButton.filled(
               onPressed: _saving || !_dirty ? null : _save,
               icon: const Icon(Icons.save_outlined),
-              label: Text(_dirty ? 'Save changes' : 'Saved'),
+              child: Text(_dirty ? 'Save changes' : 'Saved'),
             ),
         ]),
         const SizedBox(height: 20),
@@ -254,7 +253,7 @@ class _ElifeState extends ConsumerState<AdminElifeScreen> {
           const SizedBox(width: 6),
           Expanded(child: Text('ACTIVITY', style: t.textTheme.labelLarge)),
           if (activity.isNotEmpty && canEdit)
-            TextButton.icon(onPressed: _clearActivity, icon: const Icon(Icons.delete_outline), label: const Text('Clear')),
+            BusyButton.text(onPressed: _clearActivity, icon: const Icon(Icons.delete_outline), child: const Text('Clear')),
         ]),
         if (activity.isEmpty)
           const Card(

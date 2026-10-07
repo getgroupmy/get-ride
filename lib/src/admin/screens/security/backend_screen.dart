@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../config.dart';
+import '../../../widgets/busy.dart';
 import '../../widgets/admin_widgets.dart';
 import 'backend_logic.dart';
 import 'security_data.dart';
@@ -152,8 +153,8 @@ class _BackendState extends ConsumerState<AdminBackendScreen> {
                   : (_health == _Status.checking ? 'Checking...' : _healthMsg)),
             ),
             OverflowBar(alignment: MainAxisAlignment.end, children: [
-              TextButton.icon(onPressed: _testUrl, icon: const Icon(Icons.sync), label: const Text('Test URL')),
-              TextButton.icon(onPressed: _pingClient, icon: const Icon(Icons.storage), label: const Text('Ping client')),
+              BusyButton.text(onPressed: _testUrl, icon: const Icon(Icons.sync), child: const Text('Test URL')),
+              BusyButton.text(onPressed: _pingClient, icon: const Icon(Icons.storage), child: const Text('Ping client')),
             ]),
           ]),
         ),
@@ -174,8 +175,8 @@ class _BackendState extends ConsumerState<AdminBackendScreen> {
                     ].join(' · ')),
             ),
             OverflowBar(alignment: MainAxisAlignment.end, children: [
-              TextButton.icon(
-                  onPressed: _connectionCheck, icon: const Icon(Icons.monitor_heart_outlined), label: const Text('Run check')),
+              BusyButton.text(
+                  onPressed: _connectionCheck, icon: const Icon(Icons.monitor_heart_outlined), child: const Text('Run check')),
             ]),
           ]),
         ),

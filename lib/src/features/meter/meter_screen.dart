@@ -20,6 +20,7 @@ import '../../data/geo_service.dart';
 import '../../data/obd/obd_session.dart';
 import '../../data/printer/printer_service.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/map_sheet_layout.dart' show appBottomSheetTheme;
 import 'hail_destination_screen.dart';
 import 'landscape_stage.dart';
@@ -830,10 +831,10 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
           ),
         ),
       const SizedBox(height: 8),
-      TextButton.icon(
+      BusyButton.text(
         onPressed: _m.hasHire ? null : _clearLog,
         icon: const Icon(Icons.delete_outline),
-        label: const Text('Clear the trip log'),
+        child: const Text('Clear the trip log'),
       ),
     ]);
   }
@@ -1110,12 +1111,10 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
             icon: const Icon(Icons.copy),
             label: const Text('Copy'),
           ),
-          TextButton.icon(
+          BusyButton.text(
             onPressed: _printing ? null : _print,
-            icon: _printing
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.print_outlined),
-            label: const Text('Print'),
+            icon: const Icon(Icons.print_outlined),
+            child: const Text('Print'),
           ),
           FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
         ],

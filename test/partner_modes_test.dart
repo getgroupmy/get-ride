@@ -89,10 +89,19 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('You are offline'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await _pumpOpen(tester);
     expect(find.byKey(const ValueKey('vehicle-required')), findsOneWidget);
     await tester.tap(find.text('Add a vehicle'));
     await tester.pumpAndSettle();
     expect(find.text('add vehicle'), findsOneWidget);
   });
+}
+
+/// Lets a dialog or sheet open over a busy control: the control's spinner
+/// keeps turning until the dialog is answered, so pumpAndSettle can't settle.
+Future<void> _pumpOpen(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }

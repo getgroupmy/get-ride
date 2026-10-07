@@ -148,7 +148,8 @@ void main() {
         ],
       );
       await tester.tap(find.text('You are offline'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       expect(find.byKey(const ValueKey('docs-blocked')), findsOneWidget);
       expect(find.textContaining('PSV permit (expired)'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('docs-update')));
@@ -178,4 +179,12 @@ void main() {
       expect(find.text('You are online'), findsOneWidget);
     });
   });
+}
+
+/// Lets a dialog or sheet open over a busy control: the control's spinner
+/// keeps turning until the dialog is answered, so pumpAndSettle can't settle.
+Future<void> _pumpOpen(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }

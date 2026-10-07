@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
 import 'fraud_detection.dart';
@@ -106,7 +107,7 @@ class _TraceFraudState extends ConsumerState<AdminTraceFraudScreen> {
       title: 'Trace fraud',
       page: _page,
       actions: [
-        IconButton(
+        BusyIconButton(
           tooltip: 'Export findings (CSV)',
           icon: const Icon(Icons.download),
           onPressed: scan.value == null ? null : () => _export(scan.value!),

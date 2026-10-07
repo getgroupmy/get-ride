@@ -10,6 +10,7 @@ import '../../core/partner_onboarding.dart';
 import '../../core/vehicle_onboarding.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../data/vehicle_onboarding_repository.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
@@ -296,7 +297,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
         icon: Icons.cloud_off,
         title: 'Could not load the vehicle',
         message: errorText(_loadError!),
-        action: FilledButton(onPressed: _load, child: const Text('Try again')),
+        action: BusyButton.filled(onPressed: _load, child: const Text('Try again')),
       );
     } else if (!_loaded) {
       body = const Center(child: CircularProgressIndicator());
@@ -354,8 +355,8 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
     ]);
   }
 
-  Widget _continue(VoidCallback? onPressed, {String label = 'Save and continue'}) =>
-      FilledButton(onPressed: _busy ? null : onPressed, child: Text(label));
+  Widget _continue(BusyAction? onPressed, {String label = 'Save and continue'}) =>
+      BusyButton.filled(onPressed: _busy ? null : onPressed, child: Text(label));
 
   Widget _field(TextEditingController c, String label, {TextInputType? keyboard, List<TextInputFormatter>? formatters}) =>
       Padding(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -251,7 +252,8 @@ class _RegionTile extends StatelessWidget {
   });
   final RegionRow row;
   final bool canEdit;
-  final VoidCallback onOpen, onMap, onEdit, onDelete;
+  final VoidCallback onOpen, onMap;
+  final Future<void> Function() onEdit, onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -298,9 +300,9 @@ class _RegionTile extends StatelessWidget {
           icon: Icon(Icons.map_outlined, color: hasBoundary ? scheme.primary : null),
           onPressed: onMap,
         ),
-        if (canEdit) IconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
+        if (canEdit) BusyIconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
         if (canEdit && custom)
-          IconButton(tooltip: 'Delete', icon: Icon(Icons.delete_outline, color: scheme.error), onPressed: onDelete),
+          BusyIconButton(tooltip: 'Delete', icon: Icon(Icons.delete_outline, color: scheme.error), onPressed: onDelete),
         if (row.level != RegionLevel.suburb) const Icon(Icons.chevron_right),
       ]),
     );

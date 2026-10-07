@@ -8,6 +8,7 @@ import '../../admin/screens/people/people_data.dart';
 import '../../core/driver_permit.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/in_app_page.dart';
 
@@ -222,9 +223,9 @@ class _PermitBody extends StatelessWidget {
           alignment: WrapAlignment.center,
           children: [
             if (p.fileUrl != null)
-              OutlinedButton.icon(
+              BusyButton.outlined(
                 icon: const Icon(Icons.description_outlined),
-                label: const Text('View uploaded permit'),
+                child: const Text('View uploaded permit'),
                 onPressed: () => openInApp(context, p.fileUrl!, title: 'Driver permit'),
               ),
             OutlinedButton.icon(

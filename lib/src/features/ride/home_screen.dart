@@ -33,6 +33,7 @@ import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
@@ -770,7 +771,8 @@ class _BookingPanel extends StatelessWidget {
   final TextEditingController note;
   final bool booking;
   final double Function(RideService) fareFor;
-  final VoidCallback onPickup, onDrop, onSwap, onBook, onOpenOngoing;
+  final VoidCallback onPickup, onDrop, onSwap, onOpenOngoing;
+  final Future<void> Function() onBook;
   final ValueChanged<RideService> onService;
 
   /// The −/+ fare offer for the selected service, where bidding is on.
@@ -951,7 +953,7 @@ class _BookingPanel extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 16),
-          FilledButton(
+          BusyButton.filled(
             key: const ValueKey('book'),
             // One ride of the rider's own at a time; rides for others are
             // not held back by it.
@@ -1061,7 +1063,7 @@ class _WhoRiding extends ConsumerWidget {
             ),
           ),
           if (pick != null)
-            IconButton(
+            BusyIconButton(
               key: const ValueKey('book-for-contact'),
               tooltip: 'Contacts',
               icon: const Icon(Icons.contacts_outlined),

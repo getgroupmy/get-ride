@@ -19,6 +19,7 @@ import '../../core/sos.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
@@ -67,7 +68,7 @@ class RideTrackingScreen extends ConsumerWidget {
         leading: BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/')),
         actions: [
           if (ride.value?.status.isOngoing ?? false)
-            IconButton(
+            BusyIconButton(
               key: const ValueKey('share-ride'),
               tooltip: 'Share ride',
               icon: const Icon(Icons.share_outlined),
@@ -477,14 +478,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(
+                  child: BusyButton.outlined(
                     onPressed: _busy ? null : () => _declineOffer(offer),
                     child: const Text('Decline'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: FilledButton(
+                  child: BusyButton.filled(
                     key: const ValueKey('accept-offer'),
                     onPressed: _busy ? null : () => _acceptOffer(offer),
                     child: Text('Accept ${formatMoney(offer.amount, r.currency)}'),
@@ -642,15 +643,15 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   if (r.partnerPhone != null)
                     OverflowBar(
                       children: [
-                        TextButton.icon(
+                        BusyButton.text(
                           icon: const Icon(Icons.call),
-                          label: const Text('Call'),
                           onPressed: () => launchUrl(Uri(scheme: 'tel', path: r.partnerPhone)),
+                          child: const Text('Call'),
                         ),
-                        TextButton.icon(
+                        BusyButton.text(
                           icon: const Icon(Icons.sms_outlined),
-                          label: const Text('Message'),
                           onPressed: () => launchUrl(Uri(scheme: 'sms', path: r.partnerPhone)),
+                          child: const Text('Message'),
                         ),
                       ],
                     ),
@@ -707,23 +708,23 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (r.status.isOngoing && r.status != RideStatus.open)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: FilledButton.icon(
+              child: BusyButton.filled(
                 key: const ValueKey('ride-sos'),
                 style: FilledButton.styleFrom(
                   backgroundColor: t.colorScheme.error,
                   foregroundColor: t.colorScheme.onError,
                 ),
                 icon: const Icon(Icons.sos),
-                label: const Text('SOS · Emergency'),
                 onPressed: () => _sos(r),
+                child: const Text('SOS · Emergency'),
               ),
             ),
           // On the trip itself the X only asks: the driver approves it.
           if (r.status.isOngoing && !riderCancelAsk)
-            OutlinedButton.icon(
+            BusyButton.outlined(
               icon: const Icon(Icons.close),
-              label: Text(r.status == RideStatus.onTrip ? 'Request cancellation' : 'Cancel ride'),
               onPressed: _busy ? null : _cancel,
+              child: Text(r.status == RideStatus.onTrip ? 'Request cancellation' : 'Cancel ride'),
             ),
           if (r.status == RideStatus.completed &&
               ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0 || r.fareCoinsValue > 0))

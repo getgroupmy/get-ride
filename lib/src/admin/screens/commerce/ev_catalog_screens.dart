@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -120,8 +121,8 @@ Future<void> _deleteEntry(BuildContext context, WidgetRef ref, String key, Strin
   }
 }
 
-Widget _deleteButton(VoidCallback onPressed) =>
-    IconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete', onPressed: onPressed);
+Widget _deleteButton(BusyAction onPressed) =>
+    BusyIconButton(icon: const Icon(Icons.delete_outline), tooltip: 'Delete', onPressed: onPressed);
 
 // ===========================================================================
 // Order fee (ev_order_fee)
@@ -161,7 +162,7 @@ class EvOrderFeeScreen extends ConsumerWidget {
                   leading: const Icon(Icons.auto_awesome_outlined),
                   title: const Text('Start with the default'),
                   subtitle: const Text('$defaultOrderFeeCountry · $defaultOrderFeeCurrency $defaultOrderFeeAmount (default country)'),
-                  trailing: FilledButton(
+                  trailing: BusyButton.filled(
                     style: FilledButton.styleFrom(minimumSize: const Size(72, 40)),
                     onPressed: () => _saveEntry(context, ref, catKey, Map.of(orderFeeSeed), all: all),
                     child: const Text('Add'),
@@ -172,7 +173,7 @@ class EvOrderFeeScreen extends ConsumerWidget {
         rowBuilder: (context, e, sorted, i, canEdit) {
           final v = e.values;
           return Card(
-            child: ListTile(
+            child: BusyListTile(
               leading: const CircleAvatar(child: Icon(Icons.payments_outlined)),
               title: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 Text('${v['country'] ?? ''}'),
@@ -183,13 +184,13 @@ class EvOrderFeeScreen extends ConsumerWidget {
                   '${(v['gatewayProviderName'] ?? '').toString().isNotEmpty ? ' · ${v['gatewayProviderName']}' : ''}'),
               onTap: canEdit ? () => _edit(context, ref, sorted, e) : null,
               trailing: canEdit
-                  ? _deleteButton(() {
+                  ? _deleteButton(() async {
                       if (!canDeleteOrderFee(v)) {
                         showInfo(context,
                             '$defaultOrderFeeCountry is the default country and cannot be removed. You can edit the fee instead.');
                         return;
                       }
-                      _deleteEntry(context, ref, catKey, e.id, 'Remove order fee for ${v['country']}?');
+                      await _deleteEntry(context, ref, catKey, e.id, 'Remove order fee for ${v['country']}?');
                     })
                   : null,
             ),
@@ -346,7 +347,7 @@ class EvFinanceOptionsScreen extends ConsumerWidget {
                   leading: const Icon(Icons.auto_awesome_outlined),
                   title: const Text('Start with the default plans'),
                   subtitle: Text(financeOptionSeeds.map((s) => s['name']).join(' · ')),
-                  trailing: FilledButton(
+                  trailing: BusyButton.filled(
                     style: FilledButton.styleFrom(minimumSize: const Size(72, 40)),
                     onPressed: () => runAdminAction(context, () async {
                       final repo = ref.read(commerceRepositoryProvider);
@@ -362,7 +363,7 @@ class EvFinanceOptionsScreen extends ConsumerWidget {
         rowBuilder: (context, e, sorted, i, canEdit) {
           final v = e.values;
           return Card(
-            child: ListTile(
+            child: BusyListTile(
               leading: canEdit
                   ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                       InkWell(
@@ -562,7 +563,7 @@ class EvVehicleDetailsScreen extends ConsumerWidget {
           final features = enabledItems(v, 'features').length;
           final locked = v['isDefault'] == true;
           return Card(
-            child: ListTile(
+            child: BusyListTile(
               leading: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: StoredImage('${v['imageUri'] ?? ''}', width: 64, height: 44),
@@ -831,7 +832,7 @@ class EvVehicleInventoryScreen extends ConsumerWidget {
         final veh = byId['${v['vehicleId'] ?? ''}'];
         final ext = '${v['exteriorColor'] ?? ''}', intr = '${v['interiorColor'] ?? ''}';
         return Card(
-          child: ListTile(
+          child: BusyListTile(
             leading: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: StoredImage('${veh?['imageUri'] ?? ''}', width: 64, height: 44),

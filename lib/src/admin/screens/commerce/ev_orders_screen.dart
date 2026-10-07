@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ev_wizard.dart' show evMoney, evPaymentsDue, paymentReceivedPatch;
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -350,7 +351,7 @@ class _OrderDetail extends ConsumerWidget {
             title: Text('${p.label} · ${evMoney(p.amount, p.currency)}'),
             subtitle: Text(p.received ? 'Received' : 'Due'),
             trailing: !p.received && canEdit
-                ? TextButton(
+                ? BusyButton.text(
                     onPressed: () => _patch(context, ref, paymentReceivedPatch(p.key, v, DateTime.now()),
                         success: '${p.label} recorded as received.'),
                     child: const Text('Mark received'),
@@ -384,10 +385,10 @@ class _OrderDetail extends ConsumerWidget {
             subtitle: it.note.isEmpty ? null : Text(it.note),
           ),
       if (!accepted && canEdit)
-        OutlinedButton.icon(
+        BusyButton.outlined(
           onPressed: () => _checklist(context, ref, v),
           icon: const Icon(Icons.fact_check_outlined),
-          label: Text(submitted ? 'Update checklist' : 'Complete checklist'),
+          child: Text(submitted ? 'Update checklist' : 'Complete checklist'),
         ),
       heading('Delivery Advisor'),
       if (_truthy(v['advisorId'])) ...[
@@ -400,16 +401,17 @@ class _OrderDetail extends ConsumerWidget {
           'Location': '${_str(v['advisorCity'], '')}, ${_str(v['advisorState'], '')}, ${_str(v['advisorCountry'], '')}',
         }),
         if (canEdit)
-          OutlinedButton.icon(
+          BusyButton.outlined(
             onPressed: () => _assign(context, ref, v),
             icon: const Icon(Icons.swap_horiz),
-            label: const Text('Reassign DA'),
+            child: const Text('Reassign DA'),
           ),
       ] else if (canEdit)
-        FilledButton.icon(
+        BusyButton.filled(
           onPressed: () => _assign(context, ref, v),
           icon: const Icon(Icons.how_to_reg_outlined),
-          label: const Text('Assign Delivery Advisor'),
+          child: const Text('Assign Delivery Advisor'),
+
         )
       else
         const Text('No advisor assigned.'),

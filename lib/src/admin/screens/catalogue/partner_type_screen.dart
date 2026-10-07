@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
@@ -156,7 +157,7 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
                                   else
                                     const SizedBox(width: 12),
                                   Expanded(
-                                    child: ListTile(
+                                    child: BusyListTile(
                                       contentPadding: EdgeInsets.zero,
                                       onTap: () => _edit(all, e),
                                       leading: StoredImage(str(v['iconUrl']).trim(), fallback: Icons.groups_outlined),
@@ -170,7 +171,7 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
                                           : 'Sub-services off'),
                                     ),
                                   ),
-                                  Switch(value: jsBool(v['enabled'], true), onChanged: canEdit ? (_) => _toggle(e) : null),
+                                  BusySwitch(value: jsBool(v['enabled'], true), onChanged: canEdit ? (_) => _toggle(e) : null),
                                   if (subOn && count > 0)
                                     IconButton(
                                       tooltip: _expanded.contains(e.id) ? 'Hide sub-services' : 'View sub-services',
@@ -179,7 +180,7 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
                                           _expanded.contains(e.id) ? _expanded.remove(e.id) : _expanded.add(e.id)),
                                     ),
                                   if (canEdit)
-                                    IconButton(
+                                    BusyIconButton(
                                       tooltip: isDefault ? 'Default types cannot be deleted' : 'Delete',
                                       icon: const Icon(Icons.delete_outline),
                                       onPressed: isDefault ? null : () => _delete(e),
@@ -358,10 +359,11 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
                 ? const SizedBox(width: 56, height: 56, child: Center(child: CircularProgressIndicator()))
                 : StoredImage(_icon, size: 56, fallback: Icons.add_photo_alternate_outlined),
             const SizedBox(width: 12),
-            FilledButton.tonalIcon(
+            BusyButton.tonal(
               onPressed: _uploading ? null : _pickIcon,
               icon: const Icon(Icons.upload),
-              label: Text(_icon.isEmpty ? 'Upload' : 'Replace'),
+              child: Text(_icon.isEmpty ? 'Upload' : 'Replace'),
+
             ),
             const SizedBox(width: 8),
             if (_icon.isNotEmpty)

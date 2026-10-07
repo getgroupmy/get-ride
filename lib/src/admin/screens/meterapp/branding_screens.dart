@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../providers.dart';
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -169,7 +170,7 @@ class _AdminAppIconScreenState extends ConsumerState<AdminAppIconScreen> {
       title: 'App Icon',
       page: appIconPage,
       actions: [
-        if (canEdit) IconButton(tooltip: 'Reset to default', icon: const Icon(Icons.restart_alt), onPressed: _saving ? null : _reset),
+        if (canEdit) BusyIconButton(tooltip: 'Reset to default', icon: const Icon(Icons.restart_alt), onPressed: _saving ? null : _reset),
       ],
       body: AsyncView(
         value: ref.watch(brandingProvider),
@@ -197,15 +198,15 @@ class _AdminAppIconScreenState extends ConsumerState<AdminAppIconScreen> {
                     textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
                 const SizedBox(height: 16),
                 Wrap(spacing: 8, runSpacing: 8, children: [
-                  FilledButton.tonalIcon(
+                  BusyButton.tonal(
                     icon: const Icon(Icons.upload),
-                    label: Text(hasIcon ? 'Replace icon' : 'Upload icon'),
                     onPressed: canEdit && !_saving
                         ? () async {
                             final img = await pickImage();
                             if (img != null) setState(() => _picked = img);
                           }
                         : null,
+                    child: Text(hasIcon ? 'Replace icon' : 'Upload icon'),
                   ),
                   if (hasIcon)
                     TextButton.icon(
@@ -231,10 +232,10 @@ class _AdminAppIconScreenState extends ConsumerState<AdminAppIconScreen> {
                 ),
                 const SizedBox(height: 16),
                 if (canEdit)
-                  FilledButton.icon(
+                  BusyButton.filled(
                     icon: const Icon(Icons.publish),
-                    label: Text(_saving ? 'Publishing…' : 'Publish to all users'),
                     onPressed: _saving ? null : () => _publish(stored),
+                    child: Text(_saving ? 'Publishing…' : 'Publish to all users'),
                   ),
               ]),
             ),
@@ -324,16 +325,16 @@ class _AdminSplashScreenState extends ConsumerState<AdminSplashScreen> {
                 ]),
                 const SizedBox(height: 16),
                 Wrap(spacing: 8, children: [
-                  FilledButton.tonalIcon(
+                  BusyButton.tonal(
                     key: const ValueKey('splash-upload'),
                     icon: const Icon(Icons.upload),
-                    label: Text(_picked != null || _url != null ? 'Replace image' : 'Upload image'),
                     onPressed: canEdit
                         ? () async {
                             final img = await pickImage();
                             if (img != null) setState(() => _picked = img);
                           }
                         : null,
+                    child: Text(_picked != null || _url != null ? 'Replace image' : 'Upload image'),
                   ),
                   if (_picked != null || _url != null)
                     TextButton.icon(
@@ -350,10 +351,10 @@ class _AdminSplashScreenState extends ConsumerState<AdminSplashScreen> {
                 ]),
                 const SizedBox(height: 24),
                 if (canEdit)
-                  FilledButton.icon(
+                  BusyButton.filled(
                     icon: const Icon(Icons.save_outlined),
-                    label: Text(_saving ? 'Saving…' : 'Save'),
                     onPressed: _saving ? null : _save,
+                    child: Text(_saving ? 'Saving…' : 'Save'),
                   ),
               ]),
             ),

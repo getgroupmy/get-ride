@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -185,7 +186,7 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
       page: widget.page,
       actions: [
         if (_isEdit && canEdit)
-          IconButton(tooltip: 'Delete vehicle', icon: const Icon(Icons.delete_outline), onPressed: _delete),
+          BusyIconButton(tooltip: 'Delete vehicle', icon: const Icon(Icons.delete_outline), onPressed: _delete),
       ],
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -291,10 +292,10 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
               ),
             const SizedBox(height: 16),
             if (canEdit)
-              FilledButton.icon(
+              BusyButton.filled(
                 onPressed: _saving ? null : _save,
                 icon: const Icon(Icons.save_outlined),
-                label: Text(_saving ? 'Saving…' : (_isEdit ? 'Save Changes' : 'Add Vehicle')),
+                child: Text(_saving ? 'Saving…' : (_isEdit ? 'Save Changes' : 'Add Vehicle')),
               ),
             const SizedBox(height: 32),
           ]),

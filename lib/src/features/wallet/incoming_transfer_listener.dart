@@ -1,3 +1,4 @@
+import '../../widgets/busy.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -154,8 +155,8 @@ class _RequestCard extends StatelessWidget {
 
   final CoinTransferRequest request;
   final bool responding;
-  final VoidCallback onAccept;
-  final VoidCallback onDecline;
+  final Future<void> Function() onAccept;
+  final Future<void> Function() onDecline;
 
   @override
   Widget build(BuildContext context) {
@@ -187,20 +188,18 @@ class _RequestCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
+                  child: BusyButton.outlined(
                     onPressed: responding ? null : onDecline,
                     icon: const Icon(Icons.close),
-                    label: const Text('Decline'),
+                    child: const Text('Decline'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: FilledButton.icon(
+                  child: BusyButton.filled(
                     onPressed: responding ? null : onAccept,
-                    icon: responding
-                        ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.check),
-                    label: const Text('Accept'),
+                    icon: const Icon(Icons.check),
+                    child: const Text('Accept'),
                   ),
                 ),
               ],

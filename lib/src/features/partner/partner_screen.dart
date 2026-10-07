@@ -20,6 +20,7 @@ import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../data/partner_doc_check.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/fly_in_list.dart';
 import '../../widgets/map_sheet_layout.dart';
@@ -477,7 +478,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     subtitle: p.address.isEmpty ? null : Text(p.address, maxLines: 1, overflow: TextOverflow.ellipsis),
                     selected: active(p),
                     onTap: () => notifier.select(p),
-                    trailing: IconButton(
+                    trailing: BusyIconButton(
                       key: ValueKey('destination-remove-$i'),
                       tooltip: 'Remove',
                       icon: const Icon(Icons.delete_outline),
@@ -506,7 +507,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Widget _destinationTile() {
     final d = ref.watch(destinationModeProvider);
     final place = d.place;
-    return ListTile(
+    return BusyListTile(
       key: const ValueKey('queue-destination'),
       leading: const Icon(Icons.flag_outlined),
       title: Text(place == null ? 'Destination mode' : 'Heading to ${place.name}'),
@@ -518,7 +519,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               ? 'Trips toward it come first; auto-accept takes only those'
               : 'Off. Tap to change the destination'),
       onTap: _chooseDestination,
-      trailing: Switch(
+      trailing: BusySwitch(
         key: const ValueKey('queue-destination-switch'),
         value: d.on && place != null,
         onChanged: place == null ? null : (v) => ref.read(destinationModeProvider.notifier).setOn(v),
@@ -593,7 +594,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     // Online first, above the service types.
                     Card(
                       key: const ValueKey('partner-online'),
-                      child: SwitchListTile(
+                      child: BusySwitchListTile(
                         value: _online,
                         onChanged: _toggle,
                         secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
@@ -608,7 +609,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         key: const ValueKey('partner-modes'),
                         child: Column(children: [
                           for (final m in modes)
-                            ListTile(
+                            BusyListTile(
                               key: ValueKey('partner-mode-${m.name}'),
                               leading: m.iconUrl == null
                                   ? Icon(m.isTeksi ? Icons.local_taxi : Icons.directions_car_outlined)
@@ -708,7 +709,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   _floatingButton(
                     tooltip: 'Driver permit',
                     icon: Icons.badge_outlined,
-                    onPressed: () => context.push('/drive/permit'),
+                    onPressed: () {
+                      context.push('/drive/permit');
+                    },
                   ),
                 if (partner.value != null &&
                     partnerCanDrive(partner.value!) &&
@@ -722,14 +725,18 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   _floatingButton(
                     tooltip: 'My vehicles',
                     icon: Icons.directions_car_outlined,
-                    onPressed: () => context.push('/drive/vehicles'),
+                    onPressed: () {
+                      context.push('/drive/vehicles');
+                    },
                   ),
                 // The menu sits at the far right.
                 _floatingButton(
                   key: const ValueKey('partner-menu-button'),
                   tooltip: 'Menu',
                   icon: Icons.menu,
-                  onPressed: () => showPartnerMenu(context),
+                  onPressed: () {
+                    showPartnerMenu(context);
+                  },
                 ),
               ]),
             ),
@@ -740,9 +747,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   }
 
   /// One of the round buttons floating at the top of the page (in place of
-  /// a top bar), like the map's own.
-  Widget _floatingButton({Key? key, required String tooltip, required IconData icon, required VoidCallback onPressed}) =>
-      FloatingActionButton.small(key: key, heroTag: null, tooltip: tooltip, onPressed: onPressed, child: Icon(icon));
+  /// a top bar), like the map's own. One whose action does work (the Meter
+  /// Digital checks) spins until it is done; opening a page or the menu is
+  /// instant.
+  Widget _floatingButton({Key? key, required String tooltip, required IconData icon, required BusyAction onPressed}) =>
+      BusyFab(key: key, tooltip: tooltip, onPressed: onPressed, child: Icon(icon));
 
   /// The requests on this driver's queue (all open ones but those declined
   /// here), which are also the map's pins.
@@ -939,7 +948,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           Row(children: [
             if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[
               Expanded(
-                child: OutlinedButton(
+                child: BusyButton.outlined(
                   key: ValueKey('offer-${r.id}'),
                   onPressed: _accepting != null ? null : () => _offer(r, partner),
                   child: const Text('Offer price'),
@@ -948,7 +957,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               const SizedBox(width: 8),
             ],
             Expanded(
-              child: FilledButton(
+              child: BusyButton.filled(
                 onPressed: _accepting != null ? null : () => _accept(r, partner),
                 child: _accepting == r.id
                     ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
@@ -1082,7 +1091,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[
               const SizedBox(width: 8),
               Expanded(
-                child: OutlinedButton(
+                child: BusyButton.outlined(
                   key: ValueKey('offer-${r.id}'),
                   onPressed: _accepting != null ? null : () => _offer(r, partner),
                   child: const Text('Offer price'),
@@ -1091,7 +1100,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             ],
             const SizedBox(width: 8),
             Expanded(
-              child: FilledButton(
+              child: BusyButton.filled(
                 key: const ValueKey('request-alert-accept'),
                 onPressed: _accepting != null ? null : () => _accept(r, partner),
                 child: _accepting == r.id

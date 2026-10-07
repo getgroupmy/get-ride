@@ -157,7 +157,10 @@ void main() {
       rows.add(ride('on_trip'));
       await settle(tester);
       await tester.tap(find.widgetWithText(OutlinedButton, 'Request cancellation'));
-      await tester.pumpAndSettle();
+      // The button spins while its reason dialog is open, so pump the
+      // dialog in rather than waiting for everything to settle.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       expect(find.textContaining("You're on your trip"), findsOneWidget);
 
       FilledButton confirm() => tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Request cancellation'));
@@ -174,7 +177,10 @@ void main() {
       rows.add(ride('accepted'));
       await settle(tester);
       await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel ride'));
-      await tester.pumpAndSettle();
+      // The button spins while its reason dialog is open, so pump the
+      // dialog in rather than waiting for everything to settle.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.tap(find.byKey(const ValueKey('cancel-reason-other')));
       await tester.pump();
       FilledButton confirm() => tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Cancel ride'));

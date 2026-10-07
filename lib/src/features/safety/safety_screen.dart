@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/sos.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../profile/emergency_contacts_screen.dart';
 import 'voice_protection_card.dart';
@@ -131,7 +132,7 @@ class SafetyScreen extends ConsumerWidget {
                 ),
                 const VoiceProtectionCard(),
                 const SizedBox(height: 16),
-                FilledButton.icon(
+                BusyButton.filled(
                   key: const ValueKey('safety-sos'),
                   style: FilledButton.styleFrom(
                     minimumSize: const Size(0, 56),
@@ -139,10 +140,10 @@ class SafetyScreen extends ConsumerWidget {
                     foregroundColor: t.colorScheme.onError,
                   ),
                   icon: const Icon(Icons.sos),
-                  label: const Text('Emergency SOS'),
                   onPressed: contacts.isLoading
                       ? null
                       : () => sendSos(context, contacts.value ?? const [], launch: launch, locate: locate),
+                  child: const Text('Emergency SOS'),
                 ),
                 const SizedBox(height: 8),
                 Text(

@@ -7,6 +7,7 @@ import '../../core/referral.dart';
 import '../../data/auth_repository.dart';
 import '../../data/referral_repository.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../data/coin_trade_repository.dart';
@@ -125,7 +126,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.changing ? 'Change PIN' : 'Set your PIN'),
-        leading: IconButton(icon: const Icon(Icons.close), onPressed: _busy ? null : _cancel),
+        leading: BusyIconButton(icon: const Icon(Icons.close), onPressed: _busy ? null : _cancel),
       ),
       body: SingleChildScrollView(
         child: ResponsiveCenter(
@@ -194,7 +195,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
               ),
             ],
             const SizedBox(height: 24),
-            FilledButton(onPressed: _busy ? null : _save, child: const Text('Save PIN')),
+            BusyButton.filled(onPressed: _busy ? null : _save, child: const Text('Save PIN')),
           ]),
         ),
       ),

@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../providers.dart';
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -317,12 +318,10 @@ class _ReleaseCardState extends ConsumerState<_ReleaseCard> {
                   maxLength: 200,
                   decoration: const InputDecoration(labelText: 'What changed (optional)'),
                 ),
-                FilledButton.icon(
+                BusyButton.filled(
                   onPressed: canEdit && !_starting ? () => _start(chosen) : null,
-                  icon: _starting
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.rocket_launch_outlined),
-                  label: Text('Release to ${chosen.label}'),
+                  icon: const Icon(Icons.rocket_launch_outlined),
+                  child: Text('Release to ${chosen.label}'),
                 ),
                 const SizedBox(height: 16),
                 Text('Recent builds', style: theme.textTheme.titleSmall),

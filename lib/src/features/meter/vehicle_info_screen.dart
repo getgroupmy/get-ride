@@ -11,6 +11,7 @@ import '../../core/vehicle_info.dart';
 import '../../core/vehicle_scan.dart';
 import '../../data/obd/obd_session.dart';
 import '../../data/vehicle_fuel_store.dart';
+import '../../widgets/busy.dart';
 
 /// Everything the linked OBD-II reader can tell about the vehicle it is
 /// plugged into (Expo `app/vehicle-information.tsx`): identity (VIN,
@@ -132,7 +133,7 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
         title: const Text('Vehicle information'),
         actions: [
           if (obd.linked)
-            IconButton(tooltip: 'Read again', icon: const Icon(Icons.refresh), onPressed: _scanning ? null : _scan),
+            BusyIconButton(tooltip: 'Read again', icon: const Icon(Icons.refresh), onPressed: _scanning ? null : _scan),
         ],
       ),
       body: ListView(
@@ -270,8 +271,8 @@ class _FuelCard extends StatelessWidget {
   final VehicleScanReport? report;
   final ObdSessionState obd;
   final FuelProfile profile;
-  final VoidCallback onEdit;
-  final VoidCallback onResetMeasured;
+  final Future<void> Function() onEdit;
+  final Future<void> Function() onResetMeasured;
 
   @override
   Widget build(BuildContext context) {
@@ -373,14 +374,14 @@ class _FuelCard extends StatelessWidget {
               child: Wrap(
                 spacing: 8,
                 children: [
-                  TextButton.icon(
+                  BusyButton.text(
                     key: const ValueKey('fuel-edit'),
                     onPressed: onEdit,
                     icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Tank & consumption'),
+                    child: const Text('Tank & consumption'),
                   ),
                   if (profile.measuredL100 != null)
-                    TextButton(onPressed: onResetMeasured, child: const Text('Forget measured consumption')),
+                    BusyButton.text(onPressed: onResetMeasured, child: const Text('Forget measured consumption')),
                 ],
               ),
             ),
@@ -746,12 +747,10 @@ class _WriteDialogState extends ConsumerState<_WriteDialog> {
                 onPressed: _busy ? null : () => Navigator.pop(context, result?.ok == true),
                 child: Text(result == null ? 'Cancel' : 'Close'),
               ),
-              FilledButton(
+              BusyButton.filled(
                 style: a.destructive ? FilledButton.styleFrom(backgroundColor: t.colorScheme.error) : null,
                 onPressed: _busy || (a.id == VehicleWriteId.rawCommand && check?.ok != true) ? null : _perform,
-                child: _busy
-                    ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text(a.confirmLabel),
+                child: Text(a.confirmLabel),
               ),
             ],
     );

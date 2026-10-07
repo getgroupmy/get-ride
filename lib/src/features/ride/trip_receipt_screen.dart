@@ -13,6 +13,7 @@ import '../../core/trip_receipt.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
 
@@ -169,32 +170,32 @@ class _ReceiptBody extends StatelessWidget {
                 runSpacing: 8,
                 alignment: WrapAlignment.center,
                 children: [
-                  OutlinedButton.icon(
+                  BusyButton.outlined(
                     key: const ValueKey('receipt-print'),
                     icon: const Icon(Icons.print_outlined),
-                    label: const Text('Print'),
                     onPressed: () => Printing.layoutPdf(
                       name: 'GET.ride ${rc.bookingNo}',
                       onLayout: (format) => buildTripReceiptPdf(rc, format: format),
                     ),
+                    child: const Text('Print'),
                   ),
-                  OutlinedButton.icon(
+                  BusyButton.outlined(
                     key: const ValueKey('receipt-share'),
                     icon: const Icon(Icons.ios_share),
-                    label: const Text('Share PDF'),
                     onPressed: () async =>
                         Printing.sharePdf(bytes: await buildTripReceiptPdf(rc), filename: '${rc.bookingNo}.pdf'),
+                    child: const Text('Share PDF'),
                   ),
-                  OutlinedButton.icon(
+                  BusyButton.outlined(
                     key: const ValueKey('receipt-copy'),
                     icon: const Icon(Icons.copy),
-                    label: const Text('Copy'),
                     onPressed: () async {
                       await Clipboard.setData(ClipboardData(text: rc.text));
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Receipt copied')));
                       }
                     },
+                    child: const Text('Copy'),
                   ),
                 ],
               ),

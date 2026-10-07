@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/map_tiles.dart';
 import '../../../widgets/ride_map.dart';
@@ -132,7 +133,7 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
           selectedIcon: const Icon(Icons.calendar_today),
           onPressed: () => setState(() => _showDates = !_showDates),
         ),
-        IconButton(
+        BusyIconButton(
           tooltip: 'Export sessions (CSV)',
           icon: const Icon(Icons.download),
           onPressed: data == null ? null : () => _exportAll(sessions),
@@ -246,7 +247,7 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
           const SizedBox(height: 4),
           const Text('Blocks a new sign-up when its device already backs this many other accounts. '
               'Enforced at registration.'),
-          SwitchListTile(
+          BusySwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Enabled'),
             value: g?.enabled ?? true,
@@ -254,7 +255,7 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
           ),
           Row(children: [
             const Expanded(child: Text('Max accounts / device')),
-            IconButton(
+            BusyIconButton(
               tooltip: 'Lower the guard threshold',
               icon: const Icon(Icons.remove),
               onPressed: busy || g.maxAccountsPerDevice <= 1
@@ -262,7 +263,7 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
                   : () => _saveGuard(g.copyWith(maxAccountsPerDevice: g.maxAccountsPerDevice - 1)),
             ),
             Text('${g?.maxAccountsPerDevice ?? '—'}', style: Theme.of(context).textTheme.titleMedium),
-            IconButton(
+            BusyIconButton(
               tooltip: 'Raise the guard threshold',
               icon: const Icon(Icons.add),
               onPressed: busy || g.maxAccountsPerDevice >= 50
@@ -270,7 +271,7 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
                   : () => _saveGuard(g.copyWith(maxAccountsPerDevice: g.maxAccountsPerDevice + 1)),
             ),
           ]),
-          SwitchListTile(
+          BusySwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Block emulators'),
             subtitle: const Text('Refuse sign-ups from simulators/emulators. Best-effort — a modified client can '
@@ -441,13 +442,13 @@ class _AccountDetailState extends ConsumerState<_AccountDetail> {
                 style: t.textTheme.titleMedium,
               ),
             ),
-            TextButton.icon(
+            BusyButton.text(
               icon: const Icon(Icons.download, size: 16),
-              label: const Text('CSV'),
               onPressed: sessions.isEmpty
                   ? null
                   : () => exportCsv(context, 'sessions-$_phoneTag-${DateTime.now().millisecondsSinceEpoch}.csv',
                       rowsToCsv(sessions, userSessionCsvColumns)),
+              child: const Text('CSV'),
             ),
           ]),
           if (sessions.isEmpty) const Text('No sessions in range.'),
@@ -464,13 +465,13 @@ class _AccountDetailState extends ConsumerState<_AccountDetail> {
                 style: t.textTheme.titleMedium,
               ),
             ),
-            TextButton.icon(
+            BusyButton.text(
               icon: const Icon(Icons.download, size: 16),
-              label: const Text('CSV'),
               onPressed: locations.isEmpty
                   ? null
                   : () => exportCsv(context, 'locations-$_phoneTag-${DateTime.now().millisecondsSinceEpoch}.csv',
                       rowsToCsv(locations, locationCsvColumns)),
+              child: const Text('CSV'),
             ),
           ]),
           if (locations.isEmpty) const Text('No location pings in range.'),
@@ -642,11 +643,9 @@ class _TrailOptionsDialogState extends ConsumerState<_TrailOptionsDialog> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          FilledButton(
+          BusyButton.filled(
             onPressed: _loading ? null : _apply,
-            child: _loading
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Show trail'),
+            child: const Text('Show trail'),
           ),
         ],
       );

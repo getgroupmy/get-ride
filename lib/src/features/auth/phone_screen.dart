@@ -10,6 +10,7 @@ import '../../core/phone_input.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/device_access.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/in_app_page.dart';
 
@@ -133,7 +134,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                 ),
                 const SizedBox(height: 12),
               ],
-              FilledButton(
+              BusyButton.filled(
                 onPressed: _busy || blocked ? null : _continue,
                 child: _busy
                     ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))

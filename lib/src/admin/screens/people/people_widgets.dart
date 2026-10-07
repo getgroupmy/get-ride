@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/document_ai.dart';
 import '../../../data/document_ai_repository.dart';
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
 import 'doc_pdf.dart';
@@ -527,7 +528,7 @@ class MakeModelField extends ConsumerWidget {
     final v = value;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
+      child: BusyListTile(
         leading: const Icon(Icons.directions_car_filled_outlined),
         title: Text(v == null || v.make.isEmpty ? 'Select make & model' : makeModelLabel(v)),
         subtitle: v == null ? null : Text([v.vehicleType, v.energyType].where((s) => s.isNotEmpty).join(' • ')),
@@ -1029,13 +1030,11 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
+                  child: BusyButton.text(
                     key: const ValueKey('doc-upload-pdf'),
                     onPressed: _busy || _rasterizing ? null : _pickPdf,
-                    icon: _rasterizing
-                        ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.picture_as_pdf_outlined),
-                    label: Text(_frontIsPdf ? 'PDF first page added — choose another PDF' : 'Upload a PDF instead'),
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    child: Text(_frontIsPdf ? 'PDF first page added — choose another PDF' : 'Upload a PDF instead'),
                   ),
                 ),
               ),
@@ -1074,7 +1073,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
       ),
       actions: [
         TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: _busy || _aiRunning ? null : _save, child: Text(_busy ? 'Uploading…' : 'Save')),
+        BusyButton.filled(onPressed: _busy || _aiRunning ? null : _save, child: Text(_busy ? 'Uploading…' : 'Save')),
       ],
     );
   }

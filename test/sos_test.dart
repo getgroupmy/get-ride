@@ -62,7 +62,9 @@ void main() {
       final launched = await pump(tester, []);
       expect(find.text('No contacts yet. Add a trusted contact.'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('safety-sos')));
-      await tester.pumpAndSettle();
+      // The SOS key spins behind the dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(find.text('No emergency contacts'), findsOneWidget);
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
@@ -76,7 +78,9 @@ void main() {
       ]);
       expect(find.text('2 contacts get an SMS with your location when you send an SOS.'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('safety-sos')));
-      await tester.pumpAndSettle();
+      // The SOS key spins behind the dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(find.textContaining('(Mum, Sam)'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('sos-confirm')));
       await tester.pumpAndSettle();

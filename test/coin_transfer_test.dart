@@ -188,7 +188,9 @@ void main() {
       await tester.pump();
       await tester.ensureVisible(find.widgetWithText(FilledButton, 'Send GET.coin'));
       await tester.tap(find.widgetWithText(FilledButton, 'Send GET.coin'));
-      await tester.pumpAndSettle();
+      // The button spins behind the confirm dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.text('Send request'));
       await tester.pump();
       await tester.pump();
@@ -206,7 +208,9 @@ void main() {
       expect(find.text('Waiting for Aisyah'), findsOneWidget);
 
       transfers.watched.add(_req(status: TransferStatus.accepted));
-      await tester.pumpAndSettle();
+      // The Send key keeps spinning behind the dialog until it is closed.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(find.text('Aisyah accepted. 25 GC sent.'), findsOneWidget);
       await tester.tap(find.text('OK'));
       await tester.pumpAndSettle();
@@ -219,7 +223,9 @@ void main() {
       await pump(tester, transfers);
       await fillAndSend(tester, _friend, '10');
       await tester.tap(find.text('Cancel request'));
-      await tester.pumpAndSettle();
+      // The Send key keeps spinning behind the dialog until it is closed.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(transfers.cancelled, ['r1']);
       expect(find.text('Request cancelled. No coins were sent.'), findsOneWidget);
     });
@@ -236,7 +242,9 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('coin-recipient')), '0199999999');
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, 'Send GET.coin'));
-      await tester.pumpAndSettle();
+      // The button spins behind the confirm dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.text('Send request'));
       await tester.pumpAndSettle();
       expect(find.text('Recipient not found. Check the number and try again.'), findsOneWidget);

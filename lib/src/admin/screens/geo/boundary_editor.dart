@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../data/geo_service.dart';
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/map_tiles.dart';
 import '../../widgets/admin_widgets.dart';
@@ -201,7 +202,6 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
   Future<BoundaryCandidate?> _pickCandidate(List<BoundaryCandidate> initial) {
     var list = initial;
     var exhausted = false;
-    var loading = false;
     return showAdminSheet<BoundaryCandidate>(
       context,
       title: 'Select OSM result',
@@ -225,25 +225,19 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
           if (exhausted)
             const Center(child: Text('0 more results'))
           else
-            OutlinedButton.icon(
-              icon: loading
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.download),
-              label: const Text('More results'),
-              onPressed: loading
-                  ? null
-                  : () async {
-                      setSheet(() => loading = true);
-                      final nextLimit = (list.length + 10).clamp(1, 50);
-                      final fresh =
-                          await ref.read(osmLookupProvider).boundaries(widget.query, limit: nextLimit, near: widget.near);
-                      final merged = mergeCandidates(list, fresh);
-                      setSheet(() {
-                        exhausted = merged.length == list.length || nextLimit >= 50;
-                        list = merged;
-                        loading = false;
-                      });
-                    },
+            BusyButton.outlined(
+              icon: const Icon(Icons.download),
+              child: const Text('More results'),
+              onPressed: () async {
+                final nextLimit = (list.length + 10).clamp(1, 50);
+                final fresh =
+                    await ref.read(osmLookupProvider).boundaries(widget.query, limit: nextLimit, near: widget.near);
+                final merged = mergeCandidates(list, fresh);
+                setSheet(() {
+                  exhausted = merged.length == list.length || nextLimit >= 50;
+                  list = merged;
+                });
+              },
             ),
         ]),
       ),
@@ -435,18 +429,18 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
         const SizedBox(height: 20),
         Row(children: [
           Expanded(
-            child: OutlinedButton.icon(
+            child: BusyButton.outlined(
               onPressed: (b == null && !_hasStored) ? null : _clear,
               icon: const Icon(Icons.layers_clear),
-              label: const Text('Clear'),
+              child: const Text('Clear'),
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: FilledButton.icon(
+            child: BusyButton.filled(
               onPressed: b == null || _busy || _mode != _DrawMode.off ? null : _save,
               icon: const Icon(Icons.save),
-              label: const Text('Save boundary'),
+              child: const Text('Save boundary'),
             ),
           ),
         ]),

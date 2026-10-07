@@ -184,7 +184,8 @@ void main() {
       expect(find.text('No vehicle selected'), findsOneWidget);
 
       await tester.tap(find.text('Select'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       expect(find.text('Choose a vehicle'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('pick-shared')));
       await tester.pumpAndSettle();
@@ -192,7 +193,8 @@ void main() {
       expect(find.text('ABC 2 · Proton Saga · Co-driver'), findsOneWidget);
 
       await tester.tap(find.text('Hand back'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       await tester.tap(find.widgetWithText(FilledButton, 'Hand back'));
       await tester.pumpAndSettle();
       expect(repo.released, 1);
@@ -202,7 +204,8 @@ void main() {
     testWidgets('a car someone else is driving is refused plainly', (tester) async {
       final repo = await pump(tester, _FakeRepo(_list(), claimError: Exception('vehicle_in_use')));
       await tester.tap(find.text('Select'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await _pumpOpen(tester);
       await tester.tap(find.byKey(const ValueKey('pick-shared')));
       await tester.pumpAndSettle();
       expect(find.textContaining('Another driver is using this vehicle'), findsOneWidget);
@@ -298,4 +301,12 @@ void main() {
       expect(repo.assigned, isEmpty);
     });
   });
+}
+
+/// Lets a dialog or sheet open over a busy control: the control's spinner
+/// keeps turning until the dialog is answered, so pumpAndSettle can't settle.
+Future<void> _pumpOpen(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }

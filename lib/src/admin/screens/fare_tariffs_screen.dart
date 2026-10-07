@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/fare_tariff.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
@@ -67,7 +68,7 @@ class AdminFareTariffsScreen extends ConsumerWidget {
               for (final c in cards)
                 Card(
                   key: ValueKey('tariff-${c.id}'),
-                  child: ListTile(
+                  child: BusyListTile(
                     leading: CircleAvatar(child: Text(c.level.substring(0, 1).toUpperCase())),
                     title: Text([c.scope, if (c.label != null) c.label!].join(' · ')),
                     subtitle: Text(describeFareTariff(c)),
@@ -76,8 +77,9 @@ class AdminFareTariffsScreen extends ConsumerWidget {
                       children: [
                         if (!c.active) const StatusChip('inactive'),
                         if (canEdit)
-                          IconButton(
+                          BusyIconButton(
                             tooltip: 'Delete',
+
                             icon: const Icon(Icons.delete_outline),
                             onPressed: () async {
                               if (!await confirm(context, 'Delete tariff?', c.scope, ok: 'Delete')) return;

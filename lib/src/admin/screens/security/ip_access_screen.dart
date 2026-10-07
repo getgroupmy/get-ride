@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
@@ -95,9 +96,9 @@ class _IpAccessState extends ConsumerState<AdminIpAccessScreen> {
                       ? "This device's IP"
                       : "This device's IP · ${mine.isWhitelist ? 'Whitelisted' : 'Blacklisted'}"),
                   trailing: canEdit && ip != null && mine == null
-                      ? TextButton.icon(
+                      ? BusyButton.text(
                           icon: const Icon(Icons.add),
-                          label: const Text('Add this IP'),
+                          child: const Text('Add this IP'),
                           onPressed: () => _edit(preset: IpListType.whitelist, presetIp: ip),
                         )
                       : null,
@@ -146,8 +147,8 @@ class _IpAccessState extends ConsumerState<AdminIpAccessScreen> {
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       StatusChip(r.isWhitelist ? 'Allow' : 'Blocked'),
                       if (canEdit) ...[
-                        IconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(rule: r)),
-                        IconButton(tooltip: 'Remove', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(r)),
+                        BusyIconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(rule: r)),
+                        BusyIconButton(tooltip: 'Remove', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(r)),
                       ],
                     ]),
                   ),

@@ -6,6 +6,7 @@ import '../../config.dart';
 import '../../core/auth_utils.dart';
 import '../../core/phone_input.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 
 const _dialCodes = ['+60', '+65', '+62', '+66', '+63', '+84', '+673', '+91', '+44', '+1'];
@@ -161,7 +162,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
                   Text(_error!, style: TextStyle(color: t.colorScheme.error)),
                 ],
                 const SizedBox(height: 16),
-                FilledButton(
+                BusyButton.filled(
                   key: const ValueKey('change-phone-go'),
                   onPressed: _busy || (sent != null && _code.text.trim().length != 6)
                       ? null

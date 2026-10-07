@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/auth_utils.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+
 import '../admin_access.dart';
 import '../admin_categories.g.dart';
 import '../admin_providers.dart';
@@ -129,8 +131,9 @@ class AdminSubAdminsScreen extends ConsumerWidget {
                         subtitle: g.notes == null ? null : Text(g.notes!),
                         leading: StatusChip(g.edit ? 'edit' : 'read'),
                         trailing: canEdit && g.id != null
-                            ? IconButton(
+                            ? BusyIconButton(
                                 icon: const Icon(Icons.delete_outline),
+
                                 tooltip: 'Revoke',
                                 onPressed: () async {
                                   final self = e.key == me && g.page == '*';
