@@ -115,9 +115,49 @@ void main() {
       );
       double y(String id) => tester.getTopLeft(find.byKey(ValueKey('queue-$id'))).dy;
       expect(y('near'), lessThan(y('far')));
-      await tester.tap(find.byKey(const ValueKey('map-request-far')));
+      // The pin may sit under the cards floating on the map: press it directly.
+      tester.widget<GestureDetector>(find.byKey(const ValueKey('map-request-far'))).onTap!();
       await tester.pumpAndSettle();
       expect(y('far'), lessThan(y('near')));
+    });
+
+    testWidgets('on a phone the requests float on the map and the sheet is held down', (tester) async {
+      await pump(tester);
+      final online = tester.getTopLeft(find.byKey(const ValueKey('partner-online'))).dy;
+      await goOnline(tester);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('waiting-for-requests')), findsOneWidget, reason: 'on the map, not in the sheet');
+      expect(find.text('New requests appear here instantly.'), findsNothing);
+
+      open.add([_req('near', 3.15), _req('far', 3.30, fare: 30)]);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('waiting-for-requests')), findsNothing);
+      final list = find.byKey(const ValueKey('floating-requests'));
+      // The first new one is spotlighted, the other queues: both on the map.
+      expect(find.descendant(of: list, matching: find.textContaining('RM12.00')), findsWidgets);
+      expect(find.descendant(of: list, matching: find.textContaining('RM30.00')), findsWidgets);
+
+      // Held down: neither dragged up nor scrolled.
+      final handle = find.byKey(const ValueKey('map-sheet-handle'));
+      final top = tester.getTopLeft(handle).dy;
+      expect(top, greaterThan(online), reason: 'lower than it opened');
+      await tester.drag(handle, const Offset(0, -400), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(handle).dy, top);
+
+      // The last request taken: it flies out and the sheet is free again.
+      open.add(const []);
+      await tester.pumpAndSettle();
+      expect(find.descendant(of: list, matching: find.textContaining('RM12.00')), findsNothing);
+      await tester.drag(handle, const Offset(0, -400), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(handle).dy, lessThan(top - 200));
+    });
+
+    testWidgets('the online switch comes before the service types', (tester) async {
+      await pump(tester);
+      expect(find.byKey(const ValueKey('partner-online')), findsOneWidget);
+      expect(find.textContaining(' · ·'), findsNothing, reason: 'no empty parts in the subtitle');
     });
 
     testWidgets('on a wide screen the map sits beside the queue', (tester) async {

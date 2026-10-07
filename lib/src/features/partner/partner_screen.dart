@@ -21,7 +21,9 @@ import '../../data/models.dart';
 import '../../data/partner_doc_check.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/fly_in_list.dart';
 import '../../widgets/map_sheet_layout.dart';
+import '../../widgets/ride_map.dart' show mapAttributionClearance;
 import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
@@ -610,6 +612,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             onSelect: (r) => setState(() => _focusId = r.id),
           );
           final head = <Widget>[
+              // Online first, above the service types.
+              Card(
+                key: const ValueKey('partner-online'),
+                child: SwitchListTile(
+                  value: _online,
+                  onChanged: _toggle,
+                  secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
+                  title: Text(_online ? 'You are online' : 'You are offline'),
+                  subtitle: Text(
+                    [p.name, p.vehicle, p.plate].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · '),
+                  ),
+                ),
+              ),
               if (modes.length > 1 || modes.any((m) => m.isTeksi))
                 Card(
                   key: const ValueKey('partner-modes'),
@@ -631,15 +646,6 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                       ),
                   ]),
                 ),
-              Card(
-                child: SwitchListTile(
-                  value: _online,
-                  onChanged: _toggle,
-                  secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
-                  title: Text(_online ? 'You are online' : 'You are offline'),
-                  subtitle: Text([p.name, p.vehicle, p.plate].whereType<String>().join(' · ')),
-                ),
-              ),
               if (_online)
                 Card(
                   child: Column(children: [
@@ -685,12 +691,21 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               ),
             ]);
           }
-          // A phone: the map fills the screen and the queue is a sheet over it.
+          // A phone: the map fills the screen, the requests float on it and
+          // the sheet holds the driver's settings. While there are requests
+          // the sheet is held down so the list on the map has the room.
+          final open = _online ? ref.watch(openRequestsProvider).value ?? const <RideRequest>[] : const <RideRequest>[];
+          final queue = _queueOrder(open, wide: false);
+          final floating = [if (queue.alert != null) queue.alert!, ...queue.sorted];
           return MapSheetLayout(
-            map: map,
+            locked: floating.isNotEmpty,
+            map: Stack(children: [
+              Positioned.fill(child: map),
+              if (_online) _floatingRequests(p, queue.alert, floating),
+            ]),
             sheet: ResponsiveCenter(
               maxWidth: 760,
-              child: Column(children: [...head, if (_online) _queue(p, inSheet: true) else offline]),
+              child: Column(children: [...head, if (!_online) offline]),
             ),
           );
         },
@@ -728,128 +743,189 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   }
 
   /// [wide]: the new request is over the map ([_alertOverlay]), not here.
-  /// [inSheet]: laid out in full inside the map sheet, which scrolls it.
-  Widget _queue(Partner partner, {bool wide = false, bool inSheet = false}) {
+  /// The spotlighted request (none when [wide]: it is over the map) and the
+  /// rest of the queue in the order the driver sees them.
+  ({RideRequest? alert, List<RideRequest> sorted}) _queueOrder(List<RideRequest> list, {required bool wide}) {
+    final alert = wide ? null : list.where((r) => r.id == _alertId).firstOrNull;
+    final queued = [for (final r in _pinned(list)) if (r.id != _alertId) r];
+    ref.watch(destinationModeProvider);
+    final destinationOn = _destinationOn;
+    final sorted = focusFirst(
+      destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+      _focusId,
+    );
+    return (alert: alert, sorted: sorted);
+  }
+
+  /// The requests floating on the phone's map, flying in as they arrive and
+  /// out as they go, scrolled up and down to pick one; a "waiting" pill
+  /// while there are none.
+  Widget _floatingRequests(Partner partner, RideRequest? alert, List<RideRequest> items) {
     final t = Theme.of(context);
+    // Inside the map, so the list keeps clear of the sheet and the map
+    // buttons; mounted even when empty, so the last card flies out too.
+    return Positioned.fill(
+      child: Builder(
+        builder: (context) => Stack(children: [
+          MapBottomInset.listen(
+            context,
+            (inset) => Positioned(
+              key: const ValueKey('floating-requests'),
+              top: 0,
+              left: 12,
+              right: 12,
+              bottom: inset + mapAttributionClearance + 104,
+              child: FlyInList<RideRequest>(
+                padding: const EdgeInsets.only(top: 8, bottom: 8),
+                items: items,
+                idOf: (r) => r.id == alert?.id ? 'alert-${r.id}' : r.id,
+                itemBuilder: (_, r) => r.id == alert?.id ? _alertCard(r, partner) : _requestCard(r, partner),
+              ),
+            ),
+          ),
+          if (items.isEmpty)
+            Positioned(
+              top: 12,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Material(
+                  key: const ValueKey('waiting-for-requests'),
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(24),
+                  color: t.colorScheme.surface,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.radar, size: 18),
+                      SizedBox(width: 8),
+                      Text('Waiting for requests…', style: TextStyle(fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  /// The queue as a list (the wide layout's panel).
+  Widget _queue(Partner partner, {bool wide = false}) {
     return AsyncView(
       value: ref.watch(openRequestsProvider),
       onRetry: () => ref.invalidate(openRequestsProvider),
       data: (list) {
-        final alert = wide ? null : list.where((r) => r.id == _alertId).firstOrNull;
-        final queued = [for (final r in _pinned(list)) if (r.id != _alertId) r];
-        if (alert == null && queued.isEmpty) {
+        final (:alert, :sorted) = _queueOrder(list, wide: wide);
+        if (alert == null && sorted.isEmpty) {
           return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');
         }
-        ref.watch(destinationModeProvider);
-        final destinationOn = _destinationOn;
-        final sorted = focusFirst(
-          destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
-          _focusId,
-        );
         return ListView.builder(
-          shrinkWrap: inSheet,
-          physics: inSheet ? const NeverScrollableScrollPhysics() : null,
-          padding: inSheet ? EdgeInsets.zero : null,
           itemCount: sorted.length + (alert == null ? 0 : 1),
           itemBuilder: (_, index) {
             if (alert != null && index == 0) return _alertCard(alert, partner);
-            final i = alert == null ? index : index - 1;
-            final r = sorted[i];
-            final away = _distanceTo(r);
-            final focused = r.id == _focusId;
-            return Card(
-              key: ValueKey('queue-${r.id}'),
-              shape: focused
-                  ? RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: t.colorScheme.primary, width: 2),
-                    )
-                  : null,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Row(children: [
-                    Expanded(child: Text(r.service ?? 'Ride', style: t.textTheme.titleMedium)),
-                    Text(formatMoney(r.effectiveFare, r.currency),
-                        style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                  ]),
-                  if (destinationOn && _towardDestination(r))
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(children: [
-                        Icon(Icons.flag, size: 16, color: t.colorScheme.primary),
-                        const SizedBox(width: 6),
-                        Text('Toward your destination',
-                            key: ValueKey('toward-${r.id}'),
-                            style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.primary)),
-                      ]),
-                    ),
-                  const SizedBox(height: 4),
-                  Text([
-                    if (away != null) '${formatDistance(away)} away',
-                    '${formatDistance(r.distanceKm)} trip',
-                    r.paymentMode,
-                    '${r.passengers} pax',
-                  ].join(' · '), style: t.textTheme.bodySmall),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Icon(Icons.trip_origin, size: 16, color: Colors.green.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  ]),
-                  if (r.stops.isNotEmpty)
-                    Row(key: ValueKey('queue-stops-${r.id}'), children: [
-                      Icon(Icons.more_vert, size: 16, color: Colors.orange.shade800),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '${r.stops.length} stop${r.stops.length == 1 ? '' : 's'} on the way',
-                          style: t.textTheme.bodySmall,
-                        ),
-                      ),
-                    ]),
-                  Row(children: [
-                    Icon(Icons.location_on, size: 16, color: Colors.red.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  ]),
-                  if (r.note != null) Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text('“${r.note}”', style: t.textTheme.bodySmall),
-                  ),
-                  if (r.offeredFare != null && r.partnerId != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text('A driver has offered ${formatMoney(r.offeredFare, r.currency)}',
-                          style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
-                    ),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[
-                      Expanded(
-                        child: OutlinedButton(
-                          key: ValueKey('offer-${r.id}'),
-                          onPressed: _accepting != null ? null : () => _offer(r, partner),
-                          child: const Text('Offer price'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _accepting != null ? null : () => _accept(r, partner),
-                        child: _accepting == r.id
-                            ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                            : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}'),
-                      ),
-                    ),
-                  ]),
-                ]),
-              ),
-            );
+            return _requestCard(sorted[alert == null ? index : index - 1], partner);
           },
         );
       },
+    );
+  }
+
+  /// One request on the queue: the trip, its fare, and accept / offer.
+  Widget _requestCard(RideRequest r, Partner partner) {
+    final t = Theme.of(context);
+    final destinationOn = _destinationOn;
+    final away = _distanceTo(r);
+    final focused = r.id == _focusId;
+    return Card(
+      key: ValueKey('queue-${r.id}'),
+      shape: focused
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: t.colorScheme.primary, width: 2),
+            )
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(child: Text(r.service ?? 'Ride', style: t.textTheme.titleMedium)),
+            Text(formatMoney(r.effectiveFare, r.currency),
+                style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+          ]),
+          if (destinationOn && _towardDestination(r))
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(children: [
+                Icon(Icons.flag, size: 16, color: t.colorScheme.primary),
+                const SizedBox(width: 6),
+                Text('Toward your destination',
+                    key: ValueKey('toward-${r.id}'),
+                    style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.primary)),
+              ]),
+            ),
+          const SizedBox(height: 4),
+          Text([
+            if (away != null) '${formatDistance(away)} away',
+            '${formatDistance(r.distanceKm)} trip',
+            r.paymentMode,
+            '${r.passengers} pax',
+          ].join(' · '), style: t.textTheme.bodySmall),
+          const SizedBox(height: 8),
+          Row(children: [
+            Icon(Icons.trip_origin, size: 16, color: Colors.green.shade700),
+            const SizedBox(width: 8),
+            Expanded(child: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ]),
+          if (r.stops.isNotEmpty)
+            Row(key: ValueKey('queue-stops-${r.id}'), children: [
+              Icon(Icons.more_vert, size: 16, color: Colors.orange.shade800),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${r.stops.length} stop${r.stops.length == 1 ? '' : 's'} on the way',
+                  style: t.textTheme.bodySmall,
+                ),
+              ),
+            ]),
+          Row(children: [
+            Icon(Icons.location_on, size: 16, color: Colors.red.shade700),
+            const SizedBox(width: 8),
+            Expanded(child: Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ]),
+          if (r.note != null) Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text('“${r.note}”', style: t.textTheme.bodySmall),
+          ),
+          if (r.offeredFare != null && r.partnerId != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('A driver has offered ${formatMoney(r.offeredFare, r.currency)}',
+                  style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
+            ),
+          const SizedBox(height: 8),
+          Row(children: [
+            if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[
+              Expanded(
+                child: OutlinedButton(
+                  key: ValueKey('offer-${r.id}'),
+                  onPressed: _accepting != null ? null : () => _offer(r, partner),
+                  child: const Text('Offer price'),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: FilledButton(
+                onPressed: _accepting != null ? null : () => _accept(r, partner),
+                child: _accepting == r.id
+                    ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}'),
+              ),
+            ),
+          ]),
+        ]),
+      ),
     );
   }
 

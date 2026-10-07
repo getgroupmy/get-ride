@@ -148,6 +148,7 @@ void main() {
       open.add([_req('r1')]);
       await tester.pump();
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       expect(find.byKey(const ValueKey('request-alert')), findsOneWidget);
       expect(find.text('Siti'), findsOneWidget);
       expect(find.textContaining('★ 4.8'), findsOneWidget);
@@ -163,6 +164,7 @@ void main() {
       open.add([_req('r1')]);
       await tester.pump();
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       final overMap = find.descendant(
         of: find.byType(AnimatedSwitcher),
         matching: find.byKey(const ValueKey('request-alert')),
@@ -186,6 +188,7 @@ void main() {
       open.add([_req('r1')]);
       await tester.pump();
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       await tester.tap(find.byKey(const ValueKey('request-alert-accept')));
       await tester.pumpAndSettle();
       expect(rides.accepted, ['r1']);
@@ -196,10 +199,13 @@ void main() {
       open.add([_req('r1'), _req('r2', fare: 20)]);
       await tester.pump();
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       expect(find.text('Accept RM12.00'), findsOneWidget, reason: 'r1 in the alert');
       expect(find.text('Accept RM20.00'), findsOneWidget, reason: 'r2 waits in the list');
       await tester.tap(find.byKey(const ValueKey('request-alert-decline')));
       await tester.pump();
+      // The declined card flies out.
+      await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const ValueKey('request-alert')), findsOneWidget);
       expect(find.text('Accept RM12.00'), findsNothing, reason: 'r1 is gone from this driver\'s queue');
       expect(find.text('Accept RM20.00'), findsOneWidget);
@@ -210,7 +216,9 @@ void main() {
       open.add([_req('r1')]);
       await tester.pump();
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       await wait(tester, const Duration(seconds: 36));
+      await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const ValueKey('request-alert')), findsNothing);
       expect(find.text('Accept RM12.00'), findsOneWidget);
     });
@@ -220,9 +228,11 @@ void main() {
       open.add([_req('r1')]);
       await tester.pump();
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       open.add(const []);
       await tester.pump();
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const ValueKey('request-alert')), findsNothing);
     });
 
@@ -231,16 +241,19 @@ void main() {
       open.add([_req('r1')]);
       await tester.pump();
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       await tester.tap(find.byKey(const ValueKey('request-alert-decline')));
       await tester.pump();
       expect(find.byKey(const ValueKey('request-alert')), findsNothing);
       open.add([_req('r1')]);
       await tester.pump();
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       expect(find.byKey(const ValueKey('request-alert')), findsNothing, reason: 'same fare stays declined');
       open.add([_req('r1', fare: 17)]);
       await tester.pump();
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       expect(find.byKey(const ValueKey('request-alert')), findsOneWidget);
       expect(find.text('Fare raised'), findsOneWidget);
       expect(find.text('The passenger raised the fare from RM12.00 to RM17.00.'), findsOneWidget);
