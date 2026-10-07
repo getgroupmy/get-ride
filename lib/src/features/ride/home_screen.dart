@@ -11,7 +11,9 @@ import 'package:latlong2/latlong.dart';
 import '../../config.dart';
 import '../../core/app_display.dart';
 import '../../core/book_for.dart';
+import '../../core/commission.dart' show Geo;
 import '../../core/fare.dart';
+import '../../core/fare_tariff.dart';
 import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart';
 import '../../core/format.dart';
@@ -26,6 +28,7 @@ import '../../data/app_display_repository.dart';
 import '../../data/coin_trade_repository.dart';
 import '../../data/device_access.dart';
 import '../../data/fare_coin_store.dart';
+import '../../data/fare_tariff_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
@@ -105,6 +108,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _forOther = false;
   final _otherName = TextEditingController();
   final _otherPhone = TextEditingController();
+  /// Where the pickup is, for the tariff card that prices it (0109); null
+  /// until the geocoder answers, when the master card (if any) applies.
+  AreaInfo? _pickupArea;
 
   /// Admin → Display → On-map vehicle icons: simulated cars around the
   /// pickup, as Expo drew them (not real drivers).
@@ -288,18 +294,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _checkBidding(LatLng pickup) async {
     if (_biddingAt == pickup) return;
     _biddingAt = pickup;
+    _pickupArea = null;
+    // One geocode of the pickup serves the bidding check and the tariff.
+    final area = ref.read(geoServiceProvider).reverseArea(pickup);
+    unawaited(area.then((a) {
+      if (mounted && _biddingAt == pickup) setState(() => _pickupArea = a);
+    }, onError: (_) {}));
     var on = false;
     try {
-      on = await ref
-          .read(rideRepositoryProvider)
-          .biddingEnabledFor(pickup, () => ref.read(geoServiceProvider).reverseArea(pickup));
+      on = await ref.read(rideRepositoryProvider).biddingEnabledFor(pickup, () => area);
     } catch (_) {}
     if (mounted && _biddingAt == pickup) setState(() => _biddingOn = on);
   }
 
+  /// The booking tariff card for the pickup (Admin → Fare tariffs), or null
+  /// for the built-in TEKSI tariff.
+  FareTariff? get _tariff {
+    final a = _pickupArea;
+    return resolveFareTariff(
+      ref.read(fareTariffsProvider).value ?? const [],
+      Geo(country: a?.country, state: a?.state, city: a?.city, suburb: a?.suburb),
+    );
+  }
+
+  /// The currency the trip is quoted and booked in: the card's.
+  String get _currency => _tariff?.currency ?? AppConfig.currency;
+
   double _recommendedFor(RideService s) {
     final b = _basis;
-    return b == null ? 0 : calculateFare(b.distanceKm, b.durationMin, multiplier: s.multiplier);
+    return b == null
+        ? 0
+        : quoteFare(_tariff, b.distanceKm, b.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
+            .fare;
   }
 
   /// What [s] is booked at: the rider's offer on the selected service where
@@ -369,6 +395,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             stops: List.of(_stops),
             metadata: metadata,
             bookedFor: forWhom,
+            currency: _currency,
           );
       final coins = _coins;
       if (_useCoins && coins != null && fareCoinOffer(_fareFor(_service, biddingOn: offerMe), coins.balance, coins.rate) != null) {
@@ -553,7 +580,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     ref.watch(rideServicesProvider); // rebuild when the catalogue arrives
     ref.watch(coinTradeQuoteProvider); // and when the GET.coin balance does
+    ref.watch(fareTariffsProvider); // re-quote when the tariff cards arrive
     final panel = _BookingPanel(
+      currency: _currency,
       ongoing: _ongoing,
       forOthers: _forOthers,
       onOpenRide: (r) => context.push('/ride/${r.id}').then((_) => _checkOngoing()),
@@ -609,7 +638,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ? FareOfferRow(
               recommended: _recommendedFor(_service),
               adjust: _adjust,
-              money: (v) => formatMoney(v, AppConfig.currency),
+              money: (v) => formatMoney(v, _currency),
               onAdjust: (v) => setState(() => _adjust = v),
             )
           : null,
@@ -700,6 +729,7 @@ class _BookingPanel extends StatelessWidget {
     this.forOther = false,
     this.forOtherReady = false,
     this.otherName = '',
+    this.currency = AppConfig.currency,
   });
 
   /// Rides on the go booked for other people, and how to open one.
@@ -711,6 +741,9 @@ class _BookingPanel extends StatelessWidget {
   final bool forOther;
   final bool forOtherReady;
   final String otherName;
+
+  /// What the fares are quoted in: the pickup's tariff card's currency.
+  final String currency;
 
   /// GC earned per unit of fare (Admin → Get Coin → earn rate).
   final double earnRate;
@@ -865,7 +898,7 @@ class _BookingPanel extends StatelessWidget {
                 leading: Icon(s.name == 'Teksi' ? Icons.local_taxi : Icons.directions_car),
                 title: Text(s.name),
                 subtitle: Text('${s.description} · ${s.seats} seats'),
-                trailing: Text(formatMoney(fareFor(s), AppConfig.currency),
+                trailing: Text(formatMoney(fareFor(s), currency),
                     style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                 onTap: () => onService(s),
               ),
@@ -892,7 +925,7 @@ class _BookingPanel extends StatelessWidget {
                 fare: fareFor(service),
                 coinBalance: coins!.balance,
                 coinsPerCurrency: coins!.rate,
-                currency: AppConfig.currency,
+                currency: currency,
               )),
               value: useCoins,
               onChanged: onUseCoins,
@@ -927,8 +960,8 @@ class _BookingPanel extends StatelessWidget {
                     ? 'You already have a ride in progress'
                     : forOther
                         ? 'Book for ${otherName.isEmpty ? 'someone else' : otherName} · '
-                            '${formatMoney(fareFor(service), AppConfig.currency)}'
-                        : 'Book ${service.name} · ${formatMoney(fareFor(service), AppConfig.currency)}'),
+                            '${formatMoney(fareFor(service), currency)}'
+                        : 'Book ${service.name} · ${formatMoney(fareFor(service), currency)}'),
           ),
         ],
       ]),

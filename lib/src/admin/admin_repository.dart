@@ -244,6 +244,21 @@ class AdminRepository {
 
   Future<void> deleteCommissionRate(String id) => _db.from('commission_rates').delete().eq('id', id);
 
+  // ---- Fare tariffs (0109) --------------------------------------------------
+
+  Future<List<Map<String, dynamic>>> fareTariffs() async => List<Map<String, dynamic>>.from(
+        await _db.from('fare_tariffs').select().order('updated_at', ascending: false),
+      );
+
+  Future<void> saveFareTariff(Map<String, dynamic> row) {
+    final data = {...row}..remove('updated_at');
+    return row['id'] == null
+        ? _db.from('fare_tariffs').insert(data..remove('id'))
+        : _updateOne('fare_tariffs', row['id'] as String, data);
+  }
+
+  Future<void> deleteFareTariff(String id) => _db.from('fare_tariffs').delete().eq('id', id);
+
   // ---- Settings ------------------------------------------------------------
 
   Future<List<SettingEntry>> settings(SettingsCategory c) async {

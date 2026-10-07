@@ -66,6 +66,36 @@ void main() {
       expect(cancelReasonLabel(null), isNull);
     });
 
+    test('a driver may cancel only before the passenger is on board', () {
+      expect(driverMayCancel(RideStatus.accepted), isTrue);
+      expect(driverMayCancel(RideStatus.arrived), isTrue);
+      for (final s in [RideStatus.open, RideStatus.onTrip, RideStatus.completed, RideStatus.cancelled]) {
+        expect(driverMayCancel(s), isFalse, reason: s.db);
+      }
+    });
+
+    test('driver reasons are Expo\'s ids and read back as labels', () {
+      expect(driverCancelReasons.map((r) => r.id), [
+        'passenger_no_show',
+        'wrong_address',
+        'passenger_cancelled',
+        'traffic_too_far',
+        'vehicle_issue',
+        'other',
+      ]);
+      expect(cancelReasonLabel('passenger_no_show'), 'Passenger no-show');
+    });
+
+    test('the passenger is told the driver cancelled, and why', () {
+      final byDriver = ride('cancelled', askedBy: 'partner', reason: 'vehicle_issue');
+      expect(cancelledByDriver(byDriver), isTrue);
+      expect(driverCancelNotice(byDriver), 'Your driver cancelled this ride: Vehicle issue');
+      expect(driverCancelNotice(ride('cancelled', askedBy: 'partner')), 'Your driver cancelled this ride.');
+      expect(cancelledByDriver(ride('cancelled', askedBy: 'rider')), isFalse);
+      expect(cancelledByDriver(ride('cancelled')), isFalse);
+      expect(cancelledByDriver(ride('arrived', askedBy: 'partner')), isFalse, reason: 'an old build\'s pending ask');
+    });
+
     test('a declined request is the rider ask disappearing from a live ride', () {
       final asked = ride('on_trip', askedBy: 'rider');
       expect(riderCancelDeclined(asked, ride('on_trip')), isTrue);
@@ -166,6 +196,16 @@ void main() {
       rows.add(RideRequest({...ride('accepted').raw, 'booked_for_name': 'Mak', 'booked_for_phone': '+60123456789'}));
       await settle(tester);
       expect(find.text('Booked for Mak · +60123456789'), findsOneWidget);
+    });
+
+    testWidgets('the passenger is told their driver cancelled, and why', (tester) async {
+      final (_, rows, _) = await pump(tester);
+      rows.add(ride('arrived'));
+      await settle(tester);
+      expect(find.byKey(const ValueKey('driver-cancelled')), findsNothing);
+      rows.add(ride('cancelled', askedBy: 'partner', reason: 'passenger_no_show'));
+      await settle(tester);
+      expect(find.text('Your driver cancelled this ride: Passenger no-show'), findsOneWidget);
     });
 
     testWidgets('a declined request is announced', (tester) async {
