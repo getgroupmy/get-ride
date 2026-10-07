@@ -7,6 +7,7 @@ import '../../admin/screens/meterapp/meter_logic.dart';
 import '../../core/street_hail.dart';
 import '../../data/geo_service.dart';
 import '../../providers.dart';
+import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 import '../ride/place_search.dart';
 
@@ -109,64 +110,66 @@ class _HailDestinationScreenState extends ConsumerState<HailDestinationScreen> {
             ),
           ),
           Expanded(
-            child: RideMap(
-              pickup: widget.args.origin,
-              drop: d == null ? null : LatLng(d.latitude, d.longitude),
-              route: _route,
-              onTap: (p) => _choose(p),
-            ),
-          ),
-          Material(
-            elevation: 4,
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: d == null
-                    ? Text(
-                        _busy ? 'Finding the route…' : 'Search, or tap the map where the passenger is going.',
-                        style: t.textTheme.bodyLarge,
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(d.name, style: t.textTheme.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          if (d.address != null && d.address != d.name)
-                            Text(
-                              d.address!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: t.textTheme.bodySmall,
-                            ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  _busy ? 'Finding the route…' : describeHailRoute(d),
-                                  key: const ValueKey('hail-route'),
-                                ),
-                              ),
+            // A small sheet, so most of the map is left to tap on.
+            child: MapSheetLayout(
+              initial: 0.32,
+              min: 0.2,
+              map: RideMap(
+                pickup: widget.args.origin,
+                drop: d == null ? null : LatLng(d.latitude, d.longitude),
+                route: _route,
+                onTap: (p) => _choose(p),
+              ),
+              sheet: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: d == null
+                      ? Text(
+                          _busy ? 'Finding the route…' : 'Search, or tap the map where the passenger is going.',
+                          style: t.textTheme.bodyLarge,
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(d.name, style: t.textTheme.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+                            if (d.address != null && d.address != d.name)
                               Text(
-                                estimate == null
-                                    ? 'No estimate'
-                                    : 'Est. ${widget.args.currency} ${estimate.toStringAsFixed(2)}',
-                                key: const ValueKey('hail-estimate'),
-                                style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                                d.address!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t.textTheme.bodySmall,
                               ),
-                            ],
-                          ),
-                          Text('The meter bills what it measures; this is a quote.', style: t.textTheme.bodySmall),
-                          const SizedBox(height: 12),
-                          FilledButton.icon(
-                            key: const ValueKey('hail-set'),
-                            onPressed: _busy ? null : () => context.pop(d),
-                            icon: const Icon(Icons.flag_outlined),
-                            label: const Text('Set destination'),
-                          ),
-                        ],
-                      ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _busy ? 'Finding the route…' : describeHailRoute(d),
+                                    key: const ValueKey('hail-route'),
+                                  ),
+                                ),
+                                Text(
+                                  estimate == null
+                                      ? 'No estimate'
+                                      : 'Est. ${widget.args.currency} ${estimate.toStringAsFixed(2)}',
+                                  key: const ValueKey('hail-estimate'),
+                                  style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                            Text('The meter bills what it measures; this is a quote.', style: t.textTheme.bodySmall),
+                            const SizedBox(height: 12),
+                            FilledButton.icon(
+                              key: const ValueKey('hail-set'),
+                              onPressed: _busy ? null : () => context.pop(d),
+                              icon: const Icon(Icons.flag_outlined),
+                              label: const Text('Set destination'),
+                            ),
+                          ],
+                        ),
+                ),
               ),
             ),
           ),

@@ -323,6 +323,75 @@ void main() {
       expect(find.text('Ask passenger to cancel'), findsNothing);
     });
 
+    testWidgets('no way back while the trip is on; back once it has ended', (tester) async {
+      await pump(tester);
+      rows.add(ride('on_trip'));
+      await tester.pump();
+      expect(find.byType(BackButton), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.text('Finish the trip to leave this screen.'), findsOneWidget);
+      expect(find.byType(PartnerTripScreen), findsOneWidget, reason: 'the system back did not leave');
+      rows.add(ride('completed'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(BackButton), findsOneWidget);
+    });
+
+    testWidgets('on a phone the details are a rounded sheet dragged up over the map', (tester) async {
+      await pump(tester);
+      tester.view.physicalSize = const Size(400, 800);
+      rows.add(ride('accepted'));
+      await tester.pump();
+      await tester.pump();
+      final sheet = find.byKey(const ValueKey('map-sheet'));
+      expect(sheet, findsOneWidget);
+      final material = tester.widget<Material>(
+        find.descendant(of: sheet, matching: find.byType(Material)).first,
+      );
+      expect(material.borderRadius, const BorderRadius.vertical(top: Radius.circular(20)));
+      final handle = find.byKey(const ValueKey('map-sheet-handle'));
+      final before = tester.getTopLeft(handle).dy;
+      await tester.drag(find.text('Head to pickup'), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(handle).dy, lessThan(before - 200), reason: 'the sheet itself moved up');
+      ScrollPosition content() =>
+          tester.state<ScrollableState>(find.descendant(of: sheet, matching: find.byType(Scrollable)).first).position;
+      expect(content().pixels, 0, reason: 'a drag expands the sheet; nothing scrolls');
+      // Everything fits once expanded, so a further drag scrolls nothing.
+      await tester.drag(find.text('Head to pickup'), const Offset(0, -600));
+      await tester.pumpAndSettle();
+      expect(content().pixels, 0);
+    });
+
+    testWidgets('the sheet scrolls only once fully expanded, and only when more is below', (tester) async {
+      await pump(tester);
+      tester.view.physicalSize = const Size(400, 480);
+      rows.add(ride('accepted'));
+      await tester.pump();
+      await tester.pump();
+      final sheet = find.byKey(const ValueKey('map-sheet'));
+      final body = find.descendant(of: sheet, matching: find.byType(Material)).first;
+      ScrollPosition content() =>
+          tester.state<ScrollableState>(find.descendant(of: sheet, matching: find.byType(Scrollable)).first).position;
+      // From 45% to 92% of the body is ~200 px of travel: a 150 px drag
+      // only expands the sheet.
+      final start = tester.getTopLeft(body).dy;
+      await tester.drag(find.text('Head to pickup'), const Offset(0, -150));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(body).dy, lessThan(start - 100));
+      expect(content().pixels, 0);
+      await tester.drag(find.text('Head to pickup'), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(body).dy, closeTo(56 + (480 - 56) * (1 - 0.92), 1), reason: 'at its full height');
+      expect(content().pixels, 0, reason: 'reaching full height is all that drag did');
+      // Fully expanded, with more below: now a drag scrolls it.
+      await tester.drag(find.text('Head to pickup'), const Offset(0, -100));
+      await tester.pumpAndSettle();
+      expect(content().pixels, greaterThan(0));
+      expect(tester.getTopLeft(body).dy, closeTo(56 + (480 - 56) * (1 - 0.92), 1), reason: 'the sheet stays put');
+    });
+
     testWidgets('approving the passenger’s cancel is not announced back', (tester) async {
       await pump(tester);
       final asked = {'cancel_requested_at': t0.toIso8601String(), 'cancel_requested_by': 'rider'};

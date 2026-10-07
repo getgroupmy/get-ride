@@ -18,6 +18,7 @@ import '../../core/ride_cancel.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../ride/live_ride_map.dart';
 import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
@@ -340,10 +341,29 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   @override
   Widget build(BuildContext context) {
     final ride = ref.watch(rideStreamProvider(widget.requestId));
+    // While the trip is on there is no way back off this screen: the ride
+    // ends by completing it (or cancelling before pickup), not by leaving.
+    final onTrip = ride.value?.status.isOngoing ?? false;
+    return PopScope(
+      canPop: !onTrip,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || !onTrip) return;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('Finish the trip to leave this screen.')));
+      },
+      child: _scaffold(ride, onTrip),
+    );
+  }
+
+  Widget _scaffold(AsyncValue<RideRequest> ride, bool onTrip) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Current trip'),
-        leading: BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/drive')),
+        automaticallyImplyLeading: false,
+        leading: onTrip
+            ? null
+            : BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/drive')),
       ),
       body: AsyncView(
         value: ride,
@@ -358,10 +378,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
               Expanded(child: map),
             ]);
           }
-          return Column(children: [
-            Expanded(flex: 5, child: map),
-            Expanded(flex: 6, child: SingleChildScrollView(child: panel)),
-          ]);
+          return MapSheetLayout(map: map, sheet: panel);
         },
       ),
     );

@@ -20,6 +20,7 @@ import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_sheet_layout.dart';
 import 'demo_ride.dart';
 import 'live_ride_map.dart';
 import 'shared_ride_screen.dart' show shareRide;
@@ -811,12 +812,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         ],
       );
     }
-    return Column(
-      children: [
-        Expanded(flex: 5, child: widget.map),
-        Expanded(flex: 6, child: SingleChildScrollView(child: content)),
-      ],
-    );
+    return MapSheetLayout(map: widget.map, sheet: content);
   }
 }
 

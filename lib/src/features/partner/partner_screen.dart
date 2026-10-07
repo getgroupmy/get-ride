@@ -21,6 +21,7 @@ import '../../data/models.dart';
 import '../../data/partner_doc_check.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_sheet_layout.dart';
 import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
@@ -600,7 +601,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             requests: _online ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const [],
             onSelect: (r) => setState(() => _focusId = r.id),
           );
-          final panel = Column(children: [
+          final head = <Widget>[
               if (modes.length > 1 || modes.any((m) => m.isTeksi))
                 Card(
                   key: const ValueKey('partner-modes'),
@@ -660,13 +661,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               const DriverWalletPills(),
               const CurrentVehicleCard(),
               if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
-              if (!wide) SizedBox(height: 200, child: ClipRRect(borderRadius: BorderRadius.circular(12), child: map)),
-              Expanded(child: _online ? _queue(p, wide: wide) : const EmptyState(
-                icon: Icons.local_taxi_outlined,
-                title: 'Go online to receive ride requests',
-              )),
-            ]);
+            ];
+          const offline = EmptyState(icon: Icons.local_taxi_outlined, title: 'Go online to receive ride requests');
           if (wide) {
+            final panel = Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)]);
             return Row(children: [
               SizedBox(width: 520, child: panel),
               const VerticalDivider(width: 1),
@@ -679,7 +677,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               ),
             ]);
           }
-          return ResponsiveCenter(maxWidth: 760, child: panel);
+          // A phone: the map fills the screen and the queue is a sheet over it.
+          return MapSheetLayout(
+            map: map,
+            sheet: ResponsiveCenter(
+              maxWidth: 760,
+              child: Column(children: [...head, if (_online) _queue(p, inSheet: true) else offline]),
+            ),
+          );
         },
       ),
     );
@@ -715,7 +720,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   }
 
   /// [wide]: the new request is over the map ([_alertOverlay]), not here.
-  Widget _queue(Partner partner, {bool wide = false}) {
+  /// [inSheet]: laid out in full inside the map sheet, which scrolls it.
+  Widget _queue(Partner partner, {bool wide = false, bool inSheet = false}) {
     final t = Theme.of(context);
     return AsyncView(
       value: ref.watch(openRequestsProvider),
@@ -733,6 +739,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           _focusId,
         );
         return ListView.builder(
+          shrinkWrap: inSheet,
+          physics: inSheet ? const NeverScrollableScrollPhysics() : null,
+          padding: inSheet ? EdgeInsets.zero : null,
           itemCount: sorted.length + (alert == null ? 0 : 1),
           itemBuilder: (_, index) {
             if (alert != null && index == 0) return _alertCard(alert, partner);

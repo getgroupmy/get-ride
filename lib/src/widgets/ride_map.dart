@@ -5,12 +5,14 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../data/geo_service.dart';
+import 'map_sheet_layout.dart';
 import 'map_tiles.dart';
 
 /// Where a map of [points] (and [route]) opens, laid out at [size]: framing
 /// them all when there are two or more, else on the one point (or
 /// [defaultCenter]). Pure.
-({LatLng center, double zoom}) openingView(List<LatLng> points, List<LatLng> route, Size size) {
+/// [bottom] is how much of the map a sheet over it covers.
+({LatLng center, double zoom}) openingView(List<LatLng> points, List<LatLng> route, Size size, {double bottom = 0}) {
   final all = [...points, ...route];
   final first = points.isNotEmpty ? points.first : (all.isNotEmpty ? all.first : defaultCenter);
   if (all.length < 2 || !size.width.isFinite || !size.height.isFinite || size.width <= 0 || size.height <= 0) {
@@ -18,7 +20,7 @@ import 'map_tiles.dart';
   }
   final fitted = CameraFit.coordinates(
     coordinates: all,
-    padding: const EdgeInsets.all(64),
+    padding: EdgeInsets.fromLTRB(64, 64, 64, 64 + bottom),
     maxZoom: 16,
   ).fit(MapCamera(crs: const Epsg3857(), center: first, zoom: 14, rotation: 0, nonRotatedSize: size));
   return (center: fitted.center, zoom: fitted.zoom);
@@ -140,7 +142,9 @@ class _RideMapState extends State<RideMap> {
   CameraFit? get _cameraFit {
     final pts = [..._points, ...widget.route];
     if (pts.length < 2) return null;
-    return CameraFit.coordinates(coordinates: pts, padding: const EdgeInsets.all(64), maxZoom: 16);
+    // Frame the points in the part of the map a sheet over it leaves showing.
+    final bottom = MapBottomInset.of(context);
+    return CameraFit.coordinates(coordinates: pts, padding: EdgeInsets.fromLTRB(64, 64, 64, 64 + bottom), maxZoom: 16);
   }
 
   void _fit() {
@@ -164,7 +168,12 @@ class _RideMapState extends State<RideMap> {
     // drop-off — then showed only grey until it was dragged.
     return LayoutBuilder(
       builder: (context, constraints) {
-        final start = openingView(_points, widget.route, Size(constraints.maxWidth, constraints.maxHeight));
+        final start = openingView(
+          _points,
+          widget.route,
+          Size(constraints.maxWidth, constraints.maxHeight),
+          bottom: MapBottomInset.of(context),
+        );
         return FlutterMap(
           mapController: _controller,
           options: MapOptions(
@@ -232,7 +241,14 @@ class _RideMapState extends State<RideMap> {
                   ),
               ],
             ),
-            const RichAttributionWidget(attributions: [TextSourceAttribution('© OpenStreetMap contributors')]),
+            // Above any sheet floating over the map, so the credit stays reachable.
+            MapBottomInset.listen(
+              context,
+              (inset) => Padding(
+                padding: EdgeInsets.only(bottom: inset),
+                child: const RichAttributionWidget(attributions: [TextSourceAttribution('© OpenStreetMap contributors')]),
+              ),
+            ),
           ],
         );
       },

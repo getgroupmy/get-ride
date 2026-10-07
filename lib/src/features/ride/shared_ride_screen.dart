@@ -10,6 +10,7 @@ import '../../core/ride_share.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 
 /// Sends a ride's share link: the system share sheet, overridden in tests.
@@ -122,8 +123,8 @@ class _SharedRideView extends StatelessWidget {
       driver: r.driver,
       driverHeading: r.driverHeading,
     );
-    final details = ListView(
-      padding: const EdgeInsets.all(16),
+    final details = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(sharedRideHeadline(r), key: const ValueKey('shared-headline'), style: t.textTheme.titleLarge),
         const SizedBox(height: 4),
@@ -200,22 +201,24 @@ class _SharedRideView extends StatelessWidget {
         Text('A read-only view shared by a GET.ride rider. It updates by itself.', style: t.textTheme.bodySmall),
       ],
     );
+    const pad = EdgeInsets.all(16);
     return LayoutBuilder(
       builder: (context, c) {
         if (c.maxWidth >= 900) {
           return Row(
             children: [
-              SizedBox(width: 420, child: details),
+              SizedBox(
+                width: 420,
+                child: SingleChildScrollView(padding: pad, child: details),
+              ),
               const VerticalDivider(width: 1),
               Expanded(child: map),
             ],
           );
         }
-        return Column(
-          children: [
-            SizedBox(height: c.maxHeight * 0.45, child: map),
-            Expanded(child: details),
-          ],
+        return MapSheetLayout(
+          map: map,
+          sheet: Padding(padding: pad, child: details),
         );
       },
     );

@@ -9,6 +9,7 @@ import '../../core/demo_mode.dart';
 import '../../core/format.dart';
 import '../../data/app_display_repository.dart';
 import '../../providers.dart';
+import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 
 /// The admin's demo switches (Admin → Display Settings → Demo / Mockup Data).
@@ -254,36 +255,32 @@ class _DemoTripScreenState extends ConsumerState<DemoTripScreen> {
       appBar: AppBar(
         title: const Row(mainAxisSize: MainAxisSize.min, children: [Text('Your ride'), SizedBox(width: 8), DemoChip()]),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: RideMap(pickup: a.pickup, drop: a.drop, route: _trip, driver: car),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(title, key: const ValueKey('demo-trip-phase'), style: t.textTheme.headlineSmall),
-                Text(detail, style: t.textTheme.bodyMedium),
-                const SizedBox(height: 12),
-                Card(
-                  child: ListTile(
-                    leading: CircleAvatar(child: Text(o.name[0])),
-                    title: Text(o.name),
-                    subtitle: Text('${o.vehicle} · ★ ${o.rating.toStringAsFixed(2)}'),
-                    trailing: Text(formatMoney(o.price, a.currency), style: t.textTheme.titleMedium),
-                  ),
+      body: MapSheetLayout(
+        map: RideMap(pickup: a.pickup, drop: a.drop, route: _trip, driver: car),
+        sheet: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, key: const ValueKey('demo-trip-phase'), style: t.textTheme.headlineSmall),
+              Text(detail, style: t.textTheme.bodyMedium),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: CircleAvatar(child: Text(o.name[0])),
+                  title: Text(o.name),
+                  subtitle: Text('${o.vehicle} · ★ ${o.rating.toStringAsFixed(2)}'),
+                  trailing: Text(formatMoney(o.price, a.currency), style: t.textTheme.titleMedium),
                 ),
-                Text('This is a demo trip: no driver is coming and nothing is charged.', style: t.textTheme.bodySmall),
-                if (now.phase == DemoPhase.completed) ...[
-                  const SizedBox(height: 12),
-                  FilledButton(onPressed: () => context.go('/'), child: const Text('Done')),
-                ],
+              ),
+              Text('This is a demo trip: no driver is coming and nothing is charged.', style: t.textTheme.bodySmall),
+              if (now.phase == DemoPhase.completed) ...[
+                const SizedBox(height: 12),
+                FilledButton(onPressed: () => context.go('/'), child: const Text('Done')),
               ],
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

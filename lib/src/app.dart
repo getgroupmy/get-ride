@@ -67,6 +67,7 @@ import 'features/wallet/wallet_qr_screens.dart';
 import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
 import 'widgets/connection_status_dialog.dart';
+import 'widgets/map_sheet_layout.dart' show appBottomSheetTheme;
 
 const brandAccent = Color(0xFF2DABE2);
 
@@ -95,6 +96,9 @@ ThemeData appTheme(Brightness b) {
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),
+    // Every bottom sheet: rounded top corners and a handle to drag it by
+    // (down to close; the tall ones also up to expand).
+    bottomSheetTheme: appBottomSheetTheme,
     cardTheme: CardThemeData(
       elevation: 0,
       shape: RoundedRectangleBorder(
