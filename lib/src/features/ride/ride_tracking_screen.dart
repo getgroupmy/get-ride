@@ -22,6 +22,7 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import 'demo_ride.dart';
 import 'live_ride_map.dart';
+import 'shared_ride_screen.dart' show shareRide;
 import '../../widgets/ride_stop_tiles.dart';
 import '../profile/emergency_contacts_screen.dart';
 import '../safety/safety_screen.dart';
@@ -62,6 +63,15 @@ class RideTrackingScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Your ride'),
         leading: BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/')),
+        actions: [
+          if (ride.value?.status.isOngoing ?? false)
+            IconButton(
+              key: const ValueKey('share-ride'),
+              tooltip: 'Share ride',
+              icon: const Icon(Icons.share_outlined),
+              onPressed: () => shareRide(context, ref, ride.value!),
+            ),
+        ],
       ),
       body: AsyncView(
         value: ride,

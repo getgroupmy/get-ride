@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import '../core/book_for.dart';
 import '../core/commission.dart';
 import '../core/ride_request_metadata.dart';
+import '../core/ride_share.dart';
 import '../core/session_telemetry.dart';
 import '../core/fare_coins.dart';
 import '../core/ride_bidding.dart';
@@ -478,6 +479,22 @@ class RideRepository {
         })
         .eq('id', r.id)
         .inFilter('status', partnerOngoingStatuses);
+  }
+
+  /// The ride's share link token, made on first share (migration 0108).
+  /// Only the ride's rider can make one.
+  Future<String> shareToken(String rideId) async {
+    final v = await _db.rpc('ride_share_link', params: {'p_ride': rideId});
+    if (v is! String || v.isEmpty) throw StateError("This ride can't be shared.");
+    return v;
+  }
+
+  /// The ride a share link shows, read without an account. Null when the
+  /// link is unknown or has expired.
+  Future<SharedRide?> sharedRide(String token) async {
+    if (!isShareToken(token)) return null;
+    final v = await _db.rpc('ride_share_view', params: {'p_token': token});
+    return v is Map ? SharedRide(Map<String, dynamic>.from(v)) : null;
   }
 
   Future<void> approveCancellation(String id) => updateStatus(id, RideStatus.cancelled);
