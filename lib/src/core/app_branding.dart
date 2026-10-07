@@ -59,11 +59,9 @@ bool splashHeld({required bool isWeb, required TargetPlatform platform}) =>
 /// White in light mode and black in dark: what a logo is drawn to sit on.
 Color splashBackground({required bool dark}) => dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF);
 
-/// The app name's colour where there is no picture: legible on either.
-Color splashInk({required bool dark}) => dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000);
+/// The brand blue the splash's "GET." is drawn in where there is no
+/// picture: legible on white and on black alike.
+Color splashInk({required bool dark}) => const Color(0xFF2DABE2);
 
-/// The bundled logo the splash falls back to where nobody uploaded a picture.
-const splashLogoAsset = 'assets/branding/icon.png';
-
-/// What the app calls itself, drawn where neither picture will load.
-const splashWordmark = 'GET.ride';
+/// What the splash shows where nobody uploaded a picture, or it won't load.
+const splashWordmark = 'GET.';

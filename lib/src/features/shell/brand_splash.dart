@@ -62,8 +62,8 @@ class _SplashGateState extends State<SplashGate> {
   }
 }
 
-/// The splash itself: the admin's picture, else the app's logo, else its
-/// name, on white or black.
+/// The splash itself: the admin's picture, else "GET." in the brand blue,
+/// on white or black.
 class SplashView extends StatelessWidget {
   const SplashView({super.key, this.cached, this.latest, required this.dark});
 
@@ -79,8 +79,8 @@ class SplashView extends StatelessWidget {
       textAlign: TextAlign.center,
       style: TextStyle(
         color: splashInk(dark: dark),
-        fontSize: 26,
-        fontWeight: FontWeight.w700,
+        fontSize: 40,
+        fontWeight: FontWeight.w800,
         letterSpacing: 0.5,
       ),
     );
@@ -90,7 +90,7 @@ class SplashView extends StatelessWidget {
     final bytes = cached?.imageBytes;
     final Widget picture;
     if (url == null) {
-      picture = Image.asset(splashLogoAsset, key: const ValueKey('splash-logo'), height: 120, errorBuilder: fallback);
+      picture = name;
     } else if (bytes != null && url == cached?.branding.splashImageUrl) {
       picture = Image.memory(bytes, key: const ValueKey('splash-image'), height: 120, errorBuilder: fallback);
     } else {
