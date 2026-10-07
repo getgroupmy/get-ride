@@ -305,10 +305,11 @@ void main() {
       );
       await tester.pumpAndSettle();
       final sw = find.byKey(const ValueKey('voice-protection-switch'));
-      expect(tester.widget<SwitchListTile>(sw).value, isFalse);
+      final tile = find.descendant(of: sw, matching: find.byType(SwitchListTile));
+      expect(tester.widget<SwitchListTile>(tile).value, isFalse);
       await tester.tap(sw);
       await tester.pumpAndSettle();
-      expect(tester.widget<SwitchListTile>(sw).value, isTrue);
+      expect(tester.widget<SwitchListTile>(tile).value, isTrue);
       expect(device.prefs[_me], isTrue);
     });
 

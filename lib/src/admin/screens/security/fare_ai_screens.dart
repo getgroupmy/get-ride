@@ -273,7 +273,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
               onChanged: canEdit ? (v) => _setKeys(patch((x) => x.copyWith(enabled: v))) : null,
             ),
             if (canEdit)
-              BusyIconButton(
+              IconButton(
                 tooltip: 'Remove key',
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () async {

@@ -210,14 +210,14 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
   Widget _dateRow() => Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          BusyButton.outlined(
+          OutlinedButton.icon(
             icon: const Icon(Icons.event),
-            child: Text(_from.isEmpty ? 'From' : 'From $_from'),
+            label: Text(_from.isEmpty ? 'From' : 'From $_from'),
             onPressed: () => _pickDate(true),
           ),
-          BusyButton.outlined(
+          OutlinedButton.icon(
             icon: const Icon(Icons.event),
-            child: Text(_to.isEmpty ? 'To' : 'To $_to'),
+            label: Text(_to.isEmpty ? 'To' : 'To $_to'),
             onPressed: () => _pickDate(false),
           ),
           if (_from.isNotEmpty || _to.isNotEmpty)
@@ -433,7 +433,7 @@ class _AccountDetailState extends ConsumerState<_AccountDetail> {
               ),
             ),
           if (all.locations.isNotEmpty)
-            BusyButton.filled(onPressed: _openTrail, icon: const Icon(Icons.map), child: const Text('View full trail')),
+            FilledButton.icon(onPressed: _openTrail, icon: const Icon(Icons.map), label: const Text('View full trail')),
           const SizedBox(height: 12),
           Row(children: [
             Expanded(
@@ -611,8 +611,8 @@ class _TrailOptionsDialogState extends ConsumerState<_TrailOptionsDialog> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Wrap(spacing: 8, children: [
-                  BusyButton.outlined(onPressed: () => _date(true), child: Text(_rangeFrom.isEmpty ? 'From' : _rangeFrom)),
-                  BusyButton.outlined(onPressed: () => _date(false), child: Text(_rangeTo.isEmpty ? 'To' : _rangeTo)),
+                  OutlinedButton(onPressed: () => _date(true), child: Text(_rangeFrom.isEmpty ? 'From' : _rangeFrom)),
+                  OutlinedButton(onPressed: () => _date(false), child: Text(_rangeTo.isEmpty ? 'To' : _rangeTo)),
                 ]),
               ),
             const SizedBox(height: 16),
@@ -630,8 +630,8 @@ class _TrailOptionsDialogState extends ConsumerState<_TrailOptionsDialog> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Wrap(spacing: 8, children: [
-                  BusyButton.outlined(onPressed: () => _time(true), child: Text('From ${_hhmm(_timeFrom)}')),
-                  BusyButton.outlined(onPressed: () => _time(false), child: Text('To ${_hhmm(_timeTo)}')),
+                  OutlinedButton(onPressed: () => _time(true), child: Text('From ${_hhmm(_timeFrom)}')),
+                  OutlinedButton(onPressed: () => _time(false), child: Text('To ${_hhmm(_timeTo)}')),
                 ]),
               ),
             if (_error != null)

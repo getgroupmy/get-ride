@@ -40,10 +40,10 @@ class VehicleDriversSection extends ConsumerWidget {
         SectionTitle(
           'Drivers',
           trailing: canEdit
-              ? BusyButton.text(
+              ? TextButton.icon(
                   key: const ValueKey('add-driver'),
                   icon: const Icon(Icons.person_add_alt),
-                  child: const Text('Add driver'),
+                  label: const Text('Add driver'),
                   onPressed: () async {
                     final added = await showDialog<bool>(
                       context: context,

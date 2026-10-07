@@ -330,7 +330,7 @@ class ServiceAreaField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget row(IconData icon, String label, int count, bool disabled, String level) => BusyListTile(
+    Widget row(IconData icon, String label, int count, bool disabled, String level) => ListTile(
           contentPadding: EdgeInsets.zero,
           leading: Icon(icon),
           title: Text(label),
@@ -683,7 +683,7 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
                 final status = u == null ? null : docDisplayStatus(u, now: now);
                 final opens = widget.renewalLock && u != null ? renewalOpensOn(u, now: now) : null;
                 return Card(
-                  child: BusyListTile(
+                  child: ListTile(
                     leading: Icon(d.compulsory ? Icons.gpp_maybe_outlined : Icons.verified_user_outlined,
                         color: d.compulsory ? Colors.orange : Colors.green),
                     title: Text(d.name),
