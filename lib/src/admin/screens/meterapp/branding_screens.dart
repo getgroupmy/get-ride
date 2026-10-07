@@ -315,7 +315,8 @@ class _AdminSplashScreenState extends ConsumerState<AdminSplashScreen> {
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Text(
                   'Shown for ${splashHold.inSeconds} seconds when the Android and iOS apps start, on white — or '
-                  'black in dark mode. Without a picture the app logo is shown. The website has no splash screen.',
+                  'black in dark mode. Without a picture "GET." is shown in the brand blue. The website has no '
+                  'splash screen.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 16),
