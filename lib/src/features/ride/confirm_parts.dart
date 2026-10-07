@@ -845,12 +845,16 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
   }
 
   Future<void> _comments() async {
-    final text = await showModalBottomSheet<String>(
+    final r = await showModalBottomSheet<_Comments>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       builder: (_) => _CommentsSheet(initial: widget.note.text),
     );
-    if (text != null && mounted) setState(() => widget.note.text = text);
+    if (r == null || !mounted) return;
+    if (r.text != null) setState(() => widget.note.text = r.text!);
+    // Its ✕ closes Options too.
+    if (r.closeAll) Navigator.pop(context);
   }
 
   @override
@@ -930,7 +934,12 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
   }
 }
 
-/// Comments for the driver, typed on their own sheet.
+/// What the Comments sheet hands back: the text when saved, and whether
+/// its ✕ closes Options as well.
+typedef _Comments = ({String? text, bool closeAll});
+
+/// Comments for the driver, typed on their own sheet: ← back to Options,
+/// ✕ out of both, Save keeps them.
 class _CommentsSheet extends StatefulWidget {
   const _CommentsSheet({required this.initial});
   final String initial;
@@ -949,39 +958,82 @@ class _CommentsSheetState extends State<_CommentsSheet> {
   }
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-    child: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Comments', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 12),
-            TextField(
-              key: const ValueKey('option-comments-field'),
-              controller: _text,
-              autofocus: true,
-              minLines: 2,
-              maxLines: 4,
-              maxLength: 200,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(hintText: 'Anything the driver should know'),
-            ),
-            const SizedBox(height: 8),
-            FilledButton(
-              key: const ValueKey('option-comments-done'),
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-              onPressed: () => Navigator.pop(context, _text.text.trim()),
-              child: const Text('Done'),
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final edge = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: t.colorScheme.onSurface, width: 1.5),
+    );
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Column(
+            key: const ValueKey('option-comments-sheet'),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: IconButton(
+                      key: const ValueKey('option-comments-back'),
+                      tooltip: 'Back',
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                  Text('Comments', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton.filledTonal(
+                      key: const ValueKey('option-comments-x'),
+                      tooltip: 'Close',
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop<_Comments>(context, (text: null, closeAll: true)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const ValueKey('option-comments-field'),
+                controller: _text,
+                autofocus: true,
+                minLines: 4,
+                maxLines: 6,
+                maxLength: 200,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: 'What your driver should know?',
+                  counterText: '',
+                  filled: true,
+                  fillColor: t.colorScheme.surfaceContainerHigh,
+                  border: edge,
+                  enabledBorder: edge,
+                  focusedBorder: edge,
+                ),
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                key: const ValueKey('option-comments-done'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                ),
+                onPressed: () => Navigator.pop<_Comments>(context, (text: _text.text.trim(), closeAll: false)),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// "Got promo code? Use it here" over the top of the sheet.
