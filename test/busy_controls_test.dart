@@ -119,4 +119,28 @@ void main() {
     await tester.pump();
     expect(find.byKey(const ValueKey('busy-spinner')), findsNothing);
   });
+
+  testWidgets('a floating button spins while its action runs', (tester) async {
+    final done = Completer<void>();
+    var taps = 0;
+    await _pump(
+      tester,
+      BusyFab(
+        tooltip: 'Meter',
+        onPressed: () {
+          taps++;
+          return done.future;
+        },
+        child: const Icon(Icons.speed),
+      ),
+    );
+    await tester.tap(find.byTooltip('Meter'));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('busy-spinner')), findsOneWidget);
+    await tester.tap(find.byTooltip('Meter'), warnIfMissed: false);
+    expect(taps, 1);
+    done.complete();
+    await tester.pump();
+    expect(find.byIcon(Icons.speed), findsOneWidget);
+  });
 }

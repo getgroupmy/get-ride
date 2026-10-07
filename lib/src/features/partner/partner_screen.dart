@@ -705,7 +705,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   _floatingButton(
                     tooltip: 'Driver permit',
                     icon: Icons.badge_outlined,
-                    onPressed: () => context.push('/drive/permit'),
+                    onPressed: () {
+                      context.push('/drive/permit');
+                    },
                   ),
                 if (partner.value != null &&
                     partnerCanDrive(partner.value!) &&
@@ -719,14 +721,18 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   _floatingButton(
                     tooltip: 'My vehicles',
                     icon: Icons.directions_car_outlined,
-                    onPressed: () => context.push('/drive/vehicles'),
+                    onPressed: () {
+                      context.push('/drive/vehicles');
+                    },
                   ),
                 // The menu sits at the far right.
                 _floatingButton(
                   key: const ValueKey('partner-menu-button'),
                   tooltip: 'Menu',
                   icon: Icons.menu,
-                  onPressed: () => showPartnerMenu(context),
+                  onPressed: () {
+                    showPartnerMenu(context);
+                  },
                 ),
               ]),
             ),
@@ -737,9 +743,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   }
 
   /// One of the round buttons floating at the top of the page (in place of
-  /// a top bar), like the map's own.
-  Widget _floatingButton({Key? key, required String tooltip, required IconData icon, required VoidCallback onPressed}) =>
-      FloatingActionButton.small(key: key, heroTag: null, tooltip: tooltip, onPressed: onPressed, child: Icon(icon));
+  /// a top bar), like the map's own. One whose action does work (the Meter
+  /// Digital checks) spins until it is done; opening a page or the menu is
+  /// instant.
+  Widget _floatingButton({Key? key, required String tooltip, required IconData icon, required BusyAction onPressed}) =>
+      BusyFab(key: key, tooltip: tooltip, onPressed: onPressed, child: Icon(icon));
 
   /// The requests on this driver's queue (all open ones but those declined
   /// here), which are also the map's pins.

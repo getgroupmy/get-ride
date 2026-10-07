@@ -236,3 +236,27 @@ class _BusyListTileState extends State<BusyListTile> with _Busy {
     onTap: widget.onTap == null || busy ? null : () => runBusy(widget.onTap!),
   );
 }
+
+/// A small [FloatingActionButton] (the round buttons floating over a page or
+/// map) whose icon turns into a spinner while its action runs.
+class BusyFab extends StatefulWidget {
+  const BusyFab({super.key, required this.onPressed, required this.child, this.tooltip, this.small = true});
+  final BusyAction? onPressed;
+  final Widget child;
+  final String? tooltip;
+  final bool small;
+
+  @override
+  State<BusyFab> createState() => _BusyFabState();
+}
+
+class _BusyFabState extends State<BusyFab> with _Busy {
+  @override
+  Widget build(BuildContext context) {
+    final onPressed = widget.onPressed == null || busy ? null : () => runBusy(widget.onPressed!);
+    final child = busy ? const BusySpinner(size: 20) : widget.child;
+    return widget.small
+        ? FloatingActionButton.small(heroTag: null, tooltip: widget.tooltip, onPressed: onPressed, child: child)
+        : FloatingActionButton(heroTag: null, tooltip: widget.tooltip, onPressed: onPressed, child: child);
+  }
+}
