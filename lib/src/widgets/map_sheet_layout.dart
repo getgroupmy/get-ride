@@ -59,6 +59,7 @@ class MapSheetLayout extends StatefulWidget {
     this.min = 0.2,
     this.max = 0.92,
     this.mapMinFraction = 0.4,
+    this.locked = false,
   });
 
   final Widget map;
@@ -68,12 +69,25 @@ class MapSheetLayout extends StatefulWidget {
   /// The least of the screen above the sheet the map's buttons follow it to.
   final double mapMinFraction;
 
+  /// Holds the sheet down at [min]: it can't be dragged up and its content
+  /// doesn't scroll, leaving the map to something on it (the driver's
+  /// floating requests).
+  final bool locked;
+
   @override
   State<MapSheetLayout> createState() => _MapSheetLayoutState();
 }
 
 class _MapSheetLayoutState extends State<MapSheetLayout> {
-  late final _extent = ValueNotifier<double>(widget.initial);
+  late final _extent = ValueNotifier<double>(widget.locked ? widget.min : widget.initial);
+
+  @override
+  void didUpdateWidget(covariant MapSheetLayout old) {
+    super.didUpdateWidget(old);
+    // The sheet doesn't report a size it is clamped to, only one it is
+    // dragged to: tell the map's buttons.
+    if (widget.locked && !old.locked) _extent.value = widget.min;
+  }
 
   @override
   void dispose() {
@@ -104,34 +118,45 @@ class _MapSheetLayoutState extends State<MapSheetLayout> {
               },
               child: DraggableScrollableSheet(
                 key: const ValueKey('map-sheet'),
-                initialChildSize: widget.initial,
+                initialChildSize: widget.locked ? widget.min : widget.initial,
                 minChildSize: widget.min,
-                maxChildSize: widget.max,
+                maxChildSize: widget.locked ? widget.min : widget.max,
                 builder: (context, scroll) => Material(
                   elevation: 8,
                   color: t.colorScheme.surface,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                   clipBehavior: Clip.antiAlias,
-                  child: SingleChildScrollView(
+                  // The handle is pinned to the sheet's top edge: it stays in
+                  // view while the content scrolls under it, and dragging it
+                  // moves the sheet.
+                  child: CustomScrollView(
                     controller: scroll,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Center(
-                          child: Container(
-                            key: const ValueKey('map-sheet-handle'),
-                            width: 40,
-                            height: 4,
-                            margin: const EdgeInsets.only(top: 10, bottom: 2),
-                            decoration: BoxDecoration(
-                              color: t.colorScheme.outlineVariant,
-                              borderRadius: BorderRadius.circular(2),
+                    // Held down, it neither moves nor scrolls: content
+                    // scrolls only in a sheet that is fully up.
+                    physics: widget.locked ? const NeverScrollableScrollPhysics() : null,
+                    slivers: [
+                      PinnedHeaderSliver(
+                        child: ColoredBox(
+                          key: const ValueKey('map-sheet-header'),
+                          color: t.colorScheme.surface,
+                          child: SizedBox(
+                            height: 22,
+                            child: Center(
+                              child: Container(
+                                key: const ValueKey('map-sheet-handle'),
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: t.colorScheme.outlineVariant,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                        widget.sheet,
-                      ],
-                    ),
+                      ),
+                      SliverToBoxAdapter(child: widget.sheet),
+                    ],
                   ),
                 ),
               ),

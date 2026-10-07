@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../widgets/common.dart';
+import '../partner/driver_online.dart';
 
 class _Dest {
   const _Dest(this.label, this.icon, this.selectedIcon);
@@ -18,26 +20,41 @@ const _destinations = [
   _Dest('Account', Icons.person_outline, Icons.person),
 ];
 
+/// The Ride tab's place in [_destinations].
+const rideTab = 0;
+
 /// Adaptive navigation: bottom bar on phones, rail on tablets, extended rail
-/// on desktop and wide web windows.
-class AppShell extends StatelessWidget {
+/// on desktop and wide web windows. While the account is online as a driver
+/// the Ride tab is greyed out and can't be opened ([driverOnlineProvider]).
+class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.shell});
   final StatefulNavigationShell shell;
 
-  void _go(int i) => shell.goBranch(i, initialLocation: i == shell.currentIndex);
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final width = MediaQuery.sizeOf(context).width;
+    final online = ref.watch(driverOnlineProvider);
+    void go(int i) {
+      if (online && i == rideTab) return;
+      shell.goBranch(i, initialLocation: i == shell.currentIndex);
+    }
+
     if (width < 720) {
       return Scaffold(
         body: shell,
         bottomNavigationBar: NavigationBar(
           selectedIndex: shell.currentIndex,
-          onDestinationSelected: _go,
+          onDestinationSelected: go,
           destinations: [
-            for (final d in _destinations)
-              NavigationDestination(icon: Icon(d.icon), selectedIcon: Icon(d.selectedIcon), label: d.label),
+            for (final (i, d) in _destinations.indexed)
+              NavigationDestination(
+                key: ValueKey('nav-${d.label.toLowerCase()}'),
+                enabled: !(online && i == rideTab),
+                tooltip: online && i == rideTab ? 'Go offline to book a ride' : null,
+                icon: Icon(d.icon),
+                selectedIcon: Icon(d.selectedIcon),
+                label: d.label,
+              ),
           ],
         ),
       );
@@ -48,15 +65,16 @@ class AppShell extends StatelessWidget {
         NavigationRail(
           extended: extended,
           selectedIndex: shell.currentIndex,
-          onDestinationSelected: _go,
+          onDestinationSelected: go,
           labelType: extended ? NavigationRailLabelType.none : NavigationRailLabelType.all,
           leading: Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: BrandMark(size: extended ? 26 : 14),
           ),
           destinations: [
-            for (final d in _destinations)
+            for (final (i, d) in _destinations.indexed)
               NavigationRailDestination(
+                disabled: online && i == rideTab,
                 icon: Icon(d.icon),
                 selectedIcon: Icon(d.selectedIcon),
                 label: Text(d.label),

@@ -12,11 +12,18 @@ import 'map_tiles.dart';
 /// them all when there are two or more, else on the one point (or
 /// [defaultCenter]). Pure.
 /// [bottom] is how much of the map a sheet over it covers.
-({LatLng center, double zoom}) openingView(List<LatLng> points, List<LatLng> route, Size size, {double bottom = 0}) {
+/// [pointZoom] is the zoom a lone point opens at.
+({LatLng center, double zoom}) openingView(
+  List<LatLng> points,
+  List<LatLng> route,
+  Size size, {
+  double bottom = 0,
+  double pointZoom = 15,
+}) {
   final all = [...points, ...route];
   final first = points.isNotEmpty ? points.first : (all.isNotEmpty ? all.first : defaultCenter);
   if (all.length < 2 || !size.width.isFinite || !size.height.isFinite || size.width <= 0 || size.height <= 0) {
-    return (center: first, zoom: points.length == 1 ? 15 : 14);
+    return (center: first, zoom: points.length == 1 ? pointZoom : 14);
   }
   final fitted = CameraFit.coordinates(
     coordinates: all,
@@ -82,6 +89,7 @@ class RideMap extends StatefulWidget {
     this.autoFit = true,
     this.onGesture,
     this.onReady,
+    this.pointZoom = 15,
   });
 
   final LatLng? pickup;
@@ -118,6 +126,9 @@ class RideMap extends StatefulWidget {
 
   /// The map is drawn and its controller can move it.
   final VoidCallback? onReady;
+
+  /// The zoom a map showing one point (the user alone) opens at.
+  final double pointZoom;
 
   @override
   State<RideMap> createState() => _RideMapState();
@@ -166,7 +177,7 @@ class _RideMapState extends State<RideMap> {
     if (pts.isEmpty) return;
     final fit = _cameraFit;
     if (fit == null) {
-      _controller.move(pts.first, 15);
+      _controller.move(pts.first, widget.pointZoom);
       return;
     }
     _controller.fitCamera(fit);
@@ -187,6 +198,7 @@ class _RideMapState extends State<RideMap> {
           widget.route,
           Size(constraints.maxWidth, constraints.maxHeight),
           bottom: MapBottomInset.of(context),
+          pointZoom: widget.pointZoom,
         );
         return FlutterMap(
           mapController: _controller,

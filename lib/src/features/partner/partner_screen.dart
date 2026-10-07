@@ -21,11 +21,14 @@ import '../../data/models.dart';
 import '../../data/partner_doc_check.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/fly_in_list.dart';
 import '../../widgets/map_sheet_layout.dart';
+import '../../widgets/ride_map.dart' show mapAttributionClearance;
 import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
 import 'driver_home_map.dart';
+import 'driver_online.dart';
 import 'driver_permit_screen.dart' show currentPlateProvider, driverPermitProvider, showPermitBlock;
 import 'driver_wallet_pills.dart';
 import 'fare_offer.dart';
@@ -63,6 +66,7 @@ final requestAlertClockProvider = Provider<DateTime Function()>((ref) => DateTim
 
 class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool _online = false;
+  late final DriverOnline _onlineState;
   LatLng? _me;
   String? _accepting;
   bool _autoAccept = false;
@@ -94,6 +98,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   @override
   void dispose() {
     _alertTick?.cancel();
+    // Leaving the Drive screen (signing out) takes the driver offline.
+    final online = _onlineState;
+    Future.microtask(() => online.set(false));
     super.dispose();
   }
 
@@ -159,6 +166,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   @override
   void initState() {
     super.initState();
+    _onlineState = ref.read(driverOnlineProvider.notifier);
     _resume();
     _locate();
   }
@@ -215,6 +223,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     // Requests already waiting are in the list; only new ones pop up.
     if (v) _alertSeen.addAll(ref.read(openRequestsProvider).value?.map((r) => r.id) ?? const <String>[]);
     setState(() => _online = v);
+    _onlineState.set(v);
     if (!v) _syncAlert(const []);
     if (v) unawaited(_locate());
   }
@@ -533,162 +542,201 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       }
     });
     return Scaffold(
-      appBar: AppBar(title: const Text('Drive'), actions: [
-        IconButton(
-          key: const ValueKey('partner-menu-button'),
-          tooltip: 'Menu',
-          icon: const Icon(Icons.menu),
-          onPressed: () => showPartnerMenu(context),
-        ),
-        if (partner.value != null && hasTeksiPartnerType(partner.value!.raw['partner_types']))
-          IconButton(
-            tooltip: 'Driver permit',
-            icon: const Icon(Icons.badge_outlined),
-            onPressed: () => context.push('/drive/permit'),
-          ),
-        if (partner.value != null && partnerCanDrive(partner.value!) && hasTeksiPartnerType(partner.value!.raw['partner_types']))
-          IconButton(
-            tooltip: 'Meter Digital',
-            icon: const Icon(Icons.speed),
-            onPressed: () => _openMeter(partner.value!),
-          ),
-        if (partner.value != null)
-          IconButton(
-            tooltip: 'My vehicles',
-            icon: const Icon(Icons.directions_car_outlined),
-            onPressed: () => context.push('/drive/vehicles'),
-          ),
-      ]),
-      body: AsyncView(
-        value: partner,
-        onRetry: () => ref.invalidate(partnerProvider),
-        data: (p) {
-          void openOnboarding() => context.push('/drive/onboarding');
-          if (p == null) {
-            return EmptyState(
-              icon: Icons.badge_outlined,
-              title: 'Become a GET.ride partner',
-              message: 'Earn by driving with GET.ride. Add your details and documents, and you can take jobs '
-                  'here once an admin approves your account.',
-              action: FilledButton(onPressed: openOnboarding, child: const Text('Get started')),
-            );
-          }
-          if (!partnerCanDrive(p)) {
-            if (partnerSetupIncomplete(p.raw)) {
-              return EmptyState(
-                icon: Icons.assignment_outlined,
-                title: 'Finish your partner application',
-                message: 'A few steps are still missing before an admin can review your account.',
-                action: FilledButton(onPressed: openOnboarding, child: const Text('Continue')),
-              );
-            }
-            return EmptyState(
-              icon: Icons.hourglass_empty,
-              title: 'Account not active yet',
-              message: 'Your partner status is "${p.status ?? 'unknown'}". '
-                  'You can go online once an admin approves your account.',
-              action: OutlinedButton(onPressed: openOnboarding, child: const Text('View application')),
-            );
-          }
-          final modes = partnerModeOptions(
-            parseStringList(p.raw['partner_types']),
-            ref.watch(partnerTypeEntriesProvider).value ?? const [],
-          );
-          final wide = MediaQuery.sizeOf(context).width >= 900;
-          final map = DriverHomeMap(
-            key: const ValueKey('driver-home-map'),
-            me: _me,
-            requests: _online ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const [],
-            onSelect: (r) => setState(() => _focusId = r.id),
-          );
-          final head = <Widget>[
-              if (modes.length > 1 || modes.any((m) => m.isTeksi))
-                Card(
-                  key: const ValueKey('partner-modes'),
-                  child: Column(children: [
-                    for (final m in modes)
-                      ListTile(
-                        key: ValueKey('partner-mode-${m.name}'),
-                        leading: m.iconUrl == null
-                            ? Icon(m.isTeksi ? Icons.local_taxi : Icons.directions_car_outlined)
-                            : SizedBox.square(
-                                dimension: 36,
-                                child: Image.network(m.iconUrl!,
-                                    errorBuilder: (_, _, _) => const Icon(Icons.directions_car_outlined)),
-                              ),
-                        title: Text(m.name),
-                        subtitle: m.description == null ? null : Text(m.description!),
-                        trailing: Icon(m.isTeksi ? Icons.speed : (_online ? Icons.check_circle : Icons.chevron_right)),
-                        onTap: () => m.isTeksi ? _openMeter(p) : (_online ? null : _toggle(true)),
+      // No top bar: the page's buttons float over it, top right.
+      body: Stack(children: [
+        Positioned.fill(
+          child: SafeArea(
+            bottom: false,
+            child: AsyncView(
+              value: partner,
+              onRetry: () => ref.invalidate(partnerProvider),
+              data: (p) {
+                void openOnboarding() => context.push('/drive/onboarding');
+                if (p == null) {
+                  return EmptyState(
+                    icon: Icons.badge_outlined,
+                    title: 'Become a GET.ride partner',
+                    message: 'Earn by driving with GET.ride. Add your details and documents, and you can take jobs '
+                        'here once an admin approves your account.',
+                    action: FilledButton(onPressed: openOnboarding, child: const Text('Get started')),
+                  );
+                }
+                if (!partnerCanDrive(p)) {
+                  if (partnerSetupIncomplete(p.raw)) {
+                    return EmptyState(
+                      icon: Icons.assignment_outlined,
+                      title: 'Finish your partner application',
+                      message: 'A few steps are still missing before an admin can review your account.',
+                      action: FilledButton(onPressed: openOnboarding, child: const Text('Continue')),
+                    );
+                  }
+                  return EmptyState(
+                    icon: Icons.hourglass_empty,
+                    title: 'Account not active yet',
+                    message: 'Your partner status is "${p.status ?? 'unknown'}". '
+                        'You can go online once an admin approves your account.',
+                    action: OutlinedButton(onPressed: openOnboarding, child: const Text('View application')),
+                  );
+                }
+                final modes = partnerModeOptions(
+                  parseStringList(p.raw['partner_types']),
+                  ref.watch(partnerTypeEntriesProvider).value ?? const [],
+                );
+                final wide = MediaQuery.sizeOf(context).width >= 900;
+                final map = DriverHomeMap(
+                  key: const ValueKey('driver-home-map'),
+                  me: _me,
+                  requests: _online ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const [],
+                  onSelect: (r) => setState(() => _focusId = r.id),
+                );
+                final head = <Widget>[
+                    // Online first, above the service types.
+                    Card(
+                      key: const ValueKey('partner-online'),
+                      child: SwitchListTile(
+                        value: _online,
+                        onChanged: _toggle,
+                        secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
+                        title: Text(_online ? 'You are online' : 'You are offline'),
+                        subtitle: Text(
+                          [p.name, p.vehicle, p.plate].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · '),
+                        ),
                       ),
-                  ]),
-                ),
-              Card(
-                child: SwitchListTile(
-                  value: _online,
-                  onChanged: _toggle,
-                  secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
-                  title: Text(_online ? 'You are online' : 'You are offline'),
-                  subtitle: Text([p.name, p.vehicle, p.plate].whereType<String>().join(' · ')),
-                ),
-              ),
-              if (_online)
-                Card(
-                  child: Column(children: [
-                    SwitchListTile(
-                      key: const ValueKey('queue-auto-accept'),
-                      value: _autoAccept,
-                      onChanged: _setAutoAccept,
-                      secondary: const Icon(Icons.flash_auto),
-                      title: const Text('Auto-accept'),
-                      subtitle: Text(_autoAccept
-                          ? 'Accepting new requests automatically, nearest first'
-                          : 'Manually review each request'),
                     ),
-                    SwitchListTile(
-                      key: const ValueKey('queue-allow-offer'),
-                      value: _allowOfferMe,
-                      onChanged: (v) => setState(() => _allowOfferMe = v),
-                      secondary: const Icon(Icons.gavel),
-                      title: const Text('Allow OfferMe requests'),
-                      subtitle: Text(_allowOfferMe
-                          ? 'You can offer your own price where the rider allows it'
-                          : 'Take requests at the rider\'s price only'),
+                    if (modes.length > 1 || modes.any((m) => m.isTeksi))
+                      Card(
+                        key: const ValueKey('partner-modes'),
+                        child: Column(children: [
+                          for (final m in modes)
+                            ListTile(
+                              key: ValueKey('partner-mode-${m.name}'),
+                              leading: m.iconUrl == null
+                                  ? Icon(m.isTeksi ? Icons.local_taxi : Icons.directions_car_outlined)
+                                  : SizedBox.square(
+                                      dimension: 36,
+                                      child: Image.network(m.iconUrl!,
+                                          errorBuilder: (_, _, _) => const Icon(Icons.directions_car_outlined)),
+                                    ),
+                              title: Text(m.name),
+                              subtitle: m.description == null ? null : Text(m.description!),
+                              trailing: Icon(m.isTeksi ? Icons.speed : (_online ? Icons.check_circle : Icons.chevron_right)),
+                              onTap: () => m.isTeksi ? _openMeter(p) : (_online ? null : _toggle(true)),
+                            ),
+                        ]),
+                      ),
+                    if (_online)
+                      Card(
+                        child: Column(children: [
+                          SwitchListTile(
+                            key: const ValueKey('queue-auto-accept'),
+                            value: _autoAccept,
+                            onChanged: _setAutoAccept,
+                            secondary: const Icon(Icons.flash_auto),
+                            title: const Text('Auto-accept'),
+                            subtitle: Text(_autoAccept
+                                ? 'Accepting new requests automatically, nearest first'
+                                : 'Manually review each request'),
+                          ),
+                          SwitchListTile(
+                            key: const ValueKey('queue-allow-offer'),
+                            value: _allowOfferMe,
+                            onChanged: (v) => setState(() => _allowOfferMe = v),
+                            secondary: const Icon(Icons.gavel),
+                            title: const Text('Allow OfferMe requests'),
+                            subtitle: Text(_allowOfferMe
+                                ? 'You can offer your own price where the rider allows it'
+                                : 'Take requests at the rider\'s price only'),
+                          ),
+                          _destinationTile(),
+                        ]),
+                      ),
+                    const DriverWalletPills(),
+                    const CurrentVehicleCard(),
+                    if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
+                  ];
+                const offline = EmptyState(icon: Icons.local_taxi_outlined, title: 'Go online to receive ride requests');
+                if (wide) {
+                  final panel = Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)]);
+                  return Row(children: [
+                    SizedBox(width: 520, child: panel),
+                    const VerticalDivider(width: 1),
+                    Expanded(
+                      child: Stack(children: [
+                        Positioned.fill(child: map),
+                        // A new request flies in over the map on a desktop screen.
+                        if (_online) Positioned(top: 16, right: 16, width: 400, child: _alertOverlay(p)),
+                      ]),
                     ),
-                    _destinationTile(),
+                  ]);
+                }
+                // A phone: the map fills the screen, the requests float on it and
+                // the sheet holds the driver's settings. While there are requests
+                // the sheet is held down so the list on the map has the room.
+                final open = _online ? ref.watch(openRequestsProvider).value ?? const <RideRequest>[] : const <RideRequest>[];
+                final queue = _queueOrder(open, wide: false);
+                final floating = [if (queue.alert != null) queue.alert!, ...queue.sorted];
+                return MapSheetLayout(
+                  locked: floating.isNotEmpty,
+                  map: Stack(children: [
+                    Positioned.fill(child: map),
+                    if (_online) _floatingRequests(p, queue.alert, floating),
                   ]),
-                ),
-              const DriverWalletPills(),
-              const CurrentVehicleCard(),
-              if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
-            ];
-          const offline = EmptyState(icon: Icons.local_taxi_outlined, title: 'Go online to receive ride requests');
-          if (wide) {
-            final panel = Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)]);
-            return Row(children: [
-              SizedBox(width: 520, child: panel),
-              const VerticalDivider(width: 1),
-              Expanded(
-                child: Stack(children: [
-                  Positioned.fill(child: map),
-                  // A new request flies in over the map on a desktop screen.
-                  if (_online) Positioned(top: 16, right: 16, width: 400, child: _alertOverlay(p)),
-                ]),
-              ),
-            ]);
-          }
-          // A phone: the map fills the screen and the queue is a sheet over it.
-          return MapSheetLayout(
-            map: map,
-            sheet: ResponsiveCenter(
-              maxWidth: 760,
-              child: Column(children: [...head, if (_online) _queue(p, inSheet: true) else offline]),
+                  sheet: ResponsiveCenter(
+                    maxWidth: 760,
+                    child: Column(children: [...head, if (!_online) offline]),
+                  ),
+                );
+              },
             ),
-          );
-        },
-      ),
+          ),
+        ),
+        Positioned(
+          top: 0,
+          right: 0,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 12, 0),
+              child: Row(mainAxisSize: MainAxisSize.min, spacing: 8, children: [
+                if (partner.value != null && hasTeksiPartnerType(partner.value!.raw['partner_types']))
+                  _floatingButton(
+                    tooltip: 'Driver permit',
+                    icon: Icons.badge_outlined,
+                    onPressed: () => context.push('/drive/permit'),
+                  ),
+                if (partner.value != null &&
+                    partnerCanDrive(partner.value!) &&
+                    hasTeksiPartnerType(partner.value!.raw['partner_types']))
+                  _floatingButton(
+                    tooltip: 'Meter Digital',
+                    icon: Icons.speed,
+                    onPressed: () => _openMeter(partner.value!),
+                  ),
+                if (partner.value != null)
+                  _floatingButton(
+                    tooltip: 'My vehicles',
+                    icon: Icons.directions_car_outlined,
+                    onPressed: () => context.push('/drive/vehicles'),
+                  ),
+                // The menu sits at the far right.
+                _floatingButton(
+                  key: const ValueKey('partner-menu-button'),
+                  tooltip: 'Menu',
+                  icon: Icons.menu,
+                  onPressed: () => showPartnerMenu(context),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ]),
     );
   }
+
+  /// One of the round buttons floating at the top of the page (in place of
+  /// a top bar), like the map's own.
+  Widget _floatingButton({Key? key, required String tooltip, required IconData icon, required VoidCallback onPressed}) =>
+      FloatingActionButton.small(key: key, heroTag: null, tooltip: tooltip, onPressed: onPressed, child: Icon(icon));
 
   /// The requests on this driver's queue (all open ones but those declined
   /// here), which are also the map's pins.
@@ -720,128 +768,190 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   }
 
   /// [wide]: the new request is over the map ([_alertOverlay]), not here.
-  /// [inSheet]: laid out in full inside the map sheet, which scrolls it.
-  Widget _queue(Partner partner, {bool wide = false, bool inSheet = false}) {
+  /// The spotlighted request (none when [wide]: it is over the map) and the
+  /// rest of the queue in the order the driver sees them.
+  ({RideRequest? alert, List<RideRequest> sorted}) _queueOrder(List<RideRequest> list, {required bool wide}) {
+    final alert = wide ? null : list.where((r) => r.id == _alertId).firstOrNull;
+    final queued = [for (final r in _pinned(list)) if (r.id != _alertId) r];
+    ref.watch(destinationModeProvider);
+    final destinationOn = _destinationOn;
+    final sorted = focusFirst(
+      destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+      _focusId,
+    );
+    return (alert: alert, sorted: sorted);
+  }
+
+  /// The requests floating on the phone's map, flying in as they arrive and
+  /// out as they go, scrolled up and down to pick one; a "waiting" pill
+  /// while there are none.
+  Widget _floatingRequests(Partner partner, RideRequest? alert, List<RideRequest> items) {
     final t = Theme.of(context);
+    // Inside the map, so the list keeps clear of the sheet and the map
+    // buttons; mounted even when empty, so the last card flies out too.
+    return Positioned.fill(
+      child: Builder(
+        builder: (context) => Stack(children: [
+          MapBottomInset.listen(
+            context,
+            (inset) => Positioned(
+              key: const ValueKey('floating-requests'),
+              // Below the page's floating buttons.
+              top: 56,
+              left: 12,
+              right: 12,
+              bottom: inset + mapAttributionClearance + 104,
+              child: FlyInList<RideRequest>(
+                padding: const EdgeInsets.only(top: 8, bottom: 8),
+                items: items,
+                idOf: (r) => r.id == alert?.id ? 'alert-${r.id}' : r.id,
+                itemBuilder: (_, r) => r.id == alert?.id ? _alertCard(r, partner) : _requestCard(r, partner),
+              ),
+            ),
+          ),
+          if (items.isEmpty)
+            Positioned(
+              top: 64,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Material(
+                  key: const ValueKey('waiting-for-requests'),
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(24),
+                  color: t.colorScheme.surface,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.radar, size: 18),
+                      SizedBox(width: 8),
+                      Text('Waiting for requests…', style: TextStyle(fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  /// The queue as a list (the wide layout's panel).
+  Widget _queue(Partner partner, {bool wide = false}) {
     return AsyncView(
       value: ref.watch(openRequestsProvider),
       onRetry: () => ref.invalidate(openRequestsProvider),
       data: (list) {
-        final alert = wide ? null : list.where((r) => r.id == _alertId).firstOrNull;
-        final queued = [for (final r in _pinned(list)) if (r.id != _alertId) r];
-        if (alert == null && queued.isEmpty) {
+        final (:alert, :sorted) = _queueOrder(list, wide: wide);
+        if (alert == null && sorted.isEmpty) {
           return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');
         }
-        ref.watch(destinationModeProvider);
-        final destinationOn = _destinationOn;
-        final sorted = focusFirst(
-          destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
-          _focusId,
-        );
         return ListView.builder(
-          shrinkWrap: inSheet,
-          physics: inSheet ? const NeverScrollableScrollPhysics() : null,
-          padding: inSheet ? EdgeInsets.zero : null,
           itemCount: sorted.length + (alert == null ? 0 : 1),
           itemBuilder: (_, index) {
             if (alert != null && index == 0) return _alertCard(alert, partner);
-            final i = alert == null ? index : index - 1;
-            final r = sorted[i];
-            final away = _distanceTo(r);
-            final focused = r.id == _focusId;
-            return Card(
-              key: ValueKey('queue-${r.id}'),
-              shape: focused
-                  ? RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: t.colorScheme.primary, width: 2),
-                    )
-                  : null,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Row(children: [
-                    Expanded(child: Text(r.service ?? 'Ride', style: t.textTheme.titleMedium)),
-                    Text(formatMoney(r.effectiveFare, r.currency),
-                        style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-                  ]),
-                  if (destinationOn && _towardDestination(r))
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(children: [
-                        Icon(Icons.flag, size: 16, color: t.colorScheme.primary),
-                        const SizedBox(width: 6),
-                        Text('Toward your destination',
-                            key: ValueKey('toward-${r.id}'),
-                            style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.primary)),
-                      ]),
-                    ),
-                  const SizedBox(height: 4),
-                  Text([
-                    if (away != null) '${formatDistance(away)} away',
-                    '${formatDistance(r.distanceKm)} trip',
-                    r.paymentMode,
-                    '${r.passengers} pax',
-                  ].join(' · '), style: t.textTheme.bodySmall),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    Icon(Icons.trip_origin, size: 16, color: Colors.green.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  ]),
-                  if (r.stops.isNotEmpty)
-                    Row(key: ValueKey('queue-stops-${r.id}'), children: [
-                      Icon(Icons.more_vert, size: 16, color: Colors.orange.shade800),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '${r.stops.length} stop${r.stops.length == 1 ? '' : 's'} on the way',
-                          style: t.textTheme.bodySmall,
-                        ),
-                      ),
-                    ]),
-                  Row(children: [
-                    Icon(Icons.location_on, size: 16, color: Colors.red.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  ]),
-                  if (r.note != null) Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text('“${r.note}”', style: t.textTheme.bodySmall),
-                  ),
-                  if (r.offeredFare != null && r.partnerId != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text('A driver has offered ${formatMoney(r.offeredFare, r.currency)}',
-                          style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
-                    ),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[
-                      Expanded(
-                        child: OutlinedButton(
-                          key: ValueKey('offer-${r.id}'),
-                          onPressed: _accepting != null ? null : () => _offer(r, partner),
-                          child: const Text('Offer price'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: _accepting != null ? null : () => _accept(r, partner),
-                        child: _accepting == r.id
-                            ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                            : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}'),
-                      ),
-                    ),
-                  ]),
-                ]),
-              ),
-            );
+            return _requestCard(sorted[alert == null ? index : index - 1], partner);
           },
         );
       },
+    );
+  }
+
+  /// One request on the queue: the trip, its fare, and accept / offer.
+  Widget _requestCard(RideRequest r, Partner partner) {
+    final t = Theme.of(context);
+    final destinationOn = _destinationOn;
+    final away = _distanceTo(r);
+    final focused = r.id == _focusId;
+    return Card(
+      key: ValueKey('queue-${r.id}'),
+      shape: focused
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: t.colorScheme.primary, width: 2),
+            )
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(child: Text(r.service ?? 'Ride', style: t.textTheme.titleMedium)),
+            Text(formatMoney(r.effectiveFare, r.currency),
+                style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+          ]),
+          if (destinationOn && _towardDestination(r))
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(children: [
+                Icon(Icons.flag, size: 16, color: t.colorScheme.primary),
+                const SizedBox(width: 6),
+                Text('Toward your destination',
+                    key: ValueKey('toward-${r.id}'),
+                    style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.primary)),
+              ]),
+            ),
+          const SizedBox(height: 4),
+          Text([
+            if (away != null) '${formatDistance(away)} away',
+            '${formatDistance(r.distanceKm)} trip',
+            r.paymentMode,
+            '${r.passengers} pax',
+          ].join(' · '), style: t.textTheme.bodySmall),
+          const SizedBox(height: 8),
+          Row(children: [
+            Icon(Icons.trip_origin, size: 16, color: Colors.green.shade700),
+            const SizedBox(width: 8),
+            Expanded(child: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ]),
+          if (r.stops.isNotEmpty)
+            Row(key: ValueKey('queue-stops-${r.id}'), children: [
+              Icon(Icons.more_vert, size: 16, color: Colors.orange.shade800),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${r.stops.length} stop${r.stops.length == 1 ? '' : 's'} on the way',
+                  style: t.textTheme.bodySmall,
+                ),
+              ),
+            ]),
+          Row(children: [
+            Icon(Icons.location_on, size: 16, color: Colors.red.shade700),
+            const SizedBox(width: 8),
+            Expanded(child: Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ]),
+          if (r.note != null) Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text('“${r.note}”', style: t.textTheme.bodySmall),
+          ),
+          if (r.offeredFare != null && r.partnerId != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('A driver has offered ${formatMoney(r.offeredFare, r.currency)}',
+                  style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
+            ),
+          const SizedBox(height: 8),
+          Row(children: [
+            if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[
+              Expanded(
+                child: OutlinedButton(
+                  key: ValueKey('offer-${r.id}'),
+                  onPressed: _accepting != null ? null : () => _offer(r, partner),
+                  child: const Text('Offer price'),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: FilledButton(
+                onPressed: _accepting != null ? null : () => _accept(r, partner),
+                child: _accepting == r.id
+                    ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}'),
+              ),
+            ),
+          ]),
+        ]),
+      ),
     );
   }
 
