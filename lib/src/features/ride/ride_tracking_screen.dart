@@ -592,6 +592,16 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 ],
               ),
             ),
+          if (cancelledByDriver(r))
+            Card(
+              key: const ValueKey('driver-cancelled'),
+              color: t.colorScheme.errorContainer,
+              child: ListTile(
+                leading: const Icon(Icons.cancel_outlined),
+                title: Text(driverCancelNotice(r)),
+                subtitle: const Text('You can book another ride from the map.'),
+              ),
+            ),
           if (partnerCancelAsk && r.status.isOngoing)
             Card(
               color: t.colorScheme.errorContainer,
