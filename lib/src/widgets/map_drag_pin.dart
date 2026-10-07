@@ -124,7 +124,7 @@ class _MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateM
     final pin = widget.pin;
     if (pin != null) {
       final p = camera.latLngToScreenOffset(pin);
-      if (p.dx >= 0 && p.dx <= visible.width && p.dy >= rideMapPinBox && p.dy <= visible.height) return p;
+      if (p.dx >= 0 && p.dx <= visible.width && p.dy >= pickupPinHeight && p.dy <= visible.height) return p;
     }
     return visible.center(Offset.zero);
   }
@@ -184,16 +184,11 @@ class _MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateM
                     ),
                     Positioned(
                       key: const ValueKey('drag-pin'),
-                      left: at.dx - 20,
-                      top: at.dy - rideMapPinBox - up * MapDragPin.lift,
-                      width: 40,
-                      height: rideMapPinBox,
-                      child: Icon(
-                        Icons.trip_origin,
-                        color: Colors.green.shade700,
-                        size: rideMapPinIcon,
-                        shadows: [Shadow(blurRadius: 4 + 6 * up, color: Colors.black38, offset: Offset(0, 4 * up))],
-                      ),
+                      left: at.dx - pickupPinHead / 2,
+                      top: at.dy - pickupPinHeight - up * MapDragPin.lift,
+                      width: pickupPinHead,
+                      height: pickupPinHeight,
+                      child: PickupPin(elevation: up.clamp(0.0, 1.0)),
                     ),
                   ],
                 );
