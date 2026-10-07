@@ -463,6 +463,27 @@ class RideRepository {
         .inFilter('status', partnerOngoingStatuses);
   }
 
+  /// The driver cancels outright, with a reason. Only before the passenger
+  /// is on board ([driverMayCancel]; migration 0106 refuses it after
+  /// pickup). Null when the ride had already moved on (picked up, or ended).
+  Future<RideRequest?> cancelAsDriver(String id, String reason) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final row = await _db
+        .from(_table)
+        .update({
+          'status': 'cancelled',
+          'cancelled_at': now,
+          'cancel_reason': reason,
+          'cancel_requested_by': 'partner',
+          'cancel_requested_at': now,
+        })
+        .eq('id', id)
+        .inFilter('status', const ['accepted', 'arrived'])
+        .select()
+        .maybeSingle();
+    return row == null ? null : RideRequest(row);
+  }
+
   Future<void> approveCancellation(String id) => updateStatus(id, RideStatus.cancelled);
 
   Future<void> declineCancellation(String id) =>

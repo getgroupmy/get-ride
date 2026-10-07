@@ -130,13 +130,18 @@ UpdateVerdict resolveUpdate(List<AppVersionRule> rules, {required String platfor
 /// The app's Android package (`android/app/build.gradle.kts`).
 const androidPackage = 'com.taxxee.teksi';
 
-/// The row's own link when it is a web/store link, else the Play listing
-/// for Android. iOS has no fallback: the App Store page is per-app number
-/// that cannot be derived from the bundle id, so the admin enters it.
+/// The app's App Store listing. Unlike the Play address it can't be derived
+/// from the bundle id (App Store pages are per-app numbers), so it is fixed
+/// here.
+const iosAppStoreUrl = 'https://apps.apple.com/my/app/teksi-bid-agree-ride/id6457262236';
+
+/// The row's own link when it is a web/store link, else the app's own
+/// listing: the Play page on Android, the App Store page on iOS.
 String? updateStoreUrl(String platform, String? configured) {
   final c = configured?.trim() ?? '';
   final scheme = Uri.tryParse(c)?.scheme.toLowerCase() ?? '';
   if (c.isNotEmpty && !c.contains(' ') && const {'https', 'http', 'market', 'itms-apps'}.contains(scheme)) return c;
   if (platform == 'android') return 'https://play.google.com/store/apps/details?id=$androidPackage';
+  if (platform == 'ios') return iosAppStoreUrl;
   return null;
 }
