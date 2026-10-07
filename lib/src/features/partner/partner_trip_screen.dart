@@ -221,6 +221,26 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     await _run(() => ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.onTrip));
   }
 
+  /// The driver cancels before pickup, with a reason; the passenger is told
+  /// (see [driverCancelNotice]). Once the passenger is on board there is no
+  /// cancel key: the trip is completed or ended early.
+  Future<void> _cancel(RideRequest r) async {
+    final reason = await showDialog<String>(context: context, builder: (_) => const _DriverCancelDialog());
+    if (reason == null || !mounted) return;
+    RideRequest? done;
+    var answered = false;
+    _approvedHere = true;
+    await _run(() async {
+      done = await ref.read(rideRepositoryProvider).cancelAsDriver(r.id, reason);
+      answered = true;
+    });
+    if (!mounted) return;
+    if (done != null) return context.go('/drive');
+    _approvedHere = false;
+    // A failed write has already been reported by _run.
+    if (answered) showInfo(context, "This ride can't be cancelled now: the passenger is on board or it has ended.");
+  }
+
   /// Records where the driver is at [checkpoint] (Expo
   /// `recordPartnerCheckpoint`) for the admin fraud checks. Fire-and-forget:
   /// the trip never waits on it.
@@ -477,12 +497,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             onPressed: _busy ? null : () => _complete(r),
             child: Text('Complete trip · collect ${formatMoney(r.effectiveFare, r.currency)}'),
           ),
-        if (r.status == RideStatus.accepted || r.status == RideStatus.arrived)
+        if (driverMayCancel(r.status))
           TextButton(
-            onPressed: _busy || r.cancelRequestedAt != null
-                ? null
-                : () => _run(() => repo.cancel(r, by: 'partner', reason: 'Cancelled by driver')),
-            child: Text(r.cancelRequestedBy == 'partner' ? 'Cancellation requested' : 'Ask passenger to cancel'),
+            key: const ValueKey('trip-cancel'),
+            onPressed: _busy ? null : () => _cancel(r),
+            child: const Text('Cancel ride'),
           ),
         if (r.status == RideStatus.completed) _CollectCard(ride: r),
         if (r.status == RideStatus.completed)
@@ -643,6 +662,80 @@ class _CollectCard extends StatelessWidget {
               style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
         ),
       ]),
+    );
+  }
+}
+
+/// Expo's driver "Why are you cancelling?" sheet: one reason, required;
+/// "Other" needs the driver's own words. Pops the value to store, or null to
+/// keep the ride.
+class _DriverCancelDialog extends StatefulWidget {
+  const _DriverCancelDialog();
+
+  @override
+  State<_DriverCancelDialog> createState() => _DriverCancelDialogState();
+}
+
+class _DriverCancelDialogState extends State<_DriverCancelDialog> {
+  String? _picked;
+  final _other = TextEditingController();
+
+  @override
+  void dispose() {
+    _other.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final value = cancelReasonValue(_picked, _other.text);
+    return AlertDialog(
+      key: const ValueKey('driver-cancel-dialog'),
+      title: const Text('Cancel this ride?'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("The passenger will be told you cancelled. You can't cancel once they're on board."),
+            const SizedBox(height: 8),
+            Text('Why are you cancelling?', style: Theme.of(context).textTheme.titleSmall),
+            RadioGroup<String>(
+              groupValue: _picked,
+              onChanged: (v) => setState(() => _picked = v),
+              child: Column(
+                children: [
+                  for (final reason in driverCancelReasons)
+                    RadioListTile<String>(
+                      key: ValueKey('driver-cancel-reason-${reason.id}'),
+                      value: reason.id,
+                      title: Text(reason.label),
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                ],
+              ),
+            ),
+            if (_picked == otherCancelReason)
+              TextField(
+                key: const ValueKey('driver-cancel-reason-text'),
+                controller: _other,
+                autofocus: true,
+                maxLength: 200,
+                decoration: const InputDecoration(labelText: 'Tell us more'),
+                onChanged: (_) => setState(() {}),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Keep ride')),
+        FilledButton(
+          key: const ValueKey('driver-cancel-confirm'),
+          onPressed: value == null ? null : () => Navigator.pop(context, value),
+          child: const Text('Cancel ride'),
+        ),
+      ],
     );
   }
 }

@@ -179,6 +179,8 @@ class MeterTrip {
     this.driver,
     this.pickup,
     this.dropoff,
+    this.destination,
+    this.estimate,
   });
 
   final String id;
@@ -209,6 +211,13 @@ class MeterTrip {
   final MeterWaypoint? pickup;
   final MeterWaypoint? dropoff;
 
+  /// A street hail's destination, as the driver set it before the hire.
+  final String? destination;
+
+  /// What the card quoted for the planned route ([hailEstimate]); the fare
+  /// is what was metered.
+  final double? estimate;
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'startedAt': startedAt,
@@ -235,6 +244,8 @@ class MeterTrip {
         'driver': driver,
         'pickup': pickup?.toJson(),
         'dropoff': dropoff?.toJson(),
+        'destination': destination,
+        'estimate': estimate,
       };
 
   /// A stored record, or null when it is not one. Missing fields take the
@@ -273,6 +284,8 @@ class MeterTrip {
       driver: s('driver'),
       pickup: MeterWaypoint.fromJson(raw['pickup']),
       dropoff: MeterWaypoint.fromJson(raw['dropoff']),
+      destination: s('destination'),
+      estimate: raw['estimate'] is num && (raw['estimate'] as num) > 0 ? d('estimate') : null,
     );
   }
 
@@ -302,6 +315,8 @@ class MeterTrip {
         driver: driver,
         pickup: pickup ?? this.pickup,
         dropoff: dropoff ?? this.dropoff,
+        destination: destination,
+        estimate: estimate,
       );
 }
 
@@ -324,6 +339,8 @@ MeterTrip buildMeterTrip(
   String? driver,
   MeterWaypoint? pickup,
   MeterWaypoint? dropoff,
+  String? destination,
+  double? estimate,
 }) {
   final card = cardSurcharge.isFinite ? math.max(0.0, cardSurcharge) : 0.0;
   return MeterTrip(
@@ -352,6 +369,8 @@ MeterTrip buildMeterTrip(
     driver: (driver ?? '').trim().isEmpty ? null : driver!.trim(),
     pickup: pickup,
     dropoff: dropoff,
+    destination: (destination ?? '').trim().isEmpty ? null : destination!.trim(),
+    estimate: estimate != null && estimate.isFinite && estimate > 0 ? estimate : null,
   );
 }
 
@@ -411,6 +430,7 @@ List<ReceiptLine> meterReceiptLines(MeterTrip t) {
     if (t.pickup?.odometerKm != null) line('Pickup odometer', formatWaypointOdometer(t.pickup!.odometerKm)),
     if (t.dropoff != null) line('Drop-off', t.dropoff!.label),
     if (t.dropoff?.odometerKm != null) line('Drop-off odometer', formatWaypointOdometer(t.dropoff!.odometerKm)),
+    if (t.destination != null) line('Destination', t.destination!),
     line('Distance', formatMeterDistance(t.distanceM)),
     line('Trip time', formatMeterClock(t.elapsedMs)),
     line('Waiting', formatMeterClock(t.waitingMs)),
@@ -421,6 +441,7 @@ List<ReceiptLine> meterReceiptLines(MeterTrip t) {
     if (t.period == MeterPeriod.night && t.nightMultiplier > 1)
       line('Night surcharge', '+${((t.nightMultiplier - 1) * 100).round()}%'),
     line('Flag fall', money(t.flagFare * (t.period == MeterPeriod.night ? t.nightMultiplier : 1))),
+    if (t.estimate != null) line('Quoted estimate', money(t.estimate!)),
     line('Metered fare', money(t.fare)),
     if (t.extra > 0) line('Tolls & charges', money(t.extra)),
     if (t.cardSurcharge > 0) line('Bags & passengers', money(t.cardSurcharge)),

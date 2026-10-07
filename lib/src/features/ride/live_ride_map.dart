@@ -62,7 +62,10 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
     _maybeReroute();
   }
 
-  LatLng? get _driver => widget.driverAt ?? _ll(widget.ride.partnerLiveLat, widget.ride.partnerLiveLng);
+  /// A bidder on an open request is not the rider's driver yet: no car.
+  LatLng? get _driver =>
+      widget.driverAt ??
+      (widget.ride.status == RideStatus.open ? null : _ll(widget.ride.partnerLiveLat, widget.ride.partnerLiveLng));
 
   LatLng? get _target => etaTarget(
     widget.ride.status,

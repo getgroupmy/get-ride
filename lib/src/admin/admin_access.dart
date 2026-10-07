@@ -89,6 +89,7 @@ final adminModules = <String, AdminModule>{
   'support': const AdminModule('support', 'Support', ['admin-support', 'admin-support-pool', 'admin-support-chat']),
   'push': const AdminModule('push', 'Push notifications', ['admin-settings-push-notification']),
   'commission': const AdminModule('commission', 'Commission rates', ['admin-settings-commission']),
+  'fare-tariffs': const AdminModule('fare-tariffs', 'Fare tariffs', ['admin-settings-fare-tariffs']),
   'settings': const AdminModule('settings', 'Settings', ['admin-settings']),
   'sub-admins': const AdminModule('sub-admins', 'Sub-admins', ['admin-settings-sub-admin']),
 };

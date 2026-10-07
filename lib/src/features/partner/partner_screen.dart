@@ -661,7 +661,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               const CurrentVehicleCard(),
               if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
               if (!wide) SizedBox(height: 200, child: ClipRRect(borderRadius: BorderRadius.circular(12), child: map)),
-              Expanded(child: _online ? _queue(p) : const EmptyState(
+              Expanded(child: _online ? _queue(p, wide: wide) : const EmptyState(
                 icon: Icons.local_taxi_outlined,
                 title: 'Go online to receive ride requests',
               )),
@@ -670,7 +670,13 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             return Row(children: [
               SizedBox(width: 520, child: panel),
               const VerticalDivider(width: 1),
-              Expanded(child: map),
+              Expanded(
+                child: Stack(children: [
+                  Positioned.fill(child: map),
+                  // A new request flies in over the map on a desktop screen.
+                  if (_online) Positioned(top: 16, right: 16, width: 400, child: _alertOverlay(p)),
+                ]),
+              ),
             ]);
           }
           return ResponsiveCenter(maxWidth: 760, child: panel);
@@ -683,13 +689,39 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// here), which are also the map's pins.
   List<RideRequest> _pinned(List<RideRequest> open) => [for (final r in open) if (!_hidden.contains(r.id)) r];
 
-  Widget _queue(Partner partner) {
+  /// The new request over the map (desktop): it flies in from the right and
+  /// back out when it is accepted, declined, taken or times out.
+  Widget _alertOverlay(Partner partner) {
+    final list = ref.watch(openRequestsProvider).value ?? const <RideRequest>[];
+    final alert = list.where((r) => r.id == _alertId).firstOrNull;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 350),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) => SlideTransition(
+        position: Tween(begin: const Offset(1.25, 0), end: Offset.zero).animate(animation),
+        child: FadeTransition(opacity: animation, child: child),
+      ),
+      child: alert == null
+          ? const SizedBox.shrink(key: ValueKey('no-alert'))
+          : Material(
+              key: ValueKey('alert-overlay-${alert.id}'),
+              elevation: 8,
+              borderRadius: BorderRadius.circular(16),
+              clipBehavior: Clip.antiAlias,
+              child: _alertCard(alert, partner),
+            ),
+    );
+  }
+
+  /// [wide]: the new request is over the map ([_alertOverlay]), not here.
+  Widget _queue(Partner partner, {bool wide = false}) {
     final t = Theme.of(context);
     return AsyncView(
       value: ref.watch(openRequestsProvider),
       onRetry: () => ref.invalidate(openRequestsProvider),
       data: (list) {
-        final alert = list.where((r) => r.id == _alertId).firstOrNull;
+        final alert = wide ? null : list.where((r) => r.id == _alertId).firstOrNull;
         final queued = [for (final r in _pinned(list)) if (r.id != _alertId) r];
         if (alert == null && queued.isEmpty) {
           return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');

@@ -77,23 +77,9 @@ class RideTrackingScreen extends ConsumerWidget {
         value: ride,
         onRetry: () => ref.invalidate(rideStreamProvider(requestId)),
         data: (r) {
-          final map = LiveRideMap(ride: r);
-          final panel = _RidePanel(ride: r);
-          if (MediaQuery.sizeOf(context).width >= 900) {
-            return Row(
-              children: [
-                SizedBox(width: 420, child: SingleChildScrollView(child: panel)),
-                const VerticalDivider(width: 1),
-                Expanded(child: map),
-              ],
-            );
-          }
-          return Column(
-            children: [
-              Expanded(flex: 5, child: map),
-              Expanded(flex: 6, child: SingleChildScrollView(child: panel)),
-            ],
-          );
+          // The panel lays the screen out: on a wide (desktop) screen a
+          // driver's offer flies in over the map rather than into the list.
+          return _RidePanel(ride: r, map: LiveRideMap(ride: r), wide: MediaQuery.sizeOf(context).width >= 900);
         },
       ),
     );
@@ -101,8 +87,12 @@ class RideTrackingScreen extends ConsumerWidget {
 }
 
 class _RidePanel extends ConsumerStatefulWidget {
-  const _RidePanel({required this.ride});
+  const _RidePanel({required this.ride, required this.map, this.wide = false});
   final RideRequest ride;
+  final Widget map;
+
+  /// Desktop layout: the panel beside the map, offers over the map.
+  final bool wide;
 
   @override
   ConsumerState<_RidePanel> createState() => _RidePanelState();
@@ -378,7 +368,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       contacts = const [];
     }
     if (!mounted) return;
-    await sendSos(context, contacts, driver: r.partnerName, plate: r.partnerPlate);
+    await sendSos(context, contacts,
+        driver: r.hasDriver ? r.partnerName : null, plate: r.hasDriver ? r.partnerPlate : null);
   }
 
   /// A demo offer taken (Admin → Demo → mock driver offers): the real
@@ -408,6 +399,108 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     await _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: reason, by: 'rider'));
   }
 
+  /// A driver's offer: who, how much, its 45-second window and the keys.
+  Widget _offerCard(RideOffer offer) {
+    final r = widget.ride;
+    final t = Theme.of(context);
+    return Card(
+      key: const ValueKey('ride-offer'),
+      color: t.colorScheme.primaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  child: offer.photo == null
+                      ? const Icon(Icons.person)
+                      : ClipOval(
+                          child: Image.network(
+                            offer.photo!,
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const Icon(Icons.person),
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${offer.name ?? 'A driver'} offers ${formatMoney(offer.amount, r.currency)}',
+                    style: t.textTheme.titleMedium,
+                  ),
+                ),
+              ],
+            ),
+            Text(
+              [
+                offer.vehicle,
+                offer.plate,
+                if (offer.rating != null) '★ ${offer.rating!.toStringAsFixed(1)}',
+              ].whereType<String>().join(' · '),
+              style: t.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            // The offer's 45 s, as the driver's own app counts it.
+            LinearProgressIndicator(
+              key: const ValueKey('offer-countdown'),
+              value: _offerSeen == null
+                  ? null
+                  : offerProgress(_now.difference(_offerSeen!), counterOfferWindow),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _busy ? null : () => _declineOffer(offer),
+                    child: const Text('Decline'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton(
+                    key: const ValueKey('accept-offer'),
+                    onPressed: _busy ? null : () => _acceptOffer(offer),
+                    child: Text('Accept ${formatMoney(offer.amount, r.currency)}'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The offer flies in over the map from the right, and back out when it
+  /// is answered, replaced or lapses.
+  Widget _offerOverlay() {
+    final offer = _visibleOffer;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 350),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) => SlideTransition(
+        position: Tween(begin: const Offset(1.25, 0), end: Offset.zero).animate(animation),
+        child: FadeTransition(opacity: animation, child: child),
+      ),
+      child: offer == null
+          ? const SizedBox.shrink(key: ValueKey('no-offer'))
+          : Material(
+              key: ValueKey('offer-overlay-${offer.partnerId}-${offer.amount}'),
+              elevation: 8,
+              borderRadius: BorderRadius.circular(16),
+              clipBehavior: Clip.antiAlias,
+              child: _offerCard(offer),
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = widget.ride;
@@ -416,7 +509,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final partnerCancelAsk = r.cancelRequestedAt != null && r.cancelRequestedBy == 'partner';
     final riderCancelAsk = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider';
 
-    return Padding(
+    final content = Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -468,79 +561,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (r.status == RideStatus.open && ref.watch(demoSettingsProvider).riderOffers)
             DemoOffersFeed(fare: r.fare ?? 0, currency: r.currency, onAccept: _acceptDemo),
           const SizedBox(height: 16),
-          if (_visibleOffer case final offer?)
-            Card(
-              key: const ValueKey('ride-offer'),
-              color: t.colorScheme.primaryContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 20,
-                          child: offer.photo == null
-                              ? const Icon(Icons.person)
-                              : ClipOval(
-                                  child: Image.network(
-                                    offer.photo!,
-                                    width: 40,
-                                    height: 40,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => const Icon(Icons.person),
-                                  ),
-                                ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            '${offer.name ?? 'A driver'} offers ${formatMoney(offer.amount, r.currency)}',
-                            style: t.textTheme.titleMedium,
-                          ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      [
-                        offer.vehicle,
-                        offer.plate,
-                        if (offer.rating != null) '★ ${offer.rating!.toStringAsFixed(1)}',
-                      ].whereType<String>().join(' · '),
-                      style: t.textTheme.bodySmall,
-                    ),
-                    const SizedBox(height: 8),
-                    // The offer's 45 s, as the driver's own app counts it.
-                    LinearProgressIndicator(
-                      key: const ValueKey('offer-countdown'),
-                      value: _offerSeen == null
-                          ? null
-                          : offerProgress(_now.difference(_offerSeen!), counterOfferWindow),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _busy ? null : () => _declineOffer(offer),
-                            child: const Text('Decline'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: FilledButton(
-                            key: const ValueKey('accept-offer'),
-                            onPressed: _busy ? null : () => _acceptOffer(offer),
-                            child: Text('Accept ${formatMoney(offer.amount, r.currency)}'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          if (!widget.wide && _visibleOffer != null) _offerCard(_visibleOffer!),
           if (r.status == RideStatus.open)
             Card(
               child: Padding(
@@ -574,7 +595,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 ),
               ),
             ),
-          if (r.partnerId != null && r.status.isOngoing)
+          if (r.hasDriver)
             Card(
               child: Column(
                 children: [
@@ -615,6 +636,16 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                       ],
                     ),
                 ],
+              ),
+            ),
+          if (cancelledByDriver(r))
+            Card(
+              key: const ValueKey('driver-cancelled'),
+              color: t.colorScheme.errorContainer,
+              child: ListTile(
+                leading: const Icon(Icons.cancel_outlined),
+                title: Text(driverCancelNotice(r)),
+                subtitle: const Text('You can book another ride from the map.'),
               ),
             ),
           if (partnerCancelAsk && r.status.isOngoing)
@@ -765,6 +796,26 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (r.status.isFinished) FilledButton(onPressed: () => context.go('/'), child: const Text('Done')),
         ],
       ),
+    );
+    if (widget.wide) {
+      return Row(
+        children: [
+          SizedBox(width: 420, child: SingleChildScrollView(child: content)),
+          const VerticalDivider(width: 1),
+          Expanded(
+            child: Stack(children: [
+              Positioned.fill(child: widget.map),
+              Positioned(top: 16, right: 16, width: 380, child: _offerOverlay()),
+            ]),
+          ),
+        ],
+      );
+    }
+    return Column(
+      children: [
+        Expanded(flex: 5, child: widget.map),
+        Expanded(flex: 6, child: SingleChildScrollView(child: content)),
+      ],
     );
   }
 }

@@ -54,6 +54,7 @@ class RideRepository {
     List<Place> stops = const [],
     Map<String, Object> metadata = const {},
     BookedFor? bookedFor,
+    String currency = AppConfig.currency,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -78,7 +79,7 @@ class RideRepository {
       'duration_min': durationMin,
       'fare': fare,
       'ride_fare': fare,
-      'currency': AppConfig.currency,
+      'currency': currency,
       'passengers': passengers,
       'luggage': 0,
       'note': note,
@@ -495,6 +496,27 @@ class RideRepository {
     if (!isShareToken(token)) return null;
     final v = await _db.rpc('ride_share_view', params: {'p_token': token});
     return v is Map ? SharedRide(Map<String, dynamic>.from(v)) : null;
+  }
+
+  /// The driver cancels outright, with a reason. Only before the passenger
+  /// is on board ([driverMayCancel]; migration 0106 refuses it after
+  /// pickup). Null when the ride had already moved on (picked up, or ended).
+  Future<RideRequest?> cancelAsDriver(String id, String reason) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final row = await _db
+        .from(_table)
+        .update({
+          'status': 'cancelled',
+          'cancelled_at': now,
+          'cancel_reason': reason,
+          'cancel_requested_by': 'partner',
+          'cancel_requested_at': now,
+        })
+        .eq('id', id)
+        .inFilter('status', const ['accepted', 'arrived'])
+        .select()
+        .maybeSingle();
+    return row == null ? null : RideRequest(row);
   }
 
   Future<void> approveCancellation(String id) => updateStatus(id, RideStatus.cancelled);

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/meter_logic.dart';
 import 'package:get_ride/src/core/obd_adapters.dart';
 import 'package:get_ride/src/core/printers.dart';
+import 'package:get_ride/src/core/street_hail.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/obd/obd_session.dart';
@@ -179,6 +180,55 @@ void main() {
     await tester.tap(find.text('Trip log'));
     await tester.pumpAndSettle();
     expect(find.text('1 hire · 1.60 km'), findsOneWidget);
+  });
+
+  testWidgets('a street hail goes to its destination: quoted, metered, and both on the receipt', (tester) async {
+    final orientation = _FakeOrientation();
+    final router = GoRouter(initialLocation: '/meter', routes: [
+      GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
+      GoRoute(
+        path: '/meter/destination',
+        builder: (context, _) => Scaffold(
+          body: TextButton(
+            onPressed: () => context.pop(const HailDestination(
+                name: 'KL Sentral', latitude: 3.1340, longitude: 101.6860, routeKm: 8.2, routeMin: 18)),
+            child: const Text('PICK KL SENTRAL'),
+          ),
+        ),
+      ),
+    ]);
+    addTearDown(router.dispose);
+    final loc = await _pump(tester,
+        size: const Size(1600, 900), orientation: orientation, app: MaterialApp.router(routerConfig: router));
+    expect(find.text('NO DESTINATION'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('meter-destination')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('PICK KL SENTRAL'));
+    await tester.pumpAndSettle();
+    expect(orientation.calls, ['lock', 'release', 'lock'], reason: 'the map gets the app rotation');
+    expect(find.text('KL Sentral · 8.2 km · ~18 min · est. RM 16.60'), findsOneWidget);
+
+    loc.controller.add(_fixAt(0));
+    await tester.pump();
+    await tester.tap(find.text('START'));
+    await tester.pump();
+    for (var i = 1; i <= 11; i++) {
+      await _driveSecond(tester, loc, i * 10.0);
+    }
+    await tester.tap(find.text('END'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '1').first);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'None'));
+    await tester.tap(find.widgetWithText(ChoiceChip, 'No airport'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'CONFIRM & RECORD'));
+    await tester.pumpAndSettle();
+    expect(find.text('KL Sentral'), findsOneWidget);
+    expect(find.text('RM 16.60'), findsOneWidget, reason: 'the quote');
+    expect(find.text('RM 4.00'), findsWidgets, reason: 'what was metered: the flag fall');
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('NO DESTINATION'), findsOneWidget, reason: 'the next hire starts without one');
   });
 
   testWidgets('RESUME HIRE puts the passenger back without billing the form', (tester) async {
