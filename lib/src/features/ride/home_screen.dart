@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
 import '../../core/app_display.dart';
+import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
 import '../../core/fare.dart';
 import '../../core/fare_tariff.dart';
@@ -41,6 +42,7 @@ import 'home_parts.dart';
 import 'place_search.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../meter/meter_auto_launch.dart';
+import '../profile/emergency_contacts_screen.dart' show contactPickerProvider;
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins, rideRewardCoins;
 
 enum _PinTarget { none, pickup, drop }
@@ -99,6 +101,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _routing = false;
   RideRequest? _ongoing;
 
+  /// Rides on the go that the rider booked for other people; any number,
+  /// and none of them stands in the way of a booking (migration 0107).
+  List<RideRequest> _forOthers = const [];
+
+  /// "Who's riding?": the rider, or someone else (name and phone).
+  bool _forOther = false;
+  final _otherName = TextEditingController();
+  final _otherPhone = TextEditingController();
   /// Where the pickup is, for the tariff card that prices it (0109); null
   /// until the geocoder answers, when the master card (if any) applies.
   AreaInfo? _pickupArea;
@@ -152,14 +162,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _carsTimer?.cancel();
     _note.dispose();
+    _otherName.dispose();
+    _otherPhone.dispose();
     _map.dispose();
     super.dispose();
   }
 
   Future<void> _checkOngoing() async {
     try {
-      final r = await ref.read(rideRepositoryProvider).ongoingForRider();
-      if (mounted) setState(() => _ongoing = r);
+      final all = await ref.read(rideRepositoryProvider).ridesOnTheGo();
+      if (mounted) {
+        setState(() {
+          _ongoing = ownRide(all);
+          _forOthers = ridesForOthers(all);
+        });
+      }
     } catch (_) {}
   }
 
@@ -323,6 +340,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _book() async {
     final a = _pickup, b = _drop, r = _basis;
     if (a == null || b == null || r == null) return;
+    final forWhom = _forOther ? bookedFor(_otherName.text, _otherPhone.text) : null;
+    if (_forOther && forWhom == null) {
+      showInfo(context, bookForProblem(_otherName.text, _otherPhone.text) ?? "Enter the passenger's details.");
+      return;
+    }
     if (await ref.read(deviceBlockedProvider.future)) {
       if (mounted) showInfo(context, '$serviceNotAvailable. This device is not permitted to place a request.');
       return;
@@ -373,6 +395,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             offerMe: offerMe,
             stops: List.of(_stops),
             metadata: metadata,
+            bookedFor: forWhom,
             currency: _currency,
           );
       final coins = _coins;
@@ -382,6 +405,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         } catch (_) {}
       }
       if (mounted) context.push('/ride/${req.id}').then((_) => _checkOngoing());
+    } on DuplicateRideRequest catch (e) {
+      // Nothing was sent: take the rider to the request they already have.
+      if (!mounted) return;
+      showInfo(context, e.toString());
+      await _checkOngoing();
+      final open = e.forOthers ? null : _ongoing;
+      if (mounted && open != null) context.push('/ride/${open.id}').then((_) => _checkOngoing());
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
@@ -568,6 +598,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final panel = _BookingPanel(
       currency: _currency,
       ongoing: _ongoing,
+      forOthers: _forOthers,
+      onOpenRide: (r) => context.push('/ride/${r.id}').then((_) => _checkOngoing()),
+      whoRiding: _WhoRiding(
+        forOther: _forOther,
+        name: _otherName,
+        phone: _otherPhone,
+        onChanged: (v) => setState(() => _forOther = v),
+        onEdited: () => setState(() {}),
+      ),
+      forOther: _forOther,
+      forOtherReady: bookedFor(_otherName.text, _otherPhone.text) != null,
+      otherName: _otherName.text.trim(),
       pickup: _pickup,
       drop: _drop,
       route: _route,
@@ -695,8 +737,24 @@ class _BookingPanel extends StatelessWidget {
     required this.onOpenOngoing,
     this.idle,
     this.earnRate = 0,
+    this.forOthers = const [],
+    this.onOpenRide,
+    this.whoRiding,
+    this.forOther = false,
+    this.forOtherReady = false,
+    this.otherName = '',
     this.currency = AppConfig.currency,
   });
+
+  /// Rides on the go booked for other people, and how to open one.
+  final List<RideRequest> forOthers;
+  final ValueChanged<RideRequest>? onOpenRide;
+
+  /// The "Who's riding?" choice, and what it says.
+  final Widget? whoRiding;
+  final bool forOther;
+  final bool forOtherReady;
+  final String otherName;
 
   /// What the fares are quoted in: the pickup's tariff card's currency.
   final String currency;
@@ -754,6 +812,19 @@ class _BookingPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
+        ],
+        for (final r in forOthers) ...[
+          Card(
+            key: ValueKey('for-other-${r.id}'),
+            child: ListTile(
+              leading: const Icon(Icons.person_pin_circle_outlined),
+              title: Text('For ${r.passengerName} · ${r.status.label}'),
+              subtitle: Text('${r.pickupLabel} → ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: onOpenRide == null ? null : () => onOpenRide!(r),
+            ),
+          ),
+          const SizedBox(height: 8),
         ],
         ?idle,
         if (idle == null) Text('Where are you going?', style: t.textTheme.titleLarge),
@@ -874,6 +945,8 @@ class _BookingPanel extends StatelessWidget {
               onChanged: onUseCoins,
             ),
           const SizedBox(height: 12),
+          ?whoRiding,
+          const SizedBox(height: 12),
           TextField(
             controller: note,
             decoration: const InputDecoration(labelText: 'Note to driver (optional)'),
@@ -891,12 +964,18 @@ class _BookingPanel extends StatelessWidget {
           ],
           const SizedBox(height: 16),
           FilledButton(
-            onPressed: booking || ongoing != null ? null : onBook,
+            key: const ValueKey('book'),
+            // One ride of the rider's own at a time; rides for others are
+            // not held back by it.
+            onPressed: booking || (forOther ? !forOtherReady : ongoing != null) ? null : onBook,
             child: booking
                 ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(ongoing != null
+                : Text(!forOther && ongoing != null
                     ? 'You already have a ride in progress'
-                    : 'Book ${service.name} · ${formatMoney(fareFor(service), currency)}'),
+                    : forOther
+                        ? 'Book for ${otherName.isEmpty ? 'someone else' : otherName} · '
+                            '${formatMoney(fareFor(service), currency)}'
+                        : 'Book ${service.name} · ${formatMoney(fareFor(service), currency)}'),
           ),
         ],
       ]),
@@ -946,6 +1025,79 @@ class RouteBasisLine extends StatelessWidget {
             ]),
           ),
         ),
+      ],
+    ]);
+  }
+}
+
+/// "Who's riding?": the rider, or someone else, whose name and phone go on
+/// the request so the driver meets and calls the right person.
+class _WhoRiding extends ConsumerWidget {
+  const _WhoRiding({
+    required this.forOther,
+    required this.name,
+    required this.phone,
+    required this.onChanged,
+    required this.onEdited,
+  });
+
+  final bool forOther;
+  final TextEditingController name, phone;
+  final ValueChanged<bool> onChanged;
+  final VoidCallback onEdited;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pick = ref.watch(contactPickerProvider);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SegmentedButton<bool>(
+        key: const ValueKey('who-riding'),
+        segments: const [
+          ButtonSegment(value: false, icon: Icon(Icons.person_outline), label: Text('Me')),
+          ButtonSegment(value: true, icon: Icon(Icons.people_outline), label: Text('Someone else')),
+        ],
+        selected: {forOther},
+        onSelectionChanged: (v) => onChanged(v.first),
+      ),
+      if (forOther) ...[
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              key: const ValueKey('book-for-name'),
+              controller: name,
+              maxLength: 80,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: "Passenger's name", counterText: ''),
+              onChanged: (_) => onEdited(),
+            ),
+          ),
+          if (pick != null)
+            IconButton(
+              key: const ValueKey('book-for-contact'),
+              tooltip: 'Contacts',
+              icon: const Icon(Icons.contacts_outlined),
+              onPressed: () async {
+                try {
+                  final c = await pick();
+                  if (c == null) return;
+                  if (c.name != null) name.text = c.name!;
+                  if (c.phone != null) phone.text = c.phone!;
+                  onEdited();
+                } catch (_) {}
+              },
+            ),
+        ]),
+        TextField(
+          key: const ValueKey('book-for-phone'),
+          controller: phone,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(labelText: "Passenger's phone"),
+          onChanged: (_) => onEdited(),
+        ),
+        const SizedBox(height: 4),
+        Text('The driver will meet and call them. You can follow the ride here.',
+            style: Theme.of(context).textTheme.bodySmall),
       ],
     ]);
   }

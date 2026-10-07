@@ -358,7 +358,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       contacts = const [];
     }
     if (!mounted) return;
-    await sendSos(context, contacts, driver: r.partnerName, plate: r.partnerPlate);
+    await sendSos(context, contacts,
+        driver: r.hasDriver ? r.partnerName : null, plate: r.hasDriver ? r.partnerPlate : null);
   }
 
   /// A demo offer taken (Admin → Demo → mock driver offers): the real
@@ -513,6 +514,21 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               Expanded(child: Text(r.status.label, style: t.textTheme.headlineSmall)),
             ],
           ),
+          if (r.isForOthers)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(children: [
+                const Icon(Icons.person_pin_circle_outlined, size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Booked for ${r.passengerName} · ${r.bookedForPhone}',
+                    key: const ValueKey('booked-for'),
+                    style: t.textTheme.bodyMedium,
+                  ),
+                ),
+              ]),
+            ),
           if (r.status == RideStatus.open) ...[
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -569,7 +585,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 ),
               ),
             ),
-          if (r.partnerId != null && r.status.isOngoing)
+          if (r.hasDriver)
             Card(
               child: Column(
                 children: [

@@ -250,6 +250,20 @@ void main() {
       expect(find.text('requests'), findsOneWidget);
     });
 
+    testWidgets('a ride booked for someone else shows and calls that passenger', (tester) async {
+      await pump(tester);
+      rows.add(ride('accepted', extra: {
+        'rider_name': 'Ali',
+        'rider_phone': '+60111111111',
+        'booked_for_name': 'Mak',
+        'booked_for_phone': '+60123456789',
+      }));
+      await tester.pump();
+      expect(find.text('Mak'), findsOneWidget);
+      expect(find.textContaining('Booked by Ali'), findsOneWidget);
+      expect(find.byTooltip('Call Mak'), findsOneWidget);
+    });
+
     testWidgets('before pickup the driver cancels with a reason and goes back to requests', (tester) async {
       await pump(tester);
       rows.add(ride('arrived'));
