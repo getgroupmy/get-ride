@@ -193,6 +193,41 @@ void main() {
       expect(rides.calls, ['decline $_other', 'raise 25.0']);
     });
 
+    testWidgets('on a desktop screen the offer flies in over the map, and out once answered', (tester) async {
+      tester.view.physicalSize = const Size(1600, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final rows = StreamController<RideRequest>();
+      addTearDown(rows.close);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            rideRepositoryProvider.overrideWithValue(_FakeRides()),
+            rideStreamProvider.overrideWith((ref, id) => rows.stream),
+          ],
+          child: const MaterialApp(home: RideTrackingScreen(requestId: 'r1')),
+        ),
+      );
+      rows.add(ride(offered: 25, partner: _other, partnerName: 'Ali'));
+      await tester.pump();
+      await tester.pump();
+      final overMap = find.descendant(
+        of: find.byType(AnimatedSwitcher),
+        matching: find.byKey(const ValueKey('ride-offer')),
+      );
+      expect(overMap, findsOneWidget);
+      expect(find.byKey(const ValueKey('ride-offer')), findsOneWidget, reason: 'not in the list as well');
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.getTopLeft(overMap).dx, greaterThan(420), reason: 'over the map, right of the panel');
+
+      rows.add(ride());
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Ali offers RM25.00'), findsOneWidget, reason: 'flying out');
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Ali offers RM25.00'), findsNothing);
+    });
+
     testWidgets('no offer card or raise once accepted', (tester) async {
       await pump(tester, ride(status: 'accepted', partner: _other, partnerName: 'Ali'));
       expect(find.byKey(const ValueKey('ride-offer')), findsNothing);
