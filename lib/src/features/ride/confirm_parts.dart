@@ -9,6 +9,7 @@ import '../../core/fare.dart';
 import '../../core/fare_offer.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/shake.dart';
 import 'fare_offer_controls.dart';
 import 'home_parts.dart' show uriImage;
 
@@ -405,36 +406,39 @@ class ConfirmServiceCard extends StatelessWidget {
         ),
       );
     }
-    return Container(
-      key: ValueKey('service-${service.name}'),
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(24)),
-      child: Column(
-        children: [
-          Material(
-            color: t.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(22),
-            child: InkWell(
+    // Shaken by the fare's −/+ when a step would leave the range.
+    return Shake(
+      child: Container(
+        key: ValueKey('service-${service.name}'),
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(24)),
+        child: Column(
+          children: [
+            Material(
+              color: t.colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(22),
-              onTap: onEdit,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-                child: _row(
-                  context,
-                  trailing: onEdit == null
-                      ? Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 16, fontWeight: FontWeight.w600))
-                      : IconButton(
-                          key: const ValueKey('fare-edit'),
-                          tooltip: 'Edit fare',
-                          icon: Icon(Icons.edit_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
-                          onPressed: onEdit,
-                        ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(22),
+                onTap: onEdit,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+                  child: _row(
+                    context,
+                    trailing: onEdit == null
+                        ? Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 16, fontWeight: FontWeight.w600))
+                        : IconButton(
+                            key: const ValueKey('fare-edit'),
+                            tooltip: 'Edit fare',
+                            icon: Icon(Icons.edit_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
+                            onPressed: onEdit,
+                          ),
+                  ),
                 ),
               ),
             ),
-          ),
-          ?fare,
-        ],
+            ?fare,
+          ],
+        ),
       ),
     );
   }
@@ -492,6 +496,8 @@ class ConfirmFareSection extends StatelessWidget {
           money: money,
           onAdjust: onAdjust,
           step: step,
+          // Past the range the chosen card shakes, as Expo's does; no note.
+          onLimit: Shake.maybeOf(context)?.shake,
         ),
         child: SizedBox.square(dimension: 56, child: Icon(icon, size: 24)),
       ),

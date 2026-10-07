@@ -3,8 +3,9 @@ import 'package:flutter/services.dart';
 
 import '../../core/fare_offer.dart';
 
-/// One −/+ press on the rider's offer: [onAdjust] with the new adjustment,
-/// or a note when it would leave the allowed range.
+/// One −/+ press on the rider's offer: [onAdjust] with the new adjustment.
+/// Past the allowed range it calls [onLimit] (the confirm sheet shakes the
+/// chosen card, as Expo does), or shows a note when there is none.
 void stepFareOffer(
   BuildContext context, {
   required double recommended,
@@ -12,8 +13,10 @@ void stepFareOffer(
   required String Function(double) money,
   required ValueChanged<double> onAdjust,
   required double step,
+  VoidCallback? onLimit,
 }) {
   final next = stepFareAdjustment(recommended, adjust, step);
+  if (next == null && onLimit != null) return onLimit();
   if (next == null) {
     final range = fareOfferRange(recommended);
     ScaffoldMessenger.maybeOf(context)
