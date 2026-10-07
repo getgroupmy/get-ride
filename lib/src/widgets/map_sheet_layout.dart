@@ -239,7 +239,11 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with SingleTickerProvid
                                         final shown = ((extent - widget.min) / 0.04).clamp(0.0, 1.0);
                                         return IgnorePointer(
                                           ignoring: shown < 1,
-                                          child: Opacity(opacity: shown, child: child),
+                                          child: Opacity(
+                                            key: const ValueKey('map-sheet-body'),
+                                            opacity: shown,
+                                            child: child,
+                                          ),
                                         );
                                       },
                                       child: widget.sheet,

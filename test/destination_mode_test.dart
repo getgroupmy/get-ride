@@ -137,6 +137,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
 
+    // The Drive sheet starts all the way down: drag it up to reach the settings.
+    Future<void> raiseSheet(WidgetTester tester) async {
+      await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -700), warnIfMissed: false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
     testWidgets('trips toward the destination come first and are marked', (tester) async {
       await pump(tester);
       expect(find.text('Heading to Home'), findsOneWidget);
@@ -153,6 +160,7 @@ void main() {
       await pump(tester);
       open.add(const []);
       await tester.pumpAndSettle();
+      await raiseSheet(tester);
       await tester.tap(find.byKey(const ValueKey('queue-auto-accept')));
       await tester.pumpAndSettle();
       open.add([_req('away', sentral, putrajaya)]);
@@ -183,6 +191,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
       expect(find.text('2 saved. Tap to pick where you are heading'), findsOneWidget);
+      await raiseSheet(tester);
       await tester.tap(find.byKey(const ValueKey('queue-destination')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
