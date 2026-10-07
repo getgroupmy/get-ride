@@ -179,7 +179,14 @@ class HomeSearchPill extends StatelessWidget {
             children: [
               const Icon(Icons.search, size: 22),
               const SizedBox(width: 12),
-              Text('Where to & for how much?', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500)),
+              Expanded(
+                child: Text(
+                  'Where to & for how much?',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
+                ),
+              ),
             ],
           ),
         ),
