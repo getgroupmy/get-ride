@@ -95,7 +95,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byKey(const ValueKey('rider-side-menu')), findsOneWidget);
-    expect(find.text('Emergency contacts'), findsOneWidget);
+    expect(find.byKey(const ValueKey('menu-partner-mode')), findsOneWidget);
     // The menu pushes the page aside rather than covering it.
     expect(tester.getTopLeft(find.byType(HomeScreen)).dx, SideMenuHost.widthFor(400));
   });

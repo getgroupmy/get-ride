@@ -11,6 +11,35 @@ import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../../widgets/side_menu_host.dart';
 
+/// The built-in rider menu items (Expo `MenuSideSheet`), on this app's
+/// screens; false for one with no screen here ("coming soon"). Expo's City,
+/// Freight and Notifications only went home. [beforeOpen] runs first.
+bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallback? beforeOpen}) {
+  const routes = {
+    'teksi-ev': '/ev',
+    'city': '/',
+    'request-history': '/trips',
+    'freight': '/',
+    'wallet': '/wallet',
+    'notifications': '/',
+    'safety': '/account/safety',
+    'settings': '/account/settings',
+    'user-guide': '/account/guide',
+    'support': '/account/support',
+  };
+  if (id == 'logout') {
+    beforeOpen?.call();
+    ref.read(authRepositoryProvider).signOut();
+    return true;
+  }
+  final r = routes[id];
+  if (r == null) return false;
+  final router = GoRouter.of(context);
+  beforeOpen?.call();
+  openRoute(router, r);
+  return true;
+}
+
 /// The rider's account: the same profile card and menu the side menu
 /// shows ([RiderMenu]).
 class AccountScreen extends StatelessWidget {
@@ -30,33 +59,8 @@ class RiderMenu extends ConsumerWidget {
 
   final VoidCallback? beforeOpen;
 
-  /// The built-in rider menu items (Expo `MenuSideSheet`), on this app's
-  /// screens. Expo's City, Freight and Notifications only went home.
-  bool _builtIn(BuildContext context, WidgetRef ref, String id) {
-    const routes = {
-      'teksi-ev': '/ev',
-      'city': '/',
-      'request-history': '/trips',
-      'freight': '/',
-      'wallet': '/wallet',
-      'notifications': '/',
-      'safety': '/account/safety',
-      'settings': '/account/settings',
-      'user-guide': '/account/guide',
-      'support': '/account/support',
-    };
-    if (id == 'logout') {
-      beforeOpen?.call();
-      ref.read(authRepositoryProvider).signOut();
-      return true;
-    }
-    final r = routes[id];
-    if (r == null) return false;
-    final router = GoRouter.of(context);
-    beforeOpen?.call();
-    openRoute(router, r);
-    return true;
-  }
+  bool _builtIn(BuildContext context, WidgetRef ref, String id) =>
+      riderMenuAction(context, ref, id, beforeOpen: beforeOpen);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

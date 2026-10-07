@@ -72,11 +72,22 @@ Future<void> showComingSoon(BuildContext context) => showDialog<void>(
 /// gave it no link of its own; it answers false when the item has none here,
 /// which shows "coming soon".
 class SideMenuTile extends StatelessWidget {
-  const SideMenuTile({super.key, required this.entry, required this.builtIn, this.color, this.beforeOpen});
+  const SideMenuTile({
+    super.key,
+    required this.entry,
+    required this.builtIn,
+    this.color,
+    this.beforeOpen,
+    this.plain = false,
+  });
 
   final MenuEntry entry;
   final bool Function(BuildContext context, String id) builtIn;
   final Color? color;
+
+  /// The side menu's look (Expo `MenuSideSheet`): a grey outline icon and
+  /// the label, no chevron.
+  final bool plain;
 
   /// Runs before navigating, e.g. to close the sheet the menu is in.
   final VoidCallback? beforeOpen;
@@ -99,11 +110,25 @@ class SideMenuTile extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    key: ValueKey('menu-${entry.id}'),
-    leading: Icon(menuIcon(entry), color: color),
-    title: Text(entry.label, style: color == null ? null : TextStyle(color: color)),
-    trailing: entry.comingSoon ? const Chip(label: Text('Soon')) : const Icon(Icons.chevron_right),
-    onTap: () => _tap(context),
-  );
+  Widget build(BuildContext context) {
+    if (plain) {
+      final t = Theme.of(context);
+      return ListTile(
+        key: ValueKey('menu-${entry.id}'),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 22),
+        minVerticalPadding: 14,
+        leading: Icon(menuIcon(entry), color: color ?? t.colorScheme.onSurfaceVariant, size: 26),
+        title: Text(entry.label, style: t.textTheme.titleMedium?.copyWith(fontSize: 18, color: color)),
+        trailing: entry.comingSoon ? const Chip(label: Text('Soon')) : null,
+        onTap: () => _tap(context),
+      );
+    }
+    return ListTile(
+      key: ValueKey('menu-${entry.id}'),
+      leading: Icon(menuIcon(entry), color: color),
+      title: Text(entry.label, style: color == null ? null : TextStyle(color: color)),
+      trailing: entry.comingSoon ? const Chip(label: Text('Soon')) : const Icon(Icons.chevron_right),
+      onTap: () => _tap(context),
+    );
+  }
 }

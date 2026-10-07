@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/admin/admin_providers.dart';
+import 'package:get_ride/src/data/app_display_repository.dart';
+import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/shell/app_shell.dart';
+import 'package:get_ride/src/providers.dart';
 import 'package:get_ride/src/features/shell/rider_side_menu.dart';
 import 'package:get_ride/src/widgets/side_menu_host.dart';
 import 'package:go_router/go_router.dart';
@@ -94,6 +98,52 @@ void main() {
   });
 
   routerTests();
+
+  testWidgets("the panel: profile with stars, plain rows, driver mode, social links", (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final router = GoRouter(
+      routes: [
+        ShellRoute(
+          builder: (_, state, child) => RiderSideMenuHost(location: state.uri.path, child: child),
+          routes: [
+            GoRoute(path: '/', builder: (_, _) => const _Page()),
+            GoRoute(
+              path: '/drive',
+              builder: (_, _) => const Scaffold(body: Text('drive')),
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          profileProvider.overrideWith((ref) async => Profile({'id': 'u1', 'name': 'Kabeer'})),
+          adminAccessProvider.overrideWith((ref) => Future.error('offline')),
+          displaySettingsBlobProvider.overrideWith((ref) async => const <String, dynamic>{}),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('side-menu-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Kabeer'), findsOneWidget);
+    expect(find.byKey(const ValueKey('menu-rating')), findsOneWidget);
+    expect(find.text('5.0'), findsOneWidget);
+    expect(find.byIcon(Icons.chevron_right), findsOneWidget, reason: 'only the profile row has a chevron');
+    expect(find.byKey(const ValueKey('menu-request-history')), findsOneWidget);
+    expect(find.byKey(const ValueKey('menu-social')), findsOneWidget);
+
+    // Driver mode closes the menu and leaves for driver mode.
+    await tester.tap(find.byKey(const ValueKey('menu-partner-mode')));
+    await tester.pumpAndSettle();
+    expect(find.text('drive'), findsOneWidget);
+    expect(find.byType(RiderSideMenu), findsNothing);
+  });
 }
 
 /// The app's nesting: the side menu around the tab shell and the pages
