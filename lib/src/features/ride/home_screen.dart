@@ -22,6 +22,8 @@ import '../../core/ride_request_metadata.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_stops.dart';
 import '../../widgets/side_menu_tiles.dart';
+import '../profile/account_screen.dart' show RiderMenuDrawer;
+import '../shell/app_shell.dart' show ShellWithoutBar;
 import '../../widgets/toll_booths.dart';
 import '../../core/route_estimate.dart';
 import '../../data/app_display_repository.dart';
@@ -619,6 +621,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Center(child: PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup))),
           ),
         ),
+      // The menu button (Expo's top-left hamburger): the side menu, on
+      // phones, where there is no tab bar. It slides off with the others.
+      if (ShellWithoutBar.of(context))
+        Positioned(
+          left: 16,
+          top: 16,
+          child: IgnorePointer(
+            ignoring: _pinMoving,
+            child: AnimatedSlide(
+              offset: Offset(0, _pinMoving ? -3 : 0),
+              duration: MapSheetLayout.hideDuration,
+              curve: _pinMoving ? Curves.easeIn : Curves.easeOut,
+              child: AnimatedOpacity(
+                opacity: _pinMoving ? 0 : 1,
+                duration: MapSheetLayout.hideDuration,
+                child: SafeArea(
+                  child: Builder(
+                    builder: (context) => FloatingActionButton.small(
+                      key: const ValueKey('home-menu'),
+                      heroTag: 'home-menu',
+                      tooltip: 'Menu',
+                      onPressed: () => Scaffold.of(context).openDrawer(),
+                      child: const Icon(Icons.menu),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       Positioned(
         right: 16,
         bottom: wide ? mapAttributionClearance : null,
@@ -740,6 +772,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
     return Scaffold(
+      drawer: ShellWithoutBar.of(context) ? const RiderMenuDrawer() : null,
       body: MapSheetLayout(map: map, sheet: panel, min: 0.22, hidden: _pinMoving),
     );
   }

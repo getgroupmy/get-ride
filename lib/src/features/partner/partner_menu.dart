@@ -7,7 +7,9 @@ import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/obd/obd_session.dart';
 import '../../providers.dart';
+import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
+import 'driver_online.dart';
 
 /// The driver menu (Expo `PartnerSideSheet`), arranged by Admin → Display
 /// Settings → Side Menus → Partner. Vehicle information shows only while an
@@ -94,6 +96,12 @@ class PartnerMenuSheet extends ConsumerWidget {
                 onPressed: () {
                   if (mode.comingSoon) {
                     showComingSoon(context);
+                    return;
+                  }
+                  // With no tab bar to grey out, the lock on booking a ride
+                  // while online lives here.
+                  if (ref.read(driverOnlineProvider)) {
+                    showInfo(context, 'Go offline to book a ride');
                     return;
                   }
                   Navigator.pop(context);
