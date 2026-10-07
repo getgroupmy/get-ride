@@ -497,7 +497,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       Positioned(
         right: 16,
-        bottom: wide ? 16 : null,
+        bottom: wide ? mapAttributionClearance : null,
         top: wide ? null : 16,
         child: SafeArea(
           child: Column(

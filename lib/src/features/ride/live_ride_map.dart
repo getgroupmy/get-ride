@@ -110,7 +110,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
         ),
         Positioned(
           right: 12,
-          bottom: 12,
+          bottom: mapAttributionClearance,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             // Expo's trip maps recenter on the car; before a driver is on
             // the way, on the pickup.
