@@ -23,6 +23,7 @@ import 'features/auth/otp_screen.dart';
 import 'features/ev/ev_order_screen.dart';
 import 'features/meter/hail_destination_screen.dart';
 import 'features/meter/meter_screen.dart';
+import 'features/ride/shared_ride_screen.dart';
 import 'features/meter/obd_reader_screen.dart';
 import 'features/meter/printer_screen.dart';
 import 'features/meter/vehicle_info_screen.dart';
@@ -132,6 +133,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final onAuth = loc.startsWith('/login');
       // Diagnostics are for people who can't sign in, so they work either way.
       if (loc == '/diagnostics') return null;
+      // A shared ride is for whoever was sent the link, account or not.
+      if (loc.startsWith('/share/')) return null;
       if (!signedIn && !onAuth) return '/login';
       // A fresh OTP session still has to choose a PIN before entering the app.
       if (signedIn && AuthRepository.pinSetupPending) {
@@ -224,6 +227,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(path: '/diagnostics', builder: (_, _) => const AuthDiagnosticsScreen()),
+      GoRoute(path: '/share/:token', builder: (_, st) => SharedRideScreen(token: st.pathParameters['token']!)),
       GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
       GoRoute(path: '/meter/printer', builder: (_, _) => const PrinterScreen()),
