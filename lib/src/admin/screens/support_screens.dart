@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/format.dart';
+import '../../features/support/call/call_screen.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
@@ -221,6 +222,19 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
         leading: BackButton(onPressed: () => context.go('/admin/support')),
         title: Text(ticket == null ? 'Ticket' : '#${ticket['ticket_number'] ?? ''} · ${ticket['subject'] ?? 'Support'}'),
         actions: [
+          if (canEdit && ticket != null && ticket['profile_id'] != null)
+            IconButton(
+              key: const ValueKey('ticket-call'),
+              tooltip: 'Call customer',
+              icon: const Icon(Icons.call_outlined),
+              onPressed: () => callUser(
+                context,
+                ref,
+                profileId: '${ticket['profile_id']}',
+                ticketId: widget.ticketId,
+                agentName: _myName,
+              ),
+            ),
           if (canEdit && ticket != null)
             TextButton.icon(
               key: const ValueKey('ticket-assign'),

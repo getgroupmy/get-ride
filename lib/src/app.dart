@@ -58,6 +58,8 @@ import 'features/support/support_chat_screen.dart';
 import 'features/support/support_screen.dart';
 import 'features/wallet/coin_trade_screen.dart';
 import 'features/wallet/incoming_transfer_listener.dart';
+import 'features/support/call/call_screen.dart';
+import 'features/support/call/incoming_call_listener.dart';
 import 'features/wallet/wallet_history_screen.dart';
 import 'features/wallet/wallet_qr_screens.dart';
 import 'features/wallet/wallet_screen.dart';
@@ -233,6 +235,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, s) => VehicleOnboardingScreen(vehicleId: s.pathParameters['id']),
       ),
       GoRoute(path: '/drive/trip/:id', builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!)),
+      GoRoute(
+        path: '/call/:id',
+        builder: (_, s) => CallScreen(callId: s.pathParameters['id']!, peerName: s.uri.queryParameters['name']),
+      ),
       adminRoute,
     ],
   );
@@ -387,7 +393,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         live: _branding?.latest,
         child: UpdateGate(
           child: VoiceProtectionHost(
-            child: IncomingTransferListener(child: child ?? const SizedBox.shrink()),
+            child: IncomingTransferListener(
+              child: IncomingCallListener(child: child ?? const SizedBox.shrink()),
+            ),
           ),
         ),
       ),

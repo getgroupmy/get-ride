@@ -36,5 +36,7 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>GET.ride uses the microphone for voice calls with support.</string>
 </dict>
 </plist>

@@ -8,6 +8,7 @@ import '../../core/support_media.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import 'call/call_screen.dart';
 import 'support_screen.dart';
 import '../../widgets/in_app_page.dart';
 
@@ -137,7 +138,19 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Support chat')),
+      appBar: AppBar(title: const Text('Support chat'), actions: [
+        IconButton(
+          key: const ValueKey('call-support'),
+          tooltip: 'Call support',
+          icon: const Icon(Icons.call_outlined),
+          onPressed: () => callSupport(
+            context,
+            ref,
+            ticketId: widget.ticketId,
+            name: ref.read(profileProvider).value?.name,
+          ),
+        ),
+      ]),
       body: ResponsiveCenter(
         maxWidth: 760,
         padding: EdgeInsets.zero,
