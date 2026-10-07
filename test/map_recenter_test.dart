@@ -30,6 +30,12 @@ void main() {
     );
     await tester.pump();
     MapCamera camera() => MapCamera.of(tester.element(find.byType(MarkerLayer).first));
+    expect(camera().zoom, driverHomeZoom, reason: 'it opens at street level');
+    expect(
+      tester.getCenter(find.byKey(const ValueKey('map-recenter'))).dy,
+      greaterThan(900 / 2),
+      reason: 'the map buttons sit low on the map, as on the trip maps',
+    );
 
     // Scroll away, the way a driver drags the map.
     await tester.drag(find.byType(FlutterMap), const Offset(-300, 250));
@@ -40,6 +46,6 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('map-recenter')));
     await tester.pump();
     expect(const Distance()(camera().center, here), lessThan(1));
-    expect(camera().zoom, recenterZoom);
+    expect(camera().zoom, driverHomeZoom);
   });
 }

@@ -112,26 +112,34 @@ class _MapSheetLayoutState extends State<MapSheetLayout> {
                   color: t.colorScheme.surface,
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                   clipBehavior: Clip.antiAlias,
-                  child: SingleChildScrollView(
+                  // The handle is pinned to the sheet's top edge: it stays in
+                  // view while the content scrolls under it, and dragging it
+                  // moves the sheet.
+                  child: CustomScrollView(
                     controller: scroll,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Center(
-                          child: Container(
-                            key: const ValueKey('map-sheet-handle'),
-                            width: 40,
-                            height: 4,
-                            margin: const EdgeInsets.only(top: 10, bottom: 2),
-                            decoration: BoxDecoration(
-                              color: t.colorScheme.outlineVariant,
-                              borderRadius: BorderRadius.circular(2),
+                    slivers: [
+                      PinnedHeaderSliver(
+                        child: ColoredBox(
+                          key: const ValueKey('map-sheet-header'),
+                          color: t.colorScheme.surface,
+                          child: SizedBox(
+                            height: 22,
+                            child: Center(
+                              child: Container(
+                                key: const ValueKey('map-sheet-handle'),
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: t.colorScheme.outlineVariant,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                        widget.sheet,
-                      ],
-                    ),
+                      ),
+                      SliverToBoxAdapter(child: widget.sheet),
+                    ],
                   ),
                 ),
               ),

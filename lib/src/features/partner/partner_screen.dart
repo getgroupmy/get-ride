@@ -26,6 +26,7 @@ import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
 import 'driver_home_map.dart';
+import 'driver_online.dart';
 import 'driver_permit_screen.dart' show currentPlateProvider, driverPermitProvider, showPermitBlock;
 import 'driver_wallet_pills.dart';
 import 'fare_offer.dart';
@@ -63,6 +64,7 @@ final requestAlertClockProvider = Provider<DateTime Function()>((ref) => DateTim
 
 class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool _online = false;
+  late final DriverOnline _onlineState;
   LatLng? _me;
   String? _accepting;
   bool _autoAccept = false;
@@ -94,6 +96,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   @override
   void dispose() {
     _alertTick?.cancel();
+    // Leaving the Drive screen (signing out) takes the driver offline.
+    final online = _onlineState;
+    Future.microtask(() => online.set(false));
     super.dispose();
   }
 
@@ -159,6 +164,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   @override
   void initState() {
     super.initState();
+    _onlineState = ref.read(driverOnlineProvider.notifier);
     _resume();
     _locate();
   }
@@ -215,6 +221,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     // Requests already waiting are in the list; only new ones pop up.
     if (v) _alertSeen.addAll(ref.read(openRequestsProvider).value?.map((r) => r.id) ?? const <String>[]);
     setState(() => _online = v);
+    _onlineState.set(v);
     if (!v) _syncAlert(const []);
     if (v) unawaited(_locate());
   }
@@ -534,12 +541,6 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     });
     return Scaffold(
       appBar: AppBar(title: const Text('Drive'), actions: [
-        IconButton(
-          key: const ValueKey('partner-menu-button'),
-          tooltip: 'Menu',
-          icon: const Icon(Icons.menu),
-          onPressed: () => showPartnerMenu(context),
-        ),
         if (partner.value != null && hasTeksiPartnerType(partner.value!.raw['partner_types']))
           IconButton(
             tooltip: 'Driver permit',
@@ -558,6 +559,13 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             icon: const Icon(Icons.directions_car_outlined),
             onPressed: () => context.push('/drive/vehicles'),
           ),
+        // The menu sits at the far right.
+        IconButton(
+          key: const ValueKey('partner-menu-button'),
+          tooltip: 'Menu',
+          icon: const Icon(Icons.menu),
+          onPressed: () => showPartnerMenu(context),
+        ),
       ]),
       body: AsyncView(
         value: partner,

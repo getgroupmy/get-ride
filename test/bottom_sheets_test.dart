@@ -88,4 +88,32 @@ void main() {
     expect(tester.getSize(map), screen, reason: 'the map stays put under the sheet');
     expect(tester.getBottomLeft(button).dy, lessThan(after), reason: 'and its buttons follow the sheet up');
   });
+
+  testWidgets('the handle stays at the top of the sheet while its content scrolls', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapSheetLayout(
+            map: const SizedBox.expand(),
+            sheet: Column(children: [for (var i = 0; i < 40; i++) ListTile(title: Text('row $i'))]),
+          ),
+        ),
+      ),
+    );
+    final sheet = find.byKey(const ValueKey('map-sheet'));
+    // Up to full height, then scroll the content in a second gesture.
+    await tester.drag(find.text('row 0'), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    final handleTop = tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
+    final sheetTop = tester.getTopLeft(find.descendant(of: sheet, matching: find.byType(Material)).first).dy;
+    final rowTop = tester.getTopLeft(find.text('row 3')).dy;
+    await tester.drag(find.text('row 3'), const Offset(0, -300));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.text('row 3')).dy, lessThan(rowTop - 200), reason: 'the content scrolled');
+    expect(tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy, handleTop, reason: 'the handle did not');
+    expect(handleTop - sheetTop, lessThan(20), reason: 'it sits on the top edge');
+  });
 }

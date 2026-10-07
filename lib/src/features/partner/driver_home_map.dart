@@ -6,12 +6,15 @@ import 'package:latlong2/latlong.dart';
 import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../widgets/map_recenter.dart';
+import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 
 /// The driver's home map (Expo `partner-ehailing`): where they are and,
 /// while online, where each open request is waiting, with its fare. Tapping
 /// a pin opens that request in [onSelect].
+///
+/// It opens at street level ([driverHomeZoom]) on the driver.
 class DriverHomeMap extends ConsumerStatefulWidget {
   const DriverHomeMap({super.key, required this.me, required this.requests, this.onSelect});
 
@@ -24,6 +27,9 @@ class DriverHomeMap extends ConsumerStatefulWidget {
   @override
   ConsumerState<DriverHomeMap> createState() => _DriverHomeMapState();
 }
+
+/// Street level: the roads and buildings around the driver.
+const driverHomeZoom = 18.0;
 
 class _DriverHomeMapState extends ConsumerState<DriverHomeMap> {
   final _map = MapController();
@@ -45,6 +51,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> {
     final map = RideMap(
       controller: _map,
       me: me,
+      pointZoom: driverHomeZoom,
       framed: pickups,
       satellite: ref.watch(mapSatelliteProvider),
       extraMarkers: [
@@ -86,15 +93,17 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> {
     return Stack(
       children: [
         map,
-        Positioned(
-          right: 12,
-          top: 12,
-          child: SafeArea(
+        // Bottom right, above the sheet, as on the trip maps.
+        MapBottomInset.listen(
+          context,
+          (inset) => Positioned(
+            right: 12,
+            bottom: mapAttributionClearance + inset,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const MapTypeButton(),
-              const SizedBox(height: 8),
               // Expo's driver map recenters on the driver.
-              RecenterButton(onPressed: me == null ? null : () => recenterMap(_map, me)),
+              RecenterButton(onPressed: me == null ? null : () => recenterMap(_map, me, zoom: driverHomeZoom)),
+              const SizedBox(height: 8),
+              const MapTypeButton(),
             ]),
           ),
         ),
