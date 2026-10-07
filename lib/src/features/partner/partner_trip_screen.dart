@@ -17,6 +17,7 @@ import '../../core/trip_progress.dart';
 import '../../core/ride_cancel.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_stop_tiles.dart';
@@ -113,10 +114,36 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       }
       final notice = passengerCancelNotice(before, r, approvedHere: _approvedHere);
       if (notice != null) WidgetsBinding.instance.addPostFrameCallback((_) => _showCancelled(notice));
+      WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel(r));
     }, fireImmediately: true);
   }
 
   DateTime get _now => ref.read(tripClockProvider)();
+
+  final _cancelPrompt = CancelRequestPrompt();
+
+  /// The passenger's request to cancel, as a popup the driver answers.
+  void _askAboutCancel(RideRequest r) {
+    if (!mounted) return;
+    final asking = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider' && r.status.isOngoing;
+    final why = cancelReasonLabel(r.cancelReason);
+    final repo = ref.read(rideRepositoryProvider);
+    _cancelPrompt.update(
+      context,
+      askedAt: asking ? r.cancelRequestedAt : null,
+      message: why == null ? 'The passenger asked to cancel.' : 'The passenger asked to cancel: $why',
+      onDecline: () => _run(() => repo.declineCancellation(r.id)),
+      onApprove: () => _run(() async {
+        _approvedHere = true;
+        try {
+          await repo.approveCancellation(r.id);
+        } catch (_) {
+          _approvedHere = false;
+          rethrow;
+        }
+      }),
+    );
+  }
 
   void _beginTrip() {
     _onTripSince = _now;
@@ -386,8 +413,6 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
 
   Widget _panel(RideRequest r) {
     final t = Theme.of(context);
-    final repo = ref.read(rideRepositoryProvider);
-    final riderAskedCancel = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider';
     final target = r.status == RideStatus.onTrip ? _ll(r.dropLat, r.dropLng) : _ll(r.pickupLat, r.pickupLng);
 
     return Padding(
@@ -400,45 +425,6 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           _ => r.status.label,
         }, style: t.textTheme.headlineSmall),
         const SizedBox(height: 12),
-        if (riderAskedCancel && r.status.isOngoing)
-          Card(
-            color: t.colorScheme.errorContainer,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Text(() {
-                  final why = cancelReasonLabel(r.cancelReason);
-                  return why == null ? 'The passenger asked to cancel.' : 'The passenger asked to cancel: $why';
-                }()),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: _busy ? null : () => _run(() => repo.declineCancellation(r.id)),
-                      child: const Text('Decline'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: _busy
-                          ? null
-                          : () => _run(() async {
-                              _approvedHere = true;
-                              try {
-                                await repo.approveCancellation(r.id);
-                              } catch (_) {
-                                _approvedHere = false;
-                                rethrow;
-                              }
-                            }),
-                      child: const Text('Approve'),
-                    ),
-                  ),
-                ]),
-              ]),
-            ),
-          ),
         Card(
           child: Column(children: [
             ListTile(

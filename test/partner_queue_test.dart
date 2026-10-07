@@ -117,12 +117,19 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
 
+    // While requests float on the map the sheet is held down with only the
+    // online switch showing; flip the settings switches directly.
+    Future<void> flip(WidgetTester tester, String key) async {
+      final tile = tester.widget<SwitchListTile>(find.byKey(ValueKey(key)));
+      tile.onChanged!(!tile.value);
+      await tester.pumpAndSettle();
+    }
+
     testWidgets('auto-accept leaves queued requests and takes the next one', (tester) async {
       await pump(tester);
       open.add([_req('old')]);
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('queue-auto-accept')));
-      await tester.pumpAndSettle();
+      await flip(tester, 'queue-auto-accept');
       expect(rides.accepted, isEmpty);
 
       open.add([_req('old'), _req('new')]);
@@ -144,8 +151,7 @@ void main() {
       open.add([_req('bid', offerMe: true)]);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('offer-bid')), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('queue-allow-offer')));
-      await tester.pumpAndSettle();
+      await flip(tester, 'queue-allow-offer');
       expect(find.byKey(const ValueKey('offer-bid')), findsNothing);
       expect(find.text('Accept RM12.00'), findsOneWidget);
     });

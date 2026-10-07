@@ -31,6 +31,13 @@ RideRequest ride(String status, {String? askedBy, String? reason}) => RideReques
 class _FakeRides implements RideRepository {
   final cancels = <(String, String?)>[];
   final shared = <(double, double)>[];
+  final answers = <String>[];
+
+  @override
+  Future<void> approveCancellation(String id) async => answers.add('approve');
+
+  @override
+  Future<void> declineCancellation(String id) async => answers.add('decline');
 
   @override
   Future<void> cancel(RideRequest r, {String? reason, required String by}) async => cancels.add((r.status.db, reason));
@@ -228,6 +235,37 @@ void main() {
       rows.add(ride('cancelled', askedBy: 'partner', reason: 'passenger_no_show'));
       await settle(tester);
       expect(find.text('Your driver cancelled this ride: Passenger no-show'), findsOneWidget);
+    });
+
+    testWidgets("the driver's request to cancel is a popup the passenger answers", (tester) async {
+      final (rides, rows, _) = await pump(tester);
+      rows.add(ride('arrived', askedBy: 'partner'));
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('cancel-request-dialog')), findsOneWidget);
+      expect(find.text('Your driver asked to cancel this ride.'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('cancel-request-decline')));
+      await settle(tester);
+      expect(rides.answers, ['decline']);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('cancel-request-dialog')), findsNothing);
+    });
+
+    testWidgets('the popup closes by itself when the driver withdraws', (tester) async {
+      final (rides, rows, _) = await pump(tester);
+      rows.add(ride('arrived', askedBy: 'partner'));
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('cancel-request-dialog')), findsOneWidget);
+      // A tap outside does not answer it.
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('cancel-request-dialog')), findsOneWidget);
+      rows.add(ride('arrived'));
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('cancel-request-dialog')), findsNothing);
+      expect(rides.answers, isEmpty);
     });
 
     testWidgets('a declined request is announced', (tester) async {

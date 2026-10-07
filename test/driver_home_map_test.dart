@@ -165,6 +165,25 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('all the way down the sheet shows only the online switch', (tester) async {
+      await pump(tester);
+      double shown() => tester
+          .widget<Opacity>(find.ancestor(of: find.text('Auto-accept').hitTestable().evaluate().isEmpty
+                  ? find.byType(SwitchListTile).last
+                  : find.text('Auto-accept'), matching: find.byType(Opacity)).first)
+          .opacity;
+      await goOnline(tester);
+      await tester.pumpAndSettle();
+      final handle = find.byKey(const ValueKey('map-sheet-handle'));
+      await tester.drag(handle, const Offset(0, 1200), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('partner-online')).hitTestable(), findsOneWidget);
+      expect(shown(), 0, reason: 'the rest is hidden, not peeking');
+      await tester.drag(handle, const Offset(0, -400), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(shown(), 1);
+    });
+
     testWidgets('the online switch comes before the service types', (tester) async {
       await pump(tester);
       expect(find.byKey(const ValueKey('partner-online')), findsOneWidget);

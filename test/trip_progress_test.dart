@@ -399,7 +399,12 @@ void main() {
       final asked = {'cancel_requested_at': t0.toIso8601String(), 'cancel_requested_by': 'rider'};
       rows.add(ride('arrived', extra: asked));
       await tester.pump();
-      await tester.tap(find.text('Approve'));
+      await tester.pump();
+      // The request is a popup.
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(const ValueKey('cancel-request-dialog')), findsOneWidget);
+      expect(find.text('The passenger asked to cancel.'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('cancel-request-approve')));
       await tester.pump();
       expect(rides.log, ['approve']);
       rows.add(ride('cancelled', extra: asked));
