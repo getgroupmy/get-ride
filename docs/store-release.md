@@ -53,12 +53,11 @@ for **TEKSI. Bid, Agree & Ride (`com.taxxee.teksi`)**:
 | MD5 | `3A:2B:1A:B5:CF:89:2E:A2:D1:9C:22:B3:BE:E6:90:40` |
 | SHA-1 | `18:6A:59:BA:4F:D5:C8:59:BD:32:66:F4:BE:60:5B:09:7A:36:B2:0C` |
 
-Until then Play takes no new bundle, so `android-release.yml` refuses to
-build before that time (its first step, *Upload key reset hold*). Before the
-next release, make sure the `ANDROID_KEYSTORE_*` secrets hold the key with the
-fingerprints above (`keytool -list -v -keystore upload.jks`); keep that
-keystore safe, because it is now the listing's upload key. Delete the hold
-step once it has passed.
+The new key is now valid. Until that time `android-release.yml` refused to
+build (an *Upload key reset hold* step, since removed). Before a release, make
+sure the `ANDROID_KEYSTORE_*` secrets hold the key with the fingerprints above
+(`keytool -list -v -keystore upload.jks`); keep that keystore safe, because it
+is now the listing's upload key.
 
 The marketing version (`1.0.0`) comes from `version:` in `pubspec.yaml`.
 Raise it there for a new store version.
