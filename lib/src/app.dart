@@ -21,6 +21,7 @@ import 'data/push_service.dart';
 import 'data/session_tracker.dart';
 import 'features/auth/otp_screen.dart';
 import 'features/ev/ev_order_screen.dart';
+import 'features/meter/hail_destination_screen.dart';
 import 'features/meter/meter_screen.dart';
 import 'features/meter/obd_reader_screen.dart';
 import 'features/meter/printer_screen.dart';
@@ -226,6 +227,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
       GoRoute(path: '/meter/printer', builder: (_, _) => const PrinterScreen()),
+      GoRoute(
+        path: '/meter/destination',
+        // Only reachable from the meter, which hands over its card.
+        redirect: (_, st) => st.extra is HailDestinationArgs ? null : '/meter',
+        builder: (_, st) => HailDestinationScreen(args: st.extra! as HailDestinationArgs),
+      ),
       GoRoute(path: '/meter/vehicle', builder: (_, _) => const VehicleInfoScreen()),
       GoRoute(path: '/drive/permit', builder: (_, _) => const DriverPermitScreen()),
       GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
