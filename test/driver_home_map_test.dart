@@ -123,7 +123,7 @@ void main() {
 
     testWidgets('on a phone the requests float on the map and the sheet is held down', (tester) async {
       await pump(tester);
-      final online = tester.getTopLeft(find.byKey(const ValueKey('partner-online'))).dy;
+      final opened = tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
       await goOnline(tester);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('waiting-for-requests')), findsOneWidget, reason: 'on the map, not in the sheet');
@@ -140,7 +140,7 @@ void main() {
       // Held down: neither dragged up nor scrolled.
       final handle = find.byKey(const ValueKey('map-sheet-handle'));
       final top = tester.getTopLeft(handle).dy;
-      expect(top, greaterThan(online), reason: 'lower than it opened');
+      expect(top, opened, reason: 'still all the way down, where it opened');
       await tester.drag(handle, const Offset(0, -400), warnIfMissed: false);
       await tester.pumpAndSettle();
       expect(tester.getTopLeft(handle).dy, top);
@@ -165,20 +165,16 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('all the way down the sheet shows only the online switch', (tester) async {
+    testWidgets('the sheet starts all the way down, showing only the online switch', (tester) async {
       await pump(tester);
-      double shown() => tester
-          .widget<Opacity>(find.ancestor(of: find.text('Auto-accept').hitTestable().evaluate().isEmpty
-                  ? find.byType(SwitchListTile).last
-                  : find.text('Auto-accept'), matching: find.byType(Opacity)).first)
-          .opacity;
+      double shown() => tester.widget<Opacity>(find.byKey(const ValueKey('map-sheet-body'))).opacity;
+      // It opens all the way down, and stays there going online.
+      expect(find.byKey(const ValueKey('partner-online')).hitTestable(), findsOneWidget);
+      expect(shown(), 0, reason: 'starts fully down: the rest is hidden, not peeking');
       await goOnline(tester);
       await tester.pumpAndSettle();
       final handle = find.byKey(const ValueKey('map-sheet-handle'));
-      await tester.drag(handle, const Offset(0, 1200), warnIfMissed: false);
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('partner-online')).hitTestable(), findsOneWidget);
-      expect(shown(), 0, reason: 'the rest is hidden, not peeking');
+      expect(shown(), 0);
       await tester.drag(handle, const Offset(0, -400), warnIfMissed: false);
       await tester.pumpAndSettle();
       expect(shown(), 1);

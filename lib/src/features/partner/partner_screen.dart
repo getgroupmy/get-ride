@@ -676,6 +676,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 final queue = _queueOrder(open, wide: false);
                 final floating = [if (queue.alert != null) queue.alert!, ...queue.sorted];
                 return MapSheetLayout(
+                  // Fully down (just the online switch) until the driver
+                  // drags it up.
+                  initial: 0.2,
+                  min: 0.2,
                   locked: floating.isNotEmpty,
                   map: Stack(children: [
                     Positioned.fill(child: map),
