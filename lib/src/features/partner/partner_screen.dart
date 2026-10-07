@@ -890,7 +890,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(r.riderName ?? 'Passenger', style: t.textTheme.titleSmall),
+                Text(r.passengerName, style: t.textTheme.titleSmall),
+                if (r.isForOthers)
+                  Text('Booked by ${r.riderName ?? 'another rider'}',
+                      key: ValueKey('booked-by-${r.id}'), style: t.textTheme.bodySmall),
                 Text(
                   [
                     if (r.riderRating != null) '★ ${r.riderRating!.toStringAsFixed(1)}',

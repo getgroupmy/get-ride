@@ -426,13 +426,18 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           child: Column(children: [
             ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
-              title: Text(r.riderName ?? 'Passenger'),
-              subtitle: Text('${r.passengers} passenger${r.passengers == 1 ? '' : 's'} · ${r.paymentMode}'),
-              trailing: r.riderPhone == null
+              title: Text(r.passengerName),
+              subtitle: Text([
+                '${r.passengers} passenger${r.passengers == 1 ? '' : 's'} · ${r.paymentMode}',
+                if (r.isForOthers) 'Booked by ${r.riderName ?? 'another rider'}',
+              ].join('\n')),
+              isThreeLine: r.isForOthers,
+              trailing: r.passengerPhone == null
                   ? null
                   : IconButton(
+                      tooltip: 'Call ${r.passengerName}',
                       icon: const Icon(Icons.call),
-                      onPressed: () => launchUrl(Uri(scheme: 'tel', path: r.riderPhone)),
+                      onPressed: () => launchUrl(Uri(scheme: 'tel', path: r.passengerPhone)),
                     ),
             ),
             ListTile(

@@ -6,6 +6,7 @@ import '../core/ride_stops.dart';
 import 'geo_service.dart';
 
 double? _d(Object? v) => v == null ? null : (v as num).toDouble();
+String? _text(Object? v) => v is String && v.trim().isNotEmpty ? v.trim() : null;
 int? _i(Object? v) => v == null ? null : (v as num).toInt();
 DateTime? _t(Object? v) => v == null ? null : DateTime.tryParse(v as String);
 
@@ -59,6 +60,16 @@ class RideRequest {
   String? get riderId => raw['rider_id'] as String?;
   String? get riderName => raw['rider_name'] as String?;
   String? get riderPhone => raw['rider_phone'] as String?;
+
+  /// Who the ride was booked for, when the rider booked it for someone else
+  /// (migration 0107); null on the rider's own rides.
+  String? get bookedForName => _text(raw['booked_for_name']);
+  String? get bookedForPhone => _text(raw['booked_for_phone']);
+  bool get isForOthers => bookedForPhone != null;
+
+  /// The person who will be in the car, and their number.
+  String get passengerName => bookedForName ?? riderName ?? 'Passenger';
+  String? get passengerPhone => bookedForPhone ?? riderPhone;
 
   /// A driver has the ride: the rider accepted them (or their offer) and the
   /// row moved past `open`. A bid on an open request also puts the bidder's
