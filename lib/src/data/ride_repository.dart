@@ -51,6 +51,7 @@ class RideRepository {
     bool offerMe = false,
     List<Place> stops = const [],
     Map<String, Object> metadata = const {},
+    String currency = AppConfig.currency,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -75,7 +76,7 @@ class RideRepository {
       'duration_min': durationMin,
       'fare': fare,
       'ride_fare': fare,
-      'currency': AppConfig.currency,
+      'currency': currency,
       'passengers': passengers,
       'luggage': 0,
       'note': note,
