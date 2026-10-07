@@ -542,176 +542,201 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       }
     });
     return Scaffold(
-      appBar: AppBar(title: const Text('Drive'), actions: [
-        if (partner.value != null && hasTeksiPartnerType(partner.value!.raw['partner_types']))
-          IconButton(
-            tooltip: 'Driver permit',
-            icon: const Icon(Icons.badge_outlined),
-            onPressed: () => context.push('/drive/permit'),
+      // No top bar: the page's buttons float over it, top right.
+      body: Stack(children: [
+        Positioned.fill(
+          child: SafeArea(
+            bottom: false,
+            child: AsyncView(
+              value: partner,
+              onRetry: () => ref.invalidate(partnerProvider),
+              data: (p) {
+                void openOnboarding() => context.push('/drive/onboarding');
+                if (p == null) {
+                  return EmptyState(
+                    icon: Icons.badge_outlined,
+                    title: 'Become a GET.ride partner',
+                    message: 'Earn by driving with GET.ride. Add your details and documents, and you can take jobs '
+                        'here once an admin approves your account.',
+                    action: FilledButton(onPressed: openOnboarding, child: const Text('Get started')),
+                  );
+                }
+                if (!partnerCanDrive(p)) {
+                  if (partnerSetupIncomplete(p.raw)) {
+                    return EmptyState(
+                      icon: Icons.assignment_outlined,
+                      title: 'Finish your partner application',
+                      message: 'A few steps are still missing before an admin can review your account.',
+                      action: FilledButton(onPressed: openOnboarding, child: const Text('Continue')),
+                    );
+                  }
+                  return EmptyState(
+                    icon: Icons.hourglass_empty,
+                    title: 'Account not active yet',
+                    message: 'Your partner status is "${p.status ?? 'unknown'}". '
+                        'You can go online once an admin approves your account.',
+                    action: OutlinedButton(onPressed: openOnboarding, child: const Text('View application')),
+                  );
+                }
+                final modes = partnerModeOptions(
+                  parseStringList(p.raw['partner_types']),
+                  ref.watch(partnerTypeEntriesProvider).value ?? const [],
+                );
+                final wide = MediaQuery.sizeOf(context).width >= 900;
+                final map = DriverHomeMap(
+                  key: const ValueKey('driver-home-map'),
+                  me: _me,
+                  requests: _online ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const [],
+                  onSelect: (r) => setState(() => _focusId = r.id),
+                );
+                final head = <Widget>[
+                    // Online first, above the service types.
+                    Card(
+                      key: const ValueKey('partner-online'),
+                      child: SwitchListTile(
+                        value: _online,
+                        onChanged: _toggle,
+                        secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
+                        title: Text(_online ? 'You are online' : 'You are offline'),
+                        subtitle: Text(
+                          [p.name, p.vehicle, p.plate].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · '),
+                        ),
+                      ),
+                    ),
+                    if (modes.length > 1 || modes.any((m) => m.isTeksi))
+                      Card(
+                        key: const ValueKey('partner-modes'),
+                        child: Column(children: [
+                          for (final m in modes)
+                            ListTile(
+                              key: ValueKey('partner-mode-${m.name}'),
+                              leading: m.iconUrl == null
+                                  ? Icon(m.isTeksi ? Icons.local_taxi : Icons.directions_car_outlined)
+                                  : SizedBox.square(
+                                      dimension: 36,
+                                      child: Image.network(m.iconUrl!,
+                                          errorBuilder: (_, _, _) => const Icon(Icons.directions_car_outlined)),
+                                    ),
+                              title: Text(m.name),
+                              subtitle: m.description == null ? null : Text(m.description!),
+                              trailing: Icon(m.isTeksi ? Icons.speed : (_online ? Icons.check_circle : Icons.chevron_right)),
+                              onTap: () => m.isTeksi ? _openMeter(p) : (_online ? null : _toggle(true)),
+                            ),
+                        ]),
+                      ),
+                    if (_online)
+                      Card(
+                        child: Column(children: [
+                          SwitchListTile(
+                            key: const ValueKey('queue-auto-accept'),
+                            value: _autoAccept,
+                            onChanged: _setAutoAccept,
+                            secondary: const Icon(Icons.flash_auto),
+                            title: const Text('Auto-accept'),
+                            subtitle: Text(_autoAccept
+                                ? 'Accepting new requests automatically, nearest first'
+                                : 'Manually review each request'),
+                          ),
+                          SwitchListTile(
+                            key: const ValueKey('queue-allow-offer'),
+                            value: _allowOfferMe,
+                            onChanged: (v) => setState(() => _allowOfferMe = v),
+                            secondary: const Icon(Icons.gavel),
+                            title: const Text('Allow OfferMe requests'),
+                            subtitle: Text(_allowOfferMe
+                                ? 'You can offer your own price where the rider allows it'
+                                : 'Take requests at the rider\'s price only'),
+                          ),
+                          _destinationTile(),
+                        ]),
+                      ),
+                    const DriverWalletPills(),
+                    const CurrentVehicleCard(),
+                    if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
+                  ];
+                const offline = EmptyState(icon: Icons.local_taxi_outlined, title: 'Go online to receive ride requests');
+                if (wide) {
+                  final panel = Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)]);
+                  return Row(children: [
+                    SizedBox(width: 520, child: panel),
+                    const VerticalDivider(width: 1),
+                    Expanded(
+                      child: Stack(children: [
+                        Positioned.fill(child: map),
+                        // A new request flies in over the map on a desktop screen.
+                        if (_online) Positioned(top: 16, right: 16, width: 400, child: _alertOverlay(p)),
+                      ]),
+                    ),
+                  ]);
+                }
+                // A phone: the map fills the screen, the requests float on it and
+                // the sheet holds the driver's settings. While there are requests
+                // the sheet is held down so the list on the map has the room.
+                final open = _online ? ref.watch(openRequestsProvider).value ?? const <RideRequest>[] : const <RideRequest>[];
+                final queue = _queueOrder(open, wide: false);
+                final floating = [if (queue.alert != null) queue.alert!, ...queue.sorted];
+                return MapSheetLayout(
+                  locked: floating.isNotEmpty,
+                  map: Stack(children: [
+                    Positioned.fill(child: map),
+                    if (_online) _floatingRequests(p, queue.alert, floating),
+                  ]),
+                  sheet: ResponsiveCenter(
+                    maxWidth: 760,
+                    child: Column(children: [...head, if (!_online) offline]),
+                  ),
+                );
+              },
+            ),
           ),
-        if (partner.value != null && partnerCanDrive(partner.value!) && hasTeksiPartnerType(partner.value!.raw['partner_types']))
-          IconButton(
-            tooltip: 'Meter Digital',
-            icon: const Icon(Icons.speed),
-            onPressed: () => _openMeter(partner.value!),
+        ),
+        Positioned(
+          top: 0,
+          right: 0,
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 12, 0),
+              child: Row(mainAxisSize: MainAxisSize.min, spacing: 8, children: [
+                if (partner.value != null && hasTeksiPartnerType(partner.value!.raw['partner_types']))
+                  _floatingButton(
+                    tooltip: 'Driver permit',
+                    icon: Icons.badge_outlined,
+                    onPressed: () => context.push('/drive/permit'),
+                  ),
+                if (partner.value != null &&
+                    partnerCanDrive(partner.value!) &&
+                    hasTeksiPartnerType(partner.value!.raw['partner_types']))
+                  _floatingButton(
+                    tooltip: 'Meter Digital',
+                    icon: Icons.speed,
+                    onPressed: () => _openMeter(partner.value!),
+                  ),
+                if (partner.value != null)
+                  _floatingButton(
+                    tooltip: 'My vehicles',
+                    icon: Icons.directions_car_outlined,
+                    onPressed: () => context.push('/drive/vehicles'),
+                  ),
+                // The menu sits at the far right.
+                _floatingButton(
+                  key: const ValueKey('partner-menu-button'),
+                  tooltip: 'Menu',
+                  icon: Icons.menu,
+                  onPressed: () => showPartnerMenu(context),
+                ),
+              ]),
+            ),
           ),
-        if (partner.value != null)
-          IconButton(
-            tooltip: 'My vehicles',
-            icon: const Icon(Icons.directions_car_outlined),
-            onPressed: () => context.push('/drive/vehicles'),
-          ),
-        // The menu sits at the far right.
-        IconButton(
-          key: const ValueKey('partner-menu-button'),
-          tooltip: 'Menu',
-          icon: const Icon(Icons.menu),
-          onPressed: () => showPartnerMenu(context),
         ),
       ]),
-      body: AsyncView(
-        value: partner,
-        onRetry: () => ref.invalidate(partnerProvider),
-        data: (p) {
-          void openOnboarding() => context.push('/drive/onboarding');
-          if (p == null) {
-            return EmptyState(
-              icon: Icons.badge_outlined,
-              title: 'Become a GET.ride partner',
-              message: 'Earn by driving with GET.ride. Add your details and documents, and you can take jobs '
-                  'here once an admin approves your account.',
-              action: FilledButton(onPressed: openOnboarding, child: const Text('Get started')),
-            );
-          }
-          if (!partnerCanDrive(p)) {
-            if (partnerSetupIncomplete(p.raw)) {
-              return EmptyState(
-                icon: Icons.assignment_outlined,
-                title: 'Finish your partner application',
-                message: 'A few steps are still missing before an admin can review your account.',
-                action: FilledButton(onPressed: openOnboarding, child: const Text('Continue')),
-              );
-            }
-            return EmptyState(
-              icon: Icons.hourglass_empty,
-              title: 'Account not active yet',
-              message: 'Your partner status is "${p.status ?? 'unknown'}". '
-                  'You can go online once an admin approves your account.',
-              action: OutlinedButton(onPressed: openOnboarding, child: const Text('View application')),
-            );
-          }
-          final modes = partnerModeOptions(
-            parseStringList(p.raw['partner_types']),
-            ref.watch(partnerTypeEntriesProvider).value ?? const [],
-          );
-          final wide = MediaQuery.sizeOf(context).width >= 900;
-          final map = DriverHomeMap(
-            key: const ValueKey('driver-home-map'),
-            me: _me,
-            requests: _online ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const [],
-            onSelect: (r) => setState(() => _focusId = r.id),
-          );
-          final head = <Widget>[
-              // Online first, above the service types.
-              Card(
-                key: const ValueKey('partner-online'),
-                child: SwitchListTile(
-                  value: _online,
-                  onChanged: _toggle,
-                  secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
-                  title: Text(_online ? 'You are online' : 'You are offline'),
-                  subtitle: Text(
-                    [p.name, p.vehicle, p.plate].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · '),
-                  ),
-                ),
-              ),
-              if (modes.length > 1 || modes.any((m) => m.isTeksi))
-                Card(
-                  key: const ValueKey('partner-modes'),
-                  child: Column(children: [
-                    for (final m in modes)
-                      ListTile(
-                        key: ValueKey('partner-mode-${m.name}'),
-                        leading: m.iconUrl == null
-                            ? Icon(m.isTeksi ? Icons.local_taxi : Icons.directions_car_outlined)
-                            : SizedBox.square(
-                                dimension: 36,
-                                child: Image.network(m.iconUrl!,
-                                    errorBuilder: (_, _, _) => const Icon(Icons.directions_car_outlined)),
-                              ),
-                        title: Text(m.name),
-                        subtitle: m.description == null ? null : Text(m.description!),
-                        trailing: Icon(m.isTeksi ? Icons.speed : (_online ? Icons.check_circle : Icons.chevron_right)),
-                        onTap: () => m.isTeksi ? _openMeter(p) : (_online ? null : _toggle(true)),
-                      ),
-                  ]),
-                ),
-              if (_online)
-                Card(
-                  child: Column(children: [
-                    SwitchListTile(
-                      key: const ValueKey('queue-auto-accept'),
-                      value: _autoAccept,
-                      onChanged: _setAutoAccept,
-                      secondary: const Icon(Icons.flash_auto),
-                      title: const Text('Auto-accept'),
-                      subtitle: Text(_autoAccept
-                          ? 'Accepting new requests automatically, nearest first'
-                          : 'Manually review each request'),
-                    ),
-                    SwitchListTile(
-                      key: const ValueKey('queue-allow-offer'),
-                      value: _allowOfferMe,
-                      onChanged: (v) => setState(() => _allowOfferMe = v),
-                      secondary: const Icon(Icons.gavel),
-                      title: const Text('Allow OfferMe requests'),
-                      subtitle: Text(_allowOfferMe
-                          ? 'You can offer your own price where the rider allows it'
-                          : 'Take requests at the rider\'s price only'),
-                    ),
-                    _destinationTile(),
-                  ]),
-                ),
-              const DriverWalletPills(),
-              const CurrentVehicleCard(),
-              if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
-            ];
-          const offline = EmptyState(icon: Icons.local_taxi_outlined, title: 'Go online to receive ride requests');
-          if (wide) {
-            final panel = Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)]);
-            return Row(children: [
-              SizedBox(width: 520, child: panel),
-              const VerticalDivider(width: 1),
-              Expanded(
-                child: Stack(children: [
-                  Positioned.fill(child: map),
-                  // A new request flies in over the map on a desktop screen.
-                  if (_online) Positioned(top: 16, right: 16, width: 400, child: _alertOverlay(p)),
-                ]),
-              ),
-            ]);
-          }
-          // A phone: the map fills the screen, the requests float on it and
-          // the sheet holds the driver's settings. While there are requests
-          // the sheet is held down so the list on the map has the room.
-          final open = _online ? ref.watch(openRequestsProvider).value ?? const <RideRequest>[] : const <RideRequest>[];
-          final queue = _queueOrder(open, wide: false);
-          final floating = [if (queue.alert != null) queue.alert!, ...queue.sorted];
-          return MapSheetLayout(
-            locked: floating.isNotEmpty,
-            map: Stack(children: [
-              Positioned.fill(child: map),
-              if (_online) _floatingRequests(p, queue.alert, floating),
-            ]),
-            sheet: ResponsiveCenter(
-              maxWidth: 760,
-              child: Column(children: [...head, if (!_online) offline]),
-            ),
-          );
-        },
-      ),
     );
   }
+
+  /// One of the round buttons floating at the top of the page (in place of
+  /// a top bar), like the map's own.
+  Widget _floatingButton({Key? key, required String tooltip, required IconData icon, required VoidCallback onPressed}) =>
+      FloatingActionButton.small(key: key, heroTag: null, tooltip: tooltip, onPressed: onPressed, child: Icon(icon));
 
   /// The requests on this driver's queue (all open ones but those declined
   /// here), which are also the map's pins.
@@ -771,7 +796,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             context,
             (inset) => Positioned(
               key: const ValueKey('floating-requests'),
-              top: 0,
+              // Below the page's floating buttons.
+              top: 56,
               left: 12,
               right: 12,
               bottom: inset + mapAttributionClearance + 104,
@@ -785,7 +811,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           ),
           if (items.isEmpty)
             Positioned(
-              top: 12,
+              top: 64,
               left: 0,
               right: 0,
               child: Center(
