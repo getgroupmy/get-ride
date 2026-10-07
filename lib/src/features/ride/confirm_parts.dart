@@ -9,6 +9,7 @@ import '../../core/fare.dart';
 import '../../core/fare_offer.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/map_sheet_layout.dart' show MapSheetReveal;
 import 'fare_offer_controls.dart';
 import 'home_parts.dart' show uriImage;
 
@@ -405,7 +406,9 @@ class ConfirmServiceCard extends StatelessWidget {
         ),
       );
     }
-    return Container(
+    // Kept whole above the pinned footer, as Expo scrolls the chosen one.
+    return MapSheetReveal(
+      child: Container(
       key: ValueKey('service-${service.name}'),
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(24)),
@@ -435,6 +438,7 @@ class ConfirmServiceCard extends StatelessWidget {
           ),
           ?fare,
         ],
+      ),
       ),
     );
   }
