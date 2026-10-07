@@ -156,5 +156,13 @@ begin
   end if;
 end $$;
 
+-- 7. Signed-out clients can't probe who is on a call --------------------------
+do $$
+begin
+  if has_function_privilege('anon', 'public.support_call_participant(uuid)', 'execute') then
+    raise exception 'FAILED: anon can call support_call_participant';
+  end if;
+end $$;
+
 select 'support_call_audio: all passed' as result;
 rollback;

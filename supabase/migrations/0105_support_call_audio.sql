@@ -48,6 +48,8 @@ as $$
   );
 $$;
 revoke all on function public.support_call_participant(uuid) from public;
+-- Supabase grants anon its own EXECUTE on new functions; public doesn't cover it.
+revoke execute on function public.support_call_participant(uuid) from anon;
 grant execute on function public.support_call_participant(uuid) to authenticated;
 
 create or replace function public.support_calls_guard()
