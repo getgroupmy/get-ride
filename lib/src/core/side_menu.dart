@@ -76,7 +76,7 @@ List<MenuEntry> resolveSideMenu(Map<String, dynamic> settings, String menu) {
   return visible;
 }
 
-/// The footer mode switch ("Partner mode" / "Passenger Mode"): its label,
+/// The footer mode switch ("Partner Mode" / "Passenger Mode"): its label,
 /// or null when hidden; [comingSoon] when the admin marked it so.
 ({String label, bool comingSoon})? sideMenuModeButton(Map<String, dynamic> settings, String menu) {
   final cfg = normalizeMenu(settings[menu == 'user' ? 'userMenu' : 'partnerMenu']);

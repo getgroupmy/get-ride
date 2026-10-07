@@ -814,7 +814,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                   id: footerId,
                   icon: menu == 'user' ? Icons.directions_car_outlined : Icons.person_outline,
                   title: footerLabel,
-                  subtitle: menu == 'user' ? 'Partner mode button in the footer' : 'Passenger mode button in the footer',
+                  subtitle: menu == 'user' ? 'Partner Mode button in the footer' : 'Passenger Mode button in the footer',
                   onEdit: () async {
                     final res = await showDialog<(String, String?, String)>(
                       context: context,

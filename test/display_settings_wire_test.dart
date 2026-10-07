@@ -149,7 +149,7 @@ void main() {
     });
 
     test('the mode button can be renamed or hidden', () {
-      expect(sideMenuModeButton(const {}, 'user')!.label, 'Partner mode');
+      expect(sideMenuModeButton(const {}, 'user')!.label, 'Partner Mode');
       expect(
         sideMenuModeButton({
           'partnerMenu': {
