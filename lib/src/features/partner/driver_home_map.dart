@@ -5,13 +5,14 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/format.dart';
 import '../../data/models.dart';
+import '../../widgets/map_recenter.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 
 /// The driver's home map (Expo `partner-ehailing`): where they are and,
 /// while online, where each open request is waiting, with its fare. Tapping
 /// a pin opens that request in [onSelect].
-class DriverHomeMap extends ConsumerWidget {
+class DriverHomeMap extends ConsumerStatefulWidget {
   const DriverHomeMap({super.key, required this.me, required this.requests, this.onSelect});
 
   final LatLng? me;
@@ -21,13 +22,28 @@ class DriverHomeMap extends ConsumerWidget {
   final void Function(RideRequest)? onSelect;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DriverHomeMap> createState() => _DriverHomeMapState();
+}
+
+class _DriverHomeMapState extends ConsumerState<DriverHomeMap> {
+  final _map = MapController();
+
+  @override
+  void dispose() {
+    _map.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final me = widget.me, requests = widget.requests, onSelect = widget.onSelect;
     final t = Theme.of(context);
     final pickups = [
       for (final r in requests)
         if (r.pickupLat != null && r.pickupLng != null) LatLng(r.pickupLat!, r.pickupLng!),
     ];
     final map = RideMap(
+      controller: _map,
       me: me,
       framed: pickups,
       satellite: ref.watch(mapSatelliteProvider),
@@ -40,7 +56,7 @@ class DriverHomeMap extends ConsumerWidget {
               height: 34,
               child: GestureDetector(
                 key: ValueKey('map-request-${r.id}'),
-                onTap: onSelect == null ? null : () => onSelect!(r),
+                onTap: onSelect == null ? null : () => onSelect(r),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Container(
@@ -70,7 +86,18 @@ class DriverHomeMap extends ConsumerWidget {
     return Stack(
       children: [
         map,
-        const Positioned(right: 12, top: 12, child: SafeArea(child: MapTypeButton())),
+        Positioned(
+          right: 12,
+          top: 12,
+          child: SafeArea(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const MapTypeButton(),
+              const SizedBox(height: 8),
+              // Expo's driver map recenters on the driver.
+              RecenterButton(onPressed: me == null ? null : () => recenterMap(_map, me)),
+            ]),
+          ),
+        ),
       ],
     );
   }

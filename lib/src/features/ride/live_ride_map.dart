@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -8,6 +9,7 @@ import '../../core/live_eta.dart';
 import '../../data/geo_service.dart';
 import '../../providers.dart';
 import '../../data/models.dart';
+import '../../widgets/map_recenter.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 
@@ -38,6 +40,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
   LatLng? _routeFrom, _routeTo;
   DateTime? _routeAt;
   int _seq = 0;
+  final _map = MapController();
 
   DateTime get _now => (widget.now ?? DateTime.now)();
 
@@ -45,6 +48,12 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
   void initState() {
     super.initState();
     _maybeReroute();
+  }
+
+  @override
+  void dispose() {
+    _map.dispose();
+    super.dispose();
   }
 
   @override
@@ -90,6 +99,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
     return Stack(
       children: [
         RideMap(
+          controller: _map,
           pickup: _ll(r.pickupLat, r.pickupLng),
           drop: _ll(r.dropLat, r.dropLng),
           stops: [for (final s in r.stops) s.point],
@@ -98,7 +108,20 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
           route: route?.points ?? const [],
           satellite: ref.watch(mapSatelliteProvider),
         ),
-        const Positioned(right: 12, bottom: 12, child: MapTypeButton()),
+        Positioned(
+          right: 12,
+          bottom: 12,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            // Expo's trip maps recenter on the car; before a driver is on
+            // the way, on the pickup.
+            RecenterButton(
+              tooltip: 'Recenter',
+              onPressed: () => recenterMap(_map, _driver ?? _ll(r.pickupLat, r.pickupLng)),
+            ),
+            const SizedBox(height: 8),
+            const MapTypeButton(),
+          ]),
+        ),
         if (route != null)
           Positioned(
             top: 12,

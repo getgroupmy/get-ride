@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
@@ -29,6 +30,7 @@ import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_recenter.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 import 'fare_offer_controls.dart';
@@ -79,6 +81,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return q == null ? null : (balance: q.coinBalance, rate: q.settings.coinsPerCurrency);
   }
   final _note = TextEditingController();
+
+  /// The home map's camera, so the recenter button can move it.
+  final _map = MapController();
   _PinTarget _pinTarget = _PinTarget.none;
   bool _booking = false;
 
@@ -139,6 +144,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _carsTimer?.cancel();
     _note.dispose();
+    _map.dispose();
     super.dispose();
   }
 
@@ -149,10 +155,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _locate() async {
+  /// The recenter button: back onto the last known fix at once, then onto
+  /// a fresh one. The map only follows the first fix by itself, so without
+  /// the move the button refreshed the location and left the map where the
+  /// rider had scrolled it.
+  void _recenter() {
+    recenterMap(_map, _me);
+    unawaited(_locate(recenter: true));
+  }
+
+  Future<void> _locate({bool recenter = false}) async {
     final p = await currentPosition();
     if (p == null || !mounted) return;
     setState(() => _me = p);
+    if (recenter) recenterMap(_map, p);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
     setState(() {
@@ -427,6 +443,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         : const <TollMark>[];
     final map = Stack(children: [
       RideMap(
+        controller: _map,
         me: _me,
         pickup: _pickup?.point,
         drop: _drop?.point,
@@ -480,8 +497,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               if (display?.recenterButton ?? true) ...[
                 const SizedBox(height: 8),
                 FloatingActionButton.small(
+                  key: const ValueKey('map-recenter'),
                   heroTag: 'locate',
-                  onPressed: _locate,
+                  tooltip: 'My location',
+                  onPressed: _recenter,
                   child: const Icon(Icons.my_location),
                 ),
               ],
