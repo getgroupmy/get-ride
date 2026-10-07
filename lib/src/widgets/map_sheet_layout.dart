@@ -63,6 +63,7 @@ class MapSheetLayout extends StatefulWidget {
     this.max = 0.92,
     this.mapMinFraction = 0.4,
     this.locked = false,
+    this.hidden = false,
   });
 
   final Widget map;
@@ -82,11 +83,19 @@ class MapSheetLayout extends StatefulWidget {
   /// floating requests).
   final bool locked;
 
+  /// Slides the sheet down out of sight (the map being dragged under the
+  /// pickup pin), and back up where it was when this turns off. The map's
+  /// [MapBottomInset] is left as it was, so nothing on the map shifts.
+  final bool hidden;
+
+  /// How long the sheet takes to slide out of sight or back.
+  static const hideDuration = Duration(milliseconds: 200);
+
   @override
   State<MapSheetLayout> createState() => _MapSheetLayoutState();
 }
 
-class _MapSheetLayoutState extends State<MapSheetLayout> with SingleTickerProviderStateMixin {
+class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStateMixin {
   late final _extent = ValueNotifier<double>(widget.locked ? widget.min : widget.initial);
   final _sheet = DraggableScrollableController();
 
@@ -97,6 +106,13 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with SingleTickerProvid
   /// it follows the finger with growing resistance, and springs back when
   /// let go. The content inside never bounces.
   late final _bounce = AnimationController.unbounded(vsync: this);
+
+  /// 0 shown, 1 slid out of sight ([MapSheetLayout.hidden]).
+  late final _hide = AnimationController(
+    vsync: this,
+    duration: MapSheetLayout.hideDuration,
+    value: widget.hidden ? 1 : 0,
+  );
 
   /// iOS's rubber-band curve: the further it is pulled, the less it gives.
   static double _rubber(double pull, {double limit = 120}) =>
@@ -129,11 +145,15 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with SingleTickerProvid
     // The sheet doesn't report a size it is clamped to, only one it is
     // dragged to: tell the map's buttons.
     if (widget.locked && !old.locked) _extent.value = widget.min;
+    if (widget.hidden != old.hidden) {
+      widget.hidden ? _hide.animateTo(1, curve: Curves.easeIn) : _hide.animateBack(0, curve: Curves.easeOut);
+    }
   }
 
   @override
   void dispose() {
     _bounce.dispose();
+    _hide.dispose();
     _sheet.dispose();
     _extent.dispose();
     super.dispose();
@@ -173,7 +193,18 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with SingleTickerProvid
                 child: widget.map,
               ),
             ),
-            NotificationListener<DraggableScrollableNotification>(
+            AnimatedBuilder(
+              animation: Listenable.merge([_hide, _extent]),
+              // Always wrapped, so showing it again doesn't rebuild the sheet.
+              builder: (_, child) => IgnorePointer(
+                ignoring: _hide.value > 0,
+                child: Transform.translate(
+                  // Its own height and its shadow below the screen's edge.
+                  offset: Offset(0, _hide.value * (h * _extent.value + 24)),
+                  child: child,
+                ),
+              ),
+              child: NotificationListener<DraggableScrollableNotification>(
               onNotification: (n) {
                 // Dragged back up out of the rubber band: it springs home.
                 if (n.extent > n.minExtent + 0.001) _springBack();
@@ -258,6 +289,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with SingleTickerProvid
                   ),
                 ),
               ),
+            ),
             ),
           ],
         );

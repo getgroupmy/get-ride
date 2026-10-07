@@ -90,6 +90,7 @@ class RideMap extends StatefulWidget {
     this.onGesture,
     this.onReady,
     this.pointZoom = 15,
+    this.showPickup = true,
   });
 
   final LatLng? pickup;
@@ -129,6 +130,10 @@ class RideMap extends StatefulWidget {
 
   /// The zoom a map showing one point (the user alone) opens at.
   final double pointZoom;
+
+  /// Whether the pickup pin is drawn; off while a [MapDragPin] holds it
+  /// up off the map. The camera still counts it either way.
+  final bool showPickup;
 
   @override
   State<RideMap> createState() => _RideMapState();
@@ -242,7 +247,7 @@ class _RideMapState extends State<RideMap> {
                       ),
                     ),
                   ),
-                if (widget.pickup != null) _pin(widget.pickup!, Colors.green.shade700, Icons.trip_origin),
+                if (widget.pickup != null && widget.showPickup) _pin(widget.pickup!, Colors.green.shade700, Icons.trip_origin),
                 for (var i = 0; i < widget.stops.length; i++)
                   Marker(
                     point: widget.stops[i],
