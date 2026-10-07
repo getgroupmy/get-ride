@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   firebase_core
+  flutter_webrtc
   geolocator_windows
   printing
   record_windows

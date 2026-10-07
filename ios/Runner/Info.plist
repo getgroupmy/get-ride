@@ -13,7 +13,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>GET.ride uses the camera to scan payment and wallet QR codes.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>With VoiceProtection on, GET.ride records trip audio during your rides. Recordings stay on your phone for 24 hours and are only sent to support if a ride is reported.</string>
+	<string>GET.ride uses the microphone for voice calls with support and, with VoiceProtection on, to record trip audio during your rides. Trip recordings stay on your phone for 24 hours and are only sent to support if a ride is reported.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>GET.ride uses your location to set your pickup point and to share your position with your driver or passenger during a trip.</string>
 	<key>NSLocalNetworkUsageDescription</key>

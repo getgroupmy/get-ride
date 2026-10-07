@@ -61,6 +61,7 @@ dependencies:
   android_intent_plus: ^6.1.0
   webview_flutter: ^4.14.1
   flutter_native_contact_picker: ^0.0.12
+  flutter_webrtc: ^1.6.2+hotfix.3
 
 dev_dependencies:
   flutter_test:
