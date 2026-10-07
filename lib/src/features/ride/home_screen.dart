@@ -279,8 +279,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _updateRoute();
   }
 
-  void _removeStop(int index) {
-    setState(() => _stops.removeAt(index));
+  /// The places after the pickup, in their new order (the destinations
+  /// sheet): the last is the destination, the rest the stops on the way.
+  void _setDestinations(List<Place> places) {
+    if (places.isEmpty) return;
+    setState(() {
+      _stops
+        ..clear()
+        ..addAll(places.take(places.length - 1));
+      _drop = places.last;
+    });
     _updateRoute();
   }
 
@@ -793,11 +801,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               },
               onStops: () => showRouteStopsSheet(
                 context,
-                pickup: _pickup,
-                stops: _stops,
-                drop: _drop!,
-                onRemove: _removeStop,
-                onAdd: _stops.length < maxRideStops ? _addStop : null,
+                destinations: [..._stops, _drop!],
+                onChanged: _setDestinations,
               ),
               onAddStop: _stops.length < maxRideStops ? _addStop : null,
             ),
