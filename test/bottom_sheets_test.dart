@@ -51,9 +51,23 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: MapSheetLayout(
-            map: const ColoredBox(
-              color: Colors.green,
-              child: SizedBox.expand(key: ValueKey('map')),
+            map: Builder(
+              builder: (context) => Stack(
+                children: [
+                  const ColoredBox(
+                    color: Colors.green,
+                    child: SizedBox.expand(key: ValueKey('map')),
+                  ),
+                  MapBottomInset.listen(
+                    context,
+                    (inset) => Positioned(
+                      right: 12,
+                      bottom: 12 + inset,
+                      child: const SizedBox(key: ValueKey('map-button'), width: 40, height: 40),
+                    ),
+                  ),
+                ],
+              ),
             ),
             sheet: Column(children: [for (var i = 0; i < 30; i++) ListTile(title: Text('row $i'))]),
           ),
@@ -61,15 +75,17 @@ void main() {
       ),
     );
     final handle = find.byKey(const ValueKey('map-sheet-handle'));
-    final mapHeight = tester.getSize(find.byKey(const ValueKey('map'))).height;
+    final map = find.byKey(const ValueKey('map'));
+    final button = find.byKey(const ValueKey('map-button'));
+    final screen = tester.getSize(find.byType(MapSheetLayout));
+    expect(tester.getSize(map), screen, reason: 'the map fills the screen, the sheet floats over it');
     final before = tester.getTopLeft(handle).dy;
-    await tester.drag(find.text('row 0'), const Offset(0, -200));
+    expect(tester.getBottomLeft(button).dy, lessThan(before), reason: "the map's buttons sit above the sheet");
+    await tester.drag(find.text('row 0'), const Offset(0, -100));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(handle).dy, lessThan(before - 150));
-    expect(
-      tester.getSize(find.byKey(const ValueKey('map'))).height,
-      lessThan(mapHeight),
-      reason: 'the map keeps to the space above the sheet',
-    );
+    final after = tester.getTopLeft(handle).dy;
+    expect(after, lessThan(before - 60));
+    expect(tester.getSize(map), screen, reason: 'the map stays put under the sheet');
+    expect(tester.getBottomLeft(button).dy, lessThan(after), reason: 'and its buttons follow the sheet up');
   });
 }

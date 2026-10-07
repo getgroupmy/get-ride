@@ -35,6 +35,7 @@ import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_recenter.dart';
+import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 import 'fare_offer_controls.dart';
@@ -687,34 +688,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
     return Scaffold(
-      body: Stack(children: [
-        Positioned.fill(child: map),
-        DraggableScrollableSheet(
-          initialChildSize: 0.45,
-          minChildSize: 0.22,
-          maxChildSize: 0.92,
-          builder: (context, scroll) => Material(
-            elevation: 8,
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: SingleChildScrollView(
-              controller: scroll,
-              child: Column(children: [
-                Container(
-                  margin: const EdgeInsets.only(top: 8),
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                panel,
-              ]),
-            ),
-          ),
-        ),
-      ]),
+      body: MapSheetLayout(map: map, sheet: panel, min: 0.22),
     );
   }
 }

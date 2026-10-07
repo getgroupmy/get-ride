@@ -10,6 +10,7 @@ import '../../config.dart';
 import '../../core/demo_mode.dart';
 import '../../core/format.dart';
 import '../../providers.dart';
+import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 import '../ride/demo_ride.dart';
 
@@ -220,31 +221,27 @@ class _DemoJobScreenState extends ConsumerState<DemoJobScreen> {
       appBar: AppBar(
         title: const Row(mainAxisSize: MainAxisSize.min, children: [Text('Demo job'), SizedBox(width: 8), DemoChip()]),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: RideMap(pickup: j.pickup, drop: j.drop, route: _trip, driver: car),
+      body: MapSheetLayout(
+        map: RideMap(pickup: j.pickup, drop: j.drop, route: _trip, driver: car),
+        sheet: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, key: const ValueKey('demo-job-phase'), style: t.textTheme.headlineSmall),
+              Text(
+                '${j.passenger} · ${j.payment} · ${formatMoney(j.fare, AppConfig.currency)}',
+                style: t.textTheme.bodyMedium,
+              ),
+              Text('A demo job: there is no passenger and nothing is paid.', style: t.textTheme.bodySmall),
+              const SizedBox(height: 12),
+              if (action != null)
+                FilledButton(key: const ValueKey('demo-job-next'), onPressed: () => _go(next), child: Text(action)),
+              if (_phase == _JobPhase.done)
+                FilledButton(onPressed: () => context.pop(), child: const Text('Back to Drive')),
+            ],
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(title, key: const ValueKey('demo-job-phase'), style: t.textTheme.headlineSmall),
-                Text(
-                  '${j.passenger} · ${j.payment} · ${formatMoney(j.fare, AppConfig.currency)}',
-                  style: t.textTheme.bodyMedium,
-                ),
-                Text('A demo job: there is no passenger and nothing is paid.', style: t.textTheme.bodySmall),
-                const SizedBox(height: 12),
-                if (action != null)
-                  FilledButton(key: const ValueKey('demo-job-next'), onPressed: () => _go(next), child: Text(action)),
-                if (_phase == _JobPhase.done)
-                  FilledButton(onPressed: () => context.pop(), child: const Text('Back to Drive')),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

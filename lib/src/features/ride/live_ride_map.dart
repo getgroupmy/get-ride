@@ -11,6 +11,7 @@ import '../../providers.dart';
 import '../../data/models.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_type_button.dart';
+import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
@@ -111,19 +112,22 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
           route: route?.points ?? const [],
           satellite: ref.watch(mapSatelliteProvider),
         ),
-        Positioned(
-          right: 12,
-          bottom: mapAttributionClearance,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            // Expo's trip maps recenter on the car; before a driver is on
-            // the way, on the pickup.
-            RecenterButton(
-              tooltip: 'Recenter',
-              onPressed: () => recenterMap(_map, _driver ?? _ll(r.pickupLat, r.pickupLng)),
-            ),
-            const SizedBox(height: 8),
-            const MapTypeButton(),
-          ]),
+        MapBottomInset.listen(
+          context,
+          (inset) => Positioned(
+            right: 12,
+            bottom: mapAttributionClearance + inset,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Expo's trip maps recenter on the car; before a driver is on
+              // the way, on the pickup.
+              RecenterButton(
+                tooltip: 'Recenter',
+                onPressed: () => recenterMap(_map, _driver ?? _ll(r.pickupLat, r.pickupLng)),
+              ),
+              const SizedBox(height: 8),
+              const MapTypeButton(),
+            ]),
+          ),
         ),
         if (route != null)
           Positioned(
