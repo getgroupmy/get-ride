@@ -210,6 +210,8 @@ void main() {
       await fix(tester, at);
       expect(geo.routed, [(at, pickup)]);
       expect(find.text('Arriving in 6 min · 10:36 · 2.3 km'), findsOneWidget);
+      // The camera glides onto the car.
+      await tester.pump(const Duration(seconds: 1));
       expect(find.byKey(const ValueKey('driver-heading')), findsOneWidget);
       expect(find.byKey(const ValueKey('trip-meter')), findsNothing);
     });
