@@ -67,6 +67,7 @@ class MapSheetLayout extends StatefulWidget {
     this.locked = false,
     this.hidden = false,
     this.footer,
+    this.aboveFooter,
   });
 
   final Widget map;
@@ -96,6 +97,17 @@ class MapSheetLayout extends StatefulWidget {
   /// sheet's content gets room below it so nothing ends up hidden behind.
   final Widget? footer;
 
+  /// Pinned just above [footer], and shown only while the sheet is up at
+  /// [max]: it fades in as the sheet gets there and out as it leaves (the
+  /// confirm screen's fare disclaimer, as Expo's shows only when expanded).
+  final Widget? aboveFooter;
+
+  /// How near [max] counts as up, for [aboveFooter].
+  static const upSlack = 0.05;
+
+  /// How long [aboveFooter] takes to fade in or out (Expo's 200 ms).
+  static const fadeDuration = Duration(milliseconds: 200);
+
   /// How long the sheet takes to slide out of sight or back.
   static const hideDuration = Duration(milliseconds: 200);
 
@@ -117,6 +129,9 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
 
   /// The [MapSheetLayout.footer]'s height, as last laid out.
   double _footerHeight = 0;
+
+  /// The [MapSheetLayout.aboveFooter]'s height, as last laid out.
+  double _aboveHeight = 0;
 
   @override
   void initState() {
@@ -321,7 +336,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                               h,
                             ),
                           ),
-                          if (widget.footer != null) SliverToBoxAdapter(child: SizedBox(height: _footerHeight)),
+                          if (widget.footer != null) SliverToBoxAdapter(child: SizedBox(height: _footerHeight + _aboveHeight)),
                         ],
                       ),
                     ),
@@ -340,6 +355,33 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                     if (mounted && (size.height - _footerHeight).abs() > 0.5) setState(() => _footerHeight = size.height);
                   },
                   child: widget.footer!,
+                ),
+              ),
+            if (widget.aboveFooter != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: _footerHeight,
+                child: _SizeReporter(
+                  onSize: (size) {
+                    if (mounted && (size.height - _aboveHeight).abs() > 0.5) setState(() => _aboveHeight = size.height);
+                  },
+                  child: AnimatedBuilder(
+                    animation: Listenable.merge([_hide, _extent]),
+                    builder: (_, child) {
+                      final up = _hide.value == 0 && _extent.value >= widget.max - MapSheetLayout.upSlack;
+                      return IgnorePointer(
+                        ignoring: !up,
+                        child: AnimatedOpacity(
+                          key: const ValueKey('map-sheet-above-footer'),
+                          opacity: up ? 1 : 0,
+                          duration: MapSheetLayout.fadeDuration,
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: widget.aboveFooter,
+                  ),
                 ),
               ),
           ],
