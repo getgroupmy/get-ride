@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 /// Every bottom sheet in the app: rounded top corners and a handle to drag
 /// it by (down to close; the tall ones also up to expand).
@@ -85,9 +86,42 @@ class MapSheetLayout extends StatefulWidget {
   State<MapSheetLayout> createState() => _MapSheetLayoutState();
 }
 
-class _MapSheetLayoutState extends State<MapSheetLayout> {
+class _MapSheetLayoutState extends State<MapSheetLayout> with SingleTickerProviderStateMixin {
   late final _extent = ValueNotifier<double>(widget.locked ? widget.min : widget.initial);
   final _sheet = DraggableScrollableController();
+
+  /// How far the sheet is pulled past fully down, before resistance.
+  double _pull = 0;
+
+  /// The sheet's own rubber band (iOS-style): pulled down past fully down
+  /// it follows the finger with growing resistance, and springs back when
+  /// let go. The content inside never bounces.
+  late final _bounce = AnimationController.unbounded(vsync: this);
+
+  /// iOS's rubber-band curve: the further it is pulled, the less it gives.
+  static double _rubber(double pull, {double limit = 120}) =>
+      pull <= 0 ? 0 : limit * (1 - 1 / (pull * 0.55 / limit + 1));
+
+  bool _onScroll(ScrollNotification n) {
+    if (widget.locked) return false;
+    if (n is OverscrollNotification && n.dragDetails != null && n.overscroll < 0) {
+      // Pulled down past fully down.
+      _pull -= n.overscroll;
+      _bounce.stop();
+      _bounce.value = _rubber(_pull);
+    } else if (n is ScrollEndNotification) {
+      _springBack();
+    }
+    return false;
+  }
+
+  void _springBack() {
+    if (_pull == 0 && _bounce.value == 0) return;
+    _pull = 0;
+    _bounce.animateWith(
+      SpringSimulation(const SpringDescription(mass: 1, stiffness: 500, damping: 32), _bounce.value, 0, 0),
+    );
+  }
 
   @override
   void didUpdateWidget(covariant MapSheetLayout old) {
@@ -99,6 +133,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> {
 
   @override
   void dispose() {
+    _bounce.dispose();
     _sheet.dispose();
     _extent.dispose();
     super.dispose();
@@ -140,6 +175,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> {
             ),
             NotificationListener<DraggableScrollableNotification>(
               onNotification: (n) {
+                // Dragged back up out of the rubber band: it springs home.
+                if (n.extent > n.minExtent + 0.001) _springBack();
                 _extent.value = n.extent;
                 return false;
               },
@@ -149,64 +186,71 @@ class _MapSheetLayoutState extends State<MapSheetLayout> {
                 initialChildSize: widget.locked ? widget.min : widget.initial,
                 minChildSize: widget.min,
                 maxChildSize: widget.locked ? widget.min : widget.max,
-                builder: (context, scroll) => Material(
-                  elevation: 8,
-                  color: t.colorScheme.surface,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                  clipBehavior: Clip.antiAlias,
-                  // The handle is pinned to the sheet's top edge: it stays in
-                  // view while the content scrolls under it, and dragging it
-                  // moves the sheet.
-                  child: CustomScrollView(
-                    controller: scroll,
-                    // Content scrolls only in a sheet that is fully up: a drag
-                    // moves the sheet first, and a sheet that is all the way
-                    // down doesn't rubber-band its content when pulled (no
-                    // iOS bounce). Held down, it neither moves nor scrolls.
-                    physics: widget.locked ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
-                    slivers: [
-                      PinnedHeaderSliver(
-                        child: ColoredBox(
-                          key: const ValueKey('map-sheet-header'),
-                          color: t.colorScheme.surface,
-                          child: SizedBox(
-                            height: 22,
-                            child: Center(
-                              child: Container(
-                                key: const ValueKey('map-sheet-handle'),
-                                width: 40,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: t.colorScheme.outlineVariant,
-                                  borderRadius: BorderRadius.circular(2),
+                builder: (context, scroll) => NotificationListener<ScrollNotification>(
+                  onNotification: _onScroll,
+                  child: AnimatedBuilder(
+                    animation: _bounce,
+                    builder: (_, child) => Transform.translate(offset: Offset(0, _bounce.value), child: child),
+                    child: Material(
+                      elevation: 8,
+                      color: t.colorScheme.surface,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                      clipBehavior: Clip.antiAlias,
+                      // The handle is pinned to the sheet's top edge: it stays in
+                      // view while the content scrolls under it, and dragging it
+                      // moves the sheet.
+                      child: CustomScrollView(
+                        controller: scroll,
+                        // Content scrolls only in a sheet that is fully up: a drag
+                        // moves the sheet first, and a sheet that is all the way
+                        // down doesn't rubber-band its content when pulled (no
+                        // iOS bounce). Held down, it neither moves nor scrolls.
+                        physics: widget.locked ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
+                        slivers: [
+                          PinnedHeaderSliver(
+                            child: ColoredBox(
+                              key: const ValueKey('map-sheet-header'),
+                              color: t.colorScheme.surface,
+                              child: SizedBox(
+                                height: 22,
+                                child: Center(
+                                  child: Container(
+                                    key: const ValueKey('map-sheet-handle'),
+                                    width: 40,
+                                    height: 4,
+                                    decoration: BoxDecoration(
+                                      color: t.colorScheme.outlineVariant,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
+                          if (widget.peek != null) SliverToBoxAdapter(child: _wheelMovesSheet(widget.peek!, scroll, h)),
+                          SliverToBoxAdapter(
+                            child: _wheelMovesSheet(
+                              widget.peek == null
+                                  ? widget.sheet
+                                  : ValueListenableBuilder<double>(
+                                      valueListenable: _extent,
+                                      builder: (_, extent, child) {
+                                        // Hidden all the way down; in as it rises.
+                                        final shown = ((extent - widget.min) / 0.04).clamp(0.0, 1.0);
+                                        return IgnorePointer(
+                                          ignoring: shown < 1,
+                                          child: Opacity(opacity: shown, child: child),
+                                        );
+                                      },
+                                      child: widget.sheet,
+                                    ),
+                              scroll,
+                              h,
+                            ),
+                          ),
+                        ],
                       ),
-                      if (widget.peek != null) SliverToBoxAdapter(child: _wheelMovesSheet(widget.peek!, scroll, h)),
-                      SliverToBoxAdapter(
-                        child: _wheelMovesSheet(
-                          widget.peek == null
-                              ? widget.sheet
-                              : ValueListenableBuilder<double>(
-                                  valueListenable: _extent,
-                                  builder: (_, extent, child) {
-                                    // Hidden all the way down; in as it rises.
-                                    final shown = ((extent - widget.min) / 0.04).clamp(0.0, 1.0);
-                                    return IgnorePointer(
-                                      ignoring: shown < 1,
-                                      child: Opacity(opacity: shown, child: child),
-                                    );
-                                  },
-                                  child: widget.sheet,
-                                ),
-                          scroll,
-                          h,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),

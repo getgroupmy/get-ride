@@ -119,7 +119,7 @@ void main() {
     expect(handleTop - sheetTop, lessThan(20), reason: 'it sits on the top edge');
   });
 
-  testWidgets('all the way down the content neither bounces nor scrolls; a wheel moves the sheet', (tester) async {
+  testWidgets('all the way down the sheet bounces, not its content; a wheel moves the sheet', (tester) async {
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -137,17 +137,27 @@ void main() {
       ),
     );
     final row = find.text('row 0');
+    final handle = find.byKey(const ValueKey('map-sheet-handle'));
     final top = tester.getTopLeft(row).dy;
-    // Pulled down when it can go no lower: nothing moves.
+    final handleTop = tester.getTopLeft(handle).dy;
+    // Pulled down when it can go no lower: the SHEET rubber-bands (with
+    // resistance), its content doesn't scroll inside it, and it springs back.
     final g = await tester.startGesture(tester.getCenter(row));
-    await g.moveBy(const Offset(0, 80));
-    await tester.pump();
-    expect(tester.getTopLeft(row).dy, top, reason: 'no rubber-band');
+    for (var i = 0; i < 8; i++) {
+      await g.moveBy(const Offset(0, 20));
+      await tester.pump();
+    }
+    final pulled = tester.getTopLeft(handle).dy - handleTop;
+    expect(pulled, greaterThan(20), reason: 'the sheet gives');
+    expect(pulled, lessThan(160), reason: 'with resistance');
+    expect(tester.getTopLeft(row).dy - tester.getTopLeft(handle).dy, closeTo(top - handleTop, 0.5),
+        reason: 'the content moves with the sheet, not inside it');
     await g.up();
     await tester.pumpAndSettle();
+    expect(tester.getTopLeft(handle).dy, closeTo(handleTop, 0.5), reason: 'it springs back');
+    expect(tester.getTopLeft(row).dy, closeTo(top, 0.5));
 
     // A wheel over it raises the sheet rather than scrolling the content.
-    final handle = find.byKey(const ValueKey('map-sheet-handle'));
     final before = tester.getTopLeft(handle).dy;
     final p = TestPointer(1, PointerDeviceKind.mouse);
     await tester.sendEventToBinding(p.hover(tester.getCenter(row)));
