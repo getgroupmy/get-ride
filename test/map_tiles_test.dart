@@ -60,15 +60,21 @@ void main() {
 
   testWidgets('a trip map opens already framing pickup and drop-off', (tester) async {
     const klia = LatLng(2.7456, 101.7072), klcc = LatLng(3.1579, 101.7116);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 360);
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       const MaterialApp(
         home: RideMap(pickup: klia, drop: klcc),
       ),
     );
     final options = tester.widget<FlutterMap>(find.byType(FlutterMap)).options;
-    final fit = options.initialCameraFit;
-    expect(fit, isA<FitCoordinates>());
-    expect((fit! as FitCoordinates).coordinates, containsAll([klia, klcc]));
+    // The opening view is the fitted one itself. flutter_map's own
+    // initialCameraFit moved the camera without telling the tile layer,
+    // which kept the tiles of zoom 14 on the pickup: a grey map.
+    expect(options.initialCameraFit, isNull);
+    expect(options.initialZoom, inInclusiveRange(8.5, 10.5));
+    expect(options.initialCenter.latitude, closeTo((klia.latitude + klcc.latitude) / 2, 0.02));
   });
 
   group('tile retries', () {

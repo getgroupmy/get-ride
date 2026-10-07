@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
@@ -29,6 +30,7 @@ import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_recenter.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 import 'fare_offer_controls.dart';
@@ -79,6 +81,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return q == null ? null : (balance: q.coinBalance, rate: q.settings.coinsPerCurrency);
   }
   final _note = TextEditingController();
+
+  /// The home map's camera, so the recenter button can move it.
+  final _map = MapController();
   _PinTarget _pinTarget = _PinTarget.none;
   bool _booking = false;
 
@@ -139,6 +144,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _carsTimer?.cancel();
     _note.dispose();
+    _map.dispose();
     super.dispose();
   }
 
@@ -149,10 +155,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } catch (_) {}
   }
 
-  Future<void> _locate() async {
+  /// The recenter button: back onto the last known fix at once, then onto
+  /// a fresh one. The map only follows the first fix by itself, so without
+  /// the move the button refreshed the location and left the map where the
+  /// rider had scrolled it.
+  void _recenter() {
+    recenterMap(_map, _me);
+    unawaited(_locate(recenter: true));
+  }
+
+  Future<void> _locate({bool recenter = false}) async {
     final p = await currentPosition();
     if (p == null || !mounted) return;
     setState(() => _me = p);
+    if (recenter) recenterMap(_map, p);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
     setState(() {
@@ -425,8 +441,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final tolls = display?.showAiTollBooths ?? true
         ? tollMarks(ai, [for (final p in _route?.points ?? const <LatLng>[]) (lat: p.latitude, lng: p.longitude)])
         : const <TollMark>[];
+    final showPill = sections.addressBar && _drop == null && _pinTarget == _PinTarget.none;
     final map = Stack(children: [
       RideMap(
+        controller: _map,
         me: _me,
         pickup: _pickup?.point,
         drop: _drop?.point,
@@ -436,6 +454,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         satellite: ref.watch(mapSatelliteProvider),
         extraMarkers: [
           for (final c in _cars) demoCarMarker(c, serviceIndex),
+          // The pickup box stands 5 px above the pickup pin and moves with it.
+          if (showPill && _pickup != null)
+            labelAbovePin(
+              _pickup!.point,
+              PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup)),
+              width: math.min(320, MediaQuery.sizeOf(context).width - 32),
+            ),
           for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
         ],
       ),
@@ -459,7 +484,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-      if (sections.addressBar && _drop == null && _pinTarget == _PinTarget.none)
+      // With no pickup on the map yet there is no pin to stand on: the box
+      // waits at the top until there is.
+      if (showPill && _pickup == null)
         Positioned(
           top: 16,
           left: 72,
@@ -480,8 +507,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               if (display?.recenterButton ?? true) ...[
                 const SizedBox(height: 8),
                 FloatingActionButton.small(
+                  key: const ValueKey('map-recenter'),
                   heroTag: 'locate',
-                  onPressed: _locate,
+                  tooltip: 'My location',
+                  onPressed: _recenter,
                   child: const Icon(Icons.my_location),
                 ),
               ],

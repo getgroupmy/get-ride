@@ -7,6 +7,55 @@ import 'package:latlong2/latlong.dart';
 import '../data/geo_service.dart';
 import 'map_tiles.dart';
 
+/// Where a map of [points] (and [route]) opens, laid out at [size]: framing
+/// them all when there are two or more, else on the one point (or
+/// [defaultCenter]). Pure.
+({LatLng center, double zoom}) openingView(List<LatLng> points, List<LatLng> route, Size size) {
+  final all = [...points, ...route];
+  final first = points.isNotEmpty ? points.first : (all.isNotEmpty ? all.first : defaultCenter);
+  if (all.length < 2 || !size.width.isFinite || !size.height.isFinite || size.width <= 0 || size.height <= 0) {
+    return (center: first, zoom: points.length == 1 ? 15 : 14);
+  }
+  final fitted = CameraFit.coordinates(
+    coordinates: all,
+    padding: const EdgeInsets.all(64),
+    maxZoom: 16,
+  ).fit(MapCamera(crs: const Epsg3857(), center: first, zoom: 14, rotation: 0, nonRotatedSize: size));
+  return (center: fitted.center, zoom: fitted.zoom);
+}
+
+/// Height of the box a pickup/drop-off pin is drawn in, standing on its point.
+const rideMapPinBox = 40.0;
+
+/// Size of the pin icon, centred in [rideMapPinBox].
+const rideMapPinIcon = 36.0;
+
+/// How far above its point a pin's visible top is: the box, less the room
+/// the icon leaves above it, less the padding Material icons draw inside
+/// their own square (2 of 24 units) — so a gap is measured to the ring the
+/// rider sees, not to an invisible box.
+const rideMapPinTop = rideMapPinBox - (rideMapPinBox - rideMapPinIcon) / 2 - rideMapPinIcon * 2 / 24;
+
+/// A label drawn [gap] px above the pickup pin at [point], moving with the
+/// map (the pickup box, in place of one fixed to the top of the screen).
+/// [width] and [height] bound the label; space it doesn't use takes no taps.
+Marker labelAbovePin(LatLng point, Widget label, {double gap = 5, double width = 300, double height = 72}) {
+  final lift = rideMapPinTop + gap;
+  return Marker(
+    point: point,
+    width: width,
+    height: height + lift,
+    alignment: Alignment.topCenter,
+    child: Align(
+      alignment: Alignment.bottomCenter,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: lift),
+        child: label,
+      ),
+    ),
+  );
+}
+
 /// OpenStreetMap view used on every platform (web, desktop, iOS, Android).
 class RideMap extends StatefulWidget {
   const RideMap({
@@ -58,8 +107,14 @@ class _RideMapState extends State<RideMap> {
   late final MapController _controller = widget.controller ?? MapController();
   bool _ready = false;
 
-  List<LatLng> get _points =>
-      [widget.pickup, ...widget.stops, widget.drop, widget.driver, widget.me, ...widget.framed].whereType<LatLng>().toList();
+  List<LatLng> get _points => [
+    widget.pickup,
+    ...widget.stops,
+    widget.drop,
+    widget.driver,
+    widget.me,
+    ...widget.framed,
+  ].whereType<LatLng>().toList();
 
   @override
   void didUpdateWidget(covariant RideMap old) {
@@ -96,87 +151,99 @@ class _RideMapState extends State<RideMap> {
 
   @override
   Widget build(BuildContext context) {
-    final center = _points.isNotEmpty ? _points.first : defaultCenter;
-    return FlutterMap(
-      mapController: _controller,
-      options: MapOptions(
-        initialCenter: center,
-        initialZoom: _points.length == 1 ? 15 : 14,
-        // Open already framing the trip. Starting zoomed in on the pickup and
-        // fitting a frame later requested a screenful of close-up tiles that
-        // were thrown away at once, and on a long trip those queued requests
-        // held up (or used up the server's allowance for) the tiles shown.
-        initialCameraFit: _cameraFit,
-        onTap: widget.onTap == null ? null : (_, p) => widget.onTap!(p),
-        onMapReady: () {
-          _ready = true;
-          _fit();
-        },
-      ),
-      children: [
-        baseTileLayer(context, satellite: widget.satellite),
-        if (widget.route.length > 1)
-          PolylineLayer(polylines: [
-            Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
-          ]),
-        if (widget.extraMarkers.isNotEmpty) MarkerLayer(markers: widget.extraMarkers),
-        MarkerLayer(markers: [
-          if (widget.me != null)
-            Marker(
-              point: widget.me!,
-              width: 22,
-              height: 22,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 3),
-                  boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black26)],
-                ),
+    // The opening view is worked out here, against the size the map is laid
+    // out at, rather than handed to flutter_map as `initialCameraFit`: that
+    // fit moves the camera without telling the tile layer, which had already
+    // asked for the tiles of the unfitted view (zoom 14 on the first point).
+    // A map opened framing two points far apart — a ride's pickup and
+    // drop-off — then showed only grey until it was dragged.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final start = openingView(_points, widget.route, Size(constraints.maxWidth, constraints.maxHeight));
+        return FlutterMap(
+          mapController: _controller,
+          options: MapOptions(
+            initialCenter: start.center,
+            initialZoom: start.zoom,
+            onTap: widget.onTap == null ? null : (_, p) => widget.onTap!(p),
+            onMapReady: () {
+              _ready = true;
+              _fit();
+            },
+          ),
+          children: [
+            baseTileLayer(context, satellite: widget.satellite),
+            if (widget.route.length > 1)
+              PolylineLayer(
+                polylines: [Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2))],
               ),
-            ),
-          if (widget.pickup != null) _pin(widget.pickup!, Colors.green.shade700, Icons.trip_origin),
-          for (var i = 0; i < widget.stops.length; i++)
-            Marker(
-              point: widget.stops[i],
-              width: 26,
-              height: 26,
-              child: CircleAvatar(
-                backgroundColor: Colors.orange.shade800,
-                child: Text('${i + 1}',
-                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
-              ),
-            ),
-          if (widget.drop != null) _pin(widget.drop!, Colors.red.shade700, Icons.location_on),
-          if (widget.driver != null)
-            Marker(
-              point: widget.driver!,
-              width: 40,
-              height: 40,
-              child: CircleAvatar(
-                backgroundColor: Colors.black,
-                child: widget.driverHeading == null
-                    ? const Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22)
-                    : Transform.rotate(
-                        key: const ValueKey('driver-heading'),
-                        angle: widget.driverHeading! * math.pi / 180,
-                        child: const Icon(Icons.navigation, color: Color(0xFFFFD400), size: 22),
+            if (widget.extraMarkers.isNotEmpty) MarkerLayer(markers: widget.extraMarkers),
+            MarkerLayer(
+              markers: [
+                if (widget.me != null)
+                  Marker(
+                    point: widget.me!,
+                    width: 22,
+                    height: 22,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.blue,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                        boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black26)],
                       ),
-              ),
+                    ),
+                  ),
+                if (widget.pickup != null) _pin(widget.pickup!, Colors.green.shade700, Icons.trip_origin),
+                for (var i = 0; i < widget.stops.length; i++)
+                  Marker(
+                    point: widget.stops[i],
+                    width: 26,
+                    height: 26,
+                    child: CircleAvatar(
+                      backgroundColor: Colors.orange.shade800,
+                      child: Text(
+                        '${i + 1}',
+                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                if (widget.drop != null) _pin(widget.drop!, Colors.red.shade700, Icons.location_on),
+                if (widget.driver != null)
+                  Marker(
+                    point: widget.driver!,
+                    width: 40,
+                    height: 40,
+                    child: CircleAvatar(
+                      backgroundColor: Colors.black,
+                      child: widget.driverHeading == null
+                          ? const Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22)
+                          : Transform.rotate(
+                              key: const ValueKey('driver-heading'),
+                              angle: widget.driverHeading! * math.pi / 180,
+                              child: const Icon(Icons.navigation, color: Color(0xFFFFD400), size: 22),
+                            ),
+                    ),
+                  ),
+              ],
             ),
-        ]),
-        const RichAttributionWidget(
-          attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
-        ),
-      ],
+            const RichAttributionWidget(attributions: [TextSourceAttribution('© OpenStreetMap contributors')]),
+          ],
+        );
+      },
     );
   }
 
   Marker _pin(LatLng p, Color c, IconData icon) => Marker(
-        point: p,
-        width: 40,
-        height: 40,
-        alignment: Alignment.topCenter,
-        child: Icon(icon, color: c, size: 36, shadows: const [Shadow(blurRadius: 4, color: Colors.black38)]),
-      );
+    point: p,
+    width: 40,
+    height: rideMapPinBox,
+    alignment: Alignment.topCenter,
+    child: Icon(
+      icon,
+      color: c,
+      size: rideMapPinIcon,
+      shadows: const [Shadow(blurRadius: 4, color: Colors.black38)],
+    ),
+  );
 }
