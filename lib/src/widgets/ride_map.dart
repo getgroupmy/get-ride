@@ -7,6 +7,35 @@ import 'package:latlong2/latlong.dart';
 import '../data/geo_service.dart';
 import 'map_tiles.dart';
 
+/// Height of the box a pickup/drop-off pin is drawn in, standing on its point.
+const rideMapPinBox = 40.0;
+
+/// Size of the pin icon, centred in [rideMapPinBox].
+const rideMapPinIcon = 36.0;
+
+/// How far above its point a pin's visible top is: the box, less the room
+/// the icon leaves above it, less the padding Material icons draw inside
+/// their own square (2 of 24 units) — so a gap is measured to the ring the
+/// rider sees, not to an invisible box.
+const rideMapPinTop = rideMapPinBox - (rideMapPinBox - rideMapPinIcon) / 2 - rideMapPinIcon * 2 / 24;
+
+/// A label drawn [gap] px above the pickup pin at [point], moving with the
+/// map (the pickup box, in place of one fixed to the top of the screen).
+/// [width] and [height] bound the label; space it doesn't use takes no taps.
+Marker labelAbovePin(LatLng point, Widget label, {double gap = 5, double width = 300, double height = 72}) {
+  final lift = rideMapPinTop + gap;
+  return Marker(
+    point: point,
+    width: width,
+    height: height + lift,
+    alignment: Alignment.topCenter,
+    child: Align(
+      alignment: Alignment.bottomCenter,
+      child: Padding(padding: EdgeInsets.only(bottom: lift), child: label),
+    ),
+  );
+}
+
 /// OpenStreetMap view used on every platform (web, desktop, iOS, Android).
 class RideMap extends StatefulWidget {
   const RideMap({
@@ -175,8 +204,8 @@ class _RideMapState extends State<RideMap> {
   Marker _pin(LatLng p, Color c, IconData icon) => Marker(
         point: p,
         width: 40,
-        height: 40,
+        height: rideMapPinBox,
         alignment: Alignment.topCenter,
-        child: Icon(icon, color: c, size: 36, shadows: const [Shadow(blurRadius: 4, color: Colors.black38)]),
+        child: Icon(icon, color: c, size: rideMapPinIcon, shadows: const [Shadow(blurRadius: 4, color: Colors.black38)]),
       );
 }

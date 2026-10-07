@@ -441,6 +441,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final tolls = display?.showAiTollBooths ?? true
         ? tollMarks(ai, [for (final p in _route?.points ?? const <LatLng>[]) (lat: p.latitude, lng: p.longitude)])
         : const <TollMark>[];
+    final showPill = sections.addressBar && _drop == null && _pinTarget == _PinTarget.none;
     final map = Stack(children: [
       RideMap(
         controller: _map,
@@ -453,6 +454,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         satellite: ref.watch(mapSatelliteProvider),
         extraMarkers: [
           for (final c in _cars) demoCarMarker(c, serviceIndex),
+          // The pickup box stands 5 px above the pickup pin and moves with it.
+          if (showPill && _pickup != null)
+            labelAbovePin(
+              _pickup!.point,
+              PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup)),
+              width: math.min(320, MediaQuery.sizeOf(context).width - 32),
+            ),
           for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
         ],
       ),
@@ -476,7 +484,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-      if (sections.addressBar && _drop == null && _pinTarget == _PinTarget.none)
+      // With no pickup on the map yet there is no pin to stand on: the box
+      // waits at the top until there is.
+      if (showPill && _pickup == null)
         Positioned(
           top: 16,
           left: 72,
