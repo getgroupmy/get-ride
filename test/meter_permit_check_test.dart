@@ -75,9 +75,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // The Meter Digital button spins while its checks run, and behind the
+  // permit dialog until that is answered, so this doesn't wait to settle.
   Future<void> openMeter(WidgetTester tester) async {
     await tester.tap(find.byTooltip('Meter Digital'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
   }
 
   testWidgets('a valid permit opens the meter', (tester) async {
