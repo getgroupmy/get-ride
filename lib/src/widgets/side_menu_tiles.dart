@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/side_menu.dart';
+import 'side_menu_style.dart';
 
 /// Expo icon names (the admin's custom-item picker) as Material icons.
 const _expoIcons = <String, IconData>{
@@ -27,20 +28,20 @@ const _expoIcons = <String, IconData>{
 
 const _builtInIcons = <String, IconData>{
   'teksi-ev': Icons.electric_car_outlined,
-  'city': Icons.local_taxi_outlined,
-  'request-history': Icons.history,
+  'city': Icons.directions_car_outlined,
+  'request-history': Icons.schedule,
   'freight': Icons.local_shipping_outlined,
   'wallet': Icons.account_balance_wallet_outlined,
   'notifications': Icons.notifications_outlined,
-  'safety': Icons.health_and_safety_outlined,
+  'safety': Icons.gpp_good_outlined,
   'settings': Icons.settings_outlined,
   'user-guide': Icons.menu_book_outlined,
-  'support': Icons.support_agent,
+  'support': Icons.forum_outlined,
   'logout': Icons.logout,
   'sign-out': Icons.logout,
   'dashboard': Icons.dashboard_outlined,
   'earnings': Icons.payments_outlined,
-  'trip-history': Icons.history,
+  'trip-history': Icons.schedule,
   'vehicle': Icons.directions_car_outlined,
   'vehicle-information': Icons.speed,
   'documents': Icons.description_outlined,
@@ -112,14 +113,14 @@ class SideMenuTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (plain) {
-      final t = Theme.of(context);
-      return ListTile(
+      return SideMenuRow(
         key: ValueKey('menu-${entry.id}'),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 22),
-        minVerticalPadding: 14,
-        leading: Icon(menuIcon(entry), color: color ?? t.colorScheme.onSurfaceVariant, size: 26),
-        title: Text(entry.label, style: t.textTheme.titleMedium?.copyWith(fontSize: 18, color: color)),
-        trailing: entry.comingSoon ? const Chip(label: Text('Soon')) : null,
+        icon: menuIcon(entry),
+        label: entry.label,
+        color: color,
+        trailing: entry.comingSoon
+            ? const Text('Soon', style: TextStyle(fontSize: 12, color: SideMenuStyle.muted))
+            : null,
         onTap: () => _tap(context),
       );
     }

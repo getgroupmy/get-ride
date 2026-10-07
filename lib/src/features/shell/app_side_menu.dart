@@ -4,13 +4,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../admin/admin_providers.dart';
 import '../../admin/screens/meterapp/display_logic.dart' show normalizeMenu, profileMenuItemId, vehicleInfoMenuItemId;
-import '../../app.dart' show brandAccent;
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/obd/obd_session.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/side_menu_style.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../partner/driver_online.dart';
 import '../partner/partner_menu.dart' show partnerMenuAction;
@@ -74,7 +74,6 @@ class RiderSideMenu extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = Theme.of(context);
     final close = SideMenuHost.of(context)?.close;
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final mode = sideMenuModeButton(blob, 'user');
@@ -92,7 +91,7 @@ class RiderSideMenu extends ConsumerWidget {
           SideMenuTile(
             entry: e,
             plain: true,
-            color: e.id == 'logout' ? t.colorScheme.error : null,
+            color: e.id == 'logout' ? const Color(0xFFFF6B6B) : null,
             beforeOpen: close,
             builtIn: (c, id) => riderMenuAction(c, ref, id, beforeOpen: close),
           ),
@@ -126,7 +125,6 @@ class PartnerSideMenu extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = Theme.of(context);
     final close = SideMenuHost.of(context)?.close ?? () {};
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final linked = ref.watch(obdSessionProvider).linked;
@@ -141,7 +139,7 @@ class PartnerSideMenu extends ConsumerWidget {
             SideMenuTile(
               entry: e,
               plain: true,
-              color: e.id == 'sign-out' ? t.colorScheme.error : null,
+              color: e.id == 'sign-out' ? const Color(0xFFFF6B6B) : null,
               beforeOpen: close,
               builtIn: (c, id) => partnerMenuAction(c, ref, id, close: close),
             ),
@@ -178,21 +176,12 @@ class PlainMenuRow extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 22),
-      minVerticalPadding: 14,
-      leading: Icon(icon, size: 26, color: t.colorScheme.onSurfaceVariant),
-      title: Text(label, style: t.textTheme.titleMedium?.copyWith(fontSize: 18)),
-      onTap: onTap,
-    );
-  }
+  Widget build(BuildContext context) => SideMenuRow(icon: icon, label: label, onTap: onTap);
 }
 
-/// One side menu's layout, the same in both modes (Expo `MenuSideSheet`):
-/// who is signed in with their stars, the rows, then a divider, the mode
-/// button, the admin panel for admins and the social links.
+/// The user and driver menus' layout ([SideMenuFrame]): who is signed in
+/// with their stars, the rows, then the mode button, the admin panel for
+/// admins and the social links.
 class SideMenuPanel extends ConsumerWidget {
   const SideMenuPanel({
     super.key,
@@ -223,157 +212,44 @@ class SideMenuPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = Theme.of(context);
     final profile = ref.watch(profileProvider).value;
     final isAdmin = ref.watch(adminAccessProvider).value?.isAdmin ?? false;
-    final divider = Divider(height: 1, thickness: 1, color: t.colorScheme.outlineVariant);
-    final header = Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundColor: t.colorScheme.surfaceContainerHighest,
-            backgroundImage: profile?.avatarUrl != null ? NetworkImage(profile!.avatarUrl!) : null,
-            child: profile?.avatarUrl == null
-                ? Icon(Icons.sentiment_satisfied_alt, size: 30, color: t.colorScheme.onSurfaceVariant)
-                : null,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  profile?.name ?? 'Add your name',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  key: const ValueKey('menu-rating'),
-                  children: [
-                    for (var i = 1; i <= 5; i++)
-                      Icon(
-                        i <= riderMenuRating.round() ? Icons.star_rounded : Icons.star_outline_rounded,
-                        size: 18,
-                        color: const Color(0xFFFF9F0A),
-                      ),
-                    const SizedBox(width: 8),
-                    Text(riderMenuRating.toStringAsFixed(1), style: t.textTheme.bodyMedium),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          if (onProfile != null) Icon(Icons.chevron_right, color: t.colorScheme.onSurface),
-        ],
-      ),
-    );
-    return Material(
-      color: t.colorScheme.surfaceContainerLow,
-      child: SafeArea(
-        right: false,
-        child: Column(
-          children: [
-            if (showProfile) ...[
-              onProfile == null
-                  ? KeyedSubtree(key: const ValueKey('menu-profile'), child: header)
-                  : InkWell(key: const ValueKey('menu-profile'), onTap: () => onProfile!(context), child: header),
-              divider,
-            ],
-            Expanded(
-              child: ListView(padding: const EdgeInsets.symmetric(vertical: 4), children: rows),
-            ),
-            divider,
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Column(
-                children: [
-                  if (modeLabel != null)
-                    FilledButton(
-                      key: modeKey,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: brandAccent,
-                        foregroundColor: Colors.black,
-                        minimumSize: const Size.fromHeight(56),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
-                      ),
-                      onPressed: onMode,
-                      child: Text(modeLabel!),
-                    ),
-                  if (isAdmin) ...[
-                    const SizedBox(height: 10),
-                    OutlinedButton.icon(
-                      key: const ValueKey('menu-admin'),
-                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                      icon: const Icon(Icons.admin_panel_settings_outlined),
-                      label: const Text('Admin panel'),
-                      onPressed: () {
-                        final router = GoRouter.of(context);
-                        SideMenuHost.of(context)?.close();
-                        router.go('/admin');
-                      },
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  const _SocialLinks(),
-                ],
+    return SideMenuFrame(
+      header: showProfile
+          ? SideMenuHeader(
+              name: profile?.name ?? 'Add your name',
+              avatarUrl: profile?.avatarUrl,
+              subtitle: const SideMenuStars(rating: riderMenuRating),
+              onTap: onProfile == null ? null : () => onProfile!(context),
+            )
+          : null,
+      rows: rows,
+      buttonLabel: modeLabel,
+      buttonKey: modeKey,
+      onButton: onMode,
+      footer: [
+        if (isAdmin)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: OutlinedButton.icon(
+              key: const ValueKey('menu-admin'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+                foregroundColor: SideMenuStyle.text,
+                side: const BorderSide(color: SideMenuStyle.divider),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              label: const Text('Admin panel'),
+              onPressed: () {
+                final router = GoRouter.of(context);
+                SideMenuHost.of(context)?.close();
+                router.go('/admin');
+              },
             ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// TikTok, Facebook and Instagram, as at the foot of Expo's menu.
-class _SocialLinks extends StatelessWidget {
-  const _SocialLinks();
-
-  @override
-  Widget build(BuildContext context) {
-    final c = Theme.of(context).colorScheme.onSurface;
-    Widget link(String name, Widget icon) => Tooltip(
-      message: 'GET.ride on $name',
-      child: Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: icon),
-    );
-    return Row(
-      key: const ValueKey('menu-social'),
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        link('TikTok', Icon(Icons.tiktok, size: 32, color: c)),
-        link('Facebook', Icon(Icons.facebook, size: 32, color: c)),
-        link('Instagram', CustomPaint(size: const Size.square(30), painter: _InstagramGlyph(c))),
+          ),
+        const SideMenuSocialLinks(),
       ],
     );
   }
-}
-
-/// Instagram's camera outline: a rounded square, a lens and a dot (Material
-/// icons have no Instagram).
-class _InstagramGlyph extends CustomPainter {
-  const _InstagramGlyph(this.color);
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    final line = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = w * 0.09;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTWH(w * 0.06, w * 0.06, w * 0.88, w * 0.88), Radius.circular(w * 0.26)),
-      line,
-    );
-    canvas.drawCircle(Offset(w / 2, w / 2), w * 0.2, line);
-    canvas.drawCircle(Offset(w * 0.74, w * 0.26), w * 0.055, Paint()..color = color);
-  }
-
-  @override
-  bool shouldRepaint(_InstagramGlyph old) => old.color != color;
 }

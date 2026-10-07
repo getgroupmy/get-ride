@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../widgets/busy.dart';
+import '../providers.dart';
 import '../widgets/common.dart';
+import '../widgets/side_menu_style.dart';
 import 'admin_access.dart';
 import 'admin_providers.dart';
 import 'admin_registry.dart';
@@ -59,23 +61,40 @@ class AdminShell extends ConsumerWidget {
 
         if (width < 900) {
           return Scaffold(
-            drawer: NavigationDrawer(
-              selectedIndex: current < 0 ? null : current,
-              onDestinationSelected: (i) {
-                Navigator.pop(context);
-                go(i);
-              },
-              children: [
-                const Padding(padding: EdgeInsets.fromLTRB(28, 20, 16, 12), child: _AdminTitle()),
-                for (final n in items)
-                  NavigationDrawerDestination(icon: Icon(n.icon), label: Text(adminModules[n.module]!.label)),
-                const Divider(),
-                ListTile(
-                  leading: const Icon(Icons.exit_to_app),
-                  title: const Text('Exit admin'),
-                  onTap: () => context.go('/account'),
-                ),
-              ],
+            // The same side menu look as the user's and the driver's.
+            drawer: Drawer(
+              key: const ValueKey('admin-side-menu'),
+              width: SideMenuStyle.widthFor(width),
+              backgroundColor: SideMenuStyle.background,
+              shape: const RoundedRectangleBorder(),
+              child: Builder(
+                builder: (drawer) {
+                  final profile = ref.watch(profileProvider).value;
+                  return SideMenuFrame(
+                    header: SideMenuHeader(
+                      name: profile?.name ?? 'Admin',
+                      avatarUrl: profile?.avatarUrl,
+                      subtitle: const Text('Admin panel', style: TextStyle(fontSize: 14, color: SideMenuStyle.muted)),
+                    ),
+                    rows: [
+                      for (final (i, n) in items.indexed)
+                        SideMenuRow(
+                          key: ValueKey('admin-menu-${n.module}'),
+                          icon: n.icon,
+                          label: adminModules[n.module]!.label,
+                          selected: i == current,
+                          onTap: () {
+                            Navigator.pop(drawer);
+                            go(i);
+                          },
+                        ),
+                    ],
+                    buttonLabel: 'Exit admin',
+                    buttonKey: const ValueKey('admin-exit'),
+                    onButton: () => context.go('/account'),
+                  );
+                },
+              ),
             ),
             body: Builder(
               builder: (ctx) => AdminDrawerScope(openDrawer: () => Scaffold.of(ctx).openDrawer(), child: child),

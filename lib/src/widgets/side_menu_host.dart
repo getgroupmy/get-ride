@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'side_menu_style.dart';
+
 /// The rider side menu as the Expo app draws it (`MenuSideSheet` inline):
 /// a panel on the left that pushes the whole page right to make room, with
 /// the page dimmed behind it. It opens from any rider page's menu button
@@ -18,8 +20,8 @@ class SideMenuHost extends StatefulWidget {
   /// enough for a rail: no edge swipe and no menu buttons.
   final bool enabled;
 
-  /// Expo's `MENU_WIDTH`: 68% of the screen, up to a phone's worth.
-  static double widthFor(double screen) => (screen * 0.68).clamp(0, 360).toDouble();
+  /// The panel's width: [SideMenuStyle.widthFraction] of the screen.
+  static double widthFor(double screen) => SideMenuStyle.widthFor(screen);
 
   /// The strip along the left edge a swipe in starts from.
   static const edge = 20.0;
