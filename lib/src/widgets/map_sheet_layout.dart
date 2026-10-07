@@ -55,6 +55,7 @@ class MapSheetLayout extends StatefulWidget {
     super.key,
     required this.map,
     required this.sheet,
+    this.peek,
     this.initial = 0.45,
     this.min = 0.2,
     this.max = 0.92,
@@ -64,6 +65,11 @@ class MapSheetLayout extends StatefulWidget {
 
   final Widget map;
   final Widget sheet;
+
+  /// What the sheet shows when it is all the way down (the driver's online
+  /// switch); [sheet] fades in below it as the sheet is dragged up, so a
+  /// part-hidden card never peeks out from under the fold.
+  final Widget? peek;
   final double initial, min, max;
 
   /// The least of the screen above the sheet the map's buttons follow it to.
@@ -155,7 +161,23 @@ class _MapSheetLayoutState extends State<MapSheetLayout> {
                           ),
                         ),
                       ),
-                      SliverToBoxAdapter(child: widget.sheet),
+                      if (widget.peek != null) SliverToBoxAdapter(child: widget.peek),
+                      SliverToBoxAdapter(
+                        child: widget.peek == null
+                            ? widget.sheet
+                            : ValueListenableBuilder<double>(
+                                valueListenable: _extent,
+                                builder: (_, extent, child) {
+                                  // Hidden all the way down; in as it rises.
+                                  final shown = ((extent - widget.min) / 0.04).clamp(0.0, 1.0);
+                                  return IgnorePointer(
+                                    ignoring: shown < 1,
+                                    child: Opacity(opacity: shown, child: child),
+                                  );
+                                },
+                                child: widget.sheet,
+                              ),
+                      ),
                     ],
                   ),
                 ),

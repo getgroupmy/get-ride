@@ -681,9 +681,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     Positioned.fill(child: map),
                     if (_online) _floatingRequests(p, queue.alert, floating),
                   ]),
+                  // All the way down only the online switch shows.
+                  peek: ResponsiveCenter(maxWidth: 760, child: head.first),
                   sheet: ResponsiveCenter(
                     maxWidth: 760,
-                    child: Column(children: [...head, if (!_online) offline]),
+                    child: Column(children: [...head.skip(1), if (!_online) offline]),
                   ),
                 );
               },
@@ -946,7 +948,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 onPressed: _accepting != null ? null : () => _accept(r, partner),
                 child: _accepting == r.id
                     ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}'),
+                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}', textAlign: TextAlign.center),
               ),
             ),
           ]),
@@ -1090,7 +1092,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 onPressed: _accepting != null ? null : () => _accept(r, partner),
                 child: _accepting == r.id
                     ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}'),
+                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}', textAlign: TextAlign.center),
               ),
             ),
           ]),
