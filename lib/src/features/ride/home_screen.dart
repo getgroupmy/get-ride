@@ -109,6 +109,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// map was moved off the route (which shows the route button).
   String _entrance = '';
   bool _autoAccept = false;
+
+  /// From the Options sheet: a child seat, more than four riding.
+  RideOptions _options = const RideOptions();
   bool _routeMoved = false;
 
   /// The last pickup set by dragging the map: the map doesn't reframe on
@@ -424,7 +427,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // since turned out to be off goes out at the recommended fare.
             fare: _fareFor(_service, biddingOn: offerMe),
             paymentMode: _payment,
-            note: driverNote(entrance: _entrance, note: _note.text),
+            passengers: _options.passengers,
+            note: driverNote(options: _options, entrance: _entrance, note: _note.text),
             riderName: profile?.name,
             riderPhone: profile?.phone,
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
@@ -850,6 +854,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final otherName = _otherName.text.trim();
     final footer = confirming && _route != null
         ? ConfirmFooter(
+            onOptions: () => showRideOptionsSheet(
+              context,
+              options: _options,
+              onChanged: (o) => setState(() => _options = o),
+              note: _note,
+            ).then((_) {
+              if (mounted) setState(() {}); // the note may have changed
+            }),
+            optionsOn: _options.any,
             payment: _payment,
             onPayment: () async {
               final p = await showPaymentSheet(context, _payment);

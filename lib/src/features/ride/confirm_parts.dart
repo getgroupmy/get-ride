@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare.dart';
 import '../../core/fare_offer.dart';
+import '../../core/ride_confirm.dart' show RideOptions;
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
 import 'fare_offer_controls.dart';
@@ -665,6 +666,8 @@ class ConfirmFooter extends StatelessWidget {
     this.coinSubtitle,
     this.useCoins = false,
     this.onUseCoins,
+    this.onOptions,
+    this.optionsOn = false,
   });
 
   final String payment;
@@ -683,6 +686,12 @@ class ConfirmFooter extends StatelessWidget {
   final String? coinSubtitle;
   final bool useCoins;
   final ValueChanged<bool>? onUseCoins;
+
+  /// The options button right of "Find a driver"; none without it.
+  final VoidCallback? onOptions;
+
+  /// An option is on: a dot on the button.
+  final bool optionsOn;
 
   @override
   Widget build(BuildContext context) {
@@ -781,6 +790,16 @@ class ConfirmFooter extends StatelessWidget {
                       child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
                     ),
                   ),
+                  if (onOptions != null) ...[
+                    const SizedBox(width: 4),
+                    IconButton(
+                      key: const ValueKey('confirm-options'),
+                      tooltip: 'Options',
+                      iconSize: 26,
+                      icon: Badge(isLabelVisible: optionsOn, smallSize: 8, child: const Icon(Icons.tune)),
+                      onPressed: onOptions,
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -789,6 +808,180 @@ class ConfirmFooter extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The Options sheet from the button beside "Find a driver": a child
+/// safety seat, more than four passengers, and comments for the driver.
+/// Changes apply as they are made ([onChanged], and [note] is the confirm
+/// screen's own note), so Close and a swipe down both keep them.
+Future<void> showRideOptionsSheet(
+  BuildContext context, {
+  required RideOptions options,
+  required ValueChanged<RideOptions> onChanged,
+  required TextEditingController note,
+}) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: false,
+  builder: (_) => _RideOptionsSheet(options: options, onChanged: onChanged, note: note),
+);
+
+class _RideOptionsSheet extends StatefulWidget {
+  const _RideOptionsSheet({required this.options, required this.onChanged, required this.note});
+  final RideOptions options;
+  final ValueChanged<RideOptions> onChanged;
+  final TextEditingController note;
+
+  @override
+  State<_RideOptionsSheet> createState() => _RideOptionsSheetState();
+}
+
+class _RideOptionsSheetState extends State<_RideOptionsSheet> {
+  late RideOptions _options = widget.options;
+
+  void _set(RideOptions o) {
+    setState(() => _options = o);
+    widget.onChanged(o);
+  }
+
+  Future<void> _comments() async {
+    final text = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _CommentsSheet(initial: widget.note.text),
+    );
+    if (text != null && mounted) setState(() => widget.note.text = text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final comment = widget.note.text.trim();
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        child: Column(
+          key: const ValueKey('ride-options'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Text('Options', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton.filledTonal(
+                    key: const ValueKey('ride-options-x'),
+                    tooltip: 'Close',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              key: const ValueKey('option-child-seat'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Child safety seat'),
+              value: _options.childSeat,
+              onChanged: (v) => _set(_options.copyWith(childSeat: v)),
+            ),
+            SwitchListTile(
+              key: const ValueKey('option-more-passengers'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('More than ${RideOptions.standardSeats} passengers'),
+              value: _options.morePassengers,
+              onChanged: (v) => _set(_options.copyWith(morePassengers: v)),
+            ),
+            const SizedBox(height: 12),
+            Material(
+              color: t.colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(12),
+              child: ListTile(
+                key: const ValueKey('option-comments'),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                title: Text(
+                  comment.isEmpty ? 'Comments' : comment,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: comment.isEmpty ? TextStyle(color: t.colorScheme.onSurfaceVariant) : null,
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _comments,
+              ),
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              key: const ValueKey('ride-options-close'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Comments for the driver, typed on their own sheet.
+class _CommentsSheet extends StatefulWidget {
+  const _CommentsSheet({required this.initial});
+  final String initial;
+
+  @override
+  State<_CommentsSheet> createState() => _CommentsSheetState();
+}
+
+class _CommentsSheetState extends State<_CommentsSheet> {
+  late final _text = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+    child: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Comments', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('option-comments-field'),
+              controller: _text,
+              autofocus: true,
+              minLines: 2,
+              maxLines: 4,
+              maxLength: 200,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(hintText: 'Anything the driver should know'),
+            ),
+            const SizedBox(height: 8),
+            FilledButton(
+              key: const ValueKey('option-comments-done'),
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+              onPressed: () => Navigator.pop(context, _text.text.trim()),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 /// "Got promo code? Use it here" over the top of the sheet.

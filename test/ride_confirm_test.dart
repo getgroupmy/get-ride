@@ -28,6 +28,17 @@ void main() {
     expect(driverNote(entrance: '12', note: 'Blue gate'), 'Entrance 12 · Blue gate');
   });
 
+  test('the options go first in the note, and more than 4 books 5 passengers', () {
+    const both = RideOptions(childSeat: true, morePassengers: true);
+    expect(driverNote(options: both, entrance: '3', note: 'Blue gate'),
+        'Child safety seat · More than 4 passengers · Entrance 3 · Blue gate');
+    expect(driverNote(options: const RideOptions(childSeat: true)), 'Child safety seat');
+    expect(const RideOptions().any, isFalse);
+    expect(const RideOptions().passengers, 1);
+    expect(both.passengers, 5);
+    expect(const RideOptions().copyWith(morePassengers: true), const RideOptions(morePassengers: true));
+  });
+
   test('the admin offsets and the promo bar switch are read from Display Settings', () {
     final l = ConfirmLayout.fromSettings({
       'rcBackHorizontal': 10,

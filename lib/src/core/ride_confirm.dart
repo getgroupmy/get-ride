@@ -66,10 +66,45 @@ bool shouldAutoAccept({required double? limit, required RideOffer? offer}) {
   return offer.amount <= limit + 0.005;
 }
 
-/// The note the driver gets: the entrance the rider set on the pickup
-/// (Expo's "Entrance" keypad), then their own words. Null for neither.
-String? driverNote({String entrance = '', String note = ''}) {
+/// What the rider asks for from the Options sheet beside "Find a driver".
+class RideOptions {
+  const RideOptions({this.childSeat = false, this.morePassengers = false});
+
+  final bool childSeat;
+
+  /// More than [standardSeats] riding.
+  final bool morePassengers;
+
+  static const standardSeats = 4;
+
+  bool get any => childSeat || morePassengers;
+
+  /// The passengers the request carries: one, or more than four.
+  int get passengers => morePassengers ? standardSeats + 1 : 1;
+
+  /// Spelled out for the driver, ahead of the note.
+  List<String> get labels => [
+    if (childSeat) 'Child safety seat',
+    if (morePassengers) 'More than $standardSeats passengers',
+  ];
+
+  RideOptions copyWith({bool? childSeat, bool? morePassengers}) =>
+      RideOptions(childSeat: childSeat ?? this.childSeat, morePassengers: morePassengers ?? this.morePassengers);
+
+  @override
+  bool operator ==(Object other) =>
+      other is RideOptions && other.childSeat == childSeat && other.morePassengers == morePassengers;
+
+  @override
+  int get hashCode => Object.hash(childSeat, morePassengers);
+}
+
+/// The note the driver gets: the options the rider asked for, the entrance
+/// they set on the pickup (Expo's "Entrance" keypad), then their own words.
+/// Null for none.
+String? driverNote({String entrance = '', String note = '', RideOptions options = const RideOptions()}) {
   final parts = [
+    ...options.labels,
     if (entrance.trim().isNotEmpty) 'Entrance ${entrance.trim()}',
     if (note.trim().isNotEmpty) note.trim(),
   ];
