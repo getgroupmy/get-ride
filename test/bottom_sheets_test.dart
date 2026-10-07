@@ -1,5 +1,7 @@
 // Every bottom sheet: rounded top corners and a handle to drag it by.
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart';
 import 'package:get_ride/src/widgets/map_sheet_layout.dart';
@@ -115,5 +117,45 @@ void main() {
     expect(tester.getTopLeft(find.text('row 3')).dy, lessThan(rowTop - 200), reason: 'the content scrolled');
     expect(tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy, handleTop, reason: 'the handle did not');
     expect(handleTop - sheetTop, lessThan(20), reason: 'it sits on the top edge');
+  });
+
+  testWidgets('all the way down the content neither bounces nor scrolls; a wheel moves the sheet', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS; // bouncing by default
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapSheetLayout(
+            map: const SizedBox.expand(),
+            initial: 0.2,
+            sheet: Column(children: [for (var i = 0; i < 40; i++) ListTile(title: Text('row $i'))]),
+          ),
+        ),
+      ),
+    );
+    final row = find.text('row 0');
+    final top = tester.getTopLeft(row).dy;
+    // Pulled down when it can go no lower: nothing moves.
+    final g = await tester.startGesture(tester.getCenter(row));
+    await g.moveBy(const Offset(0, 80));
+    await tester.pump();
+    expect(tester.getTopLeft(row).dy, top, reason: 'no rubber-band');
+    await g.up();
+    await tester.pumpAndSettle();
+
+    // A wheel over it raises the sheet rather than scrolling the content.
+    final handle = find.byKey(const ValueKey('map-sheet-handle'));
+    final before = tester.getTopLeft(handle).dy;
+    final p = TestPointer(1, PointerDeviceKind.mouse);
+    await tester.sendEventToBinding(p.hover(tester.getCenter(row)));
+    await tester.sendEventToBinding(p.scroll(const Offset(0, 200)));
+    await tester.pumpAndSettle();
+    final after = tester.getTopLeft(handle).dy;
+    expect(after, lessThan(before - 150), reason: 'the sheet rose');
+    expect(tester.getTopLeft(row).dy - after, closeTo(top - before, 1), reason: 'its content did not scroll');
+    debugDefaultTargetPlatformOverride = null;
   });
 }

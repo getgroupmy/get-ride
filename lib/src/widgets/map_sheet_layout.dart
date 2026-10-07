@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 /// Every bottom sheet in the app: rounded top corners and a handle to drag
@@ -86,6 +87,7 @@ class MapSheetLayout extends StatefulWidget {
 
 class _MapSheetLayoutState extends State<MapSheetLayout> {
   late final _extent = ValueNotifier<double>(widget.locked ? widget.min : widget.initial);
+  final _sheet = DraggableScrollableController();
 
   @override
   void didUpdateWidget(covariant MapSheetLayout old) {
@@ -97,9 +99,28 @@ class _MapSheetLayoutState extends State<MapSheetLayout> {
 
   @override
   void dispose() {
+    _sheet.dispose();
     _extent.dispose();
     super.dispose();
   }
+
+  /// A mouse wheel or trackpad over a sheet that is not fully up moves the
+  /// sheet, as a drag would, instead of scrolling its content; so does
+  /// scrolling back up past the top of the content of a full sheet. Inside
+  /// the scroll view, so it is offered the event before the content is.
+  Widget _wheelMovesSheet(Widget child, ScrollController scroll, double height) => Listener(
+    onPointerSignal: (e) {
+      if (e is! PointerScrollEvent || widget.locked || !_sheet.isAttached || height <= 0) return;
+      final full = _sheet.size >= widget.max - 0.001;
+      final scrolled = scroll.hasClients && scroll.offset > 0;
+      if (full && (e.scrollDelta.dy > 0 || scrolled)) return; // the content's to scroll
+      GestureBinding.instance.pointerSignalResolver.register(e, (event) {
+        final dy = (event as PointerScrollEvent).scrollDelta.dy;
+        _sheet.jumpTo((_sheet.size + dy / height).clamp(widget.min, widget.max));
+      });
+    },
+    child: child,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -124,6 +145,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> {
               },
               child: DraggableScrollableSheet(
                 key: const ValueKey('map-sheet'),
+                controller: _sheet,
                 initialChildSize: widget.locked ? widget.min : widget.initial,
                 minChildSize: widget.min,
                 maxChildSize: widget.locked ? widget.min : widget.max,
@@ -137,9 +159,11 @@ class _MapSheetLayoutState extends State<MapSheetLayout> {
                   // moves the sheet.
                   child: CustomScrollView(
                     controller: scroll,
-                    // Held down, it neither moves nor scrolls: content
-                    // scrolls only in a sheet that is fully up.
-                    physics: widget.locked ? const NeverScrollableScrollPhysics() : null,
+                    // Content scrolls only in a sheet that is fully up: a drag
+                    // moves the sheet first, and a sheet that is all the way
+                    // down doesn't rubber-band its content when pulled (no
+                    // iOS bounce). Held down, it neither moves nor scrolls.
+                    physics: widget.locked ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
                     slivers: [
                       PinnedHeaderSliver(
                         child: ColoredBox(
@@ -161,22 +185,26 @@ class _MapSheetLayoutState extends State<MapSheetLayout> {
                           ),
                         ),
                       ),
-                      if (widget.peek != null) SliverToBoxAdapter(child: widget.peek),
+                      if (widget.peek != null) SliverToBoxAdapter(child: _wheelMovesSheet(widget.peek!, scroll, h)),
                       SliverToBoxAdapter(
-                        child: widget.peek == null
-                            ? widget.sheet
-                            : ValueListenableBuilder<double>(
-                                valueListenable: _extent,
-                                builder: (_, extent, child) {
-                                  // Hidden all the way down; in as it rises.
-                                  final shown = ((extent - widget.min) / 0.04).clamp(0.0, 1.0);
-                                  return IgnorePointer(
-                                    ignoring: shown < 1,
-                                    child: Opacity(opacity: shown, child: child),
-                                  );
-                                },
-                                child: widget.sheet,
-                              ),
+                        child: _wheelMovesSheet(
+                          widget.peek == null
+                              ? widget.sheet
+                              : ValueListenableBuilder<double>(
+                                  valueListenable: _extent,
+                                  builder: (_, extent, child) {
+                                    // Hidden all the way down; in as it rises.
+                                    final shown = ((extent - widget.min) / 0.04).clamp(0.0, 1.0);
+                                    return IgnorePointer(
+                                      ignoring: shown < 1,
+                                      child: Opacity(opacity: shown, child: child),
+                                    );
+                                  },
+                                  child: widget.sheet,
+                                ),
+                          scroll,
+                          h,
+                        ),
                       ),
                     ],
                   ),

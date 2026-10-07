@@ -19,6 +19,7 @@ import '../../core/sos.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import 'demo_ride.dart';
@@ -135,6 +136,24 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _maybeClaimReward();
     _syncLocationShare();
     _syncSearch();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel());
+  }
+
+  final _cancelPrompt = CancelRequestPrompt();
+
+  /// The driver's request to cancel, as a popup the passenger answers.
+  void _askAboutCancel() {
+    if (!mounted) return;
+    final r = widget.ride;
+    final asking = r.cancelRequestedAt != null && r.cancelRequestedBy == 'partner' && r.status.isOngoing;
+    final repo = ref.read(rideRepositoryProvider);
+    _cancelPrompt.update(
+      context,
+      askedAt: asking ? r.cancelRequestedAt : null,
+      message: 'Your driver asked to cancel this ride.',
+      onDecline: () => _run(() => repo.declineCancellation(r.id)),
+      onApprove: () => _run(() => repo.approveCancellation(r.id)),
+    );
   }
 
   @override
@@ -143,6 +162,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _maybeClaimReward();
     _syncLocationShare();
     _syncSearch();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel());
     if (riderCancelDeclined(old.ride, widget.ride)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) showInfo(context, 'Your driver declined the cancellation. The ride continues.');
@@ -506,8 +526,6 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   Widget build(BuildContext context) {
     final r = widget.ride;
     final t = Theme.of(context);
-    final repo = ref.read(rideRepositoryProvider);
-    final partnerCancelAsk = r.cancelRequestedAt != null && r.cancelRequestedBy == 'partner';
     final riderCancelAsk = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider';
 
     final content = Padding(
@@ -647,37 +665,6 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 leading: const Icon(Icons.cancel_outlined),
                 title: Text(driverCancelNotice(r)),
                 subtitle: const Text('You can book another ride from the map.'),
-              ),
-            ),
-          if (partnerCancelAsk && r.status.isOngoing)
-            Card(
-              color: t.colorScheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text('Your driver asked to cancel this ride.'),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _busy ? null : () => _run(() => repo.declineCancellation(r.id)),
-                            child: const Text('Decline'),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: _busy ? null : () => _run(() => repo.approveCancellation(r.id)),
-                            child: const Text('Approve'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
               ),
             ),
           if (riderCancelAsk && r.status.isOngoing)
