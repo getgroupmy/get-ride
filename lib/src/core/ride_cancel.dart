@@ -18,6 +18,33 @@ const _all = <CancelReason>[
   (id: otherCancelReason, label: 'Other'),
 ];
 
+/// The reasons a driver gives for cancelling before pickup, exactly as
+/// Expo's ride-running screen stores them.
+const driverCancelReasons = <CancelReason>[
+  (id: 'passenger_no_show', label: 'Passenger no-show'),
+  (id: 'wrong_address', label: 'Wrong pickup address'),
+  (id: 'passenger_cancelled', label: 'Passenger asked to cancel'),
+  (id: 'traffic_too_far', label: 'Too far / heavy traffic'),
+  (id: 'vehicle_issue', label: 'Vehicle issue'),
+  (id: otherCancelReason, label: 'Other'),
+];
+
+/// A driver may cancel only before the passenger is on board (migration
+/// 0106 holds the database to the same rule). After pickup the trip is
+/// completed or ended early instead.
+bool driverMayCancel(RideStatus status) => status == RideStatus.accepted || status == RideStatus.arrived;
+
+/// True when the driver cancelled the ride ([RideRepository.cancelAsDriver]
+/// marks it `cancel_requested_by = 'partner'`, as does a passenger agreeing
+/// to an older build's driver request).
+bool cancelledByDriver(RideRequest r) => r.status == RideStatus.cancelled && r.cancelRequestedBy == 'partner';
+
+/// What the passenger is told when their driver cancels.
+String driverCancelNotice(RideRequest r) {
+  final why = cancelReasonLabel(r.cancelReason);
+  return why == null ? 'Your driver cancelled this ride.' : 'Your driver cancelled this ride: $why';
+}
+
 /// Reasons that blame a driver make no sense before one has accepted.
 List<CancelReason> cancelReasonsFor(RideStatus status) => status == RideStatus.open
     ? [
@@ -42,7 +69,7 @@ String? cancelReasonValue(String? id, String otherText) {
 String? cancelReasonLabel(String? stored) {
   final s = stored?.trim() ?? '';
   if (s.isEmpty) return null;
-  for (final r in _all) {
+  for (final r in [..._all, ...driverCancelReasons]) {
     if (r.id == s) return r.label;
   }
   return s;

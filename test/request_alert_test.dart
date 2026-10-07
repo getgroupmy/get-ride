@@ -100,9 +100,9 @@ void main() {
     });
     tearDown(() => open.close());
 
-    Future<void> pump(WidgetTester tester) async {
+    Future<void> pump(WidgetTester tester, {Size size = const Size(700, 2000)}) async {
       tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(700, 2000);
+      tester.view.physicalSize = size;
       addTearDown(tester.view.reset);
       final router = GoRouter(
         routes: [
@@ -156,6 +156,29 @@ void main() {
       expect(find.text('35 s'), findsOneWidget);
       await wait(tester, const Duration(seconds: 10));
       expect(find.text('25 s'), findsOneWidget);
+    });
+
+    testWidgets('on a desktop screen it flies in over the map, and out when declined', (tester) async {
+      await pump(tester, size: const Size(1600, 1000));
+      open.add([_req('r1')]);
+      await tester.pump();
+      await tester.pump();
+      final overMap = find.descendant(
+        of: find.byType(AnimatedSwitcher),
+        matching: find.byKey(const ValueKey('request-alert')),
+      );
+      expect(overMap, findsOneWidget);
+      expect(find.byKey(const ValueKey('request-alert')), findsOneWidget, reason: 'not in the queue as well');
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.getTopLeft(overMap).dx, greaterThan(520), reason: 'over the map, right of the panel');
+
+      await tester.tap(find.byKey(const ValueKey('request-alert-decline')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.byKey(const ValueKey('request-alert')), findsOneWidget, reason: 'flying out');
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('request-alert')), findsNothing);
+      expect(rides.accepted, isEmpty);
     });
 
     testWidgets('accept from the alert takes the request', (tester) async {

@@ -38,6 +38,13 @@ RideRequest ride(String status, {Map<String, dynamic> extra = const {}}) => Ride
 
 class _FakeRides implements RideRepository {
   final log = <String>[];
+  RideRequest? cancelled;
+
+  @override
+  Future<RideRequest?> cancelAsDriver(String id, String reason) async {
+    log.add('cancel:$reason');
+    return cancelled;
+  }
 
   @override
   Future<void> approveCancellation(String id) async => log.add('approve');
@@ -241,6 +248,65 @@ void main() {
       await tester.tap(find.text('Back to requests').last);
       await tester.pumpAndSettle();
       expect(find.text('requests'), findsOneWidget);
+    });
+
+    testWidgets('before pickup the driver cancels with a reason and goes back to requests', (tester) async {
+      await pump(tester);
+      rows.add(ride('arrived'));
+      await tester.pump();
+      rides.cancelled = ride('cancelled', extra: {'cancel_requested_by': 'partner'});
+      await tester.tap(find.byKey(const ValueKey('trip-cancel')));
+      await tester.pumpAndSettle();
+      final confirm = find.byKey(const ValueKey('driver-cancel-confirm'));
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNull, reason: 'a reason is required');
+      await tester.tap(find.byKey(const ValueKey('driver-cancel-reason-passenger_no_show')));
+      await tester.pump();
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+      expect(rides.log, ['cancel:passenger_no_show']);
+      expect(find.text('requests'), findsOneWidget);
+    });
+
+    testWidgets('Other needs the driver\'s own words; Keep ride cancels nothing', (tester) async {
+      await pump(tester);
+      rows.add(ride('accepted'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('trip-cancel')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('driver-cancel-reason-other')));
+      await tester.pump();
+      final confirm = find.byKey(const ValueKey('driver-cancel-confirm'));
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+      await tester.enterText(find.byKey(const ValueKey('driver-cancel-reason-text')), '  flat tyre ');
+      await tester.pump();
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
+      await tester.tap(find.text('Keep ride'));
+      await tester.pumpAndSettle();
+      expect(rides.log, isEmpty);
+      expect(find.byKey(const ValueKey('trip-cancel')), findsOneWidget);
+    });
+
+    testWidgets('a ride that moved on meanwhile is not cancelled', (tester) async {
+      await pump(tester);
+      rows.add(ride('arrived'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('trip-cancel')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('driver-cancel-reason-vehicle_issue')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('driver-cancel-confirm')));
+      await tester.pumpAndSettle();
+      expect(rides.log, ['cancel:vehicle_issue']);
+      expect(find.textContaining("can't be cancelled now"), findsOneWidget);
+      expect(find.text('requests'), findsNothing);
+    });
+
+    testWidgets('with the passenger on board there is no cancel key', (tester) async {
+      await pump(tester);
+      rows.add(ride('on_trip'));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('trip-cancel')), findsNothing);
+      expect(find.text('Ask passenger to cancel'), findsNothing);
     });
 
     testWidgets('approving the passenger’s cancel is not announced back', (tester) async {

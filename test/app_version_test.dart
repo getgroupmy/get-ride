@@ -111,15 +111,17 @@ void main() {
   });
 
   group('store link', () {
-    test('Android falls back to the Play listing; iOS has no fallback', () {
+    test('each platform falls back to its own store listing', () {
       expect(updateStoreUrl('android', null), 'https://play.google.com/store/apps/details?id=com.taxxee.teksi');
-      expect(updateStoreUrl('ios', null), isNull);
+      expect(updateStoreUrl('ios', null), 'https://apps.apple.com/my/app/teksi-bid-agree-ride/id6457262236');
+      expect(updateStoreUrl('web', null), isNull);
       expect(updateStoreUrl('ios', 'https://apps.apple.com/app/id123'), 'https://apps.apple.com/app/id123');
     });
 
     test('a link that is not a store or web link is ignored', () {
-      expect(updateStoreUrl('ios', 'javascript:alert(1)'), isNull);
-      expect(updateStoreUrl('ios', 'App Store'), isNull);
+      expect(updateStoreUrl('ios', 'javascript:alert(1)'), iosAppStoreUrl);
+      expect(updateStoreUrl('ios', 'App Store'), iosAppStoreUrl);
+      expect(updateStoreUrl('macos', 'App Store'), isNull);
       expect(updateStoreUrl('android', 'file:///x'), 'https://play.google.com/store/apps/details?id=com.taxxee.teksi');
     });
   });
