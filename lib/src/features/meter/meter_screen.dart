@@ -20,6 +20,7 @@ import '../../data/geo_service.dart';
 import '../../data/obd/obd_session.dart';
 import '../../data/printer/printer_service.dart';
 import '../../providers.dart';
+import '../../widgets/map_sheet_layout.dart' show appBottomSheetTheme;
 import 'hail_destination_screen.dart';
 import 'landscape_stage.dart';
 import 'meter_leave_launcher.dart';
@@ -537,7 +538,12 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         unawaited(Future<void>.delayed(Duration.zero, _offerLeave));
       },
       child: Theme(
-        data: ThemeData(brightness: Brightness.dark, colorSchemeSeed: _lcd, scaffoldBackgroundColor: _bg),
+        data: ThemeData(
+          brightness: Brightness.dark,
+          colorSchemeSeed: _lcd,
+          scaffoldBackgroundColor: _bg,
+          bottomSheetTheme: appBottomSheetTheme,
+        ),
         child: ColoredBox(
           color: _bg,
           child: LandscapeStage(
