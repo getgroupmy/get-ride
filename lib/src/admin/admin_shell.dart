@@ -23,6 +23,7 @@ const _nav = [
   _NavItem('support', Icons.support_agent),
   _NavItem('push', Icons.campaign_outlined),
   _NavItem('commission', Icons.percent),
+  _NavItem('fare-tariffs', Icons.price_change_outlined),
   _NavItem('settings', Icons.tune),
   _NavItem('sub-admins', Icons.admin_panel_settings_outlined),
 ];
