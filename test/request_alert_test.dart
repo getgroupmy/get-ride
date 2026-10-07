@@ -15,6 +15,21 @@ import 'package:go_router/go_router.dart';
 
 class _FakeRides implements RideRepository {
   final accepted = <String>[];
+  final offers = <double>[];
+
+  @override
+  Future<RideRequest?> submitOffer(
+    String id,
+    double amount,
+    Partner? partner, {
+    double? lat,
+    double? lng,
+    String? fallbackName,
+    String? fallbackPhone,
+  }) async {
+    offers.add(amount);
+    return null;
+  }
 
   @override
   Future<RideRequest?> ongoingForPartner() async => null;
@@ -143,20 +158,57 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('a new request pops up with who, where and a countdown', (tester) async {
+    double countdown(WidgetTester tester) =>
+        tester.widget<LinearProgressIndicator>(find.byKey(const ValueKey('request-alert-countdown'))).value!;
+
+    testWidgets("on a phone a new request comes up from the bottom as inDrive's sheet", (tester) async {
       await pump(tester);
-      open.add([_req('r1')]);
+      open.add([
+        RideRequest({
+          ..._req('r1').raw,
+          'pickup_lat': 3.158,
+          'pickup_lng': 101.712,
+          'drop_lat': 3.134,
+          'drop_lng': 101.686,
+        }),
+      ]);
       await tester.pump();
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
-      expect(find.byKey(const ValueKey('request-alert')), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 400)); // the sheet slides up
+      final sheet = find.byKey(const ValueKey('request-alert'));
+      expect(sheet, findsOneWidget);
+      expect(tester.getBottomLeft(sheet).dy, 2000, reason: 'standing on the bottom of the screen');
+      expect(find.text('Ride request'), findsOneWidget);
       expect(find.text('Siti'), findsOneWidget);
-      expect(find.textContaining('★ 4.8'), findsOneWidget);
-      expect(find.text('Jalan Ampang'), findsOneWidget);
-      expect(find.text('1 bag'), findsOneWidget);
-      expect(find.text('35 s'), findsOneWidget);
+      expect(find.text('4.80'), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(const ValueKey('request-fare'))).data, 'RM12.00');
+      expect(find.text('KLCC (Jalan Ampang)'), findsOneWidget);
+      expect(find.text('KL Sentral'), findsOneWidget);
+      expect(find.textContaining('1 bag'), findsOneWidget);
+      expect(find.text('Accept for RM12.00'), findsOneWidget);
+      expect(find.text('Skip'), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('request-chip-trip')), matching: find.text('14 min.\n5.0 km')),
+        findsOneWidget,
+        reason: "the trip's time and distance beside B",
+      );
+      expect(countdown(tester), 1);
       await wait(tester, const Duration(seconds: 10));
-      expect(find.text('25 s'), findsOneWidget);
+      expect(countdown(tester), closeTo(25 / 35, 0.01));
+    });
+
+    testWidgets('where the rider takes offers: three steps up and a pencil', (tester) async {
+      await pump(tester);
+      open.add([RideRequest({..._req('r1').raw, 'offer_me': true})]);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Offer your fare'), findsOneWidget);
+      expect(find.byKey(const ValueKey('request-offer-custom')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('request-offer-0')));
+      await tester.pump();
+      await tester.pump();
+      expect(rides.offers, [14], reason: 'the first step up on RM12');
     });
 
     testWidgets('on a desktop screen it flies in over the map, and out when declined', (tester) async {
@@ -200,15 +252,15 @@ void main() {
       await tester.pump();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
-      expect(find.text('Accept RM12.00'), findsOneWidget, reason: 'r1 in the alert');
+      expect(find.text('Accept for RM12.00'), findsOneWidget, reason: 'r1 in the sheet');
       expect(find.text('Accept RM20.00'), findsOneWidget, reason: 'r2 waits in the list');
       await tester.tap(find.byKey(const ValueKey('request-alert-decline')));
       await tester.pump();
       // The declined card flies out.
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const ValueKey('request-alert')), findsOneWidget);
-      expect(find.text('Accept RM12.00'), findsNothing, reason: 'r1 is gone from this driver\'s queue');
-      expect(find.text('Accept RM20.00'), findsOneWidget);
+      expect(find.text('Accept for RM12.00'), findsNothing, reason: 'r1 is gone from this driver\'s queue');
+      expect(find.text('Accept for RM20.00'), findsOneWidget, reason: 'r2 comes up next');
     });
 
     testWidgets('left alone it drops back into the list after 35 s', (tester) async {
@@ -244,6 +296,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       await tester.tap(find.byKey(const ValueKey('request-alert-decline')));
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400)); // slides down
       expect(find.byKey(const ValueKey('request-alert')), findsNothing);
       open.add([_req('r1')]);
       await tester.pump();
@@ -255,9 +308,8 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       expect(find.byKey(const ValueKey('request-alert')), findsOneWidget);
-      expect(find.text('Fare raised'), findsOneWidget);
       expect(find.text('The passenger raised the fare from RM12.00 to RM17.00.'), findsOneWidget);
-      expect(find.text('35 s'), findsOneWidget, reason: 'a fresh window');
+      expect(countdown(tester), 1, reason: 'a fresh window');
       await tester.tap(find.byKey(const ValueKey('request-alert-accept')));
       await tester.pumpAndSettle();
       expect(rides.accepted, ['r1']);
