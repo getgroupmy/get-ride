@@ -9,7 +9,14 @@ import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
 
 /// A stored picture: an http(s) or `data:` URL.
-Widget uriImage(String? uri, {double? width, double? height, BoxFit fit = BoxFit.contain, Widget? fallback}) {
+Widget uriImage(
+  String? uri, {
+  double? width,
+  double? height,
+  BoxFit fit = BoxFit.contain,
+  Alignment alignment = Alignment.center,
+  Widget? fallback,
+}) {
   final none = fallback ?? SizedBox(width: width, height: height);
   if (uri == null) return none;
   if (uri.startsWith('data:')) {
@@ -19,6 +26,7 @@ Widget uriImage(String? uri, {double? width, double? height, BoxFit fit = BoxFit
         width: width,
         height: height,
         fit: fit,
+        alignment: alignment,
         errorBuilder: (_, _, _) => none,
       );
     } catch (_) {
@@ -26,7 +34,14 @@ Widget uriImage(String? uri, {double? width, double? height, BoxFit fit = BoxFit
     }
   }
   if (uri.startsWith('http')) {
-    return Image.network(uri, width: width, height: height, fit: fit, errorBuilder: (_, _, _) => none);
+    return Image.network(
+      uri,
+      width: width,
+      height: height,
+      fit: fit,
+      alignment: alignment,
+      errorBuilder: (_, _, _) => none,
+    );
   }
   return none;
 }
@@ -100,10 +115,12 @@ class VehicleTypeBar extends StatelessWidget {
                     children: [
                       Row(
                         children: [
+                          // Flush with the name's left edge, as inDrive's.
                           uriImage(
                             s.image,
-                            width: 52,
+                            width: 56,
                             height: 26,
+                            alignment: Alignment.centerLeft,
                             fallback: Icon(Icons.directions_car, size: 24, color: fg),
                           ),
                           if (on) ...[
