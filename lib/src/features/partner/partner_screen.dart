@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -62,6 +63,19 @@ class PartnerScreen extends ConsumerStatefulWidget {
 /// (overridden in tests).
 final driverPositionProvider = Provider<Future<LatLng?> Function()>((ref) => currentPosition);
 
+/// The driver's position as it changes, so the home map follows them.
+/// Empty when location is unavailable or refused.
+final driverPositionStreamProvider = Provider<Stream<LatLng> Function()>((ref) => () async* {
+  try {
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+    yield* Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5),
+    ).map((p) => LatLng(p.latitude, p.longitude));
+  } catch (_) {}
+});
+
 /// The clock the request alert's countdown reads (overridden in tests).
 final requestAlertClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
@@ -69,6 +83,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool _online = false;
   late final DriverOnline _onlineState;
   LatLng? _me;
+  StreamSubscription<LatLng>? _fixes;
   String? _accepting;
   bool _autoAccept = false;
   bool _allowOfferMe = true;
@@ -98,6 +113,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
 
   @override
   void dispose() {
+    _fixes?.cancel();
     _alertTick?.cancel();
     // Leaving the Drive screen (signing out) takes the driver offline.
     final online = _onlineState;
@@ -170,6 +186,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     _onlineState = ref.read(driverOnlineProvider.notifier);
     _resume();
     _locate();
+    // Live: the map follows the driver as they move.
+    _fixes = ref.read(driverPositionStreamProvider)().listen((p) {
+      if (mounted) setState(() => _me = p);
+    }, onError: (_) {});
   }
 
   Future<void> _locate() async {

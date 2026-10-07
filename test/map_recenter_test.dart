@@ -48,4 +48,36 @@ void main() {
     expect(const Distance()(camera().center, here), lessThan(1));
     expect(camera().zoom, driverHomeZoom);
   });
+
+  testWidgets('the driver map follows the driver as they move', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(600, 900);
+    addTearDown(tester.view.reset);
+    Widget at(LatLng p) => ProviderScope(
+      child: MaterialApp(home: Scaffold(body: DriverHomeMap(me: p, requests: const []))),
+    );
+    await tester.pumpWidget(at(here));
+    await tester.pump();
+    MapCamera camera() => MapCamera.of(tester.element(find.byType(MarkerLayer).first));
+    expect(const Distance()(camera().center, here), lessThan(1));
+
+    const moved = LatLng(3.1600, 101.7130);
+    await tester.pumpWidget(at(moved));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(const Distance()(camera().center, moved), lessThan(1), reason: 'the camera glides onto the driver');
+
+    // A hand on the map stops the following; the recenter key starts it again.
+    await tester.drag(find.byType(FlutterMap), const Offset(200, -150));
+    await tester.pump();
+    const further = LatLng(3.1610, 101.7140);
+    await tester.pumpWidget(at(further));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(const Distance()(camera().center, further), greaterThan(50), reason: 'left where the driver put it');
+    await tester.tap(find.byKey(const ValueKey('map-recenter')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(const Distance()(camera().center, further), lessThan(1));
+  });
 }

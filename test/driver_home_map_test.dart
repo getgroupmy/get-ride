@@ -104,7 +104,8 @@ void main() {
     testWidgets('online, each request is pinned with its fare; a tap brings it to the top', (tester) async {
       await pump(tester);
       // Requests already open when the driver goes online queue without a spotlight.
-      open.add([_req('near', 3.15), _req('far', 3.30, fare: 30)]);
+      // Close enough to be on the street-level map that follows the driver.
+      open.add([_req('near', 3.1583), _req('far', 3.1592, fare: 30)]);
       await tester.pumpAndSettle();
       await goOnline(tester);
       await tester.pumpAndSettle();
