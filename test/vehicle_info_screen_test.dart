@@ -165,7 +165,8 @@ void main() {
     expect(find.textContaining('This vehicle does not answer the odometer parameter'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('fuel-edit')));
-    await tester.pumpAndSettle(const Duration(milliseconds: 50));
+    // The button spins until the editor is answered, so it never settles.
+    await _settle(tester);
     await tester.enterText(find.byKey(const ValueKey('fuel-tank')), '3');
     await tester.tap(find.text('Save'));
     await tester.pump();
