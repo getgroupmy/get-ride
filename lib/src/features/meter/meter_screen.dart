@@ -5,18 +5,22 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../admin/screens/meterapp/meter_logic.dart';
 import '../../core/meter_trip.dart';
 import '../../core/escpos.dart';
 import '../../core/landscape_stage.dart';
+import '../../core/navigation_app.dart';
 import '../../core/obd.dart';
+import '../../core/street_hail.dart';
 import '../../core/taxi_meter.dart';
 import '../../data/geo_service.dart';
 import '../../data/obd/obd_session.dart';
 import '../../data/printer/printer_service.dart';
 import '../../providers.dart';
+import 'hail_destination_screen.dart';
 import 'landscape_stage.dart';
 import 'meter_leave_launcher.dart';
 import 'meter_providers.dart';
@@ -71,6 +75,10 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
 
   MeterWaypoint? _pickup;
   bool _ending = false;
+
+  /// A street hail's destination, when the driver set one: the route and
+  /// the card's quote for it. The meter still bills what it measures.
+  HailDestination? _dest;
 
   /// START was pressed and the meter is reading the odometer before the
   /// hire opens.
@@ -127,6 +135,38 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     _inFront = true;
     await _orientation.lockLandscape();
   }
+
+  /// Where the passenger is going (Expo's street-hail trip summary). Set
+  /// or changed at any time; the quote is on the card the hire bills on.
+  Future<void> _setDestination() async {
+    final f = _freshFix ?? _fix;
+    _inFront = false;
+    await _orientation.release();
+    if (!mounted) return;
+    final picked = await context.push<HailDestination>(
+      '/meter/destination',
+      extra: HailDestinationArgs(
+        origin: f == null ? null : LatLng(f.latitude, f.longitude),
+        rates: _profile.rates,
+        currency: _currency,
+        multiplier: periodMultiplier(_period, _profile.nightMultiplier),
+        current: _dest,
+      ),
+    );
+    _inFront = true;
+    await _orientation.lockLandscape();
+    if (mounted && picked != null) setState(() => _dest = picked);
+  }
+
+  void _navigateToDestination() {
+    final d = _dest;
+    if (d == null) return;
+    launchUrl(navigationUri(ref.read(navigationAppProvider), d.latitude, d.longitude),
+        mode: LaunchMode.externalApplication);
+  }
+
+  double? get _quote =>
+      _dest == null ? null : hailEstimate(_profile.rates, _dest!, multiplier: periodMultiplier(_period, _profile.nightMultiplier));
 
   @override
   void dispose() {
@@ -324,6 +364,8 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       driver: partner?.name,
       pickup: _pickup,
       dropoff: dropoff,
+      destination: _dest?.name,
+      estimate: _quote,
     );
     final store = ref.read(meterTripsStoreProvider);
     final trips = await store.save(trip);
@@ -333,6 +375,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       _m = const MeterState();
       _extra = 0;
       _pickup = null;
+      _dest = null;
       _ending = false;
       _periodTouched = false;
     });
@@ -603,6 +646,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       const SizedBox(height: 8),
       _Readout(label: 'FARE', value: total.toStringAsFixed(2), unit: _currency, large: true),
       Text(_extra > 0 ? 'incl. extras ${_money(_extra)}' : ' ', style: const TextStyle(color: _muted, fontSize: 12)),
+      _destinationRow(),
     ]);
     final readouts = _Panel(spread: true, children: [
       Row(children: [
@@ -639,6 +683,37 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         ),
       );
     });
+  }
+
+  Widget _destinationRow() {
+    final d = _dest, quote = _quote;
+    return Row(children: [
+      const Icon(Icons.flag_outlined, color: _muted, size: 16),
+      const SizedBox(width: 6),
+      Expanded(
+        child: Text(
+          d == null
+              ? 'NO DESTINATION'
+              : [d.name, describeHailRoute(d), if (quote != null) 'est. ${_money(quote)}'].join(' · '),
+          key: const ValueKey('meter-destination-text'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: d == null ? _muted : _amber, fontSize: 12),
+        ),
+      ),
+      if (d != null)
+        IconButton(
+          tooltip: 'Navigate',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.navigation_outlined, color: _muted, size: 18),
+          onPressed: _navigateToDestination,
+        ),
+      TextButton(
+        key: const ValueKey('meter-destination'),
+        onPressed: _ending ? null : _setDestination,
+        child: Text(d == null ? 'SET' : 'CHANGE'),
+      ),
+    ]);
   }
 
   Widget _keys() {
@@ -739,7 +814,10 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
             title: Text('${formatDashDate(t.endedAt)} · ${formatDashTime(t.startedAt)}–${formatDashTime(t.endedAt)}'),
             subtitle: Text([
               formatMeterDistance(t.distanceM),
-              if (t.pickup != null && t.dropoff != null) '${t.pickup!.label} → ${t.dropoff!.label}',
+              if (t.pickup != null && t.dropoff != null)
+                '${t.pickup!.label} → ${t.dropoff!.label}'
+              else if (t.destination != null)
+                '→ ${t.destination}',
             ].join(' · ')),
             trailing: Text('${t.currency} ${t.total.toStringAsFixed(2)}', style: _digits(16, _lcd)),
             onTap: () => _showReceipt(t),
