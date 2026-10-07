@@ -79,6 +79,9 @@ class RideMap extends StatefulWidget {
     this.extraMarkers = const [],
     this.framed = const [],
     this.satellite = false,
+    this.autoFit = true,
+    this.onGesture,
+    this.onReady,
   });
 
   final LatLng? pickup;
@@ -106,6 +109,16 @@ class RideMap extends StatefulWidget {
   /// Satellite imagery instead of the street map ([MapTypeButton]).
   final bool satellite;
 
+  /// Whether the map frames its points again as they change. Off while
+  /// something else steers the camera (a map following the car).
+  final bool autoFit;
+
+  /// The user panned, zoomed or turned the map by hand.
+  final VoidCallback? onGesture;
+
+  /// The map is drawn and its controller can move it.
+  final VoidCallback? onReady;
+
   @override
   State<RideMap> createState() => _RideMapState();
 }
@@ -127,6 +140,7 @@ class _RideMapState extends State<RideMap> {
   void didUpdateWidget(covariant RideMap old) {
     super.didUpdateWidget(old);
     if (_ready &&
+        widget.autoFit &&
         (old.pickup != widget.pickup ||
             old.drop != widget.drop ||
             old.stops.length != widget.stops.length ||
@@ -180,9 +194,15 @@ class _RideMapState extends State<RideMap> {
             initialCenter: start.center,
             initialZoom: start.zoom,
             onTap: widget.onTap == null ? null : (_, p) => widget.onTap!(p),
+            onPositionChanged: widget.onGesture == null
+                ? null
+                : (_, gesture) {
+                    if (gesture) widget.onGesture!();
+                  },
             onMapReady: () {
               _ready = true;
-              _fit();
+              if (widget.autoFit) _fit();
+              widget.onReady?.call();
             },
           ),
           children: [
@@ -191,8 +211,10 @@ class _RideMapState extends State<RideMap> {
               PolylineLayer(
                 polylines: [Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2))],
               ),
-            if (widget.extraMarkers.isNotEmpty) MarkerLayer(markers: widget.extraMarkers),
+            if (widget.extraMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: widget.extraMarkers),
             MarkerLayer(
+              // Pins stand upright on a map turned to the car's heading…
+              rotate: true,
               markers: [
                 if (widget.me != null)
                   Marker(
@@ -226,6 +248,9 @@ class _RideMapState extends State<RideMap> {
                 if (widget.driver != null)
                   Marker(
                     point: widget.driver!,
+                    // …but the car turns with the map, so it keeps pointing
+                    // the way it drives.
+                    rotate: false,
                     width: 40,
                     height: 40,
                     child: CircleAvatar(

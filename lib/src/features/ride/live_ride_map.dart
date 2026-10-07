@@ -19,6 +19,11 @@ LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : Lat
 /// The rider's ride map (Expo `ride-tracking`): pickup, stops and drop-off,
 /// plus — once a driver is on the way — the road still ahead of them, an
 /// ETA chip and the car turned to the way it is heading.
+///
+/// Once there is a car the camera follows it at street zoom, so the turns
+/// can be watched: turned to the car's heading on the driver's own phone
+/// ([driverAt]), north up for the rider. Moving the map by hand stops the
+/// following; the recenter button starts it again.
 class LiveRideMap extends ConsumerStatefulWidget {
   const LiveRideMap({super.key, required this.ride, this.now, this.driverAt, this.driverHeading});
 
@@ -36,12 +41,21 @@ class LiveRideMap extends ConsumerStatefulWidget {
   ConsumerState<LiveRideMap> createState() => _LiveRideMapState();
 }
 
-class _LiveRideMapState extends ConsumerState<LiveRideMap> {
+/// Street zoom the camera follows the car at.
+const followZoom = 16.5;
+
+class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProviderStateMixin {
   RouteInfo? _route;
   LatLng? _routeFrom, _routeTo;
   DateTime? _routeAt;
   int _seq = 0;
   final _map = MapController();
+
+  bool _follow = true;
+  bool _mapReady = false;
+  late final _cam = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
+    ..addListener(_camTick);
+  _Cam? _camFrom, _camTo, _camNow;
 
   DateTime get _now => (widget.now ?? DateTime.now)();
 
@@ -53,6 +67,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
 
   @override
   void dispose() {
+    _cam.dispose();
     _map.dispose();
     super.dispose();
   }
@@ -61,6 +76,67 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
   void didUpdateWidget(covariant LiveRideMap old) {
     super.didUpdateWidget(old);
     _maybeReroute();
+    if (_driver != null) WidgetsBinding.instance.addPostFrameCallback((_) => _followCar());
+  }
+
+  /// The driver's own map turns to the way the car is going.
+  bool get _headingUp => widget.driverAt != null;
+
+  double? get _heading => widget.driverAt != null ? widget.driverHeading : widget.ride.partnerLiveHeading;
+
+  /// Glides the camera onto the car: centred in the part of the map the
+  /// sheet leaves showing (on the driver's phone, lower down, to show more
+  /// of the road ahead).
+  void _followCar() {
+    final at = _driver;
+    if (!mounted || !_follow || !_mapReady || at == null) return;
+    final MapCamera camera;
+    try {
+      camera = _map.camera;
+    } catch (_) {
+      return;
+    }
+    final h = camera.nonRotatedSize.height;
+    final visible = h - MapBottomInset.of(context);
+    final y = (_headingUp ? visible * 0.65 : visible / 2) - h / 2;
+    final heading = _heading;
+    final to = _Cam(at, followZoom, _headingUp && heading != null ? -heading : 0, Offset(0, y));
+    if (_camTo != null && _camTo!.same(to)) return;
+    _camFrom = _camNow ?? _Cam(camera.center, camera.zoom, camera.rotation, Offset.zero);
+    _camTo = to;
+    _cam.forward(from: 0);
+  }
+
+  void _camTick() {
+    final a = _camFrom, b = _camTo;
+    if (a == null || b == null) return;
+    final c = _Cam.lerp(a, b, Curves.easeInOut.transform(_cam.value));
+    try {
+      _map.rotate(c.rotation);
+      _map.move(c.point, c.zoom, offset: c.offset);
+      _camNow = c;
+    } catch (_) {
+      // Not drawn yet.
+    }
+  }
+
+  /// A hand on the map: stop following until the recenter button.
+  void _onGesture() {
+    if (!_follow) return;
+    _cam.stop();
+    _camNow = _camTo = null;
+    setState(() => _follow = false);
+  }
+
+  void _recenter() {
+    final r = widget.ride;
+    if (_driver == null) {
+      recenterMap(_map, _ll(r.pickupLat, r.pickupLng));
+      return;
+    }
+    setState(() => _follow = true);
+    _camTo = null;
+    _followCar();
   }
 
   /// A bidder on an open request is not the rider's driver yet: no car.
@@ -81,7 +157,16 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
       return;
     }
     final now = _now;
-    if (!shouldReroute(from: from, to: to, now: now, lastFrom: _routeFrom, lastTo: _routeTo, lastAt: _routeAt)) {
+    final ahead = _route == null ? null : routeAhead(_route!.points, from);
+    if (!shouldReroute(
+      from: from,
+      to: to,
+      now: now,
+      lastFrom: _routeFrom,
+      lastTo: _routeTo,
+      lastAt: _routeAt,
+      offRoute: ahead != null && ahead.offBy > offRouteMetres,
+    )) {
       return;
     }
     _routeFrom = from;
@@ -100,6 +185,19 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
   Widget build(BuildContext context) {
     final r = widget.ride;
     final route = _target == null ? null : _route;
+    final driver = _driver;
+    // The road still ahead of the car, and the time and distance it takes.
+    final ahead = route == null || driver == null ? null : routeAhead(route.points, driver);
+    final eta = route == null
+        ? null
+        : ahead == null
+        ? (minutes: route.durationMin, km: route.distanceKm)
+        : etaAhead(
+            routeMinutes: route.durationMin,
+            routeKm: route.distanceKm,
+            route: route.points,
+            ahead: ahead.points,
+          );
     return Stack(
       children: [
         RideMap(
@@ -109,8 +207,15 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
           stops: [for (final s in r.stops) s.point],
           driver: _driver,
           driverHeading: widget.driverAt != null ? widget.driverHeading : r.partnerLiveHeading,
-          route: route?.points ?? const [],
+          route: ahead?.points ?? route?.points ?? const [],
           satellite: ref.watch(mapSatelliteProvider),
+          // With a car on the map the camera follows it instead.
+          autoFit: driver == null,
+          onGesture: _onGesture,
+          onReady: () {
+            _mapReady = true;
+            _followCar();
+          },
         ),
         MapBottomInset.listen(
           context,
@@ -121,8 +226,8 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
               // Expo's trip maps recenter on the car; before a driver is on
               // the way, on the pickup.
               RecenterButton(
-                tooltip: 'Recenter',
-                onPressed: () => recenterMap(_map, _driver ?? _ll(r.pickupLat, r.pickupLng)),
+                tooltip: driver == null ? 'Recenter' : 'Follow the car',
+                onPressed: _recenter,
               ),
               const SizedBox(height: 8),
               const MapTypeButton(),
@@ -150,8 +255,8 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
                       Flexible(
                         child: Text(
                           etaLabel(
-                            minutes: route.durationMin,
-                            km: route.distanceKm,
+                            minutes: eta!.minutes,
+                            km: eta.km,
                             now: _now,
                             toPickup: r.status == RideStatus.accepted,
                           ),
@@ -165,6 +270,35 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// A camera position: [point] shown [offset] from the map's centre.
+class _Cam {
+  const _Cam(this.point, this.zoom, this.rotation, this.offset);
+  final LatLng point;
+  final double zoom, rotation;
+  final Offset offset;
+
+  bool same(_Cam o) =>
+      o.point == point &&
+      (o.zoom - zoom).abs() < 0.01 &&
+      (o.rotation - rotation).abs() < 0.5 &&
+      (o.offset - offset).distance < 1;
+
+  static _Cam lerp(_Cam a, _Cam b, double t) {
+    // Turn the short way round.
+    var turn = (b.rotation - a.rotation) % 360;
+    if (turn > 180) turn -= 360;
+    return _Cam(
+      LatLng(
+        a.point.latitude + (b.point.latitude - a.point.latitude) * t,
+        a.point.longitude + (b.point.longitude - a.point.longitude) * t,
+      ),
+      a.zoom + (b.zoom - a.zoom) * t,
+      a.rotation + turn * t,
+      Offset.lerp(a.offset, b.offset, t)!,
     );
   }
 }
