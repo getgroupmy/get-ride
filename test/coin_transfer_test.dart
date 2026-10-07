@@ -188,7 +188,9 @@ void main() {
       await tester.pump();
       await tester.ensureVisible(find.widgetWithText(FilledButton, 'Send GET.coin'));
       await tester.tap(find.widgetWithText(FilledButton, 'Send GET.coin'));
-      await tester.pumpAndSettle();
+      // The button spins behind the confirm dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.text('Send request'));
       await tester.pump();
       await tester.pump();
@@ -236,7 +238,9 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('coin-recipient')), '0199999999');
       await tester.pump();
       await tester.tap(find.widgetWithText(FilledButton, 'Send GET.coin'));
-      await tester.pumpAndSettle();
+      // The button spins behind the confirm dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.text('Send request'));
       await tester.pumpAndSettle();
       expect(find.text('Recipient not found. Check the number and try again.'), findsOneWidget);

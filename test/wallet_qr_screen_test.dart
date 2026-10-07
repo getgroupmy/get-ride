@@ -119,7 +119,9 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('pay-amount')), '8.5');
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('pay-confirm')));
-      await tester.pumpAndSettle();
+      // The button spins behind the confirm dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.widgetWithText(FilledButton, 'Pay'));
       await tester.pumpAndSettle();
 
@@ -137,7 +139,9 @@ void main() {
       await tester.pump();
       expect(find.textContaining('covers RM'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('pay-confirm')));
-      await tester.pumpAndSettle();
+      // The button spins behind the confirm dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(find.textContaining('from GET.coin'), findsOneWidget);
       await tester.tap(find.widgetWithText(FilledButton, 'Pay'));
       await tester.pumpAndSettle();
@@ -151,7 +155,9 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('pay-amount')), '5');
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('pay-confirm')));
-      await tester.pumpAndSettle();
+      // The button spins behind the confirm dialog until it is answered.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       await tester.tap(find.widgetWithText(FilledButton, 'Pay'));
       await tester.pumpAndSettle();
       expect(find.text('Not enough balance in GET.wallet.'), findsOneWidget);
