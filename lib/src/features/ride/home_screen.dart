@@ -503,6 +503,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         setState(() => _ongoing = r.status.isOngoing ? r : null);
       });
     }
+    // The same for every ride booked for someone else.
+    for (final other in _forOthers) {
+      ref.listen(rideStreamProvider(other.id), (_, next) {
+        final r = next.value;
+        if (r == null || !mounted || !_forOthers.any((o) => o.id == r.id)) return;
+        setState(() => _forOthers = [
+              for (final o in _forOthers)
+                if (o.id != r.id)
+                  o
+                else if (r.status.isOngoing)
+                  r,
+            ]);
+      });
+    }
     final wide = MediaQuery.sizeOf(context).width >= 900;
     final display = ref.watch(appDisplayProvider).value;
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
