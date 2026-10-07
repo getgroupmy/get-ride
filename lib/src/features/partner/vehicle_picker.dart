@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/vehicle_assignment.dart';
 import '../../data/vehicle_assignment_repository.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 
 /// The vehicle this driver is driving right now (Drive tab), with the
@@ -78,13 +79,13 @@ class _CurrentVehicleCardState extends ConsumerState<CurrentVehicleCard> {
     } else if (current != null) {
       subtitle = Text('${current.plate} · ${current.title} · ${vehicleRoleLabel(current.role)}');
       actions = [
-        TextButton(onPressed: _busy ? null : () => _pick(list), child: const Text('Change')),
-        TextButton(onPressed: _busy ? null : () => _handBack(current), child: const Text('Hand back')),
+        BusyButton.text(onPressed: _busy ? null : () => _pick(list), child: const Text('Change')),
+        BusyButton.text(onPressed: _busy ? null : () => _handBack(current), child: const Text('Hand back')),
       ];
     } else {
       subtitle = const Text('No vehicle selected');
       actions = [
-        FilledButton.tonal(
+        BusyButton.tonal(
           key: const ValueKey('select-vehicle'),
           // The theme makes filled buttons full width; this one sits in a row.
           style: FilledButton.styleFrom(minimumSize: const Size(96, 40)),

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/vehicle_assignment.dart';
 import '../../../data/vehicle_assignment_repository.dart';
 import '../../../providers.dart';
+import '../../../widgets/busy.dart';
 import '../../widgets/admin_widgets.dart';
 import 'people_widgets.dart';
 
@@ -39,10 +40,10 @@ class VehicleDriversSection extends ConsumerWidget {
         SectionTitle(
           'Drivers',
           trailing: canEdit
-              ? TextButton.icon(
+              ? BusyButton.text(
                   key: const ValueKey('add-driver'),
                   icon: const Icon(Icons.person_add_alt),
-                  label: const Text('Add driver'),
+                  child: const Text('Add driver'),
                   onPressed: () async {
                     final added = await showDialog<bool>(
                       context: context,
@@ -94,9 +95,9 @@ class VehicleDriversSection extends ConsumerWidget {
         if (canEdit && driving != null)
           Align(
             alignment: Alignment.centerLeft,
-            child: TextButton.icon(
+            child: BusyButton.text(
               icon: const Icon(Icons.logout),
-              label: Text('End ${driving.name ?? 'the current'} session'),
+              child: Text('End ${driving.name ?? 'the current'} session'),
               onPressed: () => act(() => repo.endSession(vehicleId), 'Session ended'),
             ),
           ),
@@ -186,7 +187,7 @@ class _AddDriverDialogState extends ConsumerState<_AddDriverDialog> {
     ),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-      FilledButton(onPressed: _busy ? null : _save, child: const Text('Add')),
+      BusyButton.filled(onPressed: _busy ? null : _save, child: const Text('Add')),
     ],
   );
 }

@@ -1,3 +1,4 @@
+import '../../widgets/busy.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -115,7 +116,7 @@ class _UpdateCard extends StatelessWidget {
 
   final UpdateVerdict verdict;
   final VoidCallback onLater;
-  final VoidCallback? onUpdate;
+  final BusyAction? onUpdate;
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +148,7 @@ class _UpdateCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(onPressed: onLater, child: const Text('Later')),
-                if (onUpdate != null) FilledButton(onPressed: onUpdate, child: const Text('Update')),
+                if (onUpdate != null) BusyButton.filled(onPressed: onUpdate, child: const Text('Update')),
               ],
             ),
           ],
@@ -163,7 +164,7 @@ class UpdateRequiredView extends StatelessWidget {
   const UpdateRequiredView({super.key, required this.verdict, required this.onUpdate, this.failed = false});
 
   final UpdateVerdict verdict;
-  final VoidCallback onUpdate;
+  final BusyAction onUpdate;
   final bool failed;
 
   @override
@@ -193,10 +194,10 @@ class UpdateRequiredView extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   if (hasLink)
-                    FilledButton.icon(
+                    BusyButton.filled(
                       onPressed: onUpdate,
                       icon: const Icon(Icons.open_in_new),
-                      label: const Text('Update now'),
+                      child: const Text('Update now'),
                     )
                   else
                     Text(

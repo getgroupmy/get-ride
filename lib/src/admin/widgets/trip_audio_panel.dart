@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/voice_protection.dart';
 import '../../data/voice_protection_repository.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import 'admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
 
@@ -115,12 +116,13 @@ class _TripAudioPanelState extends ConsumerState<TripAudioPanel> {
   Widget _row(VoiceRecording r, RecordingState s) {
     final busy = _busyId == r.id;
     final Widget? action = switch (s) {
-      RecordingState.uploaded => TextButton.icon(
+      RecordingState.uploaded => BusyButton.text(
         onPressed: busy ? null : () => _play(r),
         icon: const Icon(Icons.play_arrow),
-        label: const Text('Play'),
+        child: const Text('Play'),
       ),
-      RecordingState.onDevice when widget.canEdit => TextButton(
+      RecordingState.onDevice when widget.canEdit => BusyButton.text(
+
         onPressed: busy ? null : () => _request(r),
         child: const Text('Request'),
       ),

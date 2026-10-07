@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -144,7 +145,7 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
       title: 'Edit User',
       page: UserEditScreen.page,
       actions: [
-        if (canEdit) IconButton(tooltip: 'Delete user', icon: const Icon(Icons.delete_outline), onPressed: _delete),
+        if (canEdit) BusyIconButton(tooltip: 'Delete user', icon: const Icon(Icons.delete_outline), onPressed: _delete),
       ],
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -238,10 +239,10 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
             ),
             const SizedBox(height: 16),
             if (canEdit)
-              FilledButton.icon(
+              BusyButton.filled(
                 onPressed: _saving ? null : _save,
                 icon: const Icon(Icons.save_outlined),
-                label: Text(_saving ? 'Saving…' : 'Save Changes'),
+                child: Text(_saving ? 'Saving…' : 'Save Changes'),
               ),
             const SizedBox(height: 32),
           ]),
@@ -504,10 +505,10 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
       if (img != null && canEdit)
         Align(
           alignment: Alignment.centerLeft,
-          child: TextButton.icon(
+          child: BusyButton.text(
             onPressed: _busy ? null : _removeImage,
             icon: const Icon(Icons.delete_outline),
-            label: const Text('Remove ID image'),
+            child: const Text('Remove ID image'),
           ),
         ),
       const SizedBox(height: 8),
@@ -523,8 +524,8 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
       if (canEdit) ...[
         Align(
           alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-              onPressed: _busy ? null : _edit, icon: const Icon(Icons.edit_outlined), label: const Text('Edit user details')),
+          child: BusyButton.text(
+              onPressed: _busy ? null : _edit, icon: const Icon(Icons.edit_outlined), child: const Text('Edit user details')),
         ),
         const SizedBox(height: 8),
         TextField(
@@ -536,18 +537,18 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         const SizedBox(height: 12),
         Row(children: [
           Expanded(
-            child: OutlinedButton.icon(
+            child: BusyButton.outlined(
               onPressed: _busy ? null : () => _decide('Failed'),
               icon: const Icon(Icons.cancel_outlined),
-              label: const Text('Reject'),
+              child: const Text('Reject'),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: FilledButton.icon(
+            child: BusyButton.filled(
               onPressed: _busy ? null : () => _decide('Verified'),
               icon: const Icon(Icons.check_circle_outline),
-              label: const Text('Verify'),
+              child: const Text('Verify'),
             ),
           ),
         ]),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
@@ -95,7 +96,7 @@ class _DocumentTypeScreenState extends ConsumerState<DocumentTypeScreen> {
       page: c.page,
       actions: [
         if (canEdit && needsSync)
-          IconButton(
+          BusyIconButton(
             tooltip: 'Restore default types',
             icon: const Icon(Icons.settings_backup_restore),
             onPressed: () => _syncDefaults(all!),
@@ -133,7 +134,7 @@ class _DocumentTypeScreenState extends ConsumerState<DocumentTypeScreen> {
                           final isDefault = jsBool(e.values['isDefault']);
                           final desc = str(e.values['description']);
                           return Card(
-                            child: ListTile(
+                            child: BusyListTile(
                               onTap: () => _edit(all, e),
                               leading: const Icon(Icons.badge_outlined),
                               title: Wrap(spacing: 6, children: [
@@ -142,12 +143,12 @@ class _DocumentTypeScreenState extends ConsumerState<DocumentTypeScreen> {
                               ]),
                               subtitle: desc.isEmpty ? null : Text(desc),
                               trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                                Switch(
+                                BusySwitch(
                                   value: jsBool(e.values['enabled'], true),
                                   onChanged: canEdit ? (_) => _toggle(e) : null,
                                 ),
                                 if (canEdit)
-                                  IconButton(
+                                  BusyIconButton(
                                     tooltip: isDefault ? 'Default types cannot be deleted' : 'Delete',
                                     icon: const Icon(Icons.delete_outline),
                                     onPressed: isDefault ? null : () => _delete(e),
@@ -359,7 +360,7 @@ class _RequiredDocumentsScreenState extends ConsumerState<RequiredDocumentsScree
           if (l.length > 5) Pill('+${l.length - 5}'),
         ];
     return Card(
-      child: ListTile(
+      child: BusyListTile(
         onTap: () => _edit(all, docTypes, e),
         leading: const Icon(Icons.fact_check_outlined),
         title: Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -377,8 +378,9 @@ class _RequiredDocumentsScreenState extends ConsumerState<RequiredDocumentsScree
           ]),
         ]),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          Switch(value: jsBool(v['active'], true), onChanged: canEdit ? (_) => _toggle(e) : null),
-          if (canEdit) IconButton(tooltip: 'Delete', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(e)),
+          BusySwitch(value: jsBool(v['active'], true), onChanged: canEdit ? (_) => _toggle(e) : null),
+          if (canEdit) BusyIconButton(tooltip: 'Delete', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(e)),
+
         ]),
       ),
     );

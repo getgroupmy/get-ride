@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../widgets/busy.dart';
 import '../widgets/common.dart';
 import 'admin_access.dart';
 import 'admin_providers.dart';
@@ -168,8 +169,9 @@ class _AdminGateState extends ConsumerState<AdminGate> {
           title: 'No admin access',
           message: 'Your account has no admin permissions. An existing administrator can grant them '
               'under Sub-admins. On a brand-new project, the first account to claim it becomes the administrator.',
-          action: OutlinedButton(
+          action: BusyButton.outlined(
             onPressed: _busy ? null : _bootstrap,
+
             child: const Text('Claim first-admin access'),
           ),
         ),

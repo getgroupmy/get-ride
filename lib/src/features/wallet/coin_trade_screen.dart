@@ -1,3 +1,4 @@
+import '../../widgets/busy.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -249,11 +250,9 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
         Text(_done!, style: const TextStyle(fontWeight: FontWeight.w600)),
       ],
       const SizedBox(height: 16),
-      FilledButton(
+      BusyButton.filled(
         onPressed: _busy || problem != null ? null : () => _confirmSend(to!),
-        child: _busy
-            ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Text('Send GET.coin'),
+        child: const Text('Send GET.coin'),
       ),
       const SizedBox(height: 8),
       Text(
@@ -396,11 +395,9 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
           ),
         ],
         const SizedBox(height: 16),
-        FilledButton(
+        BusyButton.filled(
           onPressed: _busy || problem != null ? null : () => _confirm(q, rate),
-          child: _busy
-              ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-              : Text(buy ? 'Buy GET.coin' : 'Sell GET.coin'),
+          child: Text(buy ? 'Buy GET.coin' : 'Sell GET.coin'),
         ),
         const SizedBox(height: 8),
         Text(
@@ -506,7 +503,7 @@ class _TransferWaitingDialogState extends State<TransferWaitingDialog> {
         ]),
         actions: [
           if (outcome == null)
-            TextButton(
+            BusyButton.text(
               onPressed: _cancelling ? null : _cancel,
               child: Text(_cancelling ? 'Cancelling…' : 'Cancel request'),
             )

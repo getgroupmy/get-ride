@@ -9,6 +9,7 @@ import '../../core/demo_mode.dart';
 import '../../core/format.dart';
 import '../../data/app_display_repository.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 
@@ -42,7 +43,7 @@ class DemoOffersFeed extends StatefulWidget {
 
   final double fare;
   final String currency;
-  final ValueChanged<DemoOffer> onAccept;
+  final FutureOr<void> Function(DemoOffer) onAccept;
 
   @override
   State<DemoOffersFeed> createState() => _DemoOffersFeedState();
@@ -153,7 +154,7 @@ class _DemoOffersFeedState extends State<DemoOffersFeed> {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: FilledButton(
+                        child: BusyButton.filled(
                           key: ValueKey('demo-accept-${o.id}'),
                           style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
                           onPressed: () => widget.onAccept(o),

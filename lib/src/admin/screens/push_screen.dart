@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
@@ -91,10 +92,11 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
                       decoration: const InputDecoration(labelText: 'Message'),
                     ),
                     const SizedBox(height: 12),
-                    FilledButton.icon(
+                    BusyButton.filled(
                       onPressed: _sending ? null : _send,
                       icon: const Icon(Icons.send),
-                      label: const Text('Send'),
+                      child: const Text('Send'),
+
                     ),
                   ]),
                 ),

@@ -7,6 +7,7 @@ import '../../admin/screens/meterapp/meter_logic.dart';
 import '../../core/street_hail.dart';
 import '../../data/geo_service.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 import '../ride/place_search.dart';
@@ -102,11 +103,11 @@ class _HailDestinationScreenState extends ConsumerState<HailDestinationScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: OutlinedButton.icon(
+            child: BusyButton.outlined(
               key: const ValueKey('hail-search'),
               onPressed: _search,
               icon: const Icon(Icons.search),
-              label: const Align(alignment: Alignment.centerLeft, child: Text('Where to?')),
+              child: const Align(alignment: Alignment.centerLeft, child: Text('Where to?')),
             ),
           ),
           Expanded(

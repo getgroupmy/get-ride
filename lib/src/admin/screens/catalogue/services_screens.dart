@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
@@ -113,8 +114,9 @@ class _PriorityListState extends ConsumerState<_PriorityList> {
                                   ),
                                 ),
                                 if (canEdit)
-                                  IconButton(
+                                  BusyIconButton(
                                     tooltip: widget.isDefault(e) ? 'Default entries cannot be deleted' : 'Delete',
+
                                     icon: const Icon(Icons.delete_outline),
                                     onPressed: widget.isDefault(e) ? null : () => _delete(e),
                                   ),

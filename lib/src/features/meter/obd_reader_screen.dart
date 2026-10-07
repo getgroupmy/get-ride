@@ -15,6 +15,7 @@ import '../../core/obd_mfi.dart';
 import '../../data/ble.dart';
 import '../../data/obd/obd_mfi_transport.dart';
 import '../../data/obd/obd_session.dart';
+import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
 
 /// The MFi accessories paired with this iPhone. Overridden in tests.
@@ -306,7 +307,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
     final current = session.adapter?.id == a.id && session.phase != ObdPhase.idle;
     final busy = current && (session.phase == ObdPhase.connecting || session.phase == ObdPhase.handshaking);
     return Card(
-      child: ListTile(
+      child: BusyListTile(
         leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked),
         title: Text(a.name),
         subtitle: Text(describeAdapter(a)),
@@ -315,13 +316,13 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (current && session.phase != ObdPhase.error)
-              TextButton(
+              BusyButton.text(
                 onPressed: busy ? null : () => ref.read(obdSessionProvider.notifier).disconnect(),
                 child: Text(busy ? 'Connecting…' : 'Disconnect'),
               )
             else if (!kIsWeb)
-              TextButton(onPressed: () => _use(a), child: const Text('Connect')),
-            IconButton(
+              BusyButton.text(onPressed: () => _use(a), child: const Text('Connect')),
+            BusyIconButton(
               tooltip: 'Remove ${a.name}',
               icon: const Icon(Icons.delete_outline),
               onPressed: () => _delete(a),

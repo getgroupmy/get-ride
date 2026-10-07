@@ -7,6 +7,7 @@ import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/ev_wizard.dart';
 import '../../data/ev_order_repository.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 
 /// Book TEKSI EV (Expo `app/teksi-ev.tsx`): the customer's nine-step car
 /// order, from choosing a model to accepting the handover. The order is
@@ -216,7 +217,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
         title: const Text('Book TEKSI EV'),
         actions: [
           if (_orderId != null)
-            IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _busy ? null : _reload),
+            BusyIconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _busy ? null : _reload),
         ],
       ),
       body: _loading || catalog.isLoading
@@ -530,10 +531,10 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
       const SizedBox(height: 8),
       _Facts({'Vehicle total': evMoney(total), 'Order fee': evMoney(fee.amount, fee.currency)}),
       const SizedBox(height: 16),
-      FilledButton.icon(
+      BusyButton.filled(
         onPressed: _busy ? null : () => _placeOrder(c),
         icon: const Icon(Icons.check),
-        label: const Text('Place order'),
+        child: const Text('Place order'),
       ),
     ];
   }
@@ -627,7 +628,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
       field('address', 'Address', lines: 2),
       _idPhoto(v),
       const SizedBox(height: 12),
-      FilledButton(
+      BusyButton.filled(
         onPressed: _busy ? null : _confirmOwnership,
         child: Text(confirmed ? 'Update owner details' : 'Confirm owner details'),
       ),
@@ -644,7 +645,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
             : ClipRRect(borderRadius: BorderRadius.circular(6), child: StoredImage(url, width: 56, height: 40)),
         title: Text(url.isEmpty ? 'Photo of the ID (optional)' : 'ID photo added'),
         subtitle: const Text('Helps TEKSI check the details. Only you and TEKSI can see your order.'),
-        trailing: TextButton(onPressed: _busy ? null : _pickIdPhoto, child: Text(url.isEmpty ? 'Add' : 'Replace')),
+        trailing: BusyButton.text(onPressed: _busy ? null : _pickIdPhoto, child: Text(url.isEmpty ? 'Add' : 'Replace')),
       ),
     );
   }
@@ -701,12 +702,15 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
           decoration: const InputDecoration(labelText: 'Plate number', hintText: 'WXY 1234', border: OutlineInputBorder()),
         ),
         const SizedBox(height: 8),
-        FilledButton(
+        BusyButton.filled(
           onPressed: _busy
               ? null
               : () {
-                  if (_plate.text.trim().isEmpty) return _say('Enter the plate number.');
-                  _save({'plateNumber': _plate.text.trim().toUpperCase()}, done: 'Plate number saved.');
+                  if (_plate.text.trim().isEmpty) {
+                    _say('Enter the plate number.');
+                    return null;
+                  }
+                  return _save({'plateNumber': _plate.text.trim().toUpperCase()}, done: 'Plate number saved.');
                 },
           child: const Text('Save plate number'),
         ),
@@ -771,7 +775,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
                     : 'The vehicle total less the order fee, paid to TEKSI before delivery.'),
             trailing: evFlag(v['cashBalanceConfirmed']) || evFlag(v['cashBalancePaid'])
                 ? const Icon(Icons.check_circle)
-                : FilledButton(
+                : BusyButton.filled(
                     onPressed: _busy ? null : () => _save({'cashBalanceConfirmed': true, 'balanceDueAmount': balance}),
                     child: const Text('Confirm'),
                   ),
@@ -822,13 +826,16 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            FilledButton(
+            BusyButton.filled(
               onPressed: _busy
                   ? null
                   : () {
                       final amount = double.tryParse(_addon.text.trim());
-                      if (amount == null || amount <= 0) return _say('Enter the add-on amount.');
-                      _save({'leasingAddonConfirmed': true, 'leasingAddonAmount': amount});
+                      if (amount == null || amount <= 0) {
+                        _say('Enter the add-on amount.');
+                        return null;
+                      }
+                      return _save({'leasingAddonConfirmed': true, 'leasingAddonAmount': amount});
                     },
               child: const Text('Confirm'),
             ),
@@ -870,13 +877,16 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
           ),
         ),
         const SizedBox(width: 8),
-        FilledButton(
+        BusyButton.filled(
           onPressed: _busy
               ? null
               : () {
                   final advisor = advisorByDaCode(c.advisors, _daCode.text);
-                  if (advisor == null) return _say('No delivery advisor has that code.');
-                  _save(advisorAssignmentPatch(advisor.id, advisor.values, DateTime.now()),
+                  if (advisor == null) {
+                    _say('No delivery advisor has that code.');
+                    return null;
+                  }
+                  return _save(advisorAssignmentPatch(advisor.id, advisor.values, DateTime.now()),
                       done: 'Linked to ${advisor.values['name'] ?? 'your advisor'}.');
                 },
           child: const Text('Link'),
@@ -936,7 +946,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
         _Note('Still to pay TEKSI: ${due.map((p) => '${p.label} ${evMoney(p.amount, p.currency)}').join(', ')}.'),
       ],
       const SizedBox(height: 12),
-      FilledButton(
+      BusyButton.filled(
         onPressed: _busy || accepted || !submitted
             ? null
             : () async {

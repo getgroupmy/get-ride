@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_settings_models.dart';
 import '../../widgets/admin_widgets.dart';
@@ -103,7 +104,7 @@ class _AssignServiceScreenState extends ConsumerState<AssignServiceScreen> {
               const SectionLabel('Document sources'),
               for (final f in documentSourceFeatures)
                 Card(
-                  child: ListTile(
+                  child: BusyListTile(
                     leading: const Icon(Icons.fact_check_outlined),
                     title: Text(f.label),
                     subtitle: Text(
@@ -238,7 +239,7 @@ class AssignServicePageScreen extends ConsumerWidget {
                   final prov = provs.where((p) => p.id == a?['providerId']).firstOrNull;
                   final svc = prov?.services.where((s) => s.id == a?['serviceId']).firstOrNull;
                   return Card(
-                    child: ListTile(
+                    child: BusyListTile(
                       leading: const Icon(Icons.link),
                       title: Text(capabilityLabels[cap] ?? cap),
                       subtitle: Text(a == null
@@ -248,8 +249,9 @@ class AssignServicePageScreen extends ConsumerWidget {
                               : '${a['providerId']} · ${a['serviceId']}'),
                       onTap: canEdit && providers.hasValue ? () => _pick(context, ref, page, cap, map, provs) : null,
                       trailing: a != null && canEdit
-                          ? IconButton(
+                          ? BusyIconButton(
                               tooltip: 'Clear',
+
                               icon: const Icon(Icons.close),
                               onPressed: () => _write(context, ref, page.id, cap, null),
                             )

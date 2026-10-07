@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -179,7 +180,7 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
               if (await confirm(context, 'Reset', 'Restore all defaults?', ok: 'Reset')) _adopt(defaultSiteSettings());
             },
           ),
-        if (canEdit) IconButton(tooltip: 'Save', icon: const Icon(Icons.save_outlined), onPressed: s == null ? null : _save),
+        if (canEdit) BusyIconButton(tooltip: 'Save', icon: const Icon(Icons.save_outlined), onPressed: s == null ? null : _save),
       ],
       body: s == null
           ? const Center(child: CircularProgressIndicator())
@@ -221,7 +222,7 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                       title: const Text('App Icon'),
                       subtitle: const Text('Square PNG. 1024×1024 recommended.'),
                       trailing: canEdit
-                          ? TextButton(
+                          ? BusyButton.text(
                               onPressed: () => _pick('appIconUri'),
                               child: Text(s['appIconUri'] != null ? 'Replace' : 'Upload'),
                             )
@@ -238,7 +239,7 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                           title: const Text('Splash Screen'),
                           subtitle: const Text('Splash icon shown on app launch.'),
                           trailing: canEdit
-                              ? TextButton(
+                              ? BusyButton.text(
                                   onPressed: () => _pick('splashIconUri'),
                                   child: Text(s['splashIconUri'] != null ? 'Replace' : 'Upload'),
                                 )
@@ -283,7 +284,7 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                   if (canEdit)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save_outlined), label: const Text('Save')),
+                      child: BusyButton.filled(onPressed: _save, icon: const Icon(Icons.save_outlined), child: const Text('Save')),
                     ),
                   const SizedBox(height: 16),
                   _SiteValues(canEdit: canEdit),
@@ -343,7 +344,7 @@ class _SiteValues extends ConsumerWidget {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         Expanded(child: Text('Shared app values', style: t.textTheme.titleMedium)),
-        if (canEdit) TextButton.icon(onPressed: () => _edit(context, ref), icon: const Icon(Icons.add), label: const Text('Add')),
+        if (canEdit) BusyButton.text(onPressed: () => _edit(context, ref), icon: const Icon(Icons.add), child: const Text('Add')),
       ]),
       Text('Name / value pairs in the shared settings (category site-settings), visible to every device.',
           style: t.textTheme.bodySmall),
@@ -354,12 +355,12 @@ class _SiteValues extends ConsumerWidget {
           if (rows.isEmpty) const ListTile(title: Text('No values')),
           for (final e in rows)
             Card(
-              child: ListTile(
+              child: BusyListTile(
                 title: Text('${e.values['name'] ?? ''}'),
                 subtitle: Text('${e.values['value'] ?? ''}'),
                 onTap: canEdit ? () => _edit(context, ref, e) : null,
                 trailing: canEdit
-                    ? IconButton(
+                    ? BusyIconButton(
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () async {
                           if (!await confirm(context, 'Delete value?', '${e.values['name'] ?? ''}', ok: 'Delete')) return;

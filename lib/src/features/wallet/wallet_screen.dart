@@ -9,6 +9,7 @@ import '../../data/live_tables.dart';
 import '../../data/models.dart';
 import '../../data/wallet_pay_repository.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 
 final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>((ref) {
@@ -140,7 +141,7 @@ class WalletScreen extends ConsumerWidget {
                   ),
                   if (ref.watch(partnerProvider).value != null)
                     Card(
-                      child: ListTile(
+                      child: BusyListTile(
                         key: const ValueKey('wallet-recharge-open'),
                         leading: const Icon(Icons.battery_charging_full),
                         title: const Text('Recharge GET.credit'),
@@ -288,7 +289,7 @@ class _RechargeDialogState extends State<_RechargeDialog> {
       ),
       actions: [
         TextButton(onPressed: _busy ? null : () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        FilledButton(
+        BusyButton.filled(
           key: const ValueKey('recharge-confirm'),
           style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
           onPressed: _busy ? null : _submit,

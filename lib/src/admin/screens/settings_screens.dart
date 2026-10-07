@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_categories.g.dart';
@@ -209,24 +210,28 @@ class AdminCategoryScreen extends ConsumerWidget {
                         if (e.values[f.key] != null)
                           '${f.label}: ${f.kind == FieldKind.boolean ? (e.values[f.key] == true ? 'Yes' : 'No') : e.values[f.key]}',
                     ].whereType<Object>().map((v) => '$v').where((s) => s.isNotEmpty).join(' · ');
-              return ListTile(
+              return BusyListTile(
                 title: Text('$title'),
                 subtitle: sub.isEmpty ? null : Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis),
+                // Opening the child list is navigation, so it stays synchronous.
                 onTap: c.childCategory != null
-                    ? () => context.push(Uri(
+                    ? () {
+                        context.push(Uri(
                           path: '/admin/settings/${c.childCategory}',
                           queryParameters: {...scope, c.childScopeKey!: e.id, '_label': '$title'},
-                        ).toString())
+                        ).toString());
+                      }
                     : (canEdit ? () => _edit(context, ref, all, e) : null),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                   if (canEdit && c.orderKey != null) ...[
-                    IconButton(icon: const Icon(Icons.arrow_upward), onPressed: () => _move(context, ref, rows, i, -1)),
-                    IconButton(icon: const Icon(Icons.arrow_downward), onPressed: () => _move(context, ref, rows, i, 1)),
+                    BusyIconButton(icon: const Icon(Icons.arrow_upward), onPressed: () => _move(context, ref, rows, i, -1)),
+                    BusyIconButton(icon: const Icon(Icons.arrow_downward), onPressed: () => _move(context, ref, rows, i, 1)),
                   ],
                   if (canEdit && c.childCategory != null)
-                    IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(context, ref, all, e)),
+                    BusyIconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(context, ref, all, e)),
                   if (canEdit)
-                    IconButton(
+                    BusyIconButton(
+
                       icon: const Icon(Icons.delete_outline),
                       onPressed: () async {
                         if (!await confirm(context, 'Delete?', 'Delete "$title"?', ok: 'Delete')) return;

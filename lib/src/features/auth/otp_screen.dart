@@ -1,3 +1,4 @@
+import '../../widgets/busy.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -99,14 +100,14 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
             const SizedBox(height: 32),
             CodeField(controller: _code, length: 6, onCompleted: _verify),
             const SizedBox(height: 24),
-            FilledButton(
+            BusyButton.filled(
               onPressed: _busy ? null : _verify,
               child: _busy
                   ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Text('Verify'),
             ),
             const SizedBox(height: 8),
-            TextButton(
+            BusyButton.text(
               onPressed: _cooldown > 0 ? null : _resend,
               child: Text(_cooldown > 0 ? 'Resend code in ${_cooldown}s' : 'Resend code'),
             ),

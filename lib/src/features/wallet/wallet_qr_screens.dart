@@ -1,3 +1,4 @@
+import '../../widgets/busy.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -375,7 +376,7 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
                   decoration: InputDecoration(
                     labelText: 'Or paste a code',
                     prefixIcon: const Icon(Icons.keyboard_outlined),
-                    suffixIcon: IconButton(
+                    suffixIcon: BusyIconButton(
                       tooltip: 'Continue',
                       icon: const Icon(Icons.arrow_forward),
                       onPressed: () => _handle(_manual.text),
@@ -564,12 +565,10 @@ class _MerchantPayViewState extends ConsumerState<MerchantPayView> {
         ],
         if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: TextStyle(color: t.colorScheme.error))],
         const SizedBox(height: 16),
-        FilledButton(
+        BusyButton.filled(
           key: const ValueKey('pay-confirm'),
           onPressed: _busy || problem != null ? null : () => _pay(split),
-          child: _busy
-              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-              : Text(amount > 0 ? 'Pay ${formatMoney(amount)}' : 'Pay'),
+          child: Text(amount > 0 ? 'Pay ${formatMoney(amount)}' : 'Pay'),
         ),
       ],
     );

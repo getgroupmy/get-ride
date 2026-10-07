@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/picked_contact.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 
 final emergencyContactsProvider = FutureProvider.autoDispose<List<EmergencyContact>>(
@@ -48,10 +49,10 @@ class EmergencyContactsScreen extends ConsumerWidget {
           if (pick != null)
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton.icon(
+              child: BusyButton.text(
                 key: const ValueKey('contact-pick'),
                 icon: const Icon(Icons.contacts_outlined),
-                label: const Text('Contacts'),
+                child: const Text('Contacts'),
                 onPressed: () async {
                   try {
                     final p = await pick();
@@ -126,7 +127,7 @@ class EmergencyContactsScreen extends ConsumerWidget {
                   child: Card(
                     child: Column(children: [
                       for (final c in list)
-                        ListTile(
+                        BusyListTile(
                           leading: const CircleAvatar(child: Icon(Icons.person_outline)),
                           title: Text(c.name),
                           subtitle: Text(c.phone),
@@ -136,7 +137,7 @@ class EmergencyContactsScreen extends ConsumerWidget {
                               icon: const Icon(Icons.call_outlined),
                               onPressed: () => launchUrl(Uri(scheme: 'tel', path: c.phone)),
                             ),
-                            IconButton(
+                            BusyIconButton(
                               icon: const Icon(Icons.delete_outline),
                               onPressed: () async {
                                 await ref.read(accountRepositoryProvider).deleteEmergencyContact(c.id);

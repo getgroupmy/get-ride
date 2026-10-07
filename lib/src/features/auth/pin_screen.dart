@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/auth_utils.dart';
 import '../../data/auth_repository.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 
 /// Returning user: sign in with the 6-digit PIN.
@@ -92,9 +93,9 @@ class _PinScreenState extends ConsumerState<PinScreen> {
               Text(_error!, style: TextStyle(color: t.colorScheme.error), textAlign: TextAlign.center),
             ],
             const SizedBox(height: 24),
-            FilledButton(onPressed: _busy ? null : _submit, child: const Text('Sign in')),
+            BusyButton.filled(onPressed: _busy ? null : _submit, child: const Text('Sign in')),
             const SizedBox(height: 8),
-            TextButton(onPressed: _busy ? null : _forgot, child: const Text('Forgot PIN? Verify by SMS')),
+            BusyButton.text(onPressed: _busy ? null : _forgot, child: const Text('Forgot PIN? Verify by SMS')),
           ]),
         ),
       ),

@@ -7,6 +7,7 @@ import '../../core/escpos.dart';
 import '../../core/printers.dart';
 import '../../data/ble.dart';
 import '../../data/printer/printer_service.dart';
+import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
 import 'meter_providers.dart';
 
@@ -201,13 +202,13 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ListTile(
+          BusyListTile(
             leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked),
             title: Text(p.name),
             subtitle: Text(selected ? '${describePrinter(p)}\nReceipts print here' : describePrinter(p)),
             isThreeLine: selected,
             onTap: () => _select(p),
-            trailing: IconButton(
+            trailing: BusyIconButton(
               tooltip: 'Remove ${p.name}',
               icon: const Icon(Icons.delete_outline),
               onPressed: busy ? null : () => _delete(p),
@@ -216,17 +217,15 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Wrap(spacing: 8, children: [
-              OutlinedButton.icon(
+              BusyButton.outlined(
                 onPressed: idle ? () => _test(p) : null,
-                icon: busy
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.print_outlined),
-                label: const Text('Test print'),
+                icon: const Icon(Icons.print_outlined),
+                child: const Text('Test print'),
               ),
-              OutlinedButton.icon(
+              BusyButton.outlined(
                 onPressed: idle ? () => _printLast(p) : null,
                 icon: const Icon(Icons.receipt_long_outlined),
-                label: const Text('Print last receipt'),
+                child: const Text('Print last receipt'),
               ),
             ]),
           ),

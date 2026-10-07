@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/format.dart';
 import '../../features/support/call/call_screen.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
@@ -223,7 +224,7 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
         title: Text(ticket == null ? 'Ticket' : '#${ticket['ticket_number'] ?? ''} · ${ticket['subject'] ?? 'Support'}'),
         actions: [
           if (canEdit && ticket != null && ticket['profile_id'] != null)
-            IconButton(
+            BusyIconButton(
               key: const ValueKey('ticket-call'),
               tooltip: 'Call customer',
               icon: const Icon(Icons.call_outlined),
@@ -236,10 +237,10 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
               ),
             ),
           if (canEdit && ticket != null)
-            TextButton.icon(
+            BusyButton.text(
               key: const ValueKey('ticket-assign'),
               icon: const Icon(Icons.person_add_alt),
-              label: Text(ticket['assigned_admin_id'] == null ? 'Assign' : 'Reassign'),
+              child: Text(ticket['assigned_admin_id'] == null ? 'Assign' : 'Reassign'),
               onPressed: () => _assign(ticket['assigned_admin_id'] as String?),
             ),
           if (canEdit && ticket != null)
@@ -330,7 +331,11 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton.filled(onPressed: _sending ? null : _send, icon: const Icon(Icons.send)),
+                  IconButton.filled(
+                    onPressed: _sending ? null : _send,
+                    icon: _sending ? const BusySpinner(size: 20) : const Icon(Icons.send),
+                  ),
+
                 ]),
               ),
             ),

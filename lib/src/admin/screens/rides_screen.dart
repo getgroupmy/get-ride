@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
 import '../../data/models.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_filters.dart';
@@ -62,9 +63,10 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
         }),
         if (canEdit && r.status.isOngoing) ...[
           const SizedBox(height: 16),
-          OutlinedButton.icon(
+          BusyButton.outlined(
             icon: const Icon(Icons.cancel_outlined),
-            label: const Text('Cancel this ride'),
+            child: const Text('Cancel this ride'),
+
             onPressed: () async {
               if (!await confirm(ctx, 'Cancel ride?', 'Both the rider and the partner will see it as cancelled.',
                   ok: 'Cancel ride')) {

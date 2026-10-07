@@ -17,6 +17,7 @@ import '../../core/trip_progress.dart';
 import '../../core/ride_cancel.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
@@ -487,21 +488,21 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           ),
         const SizedBox(height: 8),
         if (r.status == RideStatus.accepted)
-          FilledButton(
+          BusyButton.filled(
             key: const ValueKey('trip-arrive'),
             onPressed: _busy ? null : () => _arrive(r),
             child: const Text("I've arrived"),
           ),
         if (r.status == RideStatus.arrived)
-          FilledButton(onPressed: _busy ? null : () => _start(r), child: const Text('Start trip')),
+          BusyButton.filled(onPressed: _busy ? null : () => _start(r), child: const Text('Start trip')),
         if (r.status == RideStatus.onTrip)
-          FilledButton(
+          BusyButton.filled(
             key: const ValueKey('trip-complete'),
             onPressed: _busy ? null : () => _complete(r),
             child: Text('Complete trip · collect ${formatMoney(r.effectiveFare, r.currency)}'),
           ),
         if (driverMayCancel(r.status))
-          TextButton(
+          BusyButton.text(
             key: const ValueKey('trip-cancel'),
             onPressed: _busy ? null : () => _cancel(r),
             child: const Text('Cancel ride'),

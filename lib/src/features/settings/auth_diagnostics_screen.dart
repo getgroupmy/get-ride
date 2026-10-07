@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../config.dart';
 import '../../core/auth_diagnostics.dart';
 import '../../core/auth_utils.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 
 /// Hidden screen for "I can't sign in" (Expo `/auth-diagnostics`), reached
@@ -123,10 +124,10 @@ class _AuthDiagnosticsScreenState extends State<AuthDiagnosticsScreen> {
                 if (_running && _steps.isEmpty) const LinearProgressIndicator(),
                 for (final s in [..._steps, ?_sms]) _StepTile(step: s),
                 const SizedBox(height: 8),
-                OutlinedButton.icon(
+                BusyButton.outlined(
                   onPressed: _running ? null : _run,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('Run again'),
+                  child: const Text('Run again'),
                 ),
                 const SizedBox(height: 24),
                 Text('Sign-in code not arriving?', style: t.textTheme.titleSmall),
@@ -139,10 +140,10 @@ class _AuthDiagnosticsScreenState extends State<AuthDiagnosticsScreen> {
                   decoration: const InputDecoration(labelText: 'Phone number with country code'),
                 ),
                 const SizedBox(height: 8),
-                FilledButton.tonalIcon(
+                BusyButton.tonal(
                   onPressed: _sending ? null : _send,
                   icon: const Icon(Icons.sms_outlined),
-                  label: const Text('Send test code'),
+                  child: const Text('Send test code'),
                 ),
               ],
             ),

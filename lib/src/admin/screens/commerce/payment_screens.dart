@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -81,7 +82,7 @@ class _PaymentTypeScreenState extends ConsumerState<PaymentTypeScreen> {
     final acct = '${v['gatewayAccountName'] ?? ''}';
     final gwLabel = gw.isEmpty ? 'No gateway' : '$gw${acct.isEmpty ? '' : ' · $acct'}';
     return Card(
-      child: ListTile(
+      child: BusyListTile(
         leading: const CircleAvatar(child: Icon(Icons.credit_card)),
         title: Row(children: [
           Flexible(child: Text('${v['name'] ?? 'Untitled'}', overflow: TextOverflow.ellipsis)),
@@ -90,7 +91,7 @@ class _PaymentTypeScreenState extends ConsumerState<PaymentTypeScreen> {
         subtitle: Text('${(v['code'] ?? '').toString().isEmpty ? '—' : v['code']} • $gwLabel'),
         onTap: canEdit ? () => _edit(all, e) : null,
         trailing: canEdit
-            ? IconButton(
+            ? BusyIconButton(
                 icon: const Icon(Icons.delete_outline),
                 tooltip: 'Delete',
                 onPressed: () async {
@@ -367,8 +368,9 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
     return Opacity(
       opacity: active ? 1 : 0.6,
       child: Card(
-        child: ListTile(
+        child: BusyListTile(
           leading: const CircleAvatar(child: Icon(Icons.credit_card)),
+
           title: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             Text('${v['providerName'] ?? ''}'),
             if (v['isDefault'] == true) const Icon(Icons.star, size: 16),

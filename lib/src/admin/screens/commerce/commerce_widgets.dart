@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import 'commerce_data.dart';
 import 'commerce_logic.dart';
@@ -23,7 +24,8 @@ Future<T?> showFormDialog<T>(BuildContext context, Widget Function(BuildContext)
   );
 }
 
-/// Scaffold body for a form dialog: title bar with close + save.
+/// Scaffold body for a form dialog: title bar with close + save. A save that
+/// returns a Future shows a spinner on the button until it completes.
 class FormDialogScaffold extends StatelessWidget {
   const FormDialogScaffold({
     super.key,
@@ -36,7 +38,7 @@ class FormDialogScaffold extends StatelessWidget {
 
   final String title;
   final List<Widget> children;
-  final VoidCallback? onSave;
+  final BusyAction? onSave;
   final String saveLabel;
   final String? error;
 
@@ -48,7 +50,8 @@ class FormDialogScaffold extends StatelessWidget {
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: FilledButton(onPressed: onSave, child: Text(saveLabel)),
+              child: BusyButton.filled(onPressed: onSave, child: Text(saveLabel)),
+
             ),
           ],
         ),

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -76,7 +77,7 @@ class AdminMockSettingsScreen extends ConsumerWidget {
               maxWidth: 760,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Card(
-                  child: SwitchListTile(
+                  child: BusySwitchListTile(
                     secondary: Icon(Icons.power_settings_new, color: any ? Colors.orange : Colors.green),
                     title: const Text('All mocks & simulations'),
                     subtitle: const Text('Master switch — flips every toggle below at once'),
@@ -92,7 +93,7 @@ class AdminMockSettingsScreen extends ConsumerWidget {
                   Card(
                     child: Column(children: [
                       for (final (key, label, desc, screen, icon) in items)
-                        SwitchListTile(
+                        BusySwitchListTile(
                           secondary: Icon(icon),
                           title: Text(label),
                           subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

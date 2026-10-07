@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -230,7 +231,8 @@ class _AirportTile extends StatelessWidget {
   });
   final GeoEntry entry;
   final bool canEdit;
-  final VoidCallback onGeofence, onGates, onEdit, onDelete;
+  final VoidCallback onGeofence, onGates;
+  final Future<void> Function() onEdit, onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -263,9 +265,9 @@ class _AirportTile extends StatelessWidget {
           onPressed: onGeofence,
         ),
         IconButton(tooltip: 'Gates', icon: const Icon(Icons.door_front_door_outlined), onPressed: onGates),
-        if (canEdit) IconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
+        if (canEdit) BusyIconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
         if (canEdit)
-          IconButton(tooltip: 'Delete', icon: Icon(Icons.delete_outline, color: scheme.error), onPressed: onDelete),
+          BusyIconButton(tooltip: 'Delete', icon: Icon(Icons.delete_outline, color: scheme.error), onPressed: onDelete),
       ]),
     );
   }

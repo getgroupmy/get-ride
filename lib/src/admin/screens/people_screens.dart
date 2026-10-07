@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_filters.dart';
@@ -313,9 +314,10 @@ class AdminPartnersScreen extends ConsumerWidget {
           onPick: (s) => patch(ctx, {'permit': s}),
         ),
         const SizedBox(height: 12),
-        SwitchListTile(
+        BusySwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Documents complete'),
+
           value: p['documents_ok'] == true,
           onChanged: canEdit ? (v) => patch(ctx, {'documents_ok': v}) : null,
         ),

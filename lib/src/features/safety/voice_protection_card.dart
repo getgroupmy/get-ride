@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config.dart';
 import '../../data/voice_protection_repository.dart';
+import '../../widgets/busy.dart';
 import 'voice_protection_controller.dart';
 import '../../widgets/in_app_page.dart';
 
@@ -21,7 +22,7 @@ class VoiceProtectionCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SwitchListTile(
+            BusySwitchListTile(
               key: const ValueKey('voice-protection-switch'),
               contentPadding: EdgeInsets.zero,
               secondary: const Icon(Icons.mic_none),

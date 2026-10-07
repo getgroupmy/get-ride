@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -140,7 +141,7 @@ class AdminDisplaySettingsScreen extends ConsumerWidget {
       page: displayPage,
       actions: [
         if (canEdit)
-          IconButton(
+          BusyIconButton(
             tooltip: 'Reset to defaults',
             icon: const Icon(Icons.restart_alt),
             onPressed: () async {
@@ -166,9 +167,9 @@ class _DisplayBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = settings;
-    void set(String key, Object? v) => applyDisplay(context, ref, (x) => setDisplayValue(x, key, v));
+    Future<void> set(String key, Object? v) => applyDisplay(context, ref, (x) => setDisplayValue(x, key, v));
 
-    Widget toggle(String label, String desc, bool value, ValueChanged<bool> onChanged) => SwitchListTile(
+    Widget toggle(String label, String desc, bool value, Future<void> Function(bool) onChanged) => BusySwitchListTile(
           title: Text(label),
           subtitle: Text(desc),
           value: value,
@@ -368,14 +369,14 @@ class _StepperTile extends StatelessWidget {
   final int max;
   final int step;
   final String? unit;
-  final ValueChanged<num>? onChanged;
+  final Future<void> Function(num)? onChanged;
 
   @override
   Widget build(BuildContext context) => ListTile(
         title: Text(label),
         subtitle: Text(description),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(
+          BusyIconButton(
             icon: const Icon(Icons.remove),
             onPressed: onChanged == null || value <= min ? null : () => onChanged!(value - step),
           ),
@@ -383,7 +384,7 @@ class _StepperTile extends StatelessWidget {
             width: 64,
             child: Text('$value${unit ?? ''}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
           ),
-          IconButton(
+          BusyIconButton(
             icon: const Icon(Icons.add),
             onPressed: onChanged == null || value >= max ? null : () => onChanged!(value + step),
           ),
@@ -418,7 +419,7 @@ class _ServiceBoxCard extends ConsumerWidget {
     final route = cfg['route'] as String?;
     final image = cfg['imageUri'] as String?;
 
-    void patch(Map<String, dynamic> p) => applyDisplay(context, ref, (x) => updateServiceBox(x, index, p));
+    Future<void> patch(Map<String, dynamic> p) => applyDisplay(context, ref, (x) => updateServiceBox(x, index, p));
 
     return Card(
       child: Padding(
@@ -434,7 +435,7 @@ class _ServiceBoxCard extends ConsumerWidget {
               ]),
             ),
           ]),
-          ListTile(
+          BusyListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Service'),
             subtitle: Text(linked != null ? '${(linked['values'] as Map?)?['name'] ?? 'Unnamed'}' : 'Default'),
@@ -455,7 +456,7 @@ class _ServiceBoxCard extends ConsumerWidget {
                     ),
                 ]),
               );
-              if (picked != null) patch({'serviceId': picked.isEmpty ? null : picked});
+              if (picked != null) await patch({'serviceId': picked.isEmpty ? null : picked});
             },
           ),
           TextFormField(
@@ -465,7 +466,7 @@ class _ServiceBoxCard extends ConsumerWidget {
             decoration: const InputDecoration(labelText: 'Custom label (optional)', isDense: true),
             onFieldSubmitted: (v) => patch({'name': v.trim().isEmpty ? null : v.trim()}),
           ),
-          ListTile(
+          BusyListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(lucide(iconName)),
             title: const Text('Icon'),
@@ -486,10 +487,10 @@ class _ServiceBoxCard extends ConsumerWidget {
                     ),
                 ]),
               );
-              if (picked != null) patch({'iconName': picked});
+              if (picked != null) await patch({'iconName': picked});
             },
           ),
-          ListTile(
+          BusyListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Opens'),
             subtitle: Text(route != null ? routeLabelFor(route) : 'Nothing yet — shows Coming Soon'),
@@ -498,10 +499,10 @@ class _ServiceBoxCard extends ConsumerWidget {
             onTap: () async {
               final picked = await pickRoute(context, current: route, noneLabel: 'None — tapping shows Coming Soon');
               if (picked == null) return;
-              patch(picked.isEmpty ? {'route': null} : {'route': picked, 'comingSoon': false});
+              await patch(picked.isEmpty ? {'route': null} : {'route': picked, 'comingSoon': false});
             },
           ),
-          SwitchListTile(
+          BusySwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Coming soon'),
             subtitle: Text(route != null
@@ -511,22 +512,22 @@ class _ServiceBoxCard extends ConsumerWidget {
             onChanged: canEdit && route != null ? (v) => patch({'comingSoon': v}) : null,
           ),
           Wrap(spacing: 8, children: [
-            OutlinedButton.icon(
+            BusyButton.outlined(
               icon: const Icon(Icons.upload),
-              label: Text(image != null ? 'Replace image' : 'Upload image'),
               onPressed: canEdit
                   ? () async {
                       final f = await pickImage();
                       if (f == null) return;
-                      patch({'imageUri': 'data:${f.contentType};base64,${base64Encode(f.bytes)}'});
+                      await patch({'imageUri': 'data:${f.contentType};base64,${base64Encode(f.bytes)}'});
                     }
                   : null,
+              child: Text(image != null ? 'Replace image' : 'Upload image'),
             ),
             if (image != null)
-              TextButton.icon(
+              BusyButton.text(
                 icon: const Icon(Icons.close),
-                label: const Text('Remove'),
                 onPressed: canEdit ? () => patch({'imageUri': null}) : null,
+                child: const Text('Remove'),
               )
             else
               const Padding(padding: EdgeInsets.only(top: 10), child: Text('Image overrides icon')),
@@ -602,7 +603,7 @@ class _VehicleBarServicesState extends ConsumerState<_VehicleBarServices> {
         ),
         if (linked.isEmpty) const ListTile(title: Text('No vehicles linked to this service.')),
         for (final v in linked)
-          SwitchListTile(
+          BusySwitchListTile(
             title: Text('${(v['values'] as Map?)?['name'] ?? 'Unnamed'}'),
             value: !hidden.contains(v['id']),
             onChanged: widget.canEdit
@@ -650,11 +651,11 @@ class _VehicleArrangement extends ConsumerWidget {
           leading: const Icon(Icons.directions_car_outlined),
           title: Text('${(list[i]['values'] as Map?)?['name'] ?? 'Unnamed'}'),
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            IconButton(
+            BusyIconButton(
               icon: const Icon(Icons.keyboard_arrow_up),
               onPressed: !canEdit || i == 0 ? null : () => applyDisplay(context, ref, (x) => moveVehicleInBar(x, ids[i], -1, ids)),
             ),
-            IconButton(
+            BusyIconButton(
               icon: const Icon(Icons.keyboard_arrow_down),
               onPressed: !canEdit || i == list.length - 1
                   ? null
@@ -727,8 +728,8 @@ class SideMenuEditorScreen extends ConsumerWidget {
             required String title,
             required String subtitle,
             Widget? leadingExtra,
-            VoidCallback? onEdit,
-            VoidCallback? onDelete,
+            Future<void> Function()? onEdit,
+            Future<void> Function()? onDelete,
           }) =>
               Card(
                 child: ListTile(
@@ -746,10 +747,10 @@ class SideMenuEditorScreen extends ConsumerWidget {
                     ),
                   ]),
                   trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (onEdit != null && canEdit) IconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
+                    if (onEdit != null && canEdit) BusyIconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
                     if (onDelete != null && canEdit)
-                      IconButton(tooltip: 'Remove', icon: const Icon(Icons.delete_outline), onPressed: onDelete),
-                    Switch(
+                      BusyIconButton(tooltip: 'Remove', icon: const Icon(Icons.delete_outline), onPressed: onDelete),
+                    BusySwitch(
                       value: !hidden.contains(id),
                       onChanged: canEdit
                           ? (v) => applyDisplay(context, ref, (x) => setMenuItemVisibility(x, menu, id, v))

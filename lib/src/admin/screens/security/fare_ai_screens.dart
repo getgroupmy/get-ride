@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
@@ -106,7 +107,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
       title: 'Fare AI provider',
       page: _page,
       actions: [
-        IconButton(tooltip: 'Refresh usage stats', icon: const Icon(Icons.refresh), onPressed: _refreshStats),
+        BusyIconButton(tooltip: 'Refresh usage stats', icon: const Icon(Icons.refresh), onPressed: _refreshStats),
         IconButton(
           tooltip: 'Response log',
           icon: const Icon(Icons.fact_check_outlined),
@@ -119,7 +120,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
                   icon: Icons.lock_outline,
                   title: 'Could not load the fare AI settings',
                   message: errorText(_error!),
-                  action: TextButton(onPressed: _load, child: const Text('Retry')),
+                  action: BusyButton.text(onPressed: _load, child: const Text('Retry')),
                 )
               : const Center(child: CircularProgressIndicator()))
           : RefreshIndicator(onRefresh: _refreshStats, child: _body(c, canEdit)),
@@ -231,12 +232,10 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
         for (final (i, k) in keys.indexed) _keyCard(c, k, i, canEdit, meta),
         const SizedBox(height: 16),
         if (canEdit)
-          FilledButton.icon(
+          BusyButton.filled(
             onPressed: _saving || !_dirty ? null : _save,
-            icon: _saving
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.save_outlined),
-            label: Text(_dirty ? 'Save changes' : 'Saved'),
+            icon: const Icon(Icons.save_outlined),
+            child: Text(_dirty ? 'Save changes' : 'Saved'),
           )
         else
           const Text('You have read-only access to this setting.'),
@@ -274,7 +273,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
               onChanged: canEdit ? (v) => _setKeys(patch((x) => x.copyWith(enabled: v))) : null,
             ),
             if (canEdit)
-              IconButton(
+              BusyIconButton(
                 tooltip: 'Remove key',
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () async {
@@ -340,7 +339,7 @@ class AdminFareAiLogsScreen extends ConsumerWidget {
       actions: [
         IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(_responsesProvider)),
         if (canEdit)
-          IconButton(tooltip: 'Clear log', icon: const Icon(Icons.delete_sweep_outlined), onPressed: () => _clear(context, ref)),
+          BusyIconButton(tooltip: 'Clear log', icon: const Icon(Icons.delete_sweep_outlined), onPressed: () => _clear(context, ref)),
       ],
       body: AsyncView(
         value: rows,

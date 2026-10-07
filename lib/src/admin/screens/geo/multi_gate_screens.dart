@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -146,13 +147,13 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
                           onPressed: () => context.push(gatesPath(e.id, multiGatePlacesKey)),
                         ),
                         if (canEdit)
-                          IconButton(
+                          BusyIconButton(
                             tooltip: 'Edit',
                             icon: const Icon(Icons.edit_outlined),
                             onPressed: () => _edit(context, ref, entry: e),
                           ),
                         if (canEdit)
-                          IconButton(
+                          BusyIconButton(
                             tooltip: 'Delete',
                             icon: Icon(Icons.delete_outline, color: t.colorScheme.error),
                             onPressed: () => _delete(context, ref, e),
@@ -436,12 +437,12 @@ class AdminMultiGateGatesScreen extends ConsumerWidget {
           isThreeLine: true,
           trailing: canEdit
               ? Wrap(children: [
-                  IconButton(
+                  BusyIconButton(
                     tooltip: 'Edit',
                     icon: const Icon(Icons.edit_outlined),
                     onPressed: () => _edit(context, ref, gates, place, entry: g),
                   ),
-                  IconButton(
+                  BusyIconButton(
                     tooltip: 'Delete',
                     icon: Icon(Icons.delete_outline, color: t.colorScheme.error),
                     onPressed: () => _delete(context, ref, g),

@@ -6,6 +6,7 @@ import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/avatar.dart';
 import '../../core/profile_identity.dart';
 import '../../providers.dart';
+import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
@@ -156,11 +157,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
               ),
             ),
             Center(
-              child: TextButton.icon(
+              child: BusyButton.text(
                 key: const ValueKey('profile-photo-change'),
                 onPressed: _uploading || _busy ? null : _changePhoto,
                 icon: const Icon(Icons.photo_camera_outlined),
-                label: Text(p?.avatarUrl == null ? 'Add photo' : 'Change photo'),
+                child: Text(p?.avatarUrl == null ? 'Add photo' : 'Change photo'),
               ),
             ),
             const SizedBox(height: 8),
@@ -209,13 +210,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   ),
                 ),
               ),
-            OutlinedButton.icon(
+            BusyButton.outlined(
               key: const ValueKey('profile-id-photo'),
               onPressed: _uploadingId || _busy ? null : _changeIdPhoto,
-              icon: _uploadingId
-                  ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.document_scanner_outlined),
-              label: Text(idImage == null ? 'Photograph passport or ID' : 'Retake ID photo'),
+              icon: const Icon(Icons.document_scanner_outlined),
+              child: Text(idImage == null ? 'Photograph passport or ID' : 'Retake ID photo'),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -234,7 +233,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
               decoration: const InputDecoration(labelText: 'Address', hintText: 'As printed on your ID'),
             ),
             const SizedBox(height: 24),
-            FilledButton(onPressed: _busy ? null : _save, child: const Text('Save')),
+            BusyButton.filled(onPressed: _busy ? null : _save, child: const Text('Save')),
           ]),
         ),
       ]),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -314,10 +315,10 @@ class _PartnerAddScreenState extends ConsumerState<PartnerAddScreen> {
             ),
             const SizedBox(height: 12),
             if (canEdit)
-              FilledButton.icon(
+              BusyButton.filled(
                 onPressed: _saving ? null : () => _submit(data),
                 icon: const Icon(Icons.person_add_alt_1_outlined),
-                label: Text(_saving ? 'Creating…' : 'Create partner & continue'),
+                child: Text(_saving ? 'Creating…' : 'Create partner & continue'),
               ),
             const SizedBox(height: 32),
           ]),
@@ -457,7 +458,7 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
       title: 'Edit Partner',
       page: PartnerEditScreen.page,
       actions: [
-        if (canEdit) IconButton(tooltip: 'Delete partner', icon: const Icon(Icons.delete_outline), onPressed: _delete),
+        if (canEdit) BusyIconButton(tooltip: 'Delete partner', icon: const Icon(Icons.delete_outline), onPressed: _delete),
       ],
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -500,10 +501,10 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
             ),
             const SizedBox(height: 16),
             if (canEdit)
-              FilledButton.icon(
+              BusyButton.filled(
                 onPressed: _saving ? null : _save,
                 icon: const Icon(Icons.save_outlined),
-                label: Text(_saving ? 'Saving…' : 'Save changes'),
+                child: Text(_saving ? 'Saving…' : 'Save changes'),
               ),
             const SizedBox(height: 32),
           ]),
