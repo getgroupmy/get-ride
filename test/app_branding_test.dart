@@ -35,11 +35,12 @@ void main() {
     expect(splashHeld(isWeb: false, platform: TargetPlatform.macOS), isFalse);
   });
 
-  test('white with black ink in light mode, the reverse in dark', () {
+  test('white in light mode, black in dark', () {
     expect(splashBackground(dark: false), const Color(0xFFFFFFFF));
     expect(splashBackground(dark: true), const Color(0xFF000000));
-    expect(splashInk(dark: false), const Color(0xFF000000));
-    expect(splashInk(dark: true), const Color(0xFFFFFFFF));
+    // "GET." is the brand blue on either.
+    expect(splashInk(dark: false), const Color(0xFF2DABE2));
+    expect(splashInk(dark: true), const Color(0xFF2DABE2));
   });
 
   test('the branding row: a blank or non-web picture is none', () {
@@ -81,16 +82,18 @@ void main() {
     expect(find.text('home'), findsOneWidget);
   });
 
-  testWidgets('without a picture it shows the logo', (tester) async {
+  testWidgets('without a picture it shows "GET." in the brand blue', (tester) async {
     await tester.pumpWidget(gate());
-    expect(find.byKey(const ValueKey('splash-logo')), findsOneWidget);
+    expect(find.byKey(const ValueKey('splash-wordmark')), findsOneWidget);
+    expect(find.text('GET.'), findsOneWidget);
+    expect(tester.widget<Text>(find.text('GET.')).style!.color, const Color(0xFF2DABE2));
     await tester.pump(splashHold);
   });
 
   testWidgets('a picture fetched by this launch replaces the cached one', (tester) async {
     final live = ValueNotifier<AppBranding?>(null);
     await tester.pumpWidget(gate(live: live));
-    expect(find.byKey(const ValueKey('splash-logo')), findsOneWidget);
+    expect(find.byKey(const ValueKey('splash-wordmark')), findsOneWidget);
     live.value = const AppBranding(splashImageUrl: 'https://cdn/new.png');
     await tester.pump();
     expect(find.byKey(const ValueKey('splash-image')), findsOneWidget);
