@@ -1,0 +1,217 @@
+// The confirm step (a destination chosen) laid out as Expo's ride-confirm:
+// addresses over the map, the fare inside the chosen vehicle, and a fixed
+// bar with the payment icon and "Find a driver".
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/app_display.dart';
+import 'package:get_ride/src/core/fare.dart';
+import 'package:get_ride/src/data/app_display_repository.dart';
+import 'package:get_ride/src/data/coin_trade_repository.dart';
+import 'package:get_ride/src/data/device_access.dart';
+import 'package:get_ride/src/data/fare_tariff_repository.dart';
+import 'package:get_ride/src/data/geo_service.dart';
+import 'package:get_ride/src/data/models.dart';
+import 'package:get_ride/src/data/ride_repository.dart';
+import 'package:get_ride/src/data/route_estimate_repository.dart';
+import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
+import 'package:get_ride/src/features/ride/auto_accept.dart';
+import 'package:get_ride/src/features/ride/home_screen.dart';
+import 'package:get_ride/src/providers.dart';
+import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+const _eco = Place(name: 'Eco Majestic', address: 'Semenyih', point: LatLng(2.9300, 101.8300));
+const _klcc = Place(name: 'KLCC', address: 'Kuala Lumpur', point: LatLng(2.9400, 101.8400));
+
+class _Rides implements RideRepository {
+  _Rides({this.bidding = false});
+  final bool bidding;
+  Map<Symbol, dynamic>? created;
+
+  @override
+  Future<List<RideRequest>> ridesOnTheGo() async => const [];
+
+  @override
+  Future<bool> biddingEnabledFor(LatLng pickup, Future<AreaInfo?> Function() area) async => bidding;
+
+  @override
+  Future<String?> publicIp() async => null;
+
+  @override
+  dynamic noSuchMethod(Invocation i) {
+    if (i.memberName == #createRequest) {
+      created = i.namedArguments;
+      return Future.value(RideRequest({'id': 'r9', 'rider_id': 'me', 'status': 'open', 'fare': 10}));
+    }
+    return super.noSuchMethod(i);
+  }
+}
+
+class _NoAi implements RouteEstimateRepository {
+  @override
+  dynamic noSuchMethod(Invocation i) => Future.value(null);
+}
+
+/// Lets a sheet or dialog finish opening or closing.
+Future<void> _settle(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides) async {
+  SharedPreferences.setMockInitialValues({});
+  tester.view.physicalSize = const Size(400, 860);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  final container = ProviderContainer(
+    retry: (_, _) => null,
+    overrides: [
+      rideRepositoryProvider.overrideWithValue(rides),
+      routeEstimateRepositoryProvider.overrideWithValue(_NoAi()),
+      geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
+      coinTradeQuoteProvider.overrideWith((ref) => Future.error('offline')),
+      serviceBoxNamesProvider.overrideWith((ref) async => const <String, String>{}),
+      rideServicesProvider.overrideWith(
+        (ref) async => const [
+          RideService('Teksi', 'Metered taxi', 1, 4),
+          RideService('GET XL', 'Up to 6 seats', 1.5, 6),
+        ],
+      ),
+      recentPlacesProvider.overrideWith((ref) async => const [_eco, _klcc]),
+      displaySettingsBlobProvider.overrideWith((ref) async => const <String, dynamic>{}),
+      appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
+      deviceBlockedProvider.overrideWith((ref) async => false),
+      profileProvider.overrideWith((ref) async => null),
+      fareTariffsProvider.overrideWith((ref) async => const []),
+      meterLaunchSessionProvider.overrideWithValue(null),
+    ],
+  );
+  addTearDown(container.dispose);
+  final router = GoRouter(
+    routes: [
+      GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+      GoRoute(path: '/ride/:id', builder: (_, s) => Text('ride ${s.pathParameters['id']}')),
+    ],
+  );
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp.router(routerConfig: router),
+    ),
+  );
+  for (var i = 0; i < 5; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  // Pickup by dragging the map under the pin, destination from the recent
+  // list.
+  final g = await tester.startGesture(const Offset(200, 150));
+  for (var i = 0; i < 5; i++) {
+    await g.moveBy(const Offset(0, 8));
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  await g.up();
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  await tester.tap(find.text('KLCC').first);
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  return container;
+}
+
+void main() {
+  testWidgets('the confirm step is laid out as Expo ride-confirm', (tester) async {
+    await _pump(tester, _Rides());
+
+    expect(find.byKey(const ValueKey('confirm-address-card')), findsOneWidget);
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('confirm-address-card')), matching: find.text('Pinned location')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('confirm-back')), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-recenter')), findsNothing, reason: "Expo's confirm has no recenter");
+    expect(find.byKey(const ValueKey('map-dot-pickup')), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-dot-drop')), findsOneWidget);
+    expect(find.byKey(const ValueKey('promo-banner')), findsOneWidget);
+    // The fare sits inside the chosen card; without bidding, no −/+.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('service-Teksi')),
+        matching: find.byKey(const ValueKey('confirm-fare')),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Recommended fare'), findsOneWidget);
+    expect(find.byKey(const ValueKey('fare-raise')), findsNothing);
+    expect(find.text('Fare does not include state entry tax, tolls, or parking fees'), findsOneWidget);
+    expect(find.text('Find a driver'), findsOneWidget);
+    expect(find.byKey(const ValueKey('confirm-payment')), findsOneWidget);
+    expect(find.textContaining('Auto-accept offer of'), findsOneWidget);
+
+    // Choosing another vehicle moves the fare into its card.
+    await tester.tap(find.byKey(const ValueKey('service-GET XL')));
+    await tester.pump();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('service-GET XL')),
+        matching: find.byKey(const ValueKey('confirm-fare')),
+      ),
+      findsOneWidget,
+    );
+
+    // Back leaves the confirm step for the home map.
+    await tester.tap(find.byKey(const ValueKey('confirm-back')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('confirm-address-card')), findsNothing);
+    expect(find.text('Find a driver'), findsNothing);
+  });
+
+  testWidgets('the entrance, the payment and auto-accept go with the booking', (tester) async {
+    final rides = _Rides();
+    final container = await _pump(tester, rides);
+
+    await tester.tap(find.byKey(const ValueKey('confirm-entrance')));
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('entrance-key-1')));
+    await tester.tap(find.byKey(const ValueKey('entrance-key-2')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('entrance-done')));
+    await _settle(tester);
+    expect(find.text('Entrance 12'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('confirm-payment')));
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('payment-Get Pay')));
+    await _settle(tester);
+
+    await tester.tap(find.byKey(const ValueKey('auto-accept')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('book')));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(rides.created, isNotNull);
+    expect(rides.created![#note], 'Entrance 12');
+    expect(rides.created![#paymentMode], 'Get Pay');
+    expect(container.read(autoAcceptProvider)['r9'], rides.created![#fare]);
+    expect(find.text('ride r9'), findsOneWidget);
+  });
+
+  testWidgets('where bidding is on the chosen card has the round −/+ and a pencil', (tester) async {
+    await _pump(tester, _Rides(bidding: true));
+    expect(find.byKey(const ValueKey('fare-raise')), findsOneWidget);
+    expect(find.byKey(const ValueKey('fare-edit')), findsOneWidget);
+    final before = tester.widget<Text>(find.byKey(const ValueKey('confirm-fare'))).data;
+    await tester.tap(find.byKey(const ValueKey('fare-raise')));
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const ValueKey('confirm-fare'))).data, isNot(before));
+    expect(find.textContaining('Recommended fare: '), findsOneWidget);
+  });
+}

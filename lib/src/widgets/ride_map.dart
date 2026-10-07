@@ -91,6 +91,7 @@ class RideMap extends StatefulWidget {
     this.onReady,
     this.pointZoom = 15,
     this.showPickup = true,
+    this.dotPins = false,
   });
 
   final LatLng? pickup;
@@ -134,6 +135,11 @@ class RideMap extends StatefulWidget {
   /// Whether the pickup pin is drawn; off while a [MapDragPin] holds it
   /// up off the map. The camera still counts it either way.
   final bool showPickup;
+
+  /// The confirm screen's look (Expo `ride-confirm`): pickup, stops and
+  /// drop-off as small white dots ringed green, blue and red, and a thinner,
+  /// deeper blue route line.
+  final bool dotPins;
 
   @override
   State<RideMap> createState() => _RideMapState();
@@ -226,7 +232,11 @@ class _RideMapState extends State<RideMap> {
             baseTileLayer(context, satellite: widget.satellite),
             if (widget.route.length > 1)
               PolylineLayer(
-                polylines: [Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2))],
+                polylines: [
+                  widget.dotPins
+                      ? Polyline(points: widget.route, strokeWidth: 4, color: const Color(0xFF4A90D9))
+                      : Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
+                ],
               ),
             if (widget.extraMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: widget.extraMarkers),
             MarkerLayer(
@@ -247,8 +257,15 @@ class _RideMapState extends State<RideMap> {
                       ),
                     ),
                   ),
-                if (widget.pickup != null && widget.showPickup) _pin(widget.pickup!, Colors.green.shade700, Icons.trip_origin),
-                for (var i = 0; i < widget.stops.length; i++)
+                if (widget.dotPins) ...[
+                  if (widget.pickup != null && widget.showPickup) _dot(widget.pickup!, const Color(0xFF22C55E), 'pickup'),
+                  for (var i = 0; i < widget.stops.length; i++) _dot(widget.stops[i], const Color(0xFF3B82F6), 'stop-$i'),
+                  if (widget.drop != null) _dot(widget.drop!, const Color(0xFFEF4444), 'drop'),
+                ],
+                if (!widget.dotPins && widget.pickup != null && widget.showPickup)
+                  _pin(widget.pickup!, Colors.green.shade700, Icons.trip_origin),
+                if (!widget.dotPins)
+                  for (var i = 0; i < widget.stops.length; i++)
                   Marker(
                     point: widget.stops[i],
                     width: 26,
@@ -261,7 +278,7 @@ class _RideMapState extends State<RideMap> {
                       ),
                     ),
                   ),
-                if (widget.drop != null) _pin(widget.drop!, Colors.red.shade700, Icons.location_on),
+                if (!widget.dotPins && widget.drop != null) _pin(widget.drop!, Colors.red.shade700, Icons.location_on),
                 if (widget.driver != null)
                   Marker(
                     point: widget.driver!,
@@ -296,6 +313,21 @@ class _RideMapState extends State<RideMap> {
       },
     );
   }
+
+  Marker _dot(LatLng p, Color c, String name) => Marker(
+    point: p,
+    width: 18,
+    height: 18,
+    child: Container(
+      key: ValueKey('map-dot-$name'),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: c, width: 3),
+        boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+      ),
+    ),
+  );
 
   Marker _pin(LatLng p, Color c, IconData icon) => Marker(
     point: p,

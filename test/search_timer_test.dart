@@ -8,6 +8,7 @@ import 'package:get_ride/src/core/search_timer.dart';
 import 'package:get_ride/src/data/fare_coin_store.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
+import 'package:get_ride/src/features/ride/auto_accept.dart';
 import 'package:get_ride/src/features/ride/ride_tracking_screen.dart';
 import 'package:get_ride/src/features/wallet/wallet_screen.dart';
 import 'package:get_ride/src/providers.dart';
@@ -33,6 +34,13 @@ RideRequest open({Duration age = Duration.zero, double fare = 20, Map<String, dy
 
 class _FakeRides implements RideRepository {
   final raises = <double>[];
+  final accepted = <String>[];
+
+  @override
+  Future<RideRequest?> acceptOffer(String requestId, {required String partnerId, required double amount}) async {
+    accepted.add('$partnerId:$amount');
+    return null;
+  }
   int expired = 0;
 
   @override
@@ -91,7 +99,7 @@ void main() {
     late StreamController<RideRequest> rows;
     late _FakeRides rides;
 
-    Future<void> pump(WidgetTester tester) async {
+    Future<void> pump(WidgetTester tester, {Map<String, double> autoAccept = const {}}) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = const Size(1200, 2400);
       tester.view.devicePixelRatio = 1;
@@ -123,6 +131,7 @@ void main() {
             fareCoinChoiceStoreProvider.overrideWithValue(FareCoinChoiceStore()),
             walletBalancesProvider.overrideWith((ref) async => const []),
             walletTxProvider.overrideWith((ref) async => const []),
+            autoAcceptProvider.overrideWith(() => _Preset(autoAccept)),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -175,6 +184,20 @@ void main() {
       expect(find.text('Ali offers RM24.00'), findsNothing, reason: 'its 45 s are up');
     });
 
+    testWidgets('booked with auto-accept, an offer at the fare is taken; a higher one asks', (tester) async {
+      await pump(tester, autoAccept: {'r1': 20});
+      rows.add(open(extra: {'offered_fare': 26, 'partner_id': 'p1', 'partner_name': 'Ali'}));
+      await tester.pump();
+      await tick(tester, const Duration(seconds: 1));
+      expect(rides.accepted, isEmpty, reason: 'over the auto-accept amount');
+      expect(find.text('Ali offers RM26.00'), findsOneWidget);
+
+      rows.add(open(extra: {'offered_fare': 20, 'partner_id': 'p2', 'partner_name': 'Bala'}));
+      await tester.pump();
+      await tick(tester, const Duration(seconds: 1));
+      expect(rides.accepted, ['p2:20.0']);
+    });
+
     testWidgets('at 7 minutes the request expires and says so', (tester) async {
       await pump(tester);
       rows.add(open(age: const Duration(minutes: 6, seconds: 59)));
@@ -192,4 +215,12 @@ void main() {
     final o = standingOffer(open(extra: {'offered_fare': 24, 'partner_id': 'p1', 'partner_photo': 'https://x/p.png'}));
     expect(o?.photo, 'https://x/p.png');
   });
+}
+
+class _Preset extends AutoAcceptRides {
+  _Preset(this.preset);
+  final Map<String, double> preset;
+
+  @override
+  Map<String, double> build() => preset;
 }
