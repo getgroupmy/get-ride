@@ -3,6 +3,45 @@ import 'package:flutter/services.dart';
 
 import '../../core/fare_offer.dart';
 
+/// One −/+ press on the rider's offer: [onAdjust] with the new adjustment,
+/// or a note when it would leave the allowed range.
+void stepFareOffer(
+  BuildContext context, {
+  required double recommended,
+  required double adjust,
+  required String Function(double) money,
+  required ValueChanged<double> onAdjust,
+  required double step,
+}) {
+  final next = stepFareAdjustment(recommended, adjust, step);
+  if (next == null) {
+    final range = fareOfferRange(recommended);
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(step < 0 ? 'Minimum fare is ${money(range.min)}' : "That's the most you can add here")),
+      );
+    return;
+  }
+  onAdjust(next);
+}
+
+/// "Offer your fare": the typed amount, as an adjustment, to [onAdjust].
+Future<void> editFareOffer(
+  BuildContext context, {
+  required double recommended,
+  required double adjust,
+  required String Function(double) money,
+  required ValueChanged<double> onAdjust,
+}) async {
+  final fare = await showModalBottomSheet<double>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => FareOfferSheet(recommended: recommended, current: recommended + adjust, money: money),
+  );
+  if (fare != null) onAdjust(fare - recommended);
+}
+
 /// The selected service's fare with −/+ buttons (Expo `ride-confirm`): the
 /// amount, "Recommended fare" (or the recommended amount once changed),
 /// and a tap on the amount to type an offer. Shown only where bidding is on.
@@ -20,30 +59,11 @@ class FareOfferRow extends StatelessWidget {
   final String Function(double) money;
   final ValueChanged<double> onAdjust;
 
-  void _step(BuildContext context, double step) {
-    final next = stepFareAdjustment(recommended, adjust, step);
-    if (next == null) {
-      final range = fareOfferRange(recommended);
-      ScaffoldMessenger.maybeOf(context)
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(step < 0 ? 'Minimum fare is ${money(range.min)}' : "That's the most you can add here"),
-          ),
-        );
-      return;
-    }
-    onAdjust(next);
-  }
+  void _step(BuildContext context, double step) =>
+      stepFareOffer(context, recommended: recommended, adjust: adjust, money: money, onAdjust: onAdjust, step: step);
 
-  Future<void> _type(BuildContext context) async {
-    final fare = await showModalBottomSheet<double>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => FareOfferSheet(recommended: recommended, current: recommended + adjust, money: money),
-    );
-    if (fare != null) onAdjust(fare - recommended);
-  }
+  Future<void> _type(BuildContext context) =>
+      editFareOffer(context, recommended: recommended, adjust: adjust, money: money, onAdjust: onAdjust);
 
   @override
   Widget build(BuildContext context) {

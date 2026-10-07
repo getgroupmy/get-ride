@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 
 /// Every bottom sheet in the app: rounded top corners and a handle to drag
 /// it by (down to close; the tall ones also up to expand).
@@ -64,6 +66,7 @@ class MapSheetLayout extends StatefulWidget {
     this.mapMinFraction = 0.4,
     this.locked = false,
     this.hidden = false,
+    this.footer,
   });
 
   final Widget map;
@@ -88,6 +91,11 @@ class MapSheetLayout extends StatefulWidget {
   /// [MapBottomInset] is left as it was, so nothing on the map shifts.
   final bool hidden;
 
+  /// Pinned to the bottom of the screen over the sheet, whatever its size
+  /// (the confirm screen's "Find a driver" bar, Expo's fixed bottom); the
+  /// sheet's content gets room below it so nothing ends up hidden behind.
+  final Widget? footer;
+
   /// How long the sheet takes to slide out of sight or back.
   static const hideDuration = Duration(milliseconds: 200);
 
@@ -106,6 +114,27 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// it follows the finger with growing resistance, and springs back when
   /// let go. The content inside never bounces.
   late final _bounce = AnimationController.unbounded(vsync: this);
+
+  /// The [MapSheetLayout.footer]'s height, as last laid out.
+  double _footerHeight = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // A move the app makes (animateTo) sends no notification from the
+    // sheet: follow the controller too, so the map's buttons keep up.
+    _sheet.addListener(() {
+      void sync() {
+        if (mounted && _sheet.isAttached && (_sheet.size - _extent.value).abs() > 0.0001) _extent.value = _sheet.size;
+      }
+
+      // The sheet also reports while it rebuilds (a new min/max): wait for
+      // the frame to finish then.
+      SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks
+          ? WidgetsBinding.instance.addPostFrameCallback((_) => sync())
+          : sync();
+    });
+  }
 
   /// 0 shown, 1 slid out of sight ([MapSheetLayout.hidden]).
   late final _hide = AnimationController(
@@ -145,6 +174,15 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     // The sheet doesn't report a size it is clamped to, only one it is
     // dragged to: tell the map's buttons.
     if (widget.locked && !old.locked) _extent.value = widget.min;
+    // A new resting height (the home sheet rising for the confirm step, or
+    // settling back): the sheet moves to it.
+    if ((widget.initial != old.initial || widget.min != old.min) && !widget.locked) {
+      final to = widget.initial.clamp(widget.min, widget.max);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_sheet.isAttached) return;
+        _sheet.animateTo(to, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+      });
+    }
     if (widget.hidden != old.hidden) {
       widget.hidden ? _hide.animateTo(1, curve: Curves.easeIn) : _hide.animateBack(0, curve: Curves.easeOut);
     }
@@ -283,6 +321,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                               h,
                             ),
                           ),
+                          if (widget.footer != null) SliverToBoxAdapter(child: SizedBox(height: _footerHeight)),
                         ],
                       ),
                     ),
@@ -291,9 +330,51 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
               ),
             ),
             ),
+            if (widget.footer != null)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _SizeReporter(
+                  onSize: (size) {
+                    if (mounted && (size.height - _footerHeight).abs() > 0.5) setState(() => _footerHeight = size.height);
+                  },
+                  child: widget.footer!,
+                ),
+              ),
           ],
         );
       },
     );
+  }
+}
+
+/// Tells [onSize] its child's size after each layout that changes it.
+class _SizeReporter extends SingleChildRenderObjectWidget {
+  const _SizeReporter({required this.onSize, required super.child});
+
+  final ValueChanged<Size> onSize;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderSizeReporter(onSize);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderSizeReporter renderObject) => renderObject.onSize = onSize;
+}
+
+class _RenderSizeReporter extends RenderProxyBox {
+  _RenderSizeReporter(this.onSize);
+
+  ValueChanged<Size> onSize;
+  Size? _last;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    if (size != _last) {
+      _last = size;
+      final s = size;
+      WidgetsBinding.instance.addPostFrameCallback((_) => onSize(s));
+    }
   }
 }

@@ -13,6 +13,7 @@ import '../../core/fare_coins.dart';
 import '../../core/format.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_cancel.dart';
+import '../../core/ride_confirm.dart';
 import '../../core/search_timer.dart';
 import '../../config.dart';
 import '../../core/sos.dart';
@@ -31,6 +32,7 @@ import '../profile/emergency_contacts_screen.dart';
 import '../safety/safety_screen.dart';
 import '../wallet/wallet_screen.dart';
 import '../../core/demo_mode.dart';
+import 'auto_accept.dart';
 
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>(
   (ref, id) => ref.watch(rideRepositoryProvider).watch(id),
@@ -195,6 +197,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       if (key != null) {
         unawaited(SystemSound.play(SystemSoundType.alert));
         unawaited(HapticFeedback.mediumImpact());
+        // Booked with "Auto-accept offer of RM x": an offer at or under it
+        // is taken at once.
+        final offer = standingOffer(widget.ride);
+        if (open && shouldAutoAccept(limit: ref.read(autoAcceptProvider)[widget.ride.id], offer: offer)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _offerKey == offer!.key) _acceptOffer(offer);
+          });
+        }
       }
     }
   }

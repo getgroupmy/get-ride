@@ -20,6 +20,7 @@ import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/ride_request_metadata.dart';
 import '../../core/home_sections.dart';
+import '../../core/ride_confirm.dart';
 import '../../core/ride_stops.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../profile/account_screen.dart' show RiderMenuDrawer;
@@ -42,13 +43,15 @@ import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
+import 'auto_accept.dart';
+import 'confirm_parts.dart';
 import 'fare_offer_controls.dart';
 import 'home_parts.dart';
 import 'place_search.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../meter/meter_auto_launch.dart';
 import '../profile/emergency_contacts_screen.dart' show contactPickerProvider;
-import '../../admin/screens/commerce/get_coin.dart' show formatCoins, rideRewardCoins;
+import '../../admin/screens/commerce/get_coin.dart' show rideRewardCoins;
 
 enum _PinTarget { none, pickup, drop }
 
@@ -101,6 +104,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The pickup pin is up off the map while the rider drags the map under
   /// it ([MapDragPin]); its marker and the box above it hide meanwhile.
   bool _pinMoving = false;
+
+  /// The confirm step's extras (Expo ride-confirm): the entrance the
+  /// driver should come to, "Auto-accept offer of RM x", and whether the
+  /// map was moved off the route (which shows the route button).
+  String _entrance = '';
+  bool _autoAccept = false;
+  bool _routeMoved = false;
 
   /// The last pickup set by dragging the map: the map doesn't reframe on
   /// it, since the rider just put the camera where they want it.
@@ -415,7 +425,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // since turned out to be off goes out at the recommended fare.
             fare: _fareFor(_service, biddingOn: offerMe),
             paymentMode: _payment,
-            note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+            note: driverNote(entrance: _entrance, note: _note.text),
             riderName: profile?.name,
             riderPhone: profile?.phone,
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
@@ -425,6 +435,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             bookedFor: forWhom,
             currency: _currency,
           );
+      if (_autoAccept) {
+        ref.read(autoAcceptProvider.notifier).set(req.id, _fareFor(_service, biddingOn: offerMe));
+      }
       final coins = _coins;
       if (_useCoins && coins != null && fareCoinOffer(_fareFor(_service, biddingOn: offerMe), coins.balance, coins.rate) != null) {
         try {
@@ -444,6 +457,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } finally {
       if (mounted) setState(() => _booking = false);
     }
+  }
+
+  /// The confirm step's back arrow: off the trip, back to the home map.
+  void _leaveConfirm() {
+    setState(() {
+      _drop = null;
+      _stops.clear();
+      _routeMoved = false;
+    });
+    _updateRoute();
+  }
+
+  /// The route button: the whole trip back in view.
+  void _showWholeRoute(double bottom) {
+    final pts = [
+      ?_pickup?.point,
+      for (final s in _stops) s.point,
+      ?_drop?.point,
+      ...?_route?.points,
+    ];
+    if (pts.length > 1) {
+      _map.fitCamera(
+        CameraFit.coordinates(coordinates: pts, padding: EdgeInsets.fromLTRB(64, 160, 64, 64 + bottom), maxZoom: 16),
+      );
+    }
+    setState(() => _routeMoved = false);
+  }
+
+  /// "Find a driver". One ride of the rider's own at a time (Expo's alert);
+  /// rides for others are not held back by it.
+  Future<void> _find() async {
+    if (!_forOther && _ongoing != null) {
+      final open = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          key: const ValueKey('ride-in-progress'),
+          title: const Text('Ride in progress'),
+          content: const Text('You already have a ride in progress. Finish or cancel it before booking another.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('OK')),
+            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('View ride')),
+          ],
+        ),
+      );
+      if (open == true && mounted && _ongoing != null) {
+        context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing());
+      }
+      return;
+    }
+    await _book();
   }
 
   /// The Expo home parts shown before a destination is chosen, as Admin →
@@ -555,6 +618,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ? tollMarks(ai, [for (final p in _route?.points ?? const <LatLng>[]) (lat: p.latitude, lng: p.longitude)])
         : const <TollMark>[];
     final showPill = sections.addressBar && _drop == null && _pinTarget == _PinTarget.none;
+    // A destination chosen: the confirm step (Expo ride-confirm).
+    final confirming = _drop != null;
+    final layout = ConfirmLayout.fromSettings(blob);
+    // The back and route buttons stand clear of the promo bar's visible top.
+    final aboveBar = layout.promoBar ? PromoBanner.visibleHeight + 12 - layout.promoBarOffset : 12.0;
+    // Places that move with the sheet: [build] gets how far up it reaches.
+    Widget aboveSheet(Widget Function(double inset) build) => Positioned.fill(
+      child: Builder(builder: (c) => MapBottomInset.listen(c, (inset) => Stack(children: [build(inset)]))),
+    );
     final map = Stack(children: [
       MapDragPin(
         controller: _map,
@@ -570,6 +642,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           me: _me,
           pickup: _pickup?.point,
           showPickup: !_pinMoving,
+          dotPins: confirming,
+          onGesture: confirming && !_routeMoved ? () => setState(() => _routeMoved = true) : null,
           autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
           drop: _drop?.point,
           stops: [for (final p in _stops) p.point],
@@ -623,7 +697,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       // The menu button (Expo's top-left hamburger): the side menu, on
       // phones, where there is no tab bar. It slides off with the others.
-      if (ShellWithoutBar.of(context))
+      if (ShellWithoutBar.of(context) && !confirming)
         Positioned(
           left: 16,
           top: 16,
@@ -651,7 +725,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-      Positioned(
+      if (!confirming)
+        Positioned(
         right: 16,
         bottom: wide ? mapAttributionClearance : null,
         top: wide ? null : 16,
@@ -689,11 +764,122 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
       ),
+      if (confirming && !wide && layout.promoBar)
+        aboveSheet(
+          (inset) => Positioned(
+            left: 0,
+            right: 0,
+            // Its top shows above the sheet, which overlaps the rest.
+            bottom: inset - PromoBanner.tuck - layout.promoBarOffset,
+            child: PromoBanner(onTap: () => showPromoSheet(context)),
+          ),
+        ),
+      if (confirming && _pinTarget == _PinTarget.none)
+        Positioned(
+          top: 16 + layout.address.$2,
+          left: 16 + layout.address.$1,
+          right: 16 - layout.address.$1,
+          child: SafeArea(
+            child: ConfirmAddressCard(
+              pickup: _pickup,
+              drop: _drop!,
+              stops: _stops,
+              duration: _routing ? '' : confirmDuration(_basis?.durationMin),
+              entrance: _entrance,
+              onPickup: () => _choose(_PinTarget.pickup),
+              onDrop: () => _choose(_PinTarget.drop),
+              onEntrance: () async {
+                final v = await showEntranceSheet(context, _entrance);
+                if (v != null && mounted) setState(() => _entrance = v);
+              },
+              onStops: () => showRouteStopsSheet(
+                context,
+                pickup: _pickup,
+                stops: _stops,
+                drop: _drop!,
+                onRemove: _removeStop,
+                onAdd: _stops.length < maxRideStops ? _addStop : null,
+              ),
+              onAddStop: _stops.length < maxRideStops ? _addStop : null,
+            ),
+          ),
+        ),
+      if (confirming)
+        aboveSheet(
+          (inset) => Positioned(
+            left: 16 + layout.back.$1,
+            bottom: (wide ? 16 : inset + aboveBar) - layout.back.$2,
+            child: Material(
+              color: Theme.of(context).colorScheme.surface,
+              shape: const CircleBorder(),
+              elevation: 3,
+              child: IconButton(
+                key: const ValueKey('confirm-back'),
+                tooltip: 'Back',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _leaveConfirm,
+              ),
+            ),
+          ),
+        ),
+      if (confirming && _routeMoved)
+        aboveSheet(
+          (inset) => Positioned(
+            right: 16 - layout.recenter.$1,
+            bottom: (wide ? mapAttributionClearance : inset + aboveBar) - layout.recenter.$2,
+            child: Material(
+              color: Theme.of(context).colorScheme.surface,
+              shape: const CircleBorder(),
+              elevation: 3,
+              child: IconButton(
+                key: const ValueKey('confirm-route'),
+                tooltip: 'Show whole route',
+                icon: const Icon(Icons.route),
+                onPressed: () => _showWholeRoute(wide ? 0 : inset),
+              ),
+            ),
+          ),
+        ),
     ]);
 
     ref.watch(rideServicesProvider); // rebuild when the catalogue arrives
     ref.watch(coinTradeQuoteProvider); // and when the GET.coin balance does
     ref.watch(fareTariffsProvider); // re-quote when the tariff cards arrive
+    final earnRate = ref.watch(coinTradeQuoteProvider).value?.settings.earnCoinsPerCurrency ?? 0;
+    final coins = _coins;
+    final coinOffer = coins == null ? null : fareCoinOffer(_fareFor(_service), coins.balance, coins.rate);
+    final otherName = _otherName.text.trim();
+    final footer = confirming && _route != null
+        ? ConfirmFooter(
+            payment: _payment,
+            onPayment: () async {
+              final p = await showPaymentSheet(context, _payment);
+              if (p != null && mounted) setState(() => _payment = p);
+            },
+            autoAcceptLabel: 'Auto-accept offer of ${formatMoney(_fareFor(_service), _currency)}',
+            autoAccept: _autoAccept,
+            onAutoAccept: (v) => setState(() => _autoAccept = v),
+            label: _forOther ? 'Find a driver for ${otherName.isEmpty ? 'someone else' : otherName}' : 'Find a driver',
+            onFind: _booking ||
+                    _routing ||
+                    _basis == null ||
+                    (_forOther && bookedFor(_otherName.text, _otherPhone.text) == null)
+                ? null
+                : _find,
+            coinTitle: coinOffer == null ? null : 'Use GET.coin',
+            coinSubtitle: coinOffer == null
+                ? null
+                : fareCoinSubtitle(
+                    on: _useCoins,
+                    fare: _fareFor(_service),
+                    coinBalance: coins!.balance,
+                    coinsPerCurrency: coins.rate,
+                    currency: _currency,
+                  ),
+            useCoins: _useCoins,
+            onUseCoins: (v) => setState(() => _useCoins = v),
+          )
+        : null;
     final panel = _BookingPanel(
       currency: _currency,
       ongoing: _ongoing,
@@ -706,60 +892,48 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onChanged: (v) => setState(() => _forOther = v),
         onEdited: () => setState(() {}),
       ),
-      forOther: _forOther,
-      forOtherReady: bookedFor(_otherName.text, _otherPhone.text) != null,
-      otherName: _otherName.text.trim(),
       pickup: _pickup,
       drop: _drop,
       route: _route,
       ai: _ai,
-      showTolls: display?.showAiTollCharges ?? true,
-      showBooths: display?.showAiTollBooths ?? true,
       routing: _routing,
       services: _services,
       service: _service,
-      payment: _payment,
-      coins: _coins,
-      useCoins: _useCoins,
-      onUseCoins: (v) => setState(() => _useCoins = v),
       note: _note,
-      booking: _booking,
       fareFor: _fareFor,
       onPickup: () => _choose(_PinTarget.pickup),
       onDrop: () => _choose(_PinTarget.drop),
-      onSwap: () {
-        setState(() {
-          final t = _pickup;
-          _pickup = _drop;
-          _drop = t;
-          // The way back visits the stops the other way round.
-          final back = _stops.reversed.toList();
-          _stops
-            ..clear()
-            ..addAll(back);
-        });
-        _updateRoute();
-      },
-      stops: _stops,
-      onAddStop: _addStop,
-      onRemoveStop: _removeStop,
       onService: (s) => setState(() {
         if (s.name != _serviceName) _adjust = 0;
         _serviceName = s.name;
       }),
-      fareOffer: _biddingOn && _basis != null && !_routing
-          ? FareOfferRow(
+      fare: _basis != null && !_routing
+          ? ConfirmFareSection(
               recommended: _recommendedFor(_service),
-              adjust: _adjust,
+              adjust: _biddingOn ? _adjust : 0,
               money: (v) => formatMoney(v, _currency),
+              bidding: _biddingOn,
               onAdjust: (v) => setState(() => _adjust = v),
+              earn: coinEarnLabel(rideRewardCoins(_fareFor(_service), earnRate)),
+              tollBooths: display?.showAiTollBooths ?? true ? tollBoothCount(ai) : 0,
+              onTollBooths: ai == null ? null : () => showTollBooths(context, ai),
+              tollCharges: (display?.showAiTollCharges ?? true) && ai?.tollsToShow != null
+                  ? formatMoney(ai!.tollsToShow, _currency)
+                  : null,
             )
           : null,
-      onPayment: (p) => setState(() => _payment = p),
-      onBook: _book,
+      onEditFare: _biddingOn && _basis != null && !_routing
+          ? () => editFareOffer(
+                context,
+                recommended: _recommendedFor(_service),
+                adjust: _adjust,
+                money: (v) => formatMoney(v, _currency),
+                onAdjust: (v) => setState(() => _adjust = v),
+              )
+          : null,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
       idle: _drop == null ? _homeParts(sections, blob, display) : null,
-      earnRate: ref.watch(coinTradeQuoteProvider).value?.settings.earnCoinsPerCurrency ?? 0,
+      footer: wide ? footer : null,
     );
 
     if (wide) {
@@ -773,7 +947,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     return Scaffold(
       drawer: ShellWithoutBar.of(context) ? const RiderMenuDrawer() : null,
-      body: MapSheetLayout(map: map, sheet: panel, min: 0.22, hidden: _pinMoving),
+      body: PopScope(
+        // Back on the confirm step leaves it, as its back arrow does.
+        canPop: !confirming,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && confirming) _leaveConfirm();
+        },
+        child: MapSheetLayout(
+          map: map,
+          sheet: panel,
+          min: confirming ? 0.5 : 0.22,
+          initial: confirming ? 0.55 : 0.45,
+          hidden: _pinMoving,
+          footer: footer,
+        ),
+      ),
     );
   }
 }
@@ -783,39 +971,24 @@ class _BookingPanel extends StatelessWidget {
     required this.ongoing,
     required this.pickup,
     required this.drop,
-    this.stops = const [],
-    this.onAddStop,
-    this.onRemoveStop,
     required this.route,
     this.ai,
-    this.showTolls = true,
-    this.showBooths = true,
     required this.routing,
     required this.services,
     required this.service,
-    required this.payment,
-    this.coins,
-    this.useCoins = false,
-    this.onUseCoins,
     required this.note,
-    required this.booking,
     required this.fareFor,
     required this.onPickup,
     required this.onDrop,
-    required this.onSwap,
     required this.onService,
-    this.fareOffer,
-    required this.onPayment,
-    required this.onBook,
+    this.fare,
+    this.onEditFare,
+    this.footer,
     required this.onOpenOngoing,
     this.idle,
-    this.earnRate = 0,
     this.forOthers = const [],
     this.onOpenRide,
     this.whoRiding,
-    this.forOther = false,
-    this.forOtherReady = false,
-    this.otherName = '',
     this.currency = AppConfig.currency,
   });
 
@@ -823,45 +996,34 @@ class _BookingPanel extends StatelessWidget {
   final List<RideRequest> forOthers;
   final ValueChanged<RideRequest>? onOpenRide;
 
-  /// The "Who's riding?" choice, and what it says.
+  /// The "Who's riding?" choice.
   final Widget? whoRiding;
-  final bool forOther;
-  final bool forOtherReady;
-  final String otherName;
 
   /// What the fares are quoted in: the pickup's tariff card's currency.
   final String currency;
 
-  /// GC earned per unit of fare (Admin → Get Coin → earn rate).
-  final double earnRate;
-
   final RideRequest? ongoing;
   final Place? pickup;
   final Place? drop;
-  final List<Place> stops;
-  final VoidCallback? onAddStop;
-  final ValueChanged<int>? onRemoveStop;
   final RouteInfo? route;
   final RouteEstimate? ai;
-  final bool showTolls;
-  final bool showBooths;
   final bool routing;
   final List<RideService> services;
   final RideService service;
-  final String payment;
-  final ({double balance, double rate})? coins;
-  final bool useCoins;
-  final ValueChanged<bool>? onUseCoins;
   final TextEditingController note;
-  final bool booking;
   final double Function(RideService) fareFor;
-  final VoidCallback onPickup, onDrop, onSwap, onOpenOngoing;
-  final Future<void> Function() onBook;
+  final VoidCallback onPickup, onDrop, onOpenOngoing;
   final ValueChanged<RideService> onService;
 
-  /// The −/+ fare offer for the selected service, where bidding is on.
-  final Widget? fareOffer;
-  final ValueChanged<String> onPayment;
+  /// The fare inside the chosen vehicle's card ([ConfirmFareSection]).
+  final Widget? fare;
+
+  /// The chosen card's pencil: the rider's own fare, where bidding is on.
+  final VoidCallback? onEditFare;
+
+  /// The "Find a driver" bar, at the end of the panel where it isn't pinned
+  /// to the screen (the wide layout).
+  final Widget? footer;
 
   /// What the panel shows before a destination is chosen (the Expo home
   /// parts); null keeps the plain pickup / destination card.
@@ -901,122 +1063,47 @@ class _BookingPanel extends StatelessWidget {
           const SizedBox(height: 8),
         ],
         ?idle,
-        if (idle == null) Text('Where are you going?', style: t.textTheme.titleLarge),
-        if (idle == null) const SizedBox(height: 12),
-        if (idle == null) Card(
-          child: Column(children: [
-            ListTile(
-              leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
-              title: Text(pickup?.name ?? 'Set pickup'),
-              subtitle: pickup == null
-                  ? null
-                  : Text(pickup!.address, maxLines: 1, overflow: TextOverflow.ellipsis),
-              onTap: onPickup,
-            ),
-            Row(children: [
-              const Expanded(child: Divider(indent: 56)),
-              IconButton(tooltip: 'Swap', icon: const Icon(Icons.swap_vert), onPressed: onSwap),
-            ]),
-            for (var i = 0; i < stops.length; i++)
-              ListTile(
-                key: ValueKey('stop-$i'),
-                leading: CircleAvatar(
-                  radius: 12,
-                  backgroundColor: Colors.orange.shade800,
-                  child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontSize: 12)),
-                ),
-                title: Text(stops[i].name),
-                subtitle: Text(stops[i].address, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: IconButton(
-                  key: ValueKey('stop-remove-$i'),
-                  tooltip: 'Remove ${stopLabel(i).toLowerCase()}',
-                  icon: const Icon(Icons.close),
-                  onPressed: () => onRemoveStop?.call(i),
-                ),
-              ),
-            ListTile(
-              leading: Icon(Icons.location_on, color: Colors.red.shade700),
-              title: Text(drop?.name ?? 'Where to?'),
-              subtitle:
-                  drop == null ? null : Text(drop!.address, maxLines: 1, overflow: TextOverflow.ellipsis),
-              onTap: onDrop,
-            ),
-            if (drop != null && stops.length < maxRideStops && onAddStop != null)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  key: const ValueKey('add-stop'),
-                  onPressed: onAddStop,
-                  icon: const Icon(Icons.add_location_alt_outlined),
-                  label: Text(stops.isEmpty ? 'Add a stop' : 'Add another stop'),
-                ),
-              ),
-          ]),
-        ),
-        if (routing) const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator()),
-        if (route != null && !routing) ...[
+        // The confirm step (Expo ride-confirm): the addresses are on the
+        // map, so the sheet opens on the vehicles.
+        if (idle == null && drop == null) ...[
+          Text('Where are you going?', style: t.textTheme.titleLarge),
           const SizedBox(height: 12),
-          RouteBasisLine(route: route!, ai: ai),
-          if (showTolls && ai?.tollsToShow != null)
-            Text(
-              'Est. toll charges ${formatMoney(ai!.tollsToShow, AppConfig.currency)}, not included in the fare',
-              key: const ValueKey('route-tolls'),
-              style: t.textTheme.bodySmall,
-            ),
-          if (showBooths && tollBoothCount(ai) > 0)
-            InkWell(
-              key: const ValueKey('route-toll-booths'),
-              onTap: () => showTollBooths(context, ai!),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(children: [
-                  const Icon(Icons.toll, size: 16, color: Color(0xFFF59E0B)),
-                  const SizedBox(width: 6),
-                  Text('Est. toll booths: ${tollBoothCount(ai)}',
-                      style: t.textTheme.bodySmall?.copyWith(decoration: TextDecoration.underline)),
-                ]),
+          Card(
+            child: Column(children: [
+              ListTile(
+                leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
+                title: Text(pickup?.name ?? 'Set pickup'),
+                subtitle: pickup == null
+                    ? null
+                    : Text(pickup!.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: onPickup,
               ),
-            ),
-          const SizedBox(height: 8),
-          for (final s in services)
-            Card(
-              key: ValueKey('service-${s.name}'),
-              color: s.name == service.name ? t.colorScheme.secondaryContainer : null,
-              child: ListTile(
-                leading: Icon(s.name == 'Teksi' ? Icons.local_taxi : Icons.directions_car),
-                title: Text(s.name),
-                subtitle: Text('${s.description} · ${s.seats} seats'),
-                trailing: Text(formatMoney(fareFor(s), currency),
-                    style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                onTap: () => onService(s),
+              const Divider(indent: 56),
+              ListTile(
+                leading: Icon(Icons.location_on, color: Colors.red.shade700),
+                title: const Text('Where to?'),
+                onTap: onDrop,
               ),
-            ),
-          ?fareOffer,
-          const SizedBox(height: 8),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'Cash', icon: Icon(Icons.payments_outlined), label: Text('Cash')),
-              ButtonSegment(
-                  value: 'Get Pay', icon: Icon(Icons.account_balance_wallet_outlined), label: Text('Wallet')),
-            ],
-            selected: {payment},
-            onSelectionChanged: (v) => onPayment(v.first),
+            ]),
           ),
-          if (coins != null && fareCoinOffer(fareFor(service), coins!.balance, coins!.rate) != null)
-            SwitchListTile(
-              key: const ValueKey('use-coins'),
-              contentPadding: EdgeInsets.zero,
-              secondary: const Icon(Icons.toll_outlined),
-              title: const Text('Use GET.coin'),
-              subtitle: Text(fareCoinSubtitle(
-                on: useCoins,
-                fare: fareFor(service),
-                coinBalance: coins!.balance,
-                coinsPerCurrency: coins!.rate,
-                currency: currency,
-              )),
-              value: useCoins,
-              onChanged: onUseCoins,
+        ],
+        if (routing) const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator()),
+        if (drop != null && route != null && !routing) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+            child: RouteBasisLine(route: route!, ai: ai),
+          ),
+          for (final s in services)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: ConfirmServiceCard(
+                service: s,
+                price: formatMoney(fareFor(s), currency),
+                selected: s.name == service.name,
+                onTap: () => onService(s),
+                fare: s.name == service.name ? fare : null,
+                onEdit: s.name == service.name ? onEditFare : null,
+              ),
             ),
           const SizedBox(height: 12),
           ?whoRiding,
@@ -1025,32 +1112,9 @@ class _BookingPanel extends StatelessWidget {
             controller: note,
             decoration: const InputDecoration(labelText: 'Note to driver (optional)'),
           ),
-          if (earnRate > 0 && rideRewardCoins(fareFor(service), earnRate) > 0) ...[
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Chip(
-                key: const ValueKey('booking-coin-earn'),
-                avatar: const Icon(Icons.toll, size: 16, color: Color(0xFFB45309)),
-                label: Text('Earn ${formatCoins(rideRewardCoins(fareFor(service), earnRate))} on this booking'),
-              ),
-            ),
-          ],
           const SizedBox(height: 16),
-          BusyButton.filled(
-            key: const ValueKey('book'),
-            // One ride of the rider's own at a time; rides for others are
-            // not held back by it.
-            onPressed: booking || (forOther ? !forOtherReady : ongoing != null) ? null : onBook,
-            child: booking
-                ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(!forOther && ongoing != null
-                    ? 'You already have a ride in progress'
-                    : forOther
-                        ? 'Book for ${otherName.isEmpty ? 'someone else' : otherName} · '
-                            '${formatMoney(fareFor(service), currency)}'
-                        : 'Book ${service.name} · ${formatMoney(fareFor(service), currency)}'),
-          ),
+          const ConfirmDisclaimer(),
+          if (footer != null) ...[const SizedBox(height: 16), footer!],
         ],
       ]),
     );
