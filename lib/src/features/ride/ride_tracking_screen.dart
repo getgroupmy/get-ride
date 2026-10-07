@@ -368,7 +368,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       contacts = const [];
     }
     if (!mounted) return;
-    await sendSos(context, contacts, driver: r.partnerName, plate: r.partnerPlate);
+    await sendSos(context, contacts,
+        driver: r.hasDriver ? r.partnerName : null, plate: r.hasDriver ? r.partnerPlate : null);
   }
 
   /// A demo offer taken (Admin → Demo → mock driver offers): the real
@@ -549,7 +550,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 ),
               ),
             ),
-          if (r.partnerId != null && r.status.isOngoing)
+          if (r.hasDriver)
             Card(
               child: Column(
                 children: [

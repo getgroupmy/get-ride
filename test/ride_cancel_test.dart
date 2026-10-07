@@ -161,6 +161,28 @@ void main() {
       expect(rides.cancels, isEmpty);
     });
 
+    testWidgets("a driver's offer shows no driver card, trip code or contact until it is accepted", (tester) async {
+      final (_, rows, _) = await pump(tester);
+      final bid = {
+        'partner_id': 'driver',
+        'partner_name': 'Kabeer',
+        'partner_phone': '+60123',
+        'offered_fare': 75,
+        'otp': '1314',
+      };
+      rows.add(RideRequest({...ride('open').raw, ...bid}));
+      await settle(tester);
+      expect(find.text('Trip code'), findsNothing);
+      expect(find.text('Call'), findsNothing);
+      expect(find.text('Message'), findsNothing);
+
+      rows.add(RideRequest({...ride('accepted').raw, ...bid}));
+      await settle(tester);
+      expect(find.text('Trip code'), findsOneWidget);
+      expect(find.text('1314'), findsOneWidget);
+      expect(find.text('Call'), findsOneWidget);
+    });
+
     testWidgets('a declined request is announced', (tester) async {
       final (_, rows, _) = await pump(tester);
       rows.add(ride('on_trip', askedBy: 'rider', reason: 'changed_plans'));
