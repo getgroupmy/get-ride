@@ -8,6 +8,7 @@ import '../config.dart';
 
 import 'package:latlong2/latlong.dart';
 
+import '../core/book_for.dart';
 import '../core/commission.dart';
 import '../core/ride_request_metadata.dart';
 import '../core/session_telemetry.dart';
@@ -51,6 +52,7 @@ class RideRepository {
     bool offerMe = false,
     List<Place> stops = const [],
     Map<String, Object> metadata = const {},
+    BookedFor? bookedFor,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -86,6 +88,8 @@ class RideRepository {
       'user_accept_lng': pickupLng,
       'status': 'open',
       if (stops.isNotEmpty) 'stops': [for (final p in stops.take(maxRideStops)) stopToJson(p)],
+      if (bookedFor != null) 'booked_for_name': bookedFor.name,
+      if (bookedFor != null) 'booked_for_phone': bookedFor.phone,
       ...metadata,
     };
     // Stops and the metadata are extras: a database without one of their
@@ -97,6 +101,13 @@ class RideRepository {
         data = await _db.from(_table).insert(row).select().single();
         break;
       } on PostgrestException catch (e) {
+        // A second request while one is on the go: refused before it was
+        // written, so nothing reached the drivers (migration 0107).
+        if (isDuplicateRideError(e.message)) throw DuplicateRideRequest(forOthers: bookedFor != null);
+        // Never quietly book someone else's ride as the rider's own.
+        if (bookedFor != null && e.message.contains('booked_for')) {
+          throw StateError("Booking for someone else isn't available yet. Please try again later.");
+        }
         final col = droppableRideColumn('${e.message} ${e.details}', optional, row.keys);
         if (attempt >= optional.length || col == null) rethrow;
         row.remove(col);
@@ -147,9 +158,15 @@ class RideRepository {
     } catch (_) {}
   }
 
-  Future<RideRequest?> ongoingForRider() async {
+  /// The rider's own ride on the go. Rides they booked for other people
+  /// are [ridesOnTheGo]; they never stand in the way of the rider's own.
+  Future<RideRequest?> ongoingForRider() async => ownRide(await ridesOnTheGo());
+
+  /// Every ride this rider has on the go, their own and those booked for
+  /// others, newest first.
+  Future<List<RideRequest>> ridesOnTheGo() async {
     final uid = _uid;
-    if (uid == null) return null;
+    if (uid == null) return const [];
     await expireStaleOpen();
     final rows = await _db
         .from(_table)
@@ -157,8 +174,8 @@ class RideRepository {
         .eq('rider_id', uid)
         .inFilter('status', riderOngoingStatuses)
         .order('created_at', ascending: false)
-        .limit(1);
-    return rows.isEmpty ? null : RideRequest(rows.first);
+        .limit(20);
+    return rows.map(RideRequest.new).toList();
   }
 
   Future<RideRequest?> ongoingForPartner() async {

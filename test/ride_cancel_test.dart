@@ -161,6 +161,13 @@ void main() {
       expect(rides.cancels, isEmpty);
     });
 
+    testWidgets('a ride booked for someone else says who for', (tester) async {
+      final (_, rows, _) = await pump(tester);
+      rows.add(RideRequest({...ride('accepted').raw, 'booked_for_name': 'Mak', 'booked_for_phone': '+60123456789'}));
+      await settle(tester);
+      expect(find.text('Booked for Mak · +60123456789'), findsOneWidget);
+    });
+
     testWidgets('a declined request is announced', (tester) async {
       final (_, rows, _) = await pump(tester);
       rows.add(ride('on_trip', askedBy: 'rider', reason: 'changed_plans'));
