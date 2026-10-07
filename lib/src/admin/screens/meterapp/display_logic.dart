@@ -18,7 +18,7 @@ const recentLocationsMax = 8;
 const profileMenuItemId = 'profile';
 const partnerModeMenuItemId = 'partner-mode-button';
 const passengerModeMenuItemId = 'passenger-mode-button';
-const partnerModeDefaultLabel = 'Partner mode';
+const partnerModeDefaultLabel = 'Partner Mode';
 const passengerModeDefaultLabel = 'Passenger Mode';
 const vehicleInfoMenuItemId = 'vehicle-information';
 

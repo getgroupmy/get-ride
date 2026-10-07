@@ -12,7 +12,8 @@ import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/features/ride/home_screen.dart';
-import 'package:get_ride/src/features/shell/app_shell.dart';
+import 'package:get_ride/src/features/shell/app_side_menu.dart';
+import 'package:get_ride/src/widgets/side_menu_host.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -64,7 +65,7 @@ void main() {
           profileProvider.overrideWith((ref) async => null),
           adminAccessProvider.overrideWith((ref) => Future.error('offline')),
         ],
-        child: const MaterialApp(home: ShellWithoutBar(child: HomeScreen())),
+        child: const MaterialApp(home: SideMenuHost(menu: RiderSideMenu(), child: HomeScreen())),
       ),
     );
     for (var i = 0; i < 5; i++) {
@@ -93,11 +94,13 @@ void main() {
     await tester.tap(menu);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.byKey(const ValueKey('rider-menu-drawer')), findsOneWidget);
-    expect(find.text('Emergency contacts'), findsOneWidget);
+    expect(find.byKey(const ValueKey('rider-side-menu')), findsOneWidget);
+    expect(find.byKey(const ValueKey('menu-partner-mode')), findsOneWidget);
+    // The menu pushes the page aside rather than covering it.
+    expect(tester.getTopLeft(find.byType(HomeScreen)).dx, SideMenuHost.widthFor(400));
   });
 
-  testWidgets('no menu button where the shell has its rail', (tester) async {
+  testWidgets('no menu button without the side menu (wide screens have the rail)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1;

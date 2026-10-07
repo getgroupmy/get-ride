@@ -11,6 +11,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../profile/emergency_contacts_screen.dart';
 import 'voice_protection_card.dart';
+import '../../widgets/side_menu_host.dart';
 
 /// Opens [uri] (overridden in tests).
 typedef UriLauncher = Future<bool> Function(Uri uri);
@@ -103,7 +104,7 @@ class SafetyScreen extends ConsumerWidget {
     final t = Theme.of(context);
     final contacts = ref.watch(emergencyContactsProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Safety')),
+      appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Safety')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

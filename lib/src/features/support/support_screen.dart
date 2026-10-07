@@ -6,6 +6,7 @@ import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/side_menu_host.dart';
 
 final ticketsProvider = FutureProvider.autoDispose<List<SupportTicket>>(
   (ref) => ref.watch(accountRepositoryProvider).tickets(),
@@ -27,7 +28,7 @@ class SupportScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Help & support')),
+      appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Help & support')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _open(context, ref),
         icon: const Icon(Icons.chat_bubble_outline),

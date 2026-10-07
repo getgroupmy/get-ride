@@ -9,6 +9,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/side_menu_host.dart';
 
 final emergencyContactsProvider = FutureProvider.autoDispose<List<EmergencyContact>>(
   (ref) => ref.watch(accountRepositoryProvider).emergencyContacts(),
@@ -105,7 +106,7 @@ class EmergencyContactsScreen extends ConsumerWidget {
     final contacts = ref.watch(emergencyContactsProvider);
     final count = contacts.value?.length ?? 0;
     return Scaffold(
-      appBar: AppBar(title: const Text('Emergency contacts')),
+      appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Emergency contacts')),
       floatingActionButton: count >= maxContacts
           ? null
           : FloatingActionButton.extended(

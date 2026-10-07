@@ -9,71 +9,58 @@ import '../../data/app_display_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
-import '../shell/app_shell.dart' show shellHomeButton;
+import '../../widgets/side_menu_host.dart';
 
-/// The rider's account: the same profile card and menu the home screen's
-/// side drawer shows ([RiderMenu]).
+/// The built-in rider menu items (Expo `MenuSideSheet`), on this app's
+/// screens; false for one with no screen here ("coming soon"). Expo's City,
+/// Freight and Notifications only went home. [beforeOpen] runs first.
+bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallback? beforeOpen}) {
+  const routes = {
+    'teksi-ev': '/ev',
+    'city': '/',
+    'request-history': '/trips',
+    'freight': '/',
+    'wallet': '/wallet',
+    'notifications': '/',
+    'safety': '/account/safety',
+    'settings': '/account/settings',
+    'user-guide': '/account/guide',
+    'support': '/account/support',
+  };
+  if (id == 'logout') {
+    beforeOpen?.call();
+    ref.read(authRepositoryProvider).signOut();
+    return true;
+  }
+  final r = routes[id];
+  if (r == null) return false;
+  final router = GoRouter.of(context);
+  beforeOpen?.call();
+  openRoute(router, r);
+  return true;
+}
+
+/// The rider's account: the same profile card and menu the side menu
+/// shows ([RiderMenu]).
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(leading: shellHomeButton(context), title: const Text('Account')),
+    appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Account')),
     body: ListView(children: const [ResponsiveCenter(maxWidth: 760, child: RiderMenu())]),
   );
 }
 
-/// The side drawer the home screen's menu button opens on phones (Expo
-/// `MenuSideSheet`): who is signed in, then the admin's rider menu.
-class RiderMenuDrawer extends StatelessWidget {
-  const RiderMenuDrawer({super.key});
-
-  @override
-  Widget build(BuildContext context) => Drawer(
-    key: const ValueKey('rider-menu-drawer'),
-    child: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        children: [RiderMenu(beforeOpen: () => Navigator.pop(context))],
-      ),
-    ),
-  );
-}
-
 /// The rider menu: profile, invite, the admin's items and this app's own.
-/// [beforeOpen] runs before any of them navigates (closing the drawer).
+/// [beforeOpen] runs before any of them navigates (closing the side menu).
 class RiderMenu extends ConsumerWidget {
   const RiderMenu({super.key, this.beforeOpen});
 
   final VoidCallback? beforeOpen;
 
-  /// The built-in rider menu items (Expo `MenuSideSheet`), on this app's
-  /// screens. Expo's City, Freight and Notifications only went home.
-  bool _builtIn(BuildContext context, WidgetRef ref, String id) {
-    const routes = {
-      'teksi-ev': '/ev',
-      'city': '/',
-      'request-history': '/trips',
-      'freight': '/',
-      'wallet': '/wallet',
-      'notifications': '/',
-      'safety': '/account/safety',
-      'settings': '/account/settings',
-      'user-guide': '/account/guide',
-      'support': '/account/support',
-    };
-    if (id == 'logout') {
-      beforeOpen?.call();
-      ref.read(authRepositoryProvider).signOut();
-      return true;
-    }
-    final r = routes[id];
-    if (r == null) return false;
-    final router = GoRouter.of(context);
-    beforeOpen?.call();
-    openRoute(router, r);
-    return true;
-  }
+  bool _builtIn(BuildContext context, WidgetRef ref, String id) =>
+      riderMenuAction(context, ref, id, beforeOpen: beforeOpen);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

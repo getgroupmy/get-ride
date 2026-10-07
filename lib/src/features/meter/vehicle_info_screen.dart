@@ -12,6 +12,7 @@ import '../../core/vehicle_scan.dart';
 import '../../data/obd/obd_session.dart';
 import '../../data/vehicle_fuel_store.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/side_menu_host.dart';
 
 /// Everything the linked OBD-II reader can tell about the vehicle it is
 /// plugged into (Expo `app/vehicle-information.tsx`): identity (VIN,
@@ -130,6 +131,7 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
     final report = _report;
     return Scaffold(
       appBar: AppBar(
+        leading: sideMenuLeading(context),
         title: const Text('Vehicle information'),
         actions: [
           if (obd.linked)

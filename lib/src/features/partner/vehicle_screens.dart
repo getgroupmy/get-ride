@@ -12,6 +12,7 @@ import '../../data/partner_onboarding_repository.dart';
 import '../../data/vehicle_onboarding_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/side_menu_host.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 
@@ -52,7 +53,7 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('My vehicles')),
+        appBar: AppBar(leading: sideMenuLeading(context), title: const Text('My vehicles')),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => _open('/drive/vehicles/new'),
           icon: const Icon(Icons.add),

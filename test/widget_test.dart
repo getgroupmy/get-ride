@@ -44,31 +44,6 @@ void main() {
     expect(find.text('page /'), findsOneWidget);
   });
 
-  testWidgets('a tab page shows a back arrow home on phones', (tester) async {
-    GoRouter router(Size size) => GoRouter(initialLocation: '/trips', routes: [
-          StatefulShellRoute.indexedStack(
-            builder: (_, _, shell) => AppShell(shell: shell),
-            branches: [
-              for (final p in ['/', '/trips', '/wallet', '/drive', '/account'])
-                StatefulShellBranch(routes: [
-                  GoRoute(
-                    path: p,
-                    builder: (c, _) => Scaffold(appBar: AppBar(leading: shellHomeButton(c)), body: Text('page $p')),
-                  ),
-                ]),
-            ],
-          ),
-        ]);
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(400, 800);
-    addTearDown(tester.view.reset);
-    await tester.pumpWidget(ProviderScope(child: MaterialApp.router(routerConfig: router(const Size(400, 800)))));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('shell-home')));
-    await tester.pumpAndSettle();
-    expect(find.text('page /'), findsOneWidget);
-  });
-
   testWidgets('desktop: the rail greys out Ride too', (tester) async {
     final container = await _pumpAt(tester, const Size(1280, 800));
     container.read(driverOnlineProvider.notifier).set(true);

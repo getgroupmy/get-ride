@@ -22,9 +22,8 @@ import '../../core/ride_request_metadata.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_confirm.dart';
 import '../../core/ride_stops.dart';
+import '../../widgets/side_menu_host.dart';
 import '../../widgets/side_menu_tiles.dart';
-import '../profile/account_screen.dart' show RiderMenuDrawer;
-import '../shell/app_shell.dart' show ShellWithoutBar;
 import '../../widgets/toll_booths.dart';
 import '../../core/route_estimate.dart';
 import '../../data/app_display_repository.dart';
@@ -697,7 +696,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       // The menu button (Expo's top-left hamburger): the side menu, on
       // phones, where there is no tab bar. It slides off with the others.
-      if (ShellWithoutBar.of(context) && !confirming)
+      if (SideMenuHost.of(context) != null && !confirming)
         Positioned(
           left: 16,
           top: 16,
@@ -716,7 +715,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       key: const ValueKey('home-menu'),
                       heroTag: 'home-menu',
                       tooltip: 'Menu',
-                      onPressed: () => Scaffold.of(context).openDrawer(),
+                      onPressed: () => SideMenuHost.of(context)?.open(),
                       child: const Icon(Icons.menu),
                     ),
                   ),
@@ -946,7 +945,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
     return Scaffold(
-      drawer: ShellWithoutBar.of(context) ? const RiderMenuDrawer() : null,
       body: PopScope(
         // Back on the confirm step leaves it, as its back arrow does.
         canPop: !confirming,

@@ -8,6 +8,7 @@ import '../../core/profile_identity.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/side_menu_host.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key, this.pickPhoto = pickImage});
@@ -139,7 +140,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final t = Theme.of(context);
     final idImage = p?.idImage;
     return Scaffold(
-      appBar: AppBar(title: const Text('Edit profile')),
+      appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Edit profile')),
       body: ListView(children: [
         ResponsiveCenter(
           padding: const EdgeInsets.all(16),

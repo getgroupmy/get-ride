@@ -54,6 +54,7 @@ import 'features/settings/auth_diagnostics_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/shell/brand_splash.dart';
+import 'features/shell/app_side_menu.dart';
 import 'features/shell/update_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
 import 'features/support/support_chat_screen.dart';
@@ -167,62 +168,80 @@ final routerProvider = Provider<GoRouter>((ref) {
           builder: (_, s) => SetPinScreen(changing: s.uri.queryParameters['change'] == '1'),
         ),
       ]),
-      StatefulShellRoute.indexedStack(
-        builder: (_, _, shell) => AppShell(shell: shell),
-        branches: [
-          StatefulShellBranch(routes: [GoRoute(path: '/', builder: (_, _) => const HomeScreen())]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/trips', builder: (_, _) => const TripsScreen(), routes: [
-              GoRoute(path: ':id', builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!)),
-            ]),
-          ]),
-          StatefulShellBranch(routes: [GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen(), routes: [
-            GoRoute(
-              path: 'trade',
-              builder: (_, s) => CoinTradeScreen(
-                sendTo: s.uri.queryParameters['to'],
-                requestedAmount: double.tryParse(s.uri.queryParameters['amt'] ?? ''),
-              ),
-            ),
-            GoRoute(path: 'scan', builder: (_, _) => const ScanPayScreen()),
-            GoRoute(path: 'history', builder: (_, _) => const WalletHistoryScreen()),
-            GoRoute(
-              path: 'receive',
-              builder: (_, s) => ReceiveQrScreen(coin: s.uri.queryParameters['coin'] == '1'),
-            ),
-          ])]),
-          StatefulShellBranch(routes: [GoRoute(path: '/drive', builder: (_, _) => const PartnerScreen())]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/account', builder: (_, _) => const AccountScreen(), routes: [
-              GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
-              GoRoute(path: 'referral', builder: (_, _) => const ReferralScreen()),
-              GoRoute(path: 'safety', builder: (_, _) => const SafetyScreen()),
-              GoRoute(path: 'emergency', builder: (_, _) => const EmergencyContactsScreen()),
-              GoRoute(path: 'guide', builder: (_, _) => const UserGuideScreen()),
-              GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen(), routes: [
-                GoRoute(path: 'phone', builder: (_, _) => const ChangePhoneScreen()),
+      // The rider's and the driver's pages, under the Expo side menu that
+      // pushes them aside: the rider menu or the driver menu by mode
+      // ([AppSideMenuHost]).
+      ShellRoute(
+        builder: (_, state, child) => AppSideMenuHost(location: state.uri.path, child: child),
+        routes: [
+          StatefulShellRoute.indexedStack(
+            builder: (_, _, shell) => AppShell(shell: shell),
+            branches: [
+              StatefulShellBranch(routes: [GoRoute(path: '/', builder: (_, _) => const HomeScreen())]),
+              StatefulShellBranch(routes: [
+                GoRoute(path: '/trips', builder: (_, _) => const TripsScreen(), routes: [
+                  GoRoute(path: ':id', builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!)),
+                ]),
               ]),
-              GoRoute(path: 'support', builder: (_, _) => const SupportScreen(), routes: [
+              StatefulShellBranch(routes: [GoRoute(path: '/wallet', builder: (_, _) => const WalletScreen(), routes: [
                 GoRoute(
-                  path: ':ticketId',
-                  builder: (_, s) => SupportChatScreen(ticketId: s.pathParameters['ticketId']!),
+                  path: 'trade',
+                  builder: (_, s) => CoinTradeScreen(
+                    sendTo: s.uri.queryParameters['to'],
+                    requestedAmount: double.tryParse(s.uri.queryParameters['amt'] ?? ''),
+                  ),
                 ),
+                GoRoute(path: 'scan', builder: (_, _) => const ScanPayScreen()),
+                GoRoute(path: 'history', builder: (_, _) => const WalletHistoryScreen()),
+                GoRoute(
+                  path: 'receive',
+                  builder: (_, s) => ReceiveQrScreen(coin: s.uri.queryParameters['coin'] == '1'),
+                ),
+              ])]),
+              StatefulShellBranch(routes: [GoRoute(path: '/drive', builder: (_, _) => const PartnerScreen())]),
+              StatefulShellBranch(routes: [
+                GoRoute(path: '/account', builder: (_, _) => const AccountScreen(), routes: [
+                  GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
+                  GoRoute(path: 'referral', builder: (_, _) => const ReferralScreen()),
+                  GoRoute(path: 'safety', builder: (_, _) => const SafetyScreen()),
+                  GoRoute(path: 'emergency', builder: (_, _) => const EmergencyContactsScreen()),
+                  GoRoute(path: 'guide', builder: (_, _) => const UserGuideScreen()),
+                  GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen(), routes: [
+                    GoRoute(path: 'phone', builder: (_, _) => const ChangePhoneScreen()),
+                  ]),
+                  GoRoute(path: 'support', builder: (_, _) => const SupportScreen(), routes: [
+                    GoRoute(
+                      path: ':ticketId',
+                      builder: (_, s) => SupportChatScreen(ticketId: s.pathParameters['ticketId']!),
+                    ),
+                  ]),
+                ]),
               ]),
-            ]),
-          ]),
+            ],
+          ),
+          GoRoute(
+            path: '/ride/demo',
+            builder: (_, s) => s.extra is DemoTripArgs ? DemoTripScreen(args: s.extra! as DemoTripArgs) : const HomeScreen(),
+          ),
+          GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
+          GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
+          // Driver mode's pages, under the driver menu.
+          GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
+          GoRoute(
+            path: '/drive/demo',
+            builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
+          ),
+          GoRoute(path: '/meter/vehicle', builder: (_, _) => const VehicleInfoScreen()),
+          GoRoute(path: '/drive/permit', builder: (_, _) => const DriverPermitScreen()),
+          GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
+          GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
+          GoRoute(
+            path: '/drive/vehicles/:id',
+            builder: (_, s) => VehicleOnboardingScreen(vehicleId: s.pathParameters['id']),
+          ),
+          GoRoute(path: '/drive/trip/:id', builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!)),
         ],
       ),
-      GoRoute(
-        path: '/ride/demo',
-        builder: (_, s) => s.extra is DemoTripArgs ? DemoTripScreen(args: s.extra! as DemoTripArgs) : const HomeScreen(),
-      ),
-      GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
-      GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
-      GoRoute(
-        path: '/drive/demo',
-        builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
-      ),
-      GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
       GoRoute(
         path: '/signup/photo',
         // Only the two sign-up landings, never an arbitrary route from the URL.
@@ -241,15 +260,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         redirect: (_, st) => st.extra is HailDestinationArgs ? null : '/meter',
         builder: (_, st) => HailDestinationScreen(args: st.extra! as HailDestinationArgs),
       ),
-      GoRoute(path: '/meter/vehicle', builder: (_, _) => const VehicleInfoScreen()),
-      GoRoute(path: '/drive/permit', builder: (_, _) => const DriverPermitScreen()),
-      GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
-      GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
-      GoRoute(
-        path: '/drive/vehicles/:id',
-        builder: (_, s) => VehicleOnboardingScreen(vehicleId: s.pathParameters['id']),
-      ),
-      GoRoute(path: '/drive/trip/:id', builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!)),
       GoRoute(
         path: '/call/:id',
         builder: (_, s) => CallScreen(callId: s.pathParameters['id']!, peerName: s.uri.queryParameters['name']),
