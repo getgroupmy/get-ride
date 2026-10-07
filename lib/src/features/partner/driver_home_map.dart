@@ -14,7 +14,10 @@ import '../../widgets/ride_map.dart';
 /// while online, where each open request is waiting, with its fare. Tapping
 /// a pin opens that request in [onSelect].
 ///
-/// It opens at street level ([driverHomeZoom]) on the driver.
+/// It opens at street level ([driverHomeZoom]) on the driver and follows
+/// them as they move, keeping them in the middle of the map above the
+/// sheet. Moving the map by hand stops the following; the recenter button
+/// starts it again.
 class DriverHomeMap extends ConsumerStatefulWidget {
   const DriverHomeMap({super.key, required this.me, required this.requests, this.onSelect});
 
@@ -31,28 +34,100 @@ class DriverHomeMap extends ConsumerStatefulWidget {
 /// Street level: the roads and buildings around the driver.
 const driverHomeZoom = 18.0;
 
-class _DriverHomeMapState extends ConsumerState<DriverHomeMap> {
+class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTickerProviderStateMixin {
   final _map = MapController();
+  bool _ready = false;
+  bool _follow = true;
+
+  /// The camera's glide from where it is to the driver.
+  late final _glide = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))
+    ..addListener(_glideTick);
+  LatLng? _from, _to;
+  double _zoom = driverHomeZoom;
 
   @override
   void dispose() {
+    _glide.dispose();
     _map.dispose();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant DriverHomeMap old) {
+    super.didUpdateWidget(old);
+    if (widget.me != old.me) WidgetsBinding.instance.addPostFrameCallback((_) => _center());
+  }
+
+  /// Where the driver sits: the middle of the map above the sheet.
+  Offset get _offset => Offset(0, -MapBottomInset.of(context) / 2);
+
+  /// Glides the camera onto the driver, at the zoom the map is at.
+  void _center({bool jump = false}) {
+    final me = widget.me;
+    if (!mounted || !_follow || !_ready || me == null) return;
+    final MapCamera camera;
+    try {
+      camera = _map.camera;
+    } catch (_) {
+      return;
+    }
+    _zoom = camera.zoom;
+    if (jump) {
+      _map.move(me, _zoom, offset: _offset);
+      return;
+    }
+    _from = _to ?? camera.center;
+    _to = me;
+    _glide.forward(from: 0);
+  }
+
+  void _glideTick() {
+    final a = _from, b = _to;
+    if (a == null || b == null || !mounted) return;
+    final t = Curves.easeInOut.transform(_glide.value);
+    try {
+      _map.move(
+        LatLng(a.latitude + (b.latitude - a.latitude) * t, a.longitude + (b.longitude - a.longitude) * t),
+        _zoom,
+        offset: _offset,
+      );
+    } catch (_) {}
+  }
+
+  /// A hand on the map: stop following until the recenter button.
+  void _onGesture() {
+    if (!_follow) return;
+    _glide.stop();
+    _from = _to = null;
+    setState(() => _follow = false);
+  }
+
+  void _recenter() {
+    setState(() => _follow = true);
+    _glide.stop();
+    _from = _to = null;
+    final me = widget.me;
+    if (me == null) return;
+    try {
+      _map.move(me, driverHomeZoom, offset: _offset);
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
     final me = widget.me, requests = widget.requests, onSelect = widget.onSelect;
     final t = Theme.of(context);
-    final pickups = [
-      for (final r in requests)
-        if (r.pickupLat != null && r.pickupLng != null) LatLng(r.pickupLat!, r.pickupLng!),
-    ];
     final map = RideMap(
       controller: _map,
       me: me,
       pointZoom: driverHomeZoom,
-      framed: pickups,
+      // The camera follows the driver instead of framing the pins.
+      autoFit: false,
+      onGesture: _onGesture,
+      onReady: () {
+        _ready = true;
+        _center(jump: true);
+      },
       satellite: ref.watch(mapSatelliteProvider),
       extraMarkers: [
         for (final r in requests)
@@ -101,7 +176,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> {
             bottom: mapAttributionClearance + inset,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               // Expo's driver map recenters on the driver.
-              RecenterButton(onPressed: me == null ? null : () => recenterMap(_map, me, zoom: driverHomeZoom)),
+              RecenterButton(onPressed: me == null ? null : _recenter),
               const SizedBox(height: 8),
               const MapTypeButton(),
             ]),
