@@ -158,6 +158,18 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
   }
 
+  /// A request on the queue tapped: it comes up in the request sheet
+  /// (inDrive's), with a fresh countdown, as a new one would.
+  void _openRequest(RideRequest r) {
+    if (_accepting != null) return;
+    _alertSeen.add(r.id);
+    setState(() {
+      _alertId = r.id;
+      _alertAt = _alertNow = ref.read(requestAlertClockProvider)();
+    });
+    _alertTick ??= Timer.periodic(const Duration(seconds: 1), (_) => _onAlertTick());
+  }
+
   void _onAlertTick() {
     if (!mounted || _alertAt == null) return;
     setState(() => _alertNow = ref.read(requestAlertClockProvider)());
@@ -965,13 +977,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final focused = r.id == _focusId;
     return Card(
       key: ValueKey('queue-${r.id}'),
+      clipBehavior: Clip.antiAlias,
       shape: focused
           ? RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
               side: BorderSide(color: t.colorScheme.primary, width: 2),
             )
           : null,
-      child: Padding(
+      // Tapped (anywhere but its buttons): the request sheet, to look it
+      // over on the map before answering.
+      child: InkWell(
+        key: ValueKey('queue-open-${r.id}'),
+        onTap: () => _openRequest(r),
+        child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
@@ -1051,6 +1069,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             ),
           ]),
         ]),
+      ),
       ),
     );
   }

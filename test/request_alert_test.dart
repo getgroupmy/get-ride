@@ -275,6 +275,32 @@ void main() {
       expect(find.text('Accept RM12.00'), findsOneWidget);
     });
 
+    testWidgets('a request on the list, tapped, comes up in the request sheet again', (tester) async {
+      await pump(tester);
+      open.add([_req('r1')]);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await wait(tester, const Duration(seconds: 36));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('request-alert')), findsNothing);
+
+      // Its card, away from its buttons (the title row).
+      await tester.tapAt(tester.getTopLeft(find.byKey(const ValueKey('queue-open-r1'))) + const Offset(24, 20));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('request-alert')), findsOneWidget);
+      expect(find.text('Accept for RM12.00'), findsOneWidget);
+      expect(countdown(tester), 1, reason: 'a fresh countdown');
+
+      // Skipped from there: off this driver's list.
+      await tester.tap(find.text('Skip'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('request-alert')), findsNothing);
+      expect(find.byKey(const ValueKey('queue-open-r1')), findsNothing);
+    });
+
     testWidgets('a request taken by someone else closes its alert', (tester) async {
       await pump(tester);
       open.add([_req('r1')]);
