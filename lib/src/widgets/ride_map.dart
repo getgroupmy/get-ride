@@ -137,6 +137,7 @@ class RideMap extends StatefulWidget {
     this.showPickup = true,
     this.dotPins = false,
     this.extraLayers = const [],
+    this.hideCredit = false,
   });
 
   final LatLng? pickup;
@@ -188,6 +189,10 @@ class RideMap extends StatefulWidget {
 
   /// Map layers drawn over the route and under the pins (a second line).
   final List<Widget> extraLayers;
+
+  /// Slides the OpenStreetMap credit down off the map and back, alongside a
+  /// sheet hidden while the map is dragged under the pickup pin.
+  final bool hideCredit;
 
   @override
   State<RideMap> createState() => _RideMapState();
@@ -358,11 +363,25 @@ class _RideMapState extends State<RideMap> {
             // Above any sheet floating over the map, so the credit stays reachable.
             MapBottomInset.listen(
               context,
-              (inset) => Padding(
-                padding: EdgeInsets.only(bottom: inset),
-                child: const RichAttributionWidget(
-                  alignment: AttributionAlignment.bottomLeft,
-                  attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
+              (inset) => TweenAnimationBuilder<double>(
+                tween: Tween(end: widget.hideCredit ? 1 : 0),
+                duration: MapSheetLayout.hideDuration,
+                curve: widget.hideCredit ? Curves.easeIn : Curves.easeOut,
+                builder: (_, t, child) => IgnorePointer(
+                  ignoring: widget.hideCredit,
+                  child: Opacity(
+                    opacity: 1 - t,
+                    // Down past the map's bottom edge, as the sheet goes.
+                    child: Transform.translate(offset: Offset(0, t * (inset + 56)), child: child),
+                  ),
+                ),
+                child: Padding(
+                  key: const ValueKey('map-credit'),
+                  padding: EdgeInsets.only(bottom: inset),
+                  child: const RichAttributionWidget(
+                    alignment: AttributionAlignment.bottomLeft,
+                    attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
+                  ),
                 ),
               ),
             ),

@@ -666,6 +666,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           me: _me,
           pickup: _pickup?.point,
           showPickup: !_pinMoving,
+          hideCredit: _pinMoving,
           dotPins: confirming,
           onGesture: confirming && !_routeMoved ? () => setState(() => _routeMoved = true) : null,
           autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
