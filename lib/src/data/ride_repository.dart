@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/book_for.dart';
 import '../core/commission.dart';
+import '../core/driver_eta.dart';
 import '../core/ride_request_metadata.dart';
 import '../core/ride_share.dart';
 import '../core/session_telemetry.dart';
@@ -496,6 +497,17 @@ class RideRepository {
     if (!isShareToken(token)) return null;
     final v = await _db.rpc('ride_share_view', params: {'p_token': token});
     return v is Map ? SharedRide(Map<String, dynamic>.from(v)) : null;
+  }
+
+  /// How far the nearest online driver is, per vehicle type, from [lat],
+  /// [lng] (0111). Empty when none is near, or the database predates it.
+  Future<Map<String, double>> nearbyDrivers(double lat, double lng) async {
+    try {
+      final rows = await _db.rpc('nearby_driver_etas', params: {'p_lat': lat, 'p_lng': lng});
+      return parseNearbyDrivers(rows);
+    } catch (_) {
+      return const {};
+    }
   }
 
   /// The driver cancels outright, with a reason. Only before the passenger

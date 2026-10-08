@@ -19,23 +19,18 @@ import 'home_parts.dart' show uriImage;
 /// payment icon and the auto-accept switch.
 const confirmAccent = Color(0xFF2DABE2);
 
-const _pickupGreen = Color(0xFF22C55E);
-const _dropRed = Color(0xFFEF4444);
 
-/// A ringed dot, as the address card marks pickup and drop-off.
-class _Dot extends StatelessWidget {
-  const _Dot(this.color);
-  final Color color;
+/// The address card's marks, as inDrive's: a hailing figure for the pickup
+/// and a flag for the drop-off, black on a light card and white on a dark.
+class _Mark extends StatelessWidget {
+  const _Mark(this.icon, this.id);
+  final IconData icon;
+  final String id;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: 18,
-    height: 18,
-    margin: const EdgeInsets.only(top: 1, right: 12),
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      border: Border.all(color: color, width: 4),
-    ),
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(right: 12),
+    child: Icon(icon, key: ValueKey('confirm-mark-$id'), size: 24, color: Theme.of(context).colorScheme.onSurface),
   );
 }
 
@@ -86,7 +81,7 @@ class ConfirmAddressCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _Dot(_pickupGreen),
+                const _Mark(Icons.emoji_people, 'pickup'),
                 Expanded(
                   child: InkWell(
                     key: const ValueKey('confirm-pickup'),
@@ -122,7 +117,7 @@ class ConfirmAddressCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _Dot(_dropRed),
+                const _Mark(Icons.flag, 'drop'),
                 Expanded(
                   child: InkWell(
                     key: const ValueKey('confirm-drop'),
@@ -433,10 +428,15 @@ class ConfirmServiceCard extends StatelessWidget {
     required this.onTap,
     this.fare,
     this.onEdit,
+    this.etaMinutes,
   });
 
   final RideService service;
   final String price;
+
+  /// Minutes for the nearest driver to reach the pickup ("4 • 4 min");
+  /// null when none is near.
+  final int? etaMinutes;
   final bool selected;
   final VoidCallback onTap;
 
@@ -490,9 +490,13 @@ class ConfirmServiceCard extends StatelessWidget {
               const SizedBox(height: 2),
               Row(
                 children: [
-                  Icon(Icons.person, size: 16, color: ink),
+                  Icon(Icons.person, size: 17, color: ink),
                   const SizedBox(width: 2),
-                  Text('${service.seats}', style: t.textTheme.bodyMedium?.copyWith(color: ink)),
+                  Text(
+                    etaMinutes == null ? '${service.seats}' : '${service.seats} • $etaMinutes min',
+                    key: ValueKey('service-eta-${service.name}'),
+                    style: t.textTheme.bodyMedium?.copyWith(color: ink, fontSize: 15),
+                  ),
                 ],
               ),
               if (service.description.isNotEmpty)
@@ -564,15 +568,15 @@ class ConfirmServiceCard extends StatelessWidget {
                           ? Padding(padding: const EdgeInsets.only(top: 4, right: 6), child: Text(price, style: priceStyle))
                           : Material(
                               color: c.chip,
-                              shape: const StadiumBorder(),
+                              shape: const CircleBorder(),
                               child: InkWell(
                                 key: const ValueKey('fare-edit'),
-                                customBorder: const StadiumBorder(),
+                                customBorder: const CircleBorder(),
                                 onTap: onEdit,
                                 child: Tooltip(
                                   message: 'Edit fare',
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  child: SizedBox.square(
+                                    dimension: 34,
                                     child: Icon(Icons.edit, size: 16, color: t.colorScheme.onSurface),
                                   ),
                                 ),
@@ -887,24 +891,23 @@ class ConfirmFooter extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Switch(
+                    ConfirmSwitch(
                       key: const ValueKey('use-coins-switch'),
                       value: useCoins,
-                      activeThumbColor: const Color(0xFFEAB308),
-                      activeTrackColor: const Color(0xFFFDE68A),
                       onChanged: onUseCoins,
                     ),
                   ],
                 ),
               Row(
                 children: [
-                  const Icon(Icons.send, size: 18, color: confirmAccent),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(autoAcceptLabel, style: t.textTheme.bodyMedium)),
-                  Switch(
+                  const AutoAcceptIcon(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(autoAcceptLabel, style: t.textTheme.bodyLarge?.copyWith(fontSize: 16)),
+                  ),
+                  ConfirmSwitch(
                     key: const ValueKey('auto-accept'),
                     value: autoAccept,
-                    activeThumbColor: confirmAccent,
                     onChanged: onAutoAccept,
                   ),
                 ],
@@ -1296,3 +1299,71 @@ class _PromoSheetState extends State<_PromoSheet> {
 
 /// "Earn 12 GC on this booking", or null for none.
 String? coinEarnLabel(double coins) => coins > 0 ? 'Earn ${formatCoins(coins)} on this booking' : null;
+
+/// inDrive's auto-accept mark: a paper plane taking off, with speed lines
+/// behind it, black on light and white on dark.
+class AutoAcceptIcon extends StatelessWidget {
+  const AutoAcceptIcon({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = Theme.of(context).colorScheme.onSurface;
+    return SizedBox.square(
+      key: const ValueKey('auto-accept-icon'),
+      dimension: 30,
+      child: Stack(
+        children: [
+          Positioned(
+            right: 0,
+            top: 0,
+            child: Transform.rotate(angle: -0.6, child: Icon(Icons.send, size: 22, color: ink)),
+          ),
+          Positioned(left: 0, bottom: 2, child: CustomPaint(size: const Size(14, 14), painter: _SpeedLines(ink))),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpeedLines extends CustomPainter {
+  _SpeedLines(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    // Three short dashes trailing down and left from the plane's tail.
+    canvas.drawLine(Offset(size.width * 0.55, size.height * 0.2), Offset(size.width * 0.25, size.height * 0.5), p);
+    canvas.drawLine(Offset(size.width * 0.8, size.height * 0.45), Offset(size.width * 0.4, size.height * 0.85), p);
+    canvas.drawLine(Offset(size.width * 0.3, size.height * 0.65), Offset(size.width * 0.05, size.height * 0.9), p);
+  }
+
+  @override
+  bool shouldRepaint(_SpeedLines old) => old.color != color;
+}
+
+/// inDrive's switch: a pill track with no outline, light grey (or charcoal
+/// on dark) when off with a white knob, the brand blue when on.
+class ConfirmSwitch extends StatelessWidget {
+  const ConfirmSwitch({super.key, required this.value, required this.onChanged});
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Switch(
+      value: value,
+      onChanged: onChanged,
+      activeThumbColor: Colors.white,
+      activeTrackColor: confirmAccent,
+      inactiveThumbColor: dark ? const Color(0xFF1E1E1E) : Colors.white,
+      inactiveTrackColor: dark ? const Color(0xFF5A5A5A) : const Color(0xFFE6E5E2),
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+      thumbIcon: const WidgetStatePropertyAll(null),
+    );
+  }
+}

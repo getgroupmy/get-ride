@@ -12,6 +12,7 @@ import '../../config.dart';
 import '../../core/app_display.dart';
 import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
+import '../../core/driver_eta.dart';
 import '../../core/fare.dart';
 import '../../core/fare_tariff.dart';
 import '../../core/fare_coins.dart';
@@ -54,6 +55,19 @@ import '../../admin/screens/commerce/get_coin.dart' show rideRewardCoins;
 enum _PinTarget { none, pickup, drop }
 
 /// Rider home: pick pickup + destination, choose a service, book.
+/// The nearest online drivers to a pickup, per vehicle type (0111); empty
+/// when none is near or it can't be read.
+final nearbyDriversProvider = FutureProvider.autoDispose.family<Map<String, double>, (double, double)>((ref, at) async {
+  try {
+    return await ref.watch(rideRepositoryProvider).nearbyDrivers(at.$1, at.$2);
+  } catch (_) {
+    return const {};
+  }
+});
+
+/// A pickup to about 100 m, so a nudged pin doesn't ask again.
+(double, double) roundedPoint(LatLng p) => ((p.latitude * 1000).round() / 1000, (p.longitude * 1000).round() / 1000);
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -904,7 +918,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onUseCoins: (v) => setState(() => _useCoins = v),
           )
         : null;
+    // The nearest drivers to the pickup, on the confirm step: real ones from
+    // the server, else the demo cars on the map.
+    final at = confirming ? _pickup?.point : null;
+    final nearby = at == null
+        ? const <String, double>{}
+        : ref.watch(nearbyDriversProvider(roundedPoint(at))).value ?? const <String, double>{};
+    int? etaFor(RideService s) {
+      final km = nearestDriverKm(s, nearby) ??
+          (at == null || _cars.isEmpty
+              ? null
+              : _cars.map((c) => const Distance().as(LengthUnit.Meter, at, LatLng(c.lat, c.lng)) / 1000).reduce(math.min));
+      return km == null ? null : driverEtaMinutes(km);
+    }
+
     final panel = _BookingPanel(
+      etaFor: etaFor,
       currency: _currency,
       ongoing: _ongoing,
       forOthers: _forOthers,
@@ -1021,7 +1050,12 @@ class _BookingPanel extends StatelessWidget {
     this.onOpenRide,
     this.whoRiding,
     this.currency = AppConfig.currency,
+    this.etaFor,
   });
+
+  /// Minutes for the nearest driver to reach the pickup, per vehicle; null
+  /// when none is near.
+  final int? Function(RideService)? etaFor;
 
   /// Rides on the go booked for other people, and how to open one.
   final List<RideRequest> forOthers;
@@ -1130,6 +1164,7 @@ class _BookingPanel extends StatelessWidget {
                 service: s,
                 price: formatMoney(fareFor(s), currency),
                 selected: s.name == service.name,
+                etaMinutes: etaFor?.call(s),
                 onTap: () => onService(s),
                 fare: s.name == service.name ? fare : null,
                 onEdit: s.name == service.name ? onEditFare : null,
