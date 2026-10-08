@@ -12,6 +12,7 @@ import '../../data/models.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/map_sheet_layout.dart';
+import '../../widgets/radar_pulse.dart';
 import '../../widgets/ride_map.dart';
 import '../../widgets/road_info_layers.dart';
 
@@ -45,6 +46,10 @@ class LiveRideMap extends ConsumerStatefulWidget {
 
 /// Street zoom the camera follows the car at.
 const followZoom = 16.5;
+
+/// Street level the map sits at on the pickup while a driver is being
+/// found (inDrive's).
+const searchingZoom = 17.0;
 
 /// How long a hand on the map holds the camera still: the next position
 /// that arrives after this recentres on the car again by itself.
@@ -95,6 +100,28 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
       _camTo = null;
     }
     if (_driver != null) WidgetsBinding.instance.addPostFrameCallback((_) => _followCar());
+    // Moved to a new pickup while searching: back onto it.
+    if (_searching && (_pickup != _ll(old.ride.pickupLat, old.ride.pickupLng) || old.ride.status != widget.ride.status)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _focusPickup());
+    }
+  }
+
+  /// Still finding a driver: the map stays on the pickup, pulsing.
+  bool get _searching => widget.ride.status == RideStatus.open && _driver == null && _pickup != null;
+
+  LatLng? get _pickup => _ll(widget.ride.pickupLat, widget.ride.pickupLng);
+
+  /// The pickup at street level, in the middle of the map between the top
+  /// of the screen and the sheet (inDrive's search screen).
+  void _focusPickup() {
+    final at = _pickup;
+    if (!mounted || !_mapReady || at == null || !_searching) return;
+    try {
+      _map.rotate(0);
+      _map.move(at, searchingZoom, offset: Offset(0, -MapBottomInset.of(context) / 2));
+    } catch (_) {
+      // Not drawn yet.
+    }
   }
 
   /// The driver's own map turns to the way the car is going.
@@ -149,6 +176,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
 
   void _recenter() {
     final r = widget.ride;
+    if (_searching) return _focusPickup();
     if (_driver == null) {
       recenterMap(_map, _ll(r.pickupLat, r.pickupLng));
       return;
@@ -230,13 +258,17 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
           driverHeading: widget.driverAt != null ? widget.driverHeading : r.partnerLiveHeading,
           route: ahead?.points ?? route?.points ?? const [],
           satellite: ref.watch(mapSatelliteProvider),
-          // With a car on the map the camera follows it instead.
-          autoFit: driver == null,
+          // With a car on the map the camera follows it instead; while a
+          // driver is being found it sits on the pickup.
+          autoFit: driver == null && !_searching,
           onGesture: _onGesture,
           onReady: () {
             _mapReady = true;
             _followCar();
+            _focusPickup();
           },
+          // inDrive's search: white rings pulse out of the pickup.
+          extraLayers: [if (_searching) radarPulseLayer(_pickup!)],
         ),
         MapBottomInset.listen(
           context,
