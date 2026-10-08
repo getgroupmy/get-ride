@@ -773,13 +773,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const MapTypeButton(),
               if (display?.recenterButton ?? true) ...[
                 const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  key: const ValueKey('map-recenter'),
-                  heroTag: 'locate',
-                  tooltip: 'My location',
-                  onPressed: _recenter,
-                  child: const Icon(Icons.my_location),
-                ),
+                RecenterButton(onPressed: _recenter),
               ],
             ],
           ),
