@@ -610,7 +610,12 @@ class ConfirmFareSection extends StatelessWidget {
     this.tollBooths = 0,
     this.onTollBooths,
     this.tollCharges,
+    this.onEdit,
   });
+
+  /// A tap on the amount: the full "Offer your fare" page where there is
+  /// one, else the typing sheet.
+  final VoidCallback? onEdit;
 
   final double recommended;
   final double adjust;
@@ -727,14 +732,16 @@ class ConfirmFareSection extends StatelessWidget {
           Expanded(
             child: bidding
                 ? InkWell(
+                    key: const ValueKey('confirm-fare-edit'),
                     borderRadius: BorderRadius.circular(12),
-                    onTap: () => editFareOffer(
-                      context,
-                      recommended: recommended,
-                      adjust: adjust,
-                      money: money,
-                      onAdjust: onAdjust,
-                    ),
+                    onTap: onEdit ??
+                        () => editFareOffer(
+                              context,
+                              recommended: recommended,
+                              adjust: adjust,
+                              money: money,
+                              onAdjust: onAdjust,
+                            ),
                     child: center,
                   )
                 : center,
@@ -789,23 +796,59 @@ const confirmPayments = <(String, String, IconData)>[
 /// Expo's payment sheet, opened from the card icon beside "Find a driver".
 Future<String?> showPaymentSheet(BuildContext context, String current) => showModalBottomSheet<String>(
   context: context,
-  builder: (c) => SafeArea(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ListTile(title: Text('Payment method', style: Theme.of(c).textTheme.titleMedium)),
-        for (final (value, label, icon) in confirmPayments)
-          ListTile(
-            key: ValueKey('payment-$value'),
-            leading: Icon(icon, color: confirmAccent),
-            title: Text(label),
-            trailing: value == current ? const Icon(Icons.check, color: confirmAccent) : null,
-            onTap: () => Navigator.pop(c, value),
+  builder: (c) {
+    final t = Theme.of(c);
+    final dark = t.brightness == Brightness.dark;
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // "Payment method", bold and centred, with a round close (inDrive's).
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Row(
+              children: [
+                const SizedBox(width: 40),
+                Expanded(
+                  child: Text(
+                    'Payment method',
+                    textAlign: TextAlign.center,
+                    style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Material(
+                  color: t.colorScheme.surfaceContainerHighest,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    key: const ValueKey('payment-close'),
+                    customBorder: const CircleBorder(),
+                    onTap: () => Navigator.pop(c),
+                    child: const SizedBox.square(dimension: 40, child: Icon(Icons.close, size: 22)),
+                  ),
+                ),
+              ],
+            ),
           ),
-        const SizedBox(height: 8),
-      ],
-    ),
-  ),
+          for (final (value, label, icon) in confirmPayments)
+            Material(
+              // The chosen one on a pale blue band with a tick.
+              color: value == current
+                  ? (dark ? const Color(0xFF16384A) : const Color(0xFFD3EEFB))
+                  : Colors.transparent,
+              child: ListTile(
+                key: ValueKey('payment-$value'),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                leading: Icon(icon, color: value == 'Cash' ? const Color(0xFF6BBF2A) : confirmAccent),
+                title: Text(label, style: t.textTheme.bodyLarge?.copyWith(fontSize: 17)),
+                trailing: value == current ? const Icon(Icons.check, color: Color(0xFF3B6CF6)) : null,
+                onTap: () => Navigator.pop(c, value),
+              ),
+            ),
+          const SizedBox(height: 12),
+        ],
+      ),
+    );
+  },
 );
 
 /// Expo's fixed bottom: the GET.coin switch, "Auto-accept offer of RM x",

@@ -45,7 +45,7 @@ import '../../widgets/ride_map.dart';
 import 'auto_accept.dart';
 import 'book_for_sheet.dart';
 import 'confirm_parts.dart';
-import 'fare_offer_controls.dart';
+import 'offer_fare_screen.dart';
 import 'home_parts.dart';
 import 'place_search.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
@@ -408,6 +408,52 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final recommended = _recommendedFor(s);
     if (s.name != _service.name) return recommended;
     return offeredFare(recommended: recommended, adjust: _adjust, biddingOn: biddingOn ?? _biddingOn);
+  }
+
+  /// "Offer your fare" (inDrive's page): the fare typed in, with the
+  /// payment, auto-accept and entrance alongside; "Find a driver" there
+  /// books straight away.
+  Future<void> _openOfferFare() async {
+    final recommended = _recommendedFor(_service);
+    final style = currencyStyles[_currency.trim().toUpperCase()];
+    final r = await Navigator.of(context).push<OfferFareResult>(
+      MaterialPageRoute(
+        builder: (_) => OfferFareScreen(
+          recommended: recommended,
+          current: recommended + _adjust,
+          currencyLabel: (style?.symbol ?? _currency).trim(),
+          money: (v) => formatMoney(v, _currency),
+          payment: _payment,
+          autoAccept: _autoAccept,
+          entrance: _entrance,
+          pickupName: _pickup?.name ?? 'Pickup',
+          routeLabel: _stops.isEmpty ? (_drop?.name ?? 'Destination') : '${_stops.length + 1} route stops',
+          onRoute: _drop == null
+              ? null
+              : () => showRouteStopsSheet(context, destinations: [..._stops, _drop!], onChanged: _setDestinations),
+          onAddStop: _stops.length < maxRideStops ? _addStop : null,
+          optionsOn: _options.any,
+          onOptions: (c) => showRideOptionsSheet(
+            c,
+            options: _options,
+            onChanged: (o) => setState(() => _options = o),
+            note: _note,
+          ),
+        ),
+      ),
+    );
+    if (r == null || !mounted) return;
+    setState(() {
+      if (r.fare != null) _adjust = r.fare! - recommended;
+      _payment = r.payment;
+      _autoAccept = r.autoAccept;
+      _entrance = r.entrance;
+    });
+    final canFind = !_booking &&
+        !_routing &&
+        _basis != null &&
+        !(_forOther && bookedFor(_otherName.text, _otherPhone.text) == null);
+    if (r.find && canFind) await _find();
   }
 
   Future<void> _book() async {
@@ -977,6 +1023,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               money: (v) => formatMoney(v, _currency),
               bidding: _biddingOn,
               onAdjust: (v) => setState(() => _adjust = v),
+              onEdit: _openOfferFare,
               earn: coinEarnLabel(rideRewardCoins(_fareFor(_service), earnRate)),
               tollBooths: display?.showAiTollBooths ?? true ? tollBoothCount(ai) : 0,
               onTollBooths: ai == null ? null : () => showTollBooths(context, ai),
@@ -985,15 +1032,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   : null,
             )
           : null,
-      onEditFare: _biddingOn && _basis != null && !_routing
-          ? () => editFareOffer(
-                context,
-                recommended: _recommendedFor(_service),
-                adjust: _adjust,
-                money: (v) => formatMoney(v, _currency),
-                onAdjust: (v) => setState(() => _adjust = v),
-              )
-          : null,
+      onEditFare: _biddingOn && _basis != null && !_routing ? _openOfferFare : null,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
       idle: _drop == null ? _homeParts(sections, blob, display) : null,
       footer: wide ? footer : null,

@@ -336,4 +336,30 @@ void main() {
     expect(tester.widget<Text>(find.byKey(const ValueKey('confirm-fare'))).data, isNot(before));
     expect(find.textContaining('Recommended fare: '), findsOneWidget);
   });
+
+  testWidgets('the pencil opens Offer your fare; a typed fare and the payment come back to the sheet', (tester) async {
+    await _pump(tester, _Rides(bidding: true));
+    await tester.tap(find.byKey(const ValueKey('fare-edit')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('offer-fare-screen')), findsOneWidget);
+    expect(find.text('You can change the recommended fare'), findsOneWidget);
+    final recommended = tester.widget<Text>(find.byKey(const ValueKey('offer-fare-note'))).data!;
+    expect(recommended, startsWith('Recommended fare: '));
+
+    // A fare far below the range is named, and Find a driver waits for a good one.
+    await tester.enterText(find.byKey(const ValueKey('offer-fare-field')), '1');
+    await tester.pump();
+    expect(tester.widget<Text>(find.byKey(const ValueKey('offer-fare-note'))).data, startsWith('Minimum fare is'));
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('offer-fare-find'))).onPressed, isNull);
+
+    final field = tester.widget<TextField>(find.byKey(const ValueKey('offer-fare-field')));
+    final typed = (double.parse(recommended.replaceAll(RegExp(r'[^0-9.]'), '')) + 2).round();
+    await tester.enterText(find.byKey(const ValueKey('offer-fare-field')), '$typed');
+    await tester.pump();
+    expect(field.controller!.text, '$typed');
+    await tester.tap(find.byKey(const ValueKey('offer-fare-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('offer-fare-screen')), findsNothing);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('confirm-fare'))).data, contains('$typed'));
+  });
 }
