@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../data/geo_service.dart';
 import 'map_sheet_layout.dart';
 import 'map_tiles.dart';
+import 'road_info_layers.dart';
 
 /// Where a map of [points] (and [route]) opens, laid out at [size]: framing
 /// them all when there are two or more, else on the one point (or
@@ -62,36 +63,43 @@ class PickupPin extends StatelessWidget {
   final double elevation;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: pickupPinHead,
-    height: pickupPinHeight,
-    child: Column(
-      children: [
-        Container(
-          key: const ValueKey('pickup-pin'),
-          width: pickupPinHead,
-          height: pickupPinHead,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(color: Colors.black, width: 2),
-            boxShadow: [
-              BoxShadow(blurRadius: 4 + 6 * elevation, offset: Offset(0, 2 + 4 * elevation), color: Colors.black38),
-            ],
+  Widget build(BuildContext context) {
+    // Light maps get a black head with a white figure; dark maps the reverse.
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final fill = dark ? Colors.white : Colors.black;
+    final ink = dark ? Colors.black : Colors.white;
+    return SizedBox(
+      width: pickupPinHead,
+      height: pickupPinHeight,
+      child: Column(
+        children: [
+          Container(
+            key: const ValueKey('pickup-pin'),
+            width: pickupPinHead,
+            height: pickupPinHead,
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: ink, width: 2),
+              boxShadow: [
+                BoxShadow(blurRadius: 4 + 6 * elevation, offset: Offset(0, 2 + 4 * elevation), color: Colors.black38),
+              ],
+            ),
+            child: Icon(Icons.emoji_people, size: 26, color: ink),
           ),
-          child: const Icon(Icons.emoji_people, size: 26, color: Colors.black),
-        ),
-        Container(
-          width: 2,
-          height: pickupPinStem,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            boxShadow: [BoxShadow(blurRadius: 2, color: Colors.black38)],
+          Container(
+            key: const ValueKey('pickup-pin-stem'),
+            width: 2,
+            height: pickupPinStem,
+            decoration: BoxDecoration(
+              color: fill,
+              boxShadow: const [BoxShadow(blurRadius: 2, color: Colors.black38)],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 /// A label drawn [gap] px above the pickup pin at [point], moving with the
@@ -138,6 +146,7 @@ class RideMap extends StatefulWidget {
     this.dotPins = false,
     this.extraLayers = const [],
     this.hideCredit = false,
+    this.trafficSignals = true,
   });
 
   final LatLng? pickup;
@@ -193,6 +202,8 @@ class RideMap extends StatefulWidget {
   /// Slides the OpenStreetMap credit down off the map and back, alongside a
   /// sheet hidden while the map is dragged under the pickup pin.
   final bool hideCredit;
+  /// OSM traffic signals drawn once zoomed in ([TrafficSignalsLayer]).
+  final bool trafficSignals;
 
   @override
   State<RideMap> createState() => _RideMapState();
@@ -291,6 +302,7 @@ class _RideMapState extends State<RideMap> {
                       : Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
                 ],
               ),
+            if (widget.trafficSignals) const TrafficSignalsLayer(),
             ...widget.extraLayers,
             if (widget.extraMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: widget.extraMarkers),
             MarkerLayer(

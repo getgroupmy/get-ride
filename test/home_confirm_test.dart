@@ -63,7 +63,7 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides) async {
+Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = true}) async {
   SharedPreferences.setMockInitialValues({});
   tester.view.physicalSize = const Size(400, 860);
   tester.view.devicePixelRatio = 1;
@@ -107,6 +107,7 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides) async {
   for (var i = 0; i < 5; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+  if (!book) return container;
   // Pickup by dragging the map under the pin, destination from the recent
   // list.
   final g = await tester.startGesture(const Offset(200, 150));
@@ -118,6 +119,11 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides) async {
   for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+  // The sheet starts fully down: drag it up to reach the recent places.
+  await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -300));
+  for (var i = 0; i < 5; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
   await tester.tap(find.text('KLCC').first);
   for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 100));
@@ -126,6 +132,12 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides) async {
 }
 
 void main() {
+  testWidgets('the main screen opens with its sheet fully down', (tester) async {
+    await _pump(tester, _Rides(), book: false);
+    final top = tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
+    expect(top, greaterThan(860 * (1 - 0.22) - 24), reason: 'at its lowest (22%), not half way up');
+  });
+
   testWidgets('the confirm step is laid out as Expo ride-confirm', (tester) async {
     await _pump(tester, _Rides());
 

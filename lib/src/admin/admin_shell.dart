@@ -65,7 +65,7 @@ class AdminShell extends ConsumerWidget {
             drawer: Drawer(
               key: const ValueKey('admin-side-menu'),
               width: SideMenuStyle.widthFor(width),
-              backgroundColor: SideMenuStyle.background,
+              backgroundColor: SideMenuColors.of(context).background,
               shape: const RoundedRectangleBorder(),
               child: Builder(
                 builder: (drawer) {
@@ -74,7 +74,10 @@ class AdminShell extends ConsumerWidget {
                     header: SideMenuHeader(
                       name: profile?.name ?? 'Admin',
                       avatarUrl: profile?.avatarUrl,
-                      subtitle: const Text('Admin panel', style: TextStyle(fontSize: 14, color: SideMenuStyle.muted)),
+                      subtitle: Text(
+                        'Admin panel',
+                        style: TextStyle(fontSize: 14, color: SideMenuColors.of(drawer).muted),
+                      ),
                     ),
                     rows: [
                       for (final (i, n) in items.indexed)
