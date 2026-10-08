@@ -15,6 +15,7 @@ import '../../core/format.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_cancel.dart';
 import '../../core/ride_confirm.dart';
+import '../../core/request_viewers.dart';
 import '../../core/search_stage.dart';
 import '../../core/search_timer.dart';
 import '../../config.dart';
@@ -141,6 +142,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   /// Admin → Demo → mock driver offers, while the request is open.
   DemoOfferTimeline? _demo;
 
+  /// Drivers who have looked at the request (the bar over the sheet), and
+  /// when they were last asked about.
+  RequestViewers _viewers = RequestViewers.none;
+  DateTime? _viewersAt;
+  bool _viewersBusy = false;
+
   @override
   void initState() {
     super.initState();
@@ -150,7 +157,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _maybeClaimReward();
     _syncLocationShare();
     _syncSearch();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _askAboutCancel();
+      unawaited(_pollViewers());
+    });
   }
 
   final _cancelPrompt = CancelRequestPrompt();
@@ -242,11 +252,30 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     return offerLapsed(_now.difference(seen), counterOfferWindow) ? null : offer;
   }
 
+  /// Asks who has looked at the request, every [requestViewersPoll].
+  Future<void> _pollViewers() async {
+    final r = widget.ride;
+    if (_viewersBusy || r.status != RideStatus.open || r.id.startsWith('demo')) return;
+    final at = _viewersAt;
+    if (at != null && _now.difference(at) < requestViewersPoll) return;
+    _viewersBusy = true;
+    _viewersAt = _now;
+    try {
+      final v = await ref.read(rideRepositoryProvider).viewers(r.id);
+      if (mounted && v != _viewers) setState(() => _viewers = v);
+    } catch (_) {
+      // An older database, or a test double without it: no bar.
+    } finally {
+      _viewersBusy = false;
+    }
+  }
+
   void _onTick() {
     if (!mounted) return;
     setState(() => _now = ref.read(searchClockProvider)());
     final r = widget.ride;
     if (r.status != RideStatus.open) return;
+    unawaited(_pollViewers());
     final elapsed = searchElapsed(r.createdAt, _now);
     if (!_expiryShown && elapsed >= AppConfig.requestExpiry) {
       _expiryShown = true;
@@ -569,25 +598,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     String money(double v) => formatMoney(v, r.currency);
     final limit = ref.watch(autoAcceptProvider)[r.id];
     return [
-      if (_demo?.viewers ?? false)
-        Container(
+      if (_viewers.any)
+        DriversViewingBar(viewers: _viewers)
+      else if (_demo?.viewers ?? false)
+        DriversViewingBar(
           key: const ValueKey('demo-viewers'),
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(children: [
-            const Expanded(child: Text('2 drivers are viewing your request')),
-            for (final n in demoViewerNames.take(2))
-              Padding(
-                padding: const EdgeInsets.only(left: 2),
-                child: CircleAvatar(radius: 13, child: Text(n[0], style: const TextStyle(fontSize: 11))),
-              ),
-            const SizedBox(width: 6),
-            const DemoChip(),
-          ]),
+          viewers: const RequestViewers(viewed: 2, viewing: 2),
+          demo: true,
+          demoNames: demoViewerNames,
         ),
       SearchHeader(
         elapsed: elapsed,
