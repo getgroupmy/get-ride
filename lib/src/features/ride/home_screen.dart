@@ -68,6 +68,10 @@ final nearbyDriversProvider = FutureProvider.autoDispose.family<Map<String, doub
 /// A pickup to about 100 m, so a nudged pin doesn't ask again.
 (double, double) roundedPoint(LatLng p) => ((p.latitude * 1000).round() / 1000, (p.longitude * 1000).round() / 1000);
 
+/// Street level (inDrive's home map): what the home map opens and recentres
+/// at, with the pickup in the middle and the nearby streets around it.
+const homeStreetZoom = 17.0;
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -226,7 +230,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// On the home map it also puts the pickup there: the pin floats up and
   /// drops on the fix, as if the map had been dragged under it.
   void _recenter() {
-    if (recenterMap(_map, _me, offset: _focusOffset)) _pinOnto(_me!);
+    if (recenterMap(_map, _me, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(_me!);
     unawaited(_locate(recenter: true));
   }
 
@@ -251,7 +255,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final p = await currentPosition();
     if (p == null || !mounted) return;
     setState(() => _me = p);
-    if (recenter && recenterMap(_map, p, offset: _focusOffset)) _pinOnto(p);
+    if (recenter && recenterMap(_map, p, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(p);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
     setState(() {
@@ -736,6 +740,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           hideCredit: _pinMoving,
           dotPins: confirming,
           focusPickup: !wide,
+          pointZoom: homeStreetZoom,
           onGesture: confirming && !_routeMoved ? () => setState(() => _routeMoved = true) : null,
           autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
           drop: _drop?.point,

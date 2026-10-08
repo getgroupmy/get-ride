@@ -301,6 +301,9 @@ class _RideMapState extends State<RideMap> {
           options: MapOptions(
             initialCenter: start.center,
             initialZoom: start.zoom,
+            // North stays up: two fingers pinch and pan but never turn the
+            // map (a trip map that follows the car still turns it itself).
+            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
             onTap: widget.onTap == null ? null : (_, p) => widget.onTap!(p),
             onPositionChanged: widget.onGesture == null
                 ? null

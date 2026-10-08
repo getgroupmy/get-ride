@@ -2,6 +2,7 @@
 // left showing above the sheet when it is all the way down (inDrive's),
 // rather than in the middle of the whole map behind the sheet.
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -30,6 +31,33 @@ void main() {
     // The pin's foot (its point) halfway down the 600 px above the sheet.
     final foot = tester.getBottomLeft(find.byKey(const ValueKey('pickup-pin-stem'))).dy;
     expect(foot, closeTo((800 - 800 * 0.25) / 2, 1));
+  });
+
+  testWidgets('it opens at the zoom asked (street level on home), facing north, and never turns by hand', (
+    tester,
+  ) async {
+    final map = MapController();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: RideMap(
+            controller: map,
+            pickup: const LatLng(2.95, 101.80),
+            me: const LatLng(2.96, 101.81),
+            focusPickup: true,
+            pointZoom: 17,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(map.camera.zoom, 17);
+    expect(map.camera.rotation, 0);
+    final flags = tester.widget<FlutterMap>(find.byType(FlutterMap)).options.interactionOptions.flags;
+    expect(InteractiveFlag.hasRotate(flags), isFalse, reason: 'north stays up');
+    expect(InteractiveFlag.hasPinchZoom(flags), isTrue);
+    expect(InteractiveFlag.hasDrag(flags), isTrue);
   });
 
   testWidgets('focusOffset is up by half the lowest sheet, and nothing without one', (tester) async {
