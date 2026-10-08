@@ -367,7 +367,10 @@ class _RideMapState extends State<RideMap> {
               context,
               (inset) => Padding(
                 padding: EdgeInsets.only(bottom: inset),
-                child: const RichAttributionWidget(attributions: [TextSourceAttribution('© OpenStreetMap contributors')]),
+                child: const RichAttributionWidget(
+                  alignment: AttributionAlignment.bottomLeft,
+                  attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
+                ),
               ),
             ),
           ],
