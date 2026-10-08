@@ -205,16 +205,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// a fresh one. The map only follows the first fix by itself, so without
   /// the move the button refreshed the location and left the map where the
   /// rider had scrolled it.
+  ///
+  /// On the home map it also puts the pickup there: the pin floats up and
+  /// drops on the fix, as if the map had been dragged under it.
   void _recenter() {
-    recenterMap(_map, _me);
+    if (recenterMap(_map, _me)) _pinOnto(_me!);
     unawaited(_locate(recenter: true));
+  }
+
+  final _pin = GlobalKey<MapDragPinState>();
+
+  /// The pickup pin dropped on [p], where the pin is draggable (no
+  /// destination yet) and the pickup is not already there.
+  void _pinOnto(LatLng p) {
+    if (_drop != null || _pinTarget != _PinTarget.none) return;
+    if (_pickup != null && const Distance()(_pickup!.point, p) < 5) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _pin.currentState?.dropAt(p));
   }
 
   Future<void> _locate({bool recenter = false}) async {
     final p = await currentPosition();
     if (p == null || !mounted) return;
     setState(() => _me = p);
-    if (recenter) recenterMap(_map, p);
+    if (recenter && recenterMap(_map, p)) _pinOnto(p);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
     setState(() {
@@ -627,6 +640,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     final map = Stack(children: [
       MapDragPin(
+        key: _pin,
         controller: _map,
         pin: _pickup?.point,
         // Dragging the map sets the pickup until a destination is chosen.
