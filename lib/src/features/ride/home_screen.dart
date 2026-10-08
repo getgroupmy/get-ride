@@ -773,13 +773,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const MapTypeButton(),
               if (display?.recenterButton ?? true) ...[
                 const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  key: const ValueKey('map-recenter'),
-                  heroTag: 'locate',
-                  tooltip: 'My location',
-                  onPressed: _recenter,
-                  child: const Icon(Icons.my_location),
-                ),
+                RecenterButton(onPressed: _recenter),
               ],
             ],
           ),
@@ -990,7 +984,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           map: map,
           sheet: panel,
           min: confirming ? 0.5 : 0.22,
-          initial: confirming ? 0.55 : 0.45,
+          // The main screen's sheet starts fully down; the rider drags it up.
+          initial: confirming ? 0.55 : 0.22,
           hidden: _pinMoving,
           footer: footer,
           // Over the foot of the sheet, only while it is all the way up.

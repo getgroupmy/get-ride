@@ -9,6 +9,7 @@ import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
+import '../../widgets/road_info_layers.dart';
 
 /// The driver's home map (Expo `partner-ehailing`): where they are and,
 /// while online, where each open request is waiting, with its fare. Tapping
@@ -168,6 +169,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     return Stack(
       children: [
         map,
+        // The road the driver is on: its limit, or its class as an estimate.
+        // Below the page's menu button.
+        Positioned(left: 12, top: 84, child: SafeArea(child: SpeedLimitBadge(at: me))),
         // Bottom right, above the sheet, as on the trip maps.
         MapBottomInset.listen(
           context,
@@ -175,10 +179,11 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
             right: 12,
             bottom: mapAttributionClearance + inset,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Map view above recenter on every map.
+              const MapTypeButton(),
+              const SizedBox(height: 8),
               // Expo's driver map recenters on the driver.
               RecenterButton(onPressed: me == null ? null : _recenter),
-              const SizedBox(height: 8),
-              const MapTypeButton(),
             ]),
           ),
         ),

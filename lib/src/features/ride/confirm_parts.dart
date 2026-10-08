@@ -476,9 +476,49 @@ class _DestinationsSheetState extends State<_DestinationsSheet> {
   }
 }
 
-/// One vehicle on the confirm sheet (Expo's ride option): the car, its
-/// name, seats and description, and the price. The chosen one is a grey
-/// pill with a pencil in place of the price and the fare inside it.
+/// The chosen vehicle card's colours, as inDrive's: a warm grey tray with a
+/// white card raised in it and white round −/+ on a light sheet; charcoal
+/// shades of the same on a dark one.
+class ConfirmCardColors {
+  const ConfirmCardColors({
+    required this.tray,
+    required this.trayBorder,
+    required this.card,
+    required this.round,
+    required this.chip,
+  });
+
+  /// The tray the card and the fare sit in.
+  final Color tray, trayBorder;
+
+  /// The raised card with the vehicle, and the round −/+ buttons.
+  final Color card, round;
+
+  /// The pencil's pill.
+  final Color chip;
+
+  static const light = ConfirmCardColors(
+    tray: Color(0xFFF3F2EF),
+    trayBorder: Color(0xFFE4E2DD),
+    card: Colors.white,
+    round: Colors.white,
+    chip: Color(0xFFF0EFEC),
+  );
+  static const dark = ConfirmCardColors(
+    tray: Color(0xFF262626),
+    trayBorder: Color(0xFF3A3A3A),
+    card: Color(0xFF333333),
+    round: Color(0xFF333333),
+    chip: Color(0xFF3D3D3D),
+  );
+
+  static ConfirmCardColors of(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? dark : light;
+}
+
+/// One vehicle on the confirm sheet (inDrive's): the car, its name, seats
+/// and description, and the price. The chosen one is a white card raised in
+/// a grey tray, with a pencil in place of the price and the fare below it.
 class ConfirmServiceCard extends StatelessWidget {
   const ConfirmServiceCard({
     super.key,
@@ -501,38 +541,59 @@ class ConfirmServiceCard extends StatelessWidget {
   /// The pencil: the rider's own fare (only where bidding is on).
   final VoidCallback? onEdit;
 
-  Widget _row(BuildContext context, {required Widget trailing}) {
+  Widget _row(BuildContext context, {required Widget trailing, bool info = false}) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
+    final ink = t.colorScheme.onSurface;
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 72,
-          height: 45,
-          child: uriImage(
-            service.image,
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: SizedBox(
             width: 72,
             height: 45,
-            fallback: Icon(service.name == 'Teksi' ? Icons.local_taxi : Icons.directions_car, size: 36, color: muted),
+            child: uriImage(
+              service.image,
+              width: 72,
+              height: 45,
+              fallback: Icon(service.name == 'Teksi' ? Icons.local_taxi : Icons.directions_car, size: 36, color: muted),
+            ),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(service.name, style: t.textTheme.titleMedium?.copyWith(fontSize: 16, fontWeight: FontWeight.w500)),
               Row(
                 children: [
-                  Icon(Icons.people_outline, size: 13, color: muted),
-                  const SizedBox(width: 3),
-                  Text('${service.seats}', style: t.textTheme.bodySmall?.copyWith(color: muted)),
+                  Flexible(
+                    child: Text(
+                      service.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500, color: ink),
+                    ),
+                  ),
+                  if (info) ...[
+                    const SizedBox(width: 6),
+                    Icon(Icons.info_outline, size: 16, color: muted),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  Icon(Icons.person, size: 16, color: ink),
+                  const SizedBox(width: 2),
+                  Text('${service.seats}', style: t.textTheme.bodyMedium?.copyWith(color: ink)),
                 ],
               ),
               if (service.description.isNotEmpty)
                 Text(
                   service.description,
-                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                  style: t.textTheme.bodyMedium?.copyWith(color: muted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -553,50 +614,73 @@ class ConfirmServiceCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: _row(
             context,
-            trailing: Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 16, fontWeight: FontWeight.w600)),
+            trailing: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600)),
+            ),
           ),
         ),
       );
     }
     // Shaken by the fare's −/+ when a step would leave the range, and kept
     // whole above the pinned footer, as Expo scrolls the chosen one.
+    final c = ConfirmCardColors.of(context);
+    final priceStyle = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600);
     return Shake(
       child: MapSheetReveal(
-      child: Container(
-        key: ValueKey('service-${service.name}'),
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(24)),
-        child: Column(
-          children: [
-            Material(
-              color: t.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(22),
-              child: InkWell(
+        child: Container(
+          key: ValueKey('service-${service.name}'),
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            color: c.tray,
+            borderRadius: BorderRadius.circular(26),
+            border: Border.all(color: c.trayBorder),
+          ),
+          child: Column(
+            children: [
+              Material(
+                key: const ValueKey('service-card-top'),
+                color: c.card,
+                elevation: 1.5,
+                shadowColor: Colors.black26,
                 borderRadius: BorderRadius.circular(22),
-                onTap: onEdit,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-                  child: _row(
-                    context,
-                    trailing: onEdit == null
-                        ? Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 16, fontWeight: FontWeight.w600))
-                        : IconButton(
-                            key: const ValueKey('fare-edit'),
-                            tooltip: 'Edit fare',
-                            icon: Icon(Icons.edit_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
-                            onPressed: onEdit,
-                          ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: onEdit,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 8, 14),
+                    child: _row(
+                      context,
+                      info: true,
+                      trailing: onEdit == null
+                          ? Padding(padding: const EdgeInsets.only(top: 4, right: 6), child: Text(price, style: priceStyle))
+                          : Material(
+                              color: c.chip,
+                              shape: const StadiumBorder(),
+                              child: InkWell(
+                                key: const ValueKey('fare-edit'),
+                                customBorder: const StadiumBorder(),
+                                onTap: onEdit,
+                                child: Tooltip(
+                                  message: 'Edit fare',
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    child: Icon(Icons.edit, size: 16, color: t.colorScheme.onSurface),
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
                   ),
                 ),
               ),
-            ),
-            ?fare,
-          ],
+              ?fare,
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -642,8 +726,10 @@ class ConfirmFareSection extends StatelessWidget {
   }) => Tooltip(
     message: tip,
     child: Material(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      color: ConfirmCardColors.of(context).round,
       shape: const CircleBorder(),
+      elevation: 1,
+      shadowColor: Colors.black26,
       child: InkWell(
         key: key,
         customBorder: const CircleBorder(),
@@ -672,11 +758,11 @@ class ConfirmFareSection extends StatelessWidget {
         Text(
           money(recommended + adjust),
           key: const ValueKey('confirm-fare'),
-          style: t.textTheme.headlineSmall?.copyWith(fontSize: 22, fontWeight: FontWeight.w600),
+          style: t.textTheme.headlineSmall?.copyWith(fontSize: 28, fontWeight: FontWeight.w600),
         ),
         Text(
           adjust == 0 ? 'Recommended fare' : 'Recommended fare: ${money(recommended)}',
-          style: t.textTheme.bodySmall?.copyWith(color: muted),
+          style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
         ),
         if (earn != null)
           Container(
@@ -718,7 +804,7 @@ class ConfirmFareSection extends StatelessWidget {
     );
     return Padding(
       key: const ValueKey('fare-offer'),
-      padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
+      padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
       child: Row(
         children: [
           if (bidding)
