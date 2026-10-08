@@ -229,19 +229,67 @@ void main() {
     expect(bottomOf(9), lessThanOrEqualTo(footerTop));
     expect(tester.getTopLeft(find.byKey(const ValueKey('item-9'))).dy, greaterThan(handle()));
 
-    // Dragged to a new height: still whole.
+    // Raised by hand: the ones pushed up come back, to be chosen again.
     await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -150));
     await tester.pumpAndSettle();
     expect(handle(), lessThan(400), reason: 'the sheet rose');
-    expect(bottomOf(9), lessThanOrEqualTo(footerTop));
-    expect(tester.getTopLeft(find.byKey(const ValueKey('item-9'))).dy, greaterThan(handle()));
+    expect(tester.getTopLeft(find.byKey(const ValueKey('item-0'))).dy, greaterThanOrEqualTo(handle()),
+        reason: 'the first item back in view');
 
-    // And back down, by the content: a drag still moves the sheet.
-    await tester.drag(find.byKey(const ValueKey('item-9')), const Offset(0, 150));
+    // And back down, by the content: a drag still moves the sheet, and all
+    // the way down the choice is whole again.
+    await tester.drag(find.byKey(const ValueKey('item-2')), const Offset(0, 150));
     await tester.pumpAndSettle();
     expect(handle(), greaterThan(405), reason: 'the sheet went down');
     expect(bottomOf(9), lessThanOrEqualTo(footerTop));
     expect(tester.getTopLeft(find.byKey(const ValueKey('item-9'))).dy, greaterThan(handle()));
+  });
+
+  testWidgets('after a choice, the vehicles pushed up can be reached and chosen again', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(400, 800);
+    addTearDown(tester.view.reset);
+    var chosen = 8;
+    late StateSetter set;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              set = setState;
+              return MapSheetLayout(
+                map: const SizedBox.expand(),
+                initial: 0.5,
+                min: 0.5,
+                footer: const SizedBox(height: 150, width: double.infinity),
+                sheet: Column(children: [
+                  for (var i = 0; i < 12; i++)
+                    i == chosen
+                        ? MapSheetReveal(child: SizedBox(key: ValueKey('item-$i'), height: 120))
+                        : GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => set(() => chosen = i),
+                            child: SizedBox(key: ValueKey('item-$i'), height: 60, width: double.infinity),
+                          ),
+                ]),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    double handle() => tester.getBottomLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
+    expect(tester.getRect(find.byKey(const ValueKey('item-1'))).bottom, lessThan(handle()), reason: 'pushed up');
+
+    // Raised: the ones pushed up come back down, to be chosen again.
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -250));
+    await tester.pumpAndSettle();
+    final first = tester.getRect(find.byKey(const ValueKey('item-1')));
+    expect(first.top, greaterThanOrEqualTo(handle()), reason: 'in view again');
+    await tester.tapAt(first.center);
+    await tester.pumpAndSettle();
+    expect(chosen, 1);
   });
 
   testWidgets('choosing anew brings a raised sheet down and shows the choice whole above the footer', (tester) async {
