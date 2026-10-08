@@ -48,15 +48,12 @@ class RecenterButton extends StatelessWidget {
           onTap: onPressed,
           child: SizedBox.square(
             dimension: size,
-            // An outline arrow pointing up and to the left, as the reference.
-            child: Transform.flip(
-              flipX: true,
-              child: Icon(
-                Icons.near_me_outlined,
-                key: const ValueKey('map-recenter-icon'),
-                size: 28,
-                color: onPressed == null ? ink.withValues(alpha: 0.38) : ink,
-              ),
+            // An outline arrow pointing up and to the right, as the reference.
+            child: Icon(
+              Icons.near_me_outlined,
+              key: const ValueKey('map-recenter-icon'),
+              size: 28,
+              color: onPressed == null ? ink.withValues(alpha: 0.38) : ink,
             ),
           ),
         ),
