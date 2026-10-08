@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/picked_contact.dart';
+import '../../platform/web_contacts.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
@@ -19,11 +20,20 @@ typedef PickedContact = ({String? name, String? phone});
 
 /// Opens the phone's own contact picker and returns the person chosen, or
 /// null when they backed out. The system picker hands back only that one
-/// contact, so no address-book permission is asked for. Null on the web and
-/// desktop, which have no picker (the button is not shown there); overridden
-/// in tests.
+/// contact, so no address-book permission is asked for. On the web it is the
+/// browser's Contact Picker where there is one (Chrome on Android); null on a
+/// browser without it (Safari on iPhone) and on desktop, where the button is
+/// not shown. Overridden in tests.
 final contactPickerProvider = Provider<Future<PickedContact?> Function()?>((ref) {
-  if (kIsWeb || !(defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
+  if (kIsWeb) {
+    if (!webContactsSupported()) return null;
+    return () async {
+      final c = await pickWebContact();
+      if (c == null) return null;
+      return pickedContact(fullName: c.name, numbers: c.numbers);
+    };
+  }
+  if (!(defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
     return null;
   }
   return () async {
