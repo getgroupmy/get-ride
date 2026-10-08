@@ -1,0 +1,81 @@
+/**
+ * What the fare AI is asked.
+ *
+ *     deno test supabase/functions/_shared/fare_ai_request_test.ts
+ */
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
+
+import {
+  buildPrompt,
+  DEFAULT_REQUEST,
+  formatClause,
+  resolveRequest,
+  retryPolicyMs,
+  templateProblem,
+} from "./fare_ai_request.ts";
+
+const a = { latitude: 3.158, longitude: 101.712 };
+const b = { latitude: 3.134, longitude: 101.686 };
+
+// The prompt ai-route-proxy sent before the request was editable, word for word.
+const LEGACY =
+  `You are a driving route estimator with access to real-time traffic and toll road data. ` +
+  `For the trip "3.158,101.712 to 3.134,101.686 realtime minute and distance with traffic", estimate the total driving distance, the ` +
+  `current driving time including live traffic, and the toll booths/plazas along the route ` +
+  `with their individual charges in local currency. ` +
+  `Respond with ONLY a compact JSON object, no markdown, no extra text, of the form: ` +
+  `{"distance_km": <number>, "duration_min": <number>, "summary": "<short text>", ` +
+  `"toll_count": <integer>, "toll_total": <number>, "tolls": [{"name": "<booth name>", "charge": <number>, "lat": <number>, "lng": <number>}]}. ` +
+  `distance_km is total kilometres (number). duration_min is total minutes with traffic (integer). ` +
+  `toll_count is the number of toll booths/plazas on the route (integer, 0 if none). ` +
+  `toll_total is the sum of all toll charges (number, 0 if none). ` +
+  `tolls is an array of each real toll booth/plaza that physically exists on this route, in travel order, ` +
+  `each with its name, charge, and exact geographic coordinates (lat and lng as decimal degrees) of the booth location. ` +
+  `Use real, known toll plaza coordinates; do not invent coordinates. Empty array if none.`;
+
+Deno.test("with nothing configured the prompt is the one sent before", () => {
+  assertEquals(buildPrompt(resolveRequest(undefined), a, b), LEGACY);
+  assertEquals(resolveRequest(null).systemInstruction, DEFAULT_REQUEST.systemInstruction);
+});
+
+Deno.test("placeholders fill in the trip", () => {
+  const req = resolveRequest({ promptTemplate: "From {origin_lat}/{origin_lng} to {dest_lat}/{dest_lng}." });
+  assertStringIncludes(buildPrompt(req, a, b), "From 3.158/101.712 to 3.134/101.686.");
+});
+
+Deno.test("a template that loses the trip is refused and the default used", () => {
+  assert(templateProblem("Estimate a drive.") !== null);
+  assert(templateProblem("From {origin} somewhere.") !== null);
+  assert(templateProblem("From {origin_lat} to {destination}.") !== null, "half a lat/lng pair is not enough");
+  assertEquals(templateProblem("{origin} → {destination}"), null);
+  assertEquals(resolveRequest({ promptTemplate: "Estimate a drive." }).promptTemplate, DEFAULT_REQUEST.promptTemplate);
+});
+
+Deno.test("switches shape the answer format, which always keeps distance and time", () => {
+  const bare = formatClause(resolveRequest({ includeSummary: false, includeTolls: false }));
+  assertStringIncludes(bare, '{"distance_km": <number>, "duration_min": <number>}');
+  assert(!bare.includes("toll"));
+  assert(!bare.includes("summary"));
+
+  const noCoords = formatClause(resolveRequest({ includeTollCoords: false }));
+  assertStringIncludes(noCoords, '"tolls": [{"name": "<booth name>", "charge": <number>}]');
+  assert(!noCoords.includes('"lat"'));
+
+  // No tolls means no toll coordinates either.
+  assertEquals(resolveRequest({ includeTolls: false, includeTollCoords: true }).includeTollCoords, false);
+});
+
+Deno.test("temperature and the token cap stay in range", () => {
+  assertEquals(resolveRequest({ temperature: 3, maxTokens: 10 }).temperature, 1);
+  assertEquals(resolveRequest({ temperature: 3, maxTokens: 10 }).maxTokens, 128);
+  assertEquals(resolveRequest({ temperature: "x", maxTokens: 99999 }).maxTokens, 4096);
+  assertEquals(resolveRequest({ temperature: "x" }).temperature, 0);
+});
+
+Deno.test("a failed key can rest for minutes", () => {
+  assertEquals(retryPolicyMs(15, "minute"), 15 * 60 * 1000);
+  assertEquals(retryPolicyMs(2, "hour"), 2 * 3600 * 1000);
+  assertEquals(retryPolicyMs(1, "day"), 24 * 3600 * 1000);
+  assertEquals(retryPolicyMs(1, "month"), 30 * 24 * 3600 * 1000);
+  assertEquals(retryPolicyMs(0, "minute"), 60 * 1000);
+});

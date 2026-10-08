@@ -24,11 +24,29 @@
 // cooldowns are updated via the `fare_ai_record_usage` RPC — identical to
 // what the client used to record.
 //
+// What the AI is asked comes from the config's `request` (Admin → Fare AI →
+// Request & format; see _shared/fare_ai_request.ts); with none saved it is
+// the original prompt, word for word.
+//
+// Test mode (admins only): { "test": true, origin, destination,
+// "request"?: <draft request> } runs the draft against the first usable key
+// and returns the prompt, the raw reply and the parsed estimate. Nothing is
+// logged and no key counter or cooldown is touched.
+//
 // Deploy:
 //   supabase functions deploy ai-route-proxy --no-verify-jwt
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+import {
+  buildPrompt,
+  type FareAIRequest,
+  type ResolvedRequest,
+  resolveRequest,
+  retryPolicyMs,
+  templateProblem,
+} from "../_shared/fare_ai_request.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -62,9 +80,10 @@ interface FareAIConfig {
   serviceEnabled?: boolean;
   provider?: Provider;
   retryAfterValue?: number;
-  retryAfterUnit?: "hour" | "day" | "month";
+  retryAfterUnit?: "minute" | "hour" | "day" | "month";
   models?: Partial<Record<Provider, string>>;
   keys?: Partial<Record<Provider, FareAIKey[]>>;
+  request?: FareAIRequest;
 }
 
 interface LatLng {
@@ -111,48 +130,11 @@ const DEFAULT_MODELS: Record<Provider, string> = {
   fireworks: "accounts/fireworks/models/llama-v3p3-70b-instruct",
 };
 
-const SYSTEM_INSTRUCTION =
-  "You return only valid JSON. Never wrap the JSON in markdown fences.";
-
 function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function buildPrompt(origin: LatLng, destination: LatLng): string {
-  const originStr = `${origin.latitude},${origin.longitude}`;
-  const destStr = `${destination.latitude},${destination.longitude}`;
-  const userQuery = `${originStr} to ${destStr} realtime minute and distance with traffic`;
-  return (
-    `You are a driving route estimator with access to real-time traffic and toll road data. ` +
-    `For the trip "${userQuery}", estimate the total driving distance, the ` +
-    `current driving time including live traffic, and the toll booths/plazas along the route ` +
-    `with their individual charges in local currency. ` +
-    `Respond with ONLY a compact JSON object, no markdown, no extra text, of the form: ` +
-    `{"distance_km": <number>, "duration_min": <number>, "summary": "<short text>", ` +
-    `"toll_count": <integer>, "toll_total": <number>, "tolls": [{"name": "<booth name>", "charge": <number>, "lat": <number>, "lng": <number>}]}. ` +
-    `distance_km is total kilometres (number). duration_min is total minutes with traffic (integer). ` +
-    `toll_count is the number of toll booths/plazas on the route (integer, 0 if none). ` +
-    `toll_total is the sum of all toll charges (number, 0 if none). ` +
-    `tolls is an array of each real toll booth/plaza that physically exists on this route, in travel order, ` +
-    `each with its name, charge, and exact geographic coordinates (lat and lng as decimal degrees) of the booth location. ` +
-    `Use real, known toll plaza coordinates; do not invent coordinates. Empty array if none.`
-  );
-}
-
-function retryPolicyMs(value: number, unit: string): number {
-  const v = Number.isFinite(value) && value > 0 ? value : 1;
-  const hour = 60 * 60 * 1000;
-  switch (unit) {
-    case "month":
-      return v * 30 * 24 * hour;
-    case "day":
-      return v * 24 * hour;
-    default:
-      return v * hour;
-  }
 }
 
 async function callOpenAICompatible(
@@ -161,6 +143,7 @@ async function callOpenAICompatible(
   model: string,
   prompt: string,
   label: string,
+  req: ResolvedRequest,
 ): Promise<CallResult> {
   const response = await fetch(endpoint, {
     method: "POST",
@@ -170,10 +153,10 @@ async function callOpenAICompatible(
     },
     body: JSON.stringify({
       model,
-      temperature: 0,
+      temperature: req.temperature,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: SYSTEM_INSTRUCTION },
+        { role: "system", content: req.systemInstruction },
         { role: "user", content: prompt },
       ],
     }),
@@ -195,16 +178,16 @@ async function callOpenAICompatible(
   };
 }
 
-async function callGemini(prompt: string, apiKey: string, model: string): Promise<CallResult> {
+async function callGemini(prompt: string, apiKey: string, model: string, req: ResolvedRequest): Promise<CallResult> {
   const endpoint =
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      systemInstruction: { parts: [{ text: req.systemInstruction }] },
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0, responseMimeType: "application/json" },
+      generationConfig: { temperature: req.temperature, responseMimeType: "application/json" },
     }),
   });
   if (!response.ok) {
@@ -224,7 +207,7 @@ async function callGemini(prompt: string, apiKey: string, model: string): Promis
   };
 }
 
-async function callAnthropic(prompt: string, apiKey: string, model: string): Promise<CallResult> {
+async function callAnthropic(prompt: string, apiKey: string, model: string, req: ResolvedRequest): Promise<CallResult> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -234,9 +217,10 @@ async function callAnthropic(prompt: string, apiKey: string, model: string): Pro
     },
     body: JSON.stringify({
       model,
-      max_tokens: 256,
-      temperature: 0,
-      system: SYSTEM_INSTRUCTION,
+      // Claude requires a cap; the others use their own limit.
+      max_tokens: req.maxTokens,
+      temperature: req.temperature,
+      system: req.systemInstruction,
       messages: [{ role: "user", content: prompt }],
     }),
   });
@@ -262,33 +246,34 @@ function callProvider(
   prompt: string,
   apiKey: string,
   model: string,
+  req: ResolvedRequest,
 ): Promise<CallResult> {
   switch (provider) {
     case "grok":
-      return callOpenAICompatible("https://api.x.ai/v1/chat/completions", apiKey, model, prompt, "Grok");
+      return callOpenAICompatible("https://api.x.ai/v1/chat/completions", apiKey, model, prompt, "Grok", req);
     case "chatgpt":
-      return callOpenAICompatible("https://api.openai.com/v1/chat/completions", apiKey, model, prompt, "ChatGPT");
+      return callOpenAICompatible("https://api.openai.com/v1/chat/completions", apiKey, model, prompt, "ChatGPT", req);
     case "groq":
-      return callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", apiKey, model, prompt, "Groq");
+      return callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", apiKey, model, prompt, "Groq", req);
     case "perplexity":
-      return callOpenAICompatible("https://api.perplexity.ai/chat/completions", apiKey, model, prompt, "Perplexity");
+      return callOpenAICompatible("https://api.perplexity.ai/chat/completions", apiKey, model, prompt, "Perplexity", req);
     case "mistral":
-      return callOpenAICompatible("https://api.mistral.ai/v1/chat/completions", apiKey, model, prompt, "Mistral");
+      return callOpenAICompatible("https://api.mistral.ai/v1/chat/completions", apiKey, model, prompt, "Mistral", req);
     case "deepseek":
-      return callOpenAICompatible("https://api.deepseek.com/chat/completions", apiKey, model, prompt, "DeepSeek");
+      return callOpenAICompatible("https://api.deepseek.com/chat/completions", apiKey, model, prompt, "DeepSeek", req);
     case "cohere":
-      return callOpenAICompatible("https://api.cohere.ai/compatibility/v1/chat/completions", apiKey, model, prompt, "Cohere");
+      return callOpenAICompatible("https://api.cohere.ai/compatibility/v1/chat/completions", apiKey, model, prompt, "Cohere", req);
     case "together":
-      return callOpenAICompatible("https://api.together.xyz/v1/chat/completions", apiKey, model, prompt, "Together AI");
+      return callOpenAICompatible("https://api.together.xyz/v1/chat/completions", apiKey, model, prompt, "Together AI", req);
     case "openrouter":
-      return callOpenAICompatible("https://openrouter.ai/api/v1/chat/completions", apiKey, model, prompt, "OpenRouter");
+      return callOpenAICompatible("https://openrouter.ai/api/v1/chat/completions", apiKey, model, prompt, "OpenRouter", req);
     case "fireworks":
-      return callOpenAICompatible("https://api.fireworks.ai/inference/v1/chat/completions", apiKey, model, prompt, "Fireworks");
+      return callOpenAICompatible("https://api.fireworks.ai/inference/v1/chat/completions", apiKey, model, prompt, "Fireworks", req);
     case "claude":
-      return callAnthropic(prompt, apiKey, model);
+      return callAnthropic(prompt, apiKey, model, req);
     case "gemini":
     default:
-      return callGemini(prompt, apiKey, model);
+      return callGemini(prompt, apiKey, model, req);
   }
 }
 
@@ -372,7 +357,7 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: "POST only" }, 405);
   }
 
-  let body: { origin?: unknown; destination?: unknown };
+  let body: { origin?: unknown; destination?: unknown; test?: unknown; request?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -402,7 +387,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const config = (settingsRow?.value ?? {}) as FareAIConfig;
-  if (config.serviceEnabled === false) {
+  if (config.serviceEnabled === false && body.test !== true) {
     return json({ ok: true, estimate: null, reason: "service_disabled" });
   }
 
@@ -411,6 +396,9 @@ Deno.serve(async (req: Request) => {
   const candidates = (config.keys?.[provider] ?? []).filter(
     (k) => k && k.enabled !== false && typeof k.key === "string" && k.key.trim().length > 0,
   );
+  if (body.test === true) {
+    return runTest(req, supabaseUrl, body.request, config, provider, model, candidates, origin, destination);
+  }
   if (candidates.length === 0) {
     return json({ ok: true, estimate: null, reason: "no_keys" });
   }
@@ -436,14 +424,15 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, estimate: null, reason: "keys_cooling_down" });
   }
 
-  const prompt = buildPrompt(origin, destination);
+  const request = resolveRequest(config.request);
+  const prompt = buildPrompt(request, origin, destination);
   const cooldownMs = retryPolicyMs(config.retryAfterValue ?? 1, config.retryAfterUnit ?? "hour");
 
   for (const cand of available) {
     const started = Date.now();
     let result: CallResult;
     try {
-      result = await callProvider(provider, prompt, cand.key, model);
+      result = await callProvider(provider, prompt, cand.key, model, request);
     } catch (e) {
       result = {
         content: null,
@@ -497,3 +486,59 @@ Deno.serve(async (req: Request) => {
 
   return json({ ok: true, estimate: null, reason: "all_keys_failed" });
 });
+
+/** Admin "Test" on Request & format: one call with the draft, nothing recorded. */
+async function runTest(
+  req: Request,
+  supabaseUrl: string,
+  draft: unknown,
+  config: FareAIConfig,
+  provider: Provider,
+  model: string,
+  candidates: FareAIKey[],
+  origin: LatLng,
+  destination: LatLng,
+): Promise<Response> {
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  if (!anonKey) return json({ ok: false, error: "Function is missing the anon key" }, 500);
+  const caller = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+  });
+  const { data: isAdmin } = await caller.rpc("caller_is_admin");
+  if (isAdmin !== true) return json({ ok: false, error: "admin_only" }, 403);
+
+  const raw = (draft ?? config.request) as FareAIRequest | undefined;
+  if (raw && typeof raw.promptTemplate === "string") {
+    const problem = templateProblem(raw.promptTemplate);
+    if (problem) return json({ ok: false, error: problem });
+  }
+  const request = resolveRequest(raw);
+  const prompt = buildPrompt(request, origin, destination);
+  const key = candidates[0];
+  if (!key) {
+    return json({ ok: true, test: { provider, model, prompt, system: request.systemInstruction, error: "No active key for this provider" } });
+  }
+  const started = Date.now();
+  let result: CallResult;
+  try {
+    result = await callProvider(provider, prompt, key.key, model, request);
+  } catch (e) {
+    result = { content: null, httpStatus: null, error: e instanceof Error ? e.message : String(e) };
+  }
+  const estimate = result.content ? parseEstimate(result.content) : null;
+  return json({
+    ok: true,
+    test: {
+      provider,
+      model,
+      key_label: key.label,
+      system: request.systemInstruction,
+      prompt,
+      raw: result.content ? result.content.substring(0, 4000) : null,
+      estimate,
+      http_status: result.httpStatus,
+      error: estimate ? null : result.error ?? (result.content ? "Unparseable response" : "No response content"),
+      latency_ms: Date.now() - started,
+    },
+  });
+}

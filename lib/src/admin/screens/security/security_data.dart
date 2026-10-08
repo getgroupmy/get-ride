@@ -280,6 +280,32 @@ class SecurityRepository {
             .limit(limit),
       );
 
+  /// Puts a cooling-down key (or, with null, every key) straight back into
+  /// rotation (migration 0113, admins only). Returns how many were paused.
+  Future<int> resetFareAiCooldown([String? keyId]) async {
+    final n = await _db.rpc('fare_ai_reset_cooldown', params: {'p_key_id': keyId});
+    return n is num ? n.toInt() : 0;
+  }
+
+  /// Runs [draft] once through `ai-route-proxy` (admins only): the prompt sent,
+  /// the raw reply and the parsed estimate. Nothing is logged or counted.
+  Future<Map<String, dynamic>> testFareAiRequest(
+    FareAiRequest draft, {
+    required ({double lat, double lng}) origin,
+    required ({double lat, double lng}) destination,
+  }) async {
+    final res = await _db.functions.invoke('ai-route-proxy', body: {
+      'test': true,
+      'origin': {'latitude': origin.lat, 'longitude': origin.lng},
+      'destination': {'latitude': destination.lat, 'longitude': destination.lng},
+      'request': draft.toJson(),
+    });
+    final data = res.data;
+    if (data is! Map) throw Exception('Unexpected reply from ai-route-proxy');
+    if (data['ok'] != true) throw Exception('${data['error'] ?? 'Test failed'}');
+    return Map<String, dynamic>.from(data['test'] as Map);
+  }
+
   /// Same filter as Expo (a `delete` needs one).
   Future<void> clearFareAiResponses() =>
       _db.from('fare_ai_responses').delete().neq('id', '00000000-0000-0000-0000-000000000000');

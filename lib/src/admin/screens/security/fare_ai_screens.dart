@@ -68,6 +68,24 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
     }
   }
 
+  /// Opens Request & format; on the way back, picks up what was saved there
+  /// so a later save here never puts the old request back.
+  Future<void> _openRequest() async {
+    await context.push('/admin/m/fare-ai-request');
+    if (!mounted || _config == null) return;
+    try {
+      final fresh = await ref.read(securityRepositoryProvider).fareAiConfig();
+      if (mounted && _config != null) setState(() => _config = _config!.copyWith(request: fresh.request));
+    } catch (_) {}
+  }
+
+  /// Clears a key's pause (or every key's, with null).
+  Future<void> _resetCooldown([String? keyId]) async {
+    await runAdminAction(context, () => ref.read(securityRepositoryProvider).resetFareAiCooldown(keyId),
+        success: keyId == null ? 'All keys are back in rotation.' : 'Key is back in rotation.');
+    await _refreshStats();
+  }
+
   Future<void> _refreshStats() async {
     final s = await ref.read(securityRepositoryProvider).fareAiKeyStates();
     if (mounted) setState(() => _states = s);
@@ -109,6 +127,11 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
       page: _page,
       actions: [
         BusyIconButton(tooltip: 'Refresh usage stats', icon: const Icon(Icons.refresh), onPressed: _refreshStats),
+        IconButton(
+          tooltip: 'Request & format',
+          icon: const Icon(Icons.tune),
+          onPressed: _openRequest,
+        ),
         IconButton(
           tooltip: 'Response log',
           icon: const Icon(Icons.fact_check_outlined),
@@ -204,9 +227,33 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
             ),
           ),
         ]),
+        const SizedBox(height: 16),
+        Card(
+          child: ListTile(
+            key: const ValueKey('fare-ai-request-link'),
+            leading: const Icon(Icons.tune),
+            title: const Text('Request & format'),
+            subtitle: Text(c.request.isDefault
+                ? 'Default prompt · distance, time, summary and tolls'
+                : 'Customised prompt · ${[
+                    'distance, time',
+                    if (c.request.includeSummary) 'summary',
+                    if (c.request.includeTolls) c.request.includeTollCoords ? 'tolls with locations' : 'tolls',
+                  ].join(', ')}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _openRequest,
+          ),
+        ),
         const SizedBox(height: 20),
         Row(children: [
           Expanded(child: Text('${meta.label} keys', style: t.textTheme.titleMedium)),
+          if (canEdit && _states.values.any((st) => isCoolingDown(st.disabledUntil)))
+            BusyButton.text(
+              key: const ValueKey('reset-all-cooldowns'),
+              icon: const Icon(Icons.restart_alt),
+              onPressed: () => _resetCooldown(),
+              child: const Text('Reset all cooldowns'),
+            ),
           if (canEdit)
             TextButton.icon(
               icon: const Icon(Icons.add),
@@ -245,6 +292,12 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
           icon: const Icon(Icons.fact_check_outlined),
           label: const Text('View response log'),
           onPressed: () => context.push('/admin/m/fare-ai-logs'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.tune),
+          label: const Text('Request & format'),
+          onPressed: _openRequest,
         ),
       ]),
     );
@@ -303,7 +356,19 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
           Text('${maskSecret(k.key)} · last used ${formatRelative(st?.lastUsedAt)}',
               style: Theme.of(context).textTheme.bodySmall),
           if (cooling)
-            Text('Cooling down — retries ${formatRelative(st?.disabledUntil)}', style: const TextStyle(color: Colors.red))
+            Row(children: [
+              Expanded(
+                child: Text('Cooling down — retries ${formatRelative(st?.disabledUntil)}',
+                    style: const TextStyle(color: Colors.red)),
+              ),
+              if (canEdit)
+                BusyButton.text(
+                  key: ValueKey('reset-cooldown-${k.id}'),
+                  icon: const Icon(Icons.restart_alt),
+                  onPressed: () => _resetCooldown(k.id),
+                  child: const Text('Reset cooldown'),
+                ),
+            ])
           else if (st?.lastError != null)
             Text('Last error: ${st!.lastError}', maxLines: 2, overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: Colors.red)),
