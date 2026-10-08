@@ -42,7 +42,9 @@ void main() {
     expect(400 - recenter.bottom, lessThanOrEqualTo(24));
     // And the credit still opens.
     await tester.tap(find.byIcon(Icons.info_outlined));
-    await tester.pumpAndSettle();
+    // (The search radar never settles: pump past the credit's animation.)
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     expect(find.textContaining('OpenStreetMap contributors', findRichText: true), findsWidgets);
   });
 }
