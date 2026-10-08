@@ -149,7 +149,7 @@ void main() {
       rows.add(open(age: const Duration(seconds: 10)));
       await tester.pump();
       await tick(tester, const Duration(seconds: 1));
-      expect(find.textContaining('6:49 left'), findsOneWidget);
+      expect(find.text('6:49'), findsOneWidget);
       expect(find.byKey(const ValueKey('search-progress')), findsOneWidget);
     });
 
@@ -175,13 +175,13 @@ void main() {
       );
       await tester.pump();
       await tick(tester, const Duration(seconds: 1));
-      expect(find.text('Ali offers RM24.00'), findsOneWidget);
-      expect(find.byKey(const ValueKey('offer-countdown')), findsOneWidget);
+      expect(find.text('Ali'), findsOneWidget);
+      expect(find.byKey(const ValueKey('offer-countdown-p1:24.00')), findsOneWidget);
       await tick(tester, const Duration(seconds: 20));
       expect(find.text('No driver yet'), findsNothing);
-      expect(find.text('Ali offers RM24.00'), findsOneWidget);
+      expect(find.text('Ali'), findsOneWidget);
       await tick(tester, const Duration(seconds: 26));
-      expect(find.text('Ali offers RM24.00'), findsNothing, reason: 'its 45 s are up');
+      expect(find.text('Ali'), findsNothing, reason: 'its 45 s are up');
     });
 
     testWidgets('booked with auto-accept, an offer at the fare is taken; a higher one asks', (tester) async {
@@ -190,7 +190,7 @@ void main() {
       await tester.pump();
       await tick(tester, const Duration(seconds: 1));
       expect(rides.accepted, isEmpty, reason: 'over the auto-accept amount');
-      expect(find.text('Ali offers RM26.00'), findsOneWidget);
+      expect(find.text('Ali'), findsOneWidget);
 
       rows.add(open(extra: {'offered_fare': 20, 'partner_id': 'p2', 'partner_name': 'Bala'}));
       await tester.pump();

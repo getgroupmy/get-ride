@@ -9,7 +9,6 @@ import '../../core/demo_mode.dart';
 import '../../core/format.dart';
 import '../../data/app_display_repository.dart';
 import '../../providers.dart';
-import '../../widgets/busy.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 
@@ -36,40 +35,39 @@ class DemoChip extends StatelessWidget {
 }
 
 /// While a rider searches: "2 drivers are viewing your request", then three
-/// demo offers 3, 6 and 9 s in, each gone after 10 s unless taken (Expo's
-/// `userMockEnabled`).
-class DemoOffersFeed extends StatefulWidget {
-  const DemoOffersFeed({super.key, required this.fare, required this.currency, required this.onAccept});
-
-  final double fare;
-  final String currency;
-  final FutureOr<void> Function(DemoOffer) onAccept;
-
-  @override
-  State<DemoOffersFeed> createState() => _DemoOffersFeedState();
-}
-
-class _DemoOffersFeedState extends State<DemoOffersFeed> {
-  final _timers = <Timer>[];
-  final _shown = <DemoOffer>[];
-  bool _viewers = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _timers.add(Timer(demoViewersAfter, () => setState(() => _viewers = true)));
-    for (final (after, offer) in demoOffers(widget.fare)) {
-      _timers.add(
-        Timer(after, () {
-          setState(() => _shown.add(offer));
-          _timers.add(
-            Timer(demoOfferLife, () {
-              if (mounted) setState(() => _shown.remove(offer));
-            }),
-          );
-        }),
-      );
+/// demo offers 3, 6 and 9 s in, each gone after [demoOfferLife] unless taken
+/// (Expo's `userMockEnabled`). The search screen draws them with the real
+/// offers; this only keeps the time.
+class DemoOfferTimeline extends ChangeNotifier {
+  DemoOfferTimeline(double fare, {DateTime Function()? clock}) : _clock = clock ?? DateTime.now {
+    _timers.add(Timer(demoViewersAfter, () {
+      viewers = true;
+      notifyListeners();
+    }));
+    for (final (after, offer) in demoOffers(fare)) {
+      _timers.add(Timer(after, () {
+        _shown.add((offer, _clock()));
+        notifyListeners();
+        _timers.add(Timer(demoOfferLife, () => dismiss(offer)));
+      }));
     }
+  }
+
+  final DateTime Function() _clock;
+  final _timers = <Timer>[];
+  final _shown = <(DemoOffer, DateTime)>[];
+
+  /// Whether the "drivers are viewing" line is up.
+  bool viewers = false;
+
+  /// The offers on screen, oldest first, with when each arrived.
+  List<(DemoOffer, DateTime)> get shown => List.unmodifiable(_shown);
+
+  /// Declined, or lapsed.
+  void dismiss(DemoOffer offer) {
+    final before = _shown.length;
+    _shown.removeWhere((e) => e.$1.id == offer.id);
+    if (_shown.length != before) notifyListeners();
   }
 
   @override
@@ -78,97 +76,6 @@ class _DemoOffersFeedState extends State<DemoOffersFeed> {
       t.cancel();
     }
     super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_viewers)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Row(
-              key: const ValueKey('demo-viewers'),
-              children: [
-                for (final n in demoViewerNames.take(2))
-                  Padding(
-                    padding: const EdgeInsets.only(right: 4),
-                    child: CircleAvatar(radius: 12, child: Text(n[0], style: const TextStyle(fontSize: 11))),
-                  ),
-                const SizedBox(width: 4),
-                Expanded(child: Text('2 drivers are viewing your request', style: t.textTheme.bodySmall)),
-                const DemoChip(),
-              ],
-            ),
-          ),
-        for (final o in _shown)
-          Card(
-            key: ValueKey('demo-offer-${o.id}'),
-            margin: const EdgeInsets.only(top: 8),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(child: Text(o.name[0])),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(child: Text(o.name, style: t.textTheme.titleSmall)),
-                                if (o.platinum)
-                                  const Padding(
-                                    padding: EdgeInsets.only(left: 4),
-                                    child: Icon(Icons.diamond, size: 14),
-                                  ),
-                                const SizedBox(width: 6),
-                                const DemoChip(),
-                              ],
-                            ),
-                            Text(
-                              '★ ${o.rating.toStringAsFixed(2)} · ${o.rides} rides · ${o.vehicle}',
-                              style: t.textTheme.bodySmall,
-                            ),
-                            Text('${o.etaMin} min · ${o.km.toStringAsFixed(0)} km away', style: t.textTheme.bodySmall),
-                          ],
-                        ),
-                      ),
-                      Text(formatMoney(o.price, widget.currency), style: t.textTheme.titleMedium),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => setState(() => _shown.remove(o)),
-                          child: const Text('Decline'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: BusyButton.filled(
-                          key: ValueKey('demo-accept-${o.id}'),
-                          style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-                          onPressed: () => widget.onAccept(o),
-                          child: const Text('Accept'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
   }
 }
 

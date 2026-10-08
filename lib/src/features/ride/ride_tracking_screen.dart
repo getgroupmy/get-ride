@@ -10,10 +10,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare_coins.dart';
+import '../../core/fare_offer.dart' show fareOfferStep;
 import '../../core/format.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_cancel.dart';
 import '../../core/ride_confirm.dart';
+import '../../core/search_stage.dart';
 import '../../core/search_timer.dart';
 import '../../config.dart';
 import '../../core/sos.dart';
@@ -25,7 +27,9 @@ import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import 'demo_ride.dart';
+import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
+import 'searching_parts.dart';
 import 'shared_ride_screen.dart' show shareRide;
 import '../../widgets/ride_stop_tiles.dart';
 import '../profile/emergency_contacts_screen.dart';
@@ -130,6 +134,13 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   String? _offerKey;
   DateTime? _offerSeen;
 
+  /// The fare the −/+ keys have moved to, not yet confirmed (null: the
+  /// request's own fare).
+  double? _fareTarget;
+
+  /// Admin → Demo → mock driver offers, while the request is open.
+  DemoOfferTimeline? _demo;
+
   @override
   void initState() {
     super.initState();
@@ -175,6 +186,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   @override
   void dispose() {
+    _demo?.dispose();
     _tick?.cancel();
     _position?.cancel();
     super.dispose();
@@ -190,6 +202,19 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       _tick?.cancel();
       _tick = null;
     }
+    final demo = open && ref.read(demoSettingsProvider).riderOffers;
+    if (demo && _demo == null) {
+      _demo = DemoOfferTimeline(widget.ride.fare ?? 0, clock: ref.read(searchClockProvider))
+        ..addListener(() {
+          if (mounted) setState(() {});
+        });
+    } else if (!demo && _demo != null) {
+      _demo!.dispose();
+      _demo = null;
+    }
+    // A raise landed (or the fare moved some other way): the keys start
+    // again from the new fare.
+    if (_fareTarget != null && (widget.ride.fare ?? 0) >= _fareTarget!) _fareTarget = null;
     final key = standingOffer(widget.ride)?.key;
     if (key != _offerKey) {
       _offerKey = key;
@@ -340,6 +365,43 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     });
   }
 
+  /// The fare the −/+ keys show.
+  double get _target => _fareTarget ?? widget.ride.fare ?? 0;
+
+  void _stepFare(double step) {
+    final current = widget.ride.fare ?? 0;
+    setState(() {
+      final next = stepSearchFare(current: current, target: _target, step: step, quoted: _quoted ?? current);
+      _fareTarget = next == current ? null : next;
+    });
+  }
+
+  /// Confirm under the stepper: the request goes out again at the new fare.
+  Future<void> _confirmRaise() async {
+    final r = widget.ride;
+    final next = _target;
+    if (next <= (r.fare ?? 0)) return;
+    final messenger = ScaffoldMessenger.of(context);
+    var raised = false;
+    await _run(() async {
+      final updated = await ref.read(rideRepositoryProvider).raiseFare(r.id, next);
+      raised = updated != null;
+      if (updated == null && mounted) showInfo(context, 'This request is no longer open.');
+    });
+    if (!raised) return;
+    if (mounted) setState(() => _fareTarget = null);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(
+        key: ValueKey('fare-raised'),
+        content: Row(children: [
+          Icon(Icons.check_circle, color: Colors.white),
+          SizedBox(width: 12),
+          Text('You raised the fare'),
+        ]),
+      ));
+  }
+
   Future<void> _acceptOffer(RideOffer o) async {
     await _run(() async {
       final won = await ref
@@ -426,111 +488,154 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   Future<void> _cancel() async {
     final r = widget.ride;
+    if (r.status == RideStatus.open) return _cancelSearch();
     final reason = await showDialog<String>(context: context, builder: (_) => _CancelReasonDialog(status: r.status));
     if (reason == null) return;
     await _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: reason, by: 'rider'));
   }
 
-  /// A driver's offer: who, how much, its 45-second window and the keys.
-  Widget _offerCard(RideOffer offer) {
+  /// inDrive's two cancel sheets, then back to the map.
+  Future<void> _cancelSearch() async {
+    final choice = await showSearchCancelSheet(context);
+    if (choice == null || !mounted) return;
     final r = widget.ride;
-    final t = Theme.of(context);
-    return Card(
-      key: const ValueKey('ride-offer'),
-      color: t.colorScheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 20,
-                  child: offer.photo == null
-                      ? const Icon(Icons.person)
-                      : ClipOval(
-                          child: Image.network(
-                            offer.photo!,
-                            width: 40,
-                            height: 40,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => const Icon(Icons.person),
-                          ),
-                        ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '${offer.name ?? 'A driver'} offers ${formatMoney(offer.amount, r.currency)}',
-                    style: t.textTheme.titleMedium,
-                  ),
-                ),
-              ],
-            ),
-            Text(
-              [
-                offer.vehicle,
-                offer.plate,
-                if (offer.rating != null) '★ ${offer.rating!.toStringAsFixed(1)}',
-              ].whereType<String>().join(' · '),
-              style: t.textTheme.bodySmall,
-            ),
-            const SizedBox(height: 8),
-            // The offer's 45 s, as the driver's own app counts it.
-            LinearProgressIndicator(
-              key: const ValueKey('offer-countdown'),
-              value: _offerSeen == null
-                  ? null
-                  : offerProgress(_now.difference(_offerSeen!), counterOfferWindow),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: BusyButton.outlined(
-                    onPressed: _busy ? null : () => _declineOffer(offer),
-                    child: const Text('Decline'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: BusyButton.filled(
-                    key: const ValueKey('accept-offer'),
-                    onPressed: _busy ? null : () => _acceptOffer(offer),
-                    child: Text('Accept ${formatMoney(offer.amount, r.currency)}'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+    final messenger = ScaffoldMessenger.of(context);
+    var done = false;
+    await _run(() async {
+      await ref.read(rideRepositoryProvider).cancel(r, reason: choice.reason, by: 'rider');
+      done = true;
+    });
+    if (!done || !mounted) return;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(key: ValueKey('request-cancelled'), content: Text('Request cancelled')));
+    GoRouter.maybeOf(context)?.go('/');
   }
 
-  /// The offer flies in over the map from the right, and back out when it
-  /// is answered, replaced or lapses.
-  Widget _offerOverlay() {
+  /// Every offer on screen: the real standing bid and any demo ones.
+  List<SearchOfferView> _offerViews() {
+    final r = widget.ride;
+    final views = <SearchOfferView>[];
     final offer = _visibleOffer;
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 350),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) => SlideTransition(
-        position: Tween(begin: const Offset(1.25, 0), end: Offset.zero).animate(animation),
-        child: FadeTransition(opacity: animation, child: child),
+    if (offer != null) {
+      views.add(SearchOfferView(
+        key: offer.key,
+        cardKey: const ValueKey('ride-offer'),
+        acceptKey: const ValueKey('accept-offer'),
+        declineKey: const ValueKey('decline-offer'),
+        price: formatMoney(offer.amount, r.currency),
+        yourFare: r.fare != null && (offer.amount - r.fare!).abs() < 0.005,
+        progress: _offerSeen == null ? 1 : offerProgress(_now.difference(_offerSeen!), counterOfferWindow),
+        name: offer.name,
+        rating: offer.rating,
+        vehicle: [offer.vehicle, offer.plate].whereType<String>().isEmpty
+            ? null
+            : [offer.vehicle, offer.plate].whereType<String>().join(' · '),
+        photo: offer.photo,
+        onAccept: _busy ? null : () => _acceptOffer(offer),
+        onDecline: _busy ? null : () => _declineOffer(offer),
+      ));
+    }
+    for (final (o, at) in _demo?.shown ?? const <(DemoOffer, DateTime)>[]) {
+      views.add(SearchOfferView(
+        key: o.id,
+        cardKey: ValueKey('demo-offer-${o.id}'),
+        acceptKey: ValueKey('demo-accept-${o.id}'),
+        declineKey: ValueKey('demo-decline-${o.id}'),
+        price: formatMoney(o.price, r.currency),
+        yourFare: r.fare != null && (o.price - r.fare!).abs() < 0.005,
+        progress: offerProgress(_now.difference(at), demoOfferLife),
+        name: o.name,
+        rating: o.rating,
+        rides: o.rides,
+        vehicle: o.vehicle,
+        etaMin: o.etaMin,
+        demo: true,
+        onAccept: _busy ? null : () => _acceptDemo(o),
+        onDecline: () => _demo?.dismiss(o),
+      ));
+    }
+    return views;
+  }
+
+  /// The open request's sheet, as inDrive's: the stage and its countdown,
+  /// the fare to raise, auto-accept, payment, the route and Cancel request.
+  List<Widget> _searchSheet(RideRequest r) {
+    final elapsed = searchElapsed(r.createdAt, _now);
+    final left = searchTimeLeft(elapsed, AppConfig.requestExpiry);
+    final current = r.fare ?? 0;
+    final quoted = _quoted ?? current;
+    final target = _target;
+    String money(double v) => formatMoney(v, r.currency);
+    final limit = ref.watch(autoAcceptProvider)[r.id];
+    return [
+      if (_demo?.viewers ?? false)
+        Container(
+          key: const ValueKey('demo-viewers'),
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(children: [
+            const Expanded(child: Text('2 drivers are viewing your request')),
+            for (final n in demoViewerNames.take(2))
+              Padding(
+                padding: const EdgeInsets.only(left: 2),
+                child: CircleAvatar(radius: 13, child: Text(n[0], style: const TextStyle(fontSize: 11))),
+              ),
+            const SizedBox(width: 6),
+            const DemoChip(),
+          ]),
+        ),
+      SearchHeader(
+        elapsed: elapsed,
+        left: formatCountdown(left),
+        progress: (left.inMilliseconds / AppConfig.requestExpiry.inMilliseconds).clamp(0.0, 1.0),
       ),
-      child: offer == null
-          ? const SizedBox.shrink(key: ValueKey('no-offer'))
-          : Material(
-              key: ValueKey('offer-overlay-${offer.partnerId}-${offer.amount}'),
-              elevation: 8,
-              borderRadius: BorderRadius.circular(16),
-              clipBehavior: Clip.antiAlias,
-              child: _offerCard(offer),
+      const SizedBox(height: 16),
+      SearchFareStepper(
+        amount: money(target),
+        canLower: !_busy && target > current,
+        canRaise: !_busy && raisedFare(target, fareOfferStep, quoted: quoted) > target,
+        onLower: () => _stepFare(-fareOfferStep),
+        onRaise: () => _stepFare(fareOfferStep),
+        onConfirm: _busy || target <= current ? null : _confirmRaise,
+        confirmLabel: target > current ? 'Confirm ${money(target)}' : 'Confirm',
+      ),
+      SearchBlock(
+        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+        child: Row(children: [
+          const AutoAcceptIcon(),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              'Auto-accept an offer of ${money(limit ?? current)}',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-    );
+          ),
+          ConfirmSwitch(
+            key: const ValueKey('search-auto-accept'),
+            value: limit != null,
+            onChanged: (on) {
+              final n = ref.read(autoAcceptProvider.notifier);
+              on ? n.set(r.id, current) : n.clear(r.id);
+              final offer = _visibleOffer;
+              if (on && shouldAutoAccept(limit: current, offer: offer)) _acceptOffer(offer!);
+            },
+          ),
+        ]),
+      ),
+      SearchBlock(child: SearchPaymentRow(amount: money(r.effectiveFare ?? current), mode: r.paymentMode)),
+      SearchBlock(child: SearchRouteCard(ride: r)),
+      const SizedBox(height: 12),
+      SearchGreyButton(
+        key: const ValueKey('cancel-request'),
+        label: 'Cancel request',
+        onPressed: _busy ? null : _cancelSearch,
+      ),
+    ];
   }
 
   @override
@@ -544,16 +649,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              if (r.status == RideStatus.open)
-                const Padding(
-                  padding: EdgeInsets.only(right: 12),
-                  child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                ),
-              Expanded(child: Text(r.status.label, style: t.textTheme.headlineSmall)),
-            ],
-          ),
+          if (r.status != RideStatus.open) Text(r.status.label, style: t.textTheme.headlineSmall),
           if (r.isForOthers)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -570,60 +666,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               ]),
             ),
           if (r.status == RideStatus.open) ...[
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                'Notifying nearby drivers… · '
-                '${formatCountdown(searchTimeLeft(searchElapsed(r.createdAt, _now), AppConfig.requestExpiry))} left',
-                key: const ValueKey('search-time-left'),
-                style: t.textTheme.bodyMedium,
-              ),
-            ),
-            if (searchPhaseProgress(searchElapsed(r.createdAt, _now)) > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: LinearProgressIndicator(
-                  key: const ValueKey('search-progress'),
-                  value: searchPhaseProgress(searchElapsed(r.createdAt, _now)),
-                ),
-              ),
-          ],
-          if (r.status == RideStatus.open && ref.watch(demoSettingsProvider).riderOffers)
-            DemoOffersFeed(fare: r.fare ?? 0, currency: r.currency, onAccept: _acceptDemo),
+            const SizedBox(height: 12),
+            ..._searchSheet(r),
+          ] else ...[
           const SizedBox(height: 16),
-          if (r.status == RideStatus.open)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('No takers yet? Raise your fare', style: t.textTheme.titleSmall),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        for (final step in fareRaiseSteps)
-                          ActionChip(
-                            key: ValueKey('raise-${step.toStringAsFixed(0)}'),
-                            avatar: const Icon(Icons.arrow_upward, size: 16),
-                            label: Text('+${formatMoney(step, r.currency)}'),
-                            onPressed: _busy ? null : () => _raise(step),
-                          ),
-                      ],
-                    ),
-                    if (r.offerMe)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          'Drivers can also offer you a price. You choose whether to accept.',
-                          style: t.textTheme.bodySmall,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
           if (r.hasDriver)
             Card(
               child: Column(
@@ -792,6 +838,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               ),
             ),
           if (r.status.isFinished) FilledButton(onPressed: () => context.go('/'), child: const Text('Done')),
+          ],
         ],
       ),
     );
@@ -803,7 +850,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           Expanded(
             child: Stack(children: [
               Positioned.fill(child: widget.map),
-              Positioned(top: 16, right: 16, width: 380, child: _offerOverlay()),
+              Positioned(
+                top: 16,
+                right: 16,
+                width: 380,
+                child: SingleChildScrollView(child: OfferStack(offers: _offerViews())),
+              ),
             ]),
           ),
         ],
@@ -811,13 +863,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     }
     // On a phone too, as the driver sees requests: the offer floats over
     // the top of the map rather than sitting in the sheet.
-    return MapSheetLayout(
-      map: Stack(children: [
-        Positioned.fill(child: widget.map),
-        Positioned(top: 12, left: 12, right: 12, child: SafeArea(bottom: false, child: _offerOverlay())),
-      ]),
-      sheet: content,
-    );
+    // inDrive's: offers dim the whole screen under "Choose a driver".
+    return Stack(children: [
+      Positioned.fill(child: MapSheetLayout(map: widget.map, sheet: content)),
+      if (r.status == RideStatus.open)
+        Positioned.fill(
+          child: ChooseDriverOverlay(offers: _offerViews(), onCancel: _busy ? null : _cancelSearch),
+        ),
+    ]);
   }
 }
 

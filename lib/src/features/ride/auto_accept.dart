@@ -10,4 +10,7 @@ class AutoAcceptRides extends Notifier<Map<String, double>> {
   Map<String, double> build() => const {};
 
   void set(String rideId, double limit) => state = {...state, rideId: limit};
+
+  /// Switched off on the search sheet.
+  void clear(String rideId) => state = {...state}..remove(rideId);
 }

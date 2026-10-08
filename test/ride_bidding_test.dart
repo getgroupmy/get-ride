@@ -10,6 +10,7 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/partner/fare_offer.dart';
 import 'package:get_ride/src/features/ride/ride_tracking_screen.dart';
+import 'package:get_ride/src/features/ride/searching_parts.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -172,12 +173,15 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
+      // The offer card rises in before it can be answered.
+      await tester.pump(const Duration(milliseconds: 500));
       return rides;
     }
 
     testWidgets('accepts a standing offer by partner and amount', (tester) async {
       final rides = await pump(tester, ride(offered: 25, partner: _other, partnerName: 'Ali'));
-      expect(find.text('Ali offers RM25.00'), findsOneWidget);
+      expect(find.text('Ali'), findsOneWidget);
+      expect(find.text('Your fare'), findsNothing, reason: 'above the fare');
       await tester.tap(find.byKey(const ValueKey('accept-offer')));
       await tester.pump();
       expect(rides.calls, ['accept $_other 25.0']);
@@ -186,11 +190,23 @@ void main() {
 
     testWidgets('declines an offer and raises the fare', (tester) async {
       final rides = await pump(tester, ride(offered: 25, partner: _other));
-      await tester.tap(find.text('Decline'));
+      await tester.tap(find.byKey(const ValueKey('decline-offer')));
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('raise-5')));
+      // The keys only move the fare; Confirm sends it.
+      FilledButton confirm() => tester.widget(find.byKey(const ValueKey('search-fare-confirm')));
+      expect(confirm().onPressed, isNull);
+      await tester.tap(find.byKey(const ValueKey('search-fare-raise')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('search-fare-raise')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('search-fare-lower')));
+      await tester.pump();
+      expect(find.text('Confirm RM25.00'), findsOneWidget);
+      expect(rides.calls, ['decline $_other']);
+      await tester.tap(find.byKey(const ValueKey('search-fare-confirm')));
       await tester.pump();
       expect(rides.calls, ['decline $_other', 'raise 25.0']);
+      expect(find.text('You raised the fare'), findsOneWidget);
     });
 
     testWidgets('on a desktop screen the offer flies in over the map, and out once answered', (tester) async {
@@ -212,7 +228,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       final overMap = find.descendant(
-        of: find.byType(AnimatedSwitcher),
+        of: find.byType(OfferStack),
         matching: find.byKey(const ValueKey('ride-offer')),
       );
       expect(overMap, findsOneWidget);
@@ -223,9 +239,9 @@ void main() {
       rows.add(ride());
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      expect(find.text('Ali offers RM25.00'), findsOneWidget, reason: 'flying out');
+      expect(find.text('Ali'), findsOneWidget, reason: 'flying out');
       await tester.pump(const Duration(milliseconds: 400));
-      expect(find.text('Ali offers RM25.00'), findsNothing);
+      expect(find.text('Ali'), findsNothing);
     });
 
     testWidgets('on a phone the offer floats over the top of the map, not in the sheet', (tester) async {
@@ -247,15 +263,14 @@ void main() {
       await tester.pump();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      final overMap = find.descendant(
-        of: find.byType(AnimatedSwitcher),
+      final overScreen = find.descendant(
+        of: find.byType(ChooseDriverOverlay),
         matching: find.byKey(const ValueKey('ride-offer')),
       );
-      expect(overMap, findsOneWidget);
+      expect(overScreen, findsOneWidget);
       expect(find.byKey(const ValueKey('ride-offer')), findsOneWidget, reason: 'not in the sheet as well');
-      final sheetTop = tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
-      expect(tester.getRect(overMap).top, lessThan(sheetTop), reason: 'on the map, above the sheet');
-      expect(tester.getRect(overMap).top, lessThan(200), reason: 'at the top of the map');
+      expect(find.text('Choose a driver'), findsOneWidget);
+      expect(tester.getRect(overScreen).top, lessThan(300), reason: 'at the top, under the title');
     });
 
     testWidgets('no offer card or raise once accepted', (tester) async {
