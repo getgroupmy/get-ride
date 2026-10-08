@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/format.dart';
 import '../../core/request_alert.dart';
+import '../../core/request_viewers.dart' show requestViewHeartbeat;
 import '../../core/ride_bidding.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
@@ -84,14 +85,30 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     return r.dropLat == null || r.dropLng == null ? null : LatLng(r.dropLat!, r.dropLng!);
   }
 
+  /// "Still looking at it", for the rider's "drivers are viewing" bar.
+  Timer? _seen;
+
   @override
   void initState() {
     super.initState();
     unawaited(_routes());
+    _markViewed();
+    _seen = Timer.periodic(requestViewHeartbeat, (_) => _markViewed());
+  }
+
+  void _markViewed() {
+    final id = widget.request.id;
+    if (id.startsWith('demo')) return;
+    try {
+      unawaited(ref.read(rideRepositoryProvider).markViewed(id).catchError((_) {}));
+    } catch (_) {
+      // A test double without it.
+    }
   }
 
   @override
   void dispose() {
+    _seen?.cancel();
     _map.dispose();
     super.dispose();
   }

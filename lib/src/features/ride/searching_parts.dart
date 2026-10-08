@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/request_viewers.dart';
 import '../../core/ride_cancel.dart';
 import '../../core/search_stage.dart';
 import '../../widgets/ride_stop_tiles.dart';
@@ -871,6 +872,83 @@ class _SureCancelSheet extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// inDrive's bar over the search sheet: "3 drivers are viewing your
+/// request", with their faces overlapping on the right and "+9".
+class DriversViewingBar extends StatelessWidget {
+  const DriversViewingBar({super.key, required this.viewers, this.demo = false, this.demoNames = const []});
+  final RequestViewers viewers;
+
+  /// Admin → Demo: initials stand in for faces, and the DEMO mark shows.
+  final bool demo;
+  final List<String> demoNames;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final label = viewers.label;
+    if (label == null) return const SizedBox.shrink();
+    final (:faces, :more) = viewers.faces();
+    final ring = ConfirmCardColors.of(context).tray;
+    Widget face(Widget child) => Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: ring, width: 2)),
+      child: ClipOval(child: child),
+    );
+    final circles = <Widget>[
+      for (final url in faces)
+        face(Image.network(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => const ColoredBox(color: Colors.grey))),
+      for (final n in demo ? demoNames.take(4 - faces.length) : const <String>[])
+        face(CircleAvatar(child: Text(n[0], style: const TextStyle(fontSize: 11)))),
+    ];
+    final extra = more - (demo ? circles.length - faces.length : 0);
+    return Container(
+      key: const ValueKey('drivers-viewing'),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+      decoration: BoxDecoration(color: ring, borderRadius: BorderRadius.circular(16)),
+      child: Row(
+        children: [
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              child: Text(label, key: ValueKey(label), style: t.textTheme.titleSmall?.copyWith(fontSize: 15)),
+            ),
+          ),
+          if (demo) ...[const SizedBox(width: 6), const _DemoTag(), const SizedBox(width: 6)],
+          if (circles.isNotEmpty || extra > 0)
+            SizedBox(
+              height: 30,
+              width: 20.0 * (circles.length + (extra > 0 ? 1 : 0) - 1) + (extra > 0 ? 44 : 30),
+              child: Stack(
+                children: [
+                  for (var i = 0; i < circles.length; i++) Positioned(left: 20.0 * i, child: circles[i]),
+                  if (extra > 0)
+                    Positioned(
+                      left: 20.0 * circles.length,
+                      child: Container(
+                        key: const ValueKey('drivers-viewing-more'),
+                        height: 30,
+                        constraints: const BoxConstraints(minWidth: 30),
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: ConfirmCardColors.of(context).card,
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(color: ring, width: 2),
+                        ),
+                        child: Text('+$extra', style: t.textTheme.labelLarge),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

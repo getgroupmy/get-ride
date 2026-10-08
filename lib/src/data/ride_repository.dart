@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import '../core/book_for.dart';
 import '../core/commission.dart';
 import '../core/driver_eta.dart';
+import '../core/request_viewers.dart';
 import '../core/ride_request_metadata.dart';
 import '../core/ride_share.dart';
 import '../core/session_telemetry.dart';
@@ -501,6 +502,23 @@ class RideRepository {
 
   /// How far the nearest online driver is, per vehicle type, from [lat],
   /// [lng] (0111). Empty when none is near, or the database predates it.
+  /// The driver's app has this request on screen (migration 0112). Quiet
+  /// on failure: an older database simply shows the rider no bar.
+  Future<void> markViewed(String requestId) async {
+    try {
+      await _db.rpc('ride_request_viewed', params: {'p_request': requestId});
+    } catch (_) {}
+  }
+
+  /// Who has looked at the rider's request, for the bar over the sheet.
+  Future<RequestViewers> viewers(String requestId) async {
+    try {
+      return RequestViewers.parse(await _db.rpc('ride_request_viewers', params: {'p_request': requestId}));
+    } catch (_) {
+      return RequestViewers.none;
+    }
+  }
+
   Future<Map<String, double>> nearbyDrivers(double lat, double lng) async {
     try {
       final rows = await _db.rpc('nearby_driver_etas', params: {'p_lat': lat, 'p_lng': lng});
