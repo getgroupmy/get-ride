@@ -135,6 +135,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   String? _offerKey;
   DateTime? _offerSeen;
 
+  /// How many minutes each offer's driver is from the pickup, by road from
+  /// where they made the offer (keyed by [RideOffer.key]).
+  final _offerEta = <String, int>{};
+
   /// The fare the −/+ keys have moved to, not yet confirmed (null: the
   /// request's own fare).
   double? _fareTarget;
@@ -230,6 +234,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       _offerKey = key;
       _offerSeen = key == null ? null : ref.read(searchClockProvider)();
       if (key != null) {
+        _routeOffer(standingOffer(widget.ride)!);
         unawaited(SystemSound.play(SystemSoundType.alert));
         unawaited(HapticFeedback.mediumImpact());
         // Booked with "Auto-accept offer of RM x": an offer at or under it
@@ -242,6 +247,25 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         }
       }
     }
+  }
+
+  /// Works out how far the offer's driver is from the pickup, once per
+  /// offer: by road where the route service answers, else its straight-line
+  /// estimate. No card ETA when the offer carries no position (an older
+  /// driver app).
+  void _routeOffer(RideOffer o) {
+    final r = widget.ride;
+    final fromLat = o.fromLat, fromLng = o.fromLng, toLat = r.pickupLat, toLng = r.pickupLng;
+    if (fromLat == null || fromLng == null || toLat == null || toLng == null) return;
+    if (_offerEta.containsKey(o.key)) return;
+    unawaited(() async {
+      try {
+        final route = await ref.read(geoServiceProvider).route(LatLng(fromLat, fromLng), LatLng(toLat, toLng));
+        if (mounted) setState(() => _offerEta[o.key] = offerEtaMinutes(route.durationMin));
+      } catch (_) {
+        // No ETA on the card rather than a guess.
+      }
+    }());
   }
 
   /// The offer still inside its window, or null.
@@ -561,6 +585,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             ? null
             : [offer.vehicle, offer.plate].whereType<String>().join(' · '),
         photo: offer.photo,
+        etaMin: _offerEta[offer.key],
         onAccept: _busy ? null : () => _acceptOffer(offer),
         onDecline: _busy ? null : () => _declineOffer(offer),
       ));

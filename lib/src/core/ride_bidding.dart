@@ -193,6 +193,8 @@ class RideOffer {
     this.plate,
     this.rating,
     this.photo,
+    this.fromLat,
+    this.fromLng,
   });
 
   final String partnerId;
@@ -202,6 +204,10 @@ class RideOffer {
   final String? plate;
   final double? rating;
   final String? photo;
+
+  /// Where the driver was when they made the offer (`partner_accept_*`),
+  /// which the rider's app routes to the pickup for the card's "3 min".
+  final double? fromLat, fromLng;
 
   /// Same bidder and amount: what an accept is matched on.
   String get key => '$partnerId:${amount.toStringAsFixed(2)}';
@@ -220,8 +226,15 @@ RideOffer? standingOffer(RideRequest r) {
     plate: r.partnerPlate,
     rating: r.partnerRating,
     photo: r.partnerPhoto,
+    fromLat: r.partnerAcceptLat,
+    fromLng: r.partnerAcceptLng,
   );
 }
+
+/// The minutes an offer card shows for a drive of [routeMinutes] to the
+/// pickup: whole minutes, rounded up, and never under one (inDrive shows
+/// "1 min" for a driver at the kerb).
+int offerEtaMinutes(double routeMinutes) => routeMinutes.isNaN || routeMinutes <= 1 ? 1 : routeMinutes.ceil();
 
 /// Where a partner's offer stands.
 enum OfferOutcome {
