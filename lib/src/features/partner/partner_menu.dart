@@ -109,7 +109,7 @@ class PartnerMenuSheet extends ConsumerWidget {
                   // With no tab bar to grey out, the lock on booking a ride
                   // while online lives here.
                   if (ref.read(driverOnlineProvider)) {
-                    showInfo(context, 'Go offline to book a ride');
+                    showGoOfflineToBook(context);
                     return;
                   }
                   Navigator.pop(context);
