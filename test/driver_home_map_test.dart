@@ -134,8 +134,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('waiting-for-requests')), findsNothing);
       final list = find.byKey(const ValueKey('floating-requests'));
-      // The first new one is spotlighted, the other queues: both on the map.
-      expect(find.descendant(of: list, matching: find.textContaining('RM12.00')), findsWidgets);
+      // The first new one comes up as the request sheet; the other queues on the map.
+      expect(find.text('Accept for RM12.00'), findsOneWidget);
+      expect(find.descendant(of: list, matching: find.textContaining('RM12.00')), findsNothing);
       expect(find.descendant(of: list, matching: find.textContaining('RM30.00')), findsWidgets);
 
       // Held down: neither dragged up nor scrolled.
@@ -149,7 +150,8 @@ void main() {
       // The last request taken: it flies out and the sheet is free again.
       open.add(const []);
       await tester.pumpAndSettle();
-      expect(find.descendant(of: list, matching: find.textContaining('RM12.00')), findsNothing);
+      expect(find.descendant(of: list, matching: find.textContaining('RM30.00')), findsNothing);
+      expect(find.byKey(const ValueKey('request-alert')), findsNothing, reason: 'the sheet went back down');
       await tester.drag(handle, const Offset(0, -400), warnIfMissed: false);
       await tester.pumpAndSettle();
       expect(tester.getTopLeft(handle).dy, lessThan(top - 200));

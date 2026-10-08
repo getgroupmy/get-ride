@@ -35,6 +35,7 @@ import 'driver_permit_screen.dart' show currentPlateProvider, driverPermitProvid
 import 'driver_wallet_pills.dart';
 import 'fare_offer.dart';
 import 'partner_menu.dart';
+import 'request_sheet.dart';
 import 'vehicle_picker.dart';
 import '../../core/partner_modes.dart';
 import '../../core/vehicle_assignment.dart';
@@ -406,8 +407,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
   }
 
-  Future<void> _offer(RideRequest r, Partner partner) async {
-    final amount = await askCounterOffer(context, r);
+  /// A counter-offer on [r]: [preset] when one was tapped, else the amount
+  /// the driver types.
+  Future<void> _offer(RideRequest r, Partner partner, {double? preset}) async {
+    final amount = preset ?? await askCounterOffer(context, r);
     if (amount == null || !mounted) return;
     setState(() => _accepting = r.id);
     final repo = ref.read(rideRepositoryProvider);
@@ -696,7 +699,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 // the sheet is held down so the list on the map has the room.
                 final open = _online ? ref.watch(openRequestsProvider).value ?? const <RideRequest>[] : const <RideRequest>[];
                 final queue = _queueOrder(open, wide: false);
-                final floating = [if (queue.alert != null) queue.alert!, ...queue.sorted];
+                // The new request is the sheet up from the bottom, not a card here.
+                final floating = queue.sorted;
                 return MapSheetLayout(
                   // Fully down (just the online switch) until the driver
                   // drags it up.
@@ -705,7 +709,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   locked: floating.isNotEmpty,
                   map: Stack(children: [
                     Positioned.fill(child: map),
-                    if (_online) _floatingRequests(p, queue.alert, floating),
+                    if (_online) _floatingRequests(p, null, floating),
                   ]),
                   // All the way down only the online switch shows.
                   peek: ResponsiveCenter(maxWidth: 760, child: head.first),
@@ -772,8 +776,59 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             ),
           ),
         ),
+        // A new request on a phone: inDrive's sheet up from the bottom, over
+        // everything (the desktop has it over the map instead).
+        if (partner.value case final p? when _online && MediaQuery.sizeOf(context).width < 900)
+          Positioned.fill(child: _requestSheet(p)),
       ]),
     );
+  }
+
+  /// The new request on a phone ([RideRequestSheet]): up from the bottom
+  /// over a dimmed page, and back down when it is answered, taken or times
+  /// out.
+  Widget _requestSheet(Partner partner) {
+    final list = ref.watch(openRequestsProvider).value ?? const <RideRequest>[];
+    final r = list.where((r) => r.id == _alertId).firstOrNull;
+    return Stack(children: [
+      IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: r == null ? 0 : 1,
+          duration: const Duration(milliseconds: 300),
+          child: const ColoredBox(color: Colors.black54, child: SizedBox.expand()),
+        ),
+      ),
+      Align(
+        alignment: Alignment.bottomCenter,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 350),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (child, animation) => SlideTransition(
+            position: Tween(begin: const Offset(0, 1), end: Offset.zero).animate(animation),
+            child: child,
+          ),
+          child: r == null
+              ? const SizedBox.shrink(key: ValueKey('no-request-sheet'))
+              : RideRequestSheet(
+                  key: ValueKey('request-sheet-${r.id}'),
+                  request: r,
+                  shown: _alertNow.difference(_alertAt ?? _alertNow),
+                  now: _alertNow,
+                  me: _me,
+                  awayKm: _distanceTo(r),
+                  raisedFrom: _raisedFrom[r.id],
+                  towardDestination: _destinationOn && _towardDestination(r),
+                  busy: _accepting != null,
+                  onAccept: () => _accept(r, partner),
+                  onSkip: () => _dismissAlert(hide: true),
+                  onOffer: canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)
+                      ? (amount) => _offer(r, partner, preset: amount)
+                      : null,
+                ),
+        ),
+      ),
+    ]);
   }
 
   /// One of the round buttons floating at the top of the page (in place of

@@ -136,6 +136,7 @@ class RideMap extends StatefulWidget {
     this.pointZoom = 15,
     this.showPickup = true,
     this.dotPins = false,
+    this.extraLayers = const [],
   });
 
   final LatLng? pickup;
@@ -184,6 +185,9 @@ class RideMap extends StatefulWidget {
   /// drop-off as small white dots ringed green, blue and red, and a thinner,
   /// deeper blue route line.
   final bool dotPins;
+
+  /// Map layers drawn over the route and under the pins (a second line).
+  final List<Widget> extraLayers;
 
   @override
   State<RideMap> createState() => _RideMapState();
@@ -282,6 +286,7 @@ class _RideMapState extends State<RideMap> {
                       : Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
                 ],
               ),
+            ...widget.extraLayers,
             if (widget.extraMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: widget.extraMarkers),
             MarkerLayer(
               // Pins stand upright on a map turned to the car's heading…

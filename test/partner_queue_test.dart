@@ -143,17 +143,18 @@ void main() {
       open.add([_req('r1')]);
       await tester.pumpAndSettle();
       expect(rides.accepted, isEmpty);
-      expect(find.text('Accept RM12.00'), findsOneWidget);
+      expect(find.text('Accept for RM12.00'), findsOneWidget, reason: 'waiting on the request sheet');
     });
 
     testWidgets('turning OfferMe off hides the counter-offer button', (tester) async {
       await pump(tester);
       open.add([_req('bid', offerMe: true)]);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('offer-bid')), findsOneWidget);
+      expect(find.byKey(const ValueKey('request-offer-custom')), findsOneWidget);
       await flip(tester, 'queue-allow-offer');
-      expect(find.byKey(const ValueKey('offer-bid')), findsNothing);
-      expect(find.text('Accept RM12.00'), findsOneWidget);
+      expect(find.byKey(const ValueKey('request-offer-custom')), findsNothing);
+      expect(find.text('Offer your fare'), findsNothing);
+      expect(find.text('Accept for RM12.00'), findsOneWidget);
     });
   });
 }

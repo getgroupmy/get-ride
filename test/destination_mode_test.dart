@@ -149,11 +149,13 @@ void main() {
       expect(find.text('Heading to Home'), findsOneWidget);
       open.add([_req('away', sentral, putrajaya), _req('home', putrajaya, cheras)]);
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('toward-home')), findsOneWidget);
+      // The trip toward it is the one brought up first, and is marked there;
+      // the other waits in the list, unmarked.
+      final sheet = find.byKey(const ValueKey('request-alert'));
+      expect(find.descendant(of: sheet, matching: find.textContaining('To home')), findsOneWidget);
+      expect(find.descendant(of: sheet, matching: find.textContaining('Toward your destination')), findsOneWidget);
+      expect(find.descendant(of: sheet, matching: find.textContaining('To away')), findsNothing);
       expect(find.byKey(const ValueKey('toward-away')), findsNothing);
-      final homeY = tester.getTopLeft(find.text('To home')).dy;
-      final awayY = tester.getTopLeft(find.text('To away')).dy;
-      expect(homeY, lessThan(awayY));
     });
 
     testWidgets('auto-accept takes only trips toward the destination', (tester) async {
