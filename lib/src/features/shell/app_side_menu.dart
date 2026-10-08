@@ -156,7 +156,7 @@ class PartnerSideMenu extends ConsumerWidget {
               // No greyed-out tab to hold a driver online off booking a
               // ride: the lock lives here.
               if (ref.read(driverOnlineProvider)) {
-                showInfo(context, 'Go offline to book a ride');
+                showGoOfflineToBook(context);
                 return;
               }
               final router = GoRouter.of(context);
@@ -235,8 +235,8 @@ class SideMenuPanel extends ConsumerWidget {
               key: const ValueKey('menu-admin'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(46),
-                foregroundColor: SideMenuStyle.text,
-                side: const BorderSide(color: SideMenuStyle.divider),
+                foregroundColor: SideMenuStyle.button,
+                side: const BorderSide(color: SideMenuStyle.button),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               icon: const Icon(Icons.admin_panel_settings_outlined),

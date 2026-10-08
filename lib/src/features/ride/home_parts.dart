@@ -9,7 +9,14 @@ import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
 
 /// A stored picture: an http(s) or `data:` URL.
-Widget uriImage(String? uri, {double? width, double? height, BoxFit fit = BoxFit.contain, Widget? fallback}) {
+Widget uriImage(
+  String? uri, {
+  double? width,
+  double? height,
+  BoxFit fit = BoxFit.contain,
+  Alignment alignment = Alignment.center,
+  Widget? fallback,
+}) {
   final none = fallback ?? SizedBox(width: width, height: height);
   if (uri == null) return none;
   if (uri.startsWith('data:')) {
@@ -19,6 +26,7 @@ Widget uriImage(String? uri, {double? width, double? height, BoxFit fit = BoxFit
         width: width,
         height: height,
         fit: fit,
+        alignment: alignment,
         errorBuilder: (_, _, _) => none,
       );
     } catch (_) {
@@ -26,7 +34,14 @@ Widget uriImage(String? uri, {double? width, double? height, BoxFit fit = BoxFit
     }
   }
   if (uri.startsWith('http')) {
-    return Image.network(uri, width: width, height: height, fit: fit, errorBuilder: (_, _, _) => none);
+    return Image.network(
+      uri,
+      width: width,
+      height: height,
+      fit: fit,
+      alignment: alignment,
+      errorBuilder: (_, _, _) => none,
+    );
   }
   return none;
 }
@@ -62,93 +77,82 @@ class VehicleTypeBar extends StatelessWidget {
     ),
   );
 
+  /// The chosen box's fill and its "i" (inDrive's indigo and blue).
+  static const selectedFill = Color(0xFF2B2E8C);
+  static const infoBlue = Color(0xFF5468FF);
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final muted = t.colorScheme.onSurfaceVariant;
     return SizedBox(
-      height: 72,
+      height: 66,
       child: ListView.separated(
         key: const ValueKey('vehicle-type-bar'),
         scrollDirection: Axis.horizontal,
         itemCount: services.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 4),
         itemBuilder: (_, i) {
           final s = services[i];
           final on = s.name == selected.name;
           final fg = on ? Colors.white : t.colorScheme.onSurface;
-          return AnimatedContainer(
+          final seats = on ? Colors.white : muted;
+          // Unchosen boxes are the sheet itself; the chosen one is filled,
+          // with the name in full and the seats pushed to its right edge.
+          return Material(
             key: ValueKey('vehicle-type-${s.name}'),
-            duration: const Duration(milliseconds: 200),
-            width: on ? 104 : 76,
-            decoration: BoxDecoration(
-              color: on ? const Color(0xFF2A4A6B) : t.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
-            ),
+            color: on ? selectedFill : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
               onTap: () => onSelect(s),
-              child: Stack(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(6),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        uriImage(
-                          s.image,
-                          width: 48,
-                          height: 28,
-                          fallback: Icon(Icons.directions_car, size: 26, color: fg),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                s.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: fg),
-                              ),
-                            ),
-                            const SizedBox(width: 3),
-                            Icon(Icons.person, size: 11, color: on ? Colors.white70 : t.colorScheme.onSurfaceVariant),
-                            Text(
-                              '${s.seats}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: on ? Colors.white70 : t.colorScheme.onSurfaceVariant,
-                              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                child: IntrinsicWidth(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          // Flush with the name's left edge, as inDrive's.
+                          uriImage(
+                            s.image,
+                            width: 56,
+                            height: 26,
+                            alignment: Alignment.centerLeft,
+                            fallback: Icon(Icons.directions_car, size: 24, color: fg),
+                          ),
+                          if (on) ...[
+                            const Spacer(),
+                            const SizedBox(width: 12),
+                            InkResponse(
+                              key: ValueKey('vehicle-info-${s.name}'),
+                              radius: 18,
+                              onTap: () => _info(context, s),
+                              child: const Icon(Icons.info_outline, size: 22, color: infoBlue),
                             ),
                           ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (on)
-                    Positioned(
-                      top: 2,
-                      right: 2,
-                      child: InkWell(
-                        key: ValueKey('vehicle-info-${s.name}'),
-                        onTap: () => _info(context, s),
-                        child: Container(
-                          width: 18,
-                          height: 18,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFF7BB8E8)),
-                          ),
-                          child: const Text(
-                            'i',
-                            style: TextStyle(fontSize: 11, color: Colors.white, fontStyle: FontStyle.italic),
-                          ),
-                        ),
+                        ],
                       ),
-                    ),
-                ],
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Text(
+                            s.name,
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: fg),
+                          ),
+                          on ? const Spacer() : const SizedBox(width: 6),
+                          if (on) const SizedBox(width: 12),
+                          Icon(Icons.person, size: 13, color: seats),
+                          Text('${s.seats}', style: TextStyle(fontSize: 13, color: seats)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           );
@@ -157,6 +161,7 @@ class VehicleTypeBar extends StatelessWidget {
     );
   }
 }
+
 
 /// "Where to & for how much?" (Expo `searchBar`).
 class HomeSearchPill extends StatelessWidget {
