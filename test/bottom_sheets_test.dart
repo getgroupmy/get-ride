@@ -129,7 +129,20 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: MapSheetLayout(
-            map: const SizedBox.expand(),
+            // Something on the sheet's top edge (the promo bar, the back
+            // button) placed by the inset.
+            map: Builder(
+              builder: (c) => MapBottomInset.listen(
+                c,
+                (inset) => Stack(children: [
+                  Positioned(
+                    left: 0,
+                    bottom: inset,
+                    child: const SizedBox(key: ValueKey('on-sheet-top'), width: 10, height: 10),
+                  ),
+                ]),
+              ),
+            ),
             initial: 0.2,
             sheet: Column(children: [for (var i = 0; i < 40; i++) ListTile(title: Text('row $i'))]),
           ),
@@ -140,6 +153,7 @@ void main() {
     final handle = find.byKey(const ValueKey('map-sheet-handle'));
     final top = tester.getTopLeft(row).dy;
     final handleTop = tester.getTopLeft(handle).dy;
+    final markTop = tester.getBottomLeft(find.byKey(const ValueKey('on-sheet-top'))).dy;
     // Pulled down when it can go no lower: the SHEET rubber-bands (with
     // resistance), its content doesn't scroll inside it, and it springs back.
     final g = await tester.startGesture(tester.getCenter(row));
@@ -149,12 +163,16 @@ void main() {
     }
     final pulled = tester.getTopLeft(handle).dy - handleTop;
     expect(pulled, greaterThan(20), reason: 'the sheet gives');
+    expect(tester.getBottomLeft(find.byKey(const ValueKey('on-sheet-top'))).dy - markTop, closeTo(pulled, 0.5),
+        reason: 'what sits on the sheet goes down with it');
     expect(pulled, lessThan(160), reason: 'with resistance');
     expect(tester.getTopLeft(row).dy - tester.getTopLeft(handle).dy, closeTo(top - handleTop, 0.5),
         reason: 'the content moves with the sheet, not inside it');
     await g.up();
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(handle).dy, closeTo(handleTop, 0.5), reason: 'it springs back');
+    expect(tester.getBottomLeft(find.byKey(const ValueKey('on-sheet-top'))).dy, closeTo(markTop, 0.5),
+        reason: 'and springs back with it');
     expect(tester.getTopLeft(row).dy, closeTo(top, 0.5));
 
     // A wheel over it raises the sheet rather than scrolling the content.

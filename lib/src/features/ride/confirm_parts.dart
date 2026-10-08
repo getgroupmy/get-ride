@@ -10,6 +10,7 @@ import '../../core/fare_offer.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/map_sheet_layout.dart' show MapSheetReveal;
+import '../../widgets/shake.dart';
 import 'fare_offer_controls.dart';
 import 'home_parts.dart' show uriImage;
 
@@ -264,62 +265,120 @@ class _EntranceSheetState extends State<_EntranceSheet> {
   }
 }
 
-/// The route's stops (Expo's destinations sheet): pickup, each stop with a
-/// remove button, the drop-off, and "Add a stop" while there is room.
+/// "Destination addresses" (inDrive's): every place after the pickup, in
+/// order — the stops numbered, the destination with a flag. A row's ✕
+/// takes it out and its handle drags it into a new place; whichever ends up
+/// last is the destination. Changes apply as they are made ([onChanged]
+/// with the new order), and the last one left can't be removed.
 Future<void> showRouteStopsSheet(
   BuildContext context, {
-  required Place? pickup,
-  required List<Place> stops,
-  required Place drop,
-  required ValueChanged<int> onRemove,
-  VoidCallback? onAdd,
+  required List<Place> destinations,
+  required ValueChanged<List<Place>> onChanged,
 }) => showModalBottomSheet<void>(
   context: context,
   isScrollControlled: true,
-  builder: (c) {
-    final left = List.of(stops);
-    return StatefulBuilder(
-      builder: (c, setSheet) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.only(bottom: 12),
+  showDragHandle: false,
+  builder: (_) => _DestinationsSheet(destinations: destinations, onChanged: onChanged),
+);
+
+class _DestinationsSheet extends StatefulWidget {
+  const _DestinationsSheet({required this.destinations, required this.onChanged});
+  final List<Place> destinations;
+  final ValueChanged<List<Place>> onChanged;
+
+  @override
+  State<_DestinationsSheet> createState() => _DestinationsSheetState();
+}
+
+class _DestinationsSheetState extends State<_DestinationsSheet> {
+  late final _list = List.of(widget.destinations);
+
+  void _changed() {
+    setState(() {});
+    widget.onChanged(List.of(_list));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final last = _list.length - 1;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 16, 8, 12),
+        child: Column(
+          key: const ValueKey('route-stops'),
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ListTile(title: Text('Route stops', style: Theme.of(c).textTheme.titleMedium)),
-            ListTile(leading: const _Dot(_pickupGreen), title: Text(pickup?.name ?? 'Pickup')),
-            for (var i = 0; i < left.length; i++)
-              ListTile(
-                key: ValueKey('route-stop-$i'),
-                leading: const _Dot(Color(0xFF3B82F6)),
-                title: Text(left[i].name),
-                subtitle: Text(left[i].address, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: IconButton(
-                  key: ValueKey('route-stop-remove-$i'),
-                  tooltip: 'Remove stop',
-                  icon: const Icon(Icons.close),
-                  onPressed: () {
-                    onRemove(i);
-                    setSheet(() => left.removeAt(i));
-                    if (left.isEmpty) Navigator.pop(c);
-                  },
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Text('Destination addresses', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    key: const ValueKey('route-stops-back'),
+                    tooltip: 'Back',
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                 ),
-              ),
-            ListTile(leading: const _Dot(_dropRed), title: Text(drop.name)),
-            if (onAdd != null)
-              ListTile(
-                key: const ValueKey('route-stop-add'),
-                leading: const Icon(Icons.add_circle, color: confirmAccent),
-                title: const Text('Add a stop'),
-                onTap: () {
-                  Navigator.pop(c);
-                  onAdd();
+              ],
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ReorderableListView.builder(
+                shrinkWrap: true,
+                buildDefaultDragHandles: false,
+                itemCount: _list.length,
+                onReorderItem: (from, to) {
+                  _list.insert(to, _list.removeAt(from));
+                  _changed();
+                },
+                itemBuilder: (_, i) {
+                  final p = _list[i];
+                  return ListTile(
+                    key: ValueKey('route-stop-${p.point.latitude},${p.point.longitude},$i'),
+                    contentPadding: const EdgeInsets.only(left: 12, right: 4),
+                    leading: SizedBox(
+                      width: 28,
+                      child: Center(
+                        child: i == last
+                            ? const Icon(Icons.flag, key: ValueKey('route-stop-flag'))
+                            : Text('${i + 1}', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                    title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.titleMedium),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (_list.length > 1)
+                        IconButton(
+                          key: ValueKey('route-stop-remove-$i'),
+                          tooltip: 'Remove',
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            _list.removeAt(i);
+                            _changed();
+                          },
+                        ),
+                      ReorderableDragStartListener(
+                        index: i,
+                        child: Padding(
+                          key: ValueKey('route-stop-drag-$i'),
+                          padding: const EdgeInsets.all(12),
+                          child: const Icon(Icons.drag_handle),
+                        ),
+                      ),
+                    ]),
+                  );
                 },
               ),
+            ),
           ],
         ),
       ),
     );
-  },
-);
+  }
+}
 
 /// One vehicle on the confirm sheet (Expo's ride option): the car, its
 /// name, seats and description, and the price. The chosen one is a grey
@@ -406,38 +465,41 @@ class ConfirmServiceCard extends StatelessWidget {
         ),
       );
     }
-    // Kept whole above the pinned footer, as Expo scrolls the chosen one.
-    return MapSheetReveal(
+    // Shaken by the fare's −/+ when a step would leave the range, and kept
+    // whole above the pinned footer, as Expo scrolls the chosen one.
+    return Shake(
+      child: MapSheetReveal(
       child: Container(
-      key: ValueKey('service-${service.name}'),
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(24)),
-      child: Column(
-        children: [
-          Material(
-            color: t.colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(22),
-            child: InkWell(
+        key: ValueKey('service-${service.name}'),
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(24)),
+        child: Column(
+          children: [
+            Material(
+              color: t.colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(22),
-              onTap: onEdit,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-                child: _row(
-                  context,
-                  trailing: onEdit == null
-                      ? Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 16, fontWeight: FontWeight.w600))
-                      : IconButton(
-                          key: const ValueKey('fare-edit'),
-                          tooltip: 'Edit fare',
-                          icon: Icon(Icons.edit_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
-                          onPressed: onEdit,
-                        ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(22),
+                onTap: onEdit,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+                  child: _row(
+                    context,
+                    trailing: onEdit == null
+                        ? Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 16, fontWeight: FontWeight.w600))
+                        : IconButton(
+                            key: const ValueKey('fare-edit'),
+                            tooltip: 'Edit fare',
+                            icon: Icon(Icons.edit_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
+                            onPressed: onEdit,
+                          ),
+                  ),
                 ),
               ),
             ),
-          ),
-          ?fare,
-        ],
+            ?fare,
+          ],
+        ),
       ),
       ),
     );
@@ -496,6 +558,8 @@ class ConfirmFareSection extends StatelessWidget {
           money: money,
           onAdjust: onAdjust,
           step: step,
+          // Past the range the chosen card shakes, as Expo's does; no note.
+          onLimit: Shake.maybeOf(context)?.shake,
         ),
         child: SizedBox.square(dimension: 56, child: Icon(icon, size: 24)),
       ),

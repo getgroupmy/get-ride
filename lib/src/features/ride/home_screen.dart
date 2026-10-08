@@ -35,7 +35,6 @@ import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
-import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_drag_pin.dart';
 import '../../widgets/map_recenter.dart';
@@ -43,13 +42,13 @@ import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 import 'auto_accept.dart';
+import 'book_for_sheet.dart';
 import 'confirm_parts.dart';
 import 'fare_offer_controls.dart';
 import 'home_parts.dart';
 import 'place_search.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../meter/meter_auto_launch.dart';
-import '../profile/emergency_contacts_screen.dart' show contactPickerProvider;
 import '../../admin/screens/commerce/get_coin.dart' show rideRewardCoins;
 
 enum _PinTarget { none, pickup, drop }
@@ -206,16 +205,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// a fresh one. The map only follows the first fix by itself, so without
   /// the move the button refreshed the location and left the map where the
   /// rider had scrolled it.
+  ///
+  /// On the home map it also puts the pickup there: the pin floats up and
+  /// drops on the fix, as if the map had been dragged under it.
   void _recenter() {
-    recenterMap(_map, _me);
+    if (recenterMap(_map, _me)) _pinOnto(_me!);
     unawaited(_locate(recenter: true));
+  }
+
+  final _pin = GlobalKey<MapDragPinState>();
+
+  /// The pickup pin dropped on [p], where the pin is draggable (no
+  /// destination yet) and the pickup is not already there.
+  void _pinOnto(LatLng p) {
+    if (_drop != null || _pinTarget != _PinTarget.none) return;
+    if (_pickup != null && const Distance()(_pickup!.point, p) < 5) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _pin.currentState?.dropAt(p));
   }
 
   Future<void> _locate({bool recenter = false}) async {
     final p = await currentPosition();
     if (p == null || !mounted) return;
     setState(() => _me = p);
-    if (recenter) recenterMap(_map, p);
+    if (recenter && recenterMap(_map, p)) _pinOnto(p);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
     setState(() {
@@ -279,8 +291,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _updateRoute();
   }
 
-  void _removeStop(int index) {
-    setState(() => _stops.removeAt(index));
+  /// The places after the pickup, in their new order (the destinations
+  /// sheet): the last is the destination, the rest the stops on the way.
+  void _setDestinations(List<Place> places) {
+    if (places.isEmpty) return;
+    setState(() {
+      _stops
+        ..clear()
+        ..addAll(places.take(places.length - 1));
+      _drop = places.last;
+    });
     _updateRoute();
   }
 
@@ -628,6 +648,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     final map = Stack(children: [
       MapDragPin(
+        key: _pin,
         controller: _map,
         pin: _pickup?.point,
         // Dragging the map sets the pickup until a destination is chosen.
@@ -793,11 +814,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               },
               onStops: () => showRouteStopsSheet(
                 context,
-                pickup: _pickup,
-                stops: _stops,
-                drop: _drop!,
-                onRemove: _removeStop,
-                onAdd: _stops.length < maxRideStops ? _addStop : null,
+                destinations: [..._stops, _drop!],
+                onChanged: _setDestinations,
               ),
               onAddStop: _stops.length < maxRideStops ? _addStop : null,
             ),
@@ -888,8 +906,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         forOther: _forOther,
         name: _otherName,
         phone: _otherPhone,
-        onChanged: (v) => setState(() => _forOther = v),
-        onEdited: () => setState(() {}),
+        onChanged: (who) => setState(() {
+          _forOther = who != null;
+          if (who != null) {
+            _otherName.text = who.name;
+            _otherPhone.text = who.phone;
+          }
+        }),
       ),
       pickup: _pickup,
       drop: _drop,
@@ -958,6 +981,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           initial: confirming ? 0.55 : 0.45,
           hidden: _pinMoving,
           footer: footer,
+          // Over the foot of the sheet, only while it is all the way up.
+          aboveFooter: footer == null
+              ? null
+              : const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 12), child: ConfirmDisclaimer()),
         ),
       ),
     );
@@ -1111,8 +1138,8 @@ class _BookingPanel extends StatelessWidget {
             decoration: const InputDecoration(labelText: 'Note to driver (optional)'),
           ),
           const SizedBox(height: 16),
-          const ConfirmDisclaimer(),
-          if (footer != null) ...[const SizedBox(height: 16), footer!],
+          // In the wide panel; on a phone it sits above the pinned footer.
+          if (footer != null) ...[const ConfirmDisclaimer(), const SizedBox(height: 16), footer!],
         ],
       ]),
     );
@@ -1167,24 +1194,31 @@ class RouteBasisLine extends StatelessWidget {
 }
 
 /// "Who's riding?": the rider, or someone else, whose name and phone go on
-/// the request so the driver meets and calls the right person.
-class _WhoRiding extends ConsumerWidget {
-  const _WhoRiding({
-    required this.forOther,
-    required this.name,
-    required this.phone,
-    required this.onChanged,
-    required this.onEdited,
-  });
+/// the request so the driver meets and calls the right person. They are
+/// typed in a modal ([showBookForSheet]); the sheet only shows them, with
+/// a pen to change them.
+class _WhoRiding extends StatelessWidget {
+  const _WhoRiding({required this.forOther, required this.name, required this.phone, required this.onChanged});
 
   final bool forOther;
   final TextEditingController name, phone;
-  final ValueChanged<bool> onChanged;
-  final VoidCallback onEdited;
+
+  /// "Someone else" with the details from the modal, or "Me" (null).
+  final ValueChanged<BookedFor?> onChanged;
+
+  Future<void> _ask(BuildContext context) async {
+    final who = await showBookForSheet(context, name: name.text, phone: phone.text);
+    // Closed without Done: as it was (back to "Me" when nobody was set).
+    if (who != null) {
+      onChanged(who);
+    } else if (!forOther || bookedFor(name.text, phone.text) == null) {
+      onChanged(null);
+    }
+  }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final pick = ref.watch(contactPickerProvider);
+  Widget build(BuildContext context) {
+    final who = forOther ? bookedFor(name.text, phone.text) : null;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SegmentedButton<bool>(
         key: const ValueKey('who-riding'),
@@ -1193,47 +1227,11 @@ class _WhoRiding extends ConsumerWidget {
           ButtonSegment(value: true, icon: Icon(Icons.people_outline), label: Text('Someone else')),
         ],
         selected: {forOther},
-        onSelectionChanged: (v) => onChanged(v.first),
+        onSelectionChanged: (v) => v.first ? _ask(context) : onChanged(null),
       ),
-      if (forOther) ...[
+      if (who != null) ...[
         const SizedBox(height: 8),
-        Row(children: [
-          Expanded(
-            child: TextField(
-              key: const ValueKey('book-for-name'),
-              controller: name,
-              maxLength: 80,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(labelText: "Passenger's name", counterText: ''),
-              onChanged: (_) => onEdited(),
-            ),
-          ),
-          if (pick != null)
-            BusyIconButton(
-              key: const ValueKey('book-for-contact'),
-              tooltip: 'Contacts',
-              icon: const Icon(Icons.contacts_outlined),
-              onPressed: () async {
-                try {
-                  final c = await pick();
-                  if (c == null) return;
-                  if (c.name != null) name.text = c.name!;
-                  if (c.phone != null) phone.text = c.phone!;
-                  onEdited();
-                } catch (_) {}
-              },
-            ),
-        ]),
-        TextField(
-          key: const ValueKey('book-for-phone'),
-          controller: phone,
-          keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(labelText: "Passenger's phone"),
-          onChanged: (_) => onEdited(),
-        ),
-        const SizedBox(height: 4),
-        Text('The driver will meet and call them. You can follow the ride here.',
-            style: Theme.of(context).textTheme.bodySmall),
+        BookForSummary(name: who.name, phone: who.phone, onEdit: () => _ask(context)),
       ],
     ]);
   }
