@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'loading_skeleton.dart';
+
 /// Centres content and caps its width so forms and lists read well on
 /// desktop and web as well as phones.
 class ResponsiveCenter extends StatelessWidget {
@@ -110,7 +112,7 @@ class AsyncView<T> extends StatelessWidget {
         // shows until the fresh data lands instead of flashing a spinner.
         skipLoadingOnReload: true,
         data: data,
-        loading: () => const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator())),
+        loading: () => const LoadingSkeletonPage(),
         error: (e, _) => EmptyState(
           icon: Icons.cloud_off,
           title: 'Something went wrong',

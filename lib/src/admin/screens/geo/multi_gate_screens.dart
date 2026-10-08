@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
@@ -363,7 +364,7 @@ class AdminMultiGateGatesScreen extends ConsumerWidget {
         value: gatesAsync,
         onRetry: () => ref.invalidate(multiGateGatesProvider),
         data: (_) {
-          if (placesAsync.isLoading) return const Center(child: CircularProgressIndicator());
+          if (placesAsync.isLoading) return const LoadingSkeletonPage();
           if (place == null) {
             return const EmptyState(
               icon: Icons.error_outline,

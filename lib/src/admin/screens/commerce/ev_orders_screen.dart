@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ev_wizard.dart' show evMoney, evPaymentsDue, paymentReceivedPatch;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
@@ -208,7 +209,7 @@ class _OrderDetail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final orders = ref.watch(evOrdersProvider).value ?? const <EvOrderRow>[];
     final order = orders.where((o) => o.id == orderId).firstOrNull;
-    if (order == null) return const Center(child: CircularProgressIndicator());
+    if (order == null) return const LoadingSkeletonPage();
     final canEdit = ref.watch(pageAccessProvider(EvOrdersScreen.page)) == AccessLevel.edit;
     final v = order.values;
     final t = Theme.of(context);

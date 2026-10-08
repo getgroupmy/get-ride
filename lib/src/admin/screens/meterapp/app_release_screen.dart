@@ -13,10 +13,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../providers.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/in_app_page.dart';
+import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
-import '../../../widgets/in_app_page.dart';
 
 const appReleasePage = 'admin-settings-app-release';
 
@@ -282,10 +283,7 @@ class _ReleaseCardState extends ConsumerState<_ReleaseCard> {
           ]),
           const SizedBox(height: 8),
           runs.when(
-            loading: () => const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            ),
+            loading: () => const LoadingSkeleton(rows: 3),
             error: (e, _) => Text('$e', style: TextStyle(color: theme.colorScheme.error)),
             data: (state) {
               if (state.kind != ReleaseStateKind.ok) {

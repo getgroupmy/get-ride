@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/in_app_page.dart';
+import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
@@ -11,7 +13,6 @@ import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
 import 'vehicle_drivers.dart';
-import '../../../widgets/in_app_page.dart';
 
 class VehicleFormData {
   const VehicleFormData({required this.partners, required this.geo, required this.requiredDocs, required this.vehicleDocTypeIds});
@@ -379,7 +380,7 @@ class _VehicleDocumentsList extends ConsumerWidget {
           trailing: TextButton(
               onPressed: () => context.go('/admin/documents?kind=vehicle'), child: const Text('Review documents'))),
       value.when(
-        loading: () => const LinearProgressIndicator(),
+        loading: () => const LoadingSkeleton(rows: 3),
         error: (e, _) => Text(errorText(e)),
         data: (rows) {
           if (rows.isEmpty) return const Text('No vehicle documents on file.');
