@@ -30,6 +30,7 @@ void main() {
     await tester.pump();
 
     final credit = tester.getRect(find.byIcon(Icons.info_outlined)).inflate(12); // its 48 px tap target
+    expect(credit.center.dx, lessThan(390 / 2), reason: 'the credit sits at the bottom left');
     for (final key in const ['map-type', 'map-recenter']) {
       final button = tester.getRect(find.byKey(ValueKey(key)));
       expect(button.overlaps(credit), isFalse, reason: '$key covers the credit button');

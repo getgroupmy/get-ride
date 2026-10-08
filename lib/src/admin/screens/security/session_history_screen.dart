@@ -724,7 +724,10 @@ class _HeatMap extends StatelessWidget {
                 borderColor: const Color(0x00000000),
               ),
           ]),
-          const RichAttributionWidget(attributions: [TextSourceAttribution('© OpenStreetMap contributors')]),
+          const RichAttributionWidget(
+            alignment: AttributionAlignment.bottomLeft,
+            attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
+          ),
         ],
       );
 }

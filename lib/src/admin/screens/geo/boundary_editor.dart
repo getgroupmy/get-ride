@@ -15,6 +15,7 @@ import 'geo_logic.dart';
 List<Widget> osmBaseLayers(BuildContext context) => [baseTileLayer(context)];
 
 const _osmAttribution = RichAttributionWidget(
+  alignment: AttributionAlignment.bottomLeft,
   attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
 );
 
