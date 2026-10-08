@@ -74,6 +74,14 @@ void main() {
     final menu = find.byKey(const ValueKey('home-menu'));
     expect(menu, findsOneWidget);
     final top = tester.getRect(menu).top;
+    // Map type over recenter, bottom right, just above the sheet (as the
+    // driver's map has them).
+    final sheetTop = tester.getRect(find.byKey(const ValueKey('map-sheet-handle'))).top;
+    final recenter = tester.getRect(find.byKey(const ValueKey('map-recenter')));
+    expect(recenter.bottom, lessThan(sheetTop));
+    expect(recenter.bottom, greaterThan(sheetTop - 40), reason: 'right above the sheet, not at the top');
+    expect(recenter.right, closeTo(400 - 16, 0.5));
+    expect(tester.getRect(find.byKey(const ValueKey('map-type'))).bottom, lessThanOrEqualTo(recenter.top));
 
     // Dragging the map: the sheet and the buttons slide out of sight.
     final g = await tester.startGesture(const Offset(200, 300));

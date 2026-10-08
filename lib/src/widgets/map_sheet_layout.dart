@@ -25,8 +25,13 @@ class MapBottomInset extends InheritedWidget {
     required this.height,
     required this.cap,
     this.pull,
+    this.rest = 0,
     required super.child,
   });
+
+  /// The inset with the sheet all the way down: the part of the map above
+  /// it is where a pin the map keeps centred stands ([focusOffset]).
+  final double rest;
 
   /// The sheet's size, as a fraction of [height].
   final ValueListenable<double> extent;
@@ -55,9 +60,15 @@ class MapBottomInset extends InheritedWidget {
   /// The inset right now (for a one-off camera fit).
   static double of(BuildContext context) => context.getInheritedWidgetOfExactType<MapBottomInset>()?.value ?? 0;
 
+  /// How far from the map's centre a point should be put to stand in the
+  /// middle of the map left showing above the sheet when it is all the way
+  /// down (inDrive keeps its pickup pin there): up by half that sheet.
+  static Offset focusOffset(BuildContext context) =>
+      Offset(0, -(context.getInheritedWidgetOfExactType<MapBottomInset>()?.rest ?? 0) / 2);
+
   @override
   bool updateShouldNotify(MapBottomInset old) =>
-      old.extent != extent || old.pull != pull || old.height != height || old.cap != cap;
+      old.extent != extent || old.pull != pull || old.height != height || old.cap != cap || old.rest != rest;
 }
 
 /// A map with a draggable sheet floating over it (phone layout): the map
@@ -399,6 +410,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 height: h,
                 cap: h * (1 - widget.mapMinFraction),
                 pull: _bounce,
+                rest: math.min(h * widget.min, h * (1 - widget.mapMinFraction)),
                 child: widget.map,
               ),
             ),
