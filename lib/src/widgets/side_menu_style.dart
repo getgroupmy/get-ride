@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 
 /// Every side menu's look (the user's, the driver's and the admin's), taken
 /// from the reference menu: a charcoal panel in either theme, grey outline
-/// icons beside white labels, thin dividers, and a lime button at the foot.
+/// icons beside white labels, thin dividers, and the app's own accent on
+/// the buttons at the foot.
 abstract final class SideMenuStyle {
   static const background = Color(0xFF242424);
   static const divider = Color(0xFF555555);
@@ -10,8 +11,10 @@ abstract final class SideMenuStyle {
   static const text = Colors.white;
   static const muted = Color(0xFFB8B7B2);
   static const star = Color(0xFFF09E3B);
-  static const button = Color(0xFFCBF052);
-  static const onButton = Color(0xFF111111);
+  /// The buttons: the app's theme accent (its brand blue, as "Find a
+  /// driver"), not a colour of the menu's own.
+  static const button = Color(0xFF2DABE2);
+  static const onButton = Colors.white;
 
   /// A row the admin menu has open.
   static const selected = Color(0xFF333333);
@@ -141,7 +144,7 @@ class SideMenuStars extends StatelessWidget {
 }
 
 /// A side menu's frame: the header, a divider, the rows, a divider, then
-/// the lime button and whatever goes under it, on the charcoal panel.
+/// the accent button and whatever goes under it, on the charcoal panel.
 class SideMenuFrame extends StatelessWidget {
   const SideMenuFrame({
     super.key,

@@ -155,12 +155,13 @@ void main() {
       expect(tester.getTopLeft(handle).dy, lessThan(top - 200));
     });
 
-    testWidgets('no top bar: the page buttons float, the menu at the far right', (tester) async {
+    testWidgets('no top bar: the page buttons float, the menu top left as on the home map', (tester) async {
       await pump(tester);
       expect(find.byType(AppBar), findsNothing);
       final menu = tester.getRect(find.byKey(const ValueKey('partner-menu-button')));
       final vehicles = tester.getRect(find.byTooltip('My vehicles'));
-      expect(menu.left, greaterThan(vehicles.right), reason: 'the menu is the rightmost');
+      expect(menu.left, 16, reason: "top left, where the home map's menu is");
+      expect(menu.right, lessThan(vehicles.left), reason: 'the page buttons stay on the right');
       expect(menu.top, lessThan(80), reason: 'at the top of the page');
       await tester.tap(find.byKey(const ValueKey('partner-menu-button')));
       await tester.pumpAndSettle();

@@ -77,6 +77,26 @@ void showInfo(BuildContext context, String message) {
     ..showSnackBar(SnackBar(content: Text(message)));
 }
 
+/// A message the rider has to acknowledge: a modal with one OK.
+Future<void> showNotice(BuildContext context, {String? title, required String message}) => showDialog<void>(
+  context: context,
+  builder: (c) => AlertDialog(
+    key: const ValueKey('notice'),
+    title: title == null ? null : Text(title),
+    content: Text(message),
+    actions: [
+      FilledButton(key: const ValueKey('notice-ok'), onPressed: () => Navigator.pop(c), child: const Text('OK')),
+    ],
+  ),
+);
+
+/// Booking a ride is locked while the driver is online.
+Future<void> showGoOfflineToBook(BuildContext context) => showNotice(
+  context,
+  title: "You're online",
+  message: 'Go offline to book a ride.',
+);
+
 /// Loading / error / data switch for a Riverpod [AsyncValue].
 class AsyncView<T> extends StatelessWidget {
   const AsyncView({super.key, required this.value, required this.data, this.onRetry});

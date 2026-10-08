@@ -9,9 +9,10 @@ import 'package:latlong2/latlong.dart';
 const start = LatLng(3.1340, 101.6860);
 
 class _Host extends StatefulWidget {
-  const _Host({required this.map, required this.drops});
+  const _Host({required this.map, required this.drops, this.pinKey});
   final MapController map;
   final List<LatLng> drops;
+  final Key? pinKey;
   @override
   State<_Host> createState() => _HostState();
 }
@@ -24,6 +25,7 @@ class _HostState extends State<_Host> {
   Widget build(BuildContext context) => MaterialApp(
     home: Scaffold(
       body: MapDragPin(
+        key: widget.pinKey,
         controller: widget.map,
         pin: pickup,
         onMoving: (v) => setState(() => moving = v),
@@ -101,6 +103,32 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byKey(const ValueKey('drag-pin')), findsNothing);
     expect(drops, isEmpty);
+  });
+
+  testWidgets('the recenter button drops the pin on the fix: it floats up, then lands there', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(400, 800);
+    addTearDown(tester.view.reset);
+    final map = MapController();
+    addTearDown(map.dispose);
+    final drops = <LatLng>[];
+    final pin = GlobalKey<MapDragPinState>();
+    await tester.pumpWidget(_Host(map: map, drops: drops, pinKey: pin));
+    await tester.pump();
+    const here = LatLng(3.2, 101.7);
+    map.move(here, 15);
+    await tester.pump();
+    pin.currentState!.dropAt(here);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey('drag-pin')), findsOneWidget, reason: 'lifted');
+    expect(drops, isEmpty);
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(drops, [here]);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.byKey(const ValueKey('drag-pin')), findsNothing, reason: 'landed');
+    expect(find.byKey(const ValueKey('box')), findsOneWidget);
   });
 
   testWidgets('a hidden sheet slides out of sight below the screen and back', (tester) async {

@@ -54,10 +54,10 @@ class MapDragPin extends StatefulWidget {
   static const lift = 25.0;
 
   @override
-  State<MapDragPin> createState() => _MapDragPinState();
+  State<MapDragPin> createState() => MapDragPinState();
 }
 
-class _MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMixin {
+class MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMixin {
   late final AnimationController _lift = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 200),
@@ -83,9 +83,9 @@ class _MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateM
   }
 
   @override
-  void didUpdateWidget(covariant MapDragPin old) {
-    super.didUpdateWidget(old);
-    if (old.controller != widget.controller) {
+  void didUpdateWidget(covariant MapDragPin oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
       _events?.cancel();
       _events = widget.controller.mapEventStream.listen(_onEvent);
     }
@@ -129,6 +129,24 @@ class _MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateM
     return visible.center(Offset.zero);
   }
 
+  /// Lifts the pin and drops it on [at] (the recenter button putting the
+  /// pickup on the rider's fix): the same float and bounce as a drag, with
+  /// [MapDragPin.onDropped] told [at] when it lands. Call it once the camera
+  /// is where it will stay.
+  void dropAt(LatLng at) {
+    if (!widget.enabled || !mounted) return;
+    _quiet?.cancel();
+    final p = widget.controller.camera.latLngToScreenOffset(at);
+    final lifting = _at == null;
+    setState(() => _at = p);
+    if (lifting) widget.onMoving?.call(true);
+    _lift.forward();
+    // Up, a moment in the air, then down onto the fix.
+    _quiet = Timer(_lift.duration! + widget.settle, () {
+      if (mounted && _at == p) _land(at);
+    });
+  }
+
   void _armDrop() {
     _quiet?.cancel();
     _quiet = Timer(widget.settle, _drop);
@@ -138,7 +156,11 @@ class _MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateM
     final at = _at;
     // Still held down: the drop waits for the finger to come off.
     if (!mounted || at == null || _pointers > 0) return;
-    widget.onDropped(widget.controller.camera.screenOffsetToLatLng(at));
+    _land(widget.controller.camera.screenOffsetToLatLng(at));
+  }
+
+  void _land(LatLng point) {
+    widget.onDropped(point);
     _lift.reverse().then((_) {
       if (!mounted || _lift.value != 0) return;
       setState(() => _at = null);
