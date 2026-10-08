@@ -5,13 +5,14 @@ import 'package:latlong2/latlong.dart' hide Path;
 /// Street zoom a recentred map lands on (Expo's recenter animates to 16).
 const recenterZoom = 16.0;
 
-/// Moves [map] onto [at] at [zoom] ([recenterZoom] unless given). False
-/// when there is nowhere to go yet, or the map is not drawn yet (a
-/// controller can't move a map before its first frame).
-bool recenterMap(MapController map, LatLng? at, {double zoom = recenterZoom}) {
+/// Moves [map] onto [at] at [zoom] ([recenterZoom] unless given), [offset]
+/// from the map's centre ([MapBottomInset.focusOffset]). False when there
+/// is nowhere to go yet, or the map is not drawn yet (a controller can't
+/// move a map before its first frame).
+bool recenterMap(MapController map, LatLng? at, {double zoom = recenterZoom, Offset offset = Offset.zero}) {
   if (at == null) return false;
   try {
-    return map.move(at, zoom);
+    return map.move(at, zoom, offset: offset);
   } catch (_) {
     return false;
   }

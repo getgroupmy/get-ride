@@ -158,6 +158,7 @@ class RideMap extends StatefulWidget {
     this.showPickup = true,
     this.dotPins = false,
     this.fitTop = 64,
+    this.focusPickup = false,
     this.extraLayers = const [],
     this.hideCredit = false,
     this.trafficSignals = true,
@@ -215,6 +216,12 @@ class RideMap extends StatefulWidget {
   /// labels stand over the pins, or a title over the map).
   final double fitTop;
 
+  /// The home map's look (inDrive's): with no drop-off yet the camera keeps
+  /// the pickup (else the rider) alone in the middle of the map above the
+  /// sheet when it is all the way down ([MapBottomInset.focusOffset]),
+  /// rather than framing every point.
+  final bool focusPickup;
+
   /// Map layers drawn over the route and under the pins (a second line).
   final List<Widget> extraLayers;
 
@@ -270,7 +277,17 @@ class _RideMapState extends State<RideMap> {
     );
   }
 
+  /// The point [RideMap.focusPickup] keeps in the middle; null when off, or
+  /// when there is a route to frame instead.
+  LatLng? get _focus =>
+      widget.focusPickup && widget.drop == null && widget.route.isEmpty ? widget.pickup ?? widget.me : null;
+
   void _fit() {
+    final focus = _focus;
+    if (focus != null) {
+      _controller.move(focus, widget.pointZoom, offset: MapBottomInset.focusOffset(context));
+      return;
+    }
     final pts = [..._points, ...widget.route];
     if (pts.isEmpty) return;
     final fit = _cameraFit;
@@ -304,6 +321,9 @@ class _RideMapState extends State<RideMap> {
           options: MapOptions(
             initialCenter: start.center,
             initialZoom: start.zoom,
+            // North stays up: two fingers pinch and pan but never turn the
+            // map (a trip map that follows the car still turns it itself).
+            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
             onTap: widget.onTap == null ? null : (_, p) => widget.onTap!(p),
             onPositionChanged: widget.onGesture == null
                 ? null

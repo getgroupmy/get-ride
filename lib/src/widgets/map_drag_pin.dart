@@ -117,7 +117,9 @@ class MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMi
     _armDrop();
   }
 
-  /// Where the pin lifts from: where it stands, if that is in view.
+  /// Where the pin lifts from: where it stands, if that is in view; else
+  /// the middle of the map above the sheet when it is all the way down,
+  /// where the map keeps it ([MapBottomInset.focusOffset]).
   Offset _startAt(MapCamera camera) {
     final size = camera.nonRotatedSize;
     final visible = Size(size.width, (size.height - MapBottomInset.of(context)).clamp(1, size.height));
@@ -126,7 +128,7 @@ class MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMi
       final p = camera.latLngToScreenOffset(pin);
       if (p.dx >= 0 && p.dx <= visible.width && p.dy >= pickupPinHeight && p.dy <= visible.height) return p;
     }
-    return visible.center(Offset.zero);
+    return size.center(MapBottomInset.focusOffset(context));
   }
 
   /// Lifts the pin and drops it on [at] (the recenter button putting the
