@@ -26,6 +26,43 @@ abstract final class SideMenuStyle {
   static double widthFor(double screen) => (screen * widthFraction).clamp(0, maxWidth).toDouble();
 }
 
+/// The menu's colours for the app's theme: the charcoal panel in dark mode,
+/// a white one in light mode (as the Expo app's light menu), with the
+/// accent button and gold stars the same in both.
+class SideMenuColors {
+  const SideMenuColors({
+    required this.background,
+    required this.divider,
+    required this.icon,
+    required this.text,
+    required this.muted,
+    required this.selected,
+  });
+
+  final Color background, divider, icon, text, muted, selected;
+
+  static const dark = SideMenuColors(
+    background: SideMenuStyle.background,
+    divider: SideMenuStyle.divider,
+    icon: SideMenuStyle.icon,
+    text: SideMenuStyle.text,
+    muted: SideMenuStyle.muted,
+    selected: SideMenuStyle.selected,
+  );
+
+  static const light = SideMenuColors(
+    background: Colors.white,
+    divider: Color(0xFFE6E6E6),
+    icon: Color(0xFF8A8F99),
+    text: Color(0xFF111111),
+    muted: Color(0xFF6B6F78),
+    selected: Color(0xFFF6F4EF),
+  );
+
+  static SideMenuColors of(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? dark : light;
+}
+
 /// One menu row: the grey outline icon and the white label.
 class SideMenuRow extends StatelessWidget {
   const SideMenuRow({
@@ -48,22 +85,24 @@ class SideMenuRow extends StatelessWidget {
   final bool selected;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: selected ? SideMenuStyle.selected : Colors.transparent,
+  Widget build(BuildContext context) {
+    final c = SideMenuColors.of(context);
+    return Material(
+    color: selected ? c.selected : Colors.transparent,
     child: InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(19, 8, 16, 8),
         child: Row(
           children: [
-            Icon(icon, size: 24, color: color ?? SideMenuStyle.icon),
+            Icon(icon, size: 24, color: color ?? c.icon),
             const SizedBox(width: 13),
             Expanded(
               child: Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 17, height: 1.2, color: color ?? SideMenuStyle.text),
+                style: TextStyle(fontSize: 17, height: 1.2, color: color ?? c.text),
               ),
             ),
             ?trailing,
@@ -72,6 +111,7 @@ class SideMenuRow extends StatelessWidget {
       ),
     ),
   );
+  }
 }
 
 /// The person at the top of a menu: avatar, name, and a line under it (the
@@ -85,7 +125,9 @@ class SideMenuHeader extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => InkWell(
+  Widget build(BuildContext context) {
+    final c = SideMenuColors.of(context);
+    return InkWell(
     key: const ValueKey('menu-profile'),
     onTap: onTap,
     child: Padding(
@@ -94,10 +136,10 @@ class SideMenuHeader extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 22,
-            backgroundColor: const Color(0xFF3A3A3A),
+            backgroundColor: c.selected,
             backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl!) : null,
             child: avatarUrl == null
-                ? const Icon(Icons.sentiment_satisfied_alt, size: 28, color: SideMenuStyle.icon)
+                ? Icon(Icons.sentiment_satisfied_alt, size: 28, color: c.icon)
                 : null,
           ),
           const SizedBox(width: 18),
@@ -109,17 +151,18 @@ class SideMenuHeader extends StatelessWidget {
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: SideMenuStyle.text),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: c.text),
                 ),
                 if (subtitle != null) ...[const SizedBox(height: 4), subtitle!],
               ],
             ),
           ),
-          if (onTap != null) const Icon(Icons.chevron_right, color: SideMenuStyle.text),
+          if (onTap != null) Icon(Icons.chevron_right, color: c.text),
         ],
       ),
     ),
   );
+  }
 }
 
 /// Five stars and the figure, as under the name.
@@ -138,7 +181,7 @@ class SideMenuStars extends StatelessWidget {
           color: SideMenuStyle.star,
         ),
       const SizedBox(width: 8),
-      Text(rating.toStringAsFixed(1), style: const TextStyle(fontSize: 14, color: SideMenuStyle.muted)),
+      Text(rating.toStringAsFixed(1), style: TextStyle(fontSize: 14, color: SideMenuColors.of(context).muted)),
     ],
   );
 }
@@ -167,9 +210,10 @@ class SideMenuFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const line = Divider(height: 1, thickness: 1, color: SideMenuStyle.divider);
+    final c = SideMenuColors.of(context);
+    final line = Divider(height: 1, thickness: 1, color: c.divider);
     return Material(
-      color: SideMenuStyle.background,
+      color: c.background,
       child: SafeArea(
         right: false,
         child: Column(
@@ -213,6 +257,7 @@ class SideMenuSocialLinks extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final text = SideMenuColors.of(context).text;
     Widget link(String name, Widget icon) => Tooltip(
       message: 'GET.ride on $name',
       child: Padding(padding: const EdgeInsets.symmetric(horizontal: 17), child: icon),
@@ -223,21 +268,21 @@ class SideMenuSocialLinks extends StatelessWidget {
         key: const ValueKey('menu-social'),
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          link('TikTok', const Icon(Icons.tiktok, size: 28, color: SideMenuStyle.text)),
+          link('TikTok', Icon(Icons.tiktok, size: 28, color: text)),
           // The plain "f", as the reference draws it (Material's is in a disc).
           link(
             'Facebook',
-            const SizedBox.square(
+            SizedBox.square(
               dimension: 28,
               child: Center(
                 child: Text(
                   'f',
-                  style: TextStyle(fontSize: 32, height: 1, fontWeight: FontWeight.w900, color: SideMenuStyle.text),
+                  style: TextStyle(fontSize: 32, height: 1, fontWeight: FontWeight.w900, color: text),
                 ),
               ),
             ),
           ),
-          link('Instagram', const CustomPaint(size: Size.square(25), painter: _InstagramGlyph(SideMenuStyle.text))),
+          link('Instagram', CustomPaint(size: const Size.square(25), painter: _InstagramGlyph(text))),
         ],
       ),
     );
