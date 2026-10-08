@@ -158,4 +158,37 @@ void main() {
     await tester.pump();
     expect(tester.getRect(find.byKey(const ValueKey('map-sheet-handle'))).top, closeTo(shown, 0.5));
   });
+
+  testWidgets('the map credit slides down off the map and hides while the map is dragged, then returns', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(400, 800);
+    addTearDown(tester.view.reset);
+    Widget host(bool hidden) => MaterialApp(
+      home: Scaffold(
+        body: MapSheetLayout(
+          map: RideMap(me: const LatLng(3.15, 101.71), hideCredit: hidden),
+          sheet: const SizedBox(height: 400),
+          min: 0.22,
+          initial: 0.22,
+          hidden: hidden,
+        ),
+      ),
+    );
+    final info = find.byIcon(Icons.info_outlined);
+    await tester.pumpWidget(host(false));
+    final shown = tester.getRect(info).top;
+    expect(shown, lessThan(800 * (1 - 0.22)), reason: 'above the sheet');
+    await tester.pumpWidget(host(true));
+    await tester.pump(MapSheetLayout.hideDuration);
+    await tester.pump();
+    expect(tester.getRect(info).top, greaterThan(800), reason: 'down off the map with the sheet');
+    final fade = tester.widget<Opacity>(
+      find.ancestor(of: find.byKey(const ValueKey('map-credit')), matching: find.byType(Opacity)).first,
+    );
+    expect(fade.opacity, 0);
+    await tester.pumpWidget(host(false));
+    await tester.pump(MapSheetLayout.hideDuration);
+    await tester.pump();
+    expect(tester.getRect(info).top, closeTo(shown, 0.5));
+  });
 }
