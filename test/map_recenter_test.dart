@@ -80,4 +80,25 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(const Distance()(camera().center, further), lessThan(1));
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('the recenter button is a white disc with a black arrow in light, charcoal with white in dark ($b)',
+        (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData(brightness: b),
+        home: Scaffold(body: Center(child: RecenterButton(onPressed: () => taps++))),
+      ));
+      final dark = b == Brightness.dark;
+      final disc = tester.widget<Material>(find.byKey(const ValueKey('map-recenter')));
+      expect(disc.color, dark ? RecenterButton.darkFill : RecenterButton.lightFill);
+      expect(disc.shape, isA<CircleBorder>());
+      final icon = tester.widget<Icon>(find.byKey(const ValueKey('map-recenter-icon')));
+      expect(icon.icon, Icons.near_me_outlined);
+      expect(icon.color, dark ? Colors.white : const Color(0xFF111111));
+      expect(tester.getSize(find.byKey(const ValueKey('map-recenter'))), const Size.square(RecenterButton.size));
+      await tester.tap(find.byKey(const ValueKey('map-recenter')));
+      expect(taps, 1);
+    });
+  }
 }
