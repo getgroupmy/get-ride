@@ -958,6 +958,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           initial: confirming ? 0.55 : 0.45,
           hidden: _pinMoving,
           footer: footer,
+          // Over the foot of the sheet, only while it is all the way up.
+          aboveFooter: footer == null
+              ? null
+              : const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 12), child: ConfirmDisclaimer()),
         ),
       ),
     );
@@ -1111,8 +1115,8 @@ class _BookingPanel extends StatelessWidget {
             decoration: const InputDecoration(labelText: 'Note to driver (optional)'),
           ),
           const SizedBox(height: 16),
-          const ConfirmDisclaimer(),
-          if (footer != null) ...[const SizedBox(height: 16), footer!],
+          // In the wide panel; on a phone it sits above the pinned footer.
+          if (footer != null) ...[const ConfirmDisclaimer(), const SizedBox(height: 16), footer!],
         ],
       ]),
     );

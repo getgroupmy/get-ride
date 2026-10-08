@@ -150,6 +150,21 @@ void main() {
     expect(find.text('Recommended fare'), findsOneWidget);
     expect(find.byKey(const ValueKey('fare-raise')), findsNothing);
     expect(find.text('Fare does not include state entry tax, tolls, or parking fees'), findsOneWidget);
+    // Above the pinned bar, faded out until the sheet is all the way up
+    // (Expo shows it only expanded), and out again when it comes down.
+    double shown() =>
+        tester.widget<AnimatedOpacity>(find.byKey(const ValueKey('map-sheet-above-footer'))).opacity;
+    expect(shown(), 0);
+    expect(
+      tester.getBottomLeft(find.byKey(const ValueKey('confirm-disclaimer'))).dy,
+      lessThan(tester.getTopLeft(find.text('Find a driver')).dy),
+    );
+    await tester.drag(find.text('Recommended fare'), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(shown(), 1);
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 600));
+    await tester.pumpAndSettle();
+    expect(shown(), 0);
     expect(find.text('Find a driver'), findsOneWidget);
     expect(find.byKey(const ValueKey('confirm-payment')), findsOneWidget);
     expect(find.textContaining('Auto-accept offer of'), findsOneWidget);
