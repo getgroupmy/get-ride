@@ -249,9 +249,19 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     value: widget.hidden ? 1 : 0,
   );
 
-  /// iOS's rubber-band curve: the further it is pulled, the less it gives.
+  /// How far down the sheet may be pulled (inDrive's): nearly all of it,
+  /// leaving just the handle showing.
+  double get _pullLimit {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize || !_sheet.isAttached) return 120;
+    return math.max(120.0, box.size.height * _sheet.size - 28);
+  }
+
+  /// The pull curve: it follows the finger closely at first and gives less
+  /// the nearer it gets to [_pullLimit], so the sheet can be pulled almost
+  /// out of sight and then springs back up.
   static double _rubber(double pull, {double limit = 120}) =>
-      pull <= 0 ? 0 : limit * (1 - 1 / (pull * 0.55 / limit + 1));
+      pull <= 0 ? 0 : limit * (1 - math.exp(-1.2 * pull / limit));
 
   bool _onScroll(ScrollNotification n) {
     if (widget.locked) return false;
@@ -259,7 +269,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
       // Pulled down past fully down.
       _pull -= n.overscroll;
       _bounce.stop();
-      _bounce.value = _rubber(_pull);
+      _bounce.value = _rubber(_pull, limit: _pullLimit);
     } else if (n is ScrollEndNotification) {
       _springBack();
       // Let go at a new height: the chosen vehicle back in view.
@@ -471,7 +481,14 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                     // A taller footer may now cover the chosen item.
                     WidgetsBinding.instance.addPostFrameCallback((_) => _revealTarget());
                   },
-                  child: widget.footer!,
+                  // Pulled down past its lowest, the footer goes with the
+                  // sheet, and comes back up with it.
+                  child: AnimatedBuilder(
+                    animation: _bounce,
+                    builder: (_, child) =>
+                        _bounce.value == 0 ? child! : Transform.translate(offset: Offset(0, _bounce.value), child: child),
+                    child: widget.footer!,
+                  ),
                 ),
               ),
             if (widget.aboveFooter != null)

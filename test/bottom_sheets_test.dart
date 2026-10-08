@@ -292,4 +292,41 @@ void main() {
     // The ones before it are pushed up out of the way.
     expect(tester.getRect(find.byKey(const ValueKey('item-1'))).bottom, lessThan(handle()));
   });
+
+  testWidgets('pulled hard it goes almost out of sight, footer and all, then springs back up', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(400, 800);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: MapSheetLayout(
+            map: const SizedBox.expand(),
+            initial: 0.5,
+            min: 0.5,
+            footer: const SizedBox(key: ValueKey('foot'), height: 100, width: double.infinity),
+            sheet: Column(children: [for (var i = 0; i < 12; i++) SizedBox(height: 60, child: Text('row $i'))]),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final handle = find.byKey(const ValueKey('map-sheet-handle'));
+    final handleTop = tester.getTopLeft(handle).dy;
+    final footTop = tester.getTopLeft(find.byKey(const ValueKey('foot'))).dy;
+    final g = await tester.startGesture(tester.getCenter(find.text('row 0')));
+    for (var i = 0; i < 30; i++) {
+      await g.moveBy(const Offset(0, 25));
+      await tester.pump();
+    }
+    final pulled = tester.getTopLeft(handle).dy - handleTop;
+    expect(pulled, greaterThan(280), reason: 'most of the way down');
+    expect(tester.getTopLeft(handle).dy, lessThan(800), reason: 'the handle still peeks');
+    expect(tester.getTopLeft(find.byKey(const ValueKey('foot'))).dy - footTop, closeTo(pulled, 1),
+        reason: 'the footer goes down with it');
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(handle).dy, closeTo(handleTop, 0.5), reason: 'it bounces back up');
+    expect(tester.getTopLeft(find.byKey(const ValueKey('foot'))).dy, closeTo(footTop, 0.5));
+  });
 }
