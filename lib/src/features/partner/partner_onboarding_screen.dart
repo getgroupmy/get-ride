@@ -6,13 +6,14 @@ import '../../admin/screens/meterapp/pick_image.dart';
 import '../../admin/screens/people/people_data.dart';
 import '../../admin/screens/people/people_logic.dart';
 import '../../admin/screens/people/people_widgets.dart';
+import '../../core/partner_doc_check.dart' show renewalWindowDays;
 import '../../core/partner_onboarding.dart';
 import '../../core/vehicle_onboarding.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
-import '../../core/partner_doc_check.dart' show renewalWindowDays;
+import '../../widgets/loading_skeleton.dart';
 import '../../widgets/side_menu_host.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
@@ -201,7 +202,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         action: BusyButton.filled(onPressed: _load, child: const Text('Try again')),
       );
     } else if (s == null) {
-      body = const Center(child: CircularProgressIndicator());
+      body = const LoadingSkeletonPage();
     } else {
       final step = _viewing ?? s.step;
       body = ResponsiveCenter(

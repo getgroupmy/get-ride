@@ -5,15 +5,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/document_ai.dart';
+import '../../../core/partner_doc_check.dart';
 import '../../../data/document_ai_repository.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/in_app_page.dart';
+import '../../../widgets/loading_skeleton.dart';
 import '../../widgets/admin_widgets.dart';
 import 'doc_pdf.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
-import '../../../core/partner_doc_check.dart';
-import '../../../widgets/in_app_page.dart';
 
 /// Wide screens get a two-column form, phones one column.
 class FormColumns extends StatelessWidget {
@@ -665,7 +666,7 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
         builder: (context, snap) {
           final t = Theme.of(context);
           if (snap.hasError) return Text(errorText(snap.error!));
-          if (!snap.hasData) return const LinearProgressIndicator();
+          if (!snap.hasData) return const LoadingSkeleton(rows: 2, leading: false);
           final uploads = latestUploadByDoc(snap.data!);
           final p = uploadProgress(widget.docs, uploads);
           final now = widget.now ?? DateTime.now();

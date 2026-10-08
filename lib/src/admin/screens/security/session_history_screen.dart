@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/loading_skeleton.dart';
 import '../../../widgets/map_tiles.dart';
 import '../../../widgets/ride_map.dart';
 import '../../admin_access.dart';
@@ -394,7 +395,7 @@ class _AccountDetailState extends ConsumerState<_AccountDetail> {
       future: _future,
       builder: (context, snap) {
         if (snap.hasError) return Text(errorText(snap.error!));
-        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+        if (!snap.hasData) return const LoadingSkeletonPage();
         final all = snap.data!;
         final sessions = all.sessions.where((s) => inDayRange(s['captured_at'], range)).toList();
         final locations = all.locations.where((l) => inDayRange(l['captured_at'], range)).toList();

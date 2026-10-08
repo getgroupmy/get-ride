@@ -8,6 +8,7 @@ import '../../core/ev_wizard.dart';
 import '../../data/ev_order_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/loading_skeleton.dart';
 import '../../widgets/side_menu_host.dart';
 
 /// Book TEKSI EV (Expo `app/teksi-ev.tsx`): the customer's nine-step car
@@ -223,7 +224,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
         ],
       ),
       body: _loading || catalog.isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingSkeletonPage()
           : _loadError != null || catalog.hasError
               ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_loadError ?? 'Could not load the TEKSI EV catalogue.')))
               : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

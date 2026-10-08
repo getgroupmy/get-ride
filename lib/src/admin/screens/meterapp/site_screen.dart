@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
@@ -183,7 +184,7 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
         if (canEdit) BusyIconButton(tooltip: 'Save', icon: const Icon(Icons.save_outlined), onPressed: s == null ? null : _save),
       ],
       body: s == null
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingSkeletonPage()
           : ListView(padding: const EdgeInsets.symmetric(vertical: 16), children: [
               ResponsiveCenter(
                 maxWidth: 720,

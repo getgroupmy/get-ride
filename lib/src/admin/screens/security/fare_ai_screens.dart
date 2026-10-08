@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
 import 'api_keys_logic.dart' show maskSecret;
@@ -122,7 +123,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
                   message: errorText(_error!),
                   action: BusyButton.text(onPressed: _load, child: const Text('Retry')),
                 )
-              : const Center(child: CircularProgressIndicator()))
+              : const LoadingSkeletonPage())
           : RefreshIndicator(onRefresh: _refreshStats, child: _body(c, canEdit)),
     );
   }
