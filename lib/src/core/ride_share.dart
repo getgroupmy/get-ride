@@ -3,6 +3,7 @@
 import 'package:latlong2/latlong.dart';
 
 import '../data/models.dart';
+import 'sos.dart';
 
 /// Where shared rides are opened: the web app, which needs no account.
 const rideShareBase = 'https://getride.my';
@@ -49,6 +50,11 @@ class SharedRide {
   String? get driverPhoto => _s(raw['partner_photo']);
   String? get vehicle => _s(raw['partner_vehicle']);
   String? get plate => _s(raw['partner_plate']);
+
+  /// The car's make, model and colour (0110); absent on older databases.
+  String? get vehicleMake => _s(raw['vehicle_make']);
+  String? get vehicleModel => _s(raw['vehicle_model']);
+  String? get vehicleColor => _s(raw['vehicle_color']);
   double? get driverRating => _d(raw['partner_rating']);
   double? get driverHeading => _d(raw['partner_live_heading']);
   DateTime? get driverSeenAt => _t(raw['partner_live_at']);
@@ -88,3 +94,36 @@ String sharedRideHeadline(SharedRide r) => switch (r.status) {
   RideStatus.cancelled => 'This ride was cancelled',
   RideStatus.expired => 'No driver was found for this ride',
 };
+
+/// How to recognise the car: `White Perodua Myvi`, from the registered
+/// vehicle (0110), falling back to the driver's free-text vehicle. Null when
+/// nothing is known.
+String? sharedRideCar(SharedRide r) {
+  final makeModel = [?r.vehicleMake, ?r.vehicleModel].join(' ');
+  final name = makeModel.isNotEmpty ? makeModel : r.vehicle;
+  final colour = r.vehicleColor;
+  if (name == null) return colour;
+  if (colour == null || name.toLowerCase().contains(colour.toLowerCase())) return name;
+  return '${colour[0].toUpperCase()}${colour.substring(1)} $name';
+}
+
+/// The text the shared page's SOS sends: where the car is now (or the
+/// pickup), and the driver, plate and car, so whoever gets it can act.
+String sharedRideSosText(SharedRide r, {String? url}) {
+  final at = r.driver ?? r.pickup;
+  final car = [?sharedRideCar(r), ?r.plate].join(', ');
+  final b = StringBuffer(
+    'EMERGENCY: ${r.passenger} may need help on a GET.ride trip to ${r.dropName}. '
+    'Please call $emergencyNumber or contact them immediately.',
+  );
+  if (at != null) {
+    b.write(' Last known location: https://maps.google.com/?q=${at.latitude.toStringAsFixed(6)},${at.longitude.toStringAsFixed(6)}');
+  }
+  final ride = [
+    if (r.driverName != null) 'driver ${r.driverName}',
+    if (car.isNotEmpty) 'car $car',
+  ];
+  if (ride.isNotEmpty) b.write(' (${ride.join(', ')}).');
+  if (url != null) b.write(' Live trip: $url');
+  return b.toString();
+}
