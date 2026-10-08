@@ -175,10 +175,11 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
             right: 12,
             bottom: mapAttributionClearance + inset,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Map view above recenter on every map.
+              const MapTypeButton(),
+              const SizedBox(height: 8),
               // Expo's driver map recenters on the driver.
               RecenterButton(onPressed: me == null ? null : _recenter),
-              const SizedBox(height: 8),
-              const MapTypeButton(),
             ]),
           ),
         ),

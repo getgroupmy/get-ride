@@ -33,10 +33,10 @@ import 'map_tiles.dart';
   return (center: fitted.center, zoom: fitted.zoom);
 }
 
-/// How far up from the map's bottom edge a control in the bottom-right
-/// corner starts, so it clears the OpenStreetMap credit button flutter_map
-/// draws there (its tap target is 48 px, which OSM's terms need reachable).
-const mapAttributionClearance = 56.0;
+/// How far up from the map's bottom edge (or the sheet over it) the
+/// bottom-right map buttons start. The OpenStreetMap credit sits bottom
+/// left, so the buttons only keep a margin rather than clearing it.
+const mapAttributionClearance = 12.0;
 
 /// Height of the box a pickup/drop-off pin is drawn in, standing on its point.
 const rideMapPinBox = 40.0;

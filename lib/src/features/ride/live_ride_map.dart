@@ -223,14 +223,15 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
             right: 12,
             bottom: mapAttributionClearance + inset,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
+              // Map view above recenter on every map.
+              const MapTypeButton(),
+              const SizedBox(height: 8),
               // Expo's trip maps recenter on the car; before a driver is on
               // the way, on the pickup.
               RecenterButton(
                 tooltip: driver == null ? 'Recenter' : 'Follow the car',
                 onPressed: _recenter,
               ),
-              const SizedBox(height: 8),
-              const MapTypeButton(),
             ]),
           ),
         ),

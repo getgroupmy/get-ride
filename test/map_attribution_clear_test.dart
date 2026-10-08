@@ -35,6 +35,11 @@ void main() {
       final button = tester.getRect(find.byKey(ValueKey(key)));
       expect(button.overlaps(credit), isFalse, reason: '$key covers the credit button');
     }
+    // Map view sits above recenter, low in the corner.
+    final type = tester.getRect(find.byKey(const ValueKey('map-type')));
+    final recenter = tester.getRect(find.byKey(const ValueKey('map-recenter')));
+    expect(type.bottom, lessThan(recenter.top));
+    expect(400 - recenter.bottom, lessThanOrEqualTo(24));
     // And the credit still opens.
     await tester.tap(find.byIcon(Icons.info_outlined));
     await tester.pumpAndSettle();
