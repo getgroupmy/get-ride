@@ -645,7 +645,10 @@ class ConfirmServiceCard extends StatelessWidget {
           ),
           child: Column(
             children: [
-              Material(
+              // Shaken, the card swings against the tray, inside its padding.
+              ShakeCounter(
+                travel: 4,
+                child: Material(
                 key: const ValueKey('service-card-top'),
                 color: c.card,
                 elevation: 1.5,
@@ -680,6 +683,7 @@ class ConfirmServiceCard extends StatelessWidget {
                     ),
                   ),
                 ),
+              ),
               ),
               ?fare,
             ],
