@@ -226,8 +226,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// On the home map it also puts the pickup there: the pin floats up and
   /// drops on the fix, as if the map had been dragged under it.
   void _recenter() {
-    if (recenterMap(_map, _me)) _pinOnto(_me!);
+    if (recenterMap(_map, _me, offset: _focusOffset)) _pinOnto(_me!);
     unawaited(_locate(recenter: true));
+  }
+
+  /// Where the pin and the rider are kept: the middle of the map above the
+  /// sheet when it is all the way down (inDrive's), not the map's centre.
+  Offset get _focusOffset {
+    final c = _pin.currentContext;
+    return c == null ? Offset.zero : MapBottomInset.focusOffset(c);
   }
 
   final _pin = GlobalKey<MapDragPinState>();
@@ -244,7 +251,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final p = await currentPosition();
     if (p == null || !mounted) return;
     setState(() => _me = p);
-    if (recenter && recenterMap(_map, p)) _pinOnto(p);
+    if (recenter && recenterMap(_map, p, offset: _focusOffset)) _pinOnto(p);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
     setState(() {
@@ -728,6 +735,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           showPickup: !_pinMoving,
           hideCredit: _pinMoving,
           dotPins: confirming,
+          focusPickup: !wide,
           onGesture: confirming && !_routeMoved ? () => setState(() => _routeMoved = true) : null,
           autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
           drop: _drop?.point,
@@ -810,39 +818,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
+      // Bottom right, riding just above the sheet as on the driver's map: the
+      // map type over recenter. While the map is dragged under the pickup
+      // pin they slide down off it with the sheet, and back after.
       if (!confirming)
-        Positioned(
-        right: 16,
-        bottom: wide ? mapAttributionClearance : null,
-        top: wide ? null : 16,
-        // While the map is dragged under the pickup pin these slide off the
-        // top, alongside the sheet sliding off the bottom, and back after.
-        child: IgnorePointer(
-          ignoring: _pinMoving,
-          child: AnimatedSlide(
-            key: const ValueKey('map-buttons'),
-            offset: Offset(0, _pinMoving ? (wide ? 3 : -3) : 0),
-            duration: MapSheetLayout.hideDuration,
-            curve: _pinMoving ? Curves.easeIn : Curves.easeOut,
-            child: AnimatedOpacity(
-              opacity: _pinMoving ? 0 : 1,
-              duration: MapSheetLayout.hideDuration,
-              child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const MapTypeButton(),
-              if (display?.recenterButton ?? true) ...[
-                const SizedBox(height: 8),
-                RecenterButton(onPressed: _recenter),
-              ],
-            ],
-          ),
-        ),
+        aboveSheet(
+          (inset) => Positioned(
+            right: 16,
+            bottom: mapAttributionClearance + inset,
+            child: IgnorePointer(
+              ignoring: _pinMoving,
+              child: AnimatedSlide(
+                key: const ValueKey('map-buttons'),
+                offset: Offset(0, _pinMoving ? 3 : 0),
+                duration: MapSheetLayout.hideDuration,
+                curve: _pinMoving ? Curves.easeIn : Curves.easeOut,
+                child: AnimatedOpacity(
+                  opacity: _pinMoving ? 0 : 1,
+                  duration: MapSheetLayout.hideDuration,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const MapTypeButton(),
+                      if (display?.recenterButton ?? true) ...[
+                        const SizedBox(height: 8),
+                        RecenterButton(onPressed: _recenter),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ),
-      ),
       if (confirming && !wide && layout.promoBar)
         aboveSheet(
           (inset) => Positioned(
