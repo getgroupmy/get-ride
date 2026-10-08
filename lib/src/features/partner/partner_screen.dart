@@ -754,18 +754,25 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                       context.push('/drive/vehicles');
                     },
                   ),
-                // The menu sits at the far right.
-                _floatingButton(
-                  key: const ValueKey('partner-menu-button'),
-                  tooltip: 'Menu',
-                  icon: Icons.menu,
-                  onPressed: () {
-                    // The side menu on phones; a sheet where there is none.
-                    final menu = SideMenuHost.of(context);
-                    menu == null ? showPartnerMenu(context) : menu.open();
-                  },
-                ),
               ]),
+            ),
+          ),
+        ),
+        // The menu: top left, exactly where the home map has it.
+        Positioned(
+          left: 16,
+          top: 16,
+          child: SafeArea(
+            child: FloatingActionButton.small(
+              key: const ValueKey('partner-menu-button'),
+              heroTag: 'partner-menu',
+              tooltip: 'Menu',
+              onPressed: () {
+                // The side menu on phones; a sheet where there is none.
+                final menu = SideMenuHost.of(context);
+                menu == null ? showPartnerMenu(context) : menu.open();
+              },
+              child: const Icon(Icons.menu),
             ),
           ),
         ),

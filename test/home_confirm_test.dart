@@ -150,6 +150,21 @@ void main() {
     expect(find.text('Recommended fare'), findsOneWidget);
     expect(find.byKey(const ValueKey('fare-raise')), findsNothing);
     expect(find.text('Fare does not include state entry tax, tolls, or parking fees'), findsOneWidget);
+    // Above the pinned bar, faded out until the sheet is all the way up
+    // (Expo shows it only expanded), and out again when it comes down.
+    double shown() =>
+        tester.widget<AnimatedOpacity>(find.byKey(const ValueKey('map-sheet-above-footer'))).opacity;
+    expect(shown(), 0);
+    expect(
+      tester.getBottomLeft(find.byKey(const ValueKey('confirm-disclaimer'))).dy,
+      lessThan(tester.getTopLeft(find.text('Find a driver')).dy),
+    );
+    await tester.drag(find.text('Recommended fare'), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(shown(), 1);
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 600));
+    await tester.pumpAndSettle();
+    expect(shown(), 0);
     expect(find.text('Find a driver'), findsOneWidget);
     expect(find.byKey(const ValueKey('confirm-payment')), findsOneWidget);
     expect(find.textContaining('Auto-accept offer of'), findsOneWidget);
@@ -202,6 +217,54 @@ void main() {
     expect(rides.created![#paymentMode], 'Get Pay');
     expect(container.read(autoAcceptProvider)['r9'], rides.created![#fare]);
     expect(find.text('ride r9'), findsOneWidget);
+  });
+
+  testWidgets('someone else is filled in a modal; the sheet shows them with a pen', (tester) async {
+    final rides = _Rides();
+    await _pump(tester, rides);
+    final someone = find.text('Someone else');
+    await tester.ensureVisible(someone);
+    await tester.pump();
+
+    // Closed without Done the first time: back to "Me".
+    await tester.tap(someone);
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('book-for-sheet')), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('book-for-done'))).onPressed, isNull);
+    await tester.tapAt(const Offset(200, 20));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('book-for-sheet')), findsNothing);
+    expect(find.byKey(const ValueKey('book-for-summary')), findsNothing);
+    expect(find.text('Find a driver'), findsOneWidget);
+
+    // Filled in and Done: only a summary on the sheet, no fields.
+    await tester.tap(someone);
+    await _settle(tester);
+    await tester.enterText(find.byKey(const ValueKey('book-for-name')), 'Aminah');
+    await tester.enterText(find.byKey(const ValueKey('book-for-phone')), '+60 12-345 6789');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('book-for-done')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('book-for-sheet')), findsNothing);
+    expect(find.byKey(const ValueKey('book-for-name')), findsNothing, reason: 'nothing is typed on the sheet');
+    final summary = find.byKey(const ValueKey('book-for-summary'));
+    expect(find.descendant(of: summary, matching: find.text('Aminah')), findsOneWidget);
+    expect(find.descendant(of: summary, matching: find.text('+60123456789')), findsOneWidget);
+    expect(find.text('Find a driver for Aminah'), findsOneWidget);
+
+    // The pen reopens it filled in; closing it keeps them.
+    await tester.tap(find.byKey(const ValueKey('book-for-edit')));
+    await _settle(tester);
+    expect(find.widgetWithText(TextField, 'Aminah'), findsOneWidget);
+    await tester.tapAt(const Offset(200, 20));
+    await _settle(tester);
+    expect(find.text('Find a driver for Aminah'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('book')));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(rides.created![#bookedFor], (name: 'Aminah', phone: '+60123456789'));
   });
 
   testWidgets('where bidding is on the chosen card has the round −/+ and a pencil', (tester) async {
