@@ -77,14 +77,20 @@ class VehicleTypeBar extends StatelessWidget {
     ),
   );
 
-  /// The chosen box's fill and its "i" (inDrive's indigo and blue).
+  /// The chosen box's fill and its "i" (inDrive's indigo and blue): indigo
+  /// with white text on a dark sheet, a light blue with dark text on a light one.
   static const selectedFill = Color(0xFF2B2E8C);
+  static const selectedFillLight = Color(0xFFD8EEFB);
   static const infoBlue = Color(0xFF5468FF);
+
+  static Color fillFor(Brightness b) => b == Brightness.dark ? selectedFill : selectedFillLight;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
+    final dark = t.brightness == Brightness.dark;
+    final onFill = dark ? Colors.white : t.colorScheme.onSurface;
     return SizedBox(
       height: 66,
       child: ListView.separated(
@@ -95,13 +101,13 @@ class VehicleTypeBar extends StatelessWidget {
         itemBuilder: (_, i) {
           final s = services[i];
           final on = s.name == selected.name;
-          final fg = on ? Colors.white : t.colorScheme.onSurface;
-          final seats = on ? Colors.white : muted;
+          final fg = on ? onFill : t.colorScheme.onSurface;
+          final seats = on ? onFill : muted;
           // Unchosen boxes are the sheet itself; the chosen one is filled,
           // with the name in full and the seats pushed to its right edge.
           return Material(
             key: ValueKey('vehicle-type-${s.name}'),
-            color: on ? selectedFill : Colors.transparent,
+            color: on ? fillFor(t.brightness) : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),

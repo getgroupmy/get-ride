@@ -119,7 +119,7 @@ class SideMenuTile extends StatelessWidget {
         label: entry.label,
         color: color,
         trailing: entry.comingSoon
-            ? const Text('Soon', style: TextStyle(fontSize: 12, color: SideMenuStyle.muted))
+            ? Text('Soon', style: TextStyle(fontSize: 12, color: SideMenuColors.of(context).muted))
             : null,
         onTap: () => _tap(context),
       );

@@ -33,11 +33,11 @@ void main() {
       expect(text.didExceedMaxLines, isFalse, reason: '${s.name} in full');
     }
     expect(box('Comfort').color, Colors.transparent);
-    expect(box('Ride').color, VehicleTypeBar.selectedFill);
+    expect(box('Ride').color, VehicleTypeBar.selectedFillLight);
 
     await tester.tap(find.text('6-seater'));
     await tester.pump();
-    expect(box('6-seater').color, VehicleTypeBar.selectedFill);
+    expect(box('6-seater').color, VehicleTypeBar.selectedFillLight);
     expect(box('Ride').color, Colors.transparent);
     final info = tester.widget<Icon>(
       find.descendant(of: find.byKey(const ValueKey('vehicle-info-6-seater')), matching: find.byType(Icon)),

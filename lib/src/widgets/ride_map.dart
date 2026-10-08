@@ -62,36 +62,43 @@ class PickupPin extends StatelessWidget {
   final double elevation;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: pickupPinHead,
-    height: pickupPinHeight,
-    child: Column(
-      children: [
-        Container(
-          key: const ValueKey('pickup-pin'),
-          width: pickupPinHead,
-          height: pickupPinHead,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(color: Colors.black, width: 2),
-            boxShadow: [
-              BoxShadow(blurRadius: 4 + 6 * elevation, offset: Offset(0, 2 + 4 * elevation), color: Colors.black38),
-            ],
+  Widget build(BuildContext context) {
+    // Light maps get a black head with a white figure; dark maps the reverse.
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final fill = dark ? Colors.white : Colors.black;
+    final ink = dark ? Colors.black : Colors.white;
+    return SizedBox(
+      width: pickupPinHead,
+      height: pickupPinHeight,
+      child: Column(
+        children: [
+          Container(
+            key: const ValueKey('pickup-pin'),
+            width: pickupPinHead,
+            height: pickupPinHead,
+            decoration: BoxDecoration(
+              color: fill,
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(color: ink, width: 2),
+              boxShadow: [
+                BoxShadow(blurRadius: 4 + 6 * elevation, offset: Offset(0, 2 + 4 * elevation), color: Colors.black38),
+              ],
+            ),
+            child: Icon(Icons.emoji_people, size: 26, color: ink),
           ),
-          child: const Icon(Icons.emoji_people, size: 26, color: Colors.black),
-        ),
-        Container(
-          width: 2,
-          height: pickupPinStem,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            boxShadow: [BoxShadow(blurRadius: 2, color: Colors.black38)],
+          Container(
+            key: const ValueKey('pickup-pin-stem'),
+            width: 2,
+            height: pickupPinStem,
+            decoration: BoxDecoration(
+              color: fill,
+              boxShadow: const [BoxShadow(blurRadius: 2, color: Colors.black38)],
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 /// A label drawn [gap] px above the pickup pin at [point], moving with the
