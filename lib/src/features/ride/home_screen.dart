@@ -108,6 +108,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// map was moved off the route (which shows the route button).
   String _entrance = '';
   bool _autoAccept = false;
+
+  /// From the Options sheet: a child seat, more than four riding.
+  RideOptions _options = const RideOptions();
   bool _routeMoved = false;
 
   /// The last pickup set by dragging the map: the map doesn't reframe on
@@ -444,7 +447,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // since turned out to be off goes out at the recommended fare.
             fare: _fareFor(_service, biddingOn: offerMe),
             paymentMode: _payment,
-            note: driverNote(entrance: _entrance, note: _note.text),
+            passengers: _options.passengers,
+            note: driverNote(options: _options, entrance: _entrance, note: _note.text),
             riderName: profile?.name,
             riderPhone: profile?.phone,
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
@@ -868,6 +872,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final otherName = _otherName.text.trim();
     final footer = confirming && _route != null
         ? ConfirmFooter(
+            onOptions: () => showRideOptionsSheet(
+              context,
+              options: _options,
+              onChanged: (o) => setState(() => _options = o),
+              note: _note,
+            ).then((_) {
+              if (mounted) setState(() {}); // the note may have changed
+            }),
+            optionsOn: _options.any,
             payment: _payment,
             onPayment: () async {
               final p = await showPaymentSheet(context, _payment);
@@ -921,7 +934,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       routing: _routing,
       services: _services,
       service: _service,
-      note: _note,
       fareFor: _fareFor,
       onPickup: () => _choose(_PinTarget.pickup),
       onDrop: () => _choose(_PinTarget.drop),
@@ -1001,7 +1013,6 @@ class _BookingPanel extends StatelessWidget {
     required this.routing,
     required this.services,
     required this.service,
-    required this.note,
     required this.fareFor,
     required this.onPickup,
     required this.onDrop,
@@ -1035,7 +1046,6 @@ class _BookingPanel extends StatelessWidget {
   final bool routing;
   final List<RideService> services;
   final RideService service;
-  final TextEditingController note;
   final double Function(RideService) fareFor;
   final VoidCallback onPickup, onDrop, onOpenOngoing;
   final ValueChanged<RideService> onService;
@@ -1132,11 +1142,7 @@ class _BookingPanel extends StatelessWidget {
             ),
           const SizedBox(height: 12),
           ?whoRiding,
-          const SizedBox(height: 12),
-          TextField(
-            controller: note,
-            decoration: const InputDecoration(labelText: 'Note to driver (optional)'),
-          ),
+          // The note to the driver is Options → Comments.
           const SizedBox(height: 16),
           // In the wide panel; on a phone it sits above the pinned footer.
           if (footer != null) ...[const ConfirmDisclaimer(), const SizedBox(height: 16), footer!],

@@ -219,6 +219,65 @@ void main() {
     expect(find.text('ride r9'), findsOneWidget);
   });
 
+  testWidgets('the options button beside Find a driver opens Options; they go with the booking', (tester) async {
+    final rides = _Rides();
+    await _pump(tester, rides);
+    Badge badge() => tester.widget<Badge>(
+      find.descendant(of: find.byKey(const ValueKey('confirm-options')), matching: find.byType(Badge)),
+    );
+    expect(badge().isLabelVisible, isFalse);
+    expect(find.text('Note to driver (optional)'), findsNothing, reason: 'the note is Options → Comments');
+    expect(
+      tester.getCenter(find.byKey(const ValueKey('confirm-options'))).dx,
+      greaterThan(tester.getCenter(find.byKey(const ValueKey('book'))).dx),
+      reason: 'right of Find a driver',
+    );
+
+    await tester.tap(find.byKey(const ValueKey('confirm-options')));
+    await _settle(tester);
+    expect(find.text('Options'), findsWidgets);
+    await tester.tap(find.byKey(const ValueKey('option-child-seat')));
+    await tester.pump();
+    // Comments: ← goes back to Options without saving; Save keeps it.
+    await tester.tap(find.byKey(const ValueKey('option-comments')));
+    await _settle(tester);
+    expect(find.text('What your driver should know?'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('option-comments-field')), 'Not this');
+    await tester.tap(find.byKey(const ValueKey('option-comments-back')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('option-comments-sheet')), findsNothing);
+    expect(find.byKey(const ValueKey('ride-options')), findsOneWidget);
+    expect(find.text('Not this'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('option-comments')));
+    await _settle(tester);
+    await tester.enterText(find.byKey(const ValueKey('option-comments-field')), 'Blue gate');
+    await tester.tap(find.byKey(const ValueKey('option-comments-done')));
+    await _settle(tester);
+    expect(find.descendant(of: find.byKey(const ValueKey('option-comments')), matching: find.text('Blue gate')),
+        findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('ride-options-close')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('ride-options')), findsNothing);
+    expect(badge().isLabelVisible, isTrue, reason: 'an option is on');
+
+    // ✕ on Comments closes Options too.
+    await tester.tap(find.byKey(const ValueKey('confirm-options')));
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('option-comments')));
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('option-comments-x')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('option-comments-sheet')), findsNothing);
+    expect(find.byKey(const ValueKey('ride-options')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('book')));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(rides.created![#note], 'Child safety seat · Blue gate');
+    expect(rides.created![#passengers], 1);
+  });
+
   testWidgets('someone else is filled in a modal; the sheet shows them with a pen', (tester) async {
     final rides = _Rides();
     await _pump(tester, rides);
