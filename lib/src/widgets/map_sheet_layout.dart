@@ -152,6 +152,10 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   BuildContext? _target;
   bool _moved = false;
 
+  /// Whether an item is being kept in view, so the next one to claim it is a
+  /// new choice rather than the first (which only reveals).
+  bool _chosen = false;
+
   /// How far the content is slid up under the handle to bring [_target]
   /// into view while the sheet is below full height. Sliding rather than
   /// scrolling keeps a drag on the sheet moving the sheet: a sheet whose
@@ -205,6 +209,19 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   void _revealTarget() {
     final t = _target;
     if (t != null && t.mounted) _reveal(t);
+  }
+
+  /// A new choice (inDrive): the sheet comes down to its lowest, and the
+  /// content slides up under the handle so the chosen item sits whole just
+  /// above the footer, the others pushed up out of the way.
+  void _select(BuildContext target) {
+    if (widget.locked || !_sheet.isAttached || _sheet.size <= widget.min + 0.001) {
+      _reveal(target);
+      return;
+    }
+    _sheet.animateTo(widget.min, duration: const Duration(milliseconds: 250), curve: Curves.easeOut).then((_) {
+      if (mounted && _target == target && target.mounted) _reveal(target);
+    });
   }
 
   @override
@@ -524,7 +541,8 @@ class _RenderSizeReporter extends RenderProxyBox {
 /// Keeps [child] whole in view on a [MapSheetLayout]'s sheet while [active]
 /// (the confirm screen's chosen vehicle): scrolled above the pinned footer
 /// when it is chosen, and again whenever the sheet is dragged to a new
-/// height. Nothing outside a [MapSheetLayout].
+/// height. Becoming active (a new choice) also brings the sheet down to its
+/// lowest first, as inDrive does. Nothing outside a [MapSheetLayout].
 class MapSheetReveal extends StatefulWidget {
   const MapSheetReveal({super.key, this.active = true, required this.child});
 
@@ -551,11 +569,16 @@ class _MapSheetRevealState extends State<MapSheetReveal> {
     if (!widget.active && old.active) _release();
   }
 
+  /// The first item shown is only revealed; one that takes over from
+  /// another (chosen anew) brings the sheet down and shows only itself.
   void _claim() => WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!mounted) return;
-    _layout = context.findAncestorStateOfType<_MapSheetLayoutState>();
-    _layout?._target = context;
-    _layout?._reveal(context);
+    final layout = _layout = context.findAncestorStateOfType<_MapSheetLayoutState>();
+    if (layout == null) return;
+    final anew = layout._chosen;
+    layout._chosen = true;
+    layout._target = context;
+    anew ? layout._select(context) : layout._reveal(context);
   });
 
   void _release() {
@@ -566,6 +589,7 @@ class _MapSheetRevealState extends State<MapSheetReveal> {
       // another item is taking over (it slides it on from here).
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (layout.mounted && layout._target == null) {
+          layout._chosen = false;
           layout._shift.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
         }
       });

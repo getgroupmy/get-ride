@@ -1,5 +1,5 @@
 name: get_ride
-description: "GET.ride — Flutter client for web, desktop, iOS and Android"
+description: "GET.ride — for web, desktop, iOS and Android"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -61,6 +61,7 @@ dependencies:
   android_intent_plus: ^6.1.0
   webview_flutter: ^4.14.1
   flutter_native_contact_picker: ^0.0.12
+  web: ^1.1.1
   flutter_webrtc: ^1.6.2+hotfix.3
   share_plus: ^13.3.1
 

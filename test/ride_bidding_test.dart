@@ -228,6 +228,36 @@ void main() {
       expect(find.text('Ali offers RM25.00'), findsNothing);
     });
 
+    testWidgets('on a phone the offer floats over the top of the map, not in the sheet', (tester) async {
+      tester.view.physicalSize = const Size(400, 860);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final rows = StreamController<RideRequest>();
+      addTearDown(rows.close);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            rideRepositoryProvider.overrideWithValue(_FakeRides()),
+            rideStreamProvider.overrideWith((ref, id) => rows.stream),
+          ],
+          child: const MaterialApp(home: RideTrackingScreen(requestId: 'r1')),
+        ),
+      );
+      rows.add(ride(offered: 25, partner: _other, partnerName: 'Ali'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      final overMap = find.descendant(
+        of: find.byType(AnimatedSwitcher),
+        matching: find.byKey(const ValueKey('ride-offer')),
+      );
+      expect(overMap, findsOneWidget);
+      expect(find.byKey(const ValueKey('ride-offer')), findsOneWidget, reason: 'not in the sheet as well');
+      final sheetTop = tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
+      expect(tester.getRect(overMap).top, lessThan(sheetTop), reason: 'on the map, above the sheet');
+      expect(tester.getRect(overMap).top, lessThan(200), reason: 'at the top of the map');
+    });
+
     testWidgets('no offer card or raise once accepted', (tester) async {
       await pump(tester, ride(status: 'accepted', partner: _other, partnerName: 'Ali'));
       expect(find.byKey(const ValueKey('ride-offer')), findsNothing);
