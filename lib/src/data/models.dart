@@ -106,6 +106,9 @@ class RideRequest {
   String? get partnerPlate => raw['partner_plate'] as String?;
   double? get partnerRating => _d(raw['partner_rating']);
   String? get partnerPhoto => raw['partner_photo'] as String?;
+  /// Where the driver was when they accepted or made their offer.
+  double? get partnerAcceptLat => _d(raw['partner_accept_lat']);
+  double? get partnerAcceptLng => _d(raw['partner_accept_lng']);
   double? get partnerLiveLat => _d(raw['partner_live_lat']);
   double? get partnerLiveLng => _d(raw['partner_live_lng']);
   double? get partnerLiveHeading => _d(raw['partner_live_heading']);
