@@ -23,7 +23,8 @@ LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : Lat
 /// Once there is a car the camera follows it at street zoom, so the turns
 /// can be watched: turned to the car's heading on the driver's own phone
 /// ([driverAt]), north up for the rider. Moving the map by hand stops the
-/// following; the recenter button starts it again.
+/// following; the recenter button starts it again, and so does the first
+/// new position once the map has been left alone for [followResumeAfter].
 class LiveRideMap extends ConsumerStatefulWidget {
   const LiveRideMap({super.key, required this.ride, this.now, this.driverAt, this.driverHeading});
 
@@ -44,6 +45,10 @@ class LiveRideMap extends ConsumerStatefulWidget {
 /// Street zoom the camera follows the car at.
 const followZoom = 16.5;
 
+/// How long a hand on the map holds the camera still: the next position
+/// that arrives after this recentres on the car again by itself.
+const followResumeAfter = Duration(seconds: 10);
+
 class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProviderStateMixin {
   RouteInfo? _route;
   LatLng? _routeFrom, _routeTo;
@@ -53,6 +58,9 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
 
   bool _follow = true;
   bool _mapReady = false;
+
+  /// When the map was last moved by hand (following paused).
+  DateTime? _handAt;
   late final _cam = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
     ..addListener(_camTick);
   _Cam? _camFrom, _camTo, _camNow;
@@ -76,6 +84,15 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   void didUpdateWidget(covariant LiveRideMap old) {
     super.didUpdateWidget(old);
     _maybeReroute();
+    // A fresh position after the hand has been off the map a while: follow
+    // the car again, as if the recenter button had been pressed.
+    final hand = _handAt;
+    if (!_follow && _driver != null && _driver != _driverOf(old) && hand != null &&
+        _now.difference(hand) >= followResumeAfter) {
+      _follow = true;
+      _handAt = null;
+      _camTo = null;
+    }
     if (_driver != null) WidgetsBinding.instance.addPostFrameCallback((_) => _followCar());
   }
 
@@ -122,6 +139,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
 
   /// A hand on the map: stop following until the recenter button.
   void _onGesture() {
+    _handAt = _now;
     if (!_follow) return;
     _cam.stop();
     _camNow = _camTo = null;
@@ -135,14 +153,16 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
       return;
     }
     setState(() => _follow = true);
+    _handAt = null;
     _camTo = null;
     _followCar();
   }
 
   /// A bidder on an open request is not the rider's driver yet: no car.
-  LatLng? get _driver =>
-      widget.driverAt ??
-      (widget.ride.status == RideStatus.open ? null : _ll(widget.ride.partnerLiveLat, widget.ride.partnerLiveLng));
+  LatLng? get _driver => _driverOf(widget);
+
+  static LatLng? _driverOf(LiveRideMap w) =>
+      w.driverAt ?? (w.ride.status == RideStatus.open ? null : _ll(w.ride.partnerLiveLat, w.ride.partnerLiveLng));
 
   LatLng? get _target => etaTarget(
     widget.ride.status,
