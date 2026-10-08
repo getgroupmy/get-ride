@@ -903,16 +903,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           (inset) => Positioned(
             right: 16 - layout.recenter.$1,
             bottom: (wide ? mapAttributionClearance : inset + aboveBar) - layout.recenter.$2,
-            child: Material(
-              color: Theme.of(context).colorScheme.surface,
-              shape: const CircleBorder(),
-              elevation: 3,
-              child: IconButton(
-                key: const ValueKey('confirm-route'),
-                tooltip: 'Show whole route',
-                icon: const Icon(Icons.route),
-                onPressed: () => _showWholeRoute(wide ? 0 : inset),
-              ),
+            child: RouteFitButton(
+              key: const ValueKey('confirm-route'),
+              onPressed: () => _showWholeRoute(wide ? 0 : inset),
             ),
           ),
         ),
