@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/fare_offer.dart';
+import 'package:get_ride/src/core/fare.dart';
+import 'package:get_ride/src/features/ride/confirm_parts.dart';
 import 'package:get_ride/src/features/ride/fare_offer_controls.dart';
 
 String rm(double v) => 'RM ${v.toStringAsFixed(2)}';
@@ -115,5 +117,41 @@ void main() {
       await tester.pumpAndSettle();
       expect(changes, [0]);
     });
+  });
+
+  testWidgets('on the confirm sheet a step past the limit shakes the chosen card, with no note', (tester) async {
+    final changes = <double>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConfirmServiceCard(
+            service: const RideService('Car', '', 1, 4),
+            price: 'RM 12.00',
+            selected: true,
+            onTap: () {},
+            fare: ConfirmFareSection(
+              recommended: 12,
+              adjust: 0,
+              money: rm,
+              bidding: true,
+              onAdjust: changes.add,
+            ),
+          ),
+        ),
+      ),
+    );
+    final card = find.byKey(const ValueKey('service-Car'));
+    final x = tester.getTopLeft(card).dx;
+    await tester.tap(find.byKey(const ValueKey('fare-lower')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(tester.getTopLeft(card).dx, closeTo(x + 8, 0.5), reason: 'shaken 8 to the right first, as Expo');
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(tester.getTopLeft(card).dx, closeTo(x - 8, 0.5));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(card).dx, x, reason: 'and back in place');
+    expect(changes, isEmpty);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.textContaining('Minimum fare'), findsNothing);
   });
 }
