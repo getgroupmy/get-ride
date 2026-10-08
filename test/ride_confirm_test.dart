@@ -39,6 +39,17 @@ void main() {
     expect(const RideOptions().copyWith(morePassengers: true), const RideOptions(morePassengers: true));
   });
 
+  test('a pet rides along: told to the driver, on its own counts as an option', () {
+    const pet = RideOptions(pet: true);
+    expect(pet.any, isTrue);
+    expect(pet.passengers, 1, reason: 'a pet is not a passenger');
+    expect(driverNote(options: pet, note: 'Small dog'), 'Pet with me · Small dog');
+    expect(driverNote(options: const RideOptions(childSeat: true, morePassengers: true, pet: true)),
+        'Child safety seat · More than 4 passengers · Pet with me');
+    expect(const RideOptions().copyWith(pet: true), pet);
+    expect(pet.copyWith(childSeat: true).pet, isTrue);
+  });
+
   test('the admin offsets and the promo bar switch are read from Display Settings', () {
     final l = ConfirmLayout.fromSettings({
       'rcBackHorizontal': 10,

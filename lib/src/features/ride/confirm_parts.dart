@@ -1194,6 +1194,13 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
               value: _options.morePassengers,
               onChanged: (v) => _set(_options.copyWith(morePassengers: v)),
             ),
+            SwitchListTile(
+              key: const ValueKey('option-pet'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Pet with me'),
+              value: _options.pet,
+              onChanged: (v) => _set(_options.copyWith(pet: v)),
+            ),
             const SizedBox(height: 12),
             Material(
               color: t.colorScheme.surfaceContainerHigh,
