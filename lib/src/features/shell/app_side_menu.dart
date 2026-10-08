@@ -235,8 +235,8 @@ class SideMenuPanel extends ConsumerWidget {
               key: const ValueKey('menu-admin'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(46),
-                foregroundColor: SideMenuStyle.text,
-                side: const BorderSide(color: SideMenuStyle.divider),
+                foregroundColor: SideMenuStyle.button,
+                side: const BorderSide(color: SideMenuStyle.button),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               icon: const Icon(Icons.admin_panel_settings_outlined),
