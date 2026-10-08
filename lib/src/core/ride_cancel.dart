@@ -18,6 +18,17 @@ const _all = <CancelReason>[
   (id: otherCancelReason, label: 'Other'),
 ];
 
+/// Why a rider withdraws a request still looking for a driver (inDrive's
+/// "Why do you want to cancel?"). Optional: the sheet can be skipped.
+const searchCancelReasons = <CancelReason>[
+  (id: 'drivers_too_far', label: 'Drivers are too far away'),
+  (id: 'high_fares', label: 'High fares'),
+  (id: 'accidental_request', label: 'Accidental request'),
+  (id: 'wrong_points', label: 'Wrong pickup or destination point'),
+  (id: 'no_offers', label: 'No offers from drivers'),
+  (id: 'better_alternative', label: 'Better alternative found'),
+];
+
 /// The reasons a driver gives for cancelling before pickup, exactly as
 /// Expo's ride-running screen stores them.
 const driverCancelReasons = <CancelReason>[
@@ -69,7 +80,7 @@ String? cancelReasonValue(String? id, String otherText) {
 String? cancelReasonLabel(String? stored) {
   final s = stored?.trim() ?? '';
   if (s.isEmpty) return null;
-  for (final r in [..._all, ...driverCancelReasons]) {
+  for (final r in [..._all, ...driverCancelReasons, ...searchCancelReasons]) {
     if (r.id == s) return r.label;
   }
   return s;

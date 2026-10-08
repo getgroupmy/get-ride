@@ -45,27 +45,23 @@ void main() {
     expect(alongRoute(const [], 0.5), const LatLng(0, 0));
   });
 
-  testWidgets('the feed shows viewers, then offers, and offers expire', (tester) async {
-    DemoOffer? taken;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: DemoOffersFeed(fare: 20, currency: 'RM', onAccept: (o) => taken = o),
-          ),
-        ),
-      ),
-    );
-    expect(find.byKey(const ValueKey('demo-viewers')), findsNothing);
+  testWidgets('the timeline shows viewers, then offers, and offers expire', (tester) async {
+    final t = DemoOfferTimeline(20);
+    addTearDown(t.dispose);
+    expect(t.viewers, isFalse);
     await tester.pump(const Duration(milliseconds: 1600));
-    expect(find.byKey(const ValueKey('demo-viewers')), findsOneWidget);
+    expect(t.viewers, isTrue);
+    expect(t.shown, isEmpty);
     await tester.pump(const Duration(milliseconds: 1500));
-    expect(find.byKey(const ValueKey('demo-offer-demo-1')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('demo-accept-demo-1')));
-    expect(taken?.name, 'Patrick');
+    expect(t.shown.map((e) => e.$1.name), ['Patrick']);
+    t.dismiss(t.shown.first.$1);
+    expect(t.shown, isEmpty, reason: 'declined');
+    await tester.pump(const Duration(seconds: 3));
+    expect(t.shown.map((e) => e.$1.name), ['Mellier']);
     await tester.pump(const Duration(seconds: 10));
-    expect(find.byKey(const ValueKey('demo-offer-demo-1')), findsNothing);
+    expect(t.shown.map((e) => e.$1.name), ['Gomer'], reason: 'Mellier lapsed');
     await tester.pump(const Duration(seconds: 20));
+    expect(t.shown, isEmpty);
   });
 
   testWidgets('a demo trip drives itself when simulated driving is on', (tester) async {

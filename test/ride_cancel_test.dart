@@ -192,16 +192,57 @@ void main() {
       expect(rides.cancels, [('accepted', 'Found another ride')]);
     });
 
-    testWidgets('Keep ride cancels nothing', (tester) async {
+    testWidgets('a search is cancelled through why, then are-you-sure', (tester) async {
       final (rides, rows, _) = await pump(tester);
       rows.add(ride('open'));
       await settle(tester);
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel ride'));
-      await tester.pump(const Duration(milliseconds: 400));
+      Future<void> open() async {
+        await tester.tap(find.byKey(const ValueKey('cancel-request')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      // Closing the first sheet keeps the request.
+      await open();
+      expect(find.text('Why do you want to cancel?'), findsOneWidget);
       expect(find.byKey(const ValueKey('cancel-reason-driver_too_long')), findsNothing);
-      await tester.tap(find.text('Keep ride'));
+      await tester.tap(find.byKey(const ValueKey('cancel-sheet-close')));
+      await tester.pump(const Duration(milliseconds: 400));
+      // Skip, then Keep searching: still nothing.
+      await open();
+      await tester.tap(find.byKey(const ValueKey('cancel-skip')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Cancel your request?'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('cancel-keep-searching')));
       await tester.pump(const Duration(milliseconds: 400));
       expect(rides.cancels, isEmpty);
+      // A reason, then Cancel request.
+      await open();
+      await tester.tap(find.byKey(const ValueKey('cancel-reason-high_fares')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const ValueKey('cancel-confirm')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(rides.cancels, [('open', 'high_fares')]);
+      expect(find.text('Request cancelled'), findsOneWidget);
+    });
+
+    testWidgets('a skipped reason cancels with none', (tester) async {
+      final (rides, rows, _) = await pump(tester);
+      rows.add(ride('open'));
+      await settle(tester);
+      await tester.tap(find.byKey(const ValueKey('cancel-request')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const ValueKey('cancel-skip')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const ValueKey('cancel-confirm')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(rides.cancels, [('open', null)]);
     });
 
     testWidgets('a ride booked for someone else says who for', (tester) async {
