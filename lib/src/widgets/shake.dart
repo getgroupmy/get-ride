@@ -29,6 +29,9 @@ class ShakeState extends State<Shake> with SingleTickerProviderStateMixin {
   /// Runs the shake from the start.
   void shake() => _c.forward(from: 0);
 
+  /// Where the shake has [child] now, sideways (0 at rest).
+  Animation<double> get offset => _x;
+
   @override
   void dispose() {
     _c.dispose();
@@ -41,4 +44,34 @@ class ShakeState extends State<Shake> with SingleTickerProviderStateMixin {
     builder: (context, child) => Transform.translate(offset: Offset(_x.value, 0), child: child),
     child: widget.child,
   );
+}
+
+/// Something inside a [Shake] that swings the other way as it shakes, but
+/// never further than [travel] from where it rests: an inner card inside its
+/// tray, kept within the tray's padding however hard the tray is shaken.
+class ShakeCounter extends StatelessWidget {
+  const ShakeCounter({super.key, required this.travel, required this.child});
+
+  /// The furthest it moves from rest, either way (inside the [Shake]).
+  final double travel;
+  final Widget child;
+
+  /// Its offset, inside the [Shake], when the [Shake] is [x] out: the other
+  /// way, scaled so the [Shake]'s widest swing takes it exactly [travel].
+  static double counter(double x, double travel) {
+    final widest = Shake.offsets.map((o) => o.abs()).reduce((a, b) => a > b ? a : b);
+    return (-x * travel / widest).clamp(-travel, travel);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shake = Shake.maybeOf(context);
+    if (shake == null) return child;
+    return AnimatedBuilder(
+      animation: shake.offset,
+      builder: (context, child) =>
+          Transform.translate(offset: Offset(counter(shake.offset.value, travel), 0), child: child),
+      child: child,
+    );
+  }
 }

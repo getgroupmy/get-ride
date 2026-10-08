@@ -4,6 +4,7 @@ import 'package:get_ride/src/core/fare_offer.dart';
 import 'package:get_ride/src/core/fare.dart';
 import 'package:get_ride/src/features/ride/confirm_parts.dart';
 import 'package:get_ride/src/features/ride/fare_offer_controls.dart';
+import 'package:get_ride/src/widgets/shake.dart';
 
 String rm(double v) => 'RM ${v.toStringAsFixed(2)}';
 
@@ -141,17 +142,38 @@ void main() {
       ),
     );
     final card = find.byKey(const ValueKey('service-Car'));
+    final top = find.byKey(const ValueKey('service-card-top'));
     final x = tester.getTopLeft(card).dx;
+    // The inner card's place inside the tray, at rest.
+    final inset = tester.getTopLeft(top).dx - x;
+    double inner() => tester.getTopLeft(top).dx - tester.getTopLeft(card).dx - inset;
     await tester.tap(find.byKey(const ValueKey('fare-lower')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
     expect(tester.getTopLeft(card).dx, closeTo(x + 8, 0.5), reason: 'shaken 8 to the right first, as Expo');
+    expect(inner(), closeTo(-4, 0.5), reason: 'the inner card swings the other way');
     await tester.pump(const Duration(milliseconds: 50));
     expect(tester.getTopLeft(card).dx, closeTo(x - 8, 0.5));
+    expect(inner(), closeTo(4, 0.5));
+    // Never out of the tray: within its 5 px padding all the way through.
+    for (var i = 0; i < 6; i++) {
+      expect(inner().abs(), lessThanOrEqualTo(4.01));
+      expect(tester.getRect(top).left, greaterThan(tester.getRect(card).left));
+      expect(tester.getRect(top).right, lessThan(tester.getRect(card).right));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
     await tester.pumpAndSettle();
     expect(tester.getTopLeft(card).dx, x, reason: 'and back in place');
+    expect(inner(), 0);
     expect(changes, isEmpty);
     expect(find.byType(SnackBar), findsNothing);
     expect(find.textContaining('Minimum fare'), findsNothing);
+  });
+
+  test('a counter-shake goes the other way, never past its travel', () {
+    expect(ShakeCounter.counter(8, 4), -4);
+    expect(ShakeCounter.counter(-6, 4), 3);
+    expect(ShakeCounter.counter(0, 4), 0);
+    expect(ShakeCounter.counter(40, 4), -4);
   });
 }
