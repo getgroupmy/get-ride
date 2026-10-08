@@ -194,6 +194,27 @@ void main() {
       expect(camera(tester).center.latitude, closeTo(3.161, 1e-6));
     });
 
+    testWidgets('left alone for a while, the next position recentres on the car by itself', (tester) async {
+      var now = t0;
+      const at = LatLng(3.16, 101.72);
+      await pump(tester, ride('accepted', driver: at), now: () => now);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.drag(find.byType(FlutterMap), const Offset(200, 0));
+      await tester.pump(const Duration(seconds: 1));
+      final panned = camera(tester).center;
+
+      now = t0.add(const Duration(seconds: 5));
+      await pump(tester, ride('accepted', driver: const LatLng(3.161, 101.721)), now: () => now);
+      await tester.pump(const Duration(seconds: 1));
+      expect(camera(tester).center, panned, reason: 'too soon after the hand');
+
+      now = t0.add(followResumeAfter + const Duration(seconds: 1));
+      await pump(tester, ride('accepted', driver: const LatLng(3.162, 101.722)), now: () => now);
+      await tester.pump(const Duration(seconds: 1));
+      expect(camera(tester).center.latitude, closeTo(3.162, 1e-6));
+      expect(camera(tester).center.longitude, closeTo(101.722, 1e-6));
+    });
+
     testWidgets('a car that leaves the route is rerouted, and the ETA counts down along it', (tester) async {
       var now = t0;
       const at = LatLng(3.16, 101.72);
