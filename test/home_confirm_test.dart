@@ -250,6 +250,9 @@ void main() {
     expect(find.text('Options'), findsWidgets);
     await tester.tap(find.byKey(const ValueKey('option-child-seat')));
     await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('option-pet')));
+    await tester.pump();
+    expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('option-pet'))).value, isTrue);
     // Comments: ← goes back to Options without saving; Save keeps it.
     await tester.tap(find.byKey(const ValueKey('option-comments')));
     await _settle(tester);
@@ -286,7 +289,7 @@ void main() {
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(rides.created![#note], 'Child safety seat · Blue gate');
+    expect(rides.created![#note], 'Child safety seat · Pet with me · Blue gate');
     expect(rides.created![#passengers], 1);
   });
 
