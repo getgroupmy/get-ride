@@ -10,6 +10,7 @@ import 'package:get_ride/src/data/partner_doc_check.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
 import 'package:get_ride/src/features/partner/partner_screen.dart';
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show confirmAccent;
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 
@@ -192,6 +193,18 @@ void main() {
         findsOneWidget,
         reason: "the trip's time and distance beside B",
       );
+      // Each chip stands above its own pin, never over it.
+      for (final (chip, pin) in const [('request-chip-trip', 'map-dot-drop')]) {
+        final c = tester.getRect(find.byKey(ValueKey(chip)));
+        final p = tester.getRect(find.byKey(ValueKey(pin)));
+        expect(c.bottom, lessThanOrEqualTo(p.top), reason: '$chip above $pin');
+        expect(c.center.dx, closeTo(p.center.dx, 1), reason: '$chip over $pin');
+      }
+      // The buttons in the app's accent (the rider's "Find a driver" blue).
+      final accept = tester.widget<FilledButton>(
+        find.descendant(of: find.byKey(const ValueKey('request-alert-accept')), matching: find.byType(FilledButton)),
+      );
+      expect(accept.style!.backgroundColor!.resolve({}), confirmAccent);
       expect(countdown(tester), 1);
       await wait(tester, const Duration(seconds: 10));
       expect(countdown(tester), closeTo(25 / 35, 0.01));

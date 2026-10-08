@@ -13,6 +13,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/ride_map.dart';
+import '../ride/confirm_parts.dart' show confirmAccent;
 
 /// A new ride request on a phone, as inDrive's: a sheet up from the bottom
 /// with the route on a map ("Ride request" over it, the time and distance
@@ -127,29 +128,38 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
   /// "13 min." or "1 h 19 min.", as inDrive's chips.
   static String _minutes(num m) => m < 60 ? '${m.round()} min.' : '${formatDuration(m)}.';
 
-  /// "13 min.\n6.0 km" beside a point.
-  Marker _chip(LatLng at, Color color, String text, String key) => Marker(
-    point: at,
-    width: 120,
-    height: 44,
-    alignment: const Alignment(0, -1.6),
-    child: Center(
-      child: Container(
-        key: ValueKey(key),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
-        ),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
+  /// "13 min.\n6.0 km" standing just above a point's mark, which reaches
+  /// [over] above the point (so the chip never covers the pin).
+  Marker _chip(LatLng at, Color color, String text, String key, {required double over}) {
+    final lift = over + 6;
+    return Marker(
+      point: at,
+      width: 120,
+      height: 60 + lift,
+      // The box stands on the point, the chip at its foot, [lift] up.
+      alignment: Alignment.topCenter,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: lift),
+          child: Container(
+            key: ValueKey(key),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+            ),
+            child: Text(
+              text,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
+            ),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _mapPart(BuildContext context) {
     final r = widget.request;
@@ -164,6 +174,8 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           dotPins: true,
           route: _trip,
           framed: [?widget.me, ?a, ?b],
+          // Room for "Ride request" and the chips standing over the pins.
+          fitTop: 120,
           extraMarkers: [
             if (a != null && widget.awayKm != null)
               _chip(
@@ -171,6 +183,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                 RideRequestSheet.toPickup,
                 '${_minutes(pickupMinutes(widget.awayKm!))}\n${formatDistance(widget.awayKm)}',
                 'request-chip-pickup',
+                over: confirmPickupTop,
               ),
             if (b != null && r.distanceKm != null)
               _chip(
@@ -178,6 +191,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                 RideRequestSheet.trip,
                 [if (r.durationMin != null) _minutes(r.durationMin!), formatDistance(r.distanceKm)].join('\n'),
                 'request-chip-trip',
+                over: confirmDropTop,
               ),
           ],
           // The way to the pickup, dashed blue under the trip's line.
@@ -299,12 +313,29 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     );
   }
 
+  /// Accept, in the app's accent (the rider's "Find a driver" blue), white
+  /// on it in light and dark alike.
   ButtonStyle _accent(BuildContext context, {double height = 52}) => FilledButton.styleFrom(
-    backgroundColor: Theme.of(context).colorScheme.primary,
-    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+    backgroundColor: confirmAccent,
+    foregroundColor: Colors.white,
+    disabledBackgroundColor: confirmAccent.withValues(alpha: 0.4),
+    disabledForegroundColor: Colors.white70,
     minimumSize: Size.fromHeight(height),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    textStyle: const TextStyle(fontWeight: FontWeight.w700),
   );
+
+  /// The fare offers: the accent as a tint, so Accept stays the one to press.
+  ButtonStyle _offerStyle(BuildContext context, {double height = 48}) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return FilledButton.styleFrom(
+      backgroundColor: confirmAccent.withValues(alpha: dark ? 0.22 : 0.14),
+      foregroundColor: dark ? const Color(0xFF7FD0F2) : const Color(0xFF0E6E99),
+      minimumSize: Size.fromHeight(height),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      textStyle: const TextStyle(fontWeight: FontWeight.w700),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -378,7 +409,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
             key: const ValueKey('request-alert-countdown'),
             value: requestAlertProgress(widget.shown),
             minHeight: 3,
-            color: t.colorScheme.primary,
+            color: confirmAccent,
             backgroundColor: Colors.transparent,
           ),
           SafeArea(
@@ -401,7 +432,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                       Expanded(
                         child: BusyButton.filled(
                           key: ValueKey('request-offer-$i'),
-                          style: _accent(context, height: 48),
+                          style: _offerStyle(context),
                           onPressed: off ? null : () => offer(presets[i]),
                           child: FittedBox(child: Text(formatMoney(presets[i], r.currency))),
                         ),
@@ -410,7 +441,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                       width: 56,
                       child: BusyButton.filled(
                         key: const ValueKey('request-offer-custom'),
-                        style: _accent(context, height: 48).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.zero)),
+                        style: _offerStyle(context).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.zero)),
                         onPressed: off ? null : () => offer(null),
                         child: const Icon(Icons.edit_outlined, size: 20),
                       ),

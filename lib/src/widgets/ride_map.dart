@@ -19,6 +19,7 @@ import 'road_info_layers.dart';
   List<LatLng> route,
   Size size, {
   double bottom = 0,
+  double top = 64,
   double pointZoom = 15,
 }) {
   final all = [...points, ...route];
@@ -28,7 +29,7 @@ import 'road_info_layers.dart';
   }
   final fitted = CameraFit.coordinates(
     coordinates: all,
-    padding: EdgeInsets.fromLTRB(64, 64, 64, 64 + bottom),
+    padding: EdgeInsets.fromLTRB(64, top, 64, 64 + bottom),
     maxZoom: 16,
   ).fit(MapCamera(crs: const Epsg3857(), center: first, zoom: 14, rotation: 0, nonRotatedSize: size));
   return (center: fitted.center, zoom: fitted.zoom);
@@ -57,6 +58,15 @@ const rideMapPinTop = pickupPinHeight;
 
 /// The confirm map's pickup and drop-off squares (inDrive's).
 const confirmBadgeSize = 36.0;
+
+/// The confirm map's pickup: its square stands this far over the ringed
+/// dot on the point, which is this wide.
+const confirmPickupGap = 4.0, confirmPickupDot = 14.0;
+
+/// How far above its point each confirm-map mark reaches: the pickup's
+/// square stands over its dot; the drop-off's square is centred on it.
+const confirmPickupTop = confirmBadgeSize + confirmPickupGap + confirmPickupDot / 2;
+const confirmDropTop = confirmBadgeSize / 2;
 
 /// The pickup pin, [pickupPinHeight] tall, standing on its point.
 class PickupPin extends StatelessWidget {
@@ -147,6 +157,7 @@ class RideMap extends StatefulWidget {
     this.pointZoom = 15,
     this.showPickup = true,
     this.dotPins = false,
+    this.fitTop = 64,
     this.extraLayers = const [],
     this.hideCredit = false,
     this.trafficSignals = true,
@@ -200,6 +211,10 @@ class RideMap extends StatefulWidget {
   /// white on a dark one.
   final bool dotPins;
 
+  /// Room kept above the topmost point when the map frames them (more where
+  /// labels stand over the pins, or a title over the map).
+  final double fitTop;
+
   /// Map layers drawn over the route and under the pins (a second line).
   final List<Widget> extraLayers;
 
@@ -248,7 +263,11 @@ class _RideMapState extends State<RideMap> {
     if (pts.length < 2) return null;
     // Frame the points in the part of the map a sheet over it leaves showing.
     final bottom = MapBottomInset.of(context);
-    return CameraFit.coordinates(coordinates: pts, padding: EdgeInsets.fromLTRB(64, 64, 64, 64 + bottom), maxZoom: 16);
+    return CameraFit.coordinates(
+      coordinates: pts,
+      padding: EdgeInsets.fromLTRB(64, widget.fitTop, 64, 64 + bottom),
+      maxZoom: 16,
+    );
   }
 
   void _fit() {
@@ -277,6 +296,7 @@ class _RideMapState extends State<RideMap> {
           widget.route,
           Size(constraints.maxWidth, constraints.maxHeight),
           bottom: MapBottomInset.of(context),
+          top: widget.fitTop,
           pointZoom: widget.pointZoom,
         );
         return FlutterMap(
@@ -449,7 +469,7 @@ class _RideMapState extends State<RideMap> {
   /// ringed dot on the point itself.
   Marker _pickupBadge(LatLng p) {
     final c = _markerInk(context);
-    const gap = 4.0, dot = 14.0;
+    const gap = confirmPickupGap, dot = confirmPickupDot;
     const h = confirmBadgeSize + gap + dot;
     return Marker(
       point: p,
