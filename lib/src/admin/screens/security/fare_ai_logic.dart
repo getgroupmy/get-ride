@@ -55,7 +55,7 @@ String fareAiProviderLabel(String id) {
   return id.isEmpty ? '—' : id;
 }
 
-const retryUnits = {'hour': 'Hours', 'day': 'Days', 'month': 'Months'};
+const retryUnits = {'minute': 'Minutes', 'hour': 'Hours', 'day': 'Days', 'month': 'Months'};
 
 class FareAiKey {
   const FareAiKey({required this.id, required this.label, required this.key, required this.enabled});
@@ -86,6 +86,7 @@ class FareAiConfig {
     required this.retryAfterUnit,
     required this.models,
     required this.keys,
+    this.request = FareAiRequest.defaults,
   });
 
   final bool serviceEnabled;
@@ -94,6 +95,9 @@ class FareAiConfig {
   final String retryAfterUnit;
   final Map<String, String> models;
   final Map<String, List<FareAiKey>> keys;
+
+  /// What the AI is asked (Request & format); the default is the original prompt.
+  final FareAiRequest request;
 
   List<FareAiKey> keysFor(String provider) => keys[provider] ?? const [];
   int activeKeyCount(String provider) => keysFor(provider).where((k) => k.isActive).length;
@@ -105,6 +109,7 @@ class FareAiConfig {
     String? retryAfterUnit,
     Map<String, String>? models,
     Map<String, List<FareAiKey>>? keys,
+    FareAiRequest? request,
   }) =>
       FareAiConfig(
         serviceEnabled: serviceEnabled ?? this.serviceEnabled,
@@ -113,6 +118,7 @@ class FareAiConfig {
         retryAfterUnit: retryAfterUnit ?? this.retryAfterUnit,
         models: models ?? this.models,
         keys: keys ?? this.keys,
+        request: request ?? this.request,
       );
 
   FareAiConfig withKeys(String provider, List<FareAiKey> list) => copyWith(keys: {...keys, provider: list});
@@ -124,6 +130,8 @@ class FareAiConfig {
         'retryAfterUnit': retryAfterUnit,
         'models': models,
         'keys': {for (final e in keys.entries) e.key: [for (final k in e.value) k.toJson()]},
+        // Only once edited: an untouched config keeps following the default.
+        if (!request.isDefault) 'request': request.toJson(),
       };
 }
 
@@ -153,7 +161,7 @@ FareAiConfig normalizeFareAi(Object? raw) {
   final rv = o['retryAfterValue'];
   final retryValue = rv is num && rv > 0 ? rv.floor() : 1;
   final ru = o['retryAfterUnit'];
-  final retryUnit = ru == 'day' || ru == 'month' || ru == 'hour' ? ru as String : 'hour';
+  final retryUnit = retryUnits.containsKey(ru) ? ru as String : 'hour';
   final rawModels = o['models'] is Map ? o['models'] as Map : const {};
   final rawKeys = o['keys'] is Map ? o['keys'] as Map : const {};
   const legacy = {'gemini', 'grok', 'chatgpt', 'groq'};
@@ -177,6 +185,7 @@ FareAiConfig normalizeFareAi(Object? raw) {
     retryAfterUnit: retryUnit,
     models: models,
     keys: keys,
+    request: FareAiRequest.fromJson(o['request']),
   );
 }
 
@@ -185,6 +194,7 @@ int retryPolicyMs(num value, String unit) {
   final v = value.isFinite && value > 0 ? value : 1;
   const hour = 3600 * 1000;
   return switch (unit) {
+    'minute' => (v * 60 * 1000).round(),
     'month' => (v * 30 * 24 * hour).round(),
     'day' => (v * 24 * hour).round(),
     _ => (v * hour).round(),
@@ -268,3 +278,161 @@ String? tollHeadline(Map<String, dynamic> r) {
   final t = total == null ? '' : ' · ${total == total.roundToDouble() ? total.toInt() : total} total';
   return 'Tolls: $n booth${n == 1 ? '' : 's'}$t';
 }
+
+// ---- Request & format (mirrors supabase/functions/_shared/fare_ai_request.ts)
+
+const fareAiDefaultSystem = 'You return only valid JSON. Never wrap the JSON in markdown fences.';
+
+const fareAiDefaultTemplate = 'You are a driving route estimator with access to real-time traffic and toll road data. '
+    'For the trip "{origin} to {destination} realtime minute and distance with traffic", '
+    'estimate the total driving distance, the current driving time including live traffic, '
+    'and the toll booths/plazas along the route with their individual charges in local currency.';
+
+/// Placeholders a prompt may use, with what each becomes.
+const fareAiPlaceholders = {
+  '{origin}': 'pickup as "lat,lng"',
+  '{destination}': 'drop-off as "lat,lng"',
+  '{origin_lat}': 'pickup latitude',
+  '{origin_lng}': 'pickup longitude',
+  '{dest_lat}': 'drop-off latitude',
+  '{dest_lng}': 'drop-off longitude',
+};
+
+/// Why a prompt cannot be used, or null: it has to say where the trip starts
+/// and ends, as {origin}/{destination} or as both lat/lng pairs.
+String? fareAiTemplateProblem(String template) {
+  final t = template.trim();
+  if (t.isEmpty) return 'The prompt is empty.';
+  if (t.length > 4000) return 'The prompt is longer than 4000 characters.';
+  final origin = t.contains('{origin}') || (t.contains('{origin_lat}') && t.contains('{origin_lng}'));
+  final dest = t.contains('{destination}') || (t.contains('{dest_lat}') && t.contains('{dest_lng}'));
+  if (!origin) return 'The prompt must include {origin} (or {origin_lat} and {origin_lng}).';
+  if (!dest) return 'The prompt must include {destination} (or {dest_lat} and {dest_lng}).';
+  return null;
+}
+
+/// What the fare AI is asked. The answer's JSON shape is not free text: it is
+/// built from the switches and always asks for numeric distance_km and
+/// duration_min, which fares are priced on.
+class FareAiRequest {
+  const FareAiRequest({
+    this.systemInstruction = fareAiDefaultSystem,
+    this.promptTemplate = fareAiDefaultTemplate,
+    this.includeSummary = true,
+    this.includeTolls = true,
+    this.includeTollCoords = true,
+    this.temperature = 0,
+    this.maxTokens = 512,
+  });
+
+  static const defaults = FareAiRequest();
+
+  final String systemInstruction;
+  final String promptTemplate;
+  final bool includeSummary;
+  final bool includeTolls;
+
+  /// Only meaningful with [includeTolls].
+  final bool includeTollCoords;
+  final double temperature;
+
+  /// Output cap for providers that need one (Claude).
+  final int maxTokens;
+
+  /// Tolerant parse, the same as the edge function's: blanks, an unusable
+  /// prompt or out-of-range numbers fall back to the default.
+  factory FareAiRequest.fromJson(Object? raw) {
+    final o = raw is Map ? raw : const {};
+    final system = o['systemInstruction'];
+    final template = o['promptTemplate'];
+    final includeTolls = o['includeTolls'] != false;
+    double inRange(Object? v, double lo, double hi, double fallback) =>
+        v is num && v.isFinite ? v.toDouble().clamp(lo, hi) : fallback;
+    return FareAiRequest(
+      systemInstruction: system is String && system.trim().isNotEmpty ? system.trim() : fareAiDefaultSystem,
+      promptTemplate: template is String && fareAiTemplateProblem(template) == null ? template.trim() : fareAiDefaultTemplate,
+      includeSummary: o['includeSummary'] != false,
+      includeTolls: includeTolls,
+      includeTollCoords: includeTolls && o['includeTollCoords'] != false,
+      temperature: inRange(o['temperature'], 0, 1, 0),
+      maxTokens: inRange(o['maxTokens'], 128, 4096, 512).round(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'systemInstruction': systemInstruction,
+        'promptTemplate': promptTemplate,
+        'includeSummary': includeSummary,
+        'includeTolls': includeTolls,
+        'includeTollCoords': includeTolls && includeTollCoords,
+        'temperature': temperature,
+        'maxTokens': maxTokens,
+      };
+
+  bool get isDefault =>
+      systemInstruction == fareAiDefaultSystem &&
+      promptTemplate == fareAiDefaultTemplate &&
+      includeSummary &&
+      includeTolls &&
+      includeTollCoords &&
+      temperature == 0 &&
+      maxTokens == 512;
+
+  FareAiRequest copyWith({
+    String? systemInstruction,
+    String? promptTemplate,
+    bool? includeSummary,
+    bool? includeTolls,
+    bool? includeTollCoords,
+    double? temperature,
+    int? maxTokens,
+  }) =>
+      FareAiRequest(
+        systemInstruction: systemInstruction ?? this.systemInstruction,
+        promptTemplate: promptTemplate ?? this.promptTemplate,
+        includeSummary: includeSummary ?? this.includeSummary,
+        includeTolls: includeTolls ?? this.includeTolls,
+        includeTollCoords: includeTollCoords ?? this.includeTollCoords,
+        temperature: temperature ?? this.temperature,
+        maxTokens: maxTokens ?? this.maxTokens,
+      );
+}
+
+String _n(double v) => v == v.roundToDouble() ? v.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '') : '$v';
+
+/// The prompt with a trip filled in.
+String fareAiFillTemplate(String template, ({double lat, double lng}) origin, ({double lat, double lng}) dest) =>
+    template
+        .replaceAll('{origin}', '${_n(origin.lat)},${_n(origin.lng)}')
+        .replaceAll('{destination}', '${_n(dest.lat)},${_n(dest.lng)}')
+        .replaceAll('{origin_lat}', _n(origin.lat))
+        .replaceAll('{origin_lng}', _n(origin.lng))
+        .replaceAll('{dest_lat}', _n(dest.lat))
+        .replaceAll('{dest_lng}', _n(dest.lng));
+
+/// The fixed answer format the switches produce.
+String fareAiFormatClause(FareAiRequest r) {
+  final coords = r.includeTolls && r.includeTollCoords;
+  final fields = ['"distance_km": <number>', '"duration_min": <number>'];
+  if (r.includeSummary) fields.add('"summary": "<short text>"');
+  if (r.includeTolls) {
+    final booth = coords
+        ? '{"name": "<booth name>", "charge": <number>, "lat": <number>, "lng": <number>}'
+        : '{"name": "<booth name>", "charge": <number>}';
+    fields.addAll(['"toll_count": <integer>', '"toll_total": <number>', '"tolls": [$booth]']);
+  }
+  var s = 'Respond with ONLY a compact JSON object, no markdown, no extra text, of the form: {${fields.join(', ')}}. '
+      'distance_km is total kilometres (number). duration_min is total minutes with traffic (integer).';
+  if (r.includeTolls) {
+    s += ' toll_count is the number of toll booths/plazas on the route (integer, 0 if none). '
+        'toll_total is the sum of all toll charges (number, 0 if none). '
+        'tolls is an array of each real toll booth/plaza that physically exists on this route, in travel order, '
+        '${coords ? 'each with its name, charge, and exact geographic coordinates (lat and lng as decimal degrees) of the booth location. '
+            'Use real, known toll plaza coordinates; do not invent coordinates. Empty array if none.' : 'each with its name and charge. Empty array if none.'}';
+  }
+  return s;
+}
+
+/// The whole user prompt, as the edge function builds it.
+String fareAiPrompt(FareAiRequest r, ({double lat, double lng}) origin, ({double lat, double lng}) dest) =>
+    '${fareAiFillTemplate(r.promptTemplate, origin, dest).trim()} ${fareAiFormatClause(r)}';

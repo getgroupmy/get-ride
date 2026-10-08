@@ -6,6 +6,7 @@ import '../../admin_registry.dart';
 import 'api_keys_screens.dart';
 import 'backend_screen.dart';
 import 'elife_screen.dart';
+import 'fare_ai_request_screen.dart';
 import 'fare_ai_screens.dart';
 import 'ip_access_screen.dart';
 import 'session_history_screen.dart';
@@ -36,6 +37,7 @@ final securityRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/api-elife', builder: (_, _) => const AdminElifeScreen()),
   GoRoute(path: '/admin/m/fare-ai', builder: (_, _) => const AdminFareAiScreen()),
   GoRoute(path: '/admin/m/fare-ai-logs', builder: (_, _) => const AdminFareAiLogsScreen()),
+  GoRoute(path: '/admin/m/fare-ai-request', builder: (_, _) => const AdminFareAiRequestScreen()),
   GoRoute(path: '/admin/m/backend', builder: (_, _) => const AdminBackendScreen()),
 ];
 
@@ -112,6 +114,14 @@ const securityEntries = <AdminScreenEntry>[
     subtitle: 'Every AI fare estimate attempt',
     path: '/admin/m/fare-ai-logs',
     pages: ['admin-settings-fare-ai-logs', 'admin-settings-fare-ai'],
+    listed: false,
+  ),
+  AdminScreenEntry(
+    section: _section,
+    title: 'Fare AI request & format',
+    subtitle: 'What the fare AI is asked, and a test run',
+    path: '/admin/m/fare-ai-request',
+    pages: ['admin-settings-fare-ai'],
     listed: false,
   ),
   AdminScreenEntry(
