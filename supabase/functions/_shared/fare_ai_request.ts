@@ -18,6 +18,8 @@ export interface FareAIRequest {
   includeSummary?: boolean;
   includeTolls?: boolean;
   includeTollCoords?: boolean;
+  includeFareRange?: boolean;
+  includeTraffic?: boolean;
   temperature?: number;
   maxTokens?: number;
 }
@@ -28,6 +30,10 @@ export interface ResolvedRequest {
   includeSummary: boolean;
   includeTolls: boolean;
   includeTollCoords: boolean;
+  /** current_duration_is_baseline / _is_low / _is_heavy: where today's time sits. */
+  includeFareRange: boolean;
+  /** traffic_congestion and the congested stretches. */
+  includeTraffic: boolean;
   temperature: number;
   maxTokens: number;
 }
@@ -47,6 +53,8 @@ export const DEFAULT_REQUEST: ResolvedRequest = {
   includeSummary: true,
   includeTolls: true,
   includeTollCoords: true,
+  includeFareRange: false,
+  includeTraffic: false,
   temperature: 0,
   maxTokens: 512,
 };
@@ -96,6 +104,9 @@ export function resolveRequest(raw: unknown): ResolvedRequest {
     includeSummary: r.includeSummary !== false,
     includeTolls,
     includeTollCoords: includeTolls && r.includeTollCoords !== false,
+    // Off unless switched on: the original prompt never asked for them.
+    includeFareRange: r.includeFareRange === true,
+    includeTraffic: r.includeTraffic === true,
     temperature: clamp(r.temperature, 0, 1, DEFAULT_REQUEST.temperature),
     maxTokens: Math.round(clamp(r.maxTokens, 128, 4096, DEFAULT_REQUEST.maxTokens)),
   };
@@ -124,6 +135,19 @@ export function formatClause(req: ResolvedRequest): string {
       : '{"name": "<booth name>", "charge": <number>}';
     fields.push('"toll_count": <integer>', '"toll_total": <number>', `"tolls": [${booth}]`);
   }
+  if (req.includeFareRange) {
+    fields.push(
+      '"current_duration_is_baseline": <boolean>',
+      '"current_duration_is_low": <boolean>',
+      '"current_duration_is_heavy": <boolean>',
+    );
+  }
+  if (req.includeTraffic) {
+    fields.push(
+      `"traffic_congestion": "<${TRAFFIC_LEVELS.join("|")}>"`,
+      '"traffic_congestion_stretch_location_details": [{"road": "<road name>", "from": "<place>", "to": "<place>", "delay_min": <number>}]',
+    );
+  }
   let s = `Respond with ONLY a compact JSON object, no markdown, no extra text, of the form: {${fields.join(", ")}}. ` +
     "distance_km is total kilometres (number). duration_min is total minutes with traffic (integer).";
   if (req.includeTolls) {
@@ -135,7 +159,77 @@ export function formatClause(req: ResolvedRequest): string {
           "Use real, known toll plaza coordinates; do not invent coordinates. Empty array if none."
         : "each with its name and charge. Empty array if none.");
   }
+  if (req.includeFareRange) {
+    s += " Exactly one of current_duration_is_baseline, current_duration_is_low and current_duration_is_heavy is true: " +
+      "baseline when duration_min is about the usual time for this trip, low when it is clearly shorter than usual, " +
+      "heavy when traffic makes it clearly longer than usual.";
+  }
+  if (req.includeTraffic) {
+    s += ` traffic_congestion is the overall congestion on the route now (${TRAFFIC_LEVELS.join(", ")}). ` +
+      "traffic_congestion_stretch_location_details lists each congested stretch in travel order with the road, " +
+      "where it starts and ends, and the delay in minutes. Empty array if none.";
+  }
   return s;
+}
+
+export const TRAFFIC_LEVELS = ["none", "light", "moderate", "heavy"] as const;
+export type TrafficLevel = typeof TRAFFIC_LEVELS[number];
+
+export interface CongestedStretch {
+  road: string;
+  from?: string;
+  to?: string;
+  delay_min?: number;
+}
+
+/** The fare-range and traffic answers, kept only where they make sense:
+ * the three duration flags only when exactly one is true, a congestion
+ * level only from the known list, stretches only with a road name (at most
+ * 10). Anything else is left out rather than guessed at. */
+export interface TrafficExtras {
+  current_duration_is_baseline?: boolean;
+  current_duration_is_low?: boolean;
+  current_duration_is_heavy?: boolean;
+  traffic_congestion?: TrafficLevel;
+  traffic_congestion_stretch_location_details?: CongestedStretch[];
+}
+
+function flag(v: unknown): boolean | undefined {
+  if (v === true || v === "true") return true;
+  if (v === false || v === "false") return false;
+  return undefined;
+}
+
+export function parseTrafficExtras(obj: Record<string, unknown>): TrafficExtras {
+  const out: TrafficExtras = {};
+  const b = flag(obj.current_duration_is_baseline);
+  const l = flag(obj.current_duration_is_low);
+  const h = flag(obj.current_duration_is_heavy);
+  if (b !== undefined && l !== undefined && h !== undefined && [b, l, h].filter((x) => x).length === 1) {
+    out.current_duration_is_baseline = b;
+    out.current_duration_is_low = l;
+    out.current_duration_is_heavy = h;
+  }
+  const level = typeof obj.traffic_congestion === "string" ? obj.traffic_congestion.trim().toLowerCase() : "";
+  if ((TRAFFIC_LEVELS as readonly string[]).includes(level)) out.traffic_congestion = level as TrafficLevel;
+  const raw = obj.traffic_congestion_stretch_location_details;
+  if (Array.isArray(raw)) {
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+    out.traffic_congestion_stretch_location_details = raw
+      .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
+      .map((x) => {
+        const delay = Number(x.delay_min);
+        const stretch: CongestedStretch = { road: str(x.road) ?? "" };
+        const from = str(x.from), to = str(x.to);
+        if (from) stretch.from = from;
+        if (to) stretch.to = to;
+        if (Number.isFinite(delay) && delay >= 0) stretch.delay_min = Math.round(delay);
+        return stretch;
+      })
+      .filter((x) => x.road.length > 0)
+      .slice(0, 10);
+  }
+  return out;
 }
 
 /** The full user prompt sent to the AI. */

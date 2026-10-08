@@ -321,6 +321,8 @@ class FareAiRequest {
     this.includeSummary = true,
     this.includeTolls = true,
     this.includeTollCoords = true,
+    this.includeFareRange = false,
+    this.includeTraffic = false,
     this.temperature = 0,
     this.maxTokens = 512,
   });
@@ -334,6 +336,13 @@ class FareAiRequest {
 
   /// Only meaningful with [includeTolls].
   final bool includeTollCoords;
+
+  /// current_duration_is_baseline / _is_low / _is_heavy: where today's drive
+  /// time sits against the usual one.
+  final bool includeFareRange;
+
+  /// traffic_congestion and traffic_congestion_stretch_location_details.
+  final bool includeTraffic;
   final double temperature;
 
   /// Output cap for providers that need one (Claude).
@@ -354,6 +363,8 @@ class FareAiRequest {
       includeSummary: o['includeSummary'] != false,
       includeTolls: includeTolls,
       includeTollCoords: includeTolls && o['includeTollCoords'] != false,
+      includeFareRange: o['includeFareRange'] == true,
+      includeTraffic: o['includeTraffic'] == true,
       temperature: inRange(o['temperature'], 0, 1, 0),
       maxTokens: inRange(o['maxTokens'], 128, 4096, 512).round(),
     );
@@ -365,6 +376,8 @@ class FareAiRequest {
         'includeSummary': includeSummary,
         'includeTolls': includeTolls,
         'includeTollCoords': includeTolls && includeTollCoords,
+        'includeFareRange': includeFareRange,
+        'includeTraffic': includeTraffic,
         'temperature': temperature,
         'maxTokens': maxTokens,
       };
@@ -375,6 +388,8 @@ class FareAiRequest {
       includeSummary &&
       includeTolls &&
       includeTollCoords &&
+      !includeFareRange &&
+      !includeTraffic &&
       temperature == 0 &&
       maxTokens == 512;
 
@@ -384,6 +399,8 @@ class FareAiRequest {
     bool? includeSummary,
     bool? includeTolls,
     bool? includeTollCoords,
+    bool? includeFareRange,
+    bool? includeTraffic,
     double? temperature,
     int? maxTokens,
   }) =>
@@ -393,6 +410,8 @@ class FareAiRequest {
         includeSummary: includeSummary ?? this.includeSummary,
         includeTolls: includeTolls ?? this.includeTolls,
         includeTollCoords: includeTollCoords ?? this.includeTollCoords,
+        includeFareRange: includeFareRange ?? this.includeFareRange,
+        includeTraffic: includeTraffic ?? this.includeTraffic,
         temperature: temperature ?? this.temperature,
         maxTokens: maxTokens ?? this.maxTokens,
       );
@@ -421,6 +440,19 @@ String fareAiFormatClause(FareAiRequest r) {
         : '{"name": "<booth name>", "charge": <number>}';
     fields.addAll(['"toll_count": <integer>', '"toll_total": <number>', '"tolls": [$booth]']);
   }
+  if (r.includeFareRange) {
+    fields.addAll([
+      '"current_duration_is_baseline": <boolean>',
+      '"current_duration_is_low": <boolean>',
+      '"current_duration_is_heavy": <boolean>',
+    ]);
+  }
+  if (r.includeTraffic) {
+    fields.addAll([
+      '"traffic_congestion": "<${fareAiTrafficLevels.join('|')}>"',
+      '"traffic_congestion_stretch_location_details": [{"road": "<road name>", "from": "<place>", "to": "<place>", "delay_min": <number>}]',
+    ]);
+  }
   var s = 'Respond with ONLY a compact JSON object, no markdown, no extra text, of the form: {${fields.join(', ')}}. '
       'distance_km is total kilometres (number). duration_min is total minutes with traffic (integer).';
   if (r.includeTolls) {
@@ -430,7 +462,45 @@ String fareAiFormatClause(FareAiRequest r) {
         '${coords ? 'each with its name, charge, and exact geographic coordinates (lat and lng as decimal degrees) of the booth location. '
             'Use real, known toll plaza coordinates; do not invent coordinates. Empty array if none.' : 'each with its name and charge. Empty array if none.'}';
   }
+  if (r.includeFareRange) {
+    s += ' Exactly one of current_duration_is_baseline, current_duration_is_low and current_duration_is_heavy is true: '
+        'baseline when duration_min is about the usual time for this trip, low when it is clearly shorter than usual, '
+        'heavy when traffic makes it clearly longer than usual.';
+  }
+  if (r.includeTraffic) {
+    s += ' traffic_congestion is the overall congestion on the route now (${fareAiTrafficLevels.join(', ')}). '
+        'traffic_congestion_stretch_location_details lists each congested stretch in travel order with the road, '
+        'where it starts and ends, and the delay in minutes. Empty array if none.';
+  }
   return s;
+}
+
+/// The congestion levels the AI may answer with.
+const fareAiTrafficLevels = ['none', 'light', 'moderate', 'heavy'];
+
+/// "Heavy traffic (+12 min on MEX, ELITE)" style lines for an estimate's
+/// fare-range and traffic answers, for the test result and the log. Empty
+/// when none came back.
+List<String> fareAiTrafficLines(Map<dynamic, dynamic>? e) {
+  if (e == null) return const [];
+  final out = <String>[];
+  String? range;
+  if (e['current_duration_is_heavy'] == true) range = 'heavier than usual';
+  if (e['current_duration_is_low'] == true) range = 'lighter than usual';
+  if (e['current_duration_is_baseline'] == true) range = 'about usual';
+  if (range != null) out.add('Drive time: $range');
+  final level = e['traffic_congestion'];
+  if (level is String && level.isNotEmpty) out.add('Traffic: $level');
+  final stretches = e['traffic_congestion_stretch_location_details'];
+  if (stretches is List) {
+    for (final st in stretches) {
+      if (st is! Map) continue;
+      final where = [st['from'], st['to']].whereType<String>().join(' → ');
+      final delay = st['delay_min'] is num ? ' · +${(st['delay_min'] as num).round()} min' : '';
+      out.add('• ${st['road'] ?? 'Road'}${where.isEmpty ? '' : ' ($where)'}$delay');
+    }
+  }
+  return out;
 }
 
 /// The whole user prompt, as the edge function builds it.

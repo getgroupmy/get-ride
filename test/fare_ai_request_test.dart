@@ -100,6 +100,49 @@ void main() {
     });
   });
 
+  group('fare range and traffic', () {
+    test('off by default, so the prompt is unchanged', () {
+      expect(FareAiRequest.defaults.includeFareRange, isFalse);
+      expect(FareAiRequest.defaults.includeTraffic, isFalse);
+      expect(fareAiFormatClause(FareAiRequest.defaults), isNot(contains('current_duration_is')));
+      expect(fareAiFormatClause(FareAiRequest.defaults), isNot(contains('traffic_congestion')));
+    });
+
+    test('switched on, both are asked for and survive a save', () {
+      const r = FareAiRequest(includeFareRange: true, includeTraffic: true);
+      final clause = fareAiFormatClause(r);
+      expect(
+        clause,
+        contains(
+          '"current_duration_is_baseline": <boolean>, "current_duration_is_low": <boolean>, '
+          '"current_duration_is_heavy": <boolean>',
+        ),
+      );
+      expect(clause, contains('"traffic_congestion": "<none|light|moderate|heavy>"'));
+      expect(clause, contains('"traffic_congestion_stretch_location_details": [{"road": "<road name>"'));
+      expect(r.isDefault, isFalse);
+      final back = FareAiRequest.fromJson(r.toJson());
+      expect((back.includeFareRange, back.includeTraffic), (true, true));
+    });
+
+    test('the answers read as lines', () {
+      expect(fareAiTrafficLines(null), isEmpty);
+      expect(
+        fareAiTrafficLines({
+          'current_duration_is_baseline': false,
+          'current_duration_is_low': false,
+          'current_duration_is_heavy': true,
+          'traffic_congestion': 'heavy',
+          'traffic_congestion_stretch_location_details': [
+            {'road': 'MEX', 'from': 'Seri Kembangan', 'to': 'Putrajaya', 'delay_min': 8},
+            {'road': 'ELITE'},
+          ],
+        }),
+        ['Drive time: heavier than usual', 'Traffic: heavy', '• MEX (Seri Kembangan → Putrajaya) · +8 min', '• ELITE'],
+      );
+    });
+  });
+
   group('retry', () {
     test('minutes are a unit', () {
       final c = normalizeFareAi({'retryAfterValue': 15, 'retryAfterUnit': 'minute'});
@@ -152,6 +195,22 @@ void main() {
       expect(find.byKey(const ValueKey('fare-ai-test-result')), findsOneWidget);
       expect(find.text('4.2 km · 11 min'), findsOneWidget);
       expect(repo.saved, isEmpty, reason: 'testing saves nothing');
+    });
+
+    testWidgets('fare range and traffic switches go into the test and the save', (tester) async {
+      final repo = await pump(tester);
+      await tester.tap(find.byKey(const ValueKey('ask-fare-range')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('ask-traffic')));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('fare-ai-run-test')));
+      await tester.pumpAndSettle();
+      expect(repo.tested.single.includeFareRange, isTrue);
+      expect(repo.tested.single.includeTraffic, isTrue);
+      await tester.tap(find.byKey(const ValueKey('fare-ai-request-save')));
+      await tester.pumpAndSettle();
+      expect(repo.config.request.includeFareRange, isTrue);
+      expect(repo.config.request.includeTraffic, isTrue);
     });
 
     testWidgets('saving keeps the keys and provider, and reset brings back the default', (tester) async {

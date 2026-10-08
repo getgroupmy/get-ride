@@ -89,6 +89,8 @@ class _RequestState extends ConsumerState<AdminFareAiRequestScreen> {
         d.includeSummary != s.includeSummary ||
         d.includeTolls != s.includeTolls ||
         (d.includeTolls && d.includeTollCoords) != (s.includeTolls && s.includeTollCoords) ||
+        d.includeFareRange != s.includeFareRange ||
+        d.includeTraffic != s.includeTraffic ||
         d.temperature != s.temperature ||
         d.maxTokens != s.maxTokens;
   }
@@ -269,6 +271,26 @@ class _RequestState extends ConsumerState<AdminFareAiRequestScreen> {
                   value: d.includeTolls && d.includeTollCoords,
                   onChanged: canEdit && d.includeTolls ? (v) => _set(d.copyWith(includeTollCoords: v)) : null,
                 ),
+                SwitchListTile(
+                  key: const ValueKey('ask-fare-range'),
+                  secondary: const Icon(Icons.speed),
+                  title: const Text('Fare range'),
+                  subtitle: const Text(
+                      'current_duration_is_baseline, current_duration_is_low and current_duration_is_heavy: '
+                      'whether the drive takes about the usual time, less or more'),
+                  value: d.includeFareRange,
+                  onChanged: canEdit ? (v) => _set(d.copyWith(includeFareRange: v)) : null,
+                ),
+                SwitchListTile(
+                  key: const ValueKey('ask-traffic'),
+                  secondary: const Icon(Icons.traffic_outlined),
+                  title: const Text('Traffic info'),
+                  subtitle: const Text(
+                      'traffic_congestion (none, light, moderate, heavy) and '
+                      'traffic_congestion_stretch_location_details: each congested stretch with its delay'),
+                  value: d.includeTraffic,
+                  onChanged: canEdit ? (v) => _set(d.copyWith(includeTraffic: v)) : null,
+                ),
               ],
             ),
           ),
@@ -431,6 +453,7 @@ class _RequestState extends ConsumerState<AdminFareAiRequestScreen> {
               style: t.textTheme.bodySmall,
             ),
             if (est?['summary'] != null) Text('${est!['summary']}'),
+            for (final line in fareAiTrafficLines(est)) Text(line),
             if (est != null && est['tolls'] is List && (est['tolls'] as List).isNotEmpty)
               for (final toll in est['tolls'] as List)
                 if (toll is Map) Text('• ${toll['name'] ?? 'Toll booth'} — ${toll['charge']}'),

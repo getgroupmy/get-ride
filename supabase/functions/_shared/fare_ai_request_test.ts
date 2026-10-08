@@ -9,6 +9,7 @@ import {
   buildPrompt,
   DEFAULT_REQUEST,
   formatClause,
+  parseTrafficExtras,
   resolveRequest,
   retryPolicyMs,
   templateProblem,
@@ -78,4 +79,57 @@ Deno.test("a failed key can rest for minutes", () => {
   assertEquals(retryPolicyMs(1, "day"), 24 * 3600 * 1000);
   assertEquals(retryPolicyMs(1, "month"), 30 * 24 * 3600 * 1000);
   assertEquals(retryPolicyMs(0, "minute"), 60 * 1000);
+});
+
+Deno.test("fare range and traffic are off unless switched on", () => {
+  const req = resolveRequest(undefined);
+  assertEquals([req.includeFareRange, req.includeTraffic], [false, false]);
+  const clause = formatClause(req);
+  assert(!clause.includes("current_duration_is"));
+  assert(!clause.includes("traffic_congestion"));
+});
+
+Deno.test("switched on, they are asked for", () => {
+  const clause = formatClause(resolveRequest({ includeFareRange: true, includeTraffic: true }));
+  assertStringIncludes(clause, '"current_duration_is_baseline": <boolean>, "current_duration_is_low": <boolean>, "current_duration_is_heavy": <boolean>');
+  assertStringIncludes(clause, '"traffic_congestion": "<none|light|moderate|heavy>"');
+  assertStringIncludes(clause, '"traffic_congestion_stretch_location_details": [{"road": "<road name>"');
+  assertStringIncludes(clause, "Exactly one of current_duration_is_baseline");
+});
+
+Deno.test("the answers are kept only where they make sense", () => {
+  assertEquals(
+    parseTrafficExtras({
+      current_duration_is_baseline: false,
+      current_duration_is_low: "false",
+      current_duration_is_heavy: true,
+      traffic_congestion: " Heavy ",
+      traffic_congestion_stretch_location_details: [
+        { road: "MEX", from: "Seri Kembangan", to: "Putrajaya", delay_min: 7.6 },
+        { road: "", from: "x" },
+        "junk",
+        { road: "ELITE", delay_min: -3 },
+      ],
+    }),
+    {
+      current_duration_is_baseline: false,
+      current_duration_is_low: false,
+      current_duration_is_heavy: true,
+      traffic_congestion: "heavy",
+      traffic_congestion_stretch_location_details: [
+        { road: "MEX", from: "Seri Kembangan", to: "Putrajaya", delay_min: 8 },
+        { road: "ELITE" },
+      ],
+    },
+  );
+  // Two flags at once, or an unknown level: dropped, not guessed.
+  assertEquals(
+    parseTrafficExtras({
+      current_duration_is_baseline: true,
+      current_duration_is_low: true,
+      current_duration_is_heavy: false,
+      traffic_congestion: "gridlock",
+    }),
+    {},
+  );
 });

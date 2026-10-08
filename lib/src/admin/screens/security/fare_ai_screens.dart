@@ -239,6 +239,8 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
                     'distance, time',
                     if (c.request.includeSummary) 'summary',
                     if (c.request.includeTolls) c.request.includeTollCoords ? 'tolls with locations' : 'tolls',
+                    if (c.request.includeFareRange) 'fare range',
+                    if (c.request.includeTraffic) 'traffic',
                   ].join(', ')}'),
             trailing: const Icon(Icons.chevron_right),
             onTap: _openRequest,
@@ -466,6 +468,8 @@ class _LogCard extends StatelessWidget {
                 '${r['summary'] != null ? ' — ${r['summary']}' : ''}')
           else
             Text('${r['error'] ?? 'Failed'}', maxLines: 3, style: const TextStyle(color: Colors.red)),
+          for (final line in fareAiTrafficLines(r['extra'] is Map ? r['extra'] as Map : null))
+            Text(line, style: Theme.of(context).textTheme.bodySmall),
           Wrap(spacing: 10, children: [
             if (r['model'] != null) Text('${r['model']}', style: Theme.of(context).textTheme.bodySmall),
             if (r['http_status'] != null) Text('HTTP ${r['http_status']}', style: Theme.of(context).textTheme.bodySmall),
