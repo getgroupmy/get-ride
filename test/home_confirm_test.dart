@@ -16,6 +16,7 @@ import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/features/ride/auto_accept.dart';
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmSwitch;
 import 'package:get_ride/src/features/ride/home_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
@@ -181,7 +182,10 @@ void main() {
     expect(find.byKey(const ValueKey('confirm-payment')), findsOneWidget);
     expect(find.textContaining('Auto-accept offer of'), findsOneWidget);
 
-    // Choosing another vehicle moves the fare into its card.
+    // Choosing another vehicle moves the fare into its card (the sheet
+    // raised to reach it above the footer).
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -300));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('service-GET XL')));
     await tester.pump();
     expect(
@@ -193,6 +197,8 @@ void main() {
     );
 
     // Back leaves the confirm step for the home map.
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 600));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('confirm-back')));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const ValueKey('confirm-address-card')), findsNothing);
@@ -293,26 +299,30 @@ void main() {
     expect(rides.created![#passengers], 1);
   });
 
-  testWidgets('someone else is filled in a modal; the sheet shows them with a pen', (tester) async {
+  testWidgets('booking for someone else is a toggle under GET.coin; the modal fills it in', (tester) async {
     final rides = _Rides();
     await _pump(tester, rides);
-    final someone = find.text('Someone else');
-    await tester.ensureVisible(someone);
-    await tester.pump();
+    final toggle = find.byKey(const ValueKey('who-riding'));
+    expect(find.text('Someone else'), findsNothing, reason: 'no Me / Someone else buttons any more');
+    // In the pinned footer, below the auto-accept row's top and above Find a driver.
+    expect(find.descendant(of: find.byKey(const ValueKey('confirm-footer')), matching: toggle), findsOneWidget);
+    expect(tester.getTopLeft(toggle).dy, lessThan(tester.getTopLeft(find.byKey(const ValueKey('book'))).dy));
+    expect(tester.widget<ConfirmSwitch>(toggle).value, isFalse);
 
-    // Closed without Done the first time: back to "Me".
-    await tester.tap(someone);
+    // Closed without Done the first time: back off.
+    await tester.tap(toggle);
     await _settle(tester);
     expect(find.byKey(const ValueKey('book-for-sheet')), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byKey(const ValueKey('book-for-done'))).onPressed, isNull);
     await tester.tapAt(const Offset(200, 20));
     await _settle(tester);
     expect(find.byKey(const ValueKey('book-for-sheet')), findsNothing);
-    expect(find.byKey(const ValueKey('book-for-summary')), findsNothing);
+    expect(tester.widget<ConfirmSwitch>(toggle).value, isFalse);
+    expect(find.byKey(const ValueKey('book-for-edit')), findsNothing);
     expect(find.text('Find a driver'), findsOneWidget);
 
-    // Filled in and Done: only a summary on the sheet, no fields.
-    await tester.tap(someone);
+    // Filled in and Done: on, and the row shows who, with a pen.
+    await tester.tap(toggle);
     await _settle(tester);
     await tester.enterText(find.byKey(const ValueKey('book-for-name')), 'Aminah');
     await tester.enterText(find.byKey(const ValueKey('book-for-phone')), '+60 12-345 6789');
@@ -320,10 +330,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('book-for-done')));
     await _settle(tester);
     expect(find.byKey(const ValueKey('book-for-sheet')), findsNothing);
-    expect(find.byKey(const ValueKey('book-for-name')), findsNothing, reason: 'nothing is typed on the sheet');
-    final summary = find.byKey(const ValueKey('book-for-summary'));
-    expect(find.descendant(of: summary, matching: find.text('Aminah')), findsOneWidget);
-    expect(find.descendant(of: summary, matching: find.text('+60123456789')), findsOneWidget);
+    expect(tester.widget<ConfirmSwitch>(toggle).value, isTrue);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('book-for-who'))).data, 'Aminah · +60123456789');
     expect(find.text('Find a driver for Aminah'), findsOneWidget);
 
     // The pen reopens it filled in; closing it keeps them.
@@ -339,6 +347,28 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(rides.created![#bookedFor], (name: 'Aminah', phone: '+60123456789'));
+  });
+
+  testWidgets('switching it off books for the rider again', (tester) async {
+    final rides = _Rides();
+    await _pump(tester, rides);
+    final toggle = find.byKey(const ValueKey('who-riding'));
+    await tester.tap(toggle);
+    await _settle(tester);
+    await tester.enterText(find.byKey(const ValueKey('book-for-name')), 'Aminah');
+    await tester.enterText(find.byKey(const ValueKey('book-for-phone')), '+60 12-345 6789');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('book-for-done')));
+    await _settle(tester);
+    await tester.tap(toggle);
+    await tester.pump();
+    expect(tester.widget<ConfirmSwitch>(toggle).value, isFalse);
+    expect(find.text('Find a driver'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('book')));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(rides.created![#bookedFor], isNull);
   });
 
   testWidgets('where bidding is on the chosen card has the round −/+ and a pencil', (tester) async {
