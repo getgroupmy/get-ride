@@ -956,6 +956,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
             useCoins: _useCoins,
             onUseCoins: (v) => setState(() => _useCoins = v),
+            whoRiding: _WhoRiding(
+              forOther: _forOther,
+              name: _otherName,
+              phone: _otherPhone,
+              onChanged: (who) => setState(() {
+                _forOther = who != null;
+                if (who != null) {
+                  _otherName.text = who.name;
+                  _otherPhone.text = who.phone;
+                }
+              }),
+            ),
           )
         : null;
     // The nearest drivers to the pickup, on the confirm step: real ones from
@@ -978,18 +990,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ongoing: _ongoing,
       forOthers: _forOthers,
       onOpenRide: (r) => context.push('/ride/${r.id}').then((_) => _checkOngoing()),
-      whoRiding: _WhoRiding(
-        forOther: _forOther,
-        name: _otherName,
-        phone: _otherPhone,
-        onChanged: (who) => setState(() {
-          _forOther = who != null;
-          if (who != null) {
-            _otherName.text = who.name;
-            _otherPhone.text = who.phone;
-          }
-        }),
-      ),
       pickup: _pickup,
       drop: _drop,
       route: _route,
@@ -1081,7 +1081,6 @@ class _BookingPanel extends StatelessWidget {
     this.idle,
     this.forOthers = const [],
     this.onOpenRide,
-    this.whoRiding,
     this.currency = AppConfig.currency,
     this.etaFor,
   });
@@ -1094,8 +1093,6 @@ class _BookingPanel extends StatelessWidget {
   final List<RideRequest> forOthers;
   final ValueChanged<RideRequest>? onOpenRide;
 
-  /// The "Who's riding?" choice.
-  final Widget? whoRiding;
 
   /// What the fares are quoted in: the pickup's tariff card's currency.
   final String currency;
@@ -1203,10 +1200,9 @@ class _BookingPanel extends StatelessWidget {
                 onEdit: s.name == service.name ? onEditFare : null,
               ),
             ),
-          const SizedBox(height: 12),
-          ?whoRiding,
-          // The note to the driver is Options → Comments.
-          const SizedBox(height: 16),
+          // Who's riding is a toggle in the footer, under GET.coin; the note
+          // to the driver is Options → Comments.
+          const SizedBox(height: 28),
           // In the wide panel; on a phone it sits above the pinned footer.
           if (footer != null) ...[const ConfirmDisclaimer(), const SizedBox(height: 16), footer!],
         ],
@@ -1262,22 +1258,22 @@ class RouteBasisLine extends StatelessWidget {
   }
 }
 
-/// "Who's riding?": the rider, or someone else, whose name and phone go on
-/// the request so the driver meets and calls the right person. They are
-/// typed in a modal ([showBookForSheet]); the sheet only shows them, with
-/// a pen to change them.
+/// "Who's riding?" (a toggle under GET.coin, as inDrive's): off, the
+/// rider; on, someone else, whose name and phone go on the request so the
+/// driver meets and calls the right person. They are typed in a modal
+/// ([showBookForSheet]); the row shows them, and its pen changes them.
 class _WhoRiding extends StatelessWidget {
   const _WhoRiding({required this.forOther, required this.name, required this.phone, required this.onChanged});
 
   final bool forOther;
   final TextEditingController name, phone;
 
-  /// "Someone else" with the details from the modal, or "Me" (null).
+  /// Someone else with the details from the modal, or the rider (null).
   final ValueChanged<BookedFor?> onChanged;
 
   Future<void> _ask(BuildContext context) async {
     final who = await showBookForSheet(context, name: name.text, phone: phone.text);
-    // Closed without Done: as it was (back to "Me" when nobody was set).
+    // Closed without Done: as it was (back off when nobody was set).
     if (who != null) {
       onChanged(who);
     } else if (!forOther || bookedFor(name.text, phone.text) == null) {
@@ -1287,21 +1283,52 @@ class _WhoRiding extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context);
     final who = forOther ? bookedFor(name.text, phone.text) : null;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SegmentedButton<bool>(
-        key: const ValueKey('who-riding'),
-        segments: const [
-          ButtonSegment(value: false, icon: Icon(Icons.person_outline), label: Text('Me')),
-          ButtonSegment(value: true, icon: Icon(Icons.people_outline), label: Text('Someone else')),
+    return InkWell(
+      key: const ValueKey('book-for-summary'),
+      borderRadius: BorderRadius.circular(12),
+      // Set: the row reopens the details to change them.
+      onTap: who == null ? null : () => _ask(context),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHighest, shape: BoxShape.circle),
+            child: Icon(Icons.people_outline, size: 18, color: t.colorScheme.onSurface),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Book for someone else', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                Text(
+                  who == null ? 'Their name and phone go to the driver' : '${who.name} · ${who.phone}',
+                  key: const ValueKey('book-for-who'),
+                  style: t.textTheme.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          if (who != null)
+            IconButton(
+              key: const ValueKey('book-for-edit'),
+              tooltip: "Edit passenger's details",
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.edit_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
+              onPressed: () => _ask(context),
+            ),
+          ConfirmSwitch(
+            key: const ValueKey('who-riding'),
+            value: forOther,
+            onChanged: (v) => v ? _ask(context) : onChanged(null),
+          ),
         ],
-        selected: {forOther},
-        onSelectionChanged: (v) => v.first ? _ask(context) : onChanged(null),
       ),
-      if (who != null) ...[
-        const SizedBox(height: 8),
-        BookForSummary(name: who.name, phone: who.phone, onEdit: () => _ask(context)),
-      ],
-    ]);
+    );
   }
 }

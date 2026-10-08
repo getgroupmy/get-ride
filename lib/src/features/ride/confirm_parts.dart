@@ -962,6 +962,7 @@ class ConfirmFooter extends StatelessWidget {
     this.coinSubtitle,
     this.useCoins = false,
     this.onUseCoins,
+    this.whoRiding,
     this.onOptions,
     this.optionsOn = false,
   });
@@ -982,6 +983,9 @@ class ConfirmFooter extends StatelessWidget {
   final String? coinSubtitle;
   final bool useCoins;
   final ValueChanged<bool>? onUseCoins;
+
+  /// A row under the GET.coin one: who's riding (a toggle for someone else).
+  final Widget? whoRiding;
 
   /// The options button right of "Find a driver"; none without it.
   final VoidCallback? onOptions;
@@ -1036,6 +1040,7 @@ class ConfirmFooter extends StatelessWidget {
                     ),
                   ],
                 ),
+              ?whoRiding,
               Row(
                 children: [
                   const AutoAcceptIcon(),
