@@ -196,8 +196,6 @@ class _SharedRideView extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(sharedRideHeadline(r), key: const ValueKey('shared-headline'), style: t.textTheme.titleLarge),
-        const SizedBox(height: 4),
-        Text('${r.passenger}${r.service == null ? '' : ' · ${r.service}'}', style: t.textTheme.bodyMedium),
         if (r.tripCode != null) ...[
           const SizedBox(height: 12),
           Card(
@@ -318,7 +316,11 @@ class _SharedRideView extends ConsumerWidget {
           Text('Driver location updated ${formatTime(r.driverSeenAt!)}', style: t.textTheme.bodySmall),
         ],
         const SizedBox(height: 16),
-        Text('A read-only view shared by a GET.ride rider. It updates by itself.', style: t.textTheme.bodySmall),
+        Text(
+          'A read-only view shared by ${r.sharedBy ?? 'a GET.ride rider'}. It updates by itself.',
+          key: const ValueKey('shared-by'),
+          style: t.textTheme.bodySmall,
+        ),
       ],
     );
     const pad = EdgeInsets.all(16);

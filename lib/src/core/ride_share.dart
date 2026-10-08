@@ -36,6 +36,10 @@ class SharedRide {
   RideStatus get status => RideStatus.parse(raw['status'] as String?);
   String? get service => _s(raw['service']);
   String get passenger => _s(raw['passenger']) ?? 'Passenger';
+
+  /// Who shared the link (0110). Before 0110, the passenger when they are
+  /// the rider themselves; null on a ride booked for someone else.
+  String? get sharedBy => _s(raw['rider']) ?? (bookedForOthers ? null : _s(raw['passenger']));
   bool get bookedForOthers => raw['booked_for_others'] == true;
   String get pickupName => _s(raw['pickup_name']) ?? 'Pickup';
   String? get pickupAddress => _s(raw['pickup_address']);
@@ -89,8 +93,8 @@ String sharedRideHeadline(SharedRide r) => switch (r.status) {
   RideStatus.open => 'Looking for a driver',
   RideStatus.accepted => '${r.driverName ?? 'The driver'} is on the way to the pickup',
   RideStatus.arrived => '${r.driverName ?? 'The driver'} has arrived at the pickup',
-  RideStatus.onTrip => 'On the way to ${r.dropName}',
-  RideStatus.completed => 'Arrived at ${r.dropName}',
+  RideStatus.onTrip => '${r.passenger} is on the way to ${r.dropName}',
+  RideStatus.completed => '${r.passenger} arrived at ${r.dropName}',
   RideStatus.cancelled => 'This ride was cancelled',
   RideStatus.expired => 'No driver was found for this ride',
 };

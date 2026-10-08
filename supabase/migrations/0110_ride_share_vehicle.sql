@@ -1,11 +1,13 @@
--- 0110: the shared ride page shows the car's make, model and colour.
+-- 0110: the shared ride page shows the car's make, model and colour, and
+-- who shared it.
 --
 -- 0108's ride_share_view handed out the driver's free-text vehicle and the
 -- plate only. Someone waiting for, or watching over, the passenger needs to
 -- recognise the car, so the view now adds the make, model and colour from
 -- the driver's registered vehicle (the one carrying the ride's plate), with
--- the partner record's make/model as the fallback. Nothing else changes: no
--- phone numbers, same 24-hour window.
+-- the partner record's make/model as the fallback. It also names the rider
+-- who shared the link (first name only, like the passenger). Nothing else
+-- changes: no phone numbers, same 24-hour window.
 
 create or replace function public.ride_share_view(p_token uuid)
 returns jsonb
@@ -19,6 +21,8 @@ as $$
     'service', r.service,
     'passenger', split_part(coalesce(nullif(trim(r.booked_for_name), ''), nullif(trim(r.rider_name), ''), 'Passenger'), ' ', 1),
     'booked_for_others', r.booked_for_phone is not null,
+    -- Who shared it (the rider, first name only), for the page's footer.
+    'rider', split_part(coalesce(nullif(trim(r.rider_name), ''), ''), ' ', 1),
     'passengers', r.passengers,
     'pickup_name', r.pickup_name,
     'pickup_address', r.pickup_address,

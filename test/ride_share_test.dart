@@ -110,7 +110,8 @@ void main() {
       expect(r.driver, const LatLng(3.155, 101.71));
       expect(sharedRideHeadline(r), 'Siti is on the way to the pickup');
       expect(SharedRide(_view(status: 'completed')).driver, isNull, reason: 'a finished ride shows no car');
-      expect(sharedRideHeadline(SharedRide(_view(status: 'on_trip'))), 'On the way to KL Sentral');
+      expect(sharedRideHeadline(SharedRide(_view(status: 'on_trip'))), 'Ali is on the way to KL Sentral');
+      expect(sharedRideHeadline(SharedRide(_view(status: 'completed'))), 'Ali arrived at KL Sentral');
     });
 
     test('the car reads colour, make and model, else the free-text vehicle', () {
@@ -171,7 +172,22 @@ void main() {
     testWidgets('a ride booked for someone else gives them the trip code', (tester) async {
       await pump(tester, _view(otp: '8765', forOthers: true), size: const Size(1400, 900));
       expect(find.text('8765'), findsOneWidget);
-      expect(find.textContaining('Mak'), findsOneWidget);
+      expect(find.text('A read-only view shared by a GET.ride rider. It updates by itself.'), findsOneWidget);
+    });
+
+    testWidgets('names the passenger in the headline and the rider who shared it, with no name · service line',
+        (tester) async {
+      await pump(tester, {..._view(status: 'on_trip', forOthers: true), 'rider': 'Melinda'});
+      expect(find.text('Mak is on the way to KL Sentral'), findsOneWidget);
+      expect(find.text('A read-only view shared by Melinda. It updates by itself.'), findsOneWidget);
+      expect(find.text('Mak · Teksi'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    test('before 0110 the rider is the passenger, unless booked for someone else', () {
+      expect(SharedRide(_view()).sharedBy, 'Ali');
+      expect(SharedRide(_view(forOthers: true)).sharedBy, isNull);
+      expect(SharedRide({..._view(forOthers: true), 'rider': 'Melinda'}).sharedBy, 'Melinda');
     });
 
     testWidgets('it keeps itself up to date while the ride is on the go', (tester) async {
