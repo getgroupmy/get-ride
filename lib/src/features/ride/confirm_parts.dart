@@ -10,6 +10,7 @@ import '../../core/fare_offer.dart';
 import '../../core/ride_confirm.dart' show RideOptions;
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/map_sheet_layout.dart' show MapSheetReveal;
 import '../../widgets/shake.dart';
 import 'fare_offer_controls.dart';
 import 'home_parts.dart' show uriImage;
@@ -465,8 +466,10 @@ class ConfirmServiceCard extends StatelessWidget {
         ),
       );
     }
-    // Shaken by the fare's −/+ when a step would leave the range.
+    // Shaken by the fare's −/+ when a step would leave the range, and kept
+    // whole above the pinned footer, as Expo scrolls the chosen one.
     return Shake(
+      child: MapSheetReveal(
       child: Container(
         key: ValueKey('service-${service.name}'),
         padding: const EdgeInsets.all(3),
@@ -498,6 +501,7 @@ class ConfirmServiceCard extends StatelessWidget {
             ?fare,
           ],
         ),
+      ),
       ),
     );
   }

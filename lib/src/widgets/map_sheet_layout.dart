@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -142,6 +144,69 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// The [MapSheetLayout.aboveFooter]'s height, as last laid out.
   double _aboveHeight = 0;
 
+  /// The sheet's content scroller, as last built.
+  ScrollController? _scroll;
+
+  /// What [MapSheetReveal] keeps in view (the chosen vehicle), and whether
+  /// the sheet has been dragged to a new height since it was last shown.
+  BuildContext? _target;
+  bool _moved = false;
+
+  /// How far the content is slid up under the handle to bring [_target]
+  /// into view while the sheet is below full height. Sliding rather than
+  /// scrolling keeps a drag on the sheet moving the sheet: a sheet whose
+  /// content is scrolled scrolls it back first.
+  late final _shift = AnimationController.unbounded(vsync: this);
+
+  bool get _full => _sheet.isAttached && _sheet.size >= widget.max - 0.001;
+
+  /// At full height the content scrolls: a slide becomes the same scroll,
+  /// so nothing moves on screen and the top is reachable again.
+  void _foldShift() {
+    final scroll = _scroll;
+    if (_shift.value == 0 || scroll == null || !scroll.hasClients) return;
+    final p = scroll.position;
+    final to = (p.pixels + _shift.value).clamp(p.minScrollExtent, p.maxScrollExtent);
+    _shift.stop();
+    _shift.value = 0;
+    scroll.jumpTo(to);
+  }
+
+  /// Brings [target] whole into the part of the sheet that shows, between
+  /// its handle and the [MapSheetLayout.footer] (Expo moves the chosen
+  /// vehicle above the fixed bottom the same way).
+  void _reveal(BuildContext target) {
+    final scroll = _scroll;
+    final box = target.findRenderObject() as RenderBox?;
+    final layout = context.findRenderObject() as RenderBox?;
+    if (scroll == null || !scroll.hasClients || box == null || !box.attached || layout == null) return;
+    if (!_sheet.isAttached || _hide.value > 0) return;
+    if (_full) _foldShift();
+    const margin = 8.0;
+    final origin = layout.localToGlobal(Offset.zero).dy;
+    final top = origin + layout.size.height * (1 - _sheet.size) + 22 + margin;
+    // At full height the disclaimer stands over the foot of it as well.
+    final bottom = origin + layout.size.height - _footerHeight - (_full ? _aboveHeight : 0) - margin;
+    final card = box.localToGlobal(Offset.zero) & box.size;
+    var by = 0.0;
+    if (card.bottom > bottom) by = card.bottom - bottom;
+    if (card.top - by < top) by = card.top - top; // taller than the gap: its top wins
+    if (by.abs() < 1) return;
+    const move = Duration(milliseconds: 250);
+    if (_full) {
+      final p = scroll.position;
+      final to = (p.pixels + by).clamp(p.minScrollExtent, p.maxScrollExtent);
+      if ((to - p.pixels).abs() >= 1) scroll.animateTo(to, duration: move, curve: Curves.easeOut);
+    } else {
+      _shift.animateTo(math.max(0.0, _shift.value + by), duration: move, curve: Curves.easeOut);
+    }
+  }
+
+  void _revealTarget() {
+    final t = _target;
+    if (t != null && t.mounted) _reveal(t);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -180,6 +245,15 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
       _bounce.value = _rubber(_pull);
     } else if (n is ScrollEndNotification) {
       _springBack();
+      // Let go at a new height: the chosen vehicle back in view.
+      if (_moved) {
+        _moved = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_full) _foldShift();
+          _revealTarget();
+        });
+      }
     }
     return false;
   }
@@ -204,7 +278,9 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
       final to = widget.initial.clamp(widget.min, widget.max);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_sheet.isAttached) return;
-        _sheet.animateTo(to, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+        _sheet
+            .animateTo(to, duration: const Duration(milliseconds: 250), curve: Curves.easeOut)
+            .then((_) => _revealTarget());
       });
     }
     if (widget.hidden != old.hidden) {
@@ -215,6 +291,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   @override
   void dispose() {
     _bounce.dispose();
+    _shift.dispose();
     _hide.dispose();
     _sheet.dispose();
     _extent.dispose();
@@ -271,6 +348,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
               onNotification: (n) {
                 // Dragged back up out of the rubber band: it springs home.
                 if (n.extent > n.minExtent + 0.001) _springBack();
+                if ((n.extent - _extent.value).abs() > 0.001) _moved = true;
                 _extent.value = n.extent;
                 return false;
               },
@@ -280,7 +358,9 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 initialChildSize: widget.locked ? widget.min : widget.initial,
                 minChildSize: widget.min,
                 maxChildSize: widget.locked ? widget.min : widget.max,
-                builder: (context, scroll) => NotificationListener<ScrollNotification>(
+                builder: (context, scroll) {
+                  _scroll = scroll;
+                  return NotificationListener<ScrollNotification>(
                   onNotification: _onScroll,
                   child: AnimatedBuilder(
                     animation: _bounce,
@@ -323,7 +403,12 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                           ),
                           if (widget.peek != null) SliverToBoxAdapter(child: _wheelMovesSheet(widget.peek!, scroll, h)),
                           SliverToBoxAdapter(
-                            child: _wheelMovesSheet(
+                            child: AnimatedBuilder(
+                              animation: _shift,
+                              builder: (_, child) => _shift.value == 0
+                                  ? child!
+                                  : Transform.translate(offset: Offset(0, -_shift.value), child: child),
+                              child: _wheelMovesSheet(
                               widget.peek == null
                                   ? widget.sheet
                                   : ValueListenableBuilder<double>(
@@ -345,13 +430,15 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                               scroll,
                               h,
                             ),
+                            ),
                           ),
                           if (widget.footer != null) SliverToBoxAdapter(child: SizedBox(height: _footerHeight + _aboveHeight)),
                         ],
                       ),
                     ),
                   ),
-                ),
+                );
+                },
               ),
             ),
             ),
@@ -362,7 +449,10 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 bottom: 0,
                 child: _SizeReporter(
                   onSize: (size) {
-                    if (mounted && (size.height - _footerHeight).abs() > 0.5) setState(() => _footerHeight = size.height);
+                    if (!mounted || (size.height - _footerHeight).abs() <= 0.5) return;
+                    setState(() => _footerHeight = size.height);
+                    // A taller footer may now cover the chosen item.
+                    WidgetsBinding.instance.addPostFrameCallback((_) => _revealTarget());
                   },
                   child: widget.footer!,
                 ),
@@ -429,4 +519,66 @@ class _RenderSizeReporter extends RenderProxyBox {
       WidgetsBinding.instance.addPostFrameCallback((_) => onSize(s));
     }
   }
+}
+
+/// Keeps [child] whole in view on a [MapSheetLayout]'s sheet while [active]
+/// (the confirm screen's chosen vehicle): scrolled above the pinned footer
+/// when it is chosen, and again whenever the sheet is dragged to a new
+/// height. Nothing outside a [MapSheetLayout].
+class MapSheetReveal extends StatefulWidget {
+  const MapSheetReveal({super.key, this.active = true, required this.child});
+
+  final bool active;
+  final Widget child;
+
+  @override
+  State<MapSheetReveal> createState() => _MapSheetRevealState();
+}
+
+class _MapSheetRevealState extends State<MapSheetReveal> {
+  _MapSheetLayoutState? _layout;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _claim();
+  }
+
+  @override
+  void didUpdateWidget(covariant MapSheetReveal old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) _claim();
+    if (!widget.active && old.active) _release();
+  }
+
+  void _claim() => WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!mounted) return;
+    _layout = context.findAncestorStateOfType<_MapSheetLayoutState>();
+    _layout?._target = context;
+    _layout?._reveal(context);
+  });
+
+  void _release() {
+    final layout = _layout;
+    if (layout != null && layout._target == context) {
+      layout._target = null;
+      // Nothing to keep in view: the content back where it belongs, unless
+      // another item is taking over (it slides it on from here).
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (layout.mounted && layout._target == null) {
+          layout._shift.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+        }
+      });
+    }
+    _layout = null;
+  }
+
+  @override
+  void dispose() {
+    _release();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

@@ -186,4 +186,61 @@ void main() {
     expect(tester.getTopLeft(row).dy - after, closeTo(top - before, 1), reason: 'its content did not scroll');
     debugDefaultTargetPlatformOverride = null;
   });
+
+  testWidgets('the chosen item is scrolled whole above the pinned footer, and kept there', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    var chosen = 6;
+    late StateSetter set;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              set = setState;
+              return MapSheetLayout(
+                map: const SizedBox.expand(),
+                initial: 0.5,
+                min: 0.5,
+                footer: const SizedBox(height: 150, width: double.infinity),
+                sheet: Column(children: [
+                  for (var i = 0; i < 12; i++)
+                    i == chosen
+                        ? MapSheetReveal(child: SizedBox(key: ValueKey('item-$i'), height: 120))
+                        : SizedBox(key: ValueKey('item-$i'), height: 60),
+                ]),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    const footerTop = 800 - 150.0;
+    double bottomOf(int i) => tester.getBottomLeft(find.byKey(ValueKey('item-$i'))).dy;
+    double handle() => tester.getBottomLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
+    expect(bottomOf(6), lessThanOrEqualTo(footerTop), reason: 'not hidden behind the footer');
+    expect(tester.getTopLeft(find.byKey(const ValueKey('item-6'))).dy, greaterThan(handle()));
+
+    // Another chosen: that one is brought into view.
+    set(() => chosen = 9);
+    await tester.pumpAndSettle();
+    expect(bottomOf(9), lessThanOrEqualTo(footerTop));
+    expect(tester.getTopLeft(find.byKey(const ValueKey('item-9'))).dy, greaterThan(handle()));
+
+    // Dragged to a new height: still whole.
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -150));
+    await tester.pumpAndSettle();
+    expect(handle(), lessThan(400), reason: 'the sheet rose');
+    expect(bottomOf(9), lessThanOrEqualTo(footerTop));
+    expect(tester.getTopLeft(find.byKey(const ValueKey('item-9'))).dy, greaterThan(handle()));
+
+    // And back down, by the content: a drag still moves the sheet.
+    await tester.drag(find.byKey(const ValueKey('item-9')), const Offset(0, 150));
+    await tester.pumpAndSettle();
+    expect(handle(), greaterThan(405), reason: 'the sheet went down');
+    expect(bottomOf(9), lessThanOrEqualTo(footerTop));
+    expect(tester.getTopLeft(find.byKey(const ValueKey('item-9'))).dy, greaterThan(handle()));
+  });
 }
