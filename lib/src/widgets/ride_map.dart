@@ -44,11 +44,55 @@ const rideMapPinBox = 40.0;
 /// Size of the pin icon, centred in [rideMapPinBox].
 const rideMapPinIcon = 36.0;
 
-/// How far above its point a pin's visible top is: the box, less the room
-/// the icon leaves above it, less the padding Material icons draw inside
-/// their own square (2 of 24 units) — so a gap is measured to the ring the
-/// rider sees, not to an invisible box.
-const rideMapPinTop = rideMapPinBox - (rideMapPinBox - rideMapPinIcon) / 2 - rideMapPinIcon * 2 / 24;
+/// The pickup pin: a white rounded square with a person hailing, on a thin
+/// stem whose foot is the point (as Expo's / inDrive's).
+const pickupPinHead = 40.0;
+const pickupPinStem = 14.0;
+const pickupPinHeight = pickupPinHead + pickupPinStem;
+
+/// How far above its point the pickup pin's visible top is (the label over
+/// it is spaced from there).
+const rideMapPinTop = pickupPinHeight;
+
+/// The pickup pin, [pickupPinHeight] tall, standing on its point.
+class PickupPin extends StatelessWidget {
+  const PickupPin({super.key, this.elevation = 0});
+
+  /// 0 standing, 1 lifted (a deeper shadow while it floats).
+  final double elevation;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: pickupPinHead,
+    height: pickupPinHeight,
+    child: Column(
+      children: [
+        Container(
+          key: const ValueKey('pickup-pin'),
+          width: pickupPinHead,
+          height: pickupPinHead,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: Colors.black, width: 2),
+            boxShadow: [
+              BoxShadow(blurRadius: 4 + 6 * elevation, offset: Offset(0, 2 + 4 * elevation), color: Colors.black38),
+            ],
+          ),
+          child: const Icon(Icons.emoji_people, size: 26, color: Colors.black),
+        ),
+        Container(
+          width: 2,
+          height: pickupPinStem,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            boxShadow: [BoxShadow(blurRadius: 2, color: Colors.black38)],
+          ),
+        ),
+      ],
+    ),
+  );
+}
 
 /// A label drawn [gap] px above the pickup pin at [point], moving with the
 /// map (the pickup box, in place of one fixed to the top of the screen).
@@ -263,7 +307,13 @@ class _RideMapState extends State<RideMap> {
                   if (widget.drop != null) _dot(widget.drop!, const Color(0xFFEF4444), 'drop'),
                 ],
                 if (!widget.dotPins && widget.pickup != null && widget.showPickup)
-                  _pin(widget.pickup!, Colors.green.shade700, Icons.trip_origin),
+                  Marker(
+                    point: widget.pickup!,
+                    width: pickupPinHead,
+                    height: pickupPinHeight,
+                    alignment: Alignment.topCenter,
+                    child: const PickupPin(),
+                  ),
                 if (!widget.dotPins)
                   for (var i = 0; i < widget.stops.length; i++)
                   Marker(

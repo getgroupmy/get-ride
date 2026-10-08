@@ -58,7 +58,7 @@ void main() {
     await tester.pumpWidget(_Host(map: map, drops: drops));
     await tester.pump();
 
-    final pinRect = tester.getRect(find.byIcon(Icons.trip_origin));
+    final pinRect = tester.getRect(find.byType(PickupPin));
     expect(find.byKey(const ValueKey('box')), findsOneWidget);
 
     // Hold the map and move it slowly, so it doesn't fling.
@@ -72,9 +72,9 @@ void main() {
     // Lifted: one pin only (the floating one), raised above its point, and
     // no address box; held down, it hasn't dropped yet.
     expect(find.byKey(const ValueKey('drag-pin')), findsOneWidget);
-    expect(find.byIcon(Icons.trip_origin), findsOneWidget);
+    expect(find.byType(PickupPin), findsOneWidget);
     expect(find.byKey(const ValueKey('box')), findsNothing);
-    final lifted = tester.getRect(find.byIcon(Icons.trip_origin));
+    final lifted = tester.getRect(find.byType(PickupPin));
     expect(lifted.left, closeTo(pinRect.left, 0.5), reason: 'the pin stays put while the map moves');
     expect(pinRect.top - lifted.top, closeTo(MapDragPin.lift, 0.5));
     expect(drops, isEmpty);
@@ -90,7 +90,7 @@ void main() {
     expect(find.byKey(const ValueKey('drag-pin')), findsNothing);
     expect(find.byKey(const ValueKey('box')), findsOneWidget);
     // Landed where the floating pin stood, so the map's own pin takes over without a jump.
-    expect(tester.getRect(find.byIcon(Icons.trip_origin)).topLeft, offsetMoreOrLessEquals(pinRect.topLeft, epsilon: 1));
+    expect(tester.getRect(find.byType(PickupPin)).topLeft, offsetMoreOrLessEquals(pinRect.topLeft, epsilon: 1));
   });
 
   testWidgets('moving the map from code does not pick the pin up', (tester) async {

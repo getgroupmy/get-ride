@@ -26,13 +26,12 @@ void main() {
     );
     await tester.pump();
 
-    final pin = find.byIcon(Icons.trip_origin);
-    // The pin is drawn in a 40 px box standing on the point: a 36 px icon
-    // centred in it, whose ring starts 3 px (2/24) inside the icon.
-    double ringTop() => tester.getRect(pin).top + 2 + 3;
+    final pin = find.byType(PickupPin);
+    // The pin is a 40 px rounded square on a 14 px stem, standing on the point.
+    double ringTop() => tester.getRect(pin).top;
     double gap() => ringTop() - tester.getRect(find.byKey(const ValueKey('box'))).bottom;
-    expect(tester.getRect(pin).height, 40);
-    expect(rideMapPinTop, 35);
+    expect(tester.getRect(pin).height, pickupPinHeight);
+    expect(rideMapPinTop, pickupPinHeight);
     expect(gap(), closeTo(5, 0.5));
     expect(tester.getCenter(find.byKey(const ValueKey('box'))).dx, closeTo(tester.getCenter(pin).dx, 0.5));
 
