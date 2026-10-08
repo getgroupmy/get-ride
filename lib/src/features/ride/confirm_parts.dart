@@ -174,6 +174,7 @@ class ConfirmAddressCard extends StatelessWidget {
 Future<String?> showEntranceSheet(BuildContext context, String current) => showModalBottomSheet<String>(
   context: context,
   isScrollControlled: true,
+  showDragHandle: true,
   builder: (_) => _EntranceSheet(current: current),
 );
 
@@ -188,80 +189,174 @@ class _EntranceSheet extends StatefulWidget {
 class _EntranceSheetState extends State<_EntranceSheet> {
   late String _value = widget.current;
 
-  Widget _key(String label, {VoidCallback? onTap, Widget? child}) => Expanded(
-    child: Padding(
-      padding: const EdgeInsets.all(4),
-      child: SizedBox(
-        height: 52,
-        child: TextButton(
-          key: ValueKey('entrance-key-$label'),
-          onPressed:
-              onTap ?? () => setState(() => _value = (_value + label).substring(0, (_value.length + 1).clamp(0, 6))),
-          child: child ?? Text(label, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500)),
+  static const _letters = {
+    '2': 'ABC',
+    '3': 'DEF',
+    '4': 'GHI',
+    '5': 'JKL',
+    '6': 'MNO',
+    '7': 'PQRS',
+    '8': 'TUV',
+    '9': 'WXYZ',
+  };
+
+  void _type(String digit) => setState(() => _value = (_value + digit).substring(0, (_value.length + 1).clamp(0, 6)));
+
+  void _back() => setState(() => _value = _value.isEmpty ? '' : _value.substring(0, _value.length - 1));
+
+  /// One key of the phone-style keypad: the digit over its letters, on a
+  /// white (or, dark, charcoal) rounded key.
+  Widget _key(BuildContext context, String digit) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ink = dark ? Colors.white : Colors.black;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Material(
+          color: dark ? const Color(0xFF4A4A4C) : Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          elevation: dark ? 0 : 0.5,
+          shadowColor: Colors.black38,
+          child: InkWell(
+            key: ValueKey('entrance-key-$digit'),
+            borderRadius: BorderRadius.circular(8),
+            onTap: () => _type(digit),
+            child: SizedBox(
+              height: 50,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(digit, style: TextStyle(fontSize: 24, height: 1.1, color: ink)),
+                  if (_letters[digit] != null)
+                    Text(
+                      _letters[digit]!,
+                      style: TextStyle(fontSize: 9, letterSpacing: 2, fontWeight: FontWeight.w600, color: ink),
+                    ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                const SizedBox(width: 48),
-                Expanded(
-                  child: Text('Set entrance', textAlign: TextAlign.center, style: t.textTheme.titleMedium),
-                ),
-                IconButton(tooltip: 'Close', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-              ],
-            ),
-            Container(
-              key: const ValueKey('entrance-value'),
-              height: 56,
-              alignment: Alignment.center,
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: t.colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
+    final dark = t.brightness == Brightness.dark;
+    final ink = t.colorScheme.onSurface;
+    return Column(
+      key: const ValueKey('entrance-sheet'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          child: Column(
+            children: [
+              // "Set entrance", bold and centred, with a round close button.
+              Row(
+                children: [
+                  const SizedBox(width: 40),
+                  Expanded(
+                    child: Text(
+                      'Set entrance',
+                      textAlign: TextAlign.center,
+                      style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  Material(
+                    color: t.colorScheme.surfaceContainerHighest,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      key: const ValueKey('entrance-close'),
+                      customBorder: const CircleBorder(),
+                      onTap: () => Navigator.pop(context),
+                      child: Tooltip(
+                        message: 'Close',
+                        child: SizedBox.square(dimension: 40, child: Icon(Icons.close, size: 22, color: ink)),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              child: Text(_value, style: t.textTheme.headlineSmall),
-            ),
-            for (final row in const [
-              ['1', '2', '3'],
-              ['4', '5', '6'],
-              ['7', '8', '9'],
-            ])
-              Row(children: [for (final k in row) _key(k)]),
-            Row(
-              children: [
-                const Expanded(child: SizedBox()),
-                _key('0'),
-                _key(
-                  'back',
-                  onTap: () => setState(() => _value = _value.isEmpty ? '' : _value.substring(0, _value.length - 1)),
-                  child: const Icon(Icons.backspace_outlined),
+              // The number, large and centred over a hairline, with a caret.
+              Container(
+                key: const ValueKey('entrance-value'),
+                height: 76,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: t.colorScheme.outlineVariant)),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                key: const ValueKey('entrance-done'),
-                style: FilledButton.styleFrom(backgroundColor: confirmAccent, padding: const EdgeInsets.all(16)),
-                onPressed: () => Navigator.pop(context, _value),
-                child: const Text('Done'),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_value, style: t.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600)),
+                    Container(width: 2, height: 40, margin: const EdgeInsets.only(left: 2), color: ink),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: FilledButton(
+                  key: const ValueKey('entrance-done'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: confirmAccent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                  onPressed: () => Navigator.pop(context, _value),
+                  child: const Text('Done'),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
-      ),
+        // The phone-style keypad, edge to edge on its grey panel.
+        Container(
+          key: const ValueKey('entrance-keypad'),
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+          decoration: BoxDecoration(
+            color: dark ? const Color(0xFF2B2B2D) : const Color(0xFFD7D9DE),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                for (final row in const [
+                  ['1', '2', '3'],
+                  ['4', '5', '6'],
+                  ['7', '8', '9'],
+                ])
+                  Row(children: [for (final k in row) _key(context, k)]),
+                Row(
+                  children: [
+                    const Expanded(child: SizedBox()),
+                    _key(context, '0'),
+                    Expanded(
+                      child: InkResponse(
+                        key: const ValueKey('entrance-key-back'),
+                        onTap: _back,
+                        child: SizedBox(
+                          height: 58,
+                          child: Icon(Icons.backspace_outlined, size: 26, color: dark ? Colors.white : Colors.black),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
