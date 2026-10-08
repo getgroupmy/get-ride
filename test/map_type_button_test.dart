@@ -24,6 +24,11 @@ void main() {
       ),
     );
     expect(tiles(tester), isNot(satelliteTileUrl));
+    // Map view above recenter on the driver's map too.
+    expect(
+      tester.getRect(find.byKey(const ValueKey('map-type'))).bottom,
+      lessThan(tester.getRect(find.byKey(const ValueKey('map-recenter'))).top),
+    );
     await tester.tap(find.byKey(const ValueKey('map-type')));
     await tester.pump();
     expect(tiles(tester), satelliteTileUrl);

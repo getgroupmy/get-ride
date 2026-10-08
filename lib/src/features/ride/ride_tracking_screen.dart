@@ -82,8 +82,8 @@ class RideTrackingScreen extends ConsumerWidget {
         value: ride,
         onRetry: () => ref.invalidate(rideStreamProvider(requestId)),
         data: (r) {
-          // The panel lays the screen out: on a wide (desktop) screen a
-          // driver's offer flies in over the map rather than into the list.
+          // The panel lays the screen out: a driver's offer flies in over
+          // the map; on a wide (desktop) screen the panel sits beside it.
           return _RidePanel(ride: r, map: LiveRideMap(ride: r), wide: MediaQuery.sizeOf(context).width >= 900);
         },
       ),
@@ -591,7 +591,6 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (r.status == RideStatus.open && ref.watch(demoSettingsProvider).riderOffers)
             DemoOffersFeed(fare: r.fare ?? 0, currency: r.currency, onAccept: _acceptDemo),
           const SizedBox(height: 16),
-          if (!widget.wide && _visibleOffer != null) _offerCard(_visibleOffer!),
           if (r.status == RideStatus.open)
             Card(
               child: Padding(
@@ -810,7 +809,15 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         ],
       );
     }
-    return MapSheetLayout(map: widget.map, sheet: content);
+    // On a phone too, as the driver sees requests: the offer floats over
+    // the top of the map rather than sitting in the sheet.
+    return MapSheetLayout(
+      map: Stack(children: [
+        Positioned.fill(child: widget.map),
+        Positioned(top: 12, left: 12, right: 12, child: SafeArea(bottom: false, child: _offerOverlay())),
+      ]),
+      sheet: content,
+    );
   }
 }
 

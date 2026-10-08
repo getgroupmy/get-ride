@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/book_for.dart';
-import '../../widgets/busy.dart';
 import '../profile/emergency_contacts_screen.dart' show contactPickerProvider;
 
 /// "Someone else": the passenger's name and phone, typed (or picked from
@@ -56,37 +55,47 @@ class _BookForSheetState extends ConsumerState<_BookForSheet> {
                 style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      key: const ValueKey('book-for-name'),
-                      controller: _name,
-                      autofocus: widget.name.isEmpty,
-                      maxLength: 80,
-                      textCapitalization: TextCapitalization.words,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(labelText: "Passenger's name", counterText: ''),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  if (pick != null)
-                    BusyIconButton(
-                      key: const ValueKey('book-for-contact'),
-                      tooltip: 'Contacts',
-                      icon: const Icon(Icons.contacts_outlined),
-                      onPressed: () async {
-                        try {
-                          final c = await pick();
-                          if (c == null || !mounted) return;
-                          setState(() {
-                            if (c.name != null) _name.text = c.name!;
-                            if (c.phone != null) _phone.text = c.phone!;
-                          });
-                        } catch (_) {}
-                      },
-                    ),
-                ],
+              // From the address book: the phone's own picker, or the
+              // browser's where it has one.
+              if (pick != null) ...[
+                OutlinedButton.icon(
+                  key: const ValueKey('book-for-contact'),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                  icon: const Icon(Icons.contacts_outlined),
+                  label: const Text('Choose from contacts'),
+                  onPressed: () async {
+                    try {
+                      final c = await pick();
+                      if (c == null || !mounted) return;
+                      setState(() {
+                        if (c.name != null) _name.text = c.name!;
+                        if (c.phone != null) _phone.text = c.phone!;
+                      });
+                      if (c.phone == null && context.mounted) {
+                        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                          const SnackBar(content: Text('That contact has no phone number.')),
+                        );
+                      }
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                          const SnackBar(content: Text("Couldn't open your contacts. Please try again.")),
+                        );
+                      }
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                key: const ValueKey('book-for-name'),
+                controller: _name,
+                autofocus: widget.name.isEmpty && pick == null,
+                maxLength: 80,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(labelText: "Passenger's name", counterText: ''),
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 12),
               TextField(

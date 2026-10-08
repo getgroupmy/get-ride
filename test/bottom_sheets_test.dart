@@ -244,6 +244,55 @@ void main() {
     expect(tester.getTopLeft(find.byKey(const ValueKey('item-9'))).dy, greaterThan(handle()));
   });
 
+  testWidgets('choosing anew brings a raised sheet down and shows the choice whole above the footer', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(400, 800);
+    addTearDown(tester.view.reset);
+    var chosen = 1;
+    late StateSetter set;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              set = setState;
+              return MapSheetLayout(
+                map: const SizedBox.expand(),
+                initial: 0.5,
+                min: 0.5,
+                footer: const SizedBox(height: 150, width: double.infinity),
+                sheet: Column(children: [
+                  for (var i = 0; i < 12; i++)
+                    i == chosen
+                        ? MapSheetReveal(child: SizedBox(key: ValueKey('item-$i'), height: 120))
+                        : SizedBox(key: ValueKey('item-$i'), height: 60),
+                ]),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    double handle() => tester.getBottomLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
+    final lowest = handle();
+    // Raised by hand.
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -200));
+    await tester.pumpAndSettle();
+    expect(handle(), lessThan(lowest - 100));
+
+    // A vehicle chosen: down it comes, the choice whole just above the footer.
+    set(() => chosen = 8);
+    await tester.pumpAndSettle();
+    expect(handle(), closeTo(lowest, 2), reason: 'back at its lowest');
+    const footerTop = 800 - 150.0;
+    final card = tester.getRect(find.byKey(const ValueKey('item-8')));
+    expect(card.bottom, lessThanOrEqualTo(footerTop));
+    expect(card.top, greaterThan(handle()));
+    // The ones before it are pushed up out of the way.
+    expect(tester.getRect(find.byKey(const ValueKey('item-1'))).bottom, lessThan(handle()));
+  });
+
   testWidgets('pulled hard it goes almost out of sight, footer and all, then springs back up', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(400, 800);
