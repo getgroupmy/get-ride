@@ -68,16 +68,19 @@ bool shouldAutoAccept({required double? limit, required RideOffer? offer}) {
 
 /// What the rider asks for from the Options sheet beside "Find a driver".
 class RideOptions {
-  const RideOptions({this.childSeat = false, this.morePassengers = false});
+  const RideOptions({this.childSeat = false, this.morePassengers = false, this.pet = false});
 
   final bool childSeat;
 
   /// More than [standardSeats] riding.
   final bool morePassengers;
 
+  /// A pet rides along (inDrive's "Pet with me").
+  final bool pet;
+
   static const standardSeats = 4;
 
-  bool get any => childSeat || morePassengers;
+  bool get any => childSeat || morePassengers || pet;
 
   /// The passengers the request carries: one, or more than four.
   int get passengers => morePassengers ? standardSeats + 1 : 1;
@@ -86,17 +89,21 @@ class RideOptions {
   List<String> get labels => [
     if (childSeat) 'Child safety seat',
     if (morePassengers) 'More than $standardSeats passengers',
+    if (pet) 'Pet with me',
   ];
 
-  RideOptions copyWith({bool? childSeat, bool? morePassengers}) =>
-      RideOptions(childSeat: childSeat ?? this.childSeat, morePassengers: morePassengers ?? this.morePassengers);
+  RideOptions copyWith({bool? childSeat, bool? morePassengers, bool? pet}) => RideOptions(
+    childSeat: childSeat ?? this.childSeat,
+    morePassengers: morePassengers ?? this.morePassengers,
+    pet: pet ?? this.pet,
+  );
 
   @override
   bool operator ==(Object other) =>
-      other is RideOptions && other.childSeat == childSeat && other.morePassengers == morePassengers;
+      other is RideOptions && other.childSeat == childSeat && other.morePassengers == morePassengers && other.pet == pet;
 
   @override
-  int get hashCode => Object.hash(childSeat, morePassengers);
+  int get hashCode => Object.hash(childSeat, morePassengers, pet);
 }
 
 /// The note the driver gets: the options the rider asked for, the entrance

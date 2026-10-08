@@ -45,7 +45,7 @@ import '../../widgets/ride_map.dart';
 import 'auto_accept.dart';
 import 'book_for_sheet.dart';
 import 'confirm_parts.dart';
-import 'fare_offer_controls.dart';
+import 'offer_fare_screen.dart';
 import 'home_parts.dart';
 import 'place_search.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
@@ -67,6 +67,10 @@ final nearbyDriversProvider = FutureProvider.autoDispose.family<Map<String, doub
 
 /// A pickup to about 100 m, so a nudged pin doesn't ask again.
 (double, double) roundedPoint(LatLng p) => ((p.latitude * 1000).round() / 1000, (p.longitude * 1000).round() / 1000);
+
+/// Street level (inDrive's home map): what the home map opens and recentres
+/// at, with the pickup in the middle and the nearby streets around it.
+const homeStreetZoom = 17.0;
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -226,8 +230,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// On the home map it also puts the pickup there: the pin floats up and
   /// drops on the fix, as if the map had been dragged under it.
   void _recenter() {
-    if (recenterMap(_map, _me)) _pinOnto(_me!);
+    if (recenterMap(_map, _me, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(_me!);
     unawaited(_locate(recenter: true));
+  }
+
+  /// Where the pin and the rider are kept: the middle of the map above the
+  /// sheet when it is all the way down (inDrive's), not the map's centre.
+  Offset get _focusOffset {
+    final c = _pin.currentContext;
+    return c == null ? Offset.zero : MapBottomInset.focusOffset(c);
   }
 
   final _pin = GlobalKey<MapDragPinState>();
@@ -244,7 +255,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final p = await currentPosition();
     if (p == null || !mounted) return;
     setState(() => _me = p);
-    if (recenter && recenterMap(_map, p)) _pinOnto(p);
+    if (recenter && recenterMap(_map, p, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(p);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
     setState(() {
@@ -408,6 +419,52 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final recommended = _recommendedFor(s);
     if (s.name != _service.name) return recommended;
     return offeredFare(recommended: recommended, adjust: _adjust, biddingOn: biddingOn ?? _biddingOn);
+  }
+
+  /// "Offer your fare" (inDrive's page): the fare typed in, with the
+  /// payment, auto-accept and entrance alongside; "Find a driver" there
+  /// books straight away.
+  Future<void> _openOfferFare() async {
+    final recommended = _recommendedFor(_service);
+    final style = currencyStyles[_currency.trim().toUpperCase()];
+    final r = await Navigator.of(context).push<OfferFareResult>(
+      MaterialPageRoute(
+        builder: (_) => OfferFareScreen(
+          recommended: recommended,
+          current: recommended + _adjust,
+          currencyLabel: (style?.symbol ?? _currency).trim(),
+          money: (v) => formatMoney(v, _currency),
+          payment: _payment,
+          autoAccept: _autoAccept,
+          entrance: _entrance,
+          pickupName: _pickup?.name ?? 'Pickup',
+          routeLabel: _stops.isEmpty ? (_drop?.name ?? 'Destination') : '${_stops.length + 1} route stops',
+          onRoute: _drop == null
+              ? null
+              : () => showRouteStopsSheet(context, destinations: [..._stops, _drop!], onChanged: _setDestinations),
+          onAddStop: _stops.length < maxRideStops ? _addStop : null,
+          optionsOn: _options.any,
+          onOptions: (c) => showRideOptionsSheet(
+            c,
+            options: _options,
+            onChanged: (o) => setState(() => _options = o),
+            note: _note,
+          ),
+        ),
+      ),
+    );
+    if (r == null || !mounted) return;
+    setState(() {
+      if (r.fare != null) _adjust = r.fare! - recommended;
+      _payment = r.payment;
+      _autoAccept = r.autoAccept;
+      _entrance = r.entrance;
+    });
+    final canFind = !_booking &&
+        !_routing &&
+        _basis != null &&
+        !(_forOther && bookedFor(_otherName.text, _otherPhone.text) == null);
+    if (r.find && canFind) await _find();
   }
 
   Future<void> _book() async {
@@ -682,6 +739,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           showPickup: !_pinMoving,
           hideCredit: _pinMoving,
           dotPins: confirming,
+          focusPickup: !wide,
+          pointZoom: homeStreetZoom,
           onGesture: confirming && !_routeMoved ? () => setState(() => _routeMoved = true) : null,
           autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
           drop: _drop?.point,
@@ -764,39 +823,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
+      // Bottom right, riding just above the sheet as on the driver's map: the
+      // map type over recenter. While the map is dragged under the pickup
+      // pin they slide down off it with the sheet, and back after.
       if (!confirming)
-        Positioned(
-        right: 16,
-        bottom: wide ? mapAttributionClearance : null,
-        top: wide ? null : 16,
-        // While the map is dragged under the pickup pin these slide off the
-        // top, alongside the sheet sliding off the bottom, and back after.
-        child: IgnorePointer(
-          ignoring: _pinMoving,
-          child: AnimatedSlide(
-            key: const ValueKey('map-buttons'),
-            offset: Offset(0, _pinMoving ? (wide ? 3 : -3) : 0),
-            duration: MapSheetLayout.hideDuration,
-            curve: _pinMoving ? Curves.easeIn : Curves.easeOut,
-            child: AnimatedOpacity(
-              opacity: _pinMoving ? 0 : 1,
-              duration: MapSheetLayout.hideDuration,
-              child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const MapTypeButton(),
-              if (display?.recenterButton ?? true) ...[
-                const SizedBox(height: 8),
-                RecenterButton(onPressed: _recenter),
-              ],
-            ],
-          ),
-        ),
+        aboveSheet(
+          (inset) => Positioned(
+            right: 16,
+            bottom: mapAttributionClearance + inset,
+            child: IgnorePointer(
+              ignoring: _pinMoving,
+              child: AnimatedSlide(
+                key: const ValueKey('map-buttons'),
+                offset: Offset(0, _pinMoving ? 3 : 0),
+                duration: MapSheetLayout.hideDuration,
+                curve: _pinMoving ? Curves.easeIn : Curves.easeOut,
+                child: AnimatedOpacity(
+                  opacity: _pinMoving ? 0 : 1,
+                  duration: MapSheetLayout.hideDuration,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const MapTypeButton(),
+                      if (display?.recenterButton ?? true) ...[
+                        const SizedBox(height: 8),
+                        RecenterButton(onPressed: _recenter),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ),
-      ),
       if (confirming && !wide && layout.promoBar)
         aboveSheet(
           (inset) => Positioned(
@@ -857,16 +916,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           (inset) => Positioned(
             right: 16 - layout.recenter.$1,
             bottom: (wide ? mapAttributionClearance : inset + aboveBar) - layout.recenter.$2,
-            child: Material(
-              color: Theme.of(context).colorScheme.surface,
-              shape: const CircleBorder(),
-              elevation: 3,
-              child: IconButton(
-                key: const ValueKey('confirm-route'),
-                tooltip: 'Show whole route',
-                icon: const Icon(Icons.route),
-                onPressed: () => _showWholeRoute(wide ? 0 : inset),
-              ),
+            child: RouteFitButton(
+              key: const ValueKey('confirm-route'),
+              onPressed: () => _showWholeRoute(wide ? 0 : inset),
             ),
           ),
         ),
@@ -917,6 +969,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
             useCoins: _useCoins,
             onUseCoins: (v) => setState(() => _useCoins = v),
+            whoRiding: _WhoRiding(
+              forOther: _forOther,
+              name: _otherName,
+              phone: _otherPhone,
+              onChanged: (who) => setState(() {
+                _forOther = who != null;
+                if (who != null) {
+                  _otherName.text = who.name;
+                  _otherPhone.text = who.phone;
+                }
+              }),
+            ),
           )
         : null;
     // The nearest drivers to the pickup, on the confirm step: real ones from
@@ -939,18 +1003,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ongoing: _ongoing,
       forOthers: _forOthers,
       onOpenRide: (r) => context.push('/ride/${r.id}').then((_) => _checkOngoing()),
-      whoRiding: _WhoRiding(
-        forOther: _forOther,
-        name: _otherName,
-        phone: _otherPhone,
-        onChanged: (who) => setState(() {
-          _forOther = who != null;
-          if (who != null) {
-            _otherName.text = who.name;
-            _otherPhone.text = who.phone;
-          }
-        }),
-      ),
       pickup: _pickup,
       drop: _drop,
       route: _route,
@@ -972,6 +1024,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               money: (v) => formatMoney(v, _currency),
               bidding: _biddingOn,
               onAdjust: (v) => setState(() => _adjust = v),
+              onEdit: _openOfferFare,
               earn: coinEarnLabel(rideRewardCoins(_fareFor(_service), earnRate)),
               tollBooths: display?.showAiTollBooths ?? true ? tollBoothCount(ai) : 0,
               onTollBooths: ai == null ? null : () => showTollBooths(context, ai),
@@ -980,15 +1033,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   : null,
             )
           : null,
-      onEditFare: _biddingOn && _basis != null && !_routing
-          ? () => editFareOffer(
-                context,
-                recommended: _recommendedFor(_service),
-                adjust: _adjust,
-                money: (v) => formatMoney(v, _currency),
-                onAdjust: (v) => setState(() => _adjust = v),
-              )
-          : null,
+      onEditFare: _biddingOn && _basis != null && !_routing ? _openOfferFare : null,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
       idle: _drop == null ? _homeParts(sections, blob, display) : null,
       footer: wide ? footer : null,
@@ -1049,7 +1094,6 @@ class _BookingPanel extends StatelessWidget {
     this.idle,
     this.forOthers = const [],
     this.onOpenRide,
-    this.whoRiding,
     this.currency = AppConfig.currency,
     this.etaFor,
   });
@@ -1062,8 +1106,6 @@ class _BookingPanel extends StatelessWidget {
   final List<RideRequest> forOthers;
   final ValueChanged<RideRequest>? onOpenRide;
 
-  /// The "Who's riding?" choice.
-  final Widget? whoRiding;
 
   /// What the fares are quoted in: the pickup's tariff card's currency.
   final String currency;
@@ -1171,10 +1213,9 @@ class _BookingPanel extends StatelessWidget {
                 onEdit: s.name == service.name ? onEditFare : null,
               ),
             ),
-          const SizedBox(height: 12),
-          ?whoRiding,
-          // The note to the driver is Options → Comments.
-          const SizedBox(height: 16),
+          // Who's riding is a toggle in the footer, under GET.coin; the note
+          // to the driver is Options → Comments.
+          const SizedBox(height: 28),
           // In the wide panel; on a phone it sits above the pinned footer.
           if (footer != null) ...[const ConfirmDisclaimer(), const SizedBox(height: 16), footer!],
         ],
@@ -1230,22 +1271,22 @@ class RouteBasisLine extends StatelessWidget {
   }
 }
 
-/// "Who's riding?": the rider, or someone else, whose name and phone go on
-/// the request so the driver meets and calls the right person. They are
-/// typed in a modal ([showBookForSheet]); the sheet only shows them, with
-/// a pen to change them.
+/// "Who's riding?" (a toggle under GET.coin, as inDrive's): off, the
+/// rider; on, someone else, whose name and phone go on the request so the
+/// driver meets and calls the right person. They are typed in a modal
+/// ([showBookForSheet]); the row shows them, and its pen changes them.
 class _WhoRiding extends StatelessWidget {
   const _WhoRiding({required this.forOther, required this.name, required this.phone, required this.onChanged});
 
   final bool forOther;
   final TextEditingController name, phone;
 
-  /// "Someone else" with the details from the modal, or "Me" (null).
+  /// Someone else with the details from the modal, or the rider (null).
   final ValueChanged<BookedFor?> onChanged;
 
   Future<void> _ask(BuildContext context) async {
     final who = await showBookForSheet(context, name: name.text, phone: phone.text);
-    // Closed without Done: as it was (back to "Me" when nobody was set).
+    // Closed without Done: as it was (back off when nobody was set).
     if (who != null) {
       onChanged(who);
     } else if (!forOther || bookedFor(name.text, phone.text) == null) {
@@ -1255,21 +1296,52 @@ class _WhoRiding extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context);
     final who = forOther ? bookedFor(name.text, phone.text) : null;
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SegmentedButton<bool>(
-        key: const ValueKey('who-riding'),
-        segments: const [
-          ButtonSegment(value: false, icon: Icon(Icons.person_outline), label: Text('Me')),
-          ButtonSegment(value: true, icon: Icon(Icons.people_outline), label: Text('Someone else')),
+    return InkWell(
+      key: const ValueKey('book-for-summary'),
+      borderRadius: BorderRadius.circular(12),
+      // Set: the row reopens the details to change them.
+      onTap: who == null ? null : () => _ask(context),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHighest, shape: BoxShape.circle),
+            child: Icon(Icons.people_outline, size: 18, color: t.colorScheme.onSurface),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Book for someone else', style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                Text(
+                  who == null ? 'Their name and phone go to the driver' : '${who.name} · ${who.phone}',
+                  key: const ValueKey('book-for-who'),
+                  style: t.textTheme.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          if (who != null)
+            IconButton(
+              key: const ValueKey('book-for-edit'),
+              tooltip: "Edit passenger's details",
+              visualDensity: VisualDensity.compact,
+              icon: Icon(Icons.edit_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
+              onPressed: () => _ask(context),
+            ),
+          ConfirmSwitch(
+            key: const ValueKey('who-riding'),
+            value: forOther,
+            onChanged: (v) => v ? _ask(context) : onChanged(null),
+          ),
         ],
-        selected: {forOther},
-        onSelectionChanged: (v) => v.first ? _ask(context) : onChanged(null),
       ),
-      if (who != null) ...[
-        const SizedBox(height: 8),
-        BookForSummary(name: who.name, phone: who.phone, onEdit: () => _ask(context)),
-      ],
-    ]);
+    );
   }
 }

@@ -25,8 +25,13 @@ class MapBottomInset extends InheritedWidget {
     required this.height,
     required this.cap,
     this.pull,
+    this.rest = 0,
     required super.child,
   });
+
+  /// The inset with the sheet all the way down: the part of the map above
+  /// it is where a pin the map keeps centred stands ([focusOffset]).
+  final double rest;
 
   /// The sheet's size, as a fraction of [height].
   final ValueListenable<double> extent;
@@ -55,9 +60,15 @@ class MapBottomInset extends InheritedWidget {
   /// The inset right now (for a one-off camera fit).
   static double of(BuildContext context) => context.getInheritedWidgetOfExactType<MapBottomInset>()?.value ?? 0;
 
+  /// How far from the map's centre a point should be put to stand in the
+  /// middle of the map left showing above the sheet when it is all the way
+  /// down (inDrive keeps its pickup pin there): up by half that sheet.
+  static Offset focusOffset(BuildContext context) =>
+      Offset(0, -(context.getInheritedWidgetOfExactType<MapBottomInset>()?.rest ?? 0) / 2);
+
   @override
   bool updateShouldNotify(MapBottomInset old) =>
-      old.extent != extent || old.pull != pull || old.height != height || old.cap != cap;
+      old.extent != extent || old.pull != pull || old.height != height || old.cap != cap || old.rest != rest;
 }
 
 /// A map with a draggable sheet floating over it (phone layout): the map
@@ -159,7 +170,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// How far the content is slid up under the handle to bring [_target]
   /// into view while the sheet is below full height. Sliding rather than
   /// scrolling keeps a drag on the sheet moving the sheet: a sheet whose
-  /// content is scrolled scrolls it back first.
+  /// content is scrolled scrolls it back first. A drag lets it go
+  /// ([_release]), so nothing it pushed up is out of reach.
   late final _shift = AnimationController.unbounded(vsync: this);
 
   bool get _full => _sheet.isAttached && _sheet.size >= widget.max - 0.001;
@@ -185,7 +197,14 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     final layout = context.findRenderObject() as RenderBox?;
     if (scroll == null || !scroll.hasClients || box == null || !box.attached || layout == null) return;
     if (!_sheet.isAttached || _hide.value > 0) return;
-    if (_full) _foldShift();
+    if (_full) {
+      _foldShift();
+    } else if (scroll.position.pixels > 0) {
+      // Left scrolled from full height: the same offset as a slide, which a
+      // drag on the lower sheet doesn't undo behind its back.
+      _shift.value += scroll.position.pixels;
+      scroll.jumpTo(0);
+    }
     const margin = 8.0;
     final origin = layout.localToGlobal(Offset.zero).dy;
     final top = origin + layout.size.height * (1 - _sheet.size) + 22 + margin;
@@ -219,9 +238,12 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
       _reveal(target);
       return;
     }
-    _sheet.animateTo(widget.min, duration: const Duration(milliseconds: 250), curve: Curves.easeOut).then((_) {
-      if (mounted && _target == target && target.mounted) _reveal(target);
-    });
+    // Measured once the sheet's last step is laid out, not the one before.
+    _sheet.animateTo(widget.min, duration: const Duration(milliseconds: 250), curve: Curves.easeOut).then(
+      (_) => WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _target == target && target.mounted) _reveal(target);
+      }),
+    );
   }
 
   @override
@@ -263,8 +285,37 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   static double _rubber(double pull, {double limit = 120}) =>
       pull <= 0 ? 0 : limit * (1 - math.exp(-1.2 * pull / limit));
 
+  /// Taken hold of by hand: the content the choice pushed up comes back
+  /// down (inDrive's), so every vehicle can be reached and chosen again. A
+  /// full sheet scrolls instead, so the slide becomes that scroll.
+  void _release() {
+    if (_full) {
+      _foldShift();
+    } else if (_shift.value != 0) {
+      _shift.animateTo(0, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+    }
+  }
+
+  /// A finger is on the sheet.
+  bool _dragging = false;
+
+  /// Moved by hand and come to rest all the way down: the chosen vehicle
+  /// whole again (inDrive's). Left higher, the list stays as it is, to be
+  /// looked through and chosen from.
+  void _settledDown(double extent) {
+    if (!_moved || _dragging || extent > widget.min + 0.001) return;
+    _moved = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _revealTarget();
+    });
+  }
+
   bool _onScroll(ScrollNotification n) {
     if (widget.locked) return false;
+    if (n is ScrollStartNotification && n.dragDetails != null) {
+      _dragging = true;
+      _release();
+    }
     if (n is OverscrollNotification && n.dragDetails != null && n.overscroll < 0) {
       // Pulled down past fully down.
       _pull -= n.overscroll;
@@ -272,13 +323,14 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
       _bounce.value = _rubber(_pull, limit: _pullLimit);
     } else if (n is ScrollEndNotification) {
       _springBack();
-      // Let go at a new height: the chosen vehicle back in view.
+      _dragging = false;
+      // Let go: at full height the slide becomes a scroll; and once it
+      // settles all the way down, the chosen vehicle is back in view.
       if (_moved) {
-        _moved = false;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
+          if (!mounted || !_sheet.isAttached) return;
           if (_full) _foldShift();
-          _revealTarget();
+          _settledDown(_sheet.size);
         });
       }
     }
@@ -336,6 +388,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
       final scrolled = scroll.hasClients && scroll.offset > 0;
       if (full && (e.scrollDelta.dy > 0 || scrolled)) return; // the content's to scroll
       GestureBinding.instance.pointerSignalResolver.register(e, (event) {
+        _release();
         final dy = (event as PointerScrollEvent).scrollDelta.dy;
         _sheet.jumpTo((_sheet.size + dy / height).clamp(widget.min, widget.max));
       });
@@ -357,6 +410,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 height: h,
                 cap: h * (1 - widget.mapMinFraction),
                 pull: _bounce,
+                rest: math.min(h * widget.min, h * (1 - widget.mapMinFraction)),
                 child: widget.map,
               ),
             ),
@@ -375,8 +429,9 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
               onNotification: (n) {
                 // Dragged back up out of the rubber band: it springs home.
                 if (n.extent > n.minExtent + 0.001) _springBack();
-                if ((n.extent - _extent.value).abs() > 0.001) _moved = true;
+                if (_dragging || (n.extent - _extent.value).abs() > 0.001) _moved = true;
                 _extent.value = n.extent;
+                _settledDown(n.extent);
                 return false;
               },
               child: DraggableScrollableSheet(
@@ -432,9 +487,9 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                           SliverToBoxAdapter(
                             child: AnimatedBuilder(
                               animation: _shift,
-                              builder: (_, child) => _shift.value == 0
-                                  ? child!
-                                  : Transform.translate(offset: Offset(0, -_shift.value), child: child),
+                              // Always wrapped: the content isn't remounted as
+                              // the slide comes and goes.
+                              builder: (_, child) => Transform.translate(offset: Offset(0, -_shift.value), child: child),
                               child: _wheelMovesSheet(
                               widget.peek == null
                                   ? widget.sheet
@@ -557,9 +612,10 @@ class _RenderSizeReporter extends RenderProxyBox {
 
 /// Keeps [child] whole in view on a [MapSheetLayout]'s sheet while [active]
 /// (the confirm screen's chosen vehicle): scrolled above the pinned footer
-/// when it is chosen, and again whenever the sheet is dragged to a new
-/// height. Becoming active (a new choice) also brings the sheet down to its
-/// lowest first, as inDrive does. Nothing outside a [MapSheetLayout].
+/// when it is chosen, and again whenever the sheet is let down all the way.
+/// Becoming active (a new choice) also brings the sheet down to its lowest
+/// first, as inDrive does; taking hold of the sheet brings the others back
+/// so another can be chosen. Nothing outside a [MapSheetLayout].
 class MapSheetReveal extends StatefulWidget {
   const MapSheetReveal({super.key, this.active = true, required this.child});
 

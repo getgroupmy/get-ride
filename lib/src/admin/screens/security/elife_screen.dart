@@ -3,12 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/in_app_page.dart';
+import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
 import 'api_keys_screens.dart' show apiKeysPage;
 import 'elife_logic.dart';
 import 'security_data.dart';
-import '../../../widgets/in_app_page.dart';
 
 const _page = 'admin-settings-api-elife';
 
@@ -138,7 +139,7 @@ class _ElifeState extends ConsumerState<AdminElifeScreen> {
                   message: errorText(_loadError!),
                   action: BusyButton.text(onPressed: _load, child: const Text('Retry')),
                 )
-              : const Center(child: CircularProgressIndicator()))
+              : const LoadingSkeletonPage())
           : _body(cfg, canEdit),
     );
   }

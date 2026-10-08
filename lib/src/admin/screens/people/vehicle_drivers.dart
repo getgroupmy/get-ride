@@ -5,6 +5,7 @@ import '../../../core/vehicle_assignment.dart';
 import '../../../data/vehicle_assignment_repository.dart';
 import '../../../providers.dart';
 import '../../../widgets/busy.dart';
+import '../../../widgets/loading_skeleton.dart';
 import '../../widgets/admin_widgets.dart';
 import 'people_widgets.dart';
 
@@ -54,7 +55,7 @@ class VehicleDriversSection extends ConsumerWidget {
                 )
               : null,
         ),
-        if (async.isLoading && async.value == null) const LinearProgressIndicator(),
+        if (async.isLoading && async.value == null) const LoadingSkeleton(rows: 2),
         if (async.hasError) Text('Could not load drivers: ${async.error}'),
         if (async.value != null && drivers.isEmpty)
           const Text('Only the owner can drive this vehicle. Add a driver or co-driver to share it.'),

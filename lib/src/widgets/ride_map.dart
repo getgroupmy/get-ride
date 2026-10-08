@@ -55,6 +55,9 @@ const pickupPinHeight = pickupPinHead + pickupPinStem;
 /// it is spaced from there).
 const rideMapPinTop = pickupPinHeight;
 
+/// The confirm map's pickup and drop-off squares (inDrive's).
+const confirmBadgeSize = 36.0;
+
 /// The pickup pin, [pickupPinHeight] tall, standing on its point.
 class PickupPin extends StatelessWidget {
   const PickupPin({super.key, this.elevation = 0});
@@ -144,6 +147,7 @@ class RideMap extends StatefulWidget {
     this.pointZoom = 15,
     this.showPickup = true,
     this.dotPins = false,
+    this.focusPickup = false,
     this.extraLayers = const [],
     this.hideCredit = false,
     this.trafficSignals = true,
@@ -191,10 +195,17 @@ class RideMap extends StatefulWidget {
   /// up off the map. The camera still counts it either way.
   final bool showPickup;
 
-  /// The confirm screen's look (Expo `ride-confirm`): pickup, stops and
-  /// drop-off as small white dots ringed green, blue and red, and a thinner,
-  /// deeper blue route line.
+  /// The confirm screen's look (inDrive's): the pickup a waving rider in a
+  /// rounded square over a ringed dot, stops numbered squares, the drop-off
+  /// a flag, and the route a thinner line, all black on a light map and
+  /// white on a dark one.
   final bool dotPins;
+
+  /// The home map's look (inDrive's): with no drop-off yet the camera keeps
+  /// the pickup (else the rider) alone in the middle of the map above the
+  /// sheet when it is all the way down ([MapBottomInset.focusOffset]),
+  /// rather than framing every point.
+  final bool focusPickup;
 
   /// Map layers drawn over the route and under the pins (a second line).
   final List<Widget> extraLayers;
@@ -247,7 +258,17 @@ class _RideMapState extends State<RideMap> {
     return CameraFit.coordinates(coordinates: pts, padding: EdgeInsets.fromLTRB(64, 64, 64, 64 + bottom), maxZoom: 16);
   }
 
+  /// The point [RideMap.focusPickup] keeps in the middle; null when off, or
+  /// when there is a route to frame instead.
+  LatLng? get _focus =>
+      widget.focusPickup && widget.drop == null && widget.route.isEmpty ? widget.pickup ?? widget.me : null;
+
   void _fit() {
+    final focus = _focus;
+    if (focus != null) {
+      _controller.move(focus, widget.pointZoom, offset: MapBottomInset.focusOffset(context));
+      return;
+    }
     final pts = [..._points, ...widget.route];
     if (pts.isEmpty) return;
     final fit = _cameraFit;
@@ -280,6 +301,9 @@ class _RideMapState extends State<RideMap> {
           options: MapOptions(
             initialCenter: start.center,
             initialZoom: start.zoom,
+            // North stays up: two fingers pinch and pan but never turn the
+            // map (a trip map that follows the car still turns it itself).
+            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
             onTap: widget.onTap == null ? null : (_, p) => widget.onTap!(p),
             onPositionChanged: widget.onGesture == null
                 ? null
@@ -298,7 +322,7 @@ class _RideMapState extends State<RideMap> {
               PolylineLayer(
                 polylines: [
                   widget.dotPins
-                      ? Polyline(points: widget.route, strokeWidth: 4, color: const Color(0xFF4A90D9))
+                      ? Polyline(points: widget.route, strokeWidth: 4, color: _markerInk(context).fill)
                       : Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
                 ],
               ),
@@ -324,9 +348,19 @@ class _RideMapState extends State<RideMap> {
                     ),
                   ),
                 if (widget.dotPins) ...[
-                  if (widget.pickup != null && widget.showPickup) _dot(widget.pickup!, const Color(0xFF22C55E), 'pickup'),
-                  for (var i = 0; i < widget.stops.length; i++) _dot(widget.stops[i], const Color(0xFF3B82F6), 'stop-$i'),
-                  if (widget.drop != null) _dot(widget.drop!, const Color(0xFFEF4444), 'drop'),
+                  if (widget.pickup != null && widget.showPickup) _pickupBadge(widget.pickup!),
+                  for (var i = 0; i < widget.stops.length; i++)
+                    _badge(
+                      widget.stops[i],
+                      'stop-$i',
+                      size: 26,
+                      glyph: (ink) => Text(
+                        '${i + 1}',
+                        style: TextStyle(color: ink, fontSize: 14, fontWeight: FontWeight.w700, height: 1),
+                      ),
+                    ),
+                  if (widget.drop != null)
+                    _badge(widget.drop!, 'drop', glyph: (ink) => Icon(Icons.flag, color: ink, size: 22)),
                 ],
                 if (!widget.dotPins && widget.pickup != null && widget.showPickup)
                   Marker(
@@ -403,20 +437,75 @@ class _RideMapState extends State<RideMap> {
     );
   }
 
-  Marker _dot(LatLng p, Color c, String name) => Marker(
-    point: p,
-    width: 18,
-    height: 18,
-    child: Container(
-      key: ValueKey('map-dot-$name'),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: c, width: 3),
-        boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+  /// inDrive's confirm map: black marks with white glyphs on a light map,
+  /// and the reverse on a dark one (as [PickupPin]); the route in the same.
+  static ({Color fill, Color ink}) _markerInk(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark
+          ? (fill: Colors.white, ink: Colors.black)
+          : (fill: const Color(0xFF111111), ink: Colors.white);
+
+  /// A rounded square on the point holding [glyph] (a stop's number, the
+  /// drop-off's flag).
+  Marker _badge(LatLng p, String name, {double size = confirmBadgeSize, required Widget Function(Color ink) glyph}) {
+    final c = _markerInk(context);
+    return Marker(
+      point: p,
+      width: size,
+      height: size,
+      child: Container(
+        key: ValueKey('map-dot-$name'),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: c.fill,
+          borderRadius: BorderRadius.circular(size * 0.28),
+          boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+        ),
+        child: glyph(c.ink),
       ),
-    ),
-  );
+    );
+  }
+
+  /// The pickup: the waving rider in a rounded square, stood just above a
+  /// ringed dot on the point itself.
+  Marker _pickupBadge(LatLng p) {
+    final c = _markerInk(context);
+    const gap = 4.0, dot = 14.0;
+    const h = confirmBadgeSize + gap + dot;
+    return Marker(
+      point: p,
+      width: confirmBadgeSize,
+      height: h,
+      // The dot's centre, not the box's, sits on the point.
+      alignment: const Alignment(0, -(h - dot) / h),
+      child: Column(
+        key: const ValueKey('map-dot-pickup'),
+        children: [
+          Container(
+            width: confirmBadgeSize,
+            height: confirmBadgeSize,
+            decoration: BoxDecoration(
+              color: c.fill,
+              borderRadius: BorderRadius.circular(confirmBadgeSize * 0.28),
+              boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+            ),
+            child: Icon(Icons.emoji_people, color: c.ink, size: 24),
+          ),
+          const SizedBox(height: gap),
+          Container(
+            key: const ValueKey('map-dot-pickup-point'),
+            width: dot,
+            height: dot,
+            decoration: BoxDecoration(
+              color: c.ink,
+              shape: BoxShape.circle,
+              border: Border.all(color: c.fill, width: 4),
+              boxShadow: const [BoxShadow(blurRadius: 3, color: Colors.black26)],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Marker _pin(LatLng p, Color c, IconData icon) => Marker(
     point: p,

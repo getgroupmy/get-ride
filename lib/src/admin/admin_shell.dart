@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../widgets/busy.dart';
 import '../providers.dart';
+import '../widgets/busy.dart';
 import '../widgets/common.dart';
+import '../widgets/loading_skeleton.dart';
 import '../widgets/side_menu_style.dart';
 import 'admin_access.dart';
 import 'admin_providers.dart';
@@ -50,7 +51,7 @@ class AdminShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final accessAsync = ref.watch(adminAccessProvider);
     return accessAsync.when(
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      loading: () => const Scaffold(body: LoadingSkeletonPage()),
       error: (e, _) => Scaffold(body: EmptyState(icon: Icons.error_outline, title: 'Could not load admin access', message: errorText(e))),
       data: (access) {
         if (!access.isAdmin) return const AdminGate();

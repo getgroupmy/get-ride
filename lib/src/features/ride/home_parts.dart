@@ -342,21 +342,27 @@ class PickupPill extends StatelessWidget {
   final Place? place;
   final VoidCallback onTap;
 
+  /// The box (inDrive's): white on a light map, charcoal on a dark one.
+  static Color fillFor(Brightness b) => b == Brightness.dark ? const Color(0xFF262626) : Colors.white;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final dark = t.brightness == Brightness.dark;
+    final ink = dark ? Colors.white : const Color(0xFF111111);
     return ConstrainedBox(
-      constraints: BoxConstraints(minWidth: 160, maxWidth: MediaQuery.sizeOf(context).width * 0.85),
+      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.85),
       child: Material(
-        elevation: 4,
-        borderRadius: BorderRadius.circular(12),
-        color: t.colorScheme.surface,
+        elevation: 3,
+        shadowColor: Colors.black38,
+        borderRadius: BorderRadius.circular(10),
+        color: fillFor(t.brightness),
         child: InkWell(
           key: const ValueKey('pickup-pill'),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -365,18 +371,21 @@ class PickupPill extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('Pickup point', style: t.textTheme.labelSmall),
+                      Text(
+                        'Pickup point',
+                        style: TextStyle(fontSize: 13, height: 1.25, color: dark ? Colors.white60 : const Color(0xFF7A7A7A)),
+                      ),
                       Text(
                         place?.name ?? 'Set pickup location',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: t.textTheme.titleSmall,
+                        style: TextStyle(fontSize: 17, height: 1.3, fontWeight: FontWeight.w600, color: ink),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
-                const Icon(Icons.chevron_right),
+                const SizedBox(width: 12),
+                Icon(Icons.chevron_right, size: 20, color: ink),
               ],
             ),
           ),

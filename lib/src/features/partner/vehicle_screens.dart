@@ -12,6 +12,7 @@ import '../../data/partner_onboarding_repository.dart';
 import '../../data/vehicle_onboarding_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/loading_skeleton.dart';
 import '../../widgets/side_menu_host.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
@@ -71,7 +72,7 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
                     onPressed: () => setState(() => _vehicles = _load()), child: const Text('Try again')),
               );
             }
-            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            if (!snap.hasData) return const LoadingSkeletonPage();
             final list = snap.data!;
             if (list.isEmpty) {
               return const EmptyState(
@@ -301,7 +302,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
         action: BusyButton.filled(onPressed: _load, child: const Text('Try again')),
       );
     } else if (!_loaded) {
-      body = const Center(child: CircularProgressIndicator());
+      body = const LoadingSkeletonPage();
     } else {
       final reached = firstVehicleStep(_v);
       final step = _viewing ?? reached;
