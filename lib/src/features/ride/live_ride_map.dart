@@ -13,6 +13,7 @@ import '../../widgets/map_recenter.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
+import '../../widgets/road_info_layers.dart';
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
 
@@ -255,6 +256,8 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
             ]),
           ),
         ),
+        // The road the car is on: its limit, or its class as an estimate.
+        Positioned(left: 12, top: route != null ? 68 : 12, child: SpeedLimitBadge(at: driver)),
         if (route != null)
           Positioned(
             top: 12,

@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../data/geo_service.dart';
 import 'map_sheet_layout.dart';
 import 'map_tiles.dart';
+import 'road_info_layers.dart';
 
 /// Where a map of [points] (and [route]) opens, laid out at [size]: framing
 /// them all when there are two or more, else on the one point (or
@@ -144,6 +145,7 @@ class RideMap extends StatefulWidget {
     this.showPickup = true,
     this.dotPins = false,
     this.extraLayers = const [],
+    this.trafficSignals = true,
   });
 
   final LatLng? pickup;
@@ -195,6 +197,9 @@ class RideMap extends StatefulWidget {
 
   /// Map layers drawn over the route and under the pins (a second line).
   final List<Widget> extraLayers;
+
+  /// OSM traffic signals drawn once zoomed in ([TrafficSignalsLayer]).
+  final bool trafficSignals;
 
   @override
   State<RideMap> createState() => _RideMapState();
@@ -293,6 +298,7 @@ class _RideMapState extends State<RideMap> {
                       : Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
                 ],
               ),
+            if (widget.trafficSignals) const TrafficSignalsLayer(),
             ...widget.extraLayers,
             if (widget.extraMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: widget.extraMarkers),
             MarkerLayer(
