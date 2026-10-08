@@ -22,6 +22,7 @@ class MapBottomInset extends InheritedWidget {
     required this.extent,
     required this.height,
     required this.cap,
+    this.pull,
     required super.child,
   });
 
@@ -33,20 +34,28 @@ class MapBottomInset extends InheritedWidget {
   /// buttons, rather than pushing them off the top of the map.
   final double cap;
 
-  double get value => (height * extent.value).clamp(0.0, cap);
+  /// How far the sheet is pulled down past fully down (its rubber band), so
+  /// what sits on its top edge goes down with it and springs back with it.
+  final ValueListenable<double>? pull;
+
+  double get value => (height * extent.value - (pull?.value ?? 0)).clamp(0.0, cap);
 
   /// [build] with the current inset, rebuilt as the sheet moves.
   static Widget listen(BuildContext context, Widget Function(double inset) build) {
     final m = context.dependOnInheritedWidgetOfExactType<MapBottomInset>();
     if (m == null) return build(0);
-    return ValueListenableBuilder<double>(valueListenable: m.extent, builder: (_, _, _) => build(m.value));
+    return ListenableBuilder(
+      listenable: Listenable.merge([m.extent, ?m.pull]),
+      builder: (_, _) => build(m.value),
+    );
   }
 
   /// The inset right now (for a one-off camera fit).
   static double of(BuildContext context) => context.getInheritedWidgetOfExactType<MapBottomInset>()?.value ?? 0;
 
   @override
-  bool updateShouldNotify(MapBottomInset old) => old.extent != extent || old.height != height || old.cap != cap;
+  bool updateShouldNotify(MapBottomInset old) =>
+      old.extent != extent || old.pull != pull || old.height != height || old.cap != cap;
 }
 
 /// A map with a draggable sheet floating over it (phone layout): the map
@@ -228,6 +237,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 extent: _extent,
                 height: h,
                 cap: h * (1 - widget.mapMinFraction),
+                pull: _bounce,
                 child: widget.map,
               ),
             ),
