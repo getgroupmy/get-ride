@@ -14,16 +14,16 @@ const fallbackRideService = RideService('Ride', 'Affordable rides', 1.0, 4);
 
 typedef CatalogueEntry = ({String id, Map<String, dynamic> values});
 
-/// The services a passenger can book: active, not hidden, tagged for
-/// passengers (or untagged), in the vehicle-bar order and then display
-/// priority. Never empty.
+/// The services a passenger can book: active and not hidden, in the
+/// vehicle-bar order and then display priority. Never empty. (Their Service
+/// type — Car, Bike, … — says which region rules and fares apply; a type is
+/// no longer a reason to hide one.)
 List<RideService> rideServicesFromCatalogue(List<CatalogueEntry> entries, Map<String, dynamic> display) {
   final arranged = arrangeVehicles<CatalogueEntry>(entries, display, id: (e) => e.id, values: (e) => e.values);
   final out = <RideService>[];
   for (final e in arranged) {
     final v = e.values;
     final types = _strings(v['serviceTypes']);
-    if (types.isNotEmpty && !types.contains('Passenger')) continue;
     final cost = _num(v['costPerKm']);
     final seats = _num(v['maxPax'])?.round();
     final name = '${v['name'] ?? ''}'.trim();
@@ -35,6 +35,7 @@ List<RideService> rideServicesFromCatalogue(List<CatalogueEntry> entries, Map<St
         seats != null && seats > 0 ? seats : 4,
         id: e.id,
         image: _image(v['heroImageUri']) ?? _image(v['iconUri']),
+        serviceTypes: types,
       ),
     );
   }

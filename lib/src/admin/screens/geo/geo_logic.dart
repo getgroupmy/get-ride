@@ -12,6 +12,8 @@ import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/region_rules.dart';
+
 // ---------------------------------------------------------------------------
 // Boundaries / geofences
 // ---------------------------------------------------------------------------
@@ -540,7 +542,9 @@ class RegionForm {
     this.taxName = '',
     this.taxKind = 'percent',
     this.taxAmount = '',
-  }) : services = services ?? {};
+    List<RegionRule>? rules,
+  })  : services = services ?? {},
+        rules = rules ?? [];
 
   String country, state, city, suburb, lat, lng;
   Map<String, bool> services;
@@ -552,6 +556,10 @@ class RegionForm {
   /// applies.
   bool pricingOverride, wholeFare, taxEnabled;
   String taxName, taxKind, taxAmount;
+
+  /// Scheduled rules for some services at some times (see
+  /// core/region_rules.dart): they override the switches above while they hold.
+  List<RegionRule> rules;
 
   /// Whether this row's own pricing applies.
   bool get setsPricing => isCountryRow || pricingOverride;
@@ -587,6 +595,7 @@ class RegionForm {
       taxName: str('taxName'),
       taxKind: v['taxType'] == 'fixed' ? 'fixed' : 'percent',
       taxAmount: v['taxAmount'] is num ? '${v['taxAmount']}' : str('taxAmount'),
+      rules: parseRegionRules(v['rules']),
     );
   }
 
@@ -621,6 +630,7 @@ class RegionForm {
     values['taxName'] = tax ? taxName.trim() : null;
     values['taxType'] = tax ? taxKind : null;
     values['taxAmount'] = tax ? double.tryParse(taxAmount.trim()) : null;
+    values['rules'] = encodeRegionRules(rules);
     return values;
   }
 }

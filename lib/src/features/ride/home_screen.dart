@@ -21,6 +21,7 @@ import '../../core/fare_offer.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/region_pricing.dart';
+import '../../core/ride_bidding.dart';
 import '../../core/ride_request_metadata.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_confirm.dart';
@@ -99,7 +100,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// What the booking sheet offers: the admin Vehicle Services catalogue,
   /// or the built-in list while it loads or when it cannot be read.
-  List<RideService> get _services => ref.read(rideServicesProvider).value ?? rideServices;
+  List<RideService> get _catalogue => ref.read(rideServicesProvider).value ?? rideServices;
+
+  /// The services offered at the pickup now: the region's scheduled rules
+  /// and Services switches may take some away. Never empty — where nothing
+  /// would be left the catalogue stands, and booking says why it can't.
+  List<RideService> get _services {
+    final all = _catalogue;
+    final open = [for (final s in all) if (_availableNow(s)) s];
+    return open.isEmpty ? all : open;
+  }
 
   /// The chosen service, or the first one offered.
   RideService get _service {
@@ -156,6 +166,43 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The services the pickup's region switches on (Admin → Country /
   /// States / Cities); null when it does not restrict them.
   Set<String>? _regionServices;
+
+  /// The pickup's region rules (Admin → Country / States / Cities): when a
+  /// service is offered, bid on, taxed and surcharged.
+  RegionRuleContext _rules = RegionRuleContext.empty;
+
+  /// The Service Settings ids of [s]'s Service types (its names).
+  Set<String> _typesOf(RideService s) {
+    if (s.serviceTypes.isEmpty) return const {};
+    final names = ref.read(serviceBoxNamesProvider).value ?? const <String, String>{};
+    final wanted = {for (final n in s.serviceTypes) n.trim().toLowerCase()};
+    return {
+      for (final e in names.entries)
+        if (wanted.contains(e.value.trim().toLowerCase())) e.key,
+    };
+  }
+
+  /// The Service Settings types offered at the pickup now, for the home
+  /// service boxes: the region's Services switches, and its scheduled
+  /// availability rules where it has any.
+  Set<String>? _boxServices(Map<String, String> types) {
+    if (!_rules.hasRules) return _regionServices;
+    final now = DateTime.now().toUtc();
+    return {for (final id in types.keys) if (_rules.available(types: {id}, nowUtc: now)) id};
+  }
+
+  bool _availableNow(RideService s, [RegionRuleContext? rules]) =>
+      (rules ?? _rules).available(types: _typesOf(s), vehicleType: s.id, nowUtc: DateTime.now().toUtc());
+
+  /// Whether [s]'s fare may be bid on now: a rule for it, else the
+  /// region's Bidding switch.
+  bool _biddingFor(RideService s, {RegionRuleContext? rules, bool? fallback}) => (rules ?? _rules)
+      .bidding(types: _typesOf(s), vehicleType: s.id, nowUtc: DateTime.now().toUtc(), fallback: fallback ?? _biddingOn);
+
+  /// How [s] is priced now: the region's pricing with the scheduled taxes
+  /// and surcharges in force for it.
+  RegionPricing _pricingFor(RideService s, {RegionRuleContext? rules, RegionPricing? base}) =>
+      (rules ?? _rules).pricingFor(base ?? _pricing, types: _typesOf(s), vehicleType: s.id, nowUtc: DateTime.now().toUtc());
   LatLng? _biddingAt;
   bool _routing = false;
   RideRequest? _ongoing;
@@ -466,11 +513,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final onF = orElse(() => rides.biddingEnabledFor(pickup, () => area), false);
     final pricingF = orElse(() => rides.pricingFor(pickup, () => area), RegionPricing.none);
     final servicesF = orElse(() => rides.servicesFor(pickup, () => area), null);
+    final rulesF = orElse(() => rides.ruleContextFor(pickup, () => area), RegionRuleContext.empty);
     final on = await onF;
     final pricing = await pricingF;
     final services = await servicesF;
+    final rules = await rulesF;
     if (mounted && _biddingAt == pickup) {
       setState(() {
+        _rules = rules;
         _biddingOn = on;
         _pricing = pricing;
         _regionServices = services;
@@ -507,11 +557,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   double _fareFor(RideService s, {bool? biddingOn}) {
     final recommended = _recommendedFor(s);
     if (s.name != _service.name) return recommended;
-    return _pricing.roundFare(offeredFare(recommended: recommended, adjust: _adjust, biddingOn: biddingOn ?? _biddingOn));
+    return _pricing.roundFare(offeredFare(recommended: recommended, adjust: _adjust, biddingOn: biddingOn ?? _biddingFor(s)));
   }
 
   /// A fare as the region shows it: without decimals where fares are whole.
   String _fareMoney(double v) => formatMoney(v, _currency, _pricing.fareDecimals);
+
+  /// The selected service's surcharges and taxes on its fare, one per line
+  /// ("+ Night surcharge: RM 2.00"); null when there are none.
+  String? _chargeLines() {
+    final lines = _pricingFor(_service).linesFor(_fareFor(_service));
+    if (lines.isEmpty) return null;
+    return [for (final l in lines) '+ ${l.label}: ${formatMoney(l.amount, _currency)}'].join('\n');
+  }
 
   /// "Offer your fare" (inDrive's page): the fare typed in, with the
   /// payment, auto-accept and entrance alongside; "Find a driver" there
@@ -584,14 +642,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // geography; it and the IP lookup run alongside the bidding check.
       final areaLookup = ref.read(geoServiceProvider).reverseArea(a.point);
       final ipLookup = rides.publicIp();
-      final offerMe = await rides.biddingEnabledFor(a.point, () => areaLookup);
+      final regionOn = await rides.biddingEnabledFor(a.point, () => areaLookup);
       // The booking-time pricing, as the bidding switch: whole fares and tax
       // go on the row, so every screen after it prices the ride the same.
-      var pricing = _pricing;
+      var base = _pricing;
       try {
-        pricing = await rides.pricingFor(a.point, () => areaLookup);
+        base = await rides.pricingFor(a.point, () => areaLookup);
       } catch (_) {}
-      if (pricing != _pricing && mounted) setState(() => _pricing = pricing);
+      var rules = _rules;
+      try {
+        rules = await rides.ruleContextFor(a.point, () => areaLookup);
+      } catch (_) {}
+      if (mounted && (base != _pricing || !identical(rules, _rules))) {
+        setState(() {
+          _pricing = base;
+          _rules = rules;
+        });
+      }
+      // The rules at the moment of booking decide: a service whose hours
+      // have just ended is not booked, and its bidding and charges are now's.
+      if (!_availableNow(_service, rules)) {
+        if (mounted) showInfo(context, '${_service.name} is not available here right now.');
+        return;
+      }
+      final offerMe = _biddingFor(_service, rules: rules, fallback: regionOn);
+      final pricing = _pricingFor(_service, rules: rules, base: base);
       AreaInfo? area;
       try {
         area = await areaLookup.timeout(const Duration(seconds: 5));
@@ -716,7 +791,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             serviceNames: ref.watch(serviceBoxNamesProvider).value ?? const {},
             serviceEnabled: serviceOn,
             newBadge: sections.newBadge,
-            regionServices: _regionServices,
+            regionServices: _boxServices(ref.watch(serviceBoxNamesProvider).value ?? const {}),
           )
         : const <ServiceBoxView>[];
     void comingSoon(String body) => showDialog<void>(
@@ -1055,6 +1130,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ]);
 
     ref.watch(rideServicesProvider); // rebuild when the catalogue arrives
+    ref.watch(serviceBoxNamesProvider); // and the Service types its rules name
     ref.watch(paymentChoicesProvider); // and when Admin → Payment Type changes
     ref.watch(coinTradeQuoteProvider); // and when the GET.coin balance does
     ref.watch(fareTariffsProvider); // re-quote when the tariff cards arrive
@@ -1131,7 +1207,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final panel = _BookingPanel(
       disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),
-      fareAdjusted: _biddingOn && _adjust != 0,
+      fareAdjusted: _biddingFor(_service) && _adjust != 0,
       etaFor: etaFor,
       currency: _currency,
       ongoing: _ongoing,
@@ -1155,9 +1231,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       fare: _basis != null && !_routing
           ? ConfirmFareSection(
               recommended: _recommendedFor(_service),
-              adjust: _biddingOn ? _adjust : 0,
+              adjust: _biddingFor(_service) ? _adjust : 0,
               money: _fareMoney,
-              bidding: _biddingOn,
+              bidding: _biddingFor(_service),
               onAdjust: (v) => setState(() => _adjust = v),
               onEdit: _openOfferFare,
               earn: coinEarnLabel(rideRewardCoins(_fareFor(_service), earnRate)),
@@ -1166,13 +1242,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               tollCharges: (display?.showAiTollCharges ?? true) && ai?.tollsToShow != null
                   ? formatMoney(ai!.tollsToShow, _currency)
                   : null,
-              tax: _pricing.tax == null
-                  ? null
-                  : '+ ${_pricing.tax!.label}: ${formatMoney(_pricing.taxOn(_fareFor(_service)), _currency)}',
+              tax: _chargeLines(),
               trend: ai?.trend,
             )
           : null,
-      onEditFare: _biddingOn && _basis != null && !_routing ? _openOfferFare : null,
+      onEditFare: _biddingFor(_service) && _basis != null && !_routing ? _openOfferFare : null,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
       idle: _drop == null ? _homeParts(sections, blob, display) : null,
       footer: wide ? footer : null,

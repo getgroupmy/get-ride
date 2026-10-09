@@ -825,18 +825,18 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               child: Text(r.status == RideStatus.onTrip ? 'Request cancellation' : 'Cancel ride'),
             ),
           if (r.status == RideStatus.completed &&
-              ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0 || r.fareCoinsValue > 0 || r.taxAmount > 0))
+              ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0 || r.fareCoinsValue > 0 || r.chargeLines.isNotEmpty))
             Card(
               key: const ValueKey('ride-charges'),
               child: Column(children: [
                 ListTile(dense: true, title: const Text('Trip fare'),
                     trailing: Text(r.fareText(r.effectiveFare))),
-                if (r.taxAmount > 0)
+                for (final (i, l) in r.chargeLines.indexed)
                   ListTile(
-                    key: const ValueKey('ride-tax'),
+                    key: ValueKey(l.isTax ? 'ride-tax-$i' : 'ride-surcharge-$i'),
                     dense: true,
-                    title: Text(r.pricing.tax!.label),
-                    trailing: Text(formatMoney(r.taxAmount, r.currency)),
+                    title: Text(l.label),
+                    trailing: Text(formatMoney(l.amount, r.currency)),
                   ),
                 if ((r.tollCharges ?? 0) > 0)
                   ListTile(dense: true, title: const Text('Tolls'),

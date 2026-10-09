@@ -20,6 +20,8 @@ import 'package:latlong2/latlong.dart';
 import '../data/geo_service.dart';
 import '../data/models.dart';
 import 'region_pricing.dart';
+import 'region_rules.dart';
+import 'region_time.dart';
 
 // ---- Region switch (Expo utils/regionBidding.ts) --------------------------
 
@@ -34,6 +36,8 @@ class BiddingRegion {
     this.rings = const [],
     this.pricing,
     this.services,
+    this.rules = const [],
+    this.timezone,
   });
 
   final String country;
@@ -53,6 +57,12 @@ class BiddingRegion {
   /// is, which leaves it to the parent region (and, at the top, to every
   /// service).
   final Set<String>? services;
+
+  /// Scheduled rules for some services at some times (core/region_rules.dart).
+  final List<RegionRule> rules;
+
+  /// Its Time zone field (IANA), for those rules' times.
+  final String? timezone;
 
   /// 0 country … 3 suburb: the more specific region wins.
   int get specificity => suburb.isNotEmpty
@@ -78,6 +88,8 @@ class BiddingRegion {
       rings: _parseBoundary(v['boundary']),
       pricing: RegionPricing.fromValues(v),
       services: _enabledServices(v['services']),
+      rules: parseRegionRules(v['rules']),
+      timezone: s(v['timezone']).isEmpty ? null : s(v['timezone']),
     );
   }
 
@@ -256,6 +268,96 @@ RegionPricing pricingAt(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? 
 /// when none does, which leaves every service available.
 Set<String>? servicesAt(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? area}) =>
     _settingAt(regions, pickup, area, (r) => r.services);
+
+/// The regions around [pickup], most specific first: each whose mapped
+/// boundary contains it, and each without a boundary whose names match
+/// [area] (suburbs only by boundary, as the geocoder cannot be trusted
+/// there).
+List<BiddingRegion> regionsAround(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? area}) {
+  final country = _n(area?.country);
+  bool byNames(BiddingRegion r) {
+    if (country.isEmpty || _n(r.country) != country || r.suburb.isNotEmpty) return false;
+    if (r.state.isNotEmpty && _n(r.state) != _n(area?.state)) return false;
+    if (r.city.isNotEmpty && _n(r.city) != _n(area?.city)) return false;
+    return true;
+  }
+
+  final out = [
+    for (final r in regions)
+      if (r.rings.isNotEmpty
+          ? pickup != null && r.rings.any((ring) => ring.length >= 3 && _inRing(pickup, ring))
+          : byNames(r))
+        r,
+  ]..sort((a, b) => b.specificity.compareTo(a.specificity));
+  return out;
+}
+
+/// What a pickup's regions say about each service, now: the rules around it
+/// and the regions' plain switches underneath them.
+class RegionRuleContext {
+  const RegionRuleContext(this.around);
+
+  static const empty = RegionRuleContext([]);
+
+  /// The regions around the pickup, most specific first.
+  final List<BiddingRegion> around;
+
+  /// The most specific region's time zone.
+  String? get timezone => around.map((r) => r.timezone).whereType<String>().firstOrNull;
+
+  List<RegionRules> get chain => [
+    for (final r in around)
+      if (r.rules.isNotEmpty) (specificity: r.specificity, rules: r.rules),
+  ];
+
+  bool get hasRules => around.any((r) => r.rules.isNotEmpty);
+
+  /// The region's wall-clock time at [nowUtc].
+  DateTime localTime(DateTime nowUtc) => regionLocalTime(timezone, nowUtc);
+
+  /// The rules for a vehicle type ([vehicleType], a Vehicle Services id) in
+  /// some Service Settings types ([types], ids) at [nowUtc].
+  RuleOutcome outcomeFor({Set<String> types = const {}, String? vehicleType, required DateTime nowUtc}) =>
+      resolveRules(chain, categories: types, vehicleType: vehicleType, local: localTime(nowUtc));
+
+  /// The Service Settings types the most specific region with a Services
+  /// list switches on; null when none restricts them.
+  Set<String>? get allowedTypes => around.map((r) => r.services).whereType<Set<String>>().firstOrNull;
+
+  /// Whether a vehicle type in [types] is offered now: a rule decides while
+  /// one holds; else, when its region restricts the service types and the
+  /// vehicle has some, one of them must be on.
+  bool available({Set<String> types = const {}, String? vehicleType, required DateTime nowUtc}) {
+    final rule = outcomeFor(types: types, vehicleType: vehicleType, nowUtc: nowUtc).available;
+    if (rule != null) return rule;
+    final allowed = allowedTypes;
+    if (allowed == null || types.isEmpty) return true;
+    return types.any(allowed.contains);
+  }
+
+  /// Whether the fare may be bid on for this service now: a rule decides
+  /// while one holds, else the region's Bidding switch ([fallback]).
+  bool bidding({Set<String> types = const {}, String? vehicleType, required DateTime nowUtc, required bool fallback}) =>
+      outcomeFor(types: types, vehicleType: vehicleType, nowUtc: nowUtc).bidding ?? fallback;
+
+  /// [base] with the scheduled taxes and surcharges in force for this
+  /// service now.
+  RegionPricing pricingFor(
+    RegionPricing base, {
+    Set<String> types = const {},
+    String? vehicleType,
+    required DateTime nowUtc,
+  }) {
+    final o = outcomeFor(types: types, vehicleType: vehicleType, nowUtc: nowUtc);
+    FareCharge charge(RegionRule r) =>
+        FareCharge(isTax: r.kind == RuleKind.tax, name: r.name.trim(), percent: r.charge == ChargeKind.percent, value: r.amount);
+    if (o.taxes == null && o.surcharges.isEmpty) return base;
+    return base.withRules(
+      taxes: o.taxes == null ? null : [for (final r in o.taxes!) charge(r)],
+      surcharges: [for (final r in o.surcharges) charge(r)],
+    );
+  }
+}
 
 // ---- Rider: raising the fare ----------------------------------------------
 

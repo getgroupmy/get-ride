@@ -649,9 +649,11 @@ class _CollectCard extends StatelessWidget {
       child: Column(children: [
         ListTile(
           title: const Text('Total due'),
-          subtitle: r.taxAmount > 0
-              ? Text('Includes ${r.pricing.tax!.label}: ${formatMoney(r.taxAmount, r.currency)}')
-              : null,
+          subtitle: r.chargeLines.isEmpty
+              ? null
+              : Text([
+                  for (final l in r.chargeLines) 'Includes ${l.label}: ${formatMoney(l.amount, r.currency)}',
+                ].join('\n')),
           trailing: Text(formatMoney(r.totalDue, r.currency)),
         ),
         if (coins > 0)

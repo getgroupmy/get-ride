@@ -323,6 +323,18 @@ class RideRepository {
     return servicesAt(regions, pickup, area: names);
   }
 
+  /// The regions around [pickup] and their scheduled rules (service hours,
+  /// bidding, taxes, surcharges), for pricing each service at booking time.
+  Future<RegionRuleContext> ruleContextFor(LatLng pickup, Future<AreaInfo?> Function() area) async {
+    final regions = await biddingRegions();
+    if (regions.isEmpty) return RegionRuleContext.empty;
+    AreaInfo? names;
+    try {
+      names = await area().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    return RegionRuleContext(regionsAround(regions, pickup, area: names));
+  }
+
   /// How fares are priced at [pickup] (whole amounts, tax): the region's
   /// own setting, found as the bidding switch is. None when unreadable.
   Future<RegionPricing> pricingFor(LatLng pickup, Future<AreaInfo?> Function() area) async {

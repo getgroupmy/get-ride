@@ -10,6 +10,7 @@ import '../../widgets/admin_widgets.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
+import 'region_rules_editor.dart';
 
 const regionsPage = 'admin-settings-country-states-cities';
 
@@ -593,6 +594,8 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
           ),
         ],
       ],
+      const SizedBox(height: 20),
+      RegionRulesSection(rules: f.rules, onChanged: (rules) => setState(() => f.rules = rules)),
       gap,
       _pair(
         _field('lat', 'Latitude', keyboard: const TextInputType.numberWithOptions(decimal: true, signed: true)),
