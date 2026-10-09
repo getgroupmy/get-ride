@@ -49,6 +49,7 @@ import 'features/profile/user_guide_screen.dart';
 import 'features/safety/safety_screen.dart';
 import 'features/ride/demo_ride.dart';
 import 'features/ride/home_screen.dart';
+import 'features/ride/ride_chat_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
 import 'features/ride/trips_screen.dart';
@@ -245,7 +246,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/ride/demo',
             builder: (_, s) => s.extra is DemoTripArgs ? DemoTripScreen(args: s.extra! as DemoTripArgs) : const HomeScreen(),
           ),
-          GoRoute(path: '/ride/:id', builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!)),
+          GoRoute(
+            path: '/ride/:id',
+            builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!),
+            routes: [GoRoute(path: 'chat', builder: (_, s) => RideChatScreen(requestId: s.pathParameters['id']!))],
+          ),
           GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
           // Driver mode's pages, under the driver menu.
           GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
@@ -261,7 +266,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/drive/vehicles/:id',
             builder: (_, s) => VehicleOnboardingScreen(vehicleId: s.pathParameters['id']),
           ),
-          GoRoute(path: '/drive/trip/:id', builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!)),
+          GoRoute(
+            path: '/drive/trip/:id',
+            builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!),
+            routes: [GoRoute(path: 'chat', builder: (_, s) => RideChatScreen(requestId: s.pathParameters['id']!))],
+          ),
         ],
       ),
       GoRoute(
@@ -468,6 +477,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     final body = message.notification?.body ?? '';
     if (title.isEmpty && body.isEmpty) return;
     final route = pushRouteFor(message.data);
+    // A chat message while that chat is on screen is already in front of them.
+    if (route != null && route == ref.read(routerProvider).routerDelegate.currentConfiguration.uri.path) return;
     _messenger.currentState?.showSnackBar(SnackBar(
       content: Text([title, body].where((s) => s.isNotEmpty).join('\n')),
       duration: const Duration(seconds: 6),
