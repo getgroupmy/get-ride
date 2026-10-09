@@ -1,11 +1,11 @@
-// Meter & app: Meter Digital rate cards, display/mock settings, site, app icon, splash, always-on pages, store releases.
+// Meter & app: Meter Digital rate cards, display/mock settings, app settings (icon, splash, theme, start location),
+// always-on pages, store releases.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin_registry.dart';
 import 'always_on_screen.dart';
 import 'app_release_screen.dart';
-import 'branding_screens.dart';
 import 'display_screen.dart';
 import 'meter_digital_screen.dart';
 import 'mock_screen.dart';
@@ -16,8 +16,10 @@ final meterappRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/display', builder: (_, _) => const AdminDisplaySettingsScreen()),
   GoRoute(path: '/admin/m/mock', builder: (_, _) => const AdminMockSettingsScreen()),
   GoRoute(path: '/admin/m/site', builder: (_, _) => const AdminSiteSettingsScreen()),
-  GoRoute(path: '/admin/m/app-icon', builder: (_, _) => const AdminAppIconScreen()),
-  GoRoute(path: '/admin/m/splash', builder: (_, _) => const AdminSplashScreen()),
+  // App Icon and Splash Screen are sections of App Settings now; their old
+  // addresses (bookmarks, the sub-admin page list) still land there.
+  GoRoute(path: '/admin/m/app-icon', redirect: (_, _) => '/admin/m/site'),
+  GoRoute(path: '/admin/m/splash', redirect: (_, _) => '/admin/m/site'),
   GoRoute(path: '/admin/m/always-on', builder: (_, _) => const AdminAlwaysOnScreen()),
   GoRoute(path: '/admin/m/app-release', builder: (_, _) => const AdminAppReleaseScreen()),
 ];
@@ -50,26 +52,12 @@ const meterappEntries = <AdminScreenEntry>[
   AdminScreenEntry(
     section: 'Meter & app',
     title: 'App Settings',
-    subtitle: 'Theme, icons, splash & default location',
+    subtitle: 'App icon, splash screen, theme colours & default location — for every user',
     path: '/admin/m/site',
-    pages: ['admin-settings-site'],
+    // The App Icon and Splash Screen pages it absorbed: a sub-admin granted
+    // either keeps their access.
+    pages: ['admin-settings-site', 'admin-settings-app-icon', 'admin-settings-splash'],
     icon: Icons.language,
-  ),
-  AdminScreenEntry(
-    section: 'Meter & app',
-    title: 'App Icon',
-    subtitle: 'Change the app icon for all users',
-    path: '/admin/m/app-icon',
-    pages: ['admin-settings-app-icon'],
-    icon: Icons.apps,
-  ),
-  AdminScreenEntry(
-    section: 'Meter & app',
-    title: 'Splash Screen',
-    subtitle: 'Splash image & background colour',
-    path: '/admin/m/splash',
-    pages: ['admin-settings-splash'],
-    icon: Icons.auto_awesome,
   ),
   AdminScreenEntry(
     section: 'Meter & app',

@@ -4,12 +4,14 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../admin/screens/meterapp/site_logic.dart' show brandingRowId, brandingTable;
 import '../core/app_branding.dart';
+import 'geo_service.dart' show adminStartCenter;
 
 /// What the splash shows on this launch: the branding cached by the previous
 /// one, with the image's bytes on disk so it paints on the first frame
@@ -78,6 +80,12 @@ class BrandingCache {
   }
 }
 
+/// What the branding sets outside the widget tree: where maps open.
+void applyBrandingGlobals(AppBranding? b) {
+  final lat = b?.startLat, lng = b?.startLng;
+  adminStartCenter = lat == null || lng == null ? null : LatLng(lat, lng);
+}
+
 /// Keeps the cache in step with the `app_branding` row: once at launch, then
 /// live while the app runs, so an admin's change shows on the next launch.
 class BrandingSync {
@@ -89,13 +97,14 @@ class BrandingSync {
   final latest = ValueNotifier<AppBranding?>(null);
 
   Future<void> _apply(AppBranding b) async {
+    applyBrandingGlobals(b);
     latest.value = b;
     await BrandingCache.save(b);
   }
 
   Future<void> start() async {
     try {
-      final row = await _db.from(brandingTable).select('splash_image_url').eq('id', brandingRowId).maybeSingle();
+      final row = await _db.from(brandingTable).select().eq('id', brandingRowId).maybeSingle();
       await _apply(AppBranding.fromRow(row));
     } catch (_) {}
     try {

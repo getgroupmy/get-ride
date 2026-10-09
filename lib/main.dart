@@ -28,5 +28,6 @@ Future<void> main() async {
   // The admin's splash, as cached by the last launch, so it paints on the
   // first frame (see SplashGate).
   final branding = await BrandingCache.load();
+  applyBrandingGlobals(branding?.branding);
   runApp(ProviderScope(child: GetRideApp(branding: branding)));
 }

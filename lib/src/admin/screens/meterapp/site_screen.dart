@@ -1,24 +1,22 @@
-// Admin → Settings → App Settings (Expo `admin-settings-site`).
-//
-// The Expo screen keeps theme palettes, icon / splash previews and the default
-// start location on the admin's own device (AsyncStorage key
-// `app-settings-v1`); nothing in the apps reads it back. This port keeps the
-// same JSON under the same key in shared_preferences and says so. The shared,
-// public app values (`settings_entries` category `site-settings`, name/value
-// rows) are listed underneath so they stay editable from this app.
-import 'dart:convert';
-
+// Admin → Settings → App Settings: the one page for what every user's app
+// takes from the single `app_branding` row, live — the app icon, the splash
+// screen, the theme colours and where maps open — plus the shared
+// `site-settings` name / value rows. (It replaces the separate App Icon and
+// Splash Screen pages, and the Expo screen's device-only copy of the same
+// fields, which no app ever read.)
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../core/app_branding.dart';
+import '../../../data/branding_cache.dart';
+import '../../../features/shell/brand_splash.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
-import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
 import '../../widgets/admin_widgets.dart';
+import 'branding_screens.dart';
 import 'pick_image.dart';
 import 'site_logic.dart';
 
@@ -47,15 +45,17 @@ class AdminSiteSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScreen> {
-  Map<String, dynamic>? _s;
-  String _mode = 'light';
   final Map<String, TextEditingController> _ctl = {};
+  bool _loaded = false;
+  String _mode = 'light';
 
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
+  /// The splash picture: one picked and not yet uploaded, else the stored URL.
+  PickedImage? _splashPicked;
+  String? _splashUrl;
+
+  /// The icon: one picked and not yet published, or "use the default".
+  PickedImage? _iconPicked;
+  bool _iconCleared = false;
 
   @override
   void dispose() {
@@ -65,234 +65,393 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
     super.dispose();
   }
 
-  Future<void> _load() async {
-    Map<String, dynamic> s;
-    try {
-      final p = await SharedPreferences.getInstance();
-      final raw = p.getString(siteSettingsStorageKey);
-      s = mergeSiteSettings(raw == null ? null : jsonDecode(raw));
-    } catch (_) {
-      s = defaultSiteSettings();
-    }
-    if (mounted) _adopt(s);
-  }
-
-  void _adopt(Map<String, dynamic> s) {
+  void _adopt(AppBranding b) {
     for (final c in _ctl.values) {
       c.dispose();
     }
     _ctl.clear();
-    for (final mode in ['light', 'dark']) {
-      for (final (key, _) in paletteFields) {
-        _ctl['$mode.$key'] = TextEditingController(text: '${(s[mode] as Map)[key]}');
-      }
+    for (final e in appSettingsFields(b).entries) {
+      _ctl[e.key] = TextEditingController(text: e.value);
     }
-    for (final k in ['splashBgColor', 'startLat', 'startLng']) {
-      _ctl[k] = TextEditingController(text: '${s[k]}');
-    }
-    setState(() => _s = s);
+    _splashUrl = b.splashImageUrl;
+    _splashPicked = null;
   }
 
-  Map<String, dynamic> _collect() => {
-        ..._s!,
-        for (final mode in ['light', 'dark'])
-          mode: {for (final (key, _) in paletteFields) key: _ctl['$mode.$key']!.text.trim()},
-        for (final k in ['splashBgColor', 'startLat', 'startLng']) k: _ctl[k]!.text.trim(),
-      };
+  Map<String, String> get _fields => {for (final e in _ctl.entries) e.key: e.value.text};
+
+  /// What the splash previews show: the form as it stands.
+  AppBranding get _draft {
+    final f = _fields;
+    String? hex(String k) => isValidHex(f[k] ?? '') ? f[k]!.trim() : null;
+    return AppBranding(
+      splashImageUrl: _splashPicked != null ? 'https://preview' : _splashUrl,
+      splashBgLight: hex('splash.light'),
+      splashBgDark: hex('splash.dark'),
+    );
+  }
+
+  /// Edit rights on this page or on either page it absorbed.
+  bool get _canEdit => [
+    sitePage,
+    'admin-settings-app-icon',
+    'admin-settings-splash',
+  ].any((p) => ref.watch(pageAccessProvider(p)) == AccessLevel.edit);
 
   Future<void> _save() async {
-    final s = _collect();
-    final err = validateSiteSettings(s);
+    final f = _fields;
+    final err = validateAppSettings(f);
     if (err != null) {
       showError(context, err);
       return;
     }
-    await runAdminAction(context, () async {
-      final p = await SharedPreferences.getInstance();
-      await p.setString(siteSettingsStorageKey, jsonEncode(s));
-      _s = s;
-    }, success: 'Saved on this device');
+    final store = ref.read(brandingStoreProvider);
+    final ok = await runAdminAction(context, () async {
+      final picked = _splashPicked;
+      final url = picked != null ? await store.upload(picked, 'splash') : _splashUrl;
+      await store.update({...appSettingsPatch(f), 'splash_image_url': url});
+      _splashUrl = url;
+      _splashPicked = null;
+    }, success: 'Saved — every user\'s app now uses it');
+    if (!mounted) return;
+    setState(() {});
+    if (ok) ref.invalidate(brandingProvider);
   }
 
-  Future<void> _pick(String key) async {
-    final img = await pickImage();
-    if (img == null) return;
-    setState(() => _s = {..._collect(), key: 'data:${img.contentType};base64,${base64Encode(img.bytes)}'});
-  }
-
-  Widget _colorField(String label, String key) {
-    final c = _ctl[key]!;
-    final color = hexToColor(c.text);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: TextField(
-        controller: c,
-        enabled: ref.watch(pageAccessProvider(sitePage)) == AccessLevel.edit,
-        onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: '#RRGGBB',
-          isDense: true,
-          errorText: color == null ? 'Invalid hex colour' : null,
-          prefixIcon: Padding(
-            padding: const EdgeInsets.all(10),
-            child: CircleAvatar(radius: 10, backgroundColor: color ?? Colors.transparent),
-          ),
-        ),
+  Future<void> _publishIcon(String? stored) async {
+    if (_iconPicked == null && !(_iconCleared && stored != null)) {
+      showInfo(context, 'Pick a new icon image first.');
+      return;
+    }
+    final store = ref.read(brandingStoreProvider);
+    final ok = await runAdminAction(context, () async {
+      final url = _iconPicked != null ? await store.upload(_iconPicked!, 'icon') : null;
+      await store.update({'app_icon_url': url, 'icon_changed_at': DateTime.now().toUtc().toIso8601String()});
+    });
+    if (!mounted || !ok) return;
+    setState(() {
+      _iconPicked = null;
+      _iconCleared = false;
+    });
+    ref.invalidate(brandingProvider);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.check_circle_outline),
+        title: const Text('App icon published'),
+        content: const Text('The website\'s tab icon has changed, and every user of the app sees a one-time '
+            '"App icon updated" popup. The icon on phones\' home screens changes with the next App Release build.'),
+        actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Got it'))],
       ),
     );
   }
 
-  Widget _preview(String? uri, IconData placeholder, {Color? bg}) {
-    Widget? img;
-    if (uri != null && uri.startsWith('data:') && uri.contains(',')) {
-      try {
-        img = Image.memory(base64Decode(uri.substring(uri.indexOf(',') + 1)), fit: BoxFit.cover);
-      } catch (_) {}
-    } else if (uri != null && uri.startsWith('http')) {
-      img = Image.network(uri, fit: BoxFit.cover);
-    }
-    return Container(
-      width: 72,
-      height: 72,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: bg ?? Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
+  Widget _section(String title, String subtitle, List<Widget> children) {
+    final t = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(title, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(subtitle, style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          ...children,
+        ]),
       ),
-      child: img ?? Icon(placeholder),
+    );
+  }
+
+  /// A colour field: blank is the app's default ([fallback], when known).
+  Widget _colorField(String key, String label, {String? fallback, List<String> presets = const []}) {
+    final c = _ctl[key]!;
+    final text = c.text.trim();
+    final color = hexToColor(text.isEmpty ? (fallback ?? '') : text);
+    final bad = text.isNotEmpty && !isValidHex(text);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(
+          key: ValueKey('app-settings-$key'),
+          controller: c,
+          enabled: _canEdit,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: fallback == null ? 'Default' : 'Default $fallback',
+            isDense: true,
+            errorText: bad ? 'Use #RRGGBB' : null,
+            prefixIcon: Padding(
+              padding: const EdgeInsets.all(10),
+              child: CircleAvatar(
+                radius: 10,
+                backgroundColor: color ?? Colors.transparent,
+                child: color == null ? const Icon(Icons.auto_awesome, size: 12) : null,
+              ),
+            ),
+            suffixIcon: text.isEmpty || !_canEdit
+                ? null
+                : IconButton(
+                    tooltip: 'Use the default',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(c.clear),
+                  ),
+          ),
+        ),
+        if (presets.isNotEmpty && _canEdit)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final p in presets)
+                InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: () => setState(() => c.text = p),
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: hexToColor(p),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+      ]),
+    );
+  }
+
+  Widget _iconSection(AppBranding stored) {
+    final url = _iconCleared ? null : stored.appIconUrl;
+    final bytes = _iconPicked?.bytes;
+    final hasIcon = bytes != null || url != null;
+    final t = Theme.of(context);
+    return _section(
+      'App Icon',
+      'The website\'s tab icon changes as soon as it is published, and every app user is told once with a popup. '
+          'The icon on phones\' home screens is part of the installed app: the next App Release build uses it.',
+      [
+        Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, spacing: 16, children: [
+          BrandingImageBox(bytes: bytes, url: url, size: 120, radius: 28),
+          BrandingImageBox(bytes: bytes, url: url, size: 64, radius: 16),
+          BrandingImageBox(bytes: bytes, url: url, size: 40, radius: 10),
+        ]),
+        const SizedBox(height: 8),
+        Text(
+          'Square PNG, 1024×1024, no transparency.${hasIcon ? '' : ' No custom icon: the built-in one is used.'}',
+          textAlign: TextAlign.center,
+          style: t.textTheme.bodySmall,
+        ),
+        if (_canEdit) ...[
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
+            BusyButton.tonal(
+              key: const ValueKey('app-icon-upload'),
+              icon: const Icon(Icons.upload),
+              onPressed: () async {
+                final img = await pickImage();
+                if (img != null) setState(() => _iconPicked = img);
+              },
+              child: Text(hasIcon ? 'Replace icon' : 'Upload icon'),
+            ),
+            if (hasIcon)
+              TextButton.icon(
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Use default'),
+                onPressed: () => setState(() {
+                  _iconPicked = null;
+                  _iconCleared = true;
+                }),
+              ),
+            BusyButton.filled(
+              key: const ValueKey('app-icon-publish'),
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+              icon: const Icon(Icons.publish),
+              onPressed: _iconPicked == null && !(_iconCleared && stored.appIconUrl != null)
+                  ? null
+                  : () => _publishIcon(stored.appIconUrl),
+              child: const Text('Publish to all users'),
+            ),
+          ]),
+        ],
+      ],
+    );
+  }
+
+  Widget _splashSection() {
+    final t = Theme.of(context);
+    final draft = _draft;
+    final preview = CachedBranding(draft, _splashPicked?.bytes);
+    Widget phone(bool dark, String label) => Column(children: [
+          Container(
+            width: 130,
+            height: 230,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: t.colorScheme.outlineVariant),
+            ),
+            child: SplashView(cached: preview, latest: _splashPicked == null ? draft : null, dark: dark),
+          ),
+          const SizedBox(height: 6),
+          Text(label, style: t.textTheme.labelMedium),
+        ]);
+    final hasImage = _splashPicked != null || _splashUrl != null;
+    return _section(
+      'Splash Screen',
+      'Shown for ${splashHold.inSeconds} seconds when the Android and iOS apps start. Without a picture '
+          '"GET." is shown. The website has no splash screen.',
+      [
+        Wrap(alignment: WrapAlignment.center, spacing: 16, runSpacing: 16, children: [
+          phone(false, 'Light mode'),
+          phone(true, 'Dark mode'),
+        ]),
+        if (_canEdit) ...[
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, alignment: WrapAlignment.center, children: [
+            BusyButton.tonal(
+              key: const ValueKey('splash-upload'),
+              icon: const Icon(Icons.upload),
+              onPressed: () async {
+                final img = await pickImage();
+                if (img != null) setState(() => _splashPicked = img);
+              },
+              child: Text(hasImage ? 'Replace image' : 'Upload image'),
+            ),
+            if (hasImage)
+              TextButton.icon(
+                key: const ValueKey('splash-clear'),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Remove image'),
+                onPressed: () => setState(() {
+                  _splashPicked = null;
+                  _splashUrl = null;
+                }),
+              ),
+          ]),
+        ],
+        const SizedBox(height: 8),
+        _colorField('splash.light', 'Background — light mode', fallback: '#FFFFFF', presets: splashPresetColors),
+        _colorField('splash.dark', 'Background — dark mode', fallback: '#000000', presets: splashPresetColors),
+      ],
+    );
+  }
+
+  Widget _themeSection() {
+    return _section(
+      'Theme Colors',
+      'The app\'s colours, separately for light and dark mode. Blank keeps the app\'s own; Text, Border and Error '
+          'are otherwise worked out from the Accent.',
+      [
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'light', label: Text('Light'), icon: Icon(Icons.light_mode_outlined)),
+            ButtonSegment(value: 'dark', label: Text('Dark'), icon: Icon(Icons.dark_mode_outlined)),
+          ],
+          selected: {_mode},
+          onSelectionChanged: (v) => setState(() => _mode = v.first),
+        ),
+        const SizedBox(height: 8),
+        for (final k in themeColorKeys)
+          _colorField(
+            '$_mode.$k',
+            themeColorLabels[k]!,
+            fallback: _mode == 'light' ? themeColorDefaults[k]!.light : themeColorDefaults[k]!.dark,
+          ),
+      ],
+    );
+  }
+
+  Widget _startSection() {
+    return _section(
+      'Default Start Location',
+      'Where maps open before the user\'s location is known. Blank is Kuala Lumpur.',
+      [
+        Row(children: [
+          Expanded(
+            child: TextField(
+              key: const ValueKey('app-settings-startLat'),
+              controller: _ctl['startLat'],
+              enabled: _canEdit,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+              decoration: const InputDecoration(labelText: 'Latitude', hintText: '3.139003'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              key: const ValueKey('app-settings-startLng'),
+              controller: _ctl['startLng'],
+              enabled: _canEdit,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+              decoration: const InputDecoration(labelText: 'Longitude', hintText: '101.686855'),
+            ),
+          ),
+        ]),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final canEdit = ref.watch(pageAccessProvider(sitePage)) == AccessLevel.edit;
-    final s = _s;
-    final t = Theme.of(context);
+    final canEdit = _canEdit;
     return AdminPage(
       title: 'App Settings',
       page: sitePage,
       actions: [
         if (canEdit)
-          IconButton(
-            tooltip: 'Restore defaults',
-            icon: const Icon(Icons.restart_alt),
-            onPressed: () async {
-              if (await confirm(context, 'Reset', 'Restore all defaults?', ok: 'Reset')) _adopt(defaultSiteSettings());
-            },
+          BusyIconButton(
+            tooltip: 'Save',
+            icon: const Icon(Icons.save_outlined),
+            onPressed: _loaded ? _save : null,
           ),
-        if (canEdit) BusyIconButton(tooltip: 'Save', icon: const Icon(Icons.save_outlined), onPressed: s == null ? null : _save),
       ],
-      body: s == null
-          ? const LoadingSkeletonPage()
-          : ListView(padding: const EdgeInsets.symmetric(vertical: 16), children: [
-              ResponsiveCenter(
-                maxWidth: 720,
-                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  const Card(
-                    child: ListTile(
-                      leading: Icon(Icons.phone_android),
-                      title: Text('Stored on this device only'),
-                      subtitle: Text('Theme, preview images and start location are kept on this device, exactly as '
-                          'the Expo app does. To change what every user sees, use App Icon, Splash Screen and Display '
-                          'Settings.'),
+      body: AsyncView(
+        value: ref.watch(brandingProvider),
+        onRetry: () => ref.invalidate(brandingProvider),
+        data: (row) {
+          final stored = AppBranding.fromRow(row);
+          if (!_loaded) {
+            _loaded = true;
+            _adopt(stored);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) setState(() {});
+            });
+          }
+          return ListView(padding: const EdgeInsets.symmetric(vertical: 16), children: [
+            ResponsiveCenter(
+              maxWidth: 720,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Card(
+                  child: ListTile(
+                    leading: Icon(Icons.public),
+                    title: Text('Applies to every user'),
+                    subtitle: Text('Saved here, these change every user\'s app straight away — no update or '
+                        'relaunch needed — except the home-screen icon, which comes with the next App Release.'),
+                  ),
+                ),
+                _iconSection(stored),
+                _splashSection(),
+                _themeSection(),
+                _startSection(),
+                if (canEdit)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: BusyButton.filled(
+                      key: const ValueKey('app-settings-save'),
+                      onPressed: _save,
+                      icon: const Icon(Icons.save_outlined),
+                      child: const Text('Save splash, colours & start location'),
                     ),
                   ),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        Text('Theme Colors', style: t.textTheme.titleMedium),
-                        const SizedBox(height: 8),
-                        SegmentedButton<String>(
-                          segments: const [
-                            ButtonSegment(value: 'light', label: Text('Light'), icon: Icon(Icons.light_mode_outlined)),
-                            ButtonSegment(value: 'dark', label: Text('Dark'), icon: Icon(Icons.dark_mode_outlined)),
-                          ],
-                          selected: {_mode},
-                          onSelectionChanged: (v) => setState(() => _mode = v.first),
-                        ),
-                        const SizedBox(height: 8),
-                        for (final (key, label) in paletteFields) _colorField(label, '$_mode.$key'),
-                      ]),
-                    ),
-                  ),
-                  Card(
-                    child: ListTile(
-                      leading: _preview(s['appIconUri'] as String?, Icons.image_outlined),
-                      title: const Text('App Icon'),
-                      subtitle: const Text('Square PNG. 1024×1024 recommended.'),
-                      trailing: canEdit
-                          ? BusyButton.text(
-                              onPressed: () => _pick('appIconUri'),
-                              child: Text(s['appIconUri'] != null ? 'Replace' : 'Upload'),
-                            )
-                          : null,
-                    ),
-                  ),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Column(children: [
-                        ListTile(
-                          leading: _preview(s['splashIconUri'] as String?, Icons.auto_awesome,
-                              bg: hexToColor(_ctl['splashBgColor']!.text)),
-                          title: const Text('Splash Screen'),
-                          subtitle: const Text('Splash icon shown on app launch.'),
-                          trailing: canEdit
-                              ? BusyButton.text(
-                                  onPressed: () => _pick('splashIconUri'),
-                                  child: Text(s['splashIconUri'] != null ? 'Replace' : 'Upload'),
-                                )
-                              : null,
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _colorField('Splash Background', 'splashBgColor'),
-                        ),
-                      ]),
-                    ),
-                  ),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Default Start Location', style: t.textTheme.titleMedium),
-                        Text("Used before the user's location is captured.", style: t.textTheme.bodySmall),
-                        const SizedBox(height: 8),
-                        Row(children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _ctl['startLat'],
-                              enabled: canEdit,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                              decoration: const InputDecoration(labelText: 'Latitude', hintText: '3.139003'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: _ctl['startLng'],
-                              enabled: canEdit,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-                              decoration: const InputDecoration(labelText: 'Longitude', hintText: '101.686855'),
-                            ),
-                          ),
-                        ]),
-                      ]),
-                    ),
-                  ),
-                  if (canEdit)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: BusyButton.filled(onPressed: _save, icon: const Icon(Icons.save_outlined), child: const Text('Save')),
-                    ),
-                  const SizedBox(height: 16),
-                  _SiteValues(canEdit: canEdit),
-                  const SizedBox(height: 40),
-                ]),
-              ),
-            ]),
+                const SizedBox(height: 16),
+                _SiteValues(canEdit: canEdit),
+                const SizedBox(height: 40),
+              ]),
+            ),
+          ]);
+        },
+      ),
     );
   }
 }
