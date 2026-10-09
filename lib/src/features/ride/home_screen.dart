@@ -806,6 +806,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       await _checkOngoing();
       final open = e.forOthers ? null : _ongoing;
       if (mounted && open != null) context.push('/ride/${open.id}').then((_) => _checkOngoing());
+    } on ServiceUnavailableError catch (e) {
+      // The database's own check refused it (0125): the same sheet.
+      if (!mounted) return;
+      final gap = (
+        at: switch (e.at) {
+          'pickup' => UnavailableAt.pickup,
+          'stop' => UnavailableAt.stop,
+          _ => UnavailableAt.drop,
+        },
+        stop: e.stop,
+        gap: e.gap,
+        region: e.region,
+      );
+      setState(() => _gap = gap);
+      _showGap(gap);
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {

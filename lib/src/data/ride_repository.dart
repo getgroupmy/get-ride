@@ -116,6 +116,9 @@ class RideRepository {
         // A second request while one is on the go: refused before it was
         // written, so nothing reached the drivers (migration 0107).
         if (isDuplicateRideError(e.message)) throw DuplicateRideRequest(forOthers: bookedFor != null);
+        // A place GET.ride doesn't serve: the database's own check (0125).
+        final unserved = ServiceUnavailableError.parse(e.message);
+        if (unserved != null) throw unserved;
         // Never quietly book someone else's ride as the rider's own.
         if (bookedFor != null && e.message.contains('booked_for')) {
           throw StateError("Booking for someone else isn't available yet. Please try again later.");

@@ -329,6 +329,36 @@ enum CoverageGap {
   blocked,
 }
 
+/// The database's refusal of a ride GET.ride doesn't serve (migration
+/// 0125): `SERVICE_UNAVAILABLE:<pickup|stopN|drop>:<outside|blocked>:<region>`.
+class ServiceUnavailableError implements Exception {
+  const ServiceUnavailableError({required this.at, this.stop = -1, required this.gap, this.region});
+
+  /// 'pickup', 'stop' or 'drop'.
+  final String at;
+
+  /// The stop's index when [at] is 'stop'.
+  final int stop;
+  final CoverageGap gap;
+  final String? region;
+
+  /// The refusal in a database error message, or null when it isn't one.
+  static ServiceUnavailableError? parse(String message) {
+    final m = RegExp(r'SERVICE_UNAVAILABLE:(pickup|drop|stop(\d+)):(outside|blocked):([^\n]*)').firstMatch(message);
+    if (m == null) return null;
+    final region = m.group(4)!.trim();
+    return ServiceUnavailableError(
+      at: m.group(1)!.startsWith('stop') ? 'stop' : m.group(1)!,
+      stop: int.tryParse(m.group(2) ?? '') ?? -1,
+      gap: m.group(3) == 'blocked' ? CoverageGap.blocked : CoverageGap.outside,
+      region: region.isEmpty ? null : region,
+    );
+  }
+
+  @override
+  String toString() => 'GET.ride is currently unavailable here.';
+}
+
 /// Whether GET.ride serves [point]: null when it does, else why not and the
 /// region it concerns.
 ///
