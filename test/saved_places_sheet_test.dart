@@ -100,6 +100,8 @@ void main() {
     expect(find.byKey(const ValueKey('place-search-from')), findsOneWidget);
     expect(find.text('Eco Majestic'), findsOneWidget);
     expect(find.byKey(const ValueKey('place-search-map')), findsOneWidget);
+    // The map is the pin button in the field; no second "Choose on map" row.
+    expect(find.text('Choose on map'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('place-tab-saved')));
     await tester.pumpAndSettle();
     expect(find.text('Home'), findsOneWidget);

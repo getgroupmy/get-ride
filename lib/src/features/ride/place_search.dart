@@ -308,12 +308,6 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             children: [
               if (!typing && _route && _saved) ..._savedList(t),
               if (!typing && _route && !_saved) ..._suggested(t),
-              if (!typing && !_route)
-                ListTile(
-                  leading: const Icon(Icons.push_pin_outlined),
-                  title: const Text('Choose on map'),
-                  onTap: _onMap,
-                ),
               if (typing)
                 for (final p in collapseAirports<Place>(
                   _results,
@@ -342,10 +336,10 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
         subtitle: Text(widget.current!.address, maxLines: 1, overflow: TextOverflow.ellipsis),
         onTap: () => Navigator.pop(context, PlacePick.place(widget.current!)),
       ),
-    ListTile(leading: const Icon(Icons.push_pin_outlined), title: const Text('Choose on map'), onTap: _onMap),
+    // Choosing on the map is the pin button in the search field.
     ...switch (ref.watch(recentPlacesProvider).value ?? const <Place>[]) {
       final List<Place> recent when recent.isNotEmpty => [
-        const Divider(),
+        if (widget.current != null) const Divider(),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           child: Text('Recent', style: t.textTheme.titleSmall),
