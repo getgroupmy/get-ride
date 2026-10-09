@@ -36,13 +36,17 @@ const currencyStyles = <String, CurrencyStyle>{
 
 /// [amount] in [currency] (an ISO 4217 code, as stored on a ride). An
 /// unknown code is printed as itself rather than passed off as ringgit.
-String formatMoney(num? amount, [String currency = 'MYR']) {
+String formatMoney(num? amount, [String currency = 'MYR', int? decimals]) {
   if (amount == null) return '—';
   final code = currency.trim().toUpperCase();
   final style = currencyStyles[code];
-  if (style == null) return NumberFormat.currency(symbol: '$code ', decimalDigits: 2).format(amount);
-  if (!style.after) return NumberFormat.currency(symbol: style.symbol, decimalDigits: style.decimals).format(amount);
-  return '${NumberFormat.currency(symbol: '', decimalDigits: style.decimals).format(amount)}${style.symbol}';
+  // [decimals] narrows a currency's own (a region with whole fares).
+  int places(int own) => decimals == null ? own : (decimals < own ? decimals : own);
+  if (style == null) return NumberFormat.currency(symbol: '$code ', decimalDigits: places(2)).format(amount);
+  if (!style.after) {
+    return NumberFormat.currency(symbol: style.symbol, decimalDigits: places(style.decimals)).format(amount);
+  }
+  return '${NumberFormat.currency(symbol: '', decimalDigits: places(style.decimals)).format(amount)}${style.symbol}';
 }
 
 String formatDateTime(DateTime? dt) =>

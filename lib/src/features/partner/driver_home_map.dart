@@ -3,7 +3,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
@@ -155,7 +154,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
                         Icon(Icons.hail, size: 14, color: t.colorScheme.onPrimary),
                         const SizedBox(width: 4),
                         Text(
-                          formatMoney(r.effectiveFare, r.currency),
+                          r.fareText(r.effectiveFare),
                           style: TextStyle(color: t.colorScheme.onPrimary, fontSize: 12, fontWeight: FontWeight.w700),
                         ),
                       ],

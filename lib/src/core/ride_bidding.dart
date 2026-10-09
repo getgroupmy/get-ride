@@ -19,6 +19,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../data/geo_service.dart';
 import '../data/models.dart';
+import 'region_pricing.dart';
 
 // ---- Region switch (Expo utils/regionBidding.ts) --------------------------
 
@@ -31,6 +32,7 @@ class BiddingRegion {
     this.suburb = '',
     this.enabled = true,
     this.rings = const [],
+    this.pricing,
   });
 
   final String country;
@@ -41,6 +43,10 @@ class BiddingRegion {
 
   /// Mapped boundary polygons, empty when the region has none.
   final List<List<LatLng>> rings;
+
+  /// How fares are priced here, when this region sets it (see
+  /// [RegionPricing.fromValues]); null leaves it to the parent region.
+  final RegionPricing? pricing;
 
   /// 0 country … 3 suburb: the more specific region wins.
   int get specificity => suburb.isNotEmpty
@@ -64,6 +70,7 @@ class BiddingRegion {
       suburb: s(v['suburb']),
       enabled: v['biddingEnabled'] != false,
       rings: _parseBoundary(v['boundary']),
+      pricing: RegionPricing.fromValues(v),
     );
   }
 }
@@ -143,6 +150,35 @@ bool biddingEnabledAt(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? ar
     if (best == null || r.specificity > best.specificity) best = r;
   }
   return best?.enabled ?? true;
+}
+
+/// The fare pricing at [pickup], chosen the way the bidding switch is: the
+/// most specific region with a mapped boundary containing the point, else the
+/// most specific region matching [area]'s names — counting only regions that
+/// set their own pricing; none is decimals and no tax.
+RegionPricing pricingAt(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? area}) {
+  final priced = [for (final r in regions) if (r.pricing != null) r];
+  if (priced.isEmpty) return RegionPricing.none;
+  if (pickup != null) {
+    BiddingRegion? best;
+    for (final r in priced) {
+      if (r.rings.any((ring) => ring.length >= 3 && _inRing(pickup, ring)) &&
+          (best == null || r.specificity > best.specificity)) {
+        best = r;
+      }
+    }
+    if (best != null) return best.pricing!;
+  }
+  final country = _n(area?.country);
+  if (country.isEmpty) return RegionPricing.none;
+  BiddingRegion? best;
+  for (final r in priced) {
+    if (_n(r.country) != country || r.suburb.isNotEmpty) continue;
+    if (r.state.isNotEmpty && _n(r.state) != _n(area?.state)) continue;
+    if (r.city.isNotEmpty && _n(r.city) != _n(area?.city)) continue;
+    if (best == null || r.specificity > best.specificity) best = r;
+  }
+  return best?.pricing ?? RegionPricing.none;
 }
 
 // ---- Rider: raising the fare ----------------------------------------------

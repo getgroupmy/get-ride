@@ -20,6 +20,7 @@ import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
+import '../../core/region_pricing.dart';
 import '../../core/ride_request_metadata.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_confirm.dart';
@@ -147,6 +148,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// recommended fare, where bidding is on at the pickup (Expo ride-confirm).
   double _adjust = 0;
   bool _biddingOn = false;
+
+  /// How fares are priced at the pickup (Admin → Country / States / Cities):
+  /// whole amounts, and the tax on top.
+  RegionPricing _pricing = RegionPricing.none;
   LatLng? _biddingAt;
   bool _routing = false;
   RideRequest? _ongoing;
@@ -444,11 +449,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     unawaited(area.then((a) {
       if (mounted && _biddingAt == pickup) setState(() => _pickupArea = a);
     }, onError: (_) {}));
-    var on = false;
-    try {
-      on = await ref.read(rideRepositoryProvider).biddingEnabledFor(pickup, () => area);
-    } catch (_) {}
-    if (mounted && _biddingAt == pickup) setState(() => _biddingOn = on);
+    final rides = ref.read(rideRepositoryProvider);
+    // Each on its own: an unreadable pricing never switches bidding off.
+    Future<T> orElse<T>(Future<T> Function() f, T fallback) async {
+      try {
+        return await f();
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    final onF = orElse(() => rides.biddingEnabledFor(pickup, () => area), false);
+    final pricingF = orElse(() => rides.pricingFor(pickup, () => area), RegionPricing.none);
+    final on = await onF;
+    final pricing = await pricingF;
+    if (mounted && _biddingAt == pickup) {
+      setState(() {
+        _biddingOn = on;
+        _pricing = pricing;
+      });
+    }
   }
 
   /// The booking tariff card for the pickup (Admin → Fare tariffs), or null
@@ -468,17 +488,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final b = _basis;
     return b == null
         ? 0
-        : quoteFare(_tariff, b.distanceKm, b.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
-            .fare;
+        : _pricing.roundFare(
+            quoteFare(_tariff, b.distanceKm, b.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
+                .fare,
+          );
   }
 
   /// What [s] is booked at: the rider's offer on the selected service where
-  /// bidding is on, else the recommended fare.
+  /// bidding is on, else the recommended fare — rounded as the region prices
+  /// fares (a whole amount, rounded up, where it asks for one).
   double _fareFor(RideService s, {bool? biddingOn}) {
     final recommended = _recommendedFor(s);
     if (s.name != _service.name) return recommended;
-    return offeredFare(recommended: recommended, adjust: _adjust, biddingOn: biddingOn ?? _biddingOn);
+    return _pricing.roundFare(offeredFare(recommended: recommended, adjust: _adjust, biddingOn: biddingOn ?? _biddingOn));
   }
+
+  /// A fare as the region shows it: without decimals where fares are whole.
+  String _fareMoney(double v) => formatMoney(v, _currency, _pricing.fareDecimals);
 
   /// "Offer your fare" (inDrive's page): the fare typed in, with the
   /// payment, auto-accept and entrance alongside; "Find a driver" there
@@ -492,7 +518,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           recommended: recommended,
           current: recommended + _adjust,
           currencyLabel: (style?.symbol ?? _currency).trim(),
-          money: (v) => formatMoney(v, _currency),
+          money: _fareMoney,
           payment: _payment,
           payments: _payments,
           autoAccept: _autoAccept,
@@ -552,6 +578,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final areaLookup = ref.read(geoServiceProvider).reverseArea(a.point);
       final ipLookup = rides.publicIp();
       final offerMe = await rides.biddingEnabledFor(a.point, () => areaLookup);
+      // The booking-time pricing, as the bidding switch: whole fares and tax
+      // go on the row, so every screen after it prices the ride the same.
+      var pricing = _pricing;
+      try {
+        pricing = await rides.pricingFor(a.point, () => areaLookup);
+      } catch (_) {}
+      if (pricing != _pricing && mounted) setState(() => _pricing = pricing);
       AreaInfo? area;
       try {
         area = await areaLookup.timeout(const Duration(seconds: 5));
@@ -588,6 +621,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             metadata: metadata,
             bookedFor: forWhom,
             currency: _currency,
+            pricing: pricing,
           );
       if (_autoAccept) {
         ref.read(autoAcceptProvider.notifier).set(req.id, _fareFor(_service, biddingOn: offerMe));
@@ -1032,7 +1066,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               final p = await showPaymentSheet(context, _payment, payments: _payments);
               if (p != null && mounted) setState(() => _paymentPick = p);
             },
-            autoAcceptLabel: 'Auto-accept offer of ${formatMoney(_fareFor(_service), _currency)}',
+            autoAcceptLabel: 'Auto-accept offer of ${_fareMoney(_fareFor(_service))}',
             autoAccept: _autoAccept,
             onAutoAccept: (v) => setState(() => _autoAccept = v),
             label: _forOther ? 'Find a driver for ${otherName.isEmpty ? 'someone else' : otherName}' : 'Find a driver',
@@ -1098,6 +1132,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       services: _services,
       service: _service,
       fareFor: _fareFor,
+      fareDecimals: _pricing.fareDecimals,
       onPickup: () => _choose(_PinTarget.pickup),
       onDrop: () => _choose(_PinTarget.drop),
       onService: (s) => setState(() {
@@ -1108,7 +1143,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ? ConfirmFareSection(
               recommended: _recommendedFor(_service),
               adjust: _biddingOn ? _adjust : 0,
-              money: (v) => formatMoney(v, _currency),
+              money: _fareMoney,
               bidding: _biddingOn,
               onAdjust: (v) => setState(() => _adjust = v),
               onEdit: _openOfferFare,
@@ -1118,6 +1153,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               tollCharges: (display?.showAiTollCharges ?? true) && ai?.tollsToShow != null
                   ? formatMoney(ai!.tollsToShow, _currency)
                   : null,
+              tax: _pricing.tax == null
+                  ? null
+                  : '+ ${_pricing.tax!.label}: ${formatMoney(_pricing.taxOn(_fareFor(_service)), _currency)}',
               trend: ai?.trend,
             )
           : null,
@@ -1187,6 +1225,7 @@ class _BookingPanel extends StatelessWidget {
     required this.services,
     required this.service,
     required this.fareFor,
+    this.fareDecimals = 2,
     required this.onPickup,
     required this.onDrop,
     required this.onService,
@@ -1228,6 +1267,9 @@ class _BookingPanel extends StatelessWidget {
   final List<RideService> services;
   final RideService service;
   final double Function(RideService) fareFor;
+
+  /// The decimals a fare is shown with (none where the region's are whole).
+  final int fareDecimals;
   final VoidCallback onPickup, onDrop, onOpenOngoing;
   final ValueChanged<RideService> onService;
 
@@ -1314,7 +1356,7 @@ class _BookingPanel extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 4),
               child: ConfirmServiceCard(
                 service: s,
-                price: formatMoney(fareFor(s), currency),
+                price: formatMoney(fareFor(s), currency, fareDecimals),
                 selected: s.name == service.name,
                 etaMinutes: etaFor?.call(s),
                 onTap: () => onService(s),

@@ -2,6 +2,8 @@
 /// `public` schema of the get.ride project exactly.
 library;
 
+import '../core/format.dart';
+import '../core/region_pricing.dart';
 import '../core/ride_stops.dart';
 import 'geo_service.dart';
 
@@ -127,11 +129,25 @@ class RideRequest {
   double? get otherCharges => _d(raw['other_charges']);
   String? get otherChargesNote => raw['other_charges_note'] as String?;
 
-  /// Fare plus the tolls and other charges the driver declared.
+  /// How the ride's fare is priced in its region (migration 0119): whole
+  /// amounts, and the tax on top.
+  RegionPricing get pricing => RegionPricing.fromRide(raw);
+
+  /// A fare on this ride, as its region shows fares: without decimals
+  /// where they are whole. Tolls and other charges keep theirs.
+  String fareText(num? amount) => formatMoney(amount, currency, pricing.fareDecimals);
+
+  /// The tax on the fare, when the region has one.
+  double get taxAmount {
+    final f = effectiveFare;
+    return f == null ? 0 : pricing.taxOn(f);
+  }
+
+  /// Fare plus its tax and the tolls and other charges the driver declared.
   double? get totalDue {
     final f = effectiveFare;
     if (f == null) return null;
-    return f + (tollCharges ?? 0) + (otherCharges ?? 0);
+    return f + taxAmount + (tollCharges ?? 0) + (otherCharges ?? 0);
   }
 
   /// What the rider's GET.coin paid towards [totalDue] (migration 0101; the

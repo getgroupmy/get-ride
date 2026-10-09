@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/fare.dart';
+import 'package:get_ride/src/core/region_pricing.dart';
 import 'package:get_ride/src/core/route_estimate.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/coin_trade_repository.dart';
@@ -32,8 +33,9 @@ const _eco = Place(name: 'Eco Majestic', address: 'Semenyih', point: LatLng(2.93
 const _klcc = Place(name: 'KLCC', address: 'Kuala Lumpur', point: LatLng(2.9400, 101.8400));
 
 class _Rides implements RideRepository {
-  _Rides({this.bidding = false});
+  _Rides({this.bidding = false, this.pricing = RegionPricing.none});
   final bool bidding;
+  final RegionPricing pricing;
   Map<Symbol, dynamic>? created;
 
   @override
@@ -41,6 +43,9 @@ class _Rides implements RideRepository {
 
   @override
   Future<bool> biddingEnabledFor(LatLng pickup, Future<AreaInfo?> Function() area) async => bidding;
+
+  @override
+  Future<RegionPricing> pricingFor(LatLng pickup, Future<AreaInfo?> Function() area) async => pricing;
 
   @override
   Future<String?> publicIp() async => null;
@@ -368,6 +373,21 @@ void main() {
     expect(rides.created![#paymentMode], 'Get Pay');
     expect(container.read(autoAcceptProvider)['r9'], rides.created![#fare]);
     expect(find.text('ride r9'), findsOneWidget);
+  });
+
+  testWidgets('a region with whole fares and a tax: no decimals, the tax line, both on the booking', (tester) async {
+    const pricing = RegionPricing(wholeFare: true, tax: RegionTax(name: 'SST', kind: TaxKind.percent, value: 6));
+    final rides = _Rides(pricing: pricing);
+    await _pump(tester, rides);
+    expect(find.byKey(const ValueKey('fare-tax')), findsOneWidget);
+    expect(find.textContaining('SST 6%'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('book')));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final fare = rides.created![#fare] as double;
+    expect(fare, fare.roundToDouble(), reason: 'a whole fare');
+    expect(rides.created![#pricing], pricing);
   });
 
   testWidgets('the options button beside Find a driver opens Options; they go with the booking', (tester) async {
