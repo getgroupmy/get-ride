@@ -61,6 +61,7 @@ import 'features/shell/brand_splash.dart';
 import 'features/shell/app_side_menu.dart';
 import 'features/shell/update_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
+import 'features/support/help_assistant_screen.dart';
 import 'features/support/support_chat_screen.dart';
 import 'features/support/support_screen.dart';
 import 'features/wallet/coin_trade_screen.dart';
@@ -225,6 +226,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                   GoRoute(path: 'safety', builder: (_, _) => const SafetyScreen()),
                   GoRoute(path: 'emergency', builder: (_, _) => const EmergencyContactsScreen()),
                   GoRoute(path: 'guide', builder: (_, _) => const UserGuideScreen()),
+                  GoRoute(path: 'help', builder: (_, _) => const HelpAssistantScreen()),
                   GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen(), routes: [
                     GoRoute(path: 'phone', builder: (_, _) => const ChangePhoneScreen()),
                     GoRoute(path: 'pin', builder: (_, _) => const ChangePinScreen()),

@@ -24,7 +24,7 @@ class _Auth implements AuthRepository {
 
 void main() {
   const pages = [
-    '/', '/ev', '/trips', '/wallet', '/account/safety', '/account/settings', '/account/guide', '/account/support',
+    '/', '/ev', '/trips', '/wallet', '/account/safety', '/account/settings', '/account/guide', '/account/support', '/account/help',
     '/account/emergency', '/account/referral',
   ];
 
@@ -68,6 +68,7 @@ void main() {
       'settings': '/account/settings',
       'user-guide': '/account/guide',
       'support': '/account/support',
+      'help-assistant': '/account/help',
       emergencyContactsMenuItemId: '/account/emergency',
       inviteFriendsMenuItemId: '/account/referral',
     };

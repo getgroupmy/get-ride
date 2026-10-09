@@ -35,6 +35,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     vehicleInfoMenuItemId: '/meter/vehicle',
     'documents': '/drive/onboarding',
     'support': '/account/support',
+    'help-assistant': '/account/help',
     'settings': '/account/settings',
   };
   if (id == 'dashboard') {

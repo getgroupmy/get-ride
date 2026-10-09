@@ -195,8 +195,8 @@ const userGuide = <GuideSection>[
       (
         title: 'Help',
         body:
-            'Help & support opens a chat with our team. Terms, privacy and licences are under '
-            'Settings → Rules & terms.',
+            'Help assistant answers common questions straight away. Help & support opens a chat with our '
+            'team. Terms, privacy and licences are under Settings → Rules & terms.',
       ),
     ],
   ),

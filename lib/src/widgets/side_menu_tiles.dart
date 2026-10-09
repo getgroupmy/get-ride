@@ -37,6 +37,7 @@ const _builtInIcons = <String, IconData>{
   'settings': Icons.settings_outlined,
   'user-guide': Icons.menu_book_outlined,
   'support': Icons.forum_outlined,
+  'help-assistant': Icons.live_help_outlined,
   'logout': Icons.logout,
   'sign-out': Icons.logout,
   'dashboard': Icons.dashboard_outlined,

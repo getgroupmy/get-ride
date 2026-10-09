@@ -10,7 +10,7 @@ import 'package:go_router/go_router.dart';
 void main() {
   const pages = [
     '/ev', '/drive', '/wallet', '/trips', '/drive/vehicles', '/meter/vehicle', '/drive/onboarding',
-    '/account/support', '/account/settings',
+    '/account/support', '/account/help', '/account/settings',
   ];
 
   Future<(String, bool?)> tap(WidgetTester tester, String id) async {
@@ -47,6 +47,7 @@ void main() {
     vehicleInfoMenuItemId: '/meter/vehicle',
     'documents': '/drive/onboarding',
     'support': '/account/support',
+    'help-assistant': '/account/help',
     'settings': '/account/settings',
   };
 
