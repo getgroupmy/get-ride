@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin/admin_providers.dart';
-import '../../admin/screens/meterapp/display_logic.dart' show normalizeMenu, profileMenuItemId, vehicleInfoMenuItemId;
+import '../../admin/screens/meterapp/display_logic.dart' show vehicleInfoMenuItemId;
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/obd/obd_session.dart';
@@ -77,6 +77,7 @@ class RiderSideMenu extends ConsumerWidget {
     final close = SideMenuHost.of(context)?.close;
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final mode = sideMenuModeButton(blob, 'user');
+    final profile = sideMenuProfile(blob, 'user');
     void go(String route) {
       final router = GoRouter.of(context);
       close?.call();
@@ -85,7 +86,8 @@ class RiderSideMenu extends ConsumerWidget {
 
     return SideMenuPanel(
       key: const ValueKey('rider-side-menu'),
-      showProfile: !(normalizeMenu(blob['userMenu'])['hidden'] as List).contains(profileMenuItemId),
+      showProfile: profile.show,
+      onProfile: profile.comingSoon ? showComingSoon : SideMenuPanel.editProfile,
       rows: [
         for (final e in resolveSideMenu(blob, 'user'))
           SideMenuTile(
@@ -95,19 +97,6 @@ class RiderSideMenu extends ConsumerWidget {
             beforeOpen: close,
             builtIn: (c, id) => riderMenuAction(c, ref, id, beforeOpen: close),
           ),
-        // This app's own rows, which the Expo menu does not list.
-        PlainMenuRow(
-          key: const ValueKey('menu-emergency'),
-          icon: Icons.contact_emergency_outlined,
-          label: 'Emergency contacts',
-          onTap: () => go('/account/emergency'),
-        ),
-        PlainMenuRow(
-          key: const ValueKey('menu-invite'),
-          icon: Icons.card_giftcard,
-          label: 'Invite friends',
-          onTap: () => go('/account/referral'),
-        ),
       ],
       modeLabel: mode?.label,
       modeKey: const ValueKey('menu-partner-mode'),
@@ -129,10 +118,11 @@ class PartnerSideMenu extends ConsumerWidget {
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final linked = ref.watch(obdSessionProvider).linked;
     final mode = sideMenuModeButton(blob, 'partner');
+    final profile = sideMenuProfile(blob, 'partner');
     return SideMenuPanel(
       key: const ValueKey('partner-side-menu'),
-      showProfile: true,
-      onProfile: null,
+      showProfile: profile.show,
+      onProfile: profile.comingSoon ? showComingSoon : SideMenuPanel.editProfile,
       rows: [
         for (final e in resolveSideMenu(blob, 'partner'))
           if (e.id != vehicleInfoMenuItemId || linked)
@@ -167,18 +157,6 @@ class PartnerSideMenu extends ConsumerWidget {
   }
 }
 
-/// A side menu row of this app's own, drawn as the admin's rows.
-class PlainMenuRow extends StatelessWidget {
-  const PlainMenuRow({super.key, required this.icon, required this.label, required this.onTap});
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => SideMenuRow(icon: icon, label: label, onTap: onTap);
-}
-
 /// The user and driver menus' layout ([SideMenuFrame]): who is signed in
 /// with their stars, the rows, then the mode button, the admin panel for
 /// admins and the social links.
@@ -187,7 +165,7 @@ class SideMenuPanel extends ConsumerWidget {
     super.key,
     required this.rows,
     this.showProfile = true,
-    this.onProfile = _editProfile,
+    this.onProfile = editProfile,
     this.modeLabel,
     this.modeKey,
     this.onMode,
@@ -204,7 +182,8 @@ class SideMenuPanel extends ConsumerWidget {
   final Key? modeKey;
   final VoidCallback? onMode;
 
-  static void _editProfile(BuildContext context) {
+  /// The profile header's usual tap: the profile editor.
+  static void editProfile(BuildContext context) {
     final router = GoRouter.of(context);
     SideMenuHost.of(context)?.close();
     router.go('/account/edit');

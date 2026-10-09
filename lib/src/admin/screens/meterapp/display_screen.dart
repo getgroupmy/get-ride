@@ -56,6 +56,10 @@ IconData lucide(String? name) => lucideIcons[name] ?? Icons.star_border;
 
 const _defaultMenuIcons = <String, Map<String, String>>{
   'user': {
+    'teksi-ev': 'Car',
+    'wallet': 'Wallet',
+    'emergency-contacts': 'Phone',
+    'invite-friends': 'Gift',
     'city': 'Car',
     'request-history': 'Clock',
     'freight': 'Truck',
@@ -67,6 +71,9 @@ const _defaultMenuIcons = <String, Map<String, String>>{
     'logout': 'User',
   },
   'partner': {
+    'teksi-ev': 'Car',
+    'wallet': 'Wallet',
+    'vehicle-information': 'Car',
     'dashboard': 'Settings',
     'earnings': 'Wallet',
     'trip-history': 'Clock',

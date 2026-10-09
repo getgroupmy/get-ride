@@ -204,4 +204,27 @@ void main() {
       expect(find.text(comingSoonTitle), findsOneWidget);
     });
   });
+
+  test('Emergency contacts and Invite friends are admin menu items: listed, hidden, renamed', () {
+    final ids = [for (final e in resolveSideMenu(const {}, 'user')) e.id];
+    expect(ids, containsAllInOrder(['support', 'emergency-contacts', 'invite-friends', 'logout']));
+    final hidden = resolveSideMenu({
+      'userMenu': {
+        'hidden': ['invite-friends'],
+        'renames': {'emergency-contacts': 'SOS contacts'},
+      },
+    }, 'user');
+    expect(hidden.any((e) => e.id == 'invite-friends'), isFalse);
+    expect(hidden.firstWhere((e) => e.id == 'emergency-contacts').label, 'SOS contacts');
+  });
+
+  test("each menu's Profile header follows its Show and Coming Soon switches", () {
+    expect(sideMenuProfile(const {}, 'partner'), (show: true, comingSoon: false));
+    final s = {
+      'partnerMenu': {'hidden': ['profile']},
+      'userMenu': {'comingSoon': ['profile']},
+    };
+    expect(sideMenuProfile(s, 'partner').show, isFalse);
+    expect(sideMenuProfile(s, 'user'), (show: true, comingSoon: true));
+  });
 }
