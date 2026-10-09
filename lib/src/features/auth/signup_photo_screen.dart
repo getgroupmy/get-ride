@@ -7,6 +7,7 @@ import '../../core/avatar.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/net_image.dart';
 
 /// Where a new account lands after sign-up: Driver opens the Drive tab, where
 /// partner onboarding starts; Passenger (and anything unknown) the map.
@@ -96,6 +97,7 @@ class _SignupPhotoScreenState extends ConsumerState<SignupPhotoScreen> {
                             width: 128,
                             height: 128,
                             fit: BoxFit.cover,
+                            frameBuilder: boneUntilPainted(width: 128, height: 128, circle: true),
                             errorBuilder: (_, _, _) => const Icon(Icons.person, size: 64),
                           ),
                         ),

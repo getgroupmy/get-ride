@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_branding.dart';
+import 'net_image.dart';
 
 const _seenKey = 'app_icon_seen_at';
 
@@ -47,7 +48,7 @@ Future<void> showAppIconChanged(BuildContext context, String? iconUrl) => showDi
             ),
             child: iconUrl == null
                 ? fallback
-                : Image.network(iconUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback),
+                : Image.network(iconUrl, fit: BoxFit.cover, frameBuilder: boneUntilPainted(), errorBuilder: (_, _, _) => fallback),
           ),
           Positioned(
             right: -6,

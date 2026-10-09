@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_branding.dart';
 import '../../data/branding_cache.dart';
+import '../../widgets/net_image.dart';
 
 /// Holds the app behind the splash for what is left of [splashHold] since the
 /// process started, then shows it (iAkauntan's `SplashGate`). In the Android
@@ -95,7 +96,7 @@ class SplashView extends StatelessWidget {
     } else if (bytes != null && url == cached?.branding.splashImageUrl) {
       picture = Image.memory(bytes, key: const ValueKey('splash-image'), height: 120, errorBuilder: fallback);
     } else {
-      picture = Image.network(url, key: const ValueKey('splash-image'), height: 120, errorBuilder: fallback);
+      picture = Image.network(url, key: const ValueKey('splash-image'), height: 120, frameBuilder: boneUntilPainted(width: 120, height: 120), errorBuilder: fallback);
     }
     return Container(
       key: const ValueKey('splash'),

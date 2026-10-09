@@ -13,6 +13,7 @@ import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
 import '../../data/models.dart' show Partner;
 import '../../providers.dart';
 import 'partner_screen.dart' show partnerCanDrive;
+import '../../widgets/net_image.dart';
 
 /// What a partner with no assigned type is offered (Expo's defaults).
 const defaultPartnerModeOptions = [
@@ -177,6 +178,7 @@ class _ModeTile extends StatelessWidget {
                     : Image.network(
                         url,
                         fit: BoxFit.cover,
+                        frameBuilder: boneUntilPainted(),
                         errorBuilder: (_, _, _) => Icon(_icon, color: accent),
                       ),
               ),

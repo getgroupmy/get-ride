@@ -15,6 +15,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/ride_map.dart';
 import '../ride/confirm_parts.dart' show confirmAccent;
+import '../../widgets/net_image.dart';
 
 /// A new ride request on a phone, as inDrive's: a sheet up from the bottom
 /// with the route on a map ("Ride request" over it, the time and distance
@@ -313,11 +314,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     return SizedBox(
       width: 64,
       child: Column(children: [
-        CircleAvatar(
-          radius: 24,
-          backgroundImage: photo is String && photo.startsWith('http') ? NetworkImage(photo) : null,
-          child: photo is String && photo.startsWith('http') ? null : const Icon(Icons.person_outline),
-        ),
+        NetAvatar(url: photo is String ? photo : null, radius: 24, fallback: const Icon(Icons.person_outline)),
         const SizedBox(height: 4),
         Text(r.passengerName, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.labelSmall),
         if (r.riderRating != null)

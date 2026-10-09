@@ -11,6 +11,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/in_app_page.dart';
+import '../../widgets/net_image.dart';
 import 'teksi_pickup.dart';
 
 /// The signed-in partner's taxi driver permit, read from their uploads.
@@ -160,11 +161,7 @@ class _PermitBody extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundImage: p.photoUrl == null ? null : NetworkImage(p.photoUrl!),
-                      child: p.photoUrl == null ? const Icon(Icons.person, size: 40) : null,
-                    ),
+                    NetAvatar(url: p.photoUrl, radius: 40, fallback: const Icon(Icons.person, size: 40)),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Column(

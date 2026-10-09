@@ -12,6 +12,7 @@ import '../../widgets/common.dart';
 import 'call/call_screen.dart';
 import 'support_screen.dart';
 import '../../widgets/in_app_page.dart';
+import '../../widgets/net_image.dart';
 
 final supportMessagesProvider = StreamProvider.autoDispose.family<List<SupportMessage>, String>(
   (ref, ticketId) => ref.watch(accountRepositoryProvider).watchMessages(ticketId),
@@ -113,6 +114,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> {
               child: Image.network(
                 url,
                 fit: BoxFit.cover,
+                frameBuilder: boneUntilPainted(),
                 errorBuilder: (_, _, _) => Text('📷 Photo', style: TextStyle(color: fg)),
               ),
             ),

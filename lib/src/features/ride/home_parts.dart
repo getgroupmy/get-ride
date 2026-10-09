@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../core/fare.dart';
 import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
+import '../../widgets/net_image.dart';
 
 /// A stored picture: an http(s) or `data:` URL.
 Widget uriImage(
@@ -40,10 +42,46 @@ Widget uriImage(
       height: height,
       fit: fit,
       alignment: alignment,
+      frameBuilder: boneUntilPainted(width: width, height: height),
       errorBuilder: (_, _, _) => none,
     );
   }
   return none;
+}
+
+/// The vehicle-type bar while the service catalogue loads: the boxes' shape,
+/// shimmering, with no names or icons that would then change.
+class VehicleTypeBarSkeleton extends StatelessWidget {
+  const VehicleTypeBarSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 66,
+    child: SkeletonizerConfig(
+      data: SkeletonizerConfigData(brightness: Theme.of(context).brightness),
+      child: Skeletonizer.zone(
+        key: const ValueKey('vehicle-type-bar-skeleton'),
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: 4,
+          separatorBuilder: (_, _) => const SizedBox(width: 12),
+          itemBuilder: (_, i) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Bone(width: 30, height: 22, borderRadius: BorderRadius.circular(6)),
+                const SizedBox(height: 8),
+                Bone.text(words: i.isEven ? 1 : 2, fontSize: 13),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /// The vehicle-type bar (Expo `rideTypes`): one card per bookable service,

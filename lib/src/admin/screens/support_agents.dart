@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../widgets/net_image.dart';
 
 /// An admin who can handle support. [priority] is their `admin_access.support`
 /// tag: lowest first; untagged agents come after, by name.
@@ -62,14 +63,7 @@ Future<SupportAgent?> showSupportAgentPicker(
           for (final a in others)
             ListTile(
               key: ValueKey('assign-${a.id}'),
-              leading: CircleAvatar(
-                backgroundImage: a.avatarUrl != null && a.avatarUrl!.startsWith('http')
-                    ? NetworkImage(a.avatarUrl!)
-                    : null,
-                child: a.avatarUrl == null || !a.avatarUrl!.startsWith('http')
-                    ? Text(a.name.characters.first.toUpperCase())
-                    : null,
-              ),
+              leading: NetAvatar(url: a.avatarUrl, fallback: Text(a.name.characters.first.toUpperCase())),
               title: Text(a.name),
               subtitle: a.priority == null ? null : Text('Priority ${a.priority}'),
               trailing: currentId == a.id ? const Icon(Icons.check) : null,
