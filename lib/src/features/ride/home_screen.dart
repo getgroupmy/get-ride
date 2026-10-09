@@ -528,25 +528,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  /// The booking tariff card for the pickup (Admin → Fare tariffs), or null
-  /// for the built-in TEKSI tariff.
-  FareTariff? get _tariff {
+  /// The booking tariff card for [s] at the pickup (Admin → Fare tariffs):
+  /// its own card, its service type's, or one for every service; null for
+  /// the built-in TEKSI tariff.
+  FareTariff? _tariffFor(RideService s) {
     final a = _pickupArea;
     return resolveFareTariff(
       ref.read(fareTariffsProvider).value ?? const [],
       Geo(country: a?.country, state: a?.state, city: a?.city, suburb: a?.suburb),
+      vehicleService: s.id,
+      serviceTypes: _typesOf(s),
     );
   }
 
-  /// The currency the trip is quoted and booked in: the card's.
-  String get _currency => _tariff?.currency ?? AppConfig.currency;
+  /// The currency the trip is quoted and booked in: the selected service's
+  /// card's.
+  String get _currency => _tariffFor(_service)?.currency ?? AppConfig.currency;
 
   double _recommendedFor(RideService s) {
     final b = _basis;
     return b == null
         ? 0
         : _pricing.roundFare(
-            quoteFare(_tariff, b.distanceKm, b.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
+            quoteFare(_tariffFor(s), b.distanceKm, b.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
                 .fare,
           );
   }

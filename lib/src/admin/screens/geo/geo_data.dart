@@ -130,6 +130,30 @@ class GeoAdminRepository {
     ]);
   }
 
+  /// Vehicle Services entries with their Service types, for fares per
+  /// vehicle (Admin → Fare tariffs).
+  Future<List<ServiceVehicle>> serviceVehicles() async {
+    final rows = await _db
+        .from('settings_entries')
+        .select('id, values, position')
+        .eq('category', 'vehicle-services')
+        .order('position');
+    final byId = {
+      for (final r in rows) r['id'] as String: Map<String, dynamic>.from((r['values'] as Map?) ?? const {}),
+    };
+    return [
+      for (final o in sortServices([for (final e in byId.entries) (id: e.key, values: e.value)]))
+        (
+          id: o.id,
+          name: o.name,
+          types: [
+            for (final t in (byId[o.id]!['serviceTypes'] is List ? byId[o.id]!['serviceTypes'] as List : const []))
+              if ('$t'.trim().isNotEmpty) '$t'.trim(),
+          ],
+        ),
+    ];
+  }
+
   // Airport areas ------------------------------------------------------------
 
   Future<List<GeoEntry>> airports() async =>
@@ -171,6 +195,14 @@ final regionVehicleTypesProvider = FutureProvider.autoDispose<List<ServiceOption
   ref.watchLive('settings_entries');
   try {
     return await ref.watch(geoAdminRepositoryProvider).vehicleTypes();
+  } catch (_) {
+    return const [];
+  }
+});
+final serviceVehiclesProvider = FutureProvider.autoDispose<List<ServiceVehicle>>((ref) async {
+  ref.watchLive('settings_entries');
+  try {
+    return await ref.watch(geoAdminRepositoryProvider).serviceVehicles();
   } catch (_) {
     return const [];
   }

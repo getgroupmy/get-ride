@@ -1227,3 +1227,55 @@ Map<String, int> reorderGates(List<String> sortedIds, Map<String, num?> currentP
   }
   return out;
 }
+
+/// The names of the regions at [level] under the given parents (the
+/// Country / States / Cities page's rows), sorted, for pickers.
+List<String> regionNamesAt(
+  List<RegionEntry> all,
+  RegionLevel level, {
+  String country = '',
+  String state = '',
+  String city = '',
+}) {
+  bool eq(String a, String b) => a.trim().toLowerCase() == b.trim().toLowerCase();
+  final names = <String, String>{};
+  for (final r in all) {
+    if (r.level != level) continue;
+    if (level.index >= RegionLevel.state.index && !eq(r.country, country)) continue;
+    if (level.index >= RegionLevel.city.index && !eq(r.state, state)) continue;
+    if (level.index >= RegionLevel.suburb.index && !eq(r.city, city)) continue;
+    final name = switch (level) {
+      RegionLevel.country => r.country,
+      RegionLevel.state => r.state,
+      RegionLevel.city => r.city,
+      RegionLevel.suburb => r.suburb,
+    }.trim();
+    if (name.isNotEmpty) names.putIfAbsent(name.toLowerCase(), () => name);
+  }
+  return names.values.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+}
+
+/// A country row's currency code (Country information), or null.
+String? regionCurrency(List<RegionEntry> all, String country) {
+  for (final r in all) {
+    if (r.level == RegionLevel.country && r.country.trim().toLowerCase() == country.trim().toLowerCase()) {
+      final c = '${r.values['currencyName'] ?? ''}'.trim().toUpperCase();
+      return RegExp(r'^[A-Z]{3}$').hasMatch(c) ? c : null;
+    }
+  }
+  return null;
+}
+
+/// A Vehicle Services entry with the Service Settings types it belongs to
+/// (its "Service type" names).
+typedef ServiceVehicle = ({String id, String name, List<String> types});
+
+/// The vehicles in the type named [typeName] (every vehicle for null).
+List<ServiceVehicle> vehiclesInType(List<ServiceVehicle> all, String? typeName) {
+  if (typeName == null) return all;
+  final want = typeName.trim().toLowerCase();
+  return [
+    for (final v in all)
+      if (v.types.any((t) => t.trim().toLowerCase() == want)) v,
+  ];
+}

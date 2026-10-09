@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/fare_tariff.dart' show fareTariffRowWithoutServices;
 import 'admin_access.dart';
 import 'admin_settings_models.dart';
 import 'screens/support_agents.dart';
@@ -250,11 +251,28 @@ class AdminRepository {
         await _db.from('fare_tariffs').select().order('updated_at', ascending: false),
       );
 
-  Future<void> saveFareTariff(Map<String, dynamic> row) {
-    final data = {...row}..remove('updated_at');
-    return row['id'] == null
-        ? _db.from('fare_tariffs').insert(data..remove('id'))
-        : _updateOne('fare_tariffs', row['id'] as String, data);
+  /// Saves a card. A database before migration 0123 has no service
+  /// columns: a card for every service is saved without them, and one for
+  /// a single service is refused with the reason.
+  Future<void> saveFareTariff(Map<String, dynamic> row) async {
+    Future<void> write(Map<String, dynamic> r) {
+      final data = {...r}..remove('updated_at');
+      return r['id'] == null
+          ? _db.from('fare_tariffs').insert(data..remove('id'))
+          : _updateOne('fare_tariffs', r['id'] as String, data);
+    }
+
+    try {
+      await write(row);
+    } on PostgrestException catch (e) {
+      final missing = e.code == '42703' || e.code == 'PGRST204';
+      if (!missing || !e.message.contains('service')) rethrow;
+      final legacy = fareTariffRowWithoutServices(row);
+      if (legacy == null) {
+        throw StateError('Fares per service need migration 0123 on the database. Cards for every service still save.');
+      }
+      await write(legacy);
+    }
   }
 
   Future<void> deleteFareTariff(String id) => _db.from('fare_tariffs').delete().eq('id', id);
