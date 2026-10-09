@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
+import '../../core/partner_status.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
@@ -122,6 +124,42 @@ Widget _statusPicker({
       ]),
     );
 
+/// Why a partner is being rejected or blocked, shown to them on the Drive
+/// tab. Optional; null when the admin cancels the change.
+Future<String?> _askStatusReason(BuildContext context, String status, String? current) async {
+  final c = TextEditingController(text: current ?? '');
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: Text(status == 'blocked' ? 'Block this partner?' : 'Reject this application?'),
+      content: SizedBox(
+        width: 420,
+        child: TextField(
+          key: const ValueKey('status-reason'),
+          controller: c,
+          maxLines: 3,
+          maxLength: 500,
+          decoration: const InputDecoration(
+            labelText: 'Reason (shown to the partner)',
+            hintText: 'e.g. The permit photo is unreadable. Please upload a clear one.',
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+        FilledButton(
+          key: const ValueKey('status-reason-save'),
+          onPressed: () => Navigator.pop(d, true),
+          child: Text(status == 'blocked' ? 'Block' : 'Reject'),
+        ),
+      ],
+    ),
+  );
+  final text = c.text;
+  c.dispose();
+  return ok == true ? text : null;
+}
+
 /// "Edit" in a detail sheet: opens the ported edit form, then refreshes.
 Widget _editButton(BuildContext ctx, WidgetRef ref, String page, String path, String id, VoidCallback onDone) =>
     ref.read(pageAccessProvider(page)) != AccessLevel.edit
@@ -239,7 +277,17 @@ class AdminPartnersScreen extends ConsumerWidget {
     Future<void> patch(BuildContext ctx, Map<String, dynamic> change) async {
       final ok = await runAdminAction(
         ctx,
-        () => vehicles ? repo.updateVehicle(id, change) : repo.updatePartner(id, change),
+        () async {
+          if (vehicles) return repo.updateVehicle(id, change);
+          try {
+            await repo.updatePartner(id, change);
+          } on PostgrestException catch (e) {
+            // A database without migration 0118 has no reason column: the
+            // status still changes.
+            if (!change.containsKey('status_note') || !e.message.contains('status_note')) rethrow;
+            await repo.updatePartner(id, {...change}..remove('status_note'));
+          }
+        },
         success: 'Saved',
       );
       if (ok) {
@@ -296,6 +344,8 @@ class AdminPartnersScreen extends ConsumerWidget {
                 'Onboarding step': p['onboarding_step'],
                 'Documents OK': p['documents_ok'] == true ? 'Yes' : 'No',
                 'Joined': dateText(p['joined_at']),
+                'Reason shown to partner': p['status_note'],
+                'Sent back for review': dateText(p['resubmitted_at']),
               }),
         _statusPicker(
           context: ctx,
@@ -303,7 +353,15 @@ class AdminPartnersScreen extends ConsumerWidget {
           current: '${p['status'] ?? ''}',
           choices: partnerStatusChoices,
           enabled: canEdit,
-          onPick: (s) => patch(ctx, {'status': s}),
+          onPick: (s) async {
+            if (vehicles) return patch(ctx, {'status': s});
+            String? reason;
+            if (statusTakesReason(s)) {
+              reason = await _askStatusReason(ctx, s, p['status_note'] as String?);
+              if (reason == null || !ctx.mounted) return;
+            }
+            await patch(ctx, partnerStatusPatch(s, reason: reason));
+          },
         ),
         _statusPicker(
           context: ctx,

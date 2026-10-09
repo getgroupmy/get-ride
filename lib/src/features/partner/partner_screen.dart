@@ -11,7 +11,6 @@ import '../../core/destination_mode.dart';
 import '../../core/driver_permit.dart';
 import '../../core/format.dart';
 import '../../core/partner_doc_check.dart';
-import '../../core/partner_onboarding.dart';
 import '../../core/partner_queue.dart';
 import '../../core/request_alert.dart';
 import '../../core/taxi_meter.dart';
@@ -37,6 +36,7 @@ import 'fare_offer.dart';
 import 'partner_menu.dart';
 import 'partner_mode_picker.dart' show pendingPartnerModeProvider;
 import 'request_sheet.dart';
+import 'partner_status_panel.dart';
 import 'vehicle_picker.dart';
 import '../../core/partner_modes.dart';
 import '../../core/vehicle_assignment.dart';
@@ -609,21 +609,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   );
                 }
                 if (!partnerCanDrive(p)) {
-                  if (partnerSetupIncomplete(p.raw)) {
-                    return EmptyState(
-                      icon: Icons.assignment_outlined,
-                      title: 'Finish your partner application',
-                      message: 'A few steps are still missing before an admin can review your account.',
-                      action: FilledButton(onPressed: openOnboarding, child: const Text('Continue')),
-                    );
-                  }
-                  return EmptyState(
-                    icon: Icons.hourglass_empty,
-                    title: 'Account not active yet',
-                    message: 'Your partner status is "${p.status ?? 'unknown'}". '
-                        'You can go online once an admin approves your account.',
-                    action: OutlinedButton(onPressed: openOnboarding, child: const Text('View application')),
-                  );
+                  return PartnerStatusPanel(partner: p, onOpenApplication: openOnboarding);
                 }
                 // The service picked from the rider menu's Partner Mode button:
                 // TEKSI goes on to its permit screen, through the checks.
