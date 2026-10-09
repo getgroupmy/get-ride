@@ -85,6 +85,24 @@ class GeoAdminRepository {
     await Future.wait(regionTables.values.map((t) => _db.from(t).delete().eq('id', id)));
   }
 
+  /// A country's currency, calling code, language, date format, time zone
+  /// and capital (the `region-defaults` edge function, from open country
+  /// data); null when it cannot be reached or knows no such country.
+  Future<Map<String, dynamic>?> regionDefaults(String country) async {
+    try {
+      final res = await _db.functions.invoke(
+        'region-defaults',
+        method: HttpMethod.get,
+        queryParameters: {'country': country.trim()},
+      );
+      final data = res.data;
+      return data is Map ? Map<String, dynamic>.from(data) : null;
+    } catch (e) {
+      if (kDebugMode) debugPrint('region-defaults: $e');
+      return null;
+    }
+  }
+
   /// `service-settings` entries for the per-region services switches.
   Future<List<ServiceOption>> services() async {
     final rows = await _db
