@@ -708,6 +708,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             bookedFor: forWhom,
             currency: _currency,
             pricing: pricing,
+            timezone: rules.timezone,
           );
       if (_autoAccept) {
         ref.read(autoAcceptProvider.notifier).set(req.id, _fareFor(_service, biddingOn: offerMe));

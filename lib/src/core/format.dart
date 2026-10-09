@@ -34,12 +34,31 @@ const currencyStyles = <String, CurrencyStyle>{
   'HKD': (symbol: r'HK$', after: false, decimals: 2),
 };
 
+/// The symbols the admin gives currencies (Admin → Country / States /
+/// Cities → Country information), by code. They win over [currencyStyles]'
+/// own, and give a currency missing from it its symbol.
+final Map<String, String> _regionSymbols = {};
+
+/// Replaces the admin-set currency symbols (code → symbol).
+void setRegionCurrencySymbols(Map<String, String> symbols) {
+  _regionSymbols
+    ..clear()
+    ..addAll({
+      for (final e in symbols.entries)
+        if (e.key.trim().isNotEmpty && e.value.trim().isNotEmpty) e.key.trim().toUpperCase(): e.value.trim(),
+    });
+}
+
 /// [amount] in [currency] (an ISO 4217 code, as stored on a ride). An
 /// unknown code is printed as itself rather than passed off as ringgit.
 String formatMoney(num? amount, [String currency = 'MYR', int? decimals]) {
   if (amount == null) return '—';
   final code = currency.trim().toUpperCase();
-  final style = currencyStyles[code];
+  final known = currencyStyles[code];
+  final admin = _regionSymbols[code];
+  final style = admin == null
+      ? known
+      : (symbol: admin, after: known?.after ?? false, decimals: known?.decimals ?? 2);
   // [decimals] narrows a currency's own (a region with whole fares).
   int places(int own) => decimals == null ? own : (decimals < own ? decimals : own);
   if (style == null) return NumberFormat.currency(symbol: '$code ', decimalDigits: places(2)).format(amount);

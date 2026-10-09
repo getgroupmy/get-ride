@@ -38,6 +38,8 @@ class BiddingRegion {
     this.services,
     this.rules = const [],
     this.timezone,
+    this.currency,
+    this.currencySymbol,
   });
 
   final String country;
@@ -63,6 +65,11 @@ class BiddingRegion {
 
   /// Its Time zone field (IANA), for those rules' times.
   final String? timezone;
+
+  /// Its currency (Country information): an ISO 4217 code, and the symbol
+  /// it is printed with. Null when unset.
+  final String? currency;
+  final String? currencySymbol;
 
   /// 0 country … 3 suburb: the more specific region wins.
   int get specificity => suburb.isNotEmpty
@@ -90,6 +97,8 @@ class BiddingRegion {
       services: _enabledServices(v['services']),
       rules: parseRegionRules(v['rules']),
       timezone: s(v['timezone']).isEmpty ? null : s(v['timezone']),
+      currency: RegExp(r'^[A-Za-z]{3}$').hasMatch(s(v['currencyName'])) ? s(v['currencyName']).toUpperCase() : null,
+      currencySymbol: s(v['currencySymbol']).isEmpty ? null : s(v['currencySymbol']),
     );
   }
 
@@ -124,6 +133,16 @@ const regionTableSelects = {
   'cities': 'country, state, name, values, geofence',
   'suburbs': 'country, state, city, name, values, geofence',
 };
+
+/// The symbols the regions give their currencies, by code (the first
+/// region to name one wins), for [setRegionCurrencySymbols].
+Map<String, String> regionCurrencySymbols(List<BiddingRegion> regions) {
+  final out = <String, String>{};
+  for (final r in regions) {
+    if (r.currency != null && r.currencySymbol != null) out.putIfAbsent(r.currency!, () => r.currencySymbol!);
+  }
+  return out;
+}
 
 /// The switched-on ids of a region's `services` (a JSON string of
 /// `{serviceId: bool}`), or null when none is on.

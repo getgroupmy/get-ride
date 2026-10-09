@@ -17,6 +17,7 @@ import '../core/ride_share.dart';
 import '../core/session_telemetry.dart';
 import '../core/fare_coins.dart';
 import '../core/region_pricing.dart';
+import '../core/format.dart' show setRegionCurrencySymbols;
 import '../core/ride_bidding.dart';
 import '../core/ride_stops.dart';
 import '../core/trip_charges.dart';
@@ -59,6 +60,7 @@ class RideRepository {
     BookedFor? bookedFor,
     String currency = AppConfig.currency,
     RegionPricing pricing = RegionPricing.none,
+    String? timezone,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -98,11 +100,13 @@ class RideRepository {
       if (bookedFor != null) 'booked_for_phone': bookedFor.phone,
       ...metadata,
       if (pricing != RegionPricing.none) ...pricing.toRideColumns(),
+      'timezone': ?timezone,
     };
-    // Stops, the metadata and the region's pricing are extras: a database
-    // without one of their columns (stops needs 0098, pricing 0119) books the
-    // ride without it rather than failing.
-    final optional = {'stops', ...metadata.keys, ...RegionPricing.none.toRideColumns().keys};
+    // Stops, the metadata, the region's pricing and its time zone are
+    // extras: a database without one of their columns (stops needs 0098,
+    // pricing 0119, the zone 0124) books the ride without it rather than
+    // failing.
+    final optional = {'stops', ...metadata.keys, ...RegionPricing.none.toRideColumns().keys, 'timezone'};
     Map<String, dynamic> data;
     for (var attempt = 0;; attempt++) {
       try {
@@ -308,7 +312,10 @@ class RideRepository {
       for (final e in regionTableSelects.entries) table(e.key, e.value),
       legacy(),
     ]);
-    return [for (final p in parts) ...p];
+    final regions = [for (final p in parts) ...p];
+    // Amounts in a region's currency print with the symbol it gives it.
+    setRegionCurrencySymbols(regionCurrencySymbols(regions));
+    return regions;
   }
 
   /// The `service-settings` ids switched on for [pickup]'s region; null when
