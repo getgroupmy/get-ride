@@ -52,8 +52,85 @@
   </script>
   <script defer src="/_vercel/insights/script.js"></script>
   <script defer src="/_vercel/speed-insights/script.js"></script>
+
+  <!--
+    First-load skeleton: what shows while the browser downloads the app,
+    instead of a blank page. A grey outline of the home map and its sheet
+    (or of a list page anywhere else), in the theme the app was last left
+    in, removed with a fade on Flutter's first frame.
+  -->
+  <style>
+    #boot {
+      --bg: #ffffff; --map: #e9edf1; --map2: #dde3e9; --sheet: #ffffff; --block: #e6e9ee; --shine: rgba(255,255,255,.65);
+      position: fixed; inset: 0; z-index: 9999; background: var(--bg); overflow: hidden;
+      transition: opacity .25s ease;
+      font: 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    #boot.dark {
+      --bg: #0b0f17; --map: #161b23; --map2: #1d232d; --sheet: #121212; --block: #232a35; --shine: rgba(255,255,255,.06);
+    }
+    #boot.gone { opacity: 0; pointer-events: none; }
+    #boot .map { position: absolute; inset: 0;
+      background: linear-gradient(115deg, transparent 48%, var(--map2) 48% 50%, transparent 50%) 0 0 / 220px 220px,
+                  linear-gradient(25deg, transparent 62%, var(--map2) 62% 63.5%, transparent 63.5%) 0 0 / 300px 300px,
+                  var(--map); }
+    #boot .b { background: var(--block); border-radius: 10px; position: relative; overflow: hidden; }
+    #boot .b::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, var(--shine), transparent); animation: boot-shine 1.4s infinite; }
+    @keyframes boot-shine { to { transform: translateX(100%); } }
+    @media (prefers-reduced-motion: reduce) { #boot .b::after { animation: none; } #boot { transition: none; } }
+    #boot .menu { position: absolute; top: 16px; left: 16px; width: 40px; height: 40px; border-radius: 50%; }
+    #boot .pin { position: absolute; left: 50%; top: 34%; width: 28px; height: 28px; margin-left: -14px; border-radius: 50%; }
+    #boot .sheet { position: absolute; left: 0; right: 0; bottom: 0; height: 34%; min-height: 230px; background: var(--sheet);
+      border-radius: 20px 20px 0 0; box-shadow: 0 -4px 18px rgba(0,0,0,.12); padding: 10px 16px 16px; box-sizing: border-box; }
+    #boot .handle { width: 36px; height: 4px; border-radius: 2px; margin: 0 auto 16px; }
+    #boot .row { display: flex; gap: 10px; margin-bottom: 14px; }
+    #boot .chip { flex: 1; height: 64px; }
+    #boot .pill { height: 52px; border-radius: 26px; margin-bottom: 16px; }
+    #boot .line { height: 14px; margin-bottom: 12px; }
+    #boot .bar { height: 56px; border-radius: 0; margin: -16px -16px 16px; }
+    #boot .list { position: absolute; inset: 0; padding: 16px; box-sizing: border-box; max-width: 760px; margin: 0 auto; }
+    #boot .item { display: flex; gap: 14px; align-items: center; margin-bottom: 18px; }
+    #boot .dot { width: 40px; height: 40px; border-radius: 50%; flex: none; }
+    #boot .grow { flex: 1; }
+    @media (min-width: 900px) {
+      #boot .sheet { left: 16px; right: auto; top: 16px; bottom: 16px; width: 380px; height: auto; border-radius: 16px; }
+      #boot .menu { display: none; }
+      #boot .pin { left: calc(50% + 200px); top: 50%; }
+    }
+  </style>
 </head>
 <body>
+  <div id="boot" aria-busy="true" aria-label="Loading GET.ride">
+    <script>
+      (function () {
+        var boot = document.getElementById('boot');
+        // The theme the app was last left in (SharedPreferences on the web is
+        // localStorage, JSON-encoded), else the system's.
+        var mode = '';
+        try { mode = String(JSON.parse(localStorage.getItem('flutter.theme_mode') || '""')); } catch (e) {}
+        var dark = mode === 'dark' ||
+          (mode !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) boot.classList.add('dark');
+        var home = location.pathname === '/' || location.pathname === '';
+        boot.insertAdjacentHTML('beforeend', home
+          ? '<div class="map"></div><div class="b menu"></div><div class="b pin"></div>' +
+            '<div class="sheet"><div class="b handle"></div>' +
+            '<div class="row"><div class="b chip"></div><div class="b chip"></div><div class="b chip"></div><div class="b chip"></div></div>' +
+            '<div class="b pill"></div><div class="b line" style="width:70%"></div><div class="b line" style="width:45%"></div></div>'
+          : '<div class="list"><div class="b bar"></div>' +
+            new Array(7).join('<div class="item"><div class="b dot"></div><div class="grow">' +
+              '<div class="b line" style="width:60%"></div><div class="b line" style="width:35%;margin:0"></div></div></div>') +
+            '</div>');
+        function done() {
+          window.removeEventListener('flutter-first-frame', done);
+          boot.classList.add('gone');
+          setTimeout(function () { boot.remove(); }, 300);
+        }
+        window.addEventListener('flutter-first-frame', done);
+      })();
+    </script>
+  </div>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
