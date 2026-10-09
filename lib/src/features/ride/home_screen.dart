@@ -382,20 +382,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _choose(_PinTarget target) async {
+    final pickup = target == _PinTarget.pickup;
     final pick = await showPlaceSearch(
       context,
-      title: target == _PinTarget.pickup ? 'Pickup' : 'Where to?',
+      title: pickup ? 'Pickup' : 'Enter your route',
       near: _me ?? _pickup?.point,
       current: _here,
-      usage: target == _PinTarget.pickup ? GateUsage.pickup : GateUsage.drop,
+      usage: pickup ? GateUsage.pickup : GateUsage.drop,
+      // inDrive's "From" above the destination field.
+      from: pickup ? null : _pickup,
     );
     if (pick == null || !mounted) return;
     if (pick.pickOnMap) {
       setState(() => _pinTarget = target);
-      showInfo(context, 'Tap the map to set the ${target == _PinTarget.pickup ? 'pickup' : 'destination'}');
+      showInfo(context, 'Tap the map to set the ${pickup ? 'pickup' : 'destination'}');
       return;
     }
-    setState(() => target == _PinTarget.pickup ? _pickup = pick.place : _drop = pick.place);
+    setState(() {
+      if (pickup) {
+        _pickup = pick.place;
+        // A saved place's entrance is where to wait.
+        if (pick.entrance.isNotEmpty) _entrance = pick.entrance;
+      } else {
+        _drop = pick.place;
+      }
+    });
     _updateRoute();
   }
 
