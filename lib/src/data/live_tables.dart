@@ -36,6 +36,10 @@ const liveSettingTables = <String>[
   // lands without a pull to refresh (row-level security limits it to the
   // signed-in account's own wallets).
   'wallets',
+  'messaging_devices',
+  'messaging_routes',
+  'sms_outbox',
+  'sms_inbox',
 ];
 
 /// Changes landing this close together are one refetch, not one each (an
