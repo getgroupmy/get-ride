@@ -14,6 +14,8 @@ import 'commerce_data.dart';
 import 'commerce_logic.dart';
 import 'commerce_widgets.dart';
 import 'countries.dart';
+import '../geo/geo_data.dart';
+import '../geo/geo_logic.dart';
 
 final _decimal = [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))];
 
@@ -134,7 +136,9 @@ class EvOrderFeeScreen extends ConsumerWidget {
   static const catKey = 'ev-order-fee';
 
   Future<void> _edit(BuildContext context, WidgetRef ref, List<Entry> all, [Entry? e]) async {
-    final csc = await ref.read(commerceEntriesProvider('country-states-cities').future).catchError((_) => <Entry>[]);
+    // The regions as Admin → Country / States / Cities saves them (the
+    // region tables), for each country's currency.
+    final csc = await ref.read(geoAdminRepositoryProvider).regions().catchError((_) => <RegionEntry>[]);
     if (!context.mounted) return;
     final values = await showFormDialog<Map<String, dynamic>>(
       context,

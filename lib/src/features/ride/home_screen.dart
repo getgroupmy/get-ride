@@ -152,6 +152,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// How fares are priced at the pickup (Admin → Country / States / Cities):
   /// whole amounts, and the tax on top.
   RegionPricing _pricing = RegionPricing.none;
+
+  /// The services the pickup's region switches on (Admin → Country /
+  /// States / Cities); null when it does not restrict them.
+  Set<String>? _regionServices;
   LatLng? _biddingAt;
   bool _routing = false;
   RideRequest? _ongoing;
@@ -461,12 +465,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final onF = orElse(() => rides.biddingEnabledFor(pickup, () => area), false);
     final pricingF = orElse(() => rides.pricingFor(pickup, () => area), RegionPricing.none);
+    final servicesF = orElse(() => rides.servicesFor(pickup, () => area), null);
     final on = await onF;
     final pricing = await pricingF;
+    final services = await servicesF;
     if (mounted && _biddingAt == pickup) {
       setState(() {
         _biddingOn = on;
         _pricing = pricing;
+        _regionServices = services;
       });
     }
   }
@@ -709,6 +716,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             serviceNames: ref.watch(serviceBoxNamesProvider).value ?? const {},
             serviceEnabled: serviceOn,
             newBadge: sections.newBadge,
+            regionServices: _regionServices,
           )
         : const <ServiceBoxView>[];
     void comingSoon(String body) => showDialog<void>(

@@ -132,12 +132,14 @@ class ServiceBoxView {
 }
 
 /// The five boxes as configured. [serviceNames] names the admin services a
-/// box can be linked to (by id).
+/// box can be linked to (by id); [regionServices], when the rider's region
+/// restricts them, are the ones switched on there.
 List<ServiceBoxView> serviceBoxViews(
   Map<String, dynamic> settings, {
   Map<String, String> serviceNames = const {},
   bool serviceEnabled = true,
   bool newBadge = true,
+  Set<String>? regionServices,
 }) {
   final boxes = normalizeBoxes(settings['serviceBoxes']);
   return [
@@ -151,7 +153,10 @@ List<ServiceBoxView> serviceBoxViews(
 
         final preset = serviceBoxPresets[i % serviceBoxPresets.length];
         final linked = str('serviceId') == null ? null : serviceNames[str('serviceId')];
-        final route = serviceEnabled && b['comingSoon'] != true ? flutterRouteFor(str('route')) : null;
+        // A box linked to a service the rider's region has switched off
+        // (Admin → Country / States / Cities) is not available there.
+        final offHere = regionServices != null && str('serviceId') != null && !regionServices.contains(str('serviceId'));
+        final route = serviceEnabled && b['comingSoon'] != true && !offHere ? flutterRouteFor(str('route')) : null;
         return ServiceBoxView(
           index: i,
           title: str('name') ?? linked ?? preset.$1,

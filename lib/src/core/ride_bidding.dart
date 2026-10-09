@@ -33,6 +33,7 @@ class BiddingRegion {
     this.enabled = true,
     this.rings = const [],
     this.pricing,
+    this.services,
   });
 
   final String country;
@@ -47,6 +48,11 @@ class BiddingRegion {
   /// How fares are priced here, when this region sets it (see
   /// [RegionPricing.fromValues]); null leaves it to the parent region.
   final RegionPricing? pricing;
+
+  /// The `service-settings` ids switched on for this region; null when none
+  /// is, which leaves it to the parent region (and, at the top, to every
+  /// service).
+  final Set<String>? services;
 
   /// 0 country … 3 suburb: the more specific region wins.
   int get specificity => suburb.isNotEmpty
@@ -71,8 +77,60 @@ class BiddingRegion {
       enabled: v['biddingEnabled'] != false,
       rings: _parseBoundary(v['boundary']),
       pricing: RegionPricing.fromValues(v),
+      services: _enabledServices(v['services']),
     );
   }
+
+  /// From a row of the admin's region tables (`countries`, `states`,
+  /// `cities`, `suburbs`), which is where Admin → Country / States / Cities
+  /// saves: the path is in the columns, the settings in `values`, the mapped
+  /// boundary in `geofence`.
+  static BiddingRegion? fromRegionRow(String table, Map<String, dynamic> row) {
+    String col(String k) => '${row[k] ?? ''}'.trim();
+    final name = col('name');
+    final path = switch (table) {
+      'countries' => {'country': name},
+      'states' => {'country': col('country'), 'state': name},
+      'cities' => {'country': col('country'), 'state': col('state'), 'city': name},
+      'suburbs' => {'country': col('country'), 'state': col('state'), 'city': col('city'), 'suburb': name},
+      _ => null,
+    };
+    if (path == null) return null;
+    final gf = row['geofence'];
+    return fromValues({
+      if (row['values'] is Map) ...Map<String, dynamic>.from(row['values'] as Map),
+      ...path,
+      if (gf is Map && gf['boundary'] is String) 'boundary': gf['boundary'],
+    });
+  }
+}
+
+/// The region tables, broadest first, with the columns [BiddingRegion.fromRegionRow] reads.
+const regionTableSelects = {
+  'countries': 'name, values, geofence',
+  'states': 'country, name, values, geofence',
+  'cities': 'country, state, name, values, geofence',
+  'suburbs': 'country, state, city, name, values, geofence',
+};
+
+/// The switched-on ids of a region's `services` (a JSON string of
+/// `{serviceId: bool}`), or null when none is on.
+Set<String>? _enabledServices(Object? raw) {
+  Object? j = raw;
+  if (raw is String) {
+    if (raw.isEmpty) return null;
+    try {
+      j = jsonDecode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+  if (j is! Map) return null;
+  final on = {
+    for (final e in j.entries)
+      if (e.value == true || (e.value is num && e.value != 0)) '${e.key}',
+  };
+  return on.isEmpty ? null : on;
 }
 
 List<List<LatLng>> _parseBoundary(Object? raw) {
@@ -152,34 +210,52 @@ bool biddingEnabledAt(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? ar
   return best?.enabled ?? true;
 }
 
-/// The fare pricing at [pickup], chosen the way the bidding switch is: the
-/// most specific region with a mapped boundary containing the point, else the
-/// most specific region matching [area]'s names — counting only regions that
-/// set their own pricing; none is decimals and no tax.
-RegionPricing pricingAt(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? area}) {
-  final priced = [for (final r in regions) if (r.pricing != null) r];
-  if (priced.isEmpty) return RegionPricing.none;
+/// The setting [pick] reads at [pickup]: the most specific region with a
+/// mapped boundary containing the point, else the most specific region
+/// matching [area]'s names (suburbs skipped, as the geocoder cannot be trusted
+/// at that level) — counting only regions where [pick] is not null.
+T? _settingAt<T extends Object>(
+  List<BiddingRegion> regions,
+  LatLng? pickup,
+  AreaInfo? area,
+  T? Function(BiddingRegion) pick,
+) {
+  final set = [for (final r in regions) if (pick(r) != null) r];
+  if (set.isEmpty) return null;
   if (pickup != null) {
     BiddingRegion? best;
-    for (final r in priced) {
+    for (final r in set) {
       if (r.rings.any((ring) => ring.length >= 3 && _inRing(pickup, ring)) &&
           (best == null || r.specificity > best.specificity)) {
         best = r;
       }
     }
-    if (best != null) return best.pricing!;
+    if (best != null) return pick(best);
   }
   final country = _n(area?.country);
-  if (country.isEmpty) return RegionPricing.none;
+  if (country.isEmpty) return null;
   BiddingRegion? best;
-  for (final r in priced) {
+  for (final r in set) {
     if (_n(r.country) != country || r.suburb.isNotEmpty) continue;
     if (r.state.isNotEmpty && _n(r.state) != _n(area?.state)) continue;
     if (r.city.isNotEmpty && _n(r.city) != _n(area?.city)) continue;
     if (best == null || r.specificity > best.specificity) best = r;
   }
-  return best?.pricing ?? RegionPricing.none;
+  return best == null ? null : pick(best);
 }
+
+/// The fare pricing at [pickup], chosen the way the bidding switch is,
+/// counting only regions that set their own pricing; none is decimals and no
+/// tax. It prices the booking flow only: Meter Digital's fares come from its
+/// own rate cards and are never rounded by a region.
+RegionPricing pricingAt(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? area}) =>
+    _settingAt(regions, pickup, area, (r) => r.pricing) ?? RegionPricing.none;
+
+/// The `service-settings` ids a region switches on at [pickup], chosen the
+/// same way and counting only regions that switch at least one on; null
+/// when none does, which leaves every service available.
+Set<String>? servicesAt(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? area}) =>
+    _settingAt(regions, pickup, area, (r) => r.services);
 
 // ---- Rider: raising the fare ----------------------------------------------
 
