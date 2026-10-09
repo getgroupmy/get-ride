@@ -65,14 +65,16 @@ void main() {
 
   group('vehicleApproval', () {
     test('blocked and rejected win over everything', () {
-      expect(vehicleApproval({'status': 'blocked'}).tone, VehicleApprovalTone.blocked);
-      expect(vehicleApproval({'status': 'approved', 'permit': 'rejected'}).tone, VehicleApprovalTone.rejected);
+      expect(vehicleApproval({'status': 'blocked', 'documents_ok': true}).tone, VehicleApprovalTone.blocked);
+      expect(vehicleApproval({'status': 'rejected', 'documents_ok': true}).tone, VehicleApprovalTone.rejected);
     });
 
-    test('approved needs status, a verified permit and the documents', () {
+    test('approved is an approved status with the documents; the permit column is not a second gate', () {
       final ok = {'status': 'approved', 'permit': 'verified', 'documents_ok': true};
       expect(vehicleApproval(ok).label, 'Approved');
-      expect(vehicleApproval({...ok, 'permit': 'pending'}).tone, VehicleApprovalTone.pending);
+      expect(vehicleApproval({...ok, 'permit': 'pending'}).tone, VehicleApprovalTone.approved);
+      expect(vehicleApproval({...ok, 'status': 'permit-verified'}).tone, VehicleApprovalTone.approved);
+      expect(vehicleApproval({...ok, 'status': 'permit-pending'}).tone, VehicleApprovalTone.pending);
       expect(vehicleApproval({...ok, 'documents_ok': false}).tone, VehicleApprovalTone.pending);
     });
   });

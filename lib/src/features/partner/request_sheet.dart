@@ -382,14 +382,14 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                     if (r.distanceKm != null)
                       Text('~${formatDistance(r.distanceKm)}', style: t.textTheme.bodyMedium?.copyWith(color: muted)),
                     Text(
-                      formatMoney(fare, r.currency),
+                      r.fareText(fare),
                       key: const ValueKey('request-fare'),
                       style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                     ),
                     if (widget.raisedFrom case final was?)
                       Text(
-                        'The passenger raised the fare from ${formatMoney(was, r.currency)} '
-                        'to ${formatMoney(fare, r.currency)}.',
+                        'The passenger raised the fare from ${r.fareText(was)} '
+                        'to ${r.fareText(fare)}.',
                         key: const ValueKey('request-alert-raised'),
                         style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w600),
                       ),
@@ -435,7 +435,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                   key: const ValueKey('request-alert-accept'),
                   style: _accent(context),
                   onPressed: off ? null : widget.onAccept,
-                  child: Text('Accept for ${formatMoney(fare, r.currency)}', style: const TextStyle(fontSize: 17)),
+                  child: Text('Accept for ${r.fareText(fare)}', style: const TextStyle(fontSize: 17)),
                 ),
                 if (offer != null && presets.isNotEmpty) ...[
                   const SizedBox(height: 12),
@@ -448,7 +448,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                           key: ValueKey('request-offer-$i'),
                           style: _offerStyle(context),
                           onPressed: off ? null : () => offer(presets[i]),
-                          child: FittedBox(child: Text(formatMoney(presets[i], r.currency))),
+                          child: FittedBox(child: Text(r.fareText(presets[i]))),
                         ),
                       ),
                     SizedBox(

@@ -11,7 +11,6 @@ import '../../core/destination_mode.dart';
 import '../../core/driver_permit.dart';
 import '../../core/format.dart';
 import '../../core/partner_doc_check.dart';
-import '../../core/partner_onboarding.dart';
 import '../../core/partner_queue.dart';
 import '../../core/request_alert.dart';
 import '../../core/taxi_meter.dart';
@@ -37,6 +36,7 @@ import 'fare_offer.dart';
 import 'partner_menu.dart';
 import 'partner_mode_picker.dart' show pendingPartnerModeProvider;
 import 'request_sheet.dart';
+import 'partner_status_panel.dart';
 import 'vehicle_picker.dart';
 import '../../core/partner_modes.dart';
 import '../../core/vehicle_assignment.dart';
@@ -300,6 +300,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     );
     if (update == true && mounted) context.push('/drive/onboarding');
     return false;
+  }
+
+  /// TEKSI from the mode picker or the service list (Expo `partner-teksi`):
+  /// the documents and the vehicle, then the permit screen, where Start
+  /// Pickup holds the hire to the permit's checks.
+  Future<void> _openTeksi(Partner partner) async {
+    if (!await _documentsCleared(partner, teksi: true)) return;
+    if (!mounted || !await _vehicleReady(partner, teksi: true)) return;
+    if (mounted) context.push('/drive/permit');
   }
 
   Future<void> _openMeter(Partner partner) async {
@@ -601,29 +610,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   );
                 }
                 if (!partnerCanDrive(p)) {
-                  if (partnerSetupIncomplete(p.raw)) {
-                    return EmptyState(
-                      icon: Icons.assignment_outlined,
-                      title: 'Finish your partner application',
-                      message: 'A few steps are still missing before an admin can review your account.',
-                      action: FilledButton(onPressed: openOnboarding, child: const Text('Continue')),
-                    );
-                  }
-                  return EmptyState(
-                    icon: Icons.hourglass_empty,
-                    title: 'Account not active yet',
-                    message: 'Your partner status is "${p.status ?? 'unknown'}". '
-                        'You can go online once an admin approves your account.',
-                    action: OutlinedButton(onPressed: openOnboarding, child: const Text('View application')),
-                  );
+                  return PartnerStatusPanel(partner: p, onOpenApplication: openOnboarding);
                 }
                 // The service picked from the rider menu's Partner Mode button:
-                // TEKSI goes on to the meter, through its checks.
+                // TEKSI goes on to its permit screen, through the checks.
                 if (ref.watch(pendingPartnerModeProvider) != null) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (!mounted) return;
                     final mode = ref.read(pendingPartnerModeProvider.notifier).take();
-                    if (mode != null && mode.isTeksi) _openMeter(p);
+                    if (mode != null && mode.isTeksi) _openTeksi(p);
                   });
                 }
                 final modes = partnerModeOptions(
@@ -669,7 +664,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                               title: Text(m.name),
                               subtitle: m.description == null ? null : Text(m.description!),
                               trailing: Icon(m.isTeksi ? Icons.speed : (_online ? Icons.check_circle : Icons.chevron_right)),
-                              onTap: () => m.isTeksi ? _openMeter(p) : (_online ? null : _toggle(true)),
+                              onTap: () => m.isTeksi ? _openTeksi(p) : (_online ? null : _toggle(true)),
                             ),
                         ]),
                       ),
@@ -1006,7 +1001,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(child: Text(r.service ?? 'Ride', style: t.textTheme.titleMedium)),
-            Text(formatMoney(r.effectiveFare, r.currency),
+            Text(r.fareText(r.effectiveFare),
                 style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
           ]),
           if (destinationOn && _towardDestination(r))
@@ -1056,7 +1051,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           if (r.offeredFare != null && r.partnerId != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text('A driver has offered ${formatMoney(r.offeredFare, r.currency)}',
+              child: Text('A driver has offered ${r.fareText(r.offeredFare)}',
                   style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
             ),
           const SizedBox(height: 8),
@@ -1076,7 +1071,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 onPressed: _accepting != null ? null : () => _accept(r, partner),
                 child: _accepting == r.id
                     ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}', textAlign: TextAlign.center),
+                    : Text('Accept ${r.fareText(r.effectiveFare)}', textAlign: TextAlign.center),
               ),
             ),
           ]),
@@ -1117,8 +1112,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                'The passenger raised the fare from ${formatMoney(was, r.currency)} '
-                'to ${formatMoney(r.effectiveFare, r.currency)}.',
+                'The passenger raised the fare from ${r.fareText(was)} '
+                'to ${r.fareText(r.effectiveFare)}.',
                 key: const ValueKey('request-alert-raised'),
                 style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
@@ -1154,7 +1149,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 ),
               ]),
             ),
-            Text(formatMoney(r.effectiveFare, r.currency),
+            Text(r.fareText(r.effectiveFare),
                 style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
           ]),
           const SizedBox(height: 10),
@@ -1221,7 +1216,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 onPressed: _accepting != null ? null : () => _accept(r, partner),
                 child: _accepting == r.id
                     ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}', textAlign: TextAlign.center),
+                    : Text('Accept ${r.fareText(r.effectiveFare)}', textAlign: TextAlign.center),
               ),
             ),
           ]),

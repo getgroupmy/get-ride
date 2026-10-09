@@ -335,7 +335,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               FilledButton(
                 key: const ValueKey('prompt-raise'),
                 onPressed: () => Navigator.pop(c, true),
-                child: Text('Raise fare to ${formatMoney(fare + searchPromptRaise, r.currency)}'),
+                child: Text('Raise fare to ${r.fareText(fare + searchPromptRaise)}'),
               ),
               TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep my fare')),
             ],
@@ -345,7 +345,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     );
     if (raise == true && mounted && widget.ride.status == RideStatus.open) {
       await _raise(searchPromptRaise);
-      if (mounted) showInfo(context, 'You raised the fare to ${formatMoney(fare + searchPromptRaise, r.currency)}');
+      if (mounted) showInfo(context, 'You raised the fare to ${r.fareText(fare + searchPromptRaise)}');
     }
   }
 
@@ -576,7 +576,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         cardKey: const ValueKey('ride-offer'),
         acceptKey: const ValueKey('accept-offer'),
         declineKey: const ValueKey('decline-offer'),
-        price: formatMoney(offer.amount, r.currency),
+        price: r.fareText(offer.amount),
         yourFare: r.fare != null && (offer.amount - r.fare!).abs() < 0.005,
         progress: _offerSeen == null ? 1 : offerProgress(_now.difference(_offerSeen!), counterOfferWindow),
         name: offer.name,
@@ -596,7 +596,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         cardKey: ValueKey('demo-offer-${o.id}'),
         acceptKey: ValueKey('demo-accept-${o.id}'),
         declineKey: ValueKey('demo-decline-${o.id}'),
-        price: formatMoney(o.price, r.currency),
+        price: r.fareText(o.price),
         yourFare: r.fare != null && (o.price - r.fare!).abs() < 0.005,
         progress: offerProgress(_now.difference(at), demoOfferLife),
         name: o.name,
@@ -620,7 +620,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final current = r.fare ?? 0;
     final quoted = _quoted ?? current;
     final target = _target;
-    String money(double v) => formatMoney(v, r.currency);
+    String money(double v) => r.fareText(v);
     final limit = ref.watch(autoAcceptProvider)[r.id];
     return [
       if (_viewers.any)
@@ -795,7 +795,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                     '${formatDistance(r.distanceKm)} · ${formatDuration(r.durationMin)} · ${r.paymentMode}',
                   ),
                   trailing: Text(
-                    formatMoney(r.effectiveFare, r.currency),
+                    r.fareText(r.effectiveFare),
                     style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                   ),
                 ),
@@ -825,12 +825,19 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               child: Text(r.status == RideStatus.onTrip ? 'Request cancellation' : 'Cancel ride'),
             ),
           if (r.status == RideStatus.completed &&
-              ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0 || r.fareCoinsValue > 0))
+              ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0 || r.fareCoinsValue > 0 || r.taxAmount > 0))
             Card(
               key: const ValueKey('ride-charges'),
               child: Column(children: [
                 ListTile(dense: true, title: const Text('Trip fare'),
-                    trailing: Text(formatMoney(r.effectiveFare, r.currency))),
+                    trailing: Text(r.fareText(r.effectiveFare))),
+                if (r.taxAmount > 0)
+                  ListTile(
+                    key: const ValueKey('ride-tax'),
+                    dense: true,
+                    title: Text(r.pricing.tax!.label),
+                    trailing: Text(formatMoney(r.taxAmount, r.currency)),
+                  ),
                 if ((r.tollCharges ?? 0) > 0)
                   ListTile(dense: true, title: const Text('Tolls'),
                       trailing: Text(formatMoney(r.tollCharges, r.currency))),

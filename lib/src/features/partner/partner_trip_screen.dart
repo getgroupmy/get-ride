@@ -342,10 +342,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             "You haven't reached the drop-off yet.",
             if (driven != null && planned != null)
               'The fare is recalculated for the ${driven.toStringAsFixed(1)} km driven of the '
-                  '${planned.toStringAsFixed(1)} km booked: ${formatMoney(fare, r.currency)} '
-                  'instead of ${formatMoney(agreed, r.currency)}.'
+                  '${planned.toStringAsFixed(1)} km booked: ${r.fareText(fare)} '
+                  'instead of ${r.fareText(agreed)}.'
             else
-              "The distance driven can't be measured, so the booked fare of ${formatMoney(agreed, r.currency)} stands.",
+              "The distance driven can't be measured, so the booked fare of ${r.fareText(agreed)} stands.",
           ].join('\n\n'),
         ),
         actions: [
@@ -460,7 +460,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             ListTile(
               title: Text(r.service ?? 'Ride'),
               subtitle: Text('${formatDistance(r.distanceKm)} · ${formatDuration(r.durationMin)}'),
-              trailing: Text(formatMoney(r.effectiveFare, r.currency),
+              trailing: Text(r.fareText(r.effectiveFare),
                   style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
             ),
           ]),
@@ -499,7 +499,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           BusyButton.filled(
             key: const ValueKey('trip-complete'),
             onPressed: _busy ? null : () => _complete(r),
-            child: Text('Complete trip · collect ${formatMoney(r.effectiveFare, r.currency)}'),
+            child: Text('Complete trip · collect ${r.fareText(r.effectiveFare)}'),
           ),
         if (driverMayCancel(r.status))
           BusyButton.text(
@@ -649,6 +649,9 @@ class _CollectCard extends StatelessWidget {
       child: Column(children: [
         ListTile(
           title: const Text('Total due'),
+          subtitle: r.taxAmount > 0
+              ? Text('Includes ${r.pricing.tax!.label}: ${formatMoney(r.taxAmount, r.currency)}')
+              : null,
           trailing: Text(formatMoney(r.totalDue, r.currency)),
         ),
         if (coins > 0)

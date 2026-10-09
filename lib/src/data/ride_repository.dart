@@ -16,6 +16,7 @@ import '../core/ride_request_metadata.dart';
 import '../core/ride_share.dart';
 import '../core/session_telemetry.dart';
 import '../core/fare_coins.dart';
+import '../core/region_pricing.dart';
 import '../core/ride_bidding.dart';
 import '../core/ride_stops.dart';
 import '../core/trip_charges.dart';
@@ -57,6 +58,7 @@ class RideRepository {
     Map<String, Object> metadata = const {},
     BookedFor? bookedFor,
     String currency = AppConfig.currency,
+    RegionPricing pricing = RegionPricing.none,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -95,10 +97,12 @@ class RideRepository {
       if (bookedFor != null) 'booked_for_name': bookedFor.name,
       if (bookedFor != null) 'booked_for_phone': bookedFor.phone,
       ...metadata,
+      if (pricing != RegionPricing.none) ...pricing.toRideColumns(),
     };
-    // Stops and the metadata are extras: a database without one of their
-    // columns (stops needs 0098) books the ride without it rather than failing.
-    final optional = {'stops', ...metadata.keys};
+    // Stops, the metadata and the region's pricing are extras: a database
+    // without one of their columns (stops needs 0098, pricing 0119) books the
+    // ride without it rather than failing.
+    final optional = {'stops', ...metadata.keys, ...RegionPricing.none.toRideColumns().keys};
     Map<String, dynamic> data;
     for (var attempt = 0;; attempt++) {
       try {
@@ -272,6 +276,18 @@ class RideRepository {
     } catch (_) {
       return const [];
     }
+  }
+
+  /// How fares are priced at [pickup] (whole amounts, tax): the region's
+  /// own setting, found as the bidding switch is. None when unreadable.
+  Future<RegionPricing> pricingFor(LatLng pickup, Future<AreaInfo?> Function() area) async {
+    final regions = await biddingRegions();
+    if (!regions.any((r) => r.pricing != null)) return RegionPricing.none;
+    AreaInfo? names;
+    try {
+      names = await area().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    return pricingAt(regions, pickup, area: names);
   }
 
   /// Whether the rider may be bid on at [pickup] (Expo `useRegionBidding`).

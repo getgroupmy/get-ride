@@ -534,12 +534,27 @@ class RegionForm {
     this.dateFormat = '',
     this.callingCode = '',
     this.timezone = '',
+    this.pricingOverride = false,
+    this.wholeFare = false,
+    this.taxEnabled = false,
+    this.taxName = '',
+    this.taxKind = 'percent',
+    this.taxAmount = '',
   }) : services = services ?? {};
 
   String country, state, city, suburb, lat, lng;
   Map<String, bool> services;
   bool biddingEnabled;
   String currencyName, currencySymbol, emergencyNumber, languageCode, dateFormat, callingCode, timezone;
+
+  /// Fare pricing (see core/region_pricing.dart). A country always sets it;
+  /// a state, city or suburb only with [pricingOverride], else its parent's
+  /// applies.
+  bool pricingOverride, wholeFare, taxEnabled;
+  String taxName, taxKind, taxAmount;
+
+  /// Whether this row's own pricing applies.
+  bool get setsPricing => isCountryRow || pricingOverride;
 
   bool get isCountryRow => state.trim().isEmpty && city.trim().isEmpty && suburb.trim().isEmpty;
 
@@ -566,6 +581,12 @@ class RegionForm {
       dateFormat: str('dateFormat'),
       callingCode: str('callingCode'),
       timezone: str('timezone'),
+      pricingOverride: v['pricingOverride'] == true,
+      wholeFare: v['wholeFare'] == true,
+      taxEnabled: v['taxEnabled'] == true,
+      taxName: str('taxName'),
+      taxKind: v['taxType'] == 'fixed' ? 'fixed' : 'percent',
+      taxAmount: v['taxAmount'] is num ? '${v['taxAmount']}' : str('taxAmount'),
     );
   }
 
@@ -590,6 +611,16 @@ class RegionForm {
     if (sb.isEmpty) values['timezone'] = timezone.trim();
     values['services'] = encodeServicesMap(services);
     values['biddingEnabled'] = biddingEnabled;
+    // Pricing is written in full, or cleared, so an old value never lingers
+    // under the saved one (the caller merges over the stored values).
+    final own = setsPricing;
+    final tax = own && taxEnabled;
+    if (!isCountryRow) values['pricingOverride'] = pricingOverride;
+    values['wholeFare'] = own ? wholeFare : null;
+    values['taxEnabled'] = own ? taxEnabled : null;
+    values['taxName'] = tax ? taxName.trim() : null;
+    values['taxType'] = tax ? taxKind : null;
+    values['taxAmount'] = tax ? double.tryParse(taxAmount.trim()) : null;
     return values;
   }
 }

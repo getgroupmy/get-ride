@@ -79,25 +79,41 @@ Map<String, dynamic> newVehicleStub({
 
 enum VehicleApprovalTone { approved, pending, rejected, blocked }
 
-/// How a vehicle's review reads to its partner (Expo `approvalState`).
+/// The vehicle statuses an admin has approved: `approved`, and
+/// `permit-verified` (the admin's "Permit Verified" on an approved vehicle).
+/// The `permit-pending` / `permit-non-verified` statuses are still the
+/// review queue. The `permit` column is not a second approval: a vehicle
+/// keeps its default `pending` permit when the admin approves the status, so
+/// reading it as one left approved vehicles "Pending review" for good.
+const approvedVehicleStatuses = {'approved', 'permit-verified'};
+
+/// The statuses that lock a vehicle; the driver contacts an admin.
+const lockedVehicleStatuses = {'blocked', 'deleted', 'rejected'};
+
+/// Whether [v] is approved to drive: an approved status with its documents
+/// complete.
+bool vehicleApproved(Map<String, dynamic> v) =>
+    approvedVehicleStatuses.contains(_text(v['status']).toLowerCase()) && v['documents_ok'] == true;
+
+/// How a vehicle's review reads to its partner (Expo `approvalState`), in
+/// step with what the vehicle picker lets them drive.
 ({String label, VehicleApprovalTone tone, String description}) vehicleApproval(Map<String, dynamic> v) {
   final status = _text(v['status']).toLowerCase();
-  final permit = _text(v['permit']).toLowerCase();
-  if (status == 'blocked') {
+  if (status == 'blocked' || status == 'deleted') {
     return (
       label: 'Blocked',
       tone: VehicleApprovalTone.blocked,
       description: 'This vehicle has been blocked. Please contact support.',
     );
   }
-  if (status == 'rejected' || permit == 'rejected') {
+  if (status == 'rejected') {
     return (
       label: 'Rejected',
       tone: VehicleApprovalTone.rejected,
       description: 'This vehicle was rejected. Check the documents below and upload any rejected ones again.',
     );
   }
-  if (status == 'approved' && (permit == 'approved' || permit == 'verified') && v['documents_ok'] == true) {
+  if (vehicleApproved(v)) {
     return (
       label: 'Approved',
       tone: VehicleApprovalTone.approved,

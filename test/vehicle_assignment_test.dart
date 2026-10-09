@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/vehicle_drivers.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/vehicle_assignment.dart';
+import 'package:get_ride/src/core/vehicle_onboarding.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
 import 'package:get_ride/src/features/partner/vehicle_picker.dart';
 import 'package:get_ride/src/providers.dart';
@@ -99,6 +100,50 @@ List<AssignableVehicle> _list({String? driving}) => buildAssignableVehicles(
 );
 
 void main() {
+  group('approval: the picker and the review card agree', () {
+    AssignableStatus pick(Map<String, dynamic> v) => buildAssignableVehicles(
+      owned: [v],
+      assignments: const [],
+      assignedVehicles: const [],
+      mySessionVehicleId: null,
+    ).single.status;
+
+    test("an approved vehicle is driveable whatever its permit column says", () {
+      // A new vehicle keeps the default `pending` permit when the admin
+      // approves the status: it used to stay "Pending review" for good.
+      for (final permit in ['pending', 'none', 'verified', 'non-verified']) {
+        final v = {..._car('a', 'A 1'), 'permit': permit};
+        expect(pick(v), AssignableStatus.available, reason: permit);
+        expect(vehicleApproval(v).label, 'Approved', reason: permit);
+      }
+    });
+
+    test('"Permit Verified" is approved; the permit queues are still review', () {
+      final verified = _car('a', 'A 1', status: 'permit-verified');
+      expect(pick(verified), AssignableStatus.available);
+      expect(vehicleApproval(verified).label, 'Approved');
+      for (final s in ['unapproved', 'unapproved-docs', 'permit-pending', 'permit-non-verified']) {
+        final v = _car('a', 'A 1', status: s);
+        expect(pick(v), AssignableStatus.pendingReview, reason: s);
+        expect(vehicleApproval(v).label, 'Pending review', reason: s);
+      }
+    });
+
+    test('documents still missing keep an approved vehicle out of the picker', () {
+      final v = _car('a', 'A 1', docs: false);
+      expect(pick(v), isNot(AssignableStatus.available));
+      expect(vehicleApproval(v).label, 'Pending review');
+    });
+
+    test('blocked, deleted and rejected lock it', () {
+      for (final s in ['blocked', 'deleted', 'rejected']) {
+        expect(pick(_car('a', 'A 1', status: s)), AssignableStatus.contactAdmin, reason: s);
+      }
+      expect(vehicleApproval(_car('a', 'A 1', status: 'blocked')).label, 'Blocked');
+      expect(vehicleApproval(_car('a', 'A 1', status: 'rejected')).label, 'Rejected');
+    });
+  });
+
   group('assignment logic', () {
     test('roles, states and order', () {
       final list = buildAssignableVehicles(
