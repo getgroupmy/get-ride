@@ -123,3 +123,16 @@ RouteEstimate? parseRouteEstimate(Object? payload) {
 }) => ai == null
     ? (distanceKm: routeKm, durationMin: routeMin)
     : (distanceKm: ai.distanceKm, durationMin: ai.durationMin);
+
+/// Whether a reply from `ai-route-proxy` with no estimate means the AI fare
+/// service is on but could not answer (no keys, every key resting or
+/// failing), which is when Expo warns "Unable to fetch current traffic
+/// conditions". The service switched off, or an estimate, is no warning.
+bool aiEstimateUnavailable(Object? payload) {
+  if (payload is! Map || payload['ok'] != true) return false;
+  if (payload['estimate'] is Map) return false;
+  return const {'no_keys', 'keys_cooling_down', 'all_keys_failed'}.contains(payload['reason']);
+}
+
+const trafficUnavailableTitle = 'Unable to fetch current traffic conditions';
+const trafficUnavailableMessage = 'Actual travel time and distance may vary';

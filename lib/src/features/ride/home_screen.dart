@@ -73,6 +73,9 @@ final nearbyDriversProvider = FutureProvider.autoDispose.family<Map<String, doub
 /// at, with the pickup in the middle and the nearby streets around it.
 const homeStreetZoom = 17.0;
 
+/// How long the confirm screen waits for the AI fare estimate.
+const aiEstimateTimeout = Duration(seconds: 30);
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -313,16 +316,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // only knows pickup to drop-off, so a trip with stops is priced on the
     // route through them instead.
     final via = [for (final p in _stops) p.point];
-    final aiFuture =
-        via.isEmpty ? ref.read(routeEstimateRepositoryProvider).estimate(a.point, b.point) : Future.value(null);
+    final aiFuture = via.isEmpty
+        // The proxy may try several keys; past this the map route prices it.
+        ? ref
+              .read(routeEstimateRepositoryProvider)
+              .estimateDetailed(a.point, b.point)
+              .timeout(aiEstimateTimeout, onTimeout: () => null)
+        : Future.value(null);
     final r = await ref.read(geoServiceProvider).route(a.point, b.point, via: via);
     if (!mounted || seq != _routeSeq) return;
+    setState(() => _route = r);
+    // Both before the fare shows (Expo's "Calculating fare" overlay stays up
+    // through the AI estimate): the fare is never shown, or booked, on the
+    // map route only to change a moment later.
+    final ai = await aiFuture;
+    if (!mounted || seq != _routeSeq) return;
     setState(() {
-      _route = r;
+      _ai = ai?.estimate;
       _routing = false;
     });
-    final ai = await aiFuture;
-    if (mounted && seq == _routeSeq) setState(() => _ai = ai);
+    if (ai != null && ai.unavailable && mounted) {
+      unawaited(showDialog<void>(
+        context: context,
+        builder: (c) => AlertDialog(
+          key: const ValueKey('traffic-unavailable'),
+          title: const Text(trafficUnavailableTitle),
+          content: const Text(trafficUnavailableMessage),
+          actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
+        ),
+      ));
+    }
   }
 
   ({double distanceKm, double durationMin})? get _basis {
@@ -1092,17 +1115,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       footer: wide ? footer : null,
     );
 
+    // While the fare is being worked out (Expo's "Calculating fare").
+    Widget calculating(Widget body) => Stack(children: [
+          Positioned.fill(child: body),
+          if (confirming && _routing) const Positioned.fill(child: CalculatingFareOverlay()),
+        ]);
     if (wide) {
       return Scaffold(
-        body: Row(children: [
+        body: calculating(Row(children: [
           SizedBox(width: 420, child: SafeArea(child: SingleChildScrollView(child: panel))),
           const VerticalDivider(width: 1),
           Expanded(child: map),
-        ]),
+        ])),
       );
     }
     return Scaffold(
-      body: PopScope(
+      body: calculating(PopScope(
         // Back on the confirm step leaves it, as its back arrow does.
         canPop: !confirming,
         onPopInvokedWithResult: (didPop, _) {
@@ -1129,7 +1157,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
           front: confirming && !wide && layout.promoBar && layout.promoBarInFront ? Stack(children: [promoBar()]) : null,
         ),
-      ),
+      )),
     );
   }
 }

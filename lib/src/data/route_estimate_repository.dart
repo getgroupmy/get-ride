@@ -13,7 +13,11 @@ class RouteEstimateRepository {
   RouteEstimateRepository(this._db);
   final SupabaseClient _db;
 
-  Future<RouteEstimate?> estimate(LatLng from, LatLng to) async {
+  Future<RouteEstimate?> estimate(LatLng from, LatLng to) async => (await estimateDetailed(from, to))?.estimate;
+
+  /// The estimate and whether the AI service is on but could not give one
+  /// ([aiEstimateUnavailable]); null when the function could not be reached.
+  Future<({RouteEstimate? estimate, bool unavailable})?> estimateDetailed(LatLng from, LatLng to) async {
     try {
       final res = await _db.functions.invoke(
         'ai-route-proxy',
@@ -22,7 +26,7 @@ class RouteEstimateRepository {
           'destination': {'latitude': to.latitude, 'longitude': to.longitude},
         },
       );
-      return parseRouteEstimate(res.data);
+      return (estimate: parseRouteEstimate(res.data), unavailable: aiEstimateUnavailable(res.data));
     } catch (_) {
       return null;
     }
