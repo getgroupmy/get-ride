@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/messaging.dart';
 import '../../data/live_tables.dart';
@@ -20,6 +21,9 @@ import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 
 const messagingPage = 'admin-settings-messaging';
+
+/// The latest GET.ride Gateway APK, published by .github/workflows/gateway.yml.
+const gatewayApkUrl = 'https://github.com/getgroupmy/get-ride/releases/download/gateway-latest/getride-gateway.apk';
 
 final _devicesProvider = FutureProvider.autoDispose((ref) {
   ref.watchLive('messaging_devices');
@@ -70,15 +74,33 @@ class AdminMessagingScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.info_outline),
-                        title: const Text('Which device carries each channel'),
-                        subtitle: Text(
-                          'SMS go out through a phone running the GET.ride Gateway app, from its SIM. '
-                          'WhatsApp goes through your WhatsApp Business (Cloud API) number. Support calls '
-                          'are in-app VoIP calls: pick the devices that ring for them.',
-                          style: t.textTheme.bodySmall,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.info_outline),
+                            title: const Text('Which device carries each channel'),
+                            subtitle: Text(
+                              'SMS go out through a phone running the GET.ride Gateway app, from its SIM. '
+                              'WhatsApp goes through your WhatsApp Business (Cloud API) number. Support calls '
+                              'are in-app VoIP calls: pick the devices that ring for them.',
+                              style: t.textTheme.bodySmall,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(56, 0, 16, 12),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: OutlinedButton.icon(
+                                key: const ValueKey('messaging-gateway-download'),
+                                icon: const Icon(Icons.download_outlined),
+                                label: const Text('Download the Gateway app (Android)'),
+                                onPressed: () =>
+                                    launchUrl(Uri.parse(gatewayApkUrl), mode: LaunchMode.externalApplication),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 8),

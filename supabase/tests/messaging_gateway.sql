@@ -1,7 +1,7 @@
 -- ============================================================================
--- Regression test for migration 0120: devices register themselves, only a
--- gateway carries SMS, a gateway gets only the jobs routed to it, and the
--- routes are the admin's.
+-- Regression test for migrations 0120 / 0121: devices register themselves,
+-- only an admin's gateway carries SMS, a gateway gets only the jobs routed to
+-- it, and the routes are the admin's.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/messaging_gateway.sql
 --
@@ -12,6 +12,13 @@ begin;
 insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000120a1'),  -- runs the gateway phone
   ('00000000-0000-0000-0000-0000000120a2')   -- someone else
+on conflict do nothing;
+insert into public.profiles (id) select id from auth.users
+ where id in ('00000000-0000-0000-0000-0000000120a1', '00000000-0000-0000-0000-0000000120a2')
+on conflict do nothing;
+-- The gateway phone is signed in as an admin (0121).
+insert into public.admin_access (profile_id, page, access_level)
+values ('00000000-0000-0000-0000-0000000120a1', 'admin-settings-messaging', 'edit')
 on conflict do nothing;
 
 create or replace function pg_temp.as_user(p uuid) returns void language plpgsql as $$
@@ -47,6 +54,7 @@ begin
   d := public.messaging_heartbeat('laptop-1', null, 'web', 'app', '{sms,voip}');
   if d.capabilities <> '{voip}' then raise exception 'FAILED: an app install claimed %', d.capabilities; end if;
 end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000120a2');
 select pg_temp.refused($q$insert into public.messaging_routes (channel, direction, transport) values ('otp', 'outbound', 'sms')$q$,
   'a non-admin writing a route');
 
@@ -77,17 +85,34 @@ begin
   end if;
 end $$;
 
--- 4. Someone else cannot act as the gateway ---------------------------------
+-- 4. Someone else cannot act as the gateway, nor stand one up (0121) ---------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000120a2');
 select pg_temp.refused(
   format('select * from public.gateway_claim_sms(%L)', (select id from ids where name = 'gateway')),
   'claiming jobs as another user''s gateway');
+select pg_temp.refused($q$select public.messaging_heartbeat('phone-2', null, 'android', 'gateway', '{sms}')$q$,
+  'a non-admin registering a gateway');
+-- An app install is still anyone's (it only takes calls once routed).
+select public.messaging_heartbeat('phone-2', null, 'android', 'app', '{voip}');
+
+-- 5. A gateway whose admin access is removed stops taking jobs ---------------
+reset role;
+delete from public.admin_access where profile_id = '00000000-0000-0000-0000-0000000120a1';
+insert into public.sms_outbox (channel, to_phone, body) values ('otp', '+60123456789', 'Your code is 5678');
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000120a1');
+select pg_temp.refused(
+  format('select * from public.gateway_claim_sms(%L)', (select id from ids where name = 'gateway')),
+  'a former admin''s gateway claiming jobs');
 
 reset role;
 do $$
 begin
-  if (select status from public.sms_outbox where channel = 'otp') <> 'sent' then
+  if (select status from public.sms_outbox where body = 'Your code is 1234') <> 'sent' then
     raise exception 'FAILED: the OTP job is not sent';
+  end if;
+  if (select status from public.sms_outbox where body = 'Your code is 5678') <> 'queued' then
+    raise exception 'FAILED: a former admin''s gateway took a job';
   end if;
   if (select status from public.sms_outbox where channel = 'marketing') <> 'queued' then
     raise exception 'FAILED: an unrouted job was taken';
