@@ -529,6 +529,7 @@ class RegionForm {
     this.lng = '',
     Map<String, bool>? services,
     this.biddingEnabled = true,
+    this.blocked = false,
     this.currencyName = '',
     this.currencySymbol = '',
     this.emergencyNumber = '',
@@ -549,6 +550,10 @@ class RegionForm {
   String country, state, city, suburb, lat, lng;
   Map<String, bool> services;
   bool biddingEnabled;
+
+  /// Blocked: no ride starts, ends or stops here — the rider app says
+  /// GET.ride is unavailable — whatever the regions around it allow.
+  bool blocked;
   String currencyName, currencySymbol, emergencyNumber, languageCode, dateFormat, callingCode, timezone;
 
   /// Fare pricing (see core/region_pricing.dart). A country always sets it;
@@ -582,6 +587,7 @@ class RegionForm {
       lng: v['lng'] is num ? '${v['lng']}' : '',
       services: parseServicesMap(v['services']),
       biddingEnabled: v['biddingEnabled'] != false,
+      blocked: v['blocked'] == true,
       currencyName: str('currencyName'),
       currencySymbol: str('currencySymbol'),
       emergencyNumber: v['emergencyNumber'] != null ? str('emergencyNumber') : (def?.emergencyNumber ?? ''),
@@ -620,6 +626,7 @@ class RegionForm {
     if (sb.isEmpty) values['timezone'] = timezone.trim();
     values['services'] = encodeServicesMap(services);
     values['biddingEnabled'] = biddingEnabled;
+    values['blocked'] = blocked;
     // Pricing is written in full, or cleared, so an old value never lingers
     // under the saved one (the caller merges over the stored values).
     final own = setsPricing;

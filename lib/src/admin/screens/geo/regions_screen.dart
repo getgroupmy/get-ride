@@ -295,6 +295,7 @@ class _RegionTile extends StatelessWidget {
         Flexible(child: Text(row.name, overflow: TextOverflow.ellipsis)),
         if (custom) badge('Custom', scheme.primary),
         if (hasBoundary) badge('Boundary', Colors.teal),
+        if (v?['blocked'] == true) badge('Blocked', scheme.error),
       ]),
       subtitle: subtitle.isEmpty ? null : Text(subtitle),
       onTap: row.level == RegionLevel.suburb ? null : onOpen,
@@ -493,7 +494,20 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
             _field('dateFormat', 'Date format', hint: 'e.g. DD/MM/YYYY')),
       ],
       if (widget.level != RegionLevel.suburb) ...[gap, _field('timezone', 'Time zone', hint: 'e.g. Asia/Kuala_Lumpur')],
-      const SizedBox(height: 20),
+      const SizedBox(height: 12),
+      SwitchListTile(
+        key: const ValueKey('region-blocked'),
+        contentPadding: EdgeInsets.zero,
+        secondary: Icon(Icons.block, color: f.blocked ? t.colorScheme.error : t.colorScheme.onSurfaceVariant),
+        title: const Text('Block'),
+        subtitle: Text(f.blocked
+            ? 'Blocked: riders can\'t start, stop or end a ride here — the app says GET.ride is unavailable. '
+                'Covers everything inside it.'
+            : 'Open: rides can start, stop and end here.'),
+        value: f.blocked,
+        onChanged: (v) => setState(() => f.blocked = v),
+      ),
+      const SizedBox(height: 8),
       Row(children: [
         Icon(Icons.build_outlined, size: 16, color: t.colorScheme.onSurfaceVariant),
         const SizedBox(width: 6),
