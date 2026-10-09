@@ -171,6 +171,38 @@ class AuthRepository {
     await syncPinPassword(pin);
   }
 
+  /// Whether the signed-in account has a sign-in PIN (Settings offers
+  /// "Set PIN" instead of "Change PIN" when it hasn't).
+  Future<bool> hasPinSet() async {
+    final phone = _db.auth.currentUser?.phone ?? '';
+    if (phone.isEmpty) return true;
+    return (await lookupPhone(normalizeE164(phone))).hasPin;
+  }
+
+  /// The signed-in account's own number, for the forgot-PIN code.
+  String? get currentPhone {
+    final phone = _db.auth.currentUser?.phone ?? '';
+    return phone.isEmpty ? null : normalizeE164(phone);
+  }
+
+  /// Changes the signed-in account's PIN from Settings. The PIN itself is
+  /// saved first; the derived sign-in password is then synced, once more
+  /// after [retryAfter] if that fails (Expo `registerUser`). False when the
+  /// password still lags: the PIN has changed, and the next PIN sign-in
+  /// confirms the phone by SMS once to catch the password up.
+  Future<bool> changePin(String pin, {Duration retryAfter = const Duration(milliseconds: 800)}) async {
+    await _db.rpc('set_login_pin', params: {'p_pin': pin, 'p_device_id': await deviceIdentifier()});
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        await syncPinPassword(pin);
+        return true;
+      } catch (_) {
+        if (attempt == 0) await Future<void>.delayed(retryAfter);
+      }
+    }
+    return false;
+  }
+
   Future<void> syncPinPassword(String pin) async {
     try {
       await _db.auth.updateUser(UserAttributes(password: derivePinPassword(pin)));

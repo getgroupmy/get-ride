@@ -12,6 +12,8 @@ import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
+import 'people/people_data.dart';
+import 'people/vehicle_screens.dart' show confirmVehicleApprovable;
 
 final adminUsersProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).users());
 final adminPartnersProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).partners());
@@ -352,7 +354,21 @@ class AdminPartnersScreen extends ConsumerWidget {
           choices: partnerStatusChoices,
           enabled: canEdit,
           onPick: (s) async {
-            if (vehicles) return patch(ctx, {'status': s});
+            if (vehicles) {
+              // Approving needs every vehicle document approved, as in the form.
+              if (s == 'approved' &&
+                  p['status'] != 'approved' &&
+                  !await confirmVehicleApprovable(
+                    ctx,
+                    documents: () => ref.read(peopleRepositoryProvider).vehicleDocuments(id),
+                    plate: '${p['plate'] ?? ''}',
+                    documentsOk: p['documents_ok'] == true,
+                  )) {
+                return;
+              }
+              if (!ctx.mounted) return;
+              return patch(ctx, {'status': s});
+            }
             String? reason;
             if (statusTakesReason(s)) {
               reason = await _askStatusReason(ctx, s, p['status_note'] as String?);

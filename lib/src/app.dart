@@ -54,6 +54,7 @@ import 'features/ride/trip_receipt_screen.dart';
 import 'features/ride/trips_screen.dart';
 import 'features/settings/change_phone_screen.dart';
 import 'features/settings/auth_diagnostics_screen.dart';
+import 'features/settings/change_pin_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/shell/brand_splash.dart';
@@ -183,7 +184,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
         GoRoute(
           path: 'set-pin',
-          builder: (_, s) => SetPinScreen(changing: s.uri.queryParameters['change'] == '1'),
+          builder: (_, _) => const SetPinScreen(),
         ),
       ]),
       // The rider's and the driver's pages, under the Expo side menu that
@@ -226,6 +227,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                   GoRoute(path: 'guide', builder: (_, _) => const UserGuideScreen()),
                   GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen(), routes: [
                     GoRoute(path: 'phone', builder: (_, _) => const ChangePhoneScreen()),
+                    GoRoute(path: 'pin', builder: (_, _) => const ChangePinScreen()),
                   ]),
                   GoRoute(path: 'support', builder: (_, _) => const SupportScreen(), routes: [
                     GoRoute(

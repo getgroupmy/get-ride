@@ -66,6 +66,32 @@ Map<String, dynamic> newVehicleStub({
       'onboarding_step': VehicleStep.makeModel.key,
     };
 
+/// The oldest model year a vehicle can be registered with.
+const vehicleMinYear = 1950;
+
+/// Why the year & colour step can't be saved, or null: both are needed, and
+/// the year is four digits from [vehicleMinYear] to next year's models.
+String? vehicleYearColorProblem(String year, String color, {DateTime? now}) {
+  final y = year.trim();
+  if (y.isEmpty || color.trim().isEmpty) return 'Please enter both the year and the colour.';
+  final max = (now ?? DateTime.now()).year + 1;
+  final n = RegExp(r'^\d{4}$').hasMatch(y) ? int.parse(y) : null;
+  if (n == null || n < vehicleMinYear || n > max) {
+    return 'Enter the year as 4 digits, from $vehicleMinYear to $max.';
+  }
+  return null;
+}
+
+/// Why the owner step can't be saved, or null (Expo `onSaveOwner`): "Is
+/// this your own vehicle?" must be answered, and every owner field filled.
+String? vehicleOwnerProblem({required bool? ownVehicle, required String name, required String phone, required String ic}) {
+  if (ownVehicle == null) return 'Please tell us whether this is your own vehicle.';
+  if (name.trim().isEmpty || phone.trim().isEmpty || ic.trim().isEmpty) {
+    return "Please enter the owner's name, phone and ID number.";
+  }
+  return null;
+}
+
 /// Owner fields for "this is my own vehicle": the partner's details, else
 /// the profile's.
 ({String name, String phone, String ic}) ownOwnerDetails(Map<String, dynamic>? partner, Map<String, dynamic>? profile) {
@@ -126,6 +152,12 @@ bool vehicleApproved(Map<String, dynamic> v) =>
     description: 'An admin is reviewing the vehicle details and documents.',
   );
 }
+
+/// Where "Done" goes once the vehicle is registered (Expo
+/// `onPendingContinue`): an approved vehicle straight to the Drive tab to
+/// take jobs; anything still in review back where the partner came from
+/// (null).
+String? vehicleFinishRoute(Map<String, dynamic> v) => vehicleApproved(v) ? '/drive' : null;
 
 // ---- Which documents belong to the vehicle ---------------------------------
 

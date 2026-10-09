@@ -458,6 +458,14 @@ void main() {
       expect(f.isPwd, isFalse);
     });
 
+    test('a rejected document carries the reviewer note', () {
+      expect(docRejectionNote({'status': 'Rejected', 'reviewer_notes': ' Blurry photo '}), 'Rejected: Blurry photo');
+      expect(docRejectionNote({'status': 'Rejected', 'reviewer_notes': '  '}), isNull);
+      expect(docRejectionNote({'status': 'Rejected'}), isNull);
+      expect(docRejectionNote({'status': 'Approved', 'reviewer_notes': 'Fine'}), isNull);
+      expect(docRejectionNote({'status': 'Pending Review', 'reviewer_notes': 'Old note'}), isNull);
+    });
+
     test('display status and upload progress', () {
       final now = DateTime(2025, 1, 1);
       expect(docDisplayStatus({'status': 'Approved', 'expiry_date': '2024-12-31'}, now: now), 'Expired');

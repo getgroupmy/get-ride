@@ -1,10 +1,12 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show BuildContext;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/image_crop.dart';
 import '../../../providers.dart';
+import '../meterapp/pick_image.dart';
 import 'people_logic.dart';
 
 /// Data access for the People add/edit forms. Every call runs as the signed-in
@@ -213,11 +215,24 @@ final peopleRepositoryProvider = Provider((ref) => PeopleRepository(ref.watch(su
 /// A picked file with its bytes loaded.
 typedef PickedPeopleFile = ({Uint8List bytes, String name});
 
-/// Picks one image (Expo only ever stores images in these buckets: PDFs are
-/// rasterised to PNG before upload, which this port does not do).
-Future<PickedPeopleFile?> pickPeopleFile() async {
-  final files = await FilePicker.pickFiles(type: FileType.image);
-  final f = files.firstOrNull;
-  if (f == null) return null;
-  return (bytes: await f.readAsBytes(), name: f.name);
+/// Picks one image (Expo only ever stores images in these buckets; a PDF is
+/// rasterised to its first page first, see doc_pdf.dart). With [context], a
+/// phone asks whether to take the photo or choose one (see [pickImage]).
+Future<PickedPeopleFile?> pickPeopleFile([BuildContext? context]) async {
+  final img = await pickImage(context);
+  return img == null ? null : (bytes: img.bytes, name: img.name);
 }
+
+/// The document photo picker behind a seam, so widget tests run without
+/// plugins.
+final docPhotoPickerProvider = Provider<Future<PickedPeopleFile?> Function(BuildContext context)>(
+  (_) => pickPeopleFile,
+);
+
+/// Cuts a region out of a document photo off the UI thread.
+typedef CropImageRegion = Future<Uint8List?> Function(Uint8List bytes, FractionBox box);
+
+/// The crop behind a seam, so widget tests run without an isolate.
+final docImageCropProvider = Provider<CropImageRegion>(
+  (_) => (bytes, box) => compute(cropImageRegionJob, (bytes: bytes, box: box)),
+);

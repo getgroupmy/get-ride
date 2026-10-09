@@ -50,7 +50,7 @@ void main() {
           accountRepositoryProvider.overrideWithValue(account),
           profileProvider.overrideWith((ref) async => Profile({'id': 'me', 'name': 'Ali', 'phone': '60123456789'})),
         ],
-        child: MaterialApp(home: EditProfileScreen(pickPhoto: () async => photo)),
+        child: MaterialApp(home: EditProfileScreen(pickPhoto: (_) async => photo)),
       ),
     );
     await tester.pumpAndSettle();

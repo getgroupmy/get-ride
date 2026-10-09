@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../config.dart';
-import '../../data/auth_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../safety/voice_protection_card.dart';
+import 'change_pin_screen.dart';
 import 'navigation_app_card.dart';
 import 'rules_terms_card.dart';
 import '../../widgets/side_menu_host.dart';
@@ -53,13 +53,12 @@ class SettingsScreen extends ConsumerWidget {
             ),
             Card(
               child: ListTile(
+                key: const ValueKey('change-pin'),
                 leading: const Icon(Icons.password),
-                title: const Text('Change sign-in PIN'),
+                // Expo: "Set PIN" for an account that has none yet.
+                title: Text(ref.watch(pinSetProvider).value == false ? 'Set sign-in PIN' : 'Change sign-in PIN'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  AuthRepository.pinSetupPending = true;
-                  context.go('/login/set-pin?change=1');
-                },
+                onTap: () => context.push('/account/settings/pin'),
               ),
             ),
             const RulesTermsCard(),
