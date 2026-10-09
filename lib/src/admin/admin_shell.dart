@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../providers.dart';
 import '../widgets/busy.dart';
 import '../widgets/common.dart';
+import '../widgets/keyboard_dismiss.dart';
 import '../widgets/loading_skeleton.dart';
 import '../widgets/side_menu_style.dart';
 import 'admin_access.dart';
@@ -63,6 +64,10 @@ class AdminShell extends ConsumerWidget {
 
         if (width < 900) {
           return Scaffold(
+            // Opening the menu closes the keyboard, which would cover it.
+            onDrawerChanged: (open) {
+              if (open) dismissKeyboard();
+            },
             // The same side menu look as the user's and the driver's.
             drawer: Drawer(
               key: const ValueKey('admin-side-menu'),
