@@ -128,8 +128,8 @@ class RideRepository {
         row.remove(col);
       }
     }
-    // Partners are pushed by the database trigger (notify_partners_on_ride_request);
-    // send-push only takes the webhook, the service role or an admin.
+    // Online partners are pushed by the database (the ride_requests insert
+    // trigger); send-push no longer takes a rider's call.
     return RideRequest(data);
   }
 
@@ -142,6 +142,7 @@ class RideRepository {
       return null;
     }
   }
+
 
   Future<void> expireStaleOpen() async {
     final uid = _uid;
@@ -423,8 +424,8 @@ class RideRepository {
   }
 
   /// The rider raises the fare on their open request. Every standing bid is
-  /// cleared, and partners are told the fare went up (by the database
-  /// trigger, as for a new request). Null when the request is no longer open.
+  /// cleared, and partners are told the fare went up. Null when the request
+  /// is no longer open.
   Future<RideRequest?> raiseFare(String id, double fare) async {
     final row = await _db
         .from(_table)
@@ -434,8 +435,10 @@ class RideRepository {
         .select()
         .maybeSingle();
     if (row == null) return null;
+    // The database's trigger tells partners the fare went up.
     return RideRequest(row);
   }
+
 
   /// The rider takes [partnerId]'s offer of [amount]: their own row moves
   /// to `accepted` with that partner, billed at the offer. Matched on the

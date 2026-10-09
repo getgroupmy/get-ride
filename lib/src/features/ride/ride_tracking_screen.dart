@@ -14,6 +14,7 @@ import '../../core/fare_offer.dart' show fareOfferStep;
 import '../../core/format.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_cancel.dart';
+import '../../core/ride_chat.dart' show rideChatAvailable;
 import '../../core/ride_confirm.dart';
 import '../../core/request_viewers.dart';
 import '../../core/search_stage.dart';
@@ -30,6 +31,7 @@ import '../../widgets/map_sheet_layout.dart';
 import 'demo_ride.dart';
 import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
+import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
 import 'shared_ride_screen.dart' show shareRide;
 import '../../widgets/ride_stop_tiles.dart';
@@ -738,19 +740,23 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                       subtitle: const Text('Share with your driver at pickup'),
                       trailing: Text(r.otp!, style: t.textTheme.headlineSmall?.copyWith(letterSpacing: 4)),
                     ),
-                  if (r.partnerPhone != null)
+                  if (r.partnerPhone != null || rideChatAvailable(r))
                     OverflowBar(
                       children: [
-                        BusyButton.text(
-                          icon: const Icon(Icons.call),
-                          onPressed: () => launchUrl(Uri(scheme: 'tel', path: r.partnerPhone)),
-                          child: const Text('Call'),
-                        ),
-                        BusyButton.text(
-                          icon: const Icon(Icons.sms_outlined),
-                          onPressed: () => launchUrl(Uri(scheme: 'sms', path: r.partnerPhone)),
-                          child: const Text('Message'),
-                        ),
+                        if (r.partnerPhone != null)
+                          BusyButton.text(
+                            icon: const Icon(Icons.call),
+                            onPressed: () => launchUrl(Uri(scheme: 'tel', path: r.partnerPhone)),
+                            child: const Text('Call'),
+                          ),
+                        // The in-app chat (migration 0129), not the phone's SMS app.
+                        if (rideChatAvailable(r))
+                          TextButton.icon(
+                            key: const ValueKey('ride-message'),
+                            icon: RideChatBadge(requestId: r.id, child: const Icon(Icons.chat_bubble_outline)),
+                            onPressed: () => context.push('/ride/${r.id}/chat'),
+                            label: const Text('Message'),
+                          ),
                       ],
                     ),
                 ],
