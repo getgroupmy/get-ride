@@ -1,0 +1,113 @@
+name: Gateway app
+
+# The GET.ride Gateway (gateway/): an Android app that sends and receives
+# the platform's SMS from a phone's SIM. Checked on every change to it; on
+# the default branch the APK is built with the release key and published
+# as the "gateway-latest" release, to install on the gateway phone.
+
+on:
+  push:
+    branches: ["**"]
+    paths: ["gateway/**", ".github/workflows/gateway.yml"]
+  pull_request:
+    paths: ["gateway/**", ".github/workflows/gateway.yml"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  apk:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+
+      # Published builds carry the GET.ride upload key, so each one installs
+      # over the last (Android refuses an update signed with another key).
+      # Pull requests build with the debug key: never published.
+      - name: Signing key
+        id: sign
+        if: github.event_name != 'pull_request'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD:-}" ]; then
+            echo "No release key in this repository's secrets: building with the debug key, not publishing."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Outside the checkout, so it is never one `git add -A` from being committed.
+          store="$RUNNER_TEMP/upload.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$store"
+          cat > android/key.properties <<PROPS
+          storeFile=$store
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          PROPS
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - run: flutter build apk --release
+
+      - name: Name the APK
+        id: apk
+        run: |
+          set -euo pipefail
+          # One fixed name, so the admin page's download link never changes.
+          out="getride-gateway.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$out"
+          echo "file=gateway/$out" >> "$GITHUB_OUTPUT"
+          echo "name=$out" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: getride-gateway-apk
+          path: ${{ steps.apk.outputs.file }}
+
+      - name: Publish as gateway-latest
+        if: >-
+          steps.sign.outputs.signed == 'true' &&
+          github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: .
+        run: |
+          set -euo pipefail
+          gh release delete gateway-latest --cleanup-tag --yes || true
+          version=$(grep -m1 '^version:' gateway/pubspec.yaml | awk '{print $2}')
+          gh release create gateway-latest "${{ steps.apk.outputs.file }}" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "GET.ride Gateway $version" \
+            --notes "Install on the gateway phone (Android). Built from ${GITHUB_SHA::7}. Sign in with an admin account, allow SMS, then turn the gateway on; assign it in Admin → SMS / WhatsApp."
