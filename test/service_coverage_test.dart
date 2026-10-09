@@ -114,6 +114,16 @@ void main() {
     });
   });
 
+  test("the database's refusal (0125) reads back as the point and the reason", () {
+    final p = ServiceUnavailableError.parse('SERVICE_UNAVAILABLE:pickup:outside:Perak')!;
+    expect((p.at, p.gap, p.region), ('pickup', CoverageGap.outside, 'Perak'));
+    final s = ServiceUnavailableError.parse('ERROR: SERVICE_UNAVAILABLE:stop1:blocked:Selangor')!;
+    expect((s.at, s.stop, s.gap, s.region), ('stop', 1, CoverageGap.blocked, 'Selangor'));
+    final d = ServiceUnavailableError.parse('SERVICE_UNAVAILABLE:drop:outside:')!;
+    expect((d.at, d.region), ('drop', null));
+    expect(ServiceUnavailableError.parse('duplicate key value'), isNull);
+  });
+
   test('the wording names the point and the way out', () {
     final p = unavailableCopy(UnavailableAt.pickup, CoverageGap.outside);
     expect(p.message, "We don't pick up there yet. Try changing your pickup.");
