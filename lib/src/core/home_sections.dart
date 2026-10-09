@@ -55,6 +55,46 @@ class HomeSections {
   }
 }
 
+/// Admin → Display → Map Layout on the home map. Each applies only once the
+/// admin has set it, so a blob without it leaves the map as it is.
+class HomeMapLayout {
+  const HomeMapLayout({this.recenterBottom, this.mapExtra = 0, this.pinShift = (0, 0), this.pillOffset = 0});
+
+  /// The map type and recenter buttons stand at least this far up from the
+  /// bottom of the screen (they still ride above the sheet when it is
+  /// higher). Null leaves them on the sheet.
+  final double? recenterBottom;
+
+  /// How far the map reaches above the top of the screen: its centre, and
+  /// the pin kept there, go up by half of it.
+  final double mapExtra;
+
+  /// (right, down) that the pin is kept off its usual place.
+  final (double, double) pinShift;
+
+  /// How far the pickup pill above the pin is moved down (negative: up).
+  final double pillOffset;
+
+  /// The gap between the pin and the pill above it, which never lets the
+  /// pill come down over the pin.
+  double get pillGap => math.max(2, 5 - pillOffset);
+
+  static HomeMapLayout fromSettings(Map<String, dynamic> s) {
+    double? n(String k) {
+      final v = s[k];
+      final d = v is num ? v.toDouble() : (v is String ? double.tryParse(v.trim()) : null);
+      return d != null && d.isFinite ? d : null;
+    }
+
+    return HomeMapLayout(
+      recenterBottom: n('recenterButtonBottom'),
+      mapExtra: math.max(0, n('mapHeightOffset') ?? 0),
+      pinShift: (n('dropPinHorizontalOffset') ?? 0, n('dropPinTopOffset') ?? 0),
+      pillOffset: n('addressBarTopOffset') ?? 0,
+    );
+  }
+}
+
 /// Expo's preset titles and icon accents for boxes 0–4.
 const serviceBoxPresets = <(String, int)>[
   ('Groceries\nin 30 min', 0xFF4CAF50),

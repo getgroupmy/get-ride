@@ -96,4 +96,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Affordable'), findsOneWidget);
   });
+
+  group('Map Layout on the home map', () {
+    test('each setting is read once the admin has set it', () {
+      final l = HomeMapLayout.fromSettings({
+        'recenterButtonBottom': 239,
+        'mapHeightOffset': '215',
+        'dropPinTopOffset': 65,
+        'dropPinHorizontalOffset': -10,
+        'addressBarTopOffset': -20,
+      });
+      expect(l.recenterBottom, 239);
+      expect(l.mapExtra, 215);
+      expect(l.pinShift, (-10.0, 65.0));
+      expect(l.pillGap, 25, reason: 'up 20 from the 5 px gap');
+    });
+
+    test('nothing set leaves the map as it is', () {
+      final l = HomeMapLayout.fromSettings(const {});
+      expect(l.recenterBottom, isNull);
+      expect(l.mapExtra, 0);
+      expect(l.pinShift, (0.0, 0.0));
+      expect(l.pillGap, 5);
+    });
+
+    test('the pill never comes down over the pin, and the map never shrinks', () {
+      final l = HomeMapLayout.fromSettings(const {'addressBarTopOffset': 75, 'mapHeightOffset': -50});
+      expect(l.pillGap, 2);
+      expect(l.mapExtra, 0);
+    });
+  });
 }

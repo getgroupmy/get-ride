@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
 import '../../core/app_display.dart';
+import '../../core/payment_types.dart';
 import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
 import '../../core/driver_eta.dart';
@@ -101,7 +102,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final services = _services;
     return services.firstWhere((s) => s.name == _serviceName, orElse: () => services.first);
   }
-  String _payment = 'Cash';
+  /// The rider's pick; [_payment] is what is booked, the pick only while
+  /// Admin → Payment Type still offers it.
+  String _paymentPick = 'Cash';
+  List<PaymentChoice> get _payments => ref.read(paymentChoicesProvider).value ?? builtInPayments;
+  String get _payment => resolvePayment(_paymentPick, _payments);
   bool _useCoins = false;
 
   /// The rider's GET.coin balance and the admin rate, for the "Use GET.coin"
@@ -242,6 +247,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   final _pin = GlobalKey<MapDragPinState>();
+
+  /// The pin's place as Admin → Display last set it.
+  (double, double, double)? _pinPlace;
+
+  /// An admin moving the pin (Drop pin height / left-right, Map height)
+  /// while the rider looks at the map: the pickup slides to its new place
+  /// at once, rather than at the next recenter.
+  void _refocusOnLayoutChange(HomeMapLayout layout) {
+    final place = (layout.pinShift.$1, layout.pinShift.$2, layout.mapExtra);
+    final before = _pinPlace;
+    _pinPlace = place;
+    if (before == null || before == place || _drop != null || _pinMoving) return;
+    final at = _pickup?.point;
+    if (at == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _drop != null || _pinMoving) return;
+      try {
+        recenterMap(_map, at, zoom: _map.camera.zoom, offset: _focusOffset);
+      } catch (_) {} // the map not drawn yet: its first fit puts the pin there
+    });
+  }
 
   /// The pickup pin dropped on [p], where the pin is draggable (no
   /// destination yet) and the pickup is not already there.
@@ -435,6 +461,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           currencyLabel: (style?.symbol ?? _currency).trim(),
           money: (v) => formatMoney(v, _currency),
           payment: _payment,
+          payments: _payments,
           autoAccept: _autoAccept,
           entrance: _entrance,
           pickupName: _pickup?.name ?? 'Pickup',
@@ -456,7 +483,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (r == null || !mounted) return;
     setState(() {
       if (r.fare != null) _adjust = r.fare! - recommended;
-      _payment = r.payment;
+      _paymentPick = r.payment;
       _autoAccept = r.autoAccept;
       _entrance = r.entrance;
     });
@@ -716,50 +743,80 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final confirming = _drop != null;
     final layout = ConfirmLayout.fromSettings(blob);
     // The back and route buttons stand clear of the promo bar's visible top.
-    final aboveBar = layout.promoBar ? PromoBanner.visibleHeight + 12 - layout.promoBarOffset : 12.0;
+    final aboveBar = layout.promoBar
+        ? PromoBanner.visibleHeight + (layout.promoBarInFront ? PromoBanner.tuck : 0) + 12 - layout.promoBarOffset
+        : 12.0;
     // Places that move with the sheet: [build] gets how far up it reaches.
     Widget aboveSheet(Widget Function(double inset) build) => Positioned.fill(
       child: Builder(builder: (c) => MapBottomInset.listen(c, (inset) => Stack(children: [build(inset)]))),
     );
+    // The discount bar; in front of the sheet it is drawn on the sheet's
+    // layer instead of the map's (Admin → Display → Discount bar in front).
+    Widget promoBar() => aboveSheet(
+          (inset) => Positioned(
+            left: 0,
+            right: 0,
+            // Behind, its foot tucks under the sheet's top edge; in front it
+            // stands whole on that edge.
+            bottom: inset - (layout.promoBarInFront ? 0 : PromoBanner.tuck) - layout.promoBarOffset,
+            child: PromoBanner(onTap: () => showPromoSheet(context)),
+          ),
+        );
+    // Admin → Display → Map Layout, while the pickup is being set.
+    final mapLayout = confirming ? const HomeMapLayout() : HomeMapLayout.fromSettings(blob);
+    _refocusOnLayoutChange(mapLayout);
     final map = Stack(children: [
-      MapDragPin(
-        key: _pin,
-        controller: _map,
-        pin: _pickup?.point,
-        // Dragging the map sets the pickup until a destination is chosen.
-        enabled: _drop == null && _pinTarget == _PinTarget.none,
-        onMoving: (v) {
-          if (mounted && v != _pinMoving) setState(() => _pinMoving = v);
-        },
-        onDropped: _onPinDropped,
-        child: RideMap(
-          controller: _map,
-          me: _me,
-          pickup: _pickup?.point,
-          showPickup: !_pinMoving,
-          hideCredit: _pinMoving,
-          dotPins: confirming,
-          focusPickup: !wide,
-          pointZoom: homeStreetZoom,
-          onGesture: confirming && !_routeMoved ? () => setState(() => _routeMoved = true) : null,
-          autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
-          drop: _drop?.point,
-          stops: [for (final p in _stops) p.point],
-          route: _route?.points ?? const [],
-          onTap: _onMapTap,
-          satellite: ref.watch(mapSatelliteProvider),
-          extraMarkers: [
-            for (final c in _cars) demoCarMarker(c, serviceIndex),
-            // The pickup box stands 5 px above the pickup pin and moves with
-            // it; it hides while the pin is lifted, until it lands.
-            if (showPill && _pickup != null && !_pinMoving)
-              labelAbovePin(
-                _pickup!.point,
-                PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup)),
-                width: math.min(320, MediaQuery.sizeOf(context).width - 32),
-              ),
-            for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
-          ],
+      Positioned(
+        // Map height: the map reaches above the top of the screen.
+        top: -mapLayout.mapExtra,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        child: MapFocusShift(
+          // Drop pin height / left-right: where the pin is kept.
+          shift: Offset(mapLayout.pinShift.$1, mapLayout.pinShift.$2),
+          child: MapDragPin(
+            key: _pin,
+            controller: _map,
+            pin: _pickup?.point,
+            // Dragging the map sets the pickup until a destination is chosen.
+            enabled: _drop == null && _pinTarget == _PinTarget.none,
+            onMoving: (v) {
+              if (mounted && v != _pinMoving) setState(() => _pinMoving = v);
+            },
+            onDropped: _onPinDropped,
+            child: RideMap(
+              controller: _map,
+              me: _me,
+              pickup: _pickup?.point,
+              showPickup: !_pinMoving,
+              hideCredit: _pinMoving,
+              dotPins: confirming,
+              focusPickup: !wide,
+              pointZoom: homeStreetZoom,
+              onGesture: confirming && !_routeMoved ? () => setState(() => _routeMoved = true) : null,
+              autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
+              drop: _drop?.point,
+              stops: [for (final p in _stops) p.point],
+              route: _route?.points ?? const [],
+              onTap: _onMapTap,
+              satellite: ref.watch(mapSatelliteProvider),
+              extraMarkers: [
+                for (final c in _cars) demoCarMarker(c, serviceIndex),
+                // The pickup box stands 5 px above the pickup pin and moves with
+                // it; it hides while the pin is lifted, until it lands.
+                if (showPill && _pickup != null && !_pinMoving)
+                  labelAbovePin(
+                    _pickup!.point,
+                    PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup)),
+                    width: math.min(320, MediaQuery.sizeOf(context).width - 32),
+                    // Address bar height.
+                    gap: mapLayout.pillGap,
+                  ),
+                for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
+              ],
+            ),
+          ),
         ),
       ),
       if (_pinTarget != _PinTarget.none)
@@ -786,7 +843,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // waits at the top until there is.
       if (showPill && _pickup == null)
         Positioned(
-          top: 16,
+          top: 16 + math.max(0, mapLayout.pillOffset),
           left: 72,
           right: 72,
           child: SafeArea(
@@ -830,7 +887,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         aboveSheet(
           (inset) => Positioned(
             right: 16,
-            bottom: mapAttributionClearance + inset,
+            // Recenter button height: at least that far up, still above the sheet.
+            bottom: math.max(mapAttributionClearance + inset, mapLayout.recenterBottom ?? 0),
             child: IgnorePointer(
               ignoring: _pinMoving,
               child: AnimatedSlide(
@@ -856,16 +914,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-      if (confirming && !wide && layout.promoBar)
-        aboveSheet(
-          (inset) => Positioned(
-            left: 0,
-            right: 0,
-            // Its top shows above the sheet, which overlaps the rest.
-            bottom: inset - PromoBanner.tuck - layout.promoBarOffset,
-            child: PromoBanner(onTap: () => showPromoSheet(context)),
-          ),
-        ),
+      // Behind the sheet: its top shows above it, which overlaps the rest.
+      if (confirming && !wide && layout.promoBar && !layout.promoBarInFront) promoBar(),
       if (confirming && _pinTarget == _PinTarget.none)
         Positioned(
           top: 16 + layout.address.$2,
@@ -925,6 +975,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ]);
 
     ref.watch(rideServicesProvider); // rebuild when the catalogue arrives
+    ref.watch(paymentChoicesProvider); // and when Admin → Payment Type changes
     ref.watch(coinTradeQuoteProvider); // and when the GET.coin balance does
     ref.watch(fareTariffsProvider); // re-quote when the tariff cards arrive
     final earnRate = ref.watch(coinTradeQuoteProvider).value?.settings.earnCoinsPerCurrency ?? 0;
@@ -943,9 +994,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             }),
             optionsOn: _options.any,
             payment: _payment,
+            payments: _payments,
             onPayment: () async {
-              final p = await showPaymentSheet(context, _payment);
-              if (p != null && mounted) setState(() => _payment = p);
+              final p = await showPaymentSheet(context, _payment, payments: _payments);
+              if (p != null && mounted) setState(() => _paymentPick = p);
             },
             autoAcceptLabel: 'Auto-accept offer of ${formatMoney(_fareFor(_service), _currency)}',
             autoAccept: _autoAccept,
@@ -1066,7 +1118,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // Over the foot of the sheet, only while it is all the way up.
           aboveFooter: footer == null
               ? null
-              : const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 12), child: ConfirmDisclaimer()),
+              : Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  // Moved as Admin → Display → Disclaimer box sets it.
+                  child: Transform.translate(
+                    offset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),
+                    child: const ConfirmDisclaimer(),
+                  ),
+                ),
+          front: confirming && !wide && layout.promoBar && layout.promoBarInFront ? Stack(children: [promoBar()]) : null,
         ),
       ),
     );

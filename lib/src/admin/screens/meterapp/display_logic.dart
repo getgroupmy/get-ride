@@ -318,11 +318,13 @@ const _vDesc = '(negative = up, positive = down)';
 const _hDesc = '(negative = left, positive = right)';
 
 const mapLayoutItems = [
-  LayoutItem('recenterButtonBottom', 'Recenter button height', 'Distance from the bottom of the screen', 100, 700, 10),
-  LayoutItem('mapHeightOffset', 'Map height', 'Extra map height extending above the screen', 0, 800, 25),
+  LayoutItem('recenterButtonBottom', 'Recenter button height',
+      'Distance from the bottom of the screen (the button still stays above the bottom sheet)', 100, 700, 10),
+  LayoutItem('mapHeightOffset', 'Map height', 'Extra map height extending above the screen (raises the pin by half)', 0, 800, 25),
   LayoutItem('dropPinTopOffset', 'Drop pin height', 'Vertical offset of the pin $_vDesc', -200, 200, 5),
   LayoutItem('dropPinHorizontalOffset', 'Drop pin left/right', 'Horizontal offset of the pin $_hDesc', -200, 200, 5),
-  LayoutItem('addressBarTopOffset', 'Address bar height', 'Vertical offset of the top address pill $_vDesc', -300, 300, 5),
+  LayoutItem('addressBarTopOffset', 'Address bar height',
+      'Vertical offset of the address pill above the pin $_vDesc; it never covers the pin', -300, 300, 5),
 ];
 
 const rideConfirmLayoutItems = [

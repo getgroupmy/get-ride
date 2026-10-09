@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/fare_offer.dart';
+import '../../core/payment_types.dart';
 import 'confirm_parts.dart';
 
 /// What "Offer your fare" hands back: the fare and the choices made on it,
@@ -42,6 +43,7 @@ class OfferFareScreen extends StatefulWidget {
     this.onAddStop,
     this.onOptions,
     this.optionsOn = false,
+    this.payments = builtInPayments,
   });
 
   final double recommended;
@@ -51,6 +53,9 @@ class OfferFareScreen extends StatefulWidget {
   final String currencyLabel;
   final String Function(double) money;
   final String payment;
+
+  /// The methods offered (Admin → Payment Type).
+  final List<PaymentChoice> payments;
   final bool autoAccept;
   final String entrance;
   final String pickupName;
@@ -226,16 +231,16 @@ class _OfferFareScreenState extends State<OfferFareScreen> {
                     key: const ValueKey('offer-fare-payment'),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     leading: Icon(
-                      confirmPayments.firstWhere((p) => p.$1 == _payment, orElse: () => confirmPayments.first).$3,
+                      paymentLook(paymentChoiceFor(_payment, widget.payments).kind).$1,
                       color: const Color(0xFF6BBF2A),
                     ),
                     title: Text(
-                      confirmPayments.firstWhere((p) => p.$1 == _payment, orElse: () => confirmPayments.first).$2,
+                      paymentChoiceFor(_payment, widget.payments).label,
                       style: t.textTheme.bodyLarge,
                     ),
                     trailing: Icon(Icons.chevron_right, color: muted),
                     onTap: () async {
-                      final p = await showPaymentSheet(context, _payment);
+                      final p = await showPaymentSheet(context, _payment, payments: widget.payments);
                       if (p != null && mounted) setState(() => _payment = p);
                     },
                   ),

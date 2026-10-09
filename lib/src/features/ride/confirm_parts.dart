@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare.dart';
 import '../../core/fare_offer.dart';
+import '../../core/payment_types.dart';
 import '../../core/ride_confirm.dart' show RideOptions;
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
@@ -886,14 +887,21 @@ class ConfirmDisclaimer extends StatelessWidget {
   }
 }
 
-/// The payment methods the confirm sheet offers, by stored value.
-const confirmPayments = <(String, String, IconData)>[
-  ('Cash', 'Cash', Icons.payments_outlined),
-  ('Get Pay', 'GET.wallet', Icons.account_balance_wallet_outlined),
-];
+/// A payment method's icon and colour.
+(IconData, Color) paymentLook(PaymentKind kind) => switch (kind) {
+  PaymentKind.cash => (Icons.payments_outlined, const Color(0xFF6BBF2A)),
+  PaymentKind.wallet => (Icons.account_balance_wallet_outlined, confirmAccent),
+  PaymentKind.card => (Icons.credit_card, confirmAccent),
+  PaymentKind.other => (Icons.account_balance_outlined, confirmAccent),
+};
 
 /// Expo's payment sheet, opened from the card icon beside "Find a driver".
-Future<String?> showPaymentSheet(BuildContext context, String current) => showModalBottomSheet<String>(
+/// [payments] are the methods offered (Admin → Payment Type).
+Future<String?> showPaymentSheet(
+  BuildContext context,
+  String current, {
+  List<PaymentChoice> payments = builtInPayments,
+}) => showModalBottomSheet<String>(
   context: context,
   builder: (c) {
     final t = Theme.of(c);
@@ -928,7 +936,7 @@ Future<String?> showPaymentSheet(BuildContext context, String current) => showMo
               ],
             ),
           ),
-          for (final (value, label, icon) in confirmPayments)
+          for (final PaymentChoice(:value, :label, :kind) in payments.isEmpty ? builtInPayments : payments)
             Material(
               // The chosen one on a pale blue band with a tick.
               color: value == current
@@ -937,7 +945,7 @@ Future<String?> showPaymentSheet(BuildContext context, String current) => showMo
               child: ListTile(
                 key: ValueKey('payment-$value'),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                leading: Icon(icon, color: value == 'Cash' ? const Color(0xFF6BBF2A) : confirmAccent),
+                leading: Icon(paymentLook(kind).$1, color: paymentLook(kind).$2),
                 title: Text(label, style: t.textTheme.bodyLarge?.copyWith(fontSize: 17)),
                 trailing: value == current ? const Icon(Icons.check, color: Color(0xFF3B6CF6)) : null,
                 onTap: () => Navigator.pop(c, value),
@@ -969,9 +977,13 @@ class ConfirmFooter extends StatelessWidget {
     this.whoRiding,
     this.onOptions,
     this.optionsOn = false,
+    this.payments = builtInPayments,
   });
 
   final String payment;
+
+  /// The methods offered (Admin → Payment Type), for [payment]'s label.
+  final List<PaymentChoice> payments;
   final VoidCallback onPayment;
   final String autoAcceptLabel;
   final bool autoAccept;
@@ -1000,7 +1012,7 @@ class ConfirmFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final payLabel = confirmPayments.firstWhere((p) => p.$1 == payment, orElse: () => confirmPayments.first).$2;
+    final payLabel = paymentChoiceFor(payment, payments).label;
     return Material(
       key: const ValueKey('confirm-footer'),
       color: t.colorScheme.surface,
@@ -1072,7 +1084,9 @@ class ConfirmFooter extends StatelessWidget {
                         height: 52,
                         alignment: Alignment.center,
                         child: Icon(
-                          payment == 'Cash' ? Icons.payments_outlined : Icons.credit_card,
+                          paymentChoiceFor(payment, payments).kind == PaymentKind.cash
+                              ? Icons.payments_outlined
+                              : Icons.credit_card,
                           color: confirmAccent,
                           size: 22,
                         ),
