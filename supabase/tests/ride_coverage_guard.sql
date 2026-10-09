@@ -1,5 +1,5 @@
 -- ============================================================================
--- Regression test for migration 0125: the database refuses a ride whose
+-- Regression test for migrations 0125 and 0126: the database refuses a ride whose
 -- pickup, stop or destination GET.ride doesn't serve — outside every region
 -- at some level, or in a blocked one — level by level, like the app.
 --
@@ -75,6 +75,19 @@ begin
   -- (Brunei sits inside Malaysia's test box, so use a point outside it.)
   g := public.ride_point_gap(-6.2, 106.8, 'Indonesia');
   if g is distinct from 'outside:' then raise exception 'FAILED: Indonesia should be outside, got %', g; end if;
+
+  -- Names as the geocoder writes them (0126): administrative wording,
+  -- another script.
+  insert into public.cities (country, state, name) values ('Malaysia', 'Selangor', 'Kajang');
+  g := public.ride_point_gap(2.99, 101.79, 'Malaysia', 'Selangor', 'Kajang Municipal Council');
+  if g is not null then raise exception 'FAILED: "Kajang Municipal Council" should be Kajang, got %', g; end if;
+  g := public.ride_point_gap(4.6, 101.08, 'Malaysia', 'Perak', '怡保');
+  if g is not null then raise exception 'FAILED: a name in another script should be served, got %', g; end if;
+  if not public.region_name_matches('Kuala Lumpur', 'Wilayah Persekutuan Kuala Lumpur')
+     or public.region_name_matches('Johor Bahru', 'Johor')
+     or public.region_name_matches('Kota', 'Kotabaru') then
+    raise exception 'FAILED: region_name_matches';
+  end if;
 
   -- Can't tell: no names and no shape at that level → served.
   g := public.ride_point_gap(5.43, 101.13);
