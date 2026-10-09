@@ -84,6 +84,10 @@ class PartnerOnboardingRepository {
         .single();
   }
 
+  /// Sends this partner's rejected application back to the admin queue
+  /// (`partner_request_review`, migration 0118).
+  Future<void> requestReview() => _db.rpc('partner_request_review');
+
   Future<Map<String, dynamic>> patchProfile(Map<String, dynamic> patch) async {
     await _db.from('profiles').update(patch).eq('id', _uid);
     return (await _profile()) ?? patch;
