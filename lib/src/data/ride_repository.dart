@@ -128,9 +128,9 @@ class RideRepository {
         row.remove(col);
       }
     }
-    final req = RideRequest(data);
-    unawaited(_notifyPartners(req));
-    return req;
+    // Partners are pushed by the database trigger (notify_partners_on_ride_request);
+    // send-push only takes the webhook, the service role or an admin.
+    return RideRequest(data);
   }
 
   /// The caller's public IP as the `ip-lookup` edge function sees it, or null.
@@ -141,22 +141,6 @@ class RideRepository {
     } catch (_) {
       return null;
     }
-  }
-
-  /// Best-effort push to online partners through the shared `send-push` edge
-  /// function (same payload as the Expo app).
-  Future<void> _notifyPartners(RideRequest r) async {
-    try {
-      await _db.functions.invoke(
-        'send-push',
-        body: {
-          'title': 'New Request',
-          'body': '${r.currency} ${r.fare?.round() ?? ''} , ${r.pickupLabel} -> ${r.dropLabel}',
-          'audience': 'partners',
-          'data': {'type': 'new_ride_request', 'requestId': r.id},
-        },
-      );
-    } catch (_) {}
   }
 
   Future<void> expireStaleOpen() async {
@@ -439,8 +423,8 @@ class RideRepository {
   }
 
   /// The rider raises the fare on their open request. Every standing bid is
-  /// cleared, and partners are told the fare went up. Null when the request
-  /// is no longer open.
+  /// cleared, and partners are told the fare went up (by the database
+  /// trigger, as for a new request). Null when the request is no longer open.
   Future<RideRequest?> raiseFare(String id, double fare) async {
     final row = await _db
         .from(_table)
@@ -450,23 +434,7 @@ class RideRepository {
         .select()
         .maybeSingle();
     if (row == null) return null;
-    final r = RideRequest(row);
-    unawaited(_notifyFareRaised(r));
-    return r;
-  }
-
-  Future<void> _notifyFareRaised(RideRequest r) async {
-    try {
-      await _db.functions.invoke(
-        'send-push',
-        body: {
-          'title': 'Fare increased',
-          'body': '${r.currency} ${r.fare?.round() ?? ''} , ${r.pickupLabel} -> ${r.dropLabel}',
-          'audience': 'partners',
-          'data': {'type': 'ride_request_fare_raised', 'requestId': r.id},
-        },
-      );
-    } catch (_) {}
+    return RideRequest(row);
   }
 
   /// The rider takes [partnerId]'s offer of [amount]: their own row moves
