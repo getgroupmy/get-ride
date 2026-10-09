@@ -766,6 +766,64 @@ const countryIsoByName = {
   return iso == null ? null : countryDefaults(iso);
 }
 
+/// The form field an add/edit sheet asks for at [level]: the place's own
+/// name. Its parents are the page being browsed (the breadcrumb), so they
+/// are shown, not asked again.
+String regionNameField(RegionLevel level) => switch (level) {
+      RegionLevel.country => 'country',
+      RegionLevel.state => 'state',
+      RegionLevel.city => 'city',
+      RegionLevel.suburb => 'suburb',
+    };
+
+/// "In Kajang, Selangor, Malaysia": where a [level] row sits; empty for a country.
+String regionParentLine(RegionForm f, RegionLevel level) {
+  final parents = [
+    if (level == RegionLevel.suburb) f.city,
+    if (level == RegionLevel.suburb || level == RegionLevel.city) f.state,
+    if (level != RegionLevel.country) f.country,
+  ].map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+  return parents.isEmpty ? '' : 'In ${parents.join(', ')}';
+}
+
+/// Fills [f]'s country information from the `region-defaults` answer [api]
+/// (null when it could not be reached), falling back to the built-in
+/// tables. The built-in language and emergency number win where they know
+/// the country (they are hand-checked; the open data has no emergency
+/// numbers of its own and lists English first for many countries);
+/// everything else is the API's. A position is only filled when the form has
+/// none. Returns the labels of the fields it set.
+List<String> applyRegionDefaults(RegionForm f, Map<String, dynamic>? api) {
+  String? str(String k) {
+    final v = api?[k];
+    return v is String && v.trim().isNotEmpty ? v.trim() : null;
+  }
+
+  final local = countryDefaultsForName(f.country);
+  final filled = <String>[];
+  void set(String label, String? value, void Function(String) apply) {
+    if (value == null || value.isEmpty) return;
+    apply(value);
+    filled.add(label);
+  }
+
+  set('currency', str('currencyName'), (v) => f.currencyName = v);
+  set('currency symbol', str('currencySymbol'), (v) => f.currencySymbol = v);
+  set('calling code', str('callingCode'), (v) => f.callingCode = v);
+  set('emergency number', local?.emergencyNumber ?? str('emergencyNumber'), (v) => f.emergencyNumber = v);
+  set('language', local?.languageCode ?? str('languageCode'), (v) => f.languageCode = v);
+  set('date format', str('dateFormat'), (v) => f.dateFormat = v);
+  set('time zone', str('timezone'), (v) => f.timezone = v);
+  final lat = api?['lat'], lng = api?['lng'];
+  if (f.lat.trim().isEmpty && f.lng.trim().isEmpty && lat is num && lng is num) {
+    f
+      ..lat = lat.toStringAsFixed(5)
+      ..lng = lng.toStringAsFixed(5);
+    filled.add('position');
+  }
+  return filled;
+}
+
 // ---------------------------------------------------------------------------
 // Airport areas (`airport_areas`)
 // ---------------------------------------------------------------------------

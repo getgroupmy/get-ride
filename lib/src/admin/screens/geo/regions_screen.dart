@@ -84,7 +84,9 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
         initial.languageCode = def.languageCode;
       }
     }
-    final level = _level;
+    // The level of the row being edited, else of the page: it decides the
+    // one name the sheet asks for (its parents are the page).
+    final level = entry != null ? regionLevelOf(entry.values) : (row?.level ?? _level);
     final form = await showAdminSheet<RegionForm>(
       context,
       title: entry != null ? 'Edit region' : 'Add ${regionLevelLabel(level)}',
@@ -340,6 +342,47 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
     'taxAmount': TextEditingController(text: f.taxAmount),
   };
   String? _error;
+  bool _filling = false;
+
+  /// Country information from open country data (the `region-defaults`
+  /// function), else the built-in tables.
+  Future<void> _fillDefaults() async {
+    _read();
+    final name = f.country.trim();
+    if (name.isEmpty) {
+      showInfo(context, 'Enter the country first.');
+      return;
+    }
+    setState(() => _filling = true);
+    final api = await ref.read(geoAdminRepositoryProvider).regionDefaults(name);
+    if (!mounted) return;
+    final filled = applyRegionDefaults(f, api);
+    setState(() {
+      _filling = false;
+      for (final k in const [
+        'currencyName', 'currencySymbol', 'callingCode', 'emergencyNumber', 'languageCode', 'dateFormat',
+        'timezone', 'lat', 'lng',
+      ]) {
+        _c[k]!.text = switch (k) {
+          'currencyName' => f.currencyName,
+          'currencySymbol' => f.currencySymbol,
+          'callingCode' => f.callingCode,
+          'emergencyNumber' => f.emergencyNumber,
+          'languageCode' => f.languageCode,
+          'dateFormat' => f.dateFormat,
+          'timezone' => f.timezone,
+          'lat' => f.lat,
+          _ => f.lng,
+        };
+      }
+    });
+    showInfo(
+      context,
+      filled.isEmpty
+          ? 'No details found for "$name". Check the spelling, or fill them in by hand.'
+          : '${api == null ? 'Filled from the built-in list' : 'Filled'}: ${filled.join(', ')}.',
+    );
+  }
 
   @override
   void dispose() {
@@ -403,33 +446,40 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
     final services = ref.watch(regionServicesProvider).value ?? const <ServiceOption>[];
     const gap = SizedBox(height: 12);
     final on = f.services.values.where((v) => v).length;
+    final parentLine = regionParentLine(f, widget.level);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      _field('country', 'Country', hint: 'e.g. Malaysia'),
-      gap,
-      _field('state', 'State', hint: 'e.g. Selangor'),
-      gap,
-      _field('city', 'City', hint: 'e.g. Petaling Jaya'),
-      gap,
-      _field('suburb', 'Suburb (optional)', hint: 'e.g. Bangsar'),
-      if (f.isCountryRow) ...[
+      if (parentLine.isNotEmpty) ...[
+        Row(children: [
+          Icon(Icons.place_outlined, size: 16, color: t.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(parentLine,
+                key: const ValueKey('region-parent'),
+                style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+          ),
+        ]),
+        gap,
+      ],
+      switch (widget.level) {
+        RegionLevel.country => _field('country', 'Country', hint: 'e.g. Malaysia'),
+        RegionLevel.state => _field('state', 'State', hint: 'e.g. Selangor'),
+        RegionLevel.city => _field('city', 'City', hint: 'e.g. Petaling Jaya'),
+        RegionLevel.suburb => _field('suburb', 'Suburb', hint: 'e.g. Bangsar'),
+      },
+      if (widget.level == RegionLevel.country) ...[
         const SizedBox(height: 20),
         Row(children: [
           Expanded(child: Text('Country information', style: t.textTheme.titleSmall)),
-          TextButton(
-            onPressed: () {
-              final def = countryDefaultsForName(_c['country']!.text);
-              if (def == null) {
-                showInfo(context, 'No defaults known for this country.');
-                return;
-              }
-              setState(() {
-                _c['emergencyNumber']!.text = def.emergencyNumber;
-                _c['languageCode']!.text = def.languageCode;
-                _read();
-              });
-            },
-            child: const Text('Fill defaults'),
-          ),
+          _filling
+              ? const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              : TextButton(
+                  key: const ValueKey('region-fill-defaults'),
+                  onPressed: _fillDefaults,
+                  child: const Text('Fill defaults'),
+                ),
         ]),
         gap,
         _pair(_field('currencyName', 'Currency name', hint: 'e.g. MYR'),
@@ -441,7 +491,7 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
         _pair(_field('languageCode', 'Language code', hint: 'e.g. en-MY'),
             _field('dateFormat', 'Date format', hint: 'e.g. DD/MM/YYYY')),
       ],
-      if (f.suburb.trim().isEmpty) ...[gap, _field('timezone', 'Time zone', hint: 'e.g. Asia/Kuala_Lumpur')],
+      if (widget.level != RegionLevel.suburb) ...[gap, _field('timezone', 'Time zone', hint: 'e.g. Asia/Kuala_Lumpur')],
       const SizedBox(height: 20),
       Row(children: [
         Icon(Icons.build_outlined, size: 16, color: t.colorScheme.onSurfaceVariant),
