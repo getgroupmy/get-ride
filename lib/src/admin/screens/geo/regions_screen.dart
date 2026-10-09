@@ -449,6 +449,19 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
         Expanded(child: Text('Services', style: t.textTheme.titleSmall)),
         Text('$on/${services.length} on', style: t.textTheme.bodySmall),
       ]),
+      if (services.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            on == 0
+                ? f.isCountryRow
+                    ? 'None on: every service is offered in this country.'
+                    : 'None on: this region follows its parent\'s services.'
+                : 'Only these are offered here; the app shows the others as coming soon.',
+            key: const ValueKey('region-services-note'),
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+        ),
       if (services.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -495,9 +508,9 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
           contentPadding: EdgeInsets.zero,
           title: const Text('Price without decimals'),
           subtitle: Text(f.wholeFare
-              ? 'Fares round up to a whole amount; no decimals are shown or typed. Tolls and other charges keep '
-                  'their decimals.'
-              : 'Fares are shown and typed with decimals.'),
+              ? 'Booking fares round up to a whole amount; no decimals are shown or typed. Tolls and other '
+                  'charges keep their decimals. Meter Digital keeps its own rate cards.'
+              : 'Booking fares are shown and typed with decimals.'),
           value: f.wholeFare,
           onChanged: (v) => setState(() => f.wholeFare = v),
         ),

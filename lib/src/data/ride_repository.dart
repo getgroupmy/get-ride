@@ -264,18 +264,63 @@ class RideRepository {
 
   // ---- Fare bidding (see core/ride_bidding.dart for the shared contract) ----
 
-  /// The admin's region list (`country-states-cities`) with each region's
-  /// bidding switch. Empty when it cannot be read: bidding then stays on.
-  Future<List<BiddingRegion>> biddingRegions() async {
-    try {
-      final rows = await _db.from('settings_entries').select('values').eq('category', 'country-states-cities');
-      return [
-        for (final r in rows)
-          if (r['values'] is Map) BiddingRegion.fromValues(Map<String, dynamic>.from(r['values'] as Map)),
-      ].whereType<BiddingRegion>().toList();
-    } catch (_) {
-      return const [];
+  /// The admin's regions (Admin → Country / States / Cities, saved to the
+  /// `countries` / `states` / `cities` / `suburbs` tables) with each one's
+  /// bidding switch, pricing and services. Old `country-states-cities`
+  /// settings entries are read too. A table that cannot be read is skipped;
+  /// empty when none can, and bidding then stays on. Kept for
+  /// [regionsCacheFor] so one pickup's checks share a read, while an admin's
+  /// change is picked up on the next check after that.
+  Future<List<BiddingRegion>> biddingRegions() {
+    final cached = _regions;
+    if (cached != null && DateTime.now().difference(cached.at) < regionsCacheFor) return cached.list;
+    final list = _readRegions();
+    _regions = (at: DateTime.now(), list: list);
+    return list;
+  }
+
+  static const regionsCacheFor = Duration(seconds: 20);
+  ({DateTime at, Future<List<BiddingRegion>> list})? _regions;
+
+  Future<List<BiddingRegion>> _readRegions() async {
+    Future<List<BiddingRegion>> table(String t, String select) async {
+      try {
+        final rows = await _db.from(t).select(select);
+        return [for (final r in rows) ?BiddingRegion.fromRegionRow(t, Map<String, dynamic>.from(r))];
+      } catch (_) {
+        return const [];
+      }
     }
+
+    Future<List<BiddingRegion>> legacy() async {
+      try {
+        final rows = await _db.from('settings_entries').select('values').eq('category', 'country-states-cities');
+        return [
+          for (final r in rows)
+            if (r['values'] is Map) ?BiddingRegion.fromValues(Map<String, dynamic>.from(r['values'] as Map)),
+        ];
+      } catch (_) {
+        return const [];
+      }
+    }
+
+    final parts = await Future.wait([
+      for (final e in regionTableSelects.entries) table(e.key, e.value),
+      legacy(),
+    ]);
+    return [for (final p in parts) ...p];
+  }
+
+  /// The `service-settings` ids switched on for [pickup]'s region; null when
+  /// no region restricts them.
+  Future<Set<String>?> servicesFor(LatLng pickup, Future<AreaInfo?> Function() area) async {
+    final regions = await biddingRegions();
+    if (!regions.any((r) => r.services != null)) return null;
+    AreaInfo? names;
+    try {
+      names = await area().timeout(const Duration(seconds: 5));
+    } catch (_) {}
+    return servicesAt(regions, pickup, area: names);
   }
 
   /// How fares are priced at [pickup] (whole amounts, tax): the region's
