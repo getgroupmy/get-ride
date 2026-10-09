@@ -164,7 +164,7 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
                 width: 140,
                 enabled: canEdit,
                 onPick: () async {
-                  final f = await pickPeopleFile();
+                  final f = await pickPeopleFile(context);
                   if (f != null) setState(() => _profileFile = f);
                 },
               ),
@@ -196,7 +196,7 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
               enabled: canEdit,
               height: 180,
               onPick: () async {
-                final f = await pickPeopleFile();
+                final f = await pickPeopleFile(context);
                 if (f != null) setState(() => _idFile = f);
               },
             ),

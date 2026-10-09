@@ -17,13 +17,13 @@ String signupLanding(String? role) => role == 'driver' ? '/drive' : '/';
 /// becomes the avatar. Skip goes on without one; it can be added later from
 /// Edit profile.
 class SignupPhotoScreen extends ConsumerStatefulWidget {
-  const SignupPhotoScreen({super.key, required this.next, this.pickPhoto = pickImage});
+  const SignupPhotoScreen({super.key, required this.next, this.pickPhoto = pickAvatarImage});
 
   /// Where Continue and Skip go.
   final String next;
 
-  /// Photo picker (overridden in tests).
-  final Future<PickedImage?> Function() pickPhoto;
+  /// Photo picker, cut square (overridden in tests).
+  final Future<PickedImage?> Function(BuildContext context) pickPhoto;
 
   @override
   ConsumerState<SignupPhotoScreen> createState() => _SignupPhotoScreenState();
@@ -35,7 +35,7 @@ class _SignupPhotoScreenState extends ConsumerState<SignupPhotoScreen> {
   Future<void> _pick() async {
     final PickedImage? photo;
     try {
-      photo = await widget.pickPhoto();
+      photo = await widget.pickPhoto(context);
     } catch (e) {
       if (mounted) showError(context, e);
       return;

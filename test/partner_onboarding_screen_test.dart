@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +7,7 @@ import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/admin/screens/people/people_logic.dart';
 import 'package:get_ride/src/data/partner_onboarding_repository.dart';
 import 'package:get_ride/src/features/partner/partner_onboarding_screen.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -32,6 +35,14 @@ class _FakeOnboarding extends PartnerOnboardingRepository {
 
   @override
   Future<Map<String, dynamic>> patchProfile(Map<String, dynamic> patch) async => {...?state.profile, ...patch};
+
+  final avatars = <String>[];
+
+  @override
+  Future<String> uploadAvatar(OnboardingState s, Uint8List bytes, String fileName) async {
+    avatars.add(fileName);
+    return 'https://example.com/$fileName';
+  }
 }
 
 class _FakePeople extends PeopleRepository {
@@ -90,7 +101,13 @@ const _filledIn = {
   'partner_types': ['TEKSI'],
 };
 
-Future<_FakeOnboarding> _pump(WidgetTester tester, OnboardingState state, {_FakePeople? people}) async {
+Future<_FakeOnboarding> _pump(
+  WidgetTester tester,
+  OnboardingState state, {
+  _FakePeople? people,
+  PartnerOnboardingScreen screen = const PartnerOnboardingScreen(),
+  Brightness brightness = Brightness.light,
+}) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -102,7 +119,7 @@ Future<_FakeOnboarding> _pump(WidgetTester tester, OnboardingState state, {_Fake
       peopleRepositoryProvider.overrideWithValue(people ?? _FakePeople()),
       partnerProvider.overrideWith((_) async => null),
     ],
-    child: const MaterialApp(home: PartnerOnboardingScreen()),
+    child: MaterialApp(theme: appTheme(brightness), home: screen),
   ));
   await tester.pump();
   await tester.pump();
@@ -115,6 +132,22 @@ void main() {
     expect(find.text('Step 1 of 6'), findsOneWidget);
     expect(find.text('Add a profile photo'), findsOneWidget);
     expect(find.text('Choose photo'), findsOneWidget);
+  });
+
+  testWidgets('the profile photo comes from the avatar picker and is saved to both rows', (tester) async {
+    final repo = await _pump(
+      tester,
+      OnboardingState(profile: const {}, partner: _partner()),
+      screen: PartnerOnboardingScreen(
+        pickAvatar: (_) async => (bytes: Uint8List(4), name: 'me.jpg', ext: 'jpg', contentType: 'image/jpeg'),
+      ),
+    );
+    await tester.tap(find.text('Choose photo'));
+    await tester.pump();
+    await tester.pump();
+    expect(repo.avatars, ['me.jpg']);
+    expect(repo.patches.single, {'avatar_url': 'https://example.com/me.jpg'});
+    expect(find.text('Your ID'), findsOneWidget);
   });
 
   testWidgets('the ID number is required, then saved to both rows', (tester) async {
@@ -184,4 +217,25 @@ void main() {
     expect(find.text('Application submitted'), findsOneWidget);
     expect(find.text('All steps complete'), findsOneWidget);
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('a rejected document shows the admin\'s reason (${b.name})', (tester) async {
+      await _pump(
+        tester,
+        OnboardingState(profile: const {}, partner: _partner({..._filledIn, 'documents_ok': true})),
+        brightness: b,
+        people: _FakePeople(uploads: [
+          {'doc_id': 'licence', 'status': 'Rejected', 'reviewer_notes': ' Photo is blurry '},
+          {'doc_id': 'permit', 'status': 'Approved', 'reviewer_notes': 'old note'},
+        ]),
+      );
+      await tester.pump();
+      expect(find.text('Your documents'), findsOneWidget);
+      final note = find.text('Rejected: Photo is blurry');
+      expect(note, findsOneWidget);
+      final ctx = tester.element(note);
+      expect(tester.widget<Text>(note).style?.color, Theme.of(ctx).colorScheme.error);
+      expect(find.textContaining('old note'), findsNothing, reason: 'only a rejection shows its note');
+    });
+  }
 }

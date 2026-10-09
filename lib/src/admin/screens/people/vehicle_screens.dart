@@ -14,6 +14,41 @@ import 'people_logic.dart';
 import 'people_widgets.dart';
 import 'vehicle_drivers.dart';
 
+/// Whether a vehicle may be approved (Expo `runApprovalDocCheck`): only
+/// once every one of its documents is approved. Otherwise says why, offers
+/// the vehicle documents review queue, and answers false. When the
+/// documents can't be read it falls back to the "Documents complete" flag.
+/// Both the vehicle form and the vehicle list's status picker ask this.
+Future<bool> confirmVehicleApprovable(
+  BuildContext context, {
+  required Future<List<Map<String, dynamic>>> Function() documents,
+  required String plate,
+  required bool documentsOk,
+}) async {
+  List<Map<String, dynamic>>? docs;
+  try {
+    docs = await documents();
+  } catch (_) {}
+  if (!context.mounted) return false;
+  final check = docs == null ? null : vehicleDocsCheck(docs);
+  final msg = check?.blockMessage(plate) ??
+      (check == null && !documentsOk ? '$plate has documents that still need review. Approve them first.' : null);
+  if (msg == null) return true;
+  final review = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(check != null && !check.hasAny ? 'No documents uploaded' : 'Documents not fully approved'),
+      content: Text(msg),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Review documents')),
+      ],
+    ),
+  );
+  if (review == true && context.mounted) context.go('/admin/documents?kind=vehicle');
+  return false;
+}
+
 class VehicleFormData {
   const VehicleFormData({required this.partners, required this.geo, required this.requiredDocs, required this.vehicleDocTypeIds});
   final List<Map<String, dynamic>> partners;
@@ -105,30 +140,13 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
     final repo = ref.read(peopleRepositoryProvider);
 
     if (_isEdit && _status == 'approved' && r!['status'] != 'approved') {
-      List<Map<String, dynamic>>? docs;
-      try {
-        docs = await repo.vehicleDocuments(r!['id'] as String);
-      } catch (_) {}
-      if (!mounted) return;
-      final check = docs == null ? null : vehicleDocsCheck(docs);
-      final unknownBlocked = check == null && !_docsOk;
-      final msg = check?.blockMessage(_s('plate')) ??
-          (unknownBlocked ? '${_s('plate')} has documents that still need review. Approve them first.' : null);
-      if (msg != null) {
-        final review = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text(check != null && !check.hasAny ? 'No documents uploaded' : 'Documents not fully approved'),
-            content: Text(msg),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Review documents')),
-            ],
-          ),
-        );
-        if (review == true && mounted) context.go('/admin/documents?kind=vehicle');
-        return;
-      }
+      final allowed = await confirmVehicleApprovable(
+        context,
+        documents: () => repo.vehicleDocuments(r!['id'] as String),
+        plate: _s('plate'),
+        documentsOk: _docsOk,
+      );
+      if (!allowed || !mounted) return;
     }
 
     setState(() => _saving = true);
@@ -324,7 +342,7 @@ class _VehiclePhotosState extends ConsumerState<_VehiclePhotos> {
   String? _busy;
 
   Future<void> _replace(String slot) async {
-    final file = await pickPeopleFile();
+    final file = await pickPeopleFile(context);
     if (file == null || !mounted) return;
     setState(() => _busy = slot);
     final id = widget.row['id'] as String;

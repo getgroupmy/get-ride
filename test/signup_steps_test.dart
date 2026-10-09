@@ -149,7 +149,7 @@ void main() {
               '/signup/photo',
               photo: SignupPhotoScreen(
                 next: '/drive',
-                pickPhoto: () async {
+                pickPhoto: (_) async {
                   profile = {...profile, 'avatar_url': 'https://example.com/a.png'};
                   return (bytes: Uint8List(10), name: 'me.png', ext: 'png', contentType: 'image/png');
                 },

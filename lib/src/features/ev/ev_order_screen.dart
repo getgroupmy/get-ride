@@ -654,7 +654,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
   }
 
   Future<void> _pickIdPhoto() async {
-    final picked = await pickImage();
+    final picked = await pickImage(context);
     final id = _orderId;
     if (picked == null || id == null) return;
     setState(() => _busy = true);

@@ -15,7 +15,7 @@ class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key, this.pickPhoto = pickImage});
 
   /// Photo picker (overridden in tests).
-  final Future<PickedImage?> Function() pickPhoto;
+  final Future<PickedImage?> Function(BuildContext context) pickPhoto;
 
   @override
   ConsumerState<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -68,7 +68,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   Future<void> _changePhoto() async {
     final PickedImage? photo;
     try {
-      photo = await widget.pickPhoto();
+      photo = await widget.pickPhoto(context);
     } catch (e) {
       if (mounted) showError(context, e);
       return;
@@ -95,7 +95,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   Future<void> _changeIdPhoto() async {
     final PickedImage? photo;
     try {
-      photo = await widget.pickPhoto();
+      photo = await widget.pickPhoto(context);
     } catch (e) {
       if (mounted) showError(context, e);
       return;
