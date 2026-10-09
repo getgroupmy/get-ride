@@ -60,7 +60,40 @@ class _SlowAi implements RouteEstimateRepository {
   final answer = Completer<({RouteEstimate? estimate, bool unavailable})?>();
 
   @override
-  Future<({RouteEstimate? estimate, bool unavailable})?> estimateDetailed(LatLng from, LatLng to) => answer.future;
+  Future<({RouteEstimate? estimate, bool unavailable})?> estimateDetailed(
+    LatLng from,
+    LatLng to, {
+    List<LatLng> via = const [],
+  }) => answer.future;
+
+  @override
+  dynamic noSuchMethod(Invocation i) => Future.value(null);
+}
+
+/// Every trip the AI was asked about (its stops), answering through them
+/// with a fare that is up, or as a proxy from before stops when [old].
+class _StopsAi implements RouteEstimateRepository {
+  _StopsAi({this.old = false});
+  final bool old;
+  final asked = <List<LatLng>>[];
+
+  @override
+  Future<({RouteEstimate? estimate, bool unavailable})?> estimateDetailed(
+    LatLng from,
+    LatLng to, {
+    List<LatLng> via = const [],
+  }) async {
+    asked.add(via);
+    return (
+      estimate: RouteEstimate(
+        distanceKm: 12,
+        durationMin: 30,
+        stops: old ? 0 : via.length,
+        trend: const FareTrend(direction: FareTrendDirection.up, fromFareRange: false, aiMin: 30, standardMin: 20),
+      ),
+      unavailable: false,
+    );
+  }
 
   @override
   dynamic noSuchMethod(Invocation i) => Future.value(null);
@@ -167,6 +200,42 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('fare-raise')));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byKey(const ValueKey('fare-trend-up')), findsOneWidget, reason: 'only the untouched card');
+  });
+
+  Future<void> addStop(WidgetTester tester, String name) async {
+    await tester.tap(find.byKey(const ValueKey('confirm-add-stop')));
+    await _settle(tester);
+    await tester.tap(find.text(name).last);
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
+  testWidgets('a stop is priced by the AI through it, and again when the stops change', (tester) async {
+    final ai = _StopsAi();
+    await _pump(tester, _Rides(), ai: ai);
+    expect(ai.asked, [<LatLng>[]]);
+    await addStop(tester, 'Eco Majestic');
+    expect(ai.asked.last, [_eco.point], reason: 'the stop goes to the AI');
+    expect(find.textContaining('2 route stops', findRichText: true), findsOneWidget);
+    expect(find.byKey(const ValueKey('fare-trend-up')), findsWidgets, reason: 'judged high or low through the stop');
+
+    // Rearranged on "Destination addresses": asked again, in the new order.
+    await tester.tap(find.byKey(const ValueKey('confirm-drop')));
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('route-stop-remove-1')));
+    await _settle(tester);
+    expect(ai.asked.last, <LatLng>[], reason: 'Eco Majestic is the destination now');
+    expect(find.byKey(const ValueKey('fare-trend-up')), findsWidgets);
+  });
+
+  testWidgets('an answer that did not go through the stops does not price the trip', (tester) async {
+    final ai = _StopsAi(old: true);
+    await _pump(tester, _Rides(), ai: ai);
+    expect(find.byKey(const ValueKey('fare-trend-up')), findsWidgets, reason: 'no stops: it covers the trip');
+    await addStop(tester, 'Eco Majestic');
+    expect(ai.asked.last, [_eco.point]);
+    expect(find.byKey(const ValueKey('fare-trend-up')), findsNothing, reason: 'pickup → drop-off only: map route');
   });
 
   testWidgets('"Calculating fare" covers the confirm step until the AI estimate is in', (tester) async {

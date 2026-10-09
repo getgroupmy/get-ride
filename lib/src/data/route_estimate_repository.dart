@@ -17,13 +17,21 @@ class RouteEstimateRepository {
 
   /// The estimate and whether the AI service is on but could not give one
   /// ([aiEstimateUnavailable]); null when the function could not be reached.
-  Future<({RouteEstimate? estimate, bool unavailable})?> estimateDetailed(LatLng from, LatLng to) async {
+  /// [via] are the trip's stops in order: the AI prices the whole trip
+  /// through them (see [estimateCoversStops]).
+  Future<({RouteEstimate? estimate, bool unavailable})?> estimateDetailed(
+    LatLng from,
+    LatLng to, {
+    List<LatLng> via = const [],
+  }) async {
+    Map<String, double> point(LatLng p) => {'latitude': p.latitude, 'longitude': p.longitude};
     try {
       final res = await _db.functions.invoke(
         'ai-route-proxy',
         body: {
-          'origin': {'latitude': from.latitude, 'longitude': from.longitude},
-          'destination': {'latitude': to.latitude, 'longitude': to.longitude},
+          'origin': point(from),
+          'destination': point(to),
+          if (via.isNotEmpty) 'waypoints': [for (final p in via) point(p)],
         },
       );
       return (estimate: parseRouteEstimate(res.data), unavailable: aiEstimateUnavailable(res.data));

@@ -232,9 +232,37 @@ export function parseTrafficExtras(obj: Record<string, unknown>): TrafficExtras 
   return out;
 }
 
+/** The most stops a trip may have between pickup and drop-off. */
+export const MAX_STOPS = 5;
+
+/** The stops a request names: each a valid coordinate, at most
+ * [MAX_STOPS]; null when the value is not such a list. Absent is none. */
+export function parseStops(v: unknown): LatLng[] | null {
+  if (v === undefined || v === null) return [];
+  if (!Array.isArray(v) || v.length > MAX_STOPS) return null;
+  const ok = (c: unknown): c is LatLng => {
+    const p = c as LatLng | null;
+    return !!p && typeof p.latitude === "number" && typeof p.longitude === "number" &&
+      Number.isFinite(p.latitude) && Number.isFinite(p.longitude) &&
+      Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180;
+  };
+  return v.every(ok) ? v.map((c) => ({ latitude: c.latitude, longitude: c.longitude })) : null;
+}
+
+/** What the AI is told about a trip's stops, in order; empty for none. The
+ * admin's template names only the two ends, so this follows it. */
+export function stopsClause(stops: LatLng[]): string {
+  if (stops.length === 0) return "";
+  const list = stops.map((s, i) => `${i + 1}) ${fmt(s.latitude)},${fmt(s.longitude)}`).join("; ");
+  return `The trip stops on the way, in this order, at: ${list}. ` +
+    "The distance and duration must be for the whole trip from the origin through every stop, in that order, " +
+    "to the destination.";
+}
+
 /** The full user prompt sent to the AI. */
-export function buildPrompt(req: ResolvedRequest, origin: LatLng, destination: LatLng): string {
-  return `${fillTemplate(req.promptTemplate, origin, destination).trim()} ${formatClause(req)}`;
+export function buildPrompt(req: ResolvedRequest, origin: LatLng, destination: LatLng, stops: LatLng[] = []): string {
+  const via = stopsClause(stops);
+  return `${fillTemplate(req.promptTemplate, origin, destination).trim()}${via ? ` ${via}` : ""} ${formatClause(req)}`;
 }
 
 /** How long a failed key rests (a month is 30 days). */

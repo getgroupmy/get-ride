@@ -11,6 +11,8 @@ import {
   DEFAULT_REQUEST,
   formatClause,
   hexColor,
+  MAX_STOPS,
+  parseStops,
   parseTrafficExtras,
   resolveRequest,
   resolveTrendSettings,
@@ -45,6 +47,23 @@ Deno.test("with nothing configured the prompt is the one sent before", () => {
 Deno.test("placeholders fill in the trip", () => {
   const req = resolveRequest({ promptTemplate: "From {origin_lat}/{origin_lng} to {dest_lat}/{dest_lng}." });
   assertStringIncludes(buildPrompt(req, a, b), "From 3.158/101.712 to 3.134/101.686.");
+});
+
+Deno.test("stops are told to the AI in order, after the template; none changes nothing", () => {
+  const req = resolveRequest(undefined);
+  assertEquals(buildPrompt(req, a, b, []), LEGACY);
+  const p = buildPrompt(req, a, b, [{ latitude: 3.2, longitude: 101.7 }, { latitude: 3.1, longitude: 101.6 }]);
+  assertStringIncludes(p, "in this order, at: 1) 3.2,101.7; 2) 3.1,101.6.");
+  assertStringIncludes(p, "whole trip from the origin through every stop");
+  assert(p.indexOf("3.2,101.7") < p.indexOf("Respond with ONLY"), "the stops come before the answer format");
+});
+
+Deno.test("stops: a list of coordinates, at most five; absent is none", () => {
+  assertEquals(parseStops(undefined), []);
+  assertEquals(parseStops([{ latitude: 1, longitude: 2, extra: true }]), [{ latitude: 1, longitude: 2 }]);
+  assertEquals(parseStops({ latitude: 1, longitude: 2 }), null);
+  assertEquals(parseStops([{ latitude: 91, longitude: 2 }]), null);
+  assertEquals(parseStops(Array.from({ length: MAX_STOPS + 1 }, () => ({ latitude: 1, longitude: 1 }))), null);
 });
 
 Deno.test("a template that loses the trip is refused and the default used", () => {

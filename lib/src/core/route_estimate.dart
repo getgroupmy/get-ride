@@ -49,6 +49,7 @@ class RouteEstimate {
     this.tollTotal,
     this.tolls = const [],
     this.trend,
+    this.stops = 0,
   });
 
   final double distanceKm;
@@ -62,6 +63,10 @@ class RouteEstimate {
   /// The arrows before the recommended fare (Admin → Fare AI → Fare trend
   /// arrows), decided by `ai-route-proxy`; null when it decided none.
   final FareTrend? trend;
+
+  /// How many stops between pickup and drop-off the estimate covers (the
+  /// proxy says; one from before stops says nothing, which is none).
+  final int stops;
 
   /// The tolls to show the rider: the model's total, else the sum of the
   /// booths it listed, else none.
@@ -117,8 +122,14 @@ RouteEstimate? parseRouteEstimate(Object? payload) {
     tollTotal: _num(e['toll_total']),
     tolls: tolls,
     trend: parseFareTrend(e['trend']),
+    stops: (_num(e['stops']) ?? 0).round(),
   );
 }
+
+/// Whether [e] prices the trip asked about: one with [stops] stops is
+/// priced on the AI's estimate only when that estimate went through all of
+/// them, never on a pickup → drop-off answer.
+bool estimateCoversStops(RouteEstimate? e, int stops) => e != null && e.stops == stops;
 
 enum FareTrendDirection { up, down }
 
