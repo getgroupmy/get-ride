@@ -4,6 +4,7 @@ import 'admin_registry.dart';
 import 'admin_shell.dart';
 import 'screens/commission_screen.dart';
 import 'screens/fare_tariffs_screen.dart';
+import 'screens/messaging_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/documents_screen.dart';
 import 'screens/people_screens.dart';
@@ -47,6 +48,7 @@ final adminRoute = ShellRoute(
     GoRoute(path: '/admin/push', builder: (_, _) => const AdminPushScreen()),
     GoRoute(path: '/admin/commission', builder: (_, _) => const AdminCommissionScreen()),
     GoRoute(path: '/admin/fare-tariffs', builder: (_, _) => const AdminFareTariffsScreen()),
+    GoRoute(path: '/admin/messaging', builder: (_, _) => const AdminMessagingScreen()),
     GoRoute(path: '/admin/sub-admins', builder: (_, _) => const AdminSubAdminsScreen()),
     GoRoute(path: '/admin/settings', builder: (_, _) => const AdminSettingsScreen()),
     GoRoute(

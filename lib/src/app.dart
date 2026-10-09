@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'admin/admin_providers.dart' show adminAccessProvider;
 import 'admin/admin_routes.dart';
 import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
@@ -18,6 +19,7 @@ import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
 import 'data/branding_cache.dart';
+import 'data/messaging_repository.dart';
 import 'data/push_service.dart';
 import 'data/session_tracker.dart';
 import 'features/auth/otp_screen.dart';
@@ -304,6 +306,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   AlwaysOnController? _alwaysOn;
   VoidCallback? _routeListener;
   BrandingSync? _branding;
+  MessagingPresence? _presence;
 
   @override
   void initState() {
@@ -314,6 +317,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     unawaited(_branding!.start());
     _startSessionTracking();
     _startAlwaysOn();
+    _startMessagingPresence();
     unawaited(_connectionPopup());
     final push = PushService.instance;
     if (push == null) return;
@@ -388,6 +392,30 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     );
   }
 
+  /// An admin's install is listed under Admin → SMS / WhatsApp so it can be
+  /// picked to take support calls; its heartbeat runs while an admin is
+  /// signed in and stops when they sign out.
+  void _startMessagingPresence() {
+    ref.listenManual(adminAccessProvider, (_, next) async {
+      final admin = next.value?.isAdmin ?? false;
+      if (!admin) {
+        _presence?.stop();
+        _presence = null;
+        return;
+      }
+      if (_presence != null) return;
+      final device = currentDevice();
+      final id = await ref.read(authRepositoryProvider).deviceIdentifier();
+      if (!mounted || _presence != null) return;
+      _presence = MessagingPresence(
+        repo: ref.read(messagingRepositoryProvider),
+        deviceId: id,
+        label: '${device.osName} ${device.deviceType}',
+        platform: device.osName,
+      )..start();
+    }, fireImmediately: true);
+  }
+
   /// Keeps the screen awake on the admin's Always ON pages (see
   /// `core/always_on.dart`). The set is re-read whenever the app comes back
   /// to the foreground, so an admin's change lands without a relaunch.
@@ -416,6 +444,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     unawaited(_alwaysOn?.dispose());
     _lifecycle?.dispose();
     _tracker?.dispose();
+    _presence?.stop();
     _branding?.latest.removeListener(_brandingChanged);
     _branding?.stop();
     for (final sub in _subs) {

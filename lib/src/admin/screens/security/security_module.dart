@@ -9,6 +9,7 @@ import 'elife_screen.dart';
 import 'fare_ai_request_screen.dart';
 import 'fare_ai_screens.dart';
 import 'ip_access_screen.dart';
+import '../messaging_screen.dart';
 import 'session_history_screen.dart';
 import 'trace_fraud_screen.dart';
 
@@ -21,6 +22,7 @@ const securityOwnedCategories = <String>{};
 final securityRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/session-history', builder: (_, _) => const AdminSessionHistoryScreen()),
   GoRoute(path: '/admin/m/trace-fraud', builder: (_, _) => const AdminTraceFraudScreen()),
+  GoRoute(path: '/admin/m/messaging', builder: (_, _) => const AdminMessagingScreen()),
   GoRoute(path: '/admin/m/ip-access', builder: (_, _) => const AdminIpAccessScreen()),
   GoRoute(path: '/admin/m/api-keys', builder: (_, _) => const AdminApiProvidersScreen()),
   GoRoute(
@@ -123,6 +125,14 @@ const securityEntries = <AdminScreenEntry>[
     path: '/admin/m/fare-ai-request',
     pages: ['admin-settings-fare-ai'],
     listed: false,
+  ),
+  AdminScreenEntry(
+    section: _section,
+    title: 'SMS / WhatsApp',
+    subtitle: 'Which device sends & receives OTP, marketing, support calls & messages',
+    path: '/admin/m/messaging',
+    pages: [messagingPage],
+    icon: Icons.sms_outlined,
   ),
   AdminScreenEntry(
     section: _section,
