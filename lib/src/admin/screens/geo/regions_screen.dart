@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/region_pricing.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/keyboard_dismiss.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
@@ -36,6 +37,7 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
   RegionLevel get _level => currentRegionLevel(_country, _state, _city);
 
   void _select({String? country, String? state, String? city}) {
+    dismissKeyboard();
     setState(() {
       if (country != null) _country = country;
       if (state != null) _state = state;
@@ -69,6 +71,7 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
   }
 
   Future<void> _edit(List<RegionEntry> entries, {RegionRow? row}) async {
+    dismissKeyboard();
     final entry = row?.entry;
     final initial = entry != null
         ? RegionForm.fromEntry(entry)
@@ -119,6 +122,7 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
   }
 
   void _map(RegionRow r, bool canEdit) {
+    dismissKeyboard();
     final repo = ref.read(geoAdminRepositoryProvider);
     final entry = r.entry;
     final stored = r.boundary;
@@ -211,7 +215,9 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
                     isDense: true,
                     helperText: '${rows.length} ${regionLevelLabel(level, plural: true)}',
                   ),
+                  textInputAction: TextInputAction.search,
                   onChanged: (v) => setState(() => _query = v),
+                  onSubmitted: (_) => dismissKeyboard(),
                 ),
               ),
               Expanded(
@@ -224,6 +230,7 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
                             : 'Try a different search or add a custom entry.',
                       )
                     : ListView.separated(
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.only(bottom: 96),
                         itemCount: rows.length,
                         separatorBuilder: (_, _) => const Divider(height: 1),
@@ -281,23 +288,33 @@ class _RegionTile extends StatelessWidget {
               '${v['lng'] is num ? (v['lng'] as num).toStringAsFixed(4) : '—'}',
     };
     Widget badge(String text, Color c) => Container(
-          margin: const EdgeInsets.only(left: 6),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
           child: Text(text, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w600)),
         );
+    final badges = [
+      if (custom) badge('Custom', scheme.primary),
+      if (hasBoundary) badge('Boundary', Colors.teal),
+      if (v?['blocked'] == true) badge('Blocked', scheme.error),
+    ];
     return ListTile(
       leading: CircleAvatar(
         backgroundColor: custom ? scheme.primaryContainer : scheme.surfaceContainerHighest,
         child: Icon(icon, color: custom ? scheme.primary : scheme.onSurfaceVariant, size: 20),
       ),
-      title: Row(children: [
-        Flexible(child: Text(row.name, overflow: TextOverflow.ellipsis)),
-        if (custom) badge('Custom', scheme.primary),
-        if (hasBoundary) badge('Boundary', Colors.teal),
-        if (v?['blocked'] == true) badge('Blocked', scheme.error),
-      ]),
-      subtitle: subtitle.isEmpty ? null : Text(subtitle),
+      // The name has the title to itself: the badges sit under it, so a row
+      // with several of them (and four buttons) never squeezes it to nothing.
+      title: Text(row.name, key: ValueKey('region-name-${row.key}'), maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: badges.isEmpty && subtitle.isEmpty
+          ? null
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              if (badges.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2, bottom: 2),
+                  child: Wrap(spacing: 6, runSpacing: 4, children: badges),
+                ),
+              if (subtitle.isNotEmpty) Text(subtitle),
+            ]),
       onTap: row.level == RegionLevel.suburb ? null : onOpen,
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         IconButton(
@@ -349,6 +366,7 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
   /// Country information from open country data (the `region-defaults`
   /// function), else the built-in tables.
   Future<void> _fillDefaults() async {
+    dismissKeyboard();
     _read();
     final name = f.country.trim();
     if (name.isEmpty) {
@@ -415,6 +433,7 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
   }
 
   void _submit() {
+    dismissKeyboard();
     _read();
     final err =
         validateRegionForm(widget.level, country: f.country, state: f.state, city: f.city, suburb: f.suburb) ??

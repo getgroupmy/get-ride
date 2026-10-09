@@ -73,6 +73,7 @@ import 'providers.dart';
 import 'platform/web_favicon.dart';
 import 'widgets/app_icon_changed.dart';
 import 'widgets/connection_status_dialog.dart';
+import 'widgets/keyboard_dismiss.dart';
 import 'widgets/map_sheet_layout.dart' show appBottomSheetTheme;
 
 const brandAccent = Color(0xFF2DABE2);
@@ -498,7 +499,12 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         child: UpdateGate(
           child: VoiceProtectionHost(
             child: IncomingTransferListener(
-              child: IncomingCallListener(child: child ?? const SizedBox.shrink()),
+              child: IncomingCallListener(
+                child: KeyboardDismissOnChange(
+                  listenable: router.routerDelegate,
+                  child: KeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+                ),
+              ),
             ),
           ),
         ),
