@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/data/partner_onboarding_repository.dart';
 import 'package:get_ride/src/data/vehicle_onboarding_repository.dart';
 import 'package:get_ride/src/features/partner/vehicle_screens.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // No token refresh: its timer would outlive the first test.
@@ -105,7 +107,14 @@ const _ready = {
   'documents_ok': false,
 };
 
-Future<_FakeVehicles> _pump(WidgetTester tester, Widget screen, {_FakeVehicles? vehicles, _FakePeople? people}) async {
+Future<_FakeVehicles> _pump(
+  WidgetTester tester,
+  Widget screen, {
+  _FakeVehicles? vehicles,
+  _FakePeople? people,
+  Brightness brightness = Brightness.light,
+  GoRouter? router,
+}) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -117,7 +126,9 @@ Future<_FakeVehicles> _pump(WidgetTester tester, Widget screen, {_FakeVehicles? 
       vehicleOnboardingRepositoryProvider.overrideWithValue(repo),
       peopleRepositoryProvider.overrideWithValue(people ?? _FakePeople()),
     ],
-    child: MaterialApp(home: screen),
+    child: router == null
+        ? MaterialApp(theme: appTheme(brightness), home: screen)
+        : MaterialApp.router(theme: appTheme(brightness), routerConfig: router),
   ));
   await tester.pump();
   await tester.pump();
@@ -218,4 +229,115 @@ void main() {
     expect(find.text('Incomplete: Make & model'), findsOneWidget);
     expect(find.text('Add vehicle'), findsOneWidget);
   });
+
+  testWidgets('the year must be four digits in range', (tester) async {
+    final repo = await _pump(
+      tester,
+      const VehicleOnboardingScreen(vehicleId: 'v1'),
+      vehicles: _FakeVehicles(existing: const {'id': 'v1', 'plate': 'WXY 1', 'make': 'Proton', 'model': 'Saga'}),
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'Colour'), 'White');
+    await tester.enterText(find.widgetWithText(TextField, 'Year'), '1890');
+    await tester.tap(find.text('Save and continue'));
+    await tester.pump();
+    expect(find.textContaining('Enter the year as 4 digits, from 1950 to'), findsOneWidget);
+    expect(repo.patches, isEmpty);
+    await tester.enterText(find.widgetWithText(TextField, 'Year'), '202');
+    await tester.tap(find.text('Save and continue'));
+    await tester.pump();
+    expect(repo.patches, isEmpty);
+    // A fifth digit is not taken.
+    await tester.enterText(find.widgetWithText(TextField, 'Year'), '20201');
+    expect(find.widgetWithText(TextField, '2020'), findsOneWidget);
+  });
+
+  testWidgets('the owner step needs "Is this your own vehicle?" answered', (tester) async {
+    final existing = Map<String, dynamic>.from(_ready)
+      ..remove('owner_name')
+      ..remove('owner_phone')
+      ..remove('owner_ic');
+    final repo = await _pump(tester, const VehicleOnboardingScreen(vehicleId: 'v1'),
+        vehicles: _FakeVehicles(existing: existing));
+    expect(find.text('Is this your own vehicle?'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, "Owner's name"), 'Siti');
+    await tester.enterText(find.widgetWithText(TextField, "Owner's phone"), '+60199');
+    await tester.enterText(find.widgetWithText(TextField, "Owner's ID number"), '800101-10-1111');
+    await tester.tap(find.text('Select an option to continue'));
+    await tester.pump();
+    expect(find.text('Please tell us whether this is your own vehicle.'), findsOneWidget);
+    expect(repo.patches, isEmpty);
+
+    await tester.tap(find.text("It's someone else's"));
+    await tester.pump();
+    // Choosing clears the fields for the real owner's details.
+    await tester.enterText(find.widgetWithText(TextField, "Owner's name"), 'Siti');
+    await tester.enterText(find.widgetWithText(TextField, "Owner's phone"), '+60199');
+    await tester.enterText(find.widgetWithText(TextField, "Owner's ID number"), '800101-10-1111');
+    await tester.tap(find.text('Save and continue'));
+    await tester.pump();
+    await tester.pump();
+    expect(repo.patches.single, {'owner_name': 'Siti', 'owner_phone': '+60199', 'owner_ic': '800101-10-1111'});
+  });
+
+  GoRouter router(String vehicleId) => GoRouter(
+        initialLocation: '/drive/vehicles',
+        routes: [
+          GoRoute(path: '/drive', builder: (_, _) => const Scaffold(body: Text('drive tab'))),
+          GoRoute(
+            path: '/drive/vehicles',
+            builder: (context, _) => Scaffold(
+              body: TextButton(
+                onPressed: () => context.push('/drive/vehicles/$vehicleId'),
+                child: const Text('vehicle list'),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/drive/vehicles/:id',
+            builder: (_, s) => VehicleOnboardingScreen(vehicleId: s.pathParameters['id']),
+          ),
+        ],
+      );
+
+  testWidgets('Done takes an approved vehicle to the Drive tab', (tester) async {
+    await _pump(tester, const SizedBox(),
+        router: router('v1'),
+        vehicles: _FakeVehicles(existing: {..._ready, 'status': 'approved', 'documents_ok': true}));
+    await tester.tap(find.text('vehicle list'));
+    await tester.pumpAndSettle();
+    expect(find.text('Proton Saga · Approved'), findsOneWidget);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('drive tab'), findsOneWidget);
+  });
+
+  testWidgets('Done on a vehicle still in review goes back', (tester) async {
+    await _pump(tester, const SizedBox(),
+        router: router('v1'), vehicles: _FakeVehicles(existing: {..._ready, 'documents_ok': true}));
+    await tester.tap(find.text('vehicle list'));
+    await tester.pumpAndSettle();
+    expect(find.text('Proton Saga · Pending review'), findsOneWidget);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('vehicle list'), findsOneWidget);
+    expect(find.text('drive tab'), findsNothing);
+  });
+
+  for (final b in Brightness.values) {
+    testWidgets('a rejected vehicle document shows the reason (${b.name})', (tester) async {
+      await _pump(
+        tester,
+        const VehicleOnboardingScreen(vehicleId: 'v1'),
+        brightness: b,
+        vehicles: _FakeVehicles(existing: {..._ready, 'documents_ok': true}),
+        people: _FakePeople(uploads: [
+          {'doc_id': 'puspakom', 'status': 'Rejected', 'reviewer_notes': 'Inspection date is cut off'},
+        ]),
+      );
+      await tester.pump();
+      final note = find.text('Rejected: Inspection date is cut off');
+      expect(note, findsOneWidget);
+      expect(tester.widget<Text>(note).style?.color, Theme.of(tester.element(note)).colorScheme.error);
+    });
+  }
 }

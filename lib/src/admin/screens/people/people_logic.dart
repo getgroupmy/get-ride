@@ -631,6 +631,14 @@ String docDisplayStatus(Map<String, dynamic> row, {DateTime? now}) {
   return status;
 }
 
+/// Why the admin rejected a document (`reviewer_notes`), as its partner
+/// reads it: `Rejected: <note>`. Null unless it is rejected with a note.
+String? docRejectionNote(Map<String, dynamic> row) {
+  if ('${row['status'] ?? ''}' != 'Rejected') return null;
+  final note = '${row['reviewer_notes'] ?? ''}'.trim();
+  return note.isEmpty ? null : 'Rejected: $note';
+}
+
 class DocsApprovalCheck {
   const DocsApprovalCheck({
     this.total = 0,
@@ -692,6 +700,7 @@ class DocFlags {
     this.isPwd = false,
     this.requireFrontBack = false,
     this.allowPdfUpload = false,
+    this.isTaxiPermit = false,
   });
 
   factory DocFlags.fromValues(Map<String, dynamic> v) => DocFlags(
@@ -702,10 +711,15 @@ class DocFlags {
         isPwd: _truthy(v['isPwd'], false),
         requireFrontBack: _truthy(v['requireFrontBack'], false),
         allowPdfUpload: _truthy(v['allowPdfUpload'], false),
+        isTaxiPermit: _truthy(v['isTaxiPermit'], false),
       );
 
   final bool requireStartDate, requireExpiryDate, requireDocumentNumber, requireInsuranceProvider, isPwd,
       requireFrontBack, allowPdfUpload;
+
+  /// The admin's "Taxi Driver Permit display" tag: the AI check also reads
+  /// the permit's fields, and the driver's portrait is cut out of it.
+  final bool isTaxiPermit;
 }
 
 class RequiredDoc {

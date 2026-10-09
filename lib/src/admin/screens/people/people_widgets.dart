@@ -684,19 +684,28 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
                 final u = uploads[d.id];
                 final status = u == null ? null : docDisplayStatus(u, now: now);
                 final opens = widget.renewalLock && u != null ? renewalOpensOn(u, now: now) : null;
+                final rejection = u == null ? null : docRejectionNote(u);
                 return Card(
                   child: ListTile(
                     leading: Icon(d.compulsory ? Icons.gpp_maybe_outlined : Icons.verified_user_outlined,
                         color: d.compulsory ? Colors.orange : Colors.green),
                     title: Text(d.name),
-                    subtitle: Text([
-                      if (d.description.isNotEmpty) d.description,
-                      d.labels.join(' · '),
-                      if (u?['expiry_date'] != null) 'Expires: ${u!['expiry_date']}',
-                      if (opens != null)
-                        'Renewal opens ${opens.year}-${'${opens.month}'.padLeft(2, '0')}-${'${opens.day}'.padLeft(2, '0')}',
-                      d.compulsory ? 'Compulsory' : 'Optional',
-                    ].join('\n')),
+                    subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      Text([
+                        if (d.description.isNotEmpty) d.description,
+                        d.labels.join(' · '),
+                        if (u?['expiry_date'] != null) 'Expires: ${u!['expiry_date']}',
+                        if (opens != null)
+                          'Renewal opens ${opens.year}-${'${opens.month}'.padLeft(2, '0')}-${'${opens.day}'.padLeft(2, '0')}',
+                        d.compulsory ? 'Compulsory' : 'Optional',
+                      ].join('\n')),
+                      // What to fix before uploading it again.
+                      if (rejection != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(rejection, style: TextStyle(color: t.colorScheme.error)),
+                        ),
+                    ]),
                     isThreeLine: true,
                     trailing: status == null
                         ? Text(widget.enabled ? 'Tap to upload' : 'Not uploaded', style: t.textTheme.labelSmall)
@@ -802,6 +811,20 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
       final owner = vehicleId ?? widget.partnerId;
       final frontUrl =
           await repo.upload(bucket, docFilePath(owner, widget.doc.id, 'front', guessExt(_front!.name)), _front!);
+      // A taxi permit's portrait is saved as its own image, which the permit
+      // card shows as the driver's photo. Best effort, as in Expo: without
+      // it the card falls back to the profile photo.
+      String? permitPhotoUrl;
+      final box = permitPhotoToCrop(isTaxiPermit: f.isTaxiPermit, vehicleDocument: vehicleId != null, ai: _ai);
+      if (box != null) {
+        try {
+          final crop = await ref.read(docImageCropProvider)(_front!.bytes, box);
+          if (crop != null) {
+            permitPhotoUrl = await repo.upload(
+                bucket, docFilePath(owner, widget.doc.id, 'permit-photo', 'jpg'), (bytes: crop, name: 'permit-photo.jpg'));
+          }
+        } catch (_) {}
+      }
       String? backUrl;
       if (f.requireFrontBack && !_frontIsPdf && _back != null) {
         backUrl = await repo.upload(bucket, docFilePath(owner, widget.doc.id, 'back', guessExt(_back!.name)), _back!);
@@ -822,7 +845,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
         fileUrl: frontUrl,
         fileUrlBack: backUrl,
         uploadedAt: DateTime.now().toUtc().toIso8601String(),
-        aiVerification: _ai?.raw,
+        aiVerification: permitPhotoUrl == null ? _ai?.raw : docAiWithPermitPhoto(_ai!.raw, permitPhotoUrl),
         issuanceCountry: _ai?.issuanceCountry,
         detectedDocumentName: _ai?.detectedDocumentName,
       );
@@ -838,8 +861,8 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
   }
 
   Future<void> _pick(bool back) async {
-    final file = await pickPeopleFile();
-    if (file == null) return;
+    final file = await ref.read(docPhotoPickerProvider)(context);
+    if (file == null || !mounted) return;
     setState(() {
       if (back) {
         _back = file;
@@ -907,6 +930,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
         isPwd: f.isPwd && _pwd,
         startDate: f.requireStartDate ? _start.text : null,
         expiryDate: f.requireExpiryDate ? _expiry.text : null,
+        isTaxiPermit: f.isTaxiPermit,
       ));
     }
     if (!mounted || run != _aiRun) return;

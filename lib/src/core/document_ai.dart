@@ -8,6 +8,8 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'image_crop.dart';
+
 /// The function refuses images above this (after decoding).
 const docAiMaxImageBytes = 4 * 1024 * 1024;
 
@@ -42,6 +44,35 @@ class DocumentAiResult {
 
   /// Every distinct number it read, the primary one first.
   List<String> get candidateNumbers => {?documentNumber, ...documentNumbers}.toList();
+
+  /// The taxi driver permit fields, present only when the check was asked
+  /// for them (`isTaxiPermit` in the request). Kept as the function sent
+  /// them; `lib/src/core/driver_permit.dart` reads them off the stored row.
+  Map<String, dynamic>? get taxiPermit => (_ex['taxiPermit'] as Map?)?.cast<String, dynamic>();
+
+  /// Where the driver's portrait is on the front image, if the AI saw one.
+  FractionBox? get permitPhotoBox => FractionBox.parse(taxiPermit?['photoBox']);
+}
+
+/// The portrait to cut out of the front image on save (Expo
+/// `DocumentUploadModal`): only on a partner's own document tagged as the
+/// taxi permit — never a vehicle's — and only when the AI found one.
+FractionBox? permitPhotoToCrop({required bool isTaxiPermit, required bool vehicleDocument, DocumentAiResult? ai}) =>
+    isTaxiPermit && !vehicleDocument ? ai?.permitPhotoBox : null;
+
+/// [raw] with the uploaded portrait's URL stored as
+/// `extracted.taxiPermit.photoUrl` (Expo `aiResultWithPermitPhoto`), which
+/// the permit card shows as the driver's photo. Nothing else is changed.
+Map<String, dynamic> docAiWithPermitPhoto(Map<String, dynamic> raw, String photoUrl) {
+  final extracted = Map<String, dynamic>.from((raw['extracted'] as Map?) ?? const {});
+  final permit = Map<String, dynamic>.from((extracted['taxiPermit'] as Map?) ?? const {});
+  return {
+    ...raw,
+    'extracted': {
+      ...extracted,
+      'taxiPermit': {...permit, 'photoUrl': photoUrl},
+    },
+  };
 }
 
 /// Reads the function's answer: the result, or null with why there is none.
@@ -82,6 +113,7 @@ Map<String, dynamic> docAiRequestBody({
   bool isPwd = false,
   String? startDate,
   String? expiryDate,
+  bool isTaxiPermit = false,
 }) {
   String? blank(String? v) => v == null || v.trim().isEmpty ? null : v.trim();
   return {
@@ -94,6 +126,8 @@ Map<String, dynamic> docAiRequestBody({
       'isPwd': isPwd,
       'startDate': blank(startDate),
       'expiryDate': blank(expiryDate),
+      // Also read the permit's fields and where its portrait is.
+      if (isTaxiPermit) 'isTaxiPermit': true,
     },
   };
 }

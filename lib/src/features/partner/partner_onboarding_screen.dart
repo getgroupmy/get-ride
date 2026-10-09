@@ -24,7 +24,14 @@ typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 /// submitted for an admin to review. A returning partner lands on the first
 /// step still missing; finished steps can be reopened from the header.
 class PartnerOnboardingScreen extends ConsumerStatefulWidget {
-  const PartnerOnboardingScreen({super.key});
+  const PartnerOnboardingScreen({super.key, this.pickAvatar = pickAvatarImage, this.pickPhoto = pickImage});
+
+  /// The profile photo picker: camera or gallery on a phone, cut square
+  /// (overridden in tests).
+  final Future<PickedImage?> Function(BuildContext context) pickAvatar;
+
+  /// The ID photo picker (overridden in tests).
+  final Future<PickedImage?> Function(BuildContext context) pickPhoto;
 
   @override
   ConsumerState<PartnerOnboardingScreen> createState() => _PartnerOnboardingScreenState();
@@ -123,8 +130,8 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
   // ---- Steps -----------------------------------------------------------------
 
   Future<void> _pickAvatar() async {
-    final img = await pickImage();
-    if (img == null) return;
+    final img = await widget.pickAvatar(context);
+    if (img == null || !mounted) return;
     await _save((s) async {
       final url = await _repo.uploadAvatar(s, img.bytes, img.name);
       return _patchBoth(s, {'avatar_url': url});
@@ -138,8 +145,8 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
   }
 
   Future<void> _uploadIdImage() async {
-    final img = await pickImage();
-    if (img == null) return;
+    final img = await widget.pickPhoto(context);
+    if (img == null || !mounted) return;
     final s = _s;
     if (s == null) return;
     setState(() => _busy = true);

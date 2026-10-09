@@ -130,4 +130,37 @@ void main() {
       expect(docs.map((d) => d.id), unorderedEquals(['licence', 'permit']));
     });
   });
+
+  group('wizard checks', () {
+    final now = DateTime(2026, 10, 9);
+
+    test('the year is four digits from 1950 to next year', () {
+      expect(vehicleYearColorProblem('2020', 'White', now: now), isNull);
+      expect(vehicleYearColorProblem(' 1950 ', 'White', now: now), isNull);
+      expect(vehicleYearColorProblem('2027', 'White', now: now), isNull, reason: "next year's models");
+      for (final bad in ['2028', '1949', '202', '20201', '20a0', '0999']) {
+        expect(vehicleYearColorProblem(bad, 'White', now: now), 'Enter the year as 4 digits, from 1950 to 2027.',
+            reason: bad);
+      }
+      expect(vehicleYearColorProblem('', 'White', now: now), 'Please enter both the year and the colour.');
+      expect(vehicleYearColorProblem('2020', ' ', now: now), 'Please enter both the year and the colour.');
+    });
+
+    test('"Is this your own vehicle?" must be answered', () {
+      expect(vehicleOwnerProblem(ownVehicle: null, name: 'A', phone: '1', ic: '2'),
+          'Please tell us whether this is your own vehicle.');
+      expect(vehicleOwnerProblem(ownVehicle: false, name: 'A', phone: '', ic: '2'),
+          "Please enter the owner's name, phone and ID number.");
+      expect(vehicleOwnerProblem(ownVehicle: true, name: 'A', phone: '1', ic: '2'), isNull);
+      expect(vehicleOwnerProblem(ownVehicle: false, name: 'A', phone: '1', ic: '2'), isNull);
+    });
+
+    test('an approved vehicle finishes on the Drive tab', () {
+      expect(vehicleFinishRoute({'status': 'approved', 'documents_ok': true}), '/drive');
+      expect(vehicleFinishRoute({'status': 'permit-verified', 'documents_ok': true}), '/drive');
+      expect(vehicleFinishRoute({'status': 'approved', 'documents_ok': false}), isNull);
+      expect(vehicleFinishRoute({'status': 'unapproved', 'documents_ok': true}), isNull);
+      expect(vehicleFinishRoute({'status': 'rejected', 'documents_ok': true}), isNull);
+    });
+  });
 }

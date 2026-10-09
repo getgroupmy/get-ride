@@ -64,7 +64,7 @@ void main() {
         GoRoute(
           path: '/edit',
           builder: (_, _) => EditProfileScreen(
-            pickPhoto: () async =>
+            pickPhoto: (_) async =>
                 (bytes: Uint8List(2048), name: 'id.jpg', ext: 'jpg', contentType: imageContentType('jpg')),
           ),
         ),

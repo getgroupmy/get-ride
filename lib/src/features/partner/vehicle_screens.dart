@@ -242,12 +242,13 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
 
   Future<void> _saveYearColor() async {
     final year = _year.text.trim(), color = _color.text.trim();
-    if (year.isEmpty || color.isEmpty) return showError(context, 'Please enter both the year and the colour.');
+    final problem = vehicleYearColorProblem(year, color);
+    if (problem != null) return showError(context, problem);
     await _save(() => _repo.patch(_v!, {'year': year, 'color': color}));
   }
 
   Future<void> _uploadPhoto(String slot) async {
-    final file = await pickPeopleFile();
+    final file = await pickPeopleFile(context);
     if (file == null || !mounted) return;
     setState(() => _uploadingSlot = slot);
     // Stay on the photos step while they are being added, even once the
@@ -271,15 +272,32 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
 
   Future<void> _saveOwner() async {
     final name = _ownerName.text.trim(), phone = _ownerPhone.text.trim(), ic = _ownerIc.text.trim();
-    if (name.isEmpty || phone.isEmpty || ic.isEmpty) {
-      return showError(context, "Please enter the owner's name, phone and ID number.");
-    }
+    final problem = vehicleOwnerProblem(ownVehicle: _ownVehicle, name: name, phone: phone, ic: ic);
+    if (problem != null) return showError(context, problem);
     await _save(() => _repo.patch(_v!, {'owner_name': name, 'owner_phone': phone, 'owner_ic': ic}));
   }
 
   Future<void> _submit() async {
     if (!_docsComplete) return showError(context, 'Please upload every compulsory document before submitting.');
     await _save(() => _repo.patch(_v!, {'documents_ok': true}));
+  }
+
+  /// Leaves the wizard: an approved vehicle goes to the Drive tab, read
+  /// fresh so an approval made while the screen was open counts.
+  Future<void> _finish() async {
+    var v = _v!;
+    try {
+      v = await _repo.vehicle(v['id'] as String) ?? v;
+    } catch (_) {}
+    if (!mounted) return;
+    final route = vehicleFinishRoute(v);
+    if (route != null) {
+      context.go(route);
+    } else if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go('/drive/vehicles');
+    }
   }
 
   List<RequiredDoc> _docs() => vehicleRequiredDocs(
@@ -400,8 +418,10 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
             title: 'Year and colour',
             subtitle: 'As shown on the registration card.',
             children: [
-              _field(_year, 'Year',
-                  keyboard: TextInputType.number, formatters: [FilteringTextInputFormatter.digitsOnly]),
+              _field(_year, 'Year', keyboard: TextInputType.number, formatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(4),
+              ]),
               _field(_color, 'Colour'),
               _continue(_saveYearColor),
             ],
@@ -450,6 +470,8 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
         title: 'Who owns the vehicle?',
         subtitle: 'The registered owner, as on the registration card.',
         children: [
+          Text('Is this your own vehicle?', style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 8),
           Wrap(spacing: 8, children: [
             ChoiceChip(
               label: const Text("It's my own vehicle"),
@@ -466,7 +488,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
           _field(_ownerName, "Owner's name"),
           _field(_ownerPhone, "Owner's phone", keyboard: TextInputType.phone),
           _field(_ownerIc, "Owner's ID number"),
-          _continue(_saveOwner),
+          _continue(_saveOwner, label: _ownVehicle == null ? 'Select an option to continue' : 'Save and continue'),
         ],
       );
 
@@ -519,10 +541,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
       const SizedBox(height: 8),
       Text('A rejected or expired document can be uploaded again here.', style: Theme.of(context).textTheme.bodySmall),
       const SizedBox(height: 16),
-      OutlinedButton(
-        onPressed: () => context.canPop() ? context.pop() : context.go('/drive/vehicles'),
-        child: const Text('Done'),
-      ),
+      BusyButton.outlined(onPressed: _busy ? null : _finish, child: const Text('Done')),
     ]);
   }
 }
