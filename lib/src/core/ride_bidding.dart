@@ -320,6 +320,37 @@ List<BiddingRegion> regionsAround(List<BiddingRegion> regions, LatLng? pickup, {
   return out;
 }
 
+// Administrative wording the geocoder adds around a place's own name
+// ("Kajang Municipal Council", "Wilayah Persekutuan Kuala Lumpur").
+final _adminWords = RegExp(
+  r'\b(municipal council|city council|district council|town council|municipality|majlis perbandaran|'
+  r'majlis bandaraya|majlis daerah|wilayah persekutuan|federal territory of|federal territory|district|daerah|'
+  r'city of)\b',
+);
+
+/// A place name reduced for comparing: lower case, punctuation and the
+/// geocoder's administrative wording dropped, spaces collapsed. Kept in step
+/// with `region_name_norm` (migration 0126).
+String placeNameKey(String? name) => (name ?? '')
+    .toLowerCase()
+    .replaceAll(RegExp(r'[^\p{L}\p{N}\s]', unicode: true), ' ')
+    .replaceAll(_adminWords, ' ')
+    .replaceAll(RegExp(r'\s+'), ' ')
+    .trim();
+
+/// Whether [name] can be compared with the region names at all: it has
+/// Latin letters. Empty, or in another script ("吉隆坡" from a phone set to
+/// Chinese), it can't — that level is then unknown, and served.
+bool comparablePlaceName(String? name) => RegExp('[a-z]').hasMatch(placeNameKey(name));
+
+/// Whether the geocoder's [place] is the region named [region]: the
+/// region's name, as whole words, within the place's ("Kajang" in "Kajang
+/// Municipal Council"). Kept in step with `region_name_matches` (0126).
+bool placeNameMatches(String? region, String? place) {
+  final r = placeNameKey(region), p = placeNameKey(place);
+  return r.isNotEmpty && p.isNotEmpty && ' $p '.contains(' $r ');
+}
+
 /// Why GET.ride can't serve a point.
 enum CoverageGap {
   /// In no country / state / city / suburb the admin has set up.
@@ -392,8 +423,7 @@ class ServiceUnavailableError implements Exception {
   // when neither can tell.
   bool? holds(BiddingRegion r, int level) {
     if (r.rings.isNotEmpty) return r.rings.any((ring) => ring.length >= 3 && _inRing(point, ring));
-    final name = _n(names[level]);
-    return name.isEmpty ? null : _n(own(r, level)) == name;
+    return comparablePlaceName(names[level]) ? placeNameMatches(own(r, level), names[level]) : null;
   }
 
   bool under(BiddingRegion r, BiddingRegion parent) {
