@@ -6,6 +6,7 @@ import '../../admin/admin_providers.dart';
 import '../../core/referral.dart';
 import '../../admin/screens/meterapp/display_logic.dart' show inviteFriendsMenuItemId;
 import '../../core/side_menu.dart';
+import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../../data/app_display_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -124,7 +125,7 @@ class RiderMenu extends ConsumerWidget {
               leading: const Icon(Icons.local_taxi_outlined),
               title: Text(mode.label),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => mode.comingSoon ? showComingSoon(context) : go('/drive'),
+              onTap: () => mode.comingSoon ? showComingSoon(context) : openPartnerMode(context, ref, beforeOpen: beforeOpen),
             ),
           if (isAdmin)
             ListTile(

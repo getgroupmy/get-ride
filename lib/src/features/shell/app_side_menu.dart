@@ -14,6 +14,7 @@ import '../../widgets/side_menu_style.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../partner/driver_online.dart';
 import '../partner/partner_menu.dart' show partnerMenuAction;
+import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../profile/account_screen.dart' show riderMenuAction;
 
 /// Which side menu a page is under.
@@ -78,11 +79,6 @@ class RiderSideMenu extends ConsumerWidget {
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final mode = sideMenuModeButton(blob, 'user');
     final profile = sideMenuProfile(blob, 'user');
-    void go(String route) {
-      final router = GoRouter.of(context);
-      close?.call();
-      router.go(route);
-    }
 
     return SideMenuPanel(
       key: const ValueKey('rider-side-menu'),
@@ -100,7 +96,9 @@ class RiderSideMenu extends ConsumerWidget {
       ],
       modeLabel: mode?.label,
       modeKey: const ValueKey('menu-partner-mode'),
-      onMode: mode == null ? null : () => mode.comingSoon ? showComingSoon(context) : go('/drive'),
+      onMode: mode == null
+          ? null
+          : () => mode.comingSoon ? showComingSoon(context) : openPartnerMode(context, ref, beforeOpen: close),
     );
   }
 }
