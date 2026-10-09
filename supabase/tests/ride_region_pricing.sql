@@ -1,5 +1,5 @@
 -- ============================================================================
--- Regression test for migration 0119: a ride's pricing columns take only
+-- Regression test for migrations 0119 and 0122: a ride's pricing columns take only
 -- sensible values.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/ride_region_pricing.sql
@@ -15,7 +15,8 @@ begin
       ('whole_fare', 'boolean'),
       ('tax_name', 'text'),
       ('tax_kind', 'text'),
-      ('tax_value', 'numeric')
+      ('tax_value', 'numeric'),
+      ('charges', 'jsonb')
     ) as t(col, typ)
   loop
     if not exists (
@@ -27,6 +28,9 @@ begin
   end loop;
   if not exists (select 1 from pg_constraint where conname = 'ride_requests_tax_percent') then
     raise exception 'FAILED: no cap on a percentage tax';
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'ride_requests_charges_shape') then
+    raise exception 'FAILED: charges not limited to a short array (0122)';
   end if;
 end
 $$;

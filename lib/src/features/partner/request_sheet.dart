@@ -386,6 +386,13 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                       key: const ValueKey('request-fare'),
                       style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                     ),
+                    // The region's surcharges and taxes, collected on top.
+                    if (r.chargeLines.isNotEmpty)
+                      Text(
+                        [for (final l in r.chargeLines) '+ ${l.label} ${formatMoney(l.amount, r.currency)}'].join(' · '),
+                        key: const ValueKey('request-charges'),
+                        style: t.textTheme.bodySmall?.copyWith(color: muted),
+                      ),
                     if (widget.raisedFrom case final was?)
                       Text(
                         'The passenger raised the fare from ${r.fareText(was)} '

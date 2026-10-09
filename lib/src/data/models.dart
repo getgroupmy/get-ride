@@ -137,17 +137,30 @@ class RideRequest {
   /// where they are whole. Tolls and other charges keep theirs.
   String fareText(num? amount) => formatMoney(amount, currency, pricing.fareDecimals);
 
-  /// The tax on the fare, when the region has one.
+  /// The taxes on the fare (and its surcharges), when the region has any.
   double get taxAmount {
     final f = effectiveFare;
     return f == null ? 0 : pricing.taxOn(f);
   }
 
-  /// Fare plus its tax and the tolls and other charges the driver declared.
+  /// The region's surcharges on the fare (its scheduled rules at booking).
+  double get surchargeAmount {
+    final f = effectiveFare;
+    return f == null ? 0 : pricing.surchargesOn(f);
+  }
+
+  /// The surcharge and tax lines on the fare, as the receipt shows them.
+  List<ChargeLine> get chargeLines {
+    final f = effectiveFare;
+    return f == null ? const [] : pricing.linesFor(f);
+  }
+
+  /// Fare plus its surcharges and taxes, and the tolls and other charges
+  /// the driver declared.
   double? get totalDue {
     final f = effectiveFare;
     if (f == null) return null;
-    return f + taxAmount + (tollCharges ?? 0) + (otherCharges ?? 0);
+    return f + surchargeAmount + taxAmount + (tollCharges ?? 0) + (otherCharges ?? 0);
   }
 
   /// What the rider's GET.coin paid towards [totalDue] (migration 0101; the

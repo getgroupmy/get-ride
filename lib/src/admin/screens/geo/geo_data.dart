@@ -98,6 +98,20 @@ class GeoAdminRepository {
     ]);
   }
 
+  /// The Vehicle Services entries (Ride, Comfort, …), in display order, for
+  /// the region rules' service picker.
+  Future<List<ServiceOption>> vehicleTypes() async {
+    final rows = await _db
+        .from('settings_entries')
+        .select('id, values, position')
+        .eq('category', 'vehicle-services')
+        .order('position');
+    return sortServices([
+      for (final r in rows)
+        (id: r['id'] as String, values: Map<String, dynamic>.from((r['values'] as Map?) ?? const {})),
+    ]);
+  }
+
   // Airport areas ------------------------------------------------------------
 
   Future<List<GeoEntry>> airports() async =>
@@ -134,6 +148,14 @@ final regionsProvider = FutureProvider.autoDispose((ref) {
   ref.watchLive('cities');
   ref.watchLive('suburbs');
   return ref.watch(geoAdminRepositoryProvider).regions();
+});
+final regionVehicleTypesProvider = FutureProvider.autoDispose<List<ServiceOption>>((ref) async {
+  ref.watchLive('settings_entries');
+  try {
+    return await ref.watch(geoAdminRepositoryProvider).vehicleTypes();
+  } catch (_) {
+    return const [];
+  }
 });
 final regionServicesProvider = FutureProvider.autoDispose<List<ServiceOption>>((ref) async {
   ref.watchLive('settings_entries');

@@ -4,7 +4,7 @@ import 'package:get_ride/src/core/ride_services.dart';
 CatalogueEntry _svc(String id, Map<String, dynamic> v) => (id: id, values: v);
 
 void main() {
-  test('active passenger services, priced on cost per km, in display order', () {
+  test('active services, priced on cost per km, in display order, with their service types', () {
     final services = rideServicesFromCatalogue([
       _svc('xl', {
         'name': 'GET XL',
@@ -21,19 +21,17 @@ void main() {
         'displayPriority': 1,
       }),
       _svc('off', {'name': 'Retired', 'costPerKm': 1.5, 'status': false}),
-      _svc('frt', {
-        'name': 'Freight',
-        'costPerKm': 3,
-        'serviceTypes': ['Freight'],
-      }),
       _svc('both', {
         'name': 'Van',
         'costPerKm': 3,
-        'serviceTypes': ['Freight', 'Passenger'],
+        'serviceTypes': ['Car', 'Delivery'],
         'displayPriority': 3,
       }),
     ], const {});
+    // Service types are the Service Settings types (Car, Bike, …) the
+    // region rules name, not a passenger filter: every active entry shows.
     expect(services.map((s) => s.name), ['GET Car', 'GET XL', 'Van']);
+    expect(services[2].serviceTypes, ['Car', 'Delivery']);
     expect(services[0].multiplier, 1.0);
     expect(services[1].multiplier, 1.5);
     expect(services[1].seats, 6);

@@ -435,7 +435,14 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
           controller: _text['shortDescription'],
           decoration: const InputDecoration(labelText: 'Short Description', hintText: 'One-liner shown in lists'),
         ),
-        const SectionLabel('Service Type Allowed'),
+        const SectionLabel('Service type'),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 6),
+          child: Text(
+            'The Service Settings types this vehicle belongs to (Car, Bike, …). Region rules and fares set for a type '
+            'apply to it.',
+          ),
+        ),
         if (widget.serviceTypes.isEmpty)
           const Text('No record. Add services in Service Settings first.')
         else
