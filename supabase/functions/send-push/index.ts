@@ -30,7 +30,12 @@
 // Reads tokens with the service-role key (bypasses RLS) and logs the dispatch
 // to `public.push_notifications`.
 //
-// Deploy:
+// Callers: only the database webhook (`x-push-secret`, migration 0128), the
+// service-role key, or a signed-in admin. Everyone else gets 401/403 before
+// the body is read — see _shared/push_auth.ts.
+//
+// Deploy (no gateway JWT check: the webhook has no user JWT, and the
+// function checks every caller itself):
 //   supabase functions deploy send-push --no-verify-jwt
 // ============================================================================
 
@@ -45,52 +50,37 @@ import {
   parseServiceAccount,
   splitTokens,
 } from "../_shared/push.ts";
+import { livePushAuthDeps } from "../_shared/push_auth.ts";
+import { handleSendPush, json, type SendBody } from "../_shared/send_push_handler.ts";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
 // FCM v1 takes one message per request; this many are in flight at once.
 const FCM_CONCURRENCY = 10;
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+Deno.serve(async (req: Request) => {
+  try {
+    return await handleSendPush(req, {
+      auth: livePushAuthDeps({
+        url: Deno.env.get("SUPABASE_URL") ?? "",
+        anonKey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+        serviceKey: serviceRoleKey() ?? "",
+      }),
+      dispatch,
+    });
+  } catch (e) {
+    console.error("[send-push] failed", e);
+    return json({ error: "Unexpected error" }, 500);
+  }
+});
+
+function serviceRoleKey(): string | undefined {
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY");
+}
 
 type Audience = "all" | "partners" | "users";
 
-interface SendBody {
-  title?: string;
-  body?: string;
-  audience?: string;
-  /** Target a single profile's devices instead of a broadcast audience. */
-  profileId?: string;
-  data?: Record<string, unknown>;
-}
-
-function json(payload: unknown, status = 200): Response {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-  if (req.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
-  }
-
-  let payload: SendBody;
-  try {
-    payload = await req.json();
-  } catch {
-    return json({ error: "Invalid JSON body" }, 400);
-  }
-
+async function dispatch(payload: SendBody): Promise<Response> {
   const title = (payload.title ?? "").trim();
   const body = (payload.body ?? "").trim();
   const rawAudience = (payload.audience ?? "all").toLowerCase();
@@ -108,9 +98,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
-    Deno.env.get("SERVICE_ROLE_KEY");
+  const serviceKey = serviceRoleKey();
   if (!supabaseUrl || !serviceKey) {
     return json({ error: "Function is missing Supabase credentials" }, 500);
   }
@@ -307,4 +295,4 @@ Deno.serve(async (req: Request) => {
   });
 
   return json({ recipients, sent, failed, pruned, tickets });
-});
+}
