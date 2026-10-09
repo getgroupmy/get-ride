@@ -42,7 +42,7 @@ class TripsScreen extends ConsumerWidget {
                           title: Text('${r.pickupLabel} → ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
                           subtitle: Text('${formatDateTime(r.createdAt)} · ${r.status.label}'
                               '${asDriver ? ' · as driver' : ''}'),
-                          trailing: Text(formatMoney(r.effectiveFare, r.currency)),
+                          trailing: Text(r.fareText(r.effectiveFare)),
                           // A finished trip opens its receipt; one still under way, the live screen.
                           onTap: () => context.push(
                             r.status.isFinished

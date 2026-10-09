@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/format.dart';
 import '../../core/ride_bidding.dart';
 import '../../data/models.dart';
 import '../../data/ride_repository.dart';
@@ -34,7 +33,9 @@ class _OfferSheetState extends State<_OfferSheet> {
     super.dispose();
   }
 
-  double get _value => ((double.tryParse(_c.text.trim()) ?? 0) * 100).roundToDouble() / 100;
+  /// The offer as the ride's region prices fares: a whole amount where
+  /// fares are whole, else to the cent.
+  double get _value => widget.ride.pricing.roundFare(double.tryParse(_c.text.trim()) ?? 0);
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +50,7 @@ class _OfferSheetState extends State<_OfferSheet> {
         children: [
           Text('Make an offer', style: t.textTheme.titleLarge),
           Text(
-            'The rider asks ${formatMoney(_fare, r.currency)} for ${r.pickupLabel} → ${r.dropLabel}.',
+            'The rider asks ${r.fareText(_fare)} for ${r.pickupLabel} → ${r.dropLabel}.',
             style: t.textTheme.bodyMedium,
           ),
           const SizedBox(height: 12),
@@ -58,7 +59,7 @@ class _OfferSheetState extends State<_OfferSheet> {
             children: [
               for (final p in counterOfferPresets(_fare))
                 ActionChip(
-                  label: Text(formatMoney(p, r.currency)),
+                  label: Text(r.fareText(p)),
                   onPressed: () => setState(() => _c.text = p.toStringAsFixed(0)),
                 ),
             ],
@@ -67,8 +68,8 @@ class _OfferSheetState extends State<_OfferSheet> {
           TextField(
             key: const ValueKey('offer-amount'),
             controller: _c,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+            keyboardType: TextInputType.numberWithOptions(decimal: !r.pricing.wholeFare),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r.pricing.wholeFare ? r'[0-9]' : r'[0-9.]'))],
             decoration: InputDecoration(labelText: 'Your price', prefixText: 'RM ', errorText: problem),
             onChanged: (_) => setState(() {}),
           ),
@@ -76,7 +77,7 @@ class _OfferSheetState extends State<_OfferSheet> {
           FilledButton(
             key: const ValueKey('send-offer'),
             onPressed: problem == null ? () => Navigator.pop(context, _value) : null,
-            child: Text('Offer ${formatMoney(_value, r.currency)}'),
+            child: Text('Offer ${r.fareText(_value)}'),
           ),
         ],
       ),
@@ -145,7 +146,7 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> {
       case OfferOutcome.outbid:
         _finish('Another driver got this ride.');
       case OfferOutcome.raised:
-        _finish('The rider raised the fare to ${formatMoney(r.fare, r.currency)}. You can accept it or offer again.');
+        _finish('The rider raised the fare to ${r.fareText(r.fare)}. You can accept it or offer again.');
       case OfferOutcome.declined:
         _finish('The rider declined your offer.');
       case OfferOutcome.closed:
@@ -174,7 +175,7 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (outcome == null) ...[
-            Text('You offered ${formatMoney(widget.amount, r.currency)}. Waiting for the rider…'),
+            Text('You offered ${r.fareText(widget.amount)}. Waiting for the rider…'),
             const SizedBox(height: 12),
             LinearProgressIndicator(value: _left.inMilliseconds / widget.window.inMilliseconds),
             const SizedBox(height: 4),

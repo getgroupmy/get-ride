@@ -724,6 +724,7 @@ class ConfirmFareSection extends StatelessWidget {
     this.tollBooths = 0,
     this.onTollBooths,
     this.tollCharges,
+    this.tax,
     this.onEdit,
     this.trend,
   });
@@ -749,6 +750,9 @@ class ConfirmFareSection extends StatelessWidget {
 
   /// The estimated toll charges, formatted; null for none.
   final String? tollCharges;
+
+  /// The region's tax on the fare, as a line ("+ SST 6%: RM 1.08").
+  final String? tax;
 
   Widget _round(
     BuildContext context, {
@@ -841,6 +845,12 @@ class ConfirmFareSection extends StatelessWidget {
             key: const ValueKey('route-tolls'),
             padding: const EdgeInsets.only(top: 2),
             child: Text('Est. Toll Charges $tollCharges', style: t.textTheme.bodySmall?.copyWith(color: muted)),
+          ),
+        if (tax != null)
+          Padding(
+            key: const ValueKey('fare-tax'),
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(tax!, style: t.textTheme.bodySmall?.copyWith(color: muted)),
           ),
       ],
     );

@@ -1004,7 +1004,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(child: Text(r.service ?? 'Ride', style: t.textTheme.titleMedium)),
-            Text(formatMoney(r.effectiveFare, r.currency),
+            Text(r.fareText(r.effectiveFare),
                 style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
           ]),
           if (destinationOn && _towardDestination(r))
@@ -1054,7 +1054,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           if (r.offeredFare != null && r.partnerId != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text('A driver has offered ${formatMoney(r.offeredFare, r.currency)}',
+              child: Text('A driver has offered ${r.fareText(r.offeredFare)}',
                   style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
             ),
           const SizedBox(height: 8),
@@ -1074,7 +1074,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 onPressed: _accepting != null ? null : () => _accept(r, partner),
                 child: _accepting == r.id
                     ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}', textAlign: TextAlign.center),
+                    : Text('Accept ${r.fareText(r.effectiveFare)}', textAlign: TextAlign.center),
               ),
             ),
           ]),
@@ -1115,8 +1115,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                'The passenger raised the fare from ${formatMoney(was, r.currency)} '
-                'to ${formatMoney(r.effectiveFare, r.currency)}.',
+                'The passenger raised the fare from ${r.fareText(was)} '
+                'to ${r.fareText(r.effectiveFare)}.',
                 key: const ValueKey('request-alert-raised'),
                 style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
               ),
@@ -1152,7 +1152,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 ),
               ]),
             ),
-            Text(formatMoney(r.effectiveFare, r.currency),
+            Text(r.fareText(r.effectiveFare),
                 style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
           ]),
           const SizedBox(height: 10),
@@ -1219,7 +1219,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 onPressed: _accepting != null ? null : () => _accept(r, partner),
                 child: _accepting == r.id
                     ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text('Accept ${formatMoney(r.effectiveFare, r.currency)}', textAlign: TextAlign.center),
+                    : Text('Accept ${r.fareText(r.effectiveFare)}', textAlign: TextAlign.center),
               ),
             ),
           ]),

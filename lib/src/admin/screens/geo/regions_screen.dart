@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/region_pricing.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
@@ -335,6 +336,8 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
     'languageCode': TextEditingController(text: f.languageCode),
     'dateFormat': TextEditingController(text: f.dateFormat),
     'timezone': TextEditingController(text: f.timezone),
+    'taxName': TextEditingController(text: f.taxName),
+    'taxAmount': TextEditingController(text: f.taxAmount),
   };
   String? _error;
 
@@ -361,12 +364,23 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
       ..callingCode = t('callingCode')
       ..languageCode = t('languageCode')
       ..dateFormat = t('dateFormat')
-      ..timezone = t('timezone');
+      ..timezone = t('timezone')
+      ..taxName = t('taxName')
+      ..taxAmount = t('taxAmount');
   }
 
   void _submit() {
     _read();
-    final err = validateRegionForm(widget.level, country: f.country, state: f.state, city: f.city, suburb: f.suburb);
+    final err =
+        validateRegionForm(widget.level, country: f.country, state: f.state, city: f.city, suburb: f.suburb) ??
+        (f.setsPricing
+            ? regionPricingProblem(
+                taxEnabled: f.taxEnabled,
+                taxName: f.taxName,
+                taxKind: RegionTax.kindFrom(f.taxKind),
+                taxAmount: f.taxAmount,
+              )
+            : null);
     if (err != null) {
       setState(() => _error = err);
       return;
@@ -458,6 +472,64 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
         value: f.biddingEnabled,
         onChanged: (v) => setState(() => f.biddingEnabled = v),
       ),
+      const SizedBox(height: 20),
+      Row(children: [
+        Icon(Icons.payments_outlined, size: 16, color: t.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Expanded(child: Text('Fare pricing', style: t.textTheme.titleSmall)),
+      ]),
+      if (!f.isCountryRow)
+        SwitchListTile(
+          key: const ValueKey('region-pricing-override'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Own fare pricing'),
+          subtitle: Text(f.pricingOverride
+              ? 'This region sets its own decimals and tax.'
+              : 'Uses the decimals and tax of the region above it.'),
+          value: f.pricingOverride,
+          onChanged: (v) => setState(() => f.pricingOverride = v),
+        ),
+      if (f.setsPricing) ...[
+        SwitchListTile(
+          key: const ValueKey('region-whole-fare'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Price without decimals'),
+          subtitle: Text(f.wholeFare
+              ? 'Fares round up to a whole amount; no decimals are shown or typed. Tolls and other charges keep '
+                  'their decimals.'
+              : 'Fares are shown and typed with decimals.'),
+          value: f.wholeFare,
+          onChanged: (v) => setState(() => f.wholeFare = v),
+        ),
+        SwitchListTile(
+          key: const ValueKey('region-tax'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Tax'),
+          subtitle: Text(f.taxEnabled ? 'Added on top of the fare.' : 'No tax on fares in this region.'),
+          value: f.taxEnabled,
+          onChanged: (v) => setState(() => f.taxEnabled = v),
+        ),
+        if (f.taxEnabled) ...[
+          _field('taxName', 'Tax name', hint: 'e.g. SST'),
+          gap,
+          SegmentedButton<String>(
+            key: const ValueKey('region-tax-kind'),
+            segments: const [
+              ButtonSegment(value: 'percent', label: Text('% of fare'), icon: Icon(Icons.percent)),
+              ButtonSegment(value: 'fixed', label: Text('Fixed amount'), icon: Icon(Icons.attach_money)),
+            ],
+            selected: {f.taxKind},
+            onSelectionChanged: (v) => setState(() => f.taxKind = v.first),
+          ),
+          gap,
+          _field(
+            'taxAmount',
+            f.taxKind == 'percent' ? 'Tax (%)' : 'Tax amount',
+            hint: f.taxKind == 'percent' ? 'e.g. 6' : 'e.g. 1.50',
+            keyboard: const TextInputType.numberWithOptions(decimal: true),
+          ),
+        ],
+      ],
       gap,
       _pair(
         _field('lat', 'Latitude', keyboard: const TextInputType.numberWithOptions(decimal: true, signed: true)),
