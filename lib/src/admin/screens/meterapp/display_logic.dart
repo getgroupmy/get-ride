@@ -23,6 +23,7 @@ const passengerModeDefaultLabel = 'Passenger Mode';
 const vehicleInfoMenuItemId = 'vehicle-information';
 const emergencyContactsMenuItemId = 'emergency-contacts';
 const inviteFriendsMenuItemId = 'invite-friends';
+const helpAssistantMenuItemId = 'help-assistant';
 
 const defaultUserMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
@@ -34,6 +35,7 @@ const defaultUserMenuItems = <(String, String)>[
   ('safety', 'Safety'),
   ('settings', 'Settings'),
   ('user-guide', 'User Guide'),
+  (helpAssistantMenuItemId, 'Help assistant'), // this app's own; the Expo menu skips it
   ('support', 'Support'),
   // This app's own rows (the Expo menu has no such items and skips them).
   (emergencyContactsMenuItemId, 'Emergency contacts'),
@@ -51,6 +53,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   (vehicleInfoMenuItemId, 'Vehicle information'),
   ('documents', 'Documents'),
   ('notifications', 'Notifications'),
+  (helpAssistantMenuItemId, 'Help assistant'), // this app's own; the Expo menu skips it
   ('support', 'Support'),
   ('settings', 'Settings'),
   ('sign-out', 'Sign out'),

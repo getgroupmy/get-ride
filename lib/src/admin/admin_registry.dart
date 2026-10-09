@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'screens/catalogue/catalogue_module.dart';
 import 'screens/commerce/commerce_module.dart';
 import 'screens/geo/geo_module.dart';
+import 'screens/help/help_module.dart';
 import 'screens/meterapp/meterapp_module.dart';
 import 'screens/people/people_module.dart';
 import 'screens/security/security_module.dart';
@@ -47,6 +48,7 @@ const adminSections = [
 
 /// Every ported screen, in hub order.
 final allAdminEntries = <AdminScreenEntry>[
+  ...helpEntries,
   ...peopleEntries,
   ...catalogueEntries,
   ...commerceEntries,
@@ -57,6 +59,7 @@ final allAdminEntries = <AdminScreenEntry>[
 
 /// Routes of every ported screen (paths under `/admin/m/`).
 final allPortedAdminRoutes = <RouteBase>[
+  ...helpRoutes,
   ...peopleRoutes,
   ...catalogueRoutes,
   ...commerceRoutes,

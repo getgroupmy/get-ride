@@ -29,6 +29,7 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
     'settings': '/account/settings',
     'user-guide': '/account/guide',
     'support': '/account/support',
+    'help-assistant': '/account/help',
     'emergency-contacts': '/account/emergency',
     'invite-friends': '/account/referral',
   };
