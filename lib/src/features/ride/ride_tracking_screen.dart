@@ -31,6 +31,7 @@ import '../../widgets/map_sheet_layout.dart';
 import 'demo_ride.dart';
 import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
+import 'ride_call_screen.dart' show RideCallButton;
 import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
 import 'shared_ride_screen.dart' show shareRide;
@@ -743,12 +744,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   if (r.partnerPhone != null || rideChatAvailable(r))
                     OverflowBar(
                       children: [
-                        if (r.partnerPhone != null)
-                          BusyButton.text(
-                            icon: const Icon(Icons.call),
-                            onPressed: () => launchUrl(Uri(scheme: 'tel', path: r.partnerPhone)),
-                            child: const Text('Call'),
-                          ),
+                        // An in-app call (migration 0131); a long press offers
+                        // the phone call when the number is known.
+                        RideCallButton(ride: r, peerName: r.partnerName ?? 'your driver', phone: r.partnerPhone),
                         // The in-app chat (migration 0129), not the phone's SMS app.
                         if (rideChatAvailable(r))
                           TextButton.icon(

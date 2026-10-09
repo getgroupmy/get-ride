@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/support_call.dart';
-import '../../../data/support_call_repository.dart';
 import 'call_media.dart';
 
 /// Makes the audio for a call. Overridden in tests.
@@ -13,7 +12,7 @@ final callMediaFactoryProvider = Provider<CallMedia Function()>((_) => WebrtcCal
 /// The clock a call is timed on. Overridden in tests.
 final callClockProvider = Provider<DateTime Function()>((_) => DateTime.now);
 
-/// One end of a support call: follows the call's row, carries the WebRTC
+/// One end of a call (a support call, or a rider ↔ driver call): follows the call's row, carries the WebRTC
 /// setup over the signals table, and drives [CallMedia].
 ///
 /// Whoever rang makes the offer once the other side has answered; the side
@@ -21,19 +20,19 @@ final callClockProvider = Provider<DateTime Function()>((_) => DateTime.now);
 /// held back until the other side's description is in. The call ends for
 /// both when either hangs up (the row's status), and the caller gives up on
 /// it after [callRingTimeout] of ringing.
-class CallSession extends ChangeNotifier {
+class CallSession<C extends CallRecord<C>> extends ChangeNotifier {
   CallSession({
     required this.repo,
     required this.media,
     required this.me,
-    required SupportCall call,
+    required C call,
     DateTime Function()? clock,
     this.connectTimeout = callConnectTimeout,
   }) : _clock = clock ?? DateTime.now {
     _call = call;
   }
 
-  final SupportCallRepository repo;
+  final CallSignalling<C> repo;
   final CallMedia media;
 
   /// The signed-in account on this end.
@@ -43,8 +42,8 @@ class CallSession extends ChangeNotifier {
   /// How long an answered call may take to connect ([callConnectTimeout]).
   final Duration connectTimeout;
 
-  late SupportCall _call;
-  SupportCall get call => _call;
+  late C _call;
+  C get call => _call;
   bool get outgoing => _call.startedBy(me);
   CallStatus get status => _call.status;
 
@@ -68,7 +67,7 @@ class CallSession extends ChangeNotifier {
     return from == null ? Duration.zero : _clock().difference(from);
   }
 
-  StreamSubscription<SupportCall>? _rowSub;
+  StreamSubscription<C>? _rowSub;
   StreamSubscription<CallSignal>? _signalSub;
   Timer? _ringTimer;
   Timer? _connectTimer;
@@ -105,7 +104,7 @@ class CallSession extends ChangeNotifier {
     await _maybeOffer();
   }
 
-  void _onRow(SupportCall c) {
+  void _onRow(C c) {
     if (_closed) return;
     _call = c;
     _notify();
@@ -189,12 +188,13 @@ class CallSession extends ChangeNotifier {
     await media.setSpeaker(_speaker);
   }
 
-  /// Hangs up: an unanswered incoming call is declined, anything else ended.
-  Future<void> hangUp() => _finish(status == CallStatus.ringing && !outgoing ? CallStatus.declined : CallStatus.ended);
+  /// Hangs up, with whatever the call says that records
+  /// ([CallRecord.hangUpStatus]).
+  Future<void> hangUp() => _finish(_call.hangUpStatus(outgoing: outgoing));
 
   Future<void> _finish(CallStatus to) async {
     if (!status.isOver) {
-      _call = SupportCall({..._call.raw, 'status': to.name});
+      _call = _call.withStatus(to);
       _notify();
       try {
         await repo.finish(_call.id, to);

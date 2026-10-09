@@ -25,7 +25,7 @@ class CallScreen extends ConsumerStatefulWidget {
 }
 
 class _CallScreenState extends ConsumerState<CallScreen> {
-  CallSession? _session;
+  CallSession<SupportCall>? _session;
   String? _loadError;
   Timer? _tick;
   bool _leaving = false;
