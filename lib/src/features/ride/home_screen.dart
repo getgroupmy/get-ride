@@ -1050,6 +1050,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     final panel = _BookingPanel(
+      disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),
       etaFor: etaFor,
       currency: _currency,
       ongoing: _ongoing,
@@ -1135,6 +1136,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
 class _BookingPanel extends StatelessWidget {
   const _BookingPanel({
+    this.disclaimerOffset = Offset.zero,
     required this.ongoing,
     required this.pickup,
     required this.drop,
@@ -1175,6 +1177,9 @@ class _BookingPanel extends StatelessWidget {
   final Place? drop;
   final RouteInfo? route;
   final RouteEstimate? ai;
+
+  /// Admin → Display → Disclaimer box height / left-right.
+  final Offset disclaimerOffset;
   final bool routing;
   final List<RideService> services;
   final RideService service;
@@ -1277,7 +1282,11 @@ class _BookingPanel extends StatelessWidget {
           // to the driver is Options → Comments.
           const SizedBox(height: 28),
           // In the wide panel; on a phone it sits above the pinned footer.
-          if (footer != null) ...[const ConfirmDisclaimer(), const SizedBox(height: 16), footer!],
+          if (footer != null) ...[
+            Transform.translate(offset: disclaimerOffset, child: const ConfirmDisclaimer()),
+            const SizedBox(height: 16),
+            footer!,
+          ],
         ],
       ]),
     );
