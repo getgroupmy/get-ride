@@ -76,4 +76,22 @@ void main() {
       greaterThan(calculateFare(map.distanceKm, map.durationMin)),
     );
   });
+
+  test('an estimate through stops says how many; only that prices a trip with them', () {
+    Map<String, Object?> answer([Object? stops]) => {
+      'ok': true,
+      'estimate': {'distance_km': 18.2, 'duration_min': 41, 'stops': ?stops},
+    };
+    final through = parseRouteEstimate(answer(2));
+    expect(through!.stops, 2);
+    expect(estimateCoversStops(through, 2), isTrue);
+    // A proxy from before stops priced pickup → drop-off: not this trip.
+    final old = parseRouteEstimate(answer());
+    expect(old!.stops, 0);
+    expect(estimateCoversStops(old, 2), isFalse);
+    expect(estimateCoversStops(old, 0), isTrue);
+    // Rearranged to fewer stops while an older answer was in flight.
+    expect(estimateCoversStops(through, 1), isFalse);
+    expect(estimateCoversStops(null, 0), isFalse);
+  });
 }

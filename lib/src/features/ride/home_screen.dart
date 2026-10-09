@@ -312,17 +312,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _ai = null;
     });
     // The map route draws the line; the AI's traffic-aware estimate, when
-    // there is one, is what the fare is priced on (Expo ride-confirm). It
-    // only knows pickup to drop-off, so a trip with stops is priced on the
-    // route through them instead.
+    // there is one, is what the fare is priced on (Expo ride-confirm). A
+    // trip with stops is asked about through them, in their order, so adding
+    // or rearranging stops prices (and judges high or low) the trip again.
     final via = [for (final p in _stops) p.point];
-    final aiFuture = via.isEmpty
-        // The proxy may try several keys; past this the map route prices it.
-        ? ref
-              .read(routeEstimateRepositoryProvider)
-              .estimateDetailed(a.point, b.point)
-              .timeout(aiEstimateTimeout, onTimeout: () => null)
-        : Future.value(null);
+    // The proxy may try several keys; past this the map route prices it.
+    final aiFuture = ref
+        .read(routeEstimateRepositoryProvider)
+        .estimateDetailed(a.point, b.point, via: via)
+        .timeout(aiEstimateTimeout, onTimeout: () => null);
     final r = await ref.read(geoServiceProvider).route(a.point, b.point, via: via);
     if (!mounted || seq != _routeSeq) return;
     setState(() => _route = r);
@@ -332,7 +330,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final ai = await aiFuture;
     if (!mounted || seq != _routeSeq) return;
     setState(() {
-      _ai = ai?.estimate;
+      // Only an estimate through every stop prices this trip.
+      _ai = estimateCoversStops(ai?.estimate, via.length) ? ai?.estimate : null;
       _routing = false;
     });
     if (ai != null && ai.unavailable && mounted) {

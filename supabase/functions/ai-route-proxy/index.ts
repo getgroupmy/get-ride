@@ -11,14 +11,19 @@
 //
 // Request body:
 //   { "origin": { "latitude": n, "longitude": n },
-//     "destination": { "latitude": n, "longitude": n } }
+//     "destination": { "latitude": n, "longitude": n },
+//     "waypoints"?: [{ "latitude": n, "longitude": n }, ...] }   // stops, in order (≤ 5)
 //
 // Response:
 //   { "ok": true, "estimate": RouteEstimate | null }
 //   estimate = { distance_km, duration_min, summary?, provider,
-//                toll_count?, toll_total?, tolls? } — null when the service
+//                toll_count?, toll_total?, tolls?, stops } — null when the service
 //   is disabled, no keys are configured/available, or every key failed
 //   (callers fall back to a routing engine, same contract as before).
+//   `stops` is how many waypoints the estimate covers: a client sending
+//   stops accepts the estimate only when it covers all of them, so a proxy
+//   from before stops (which priced pickup → drop-off) is never mistaken
+//   for one that priced the whole trip.
 //
 // Every attempt is logged to `fare_ai_responses` and per-key counters /
 // cooldowns are updated via the `fare_ai_record_usage` RPC — identical to
@@ -44,6 +49,7 @@ import {
   decideFareTrend,
   type FareAIRequest,
   type FareTrend,
+  parseStops,
   parseTrafficExtras,
   type ResolvedRequest,
   resolveRequest,
@@ -349,10 +355,14 @@ function parseEstimate(content: string): RouteEstimate | null {
 
 /** The standard route (OSRM, empty roads) the AI's time is compared with:
  * minutes and kilometres, or null when it can't be had in time. */
-async function standardRoute(origin: LatLng, destination: LatLng): Promise<{ min: number; km: number } | null> {
+async function standardRoute(
+  origin: LatLng,
+  destination: LatLng,
+  stops: LatLng[] = [],
+): Promise<{ min: number; km: number } | null> {
   const base = Deno.env.get("OSRM_URL") ?? "https://router.project-osrm.org";
-  const url = `${base}/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},` +
-    `${destination.latitude}?overview=false`;
+  const points = [origin, ...stops, destination].map((p) => `${p.longitude},${p.latitude}`).join(";");
+  const url = `${base}/route/v1/driving/${points}?overview=false`;
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return null;
@@ -387,7 +397,7 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: "POST only" }, 405);
   }
 
-  let body: { origin?: unknown; destination?: unknown; test?: unknown; request?: unknown };
+  let body: { origin?: unknown; destination?: unknown; waypoints?: unknown; test?: unknown; request?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -399,6 +409,10 @@ Deno.serve(async (req: Request) => {
   }
   const origin = body.origin;
   const destination = body.destination;
+  const stops = parseStops(body.waypoints);
+  if (stops === null) {
+    return json({ ok: false, error: "waypoints must be up to 5 { latitude, longitude }" }, 400);
+  }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -427,7 +441,7 @@ Deno.serve(async (req: Request) => {
     (k) => k && k.enabled !== false && typeof k.key === "string" && k.key.trim().length > 0,
   );
   if (body.test === true) {
-    return runTest(req, supabaseUrl, body.request, config, provider, model, candidates, origin, destination);
+    return runTest(req, supabaseUrl, body.request, config, provider, model, candidates, origin, destination, stops);
   }
   if (candidates.length === 0) {
     return json({ ok: true, estimate: null, reason: "no_keys" });
@@ -455,10 +469,10 @@ Deno.serve(async (req: Request) => {
   }
 
   const request = resolveRequest(config.request);
-  const prompt = buildPrompt(request, origin, destination);
+  const prompt = buildPrompt(request, origin, destination, stops);
   const trendSettings = resolveTrendSettings(config.trend);
   // Alongside the AI: the AI usually takes longer, so this is in by then.
-  const standardFuture = standardRoute(origin, destination);
+  const standardFuture = standardRoute(origin, destination, stops);
   const cooldownMs = retryPolicyMs(config.retryAfterValue ?? 1, config.retryAfterUnit ?? "hour");
 
   for (const cand of available) {
@@ -508,7 +522,7 @@ Deno.serve(async (req: Request) => {
       error: errorMsg,
       latency_ms: latencyMs,
       raw_response: result.content ? result.content.substring(0, 4000) : null,
-      extra: parsed ? extrasOf(parsed) : null,
+      extra: withStops(parsed ? extrasOf(parsed) : null, stops),
       standard_duration_min: standard?.min ?? null,
       standard_distance_km: standard?.km ?? null,
     });
@@ -521,7 +535,7 @@ Deno.serve(async (req: Request) => {
     });
 
     if (success && parsed) {
-      return json({ ok: true, estimate: { ...parsed, provider } });
+      return json({ ok: true, estimate: { ...parsed, provider, stops: stops.length } });
     }
   }
 
@@ -544,6 +558,12 @@ function extrasOf(e: RouteEstimate): Record<string, unknown> | null {
   return Object.keys(x).length ? x : null;
 }
 
+/** The stops a logged attempt covered, beside its other extras. */
+function withStops(extra: Record<string, unknown> | null, stops: LatLng[]): Record<string, unknown> | null {
+  if (stops.length === 0) return extra;
+  return { ...(extra ?? {}), stops: stops.map((s) => ({ lat: s.latitude, lng: s.longitude })) };
+}
+
 /** Admin "Test" on Request & format: one call with the draft, nothing recorded. */
 async function runTest(
   req: Request,
@@ -555,6 +575,7 @@ async function runTest(
   candidates: FareAIKey[],
   origin: LatLng,
   destination: LatLng,
+  stops: LatLng[],
 ): Promise<Response> {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   if (!anonKey) return json({ ok: false, error: "Function is missing the anon key" }, 500);
@@ -570,8 +591,8 @@ async function runTest(
     if (problem) return json({ ok: false, error: problem });
   }
   const request = resolveRequest(raw);
-  const prompt = buildPrompt(request, origin, destination);
-  const standardFuture = standardRoute(origin, destination);
+  const prompt = buildPrompt(request, origin, destination, stops);
+  const standardFuture = standardRoute(origin, destination, stops);
   const key = candidates[0];
   if (!key) {
     return json({ ok: true, test: { provider, model, prompt, system: request.systemInstruction, error: "No active key for this provider" } });
