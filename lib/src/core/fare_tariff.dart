@@ -1,7 +1,9 @@
 // Booking tariffs by place (migration 0109): one master card, then
 // country / state / city / suburb overrides, the narrowest card that
-// matches the pickup winning, resolved like commission rates. With no card
-// the built-in TEKSI tariff (calculateFare) prices the trip in ringgit. Pure.
+// matches the pickup winning, resolved like commission rates. A card may be
+// for one service type or one vehicle service (migration 0123). With no
+// card the built-in TEKSI tariff (calculateFare) prices the trip in
+// ringgit. Pure.
 import 'dart:math' as math;
 
 import 'commission.dart' show Geo;
@@ -25,6 +27,8 @@ class FareTariff {
     this.minimumFare = 0,
     this.bookingFee = 0,
     this.active = true,
+    this.serviceType,
+    this.vehicleService,
   });
 
   factory FareTariff.fromRow(Map<String, dynamic> r) {
@@ -50,6 +54,8 @@ class FareTariff {
       minimumFare: n('minimum_fare'),
       bookingFee: n('booking_fee'),
       active: r['active'] != false,
+      serviceType: s('service_type'),
+      vehicleService: s('vehicle_service'),
     );
   }
 
@@ -60,6 +66,40 @@ class FareTariff {
   final double baseFare, perKm, perMinute, minimumFare, bookingFee;
   final bool active;
 
+  /// The Service Settings type (Car, Bike, …) it prices, by id; null for
+  /// every type.
+  final String? serviceType;
+
+  /// The Vehicle Services entry (Ride, Premium, …) it prices, by id; null
+  /// for every vehicle (in [serviceType]). Its fare is that vehicle's own:
+  /// the service multiplier is not applied on top.
+  final String? vehicleService;
+
+  /// Whether it is for every service.
+  bool get allServices => serviceType == null && vehicleService == null;
+
+  /// How closely it targets a vehicle [vehicleService] in [serviceTypes]:
+  /// 2 its own card, 1 its type's, 0 every service's; null when it is for
+  /// another service.
+  int? serviceMatch({String? vehicleService, Set<String> serviceTypes = const {}}) {
+    if (this.vehicleService != null) {
+      if (this.vehicleService != vehicleService) return null;
+      return serviceType == null || serviceTypes.isEmpty || serviceTypes.contains(serviceType) ? 2 : null;
+    }
+    if (serviceType != null) return serviceTypes.contains(serviceType) ? 1 : null;
+    return 0;
+  }
+
+  /// Same place and service: the card a new one would replace.
+  bool sameSlot(FareTariff o) =>
+      level == o.level &&
+      _eqi(country, o.country) &&
+      _eqi(state, o.state) &&
+      _eqi(city, o.city) &&
+      _eqi(suburb, o.suburb) &&
+      serviceType == o.serviceType &&
+      vehicleService == o.vehicleService;
+
   /// Where the card applies, as the admin list names it.
   String get scope => level == 'master' ? 'Everywhere' : [suburb, city, state, country].whereType<String>().join(', ');
 }
@@ -69,11 +109,32 @@ bool _eqi(String? a, String? b) => (a ?? '').trim().toLowerCase() == (b ?? '').t
 /// The card for a pickup at [geo]: suburb → city → state → country →
 /// master, each matching its parents too (a "Georgetown" suburb card in
 /// Penang never prices a Georgetown elsewhere). Null when none applies.
-FareTariff? resolveFareTariff(List<FareTariff> cards, Geo geo) {
-  final active = cards.where((c) => c.active).toList();
+///
+/// For a vehicle [vehicleService] in [serviceTypes] (Service Settings ids)
+/// the narrowest place with a card for it decides, and there its own card
+/// beats its type's, which beats one for every service. Without them only
+/// cards for every service count.
+FareTariff? resolveFareTariff(
+  List<FareTariff> cards,
+  Geo geo, {
+  String? vehicleService,
+  Set<String> serviceTypes = const {},
+}) {
+  final active = [
+    for (final c in cards)
+      if (c.active && c.serviceMatch(vehicleService: vehicleService, serviceTypes: serviceTypes) != null) c,
+  ];
+  int rank(FareTariff c) => c.serviceMatch(vehicleService: vehicleService, serviceTypes: serviceTypes)!;
   bool parents(FareTariff c, {bool state = false, bool city = false}) =>
       _eqi(c.country, geo.country) && (!state || _eqi(c.state, geo.state)) && (!city || _eqi(c.city, geo.city));
-  FareTariff? find(bool Function(FareTariff) test) => active.where(test).firstOrNull;
+  FareTariff? find(bool Function(FareTariff) test) {
+    FareTariff? best;
+    for (final c in active.where(test)) {
+      if (best == null || rank(c) > rank(best)) best = c;
+    }
+    return best;
+  }
+
   bool known(String? v) => (v ?? '').trim().isNotEmpty;
   return (known(geo.suburb)
           ? find((c) => c.level == 'suburb' && parents(c, state: true, city: true) && _eqi(c.suburb, geo.suburb))
@@ -104,7 +165,10 @@ double tariffFare(FareTariff t, double distanceKm, double durationMin, {double m
   String fallbackCurrency = 'MYR',
 }) => card == null
     ? (fare: calculateFare(distanceKm, durationMin, multiplier: multiplier), currency: fallbackCurrency)
-    : (fare: tariffFare(card, distanceKm, durationMin, multiplier: multiplier), currency: card.currency);
+    : (
+        fare: tariffFare(card, distanceKm, durationMin, multiplier: card.vehicleService == null ? multiplier : 1),
+        currency: card.currency,
+      );
 
 /// The card's rates, as the admin list and the booking sheet print them.
 String describeFareTariff(FareTariff t) {
@@ -154,5 +218,16 @@ Map<String, dynamic> fareTariffRow(FareTariff t) {
     'minimum_fare': t.minimumFare,
     'booking_fee': t.bookingFee,
     'active': t.active,
+    'service_type': t.serviceType,
+    'vehicle_service': t.vehicleService,
   };
+}
+
+/// [row] for a database before migration 0123: without the service
+/// columns, or null when it names a service such a database can't store.
+Map<String, dynamic>? fareTariffRowWithoutServices(Map<String, dynamic> row) {
+  if (row['service_type'] != null || row['vehicle_service'] != null) return null;
+  return {...row}
+    ..remove('service_type')
+    ..remove('vehicle_service');
 }

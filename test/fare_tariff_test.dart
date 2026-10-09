@@ -128,4 +128,69 @@ void main() {
       expect(FareTariff.fromRow({'level': 'master', 'currency': 'sgd'}).currency, 'SGD');
     });
   });
+
+  group('fares per service (0123)', () {
+    const my = Geo(country: 'Malaysia', state: 'Selangor', city: 'Shah Alam');
+    const everything = FareTariff(level: 'country', country: 'Malaysia', baseFare: 4, perKm: 1);
+    const cars = FareTariff(level: 'country', country: 'Malaysia', serviceType: 'car', baseFare: 5, perKm: 1.2);
+    const premium = FareTariff(
+      level: 'country',
+      country: 'Malaysia',
+      serviceType: 'car',
+      vehicleService: 'premium',
+      baseFare: 10,
+      perKm: 3,
+    );
+    const selangorCars = FareTariff(
+      level: 'state',
+      country: 'Malaysia',
+      state: 'Selangor',
+      serviceType: 'car',
+      baseFare: 6,
+      perKm: 1.5,
+    );
+    const cards = [everything, cars, premium, selangorCars];
+
+    test("within a place: the vehicle's own card, then its type's, then every service's", () {
+      const kl = Geo(country: 'Malaysia', state: 'Kuala Lumpur');
+      expect(resolveFareTariff(cards, kl, vehicleService: 'premium', serviceTypes: {'car'}), premium);
+      expect(resolveFareTariff(cards, kl, vehicleService: 'ride', serviceTypes: {'car'}), cars);
+      expect(resolveFareTariff(cards, kl, vehicleService: 'moto', serviceTypes: {'bike'}), everything);
+      expect(resolveFareTariff(cards, kl), everything, reason: 'without a service, only cards for every service');
+    });
+
+    test('the narrowest place with a card for the service decides', () {
+      expect(resolveFareTariff(cards, my, vehicleService: 'ride', serviceTypes: {'car'}), selangorCars);
+      expect(
+        resolveFareTariff(cards, my, vehicleService: 'premium', serviceTypes: {'car'}),
+        selangorCars,
+        reason: "Selangor's Car card is narrower than Malaysia's Premium one",
+      );
+      expect(resolveFareTariff(cards, my, vehicleService: 'moto', serviceTypes: {'bike'}), everything);
+    });
+
+    test("a vehicle's own card is its fare: no multiplier on top", () {
+      final own = quoteFare(premium, 10, 0, multiplier: 2).fare;
+      expect(own, 40);
+      final byType = quoteFare(cars, 10, 0, multiplier: 2).fare;
+      expect(byType, 34);
+    });
+
+    test('rows carry the service and degrade for a database before 0123', () {
+      final row = fareTariffRow(premium);
+      expect(row['service_type'], 'car');
+      expect(row['vehicle_service'], 'premium');
+      expect(FareTariff.fromRow(row).vehicleService, 'premium');
+      expect(fareTariffRowWithoutServices(row), isNull, reason: 'that database cannot store it');
+      final plain = fareTariffRowWithoutServices(fareTariffRow(everything))!;
+      expect(plain.containsKey('service_type'), isFalse);
+      expect(plain['base_fare'], 4);
+    });
+
+    test('same slot means same place and service', () {
+      expect(cars.sameSlot(const FareTariff(level: 'country', country: 'malaysia', serviceType: 'car')), isTrue);
+      expect(cars.sameSlot(premium), isFalse);
+      expect(everything.sameSlot(cars), isFalse);
+    });
+  });
 }
