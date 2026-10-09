@@ -1,7 +1,7 @@
 // "Select your service mode" (Expo `PartnerModeSelectModal`): the rider
 // menu's Partner Mode button asks which of the partner's assigned services
-// to start before driver mode opens. TEKSI goes on to the meter (through the
-// documents, vehicle and permit checks the driver screen holds it to); any
+// to start before driver mode opens. TEKSI goes on to its permit screen (through
+// the documents and vehicle checks; Start Pickup there adds the permit's); any
 // other service opens the driver screen, ready to go online.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

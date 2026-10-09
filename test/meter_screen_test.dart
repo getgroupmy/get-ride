@@ -14,6 +14,7 @@ import 'package:get_ride/src/data/obd/obd_session.dart';
 import 'package:get_ride/src/data/printer/printer_service.dart';
 import 'package:get_ride/src/features/meter/meter_leave_launcher.dart';
 import 'package:get_ride/src/features/meter/meter_providers.dart';
+import 'package:get_ride/src/core/teksi_tariff.dart';
 import 'package:get_ride/src/features/meter/meter_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:http/http.dart' as http;
@@ -81,6 +82,7 @@ MeterProfile _card({String source = 'gps'}) => defaultMeterProfile.copyWith(
 
 Future<_FakeLocation> _pump(WidgetTester tester, {
   MeterProfile? card,
+  bool noCard = false,
   _FakeLocation? location,
   FakeElm? reader,
   FakePrinter? printer,
@@ -109,7 +111,7 @@ Future<_FakeLocation> _pump(WidgetTester tester, {
       obdTransportFactoryProvider.overrideWithValue((_) => reader ?? FakeElm()),
       printerSinkFactoryProvider.overrideWithValue((_) => printer ?? FakePrinter()),
       printerSettleProvider.overrideWithValue(Duration.zero),
-      meterCardsProvider.overrideWith((_) async => [card ?? _card()]),
+      meterCardsProvider.overrideWith((_) async => noCard ? const <MeterProfile>[] : [card ?? _card()]),
       // The geocoder is unreachable in tests: ends stay as coordinates.
       geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
       partnerProvider.overrideWith((_) async => Partner({'id': 'p1', 'name': 'Aina', 'plate': 'WXY 1'})),
@@ -229,6 +231,61 @@ void main() {
     await tester.tap(find.text('Done'));
     await tester.pumpAndSettle();
     expect(find.text('NO DESTINATION'), findsOneWidget, reason: 'the next hire starts without one');
+  });
+
+  group('TEKSI tariffs', () {
+    testWidgets('with no operator card the driver keys OLD or NEW RATES, frozen for a hire', (tester) async {
+      final loc = await _pump(tester, noCard: true);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('OLD RATES'), findsOneWidget);
+      expect(find.text('Old Tariff'), findsOneWidget, reason: 'Old, as Expo starts on');
+      await tester.tap(find.text('NEW RATES'));
+      await tester.pump();
+      expect(find.text('New Tariff'), findsOneWidget);
+      loc.controller.add(_fixAt(0));
+      await tester.pump();
+      await tester.tap(find.text('START'));
+      await tester.pump();
+      await tester.tap(find.text('OLD RATES'));
+      await tester.pump();
+      expect(find.text('New Tariff'), findsOneWidget, reason: 'a hire keeps the tariff it opened on');
+    });
+
+    testWidgets("an operator's card has no tariff keys", (tester) async {
+      await _pump(tester);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byKey(const ValueKey('meter-tariff')), findsNothing);
+      expect(find.text('Global (TEKSI old rates)'), findsOneWidget);
+    });
+
+    testWidgets('Start on the TEKSI trip opens the meter running, on its tariff and destination', (tester) async {
+      final loc = await _pump(
+        tester,
+        noCard: true,
+        app: const MaterialApp(
+          home: MeterScreen(
+            launch: MeterLaunch(
+              tariff: TeksiTariff.newTariff,
+              destination: HailDestination(name: 'KLCC', latitude: 3.158, longitude: 101.712, routeKm: 8.2, routeMin: 18),
+              startHire: true,
+            ),
+          ),
+        ),
+      );
+      loc.controller.add(_fixAt(0));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.textContaining('HIRED'), findsOneWidget);
+      expect(find.text('New Tariff'), findsOneWidget);
+      expect(find.textContaining('KLCC'), findsWidgets);
+    });
+
+    testWidgets('the tariff keys fit a small landscape phone', (tester) async {
+      await _pump(tester, noCard: true, size: const Size(640, 320));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('NEW RATES'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   testWidgets('RESUME HIRE puts the passenger back without billing the form', (tester) async {
