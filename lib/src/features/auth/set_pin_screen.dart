@@ -61,8 +61,21 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
     final before = ref.read(profileProvider).value;
     final isNew = !widget.changing && before?.name?.trim().isNotEmpty != true;
     final hasPhoto = before?.avatarUrl != null;
+    if (isNew) {
+      final problem = signupNameProblem(_name.text);
+      if (problem != null) return showInfo(context, problem);
+    }
     setState(() => _busy = true);
     try {
+      if (isNew) {
+        // The admin's device guard, asked before the account is made so the
+        // reason can be told apart (emulator or too many accounts).
+        final problem = (await ref.read(authRepositoryProvider).deviceRegistration()).problem;
+        if (problem != null) {
+          if (mounted) showInfo(context, problem);
+          return;
+        }
+      }
       if (widget.changing) {
         // Someone holding an unlocked phone must not be able to take the
         // account's PIN without knowing it.
@@ -74,7 +87,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
         }
       }
       await ref.read(authRepositoryProvider).setPin(_pin.text);
-      final name = _name.text.trim();
+      final name = capitaliseName(_name.text);
       if (name.isNotEmpty) await ref.read(accountRepositoryProvider).updateProfile(name: name);
       AuthRepository.pinSetupPending = false;
       ref.invalidate(profileProvider);
@@ -154,8 +167,10 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
             ],
             if (needsName) ...[
               TextField(
+                key: const ValueKey('signup-name'),
                 controller: _name,
                 textCapitalization: TextCapitalization.words,
+                maxLength: signupNameMaxLength,
                 decoration: const InputDecoration(labelText: 'Your name'),
               ),
               const SizedBox(height: 16),

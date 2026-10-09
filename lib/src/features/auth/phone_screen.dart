@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../config.dart';
 import '../../core/app_display.dart';
 import '../../core/auth_utils.dart';
+import '../../core/dial_countries.dart';
 import '../../core/phone_input.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/device_access.dart';
@@ -13,8 +14,6 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/in_app_page.dart';
-
-const _dialCodes = ['+60', '+65', '+62', '+66', '+63', '+84', '+673', '+91', '+44', '+1'];
 
 class PhoneScreen extends ConsumerStatefulWidget {
   const PhoneScreen({super.key});
@@ -25,7 +24,7 @@ class PhoneScreen extends ConsumerStatefulWidget {
 
 class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   final _number = TextEditingController();
-  String _dial = AppConfig.defaultDialCode;
+  DialCountry _country = dialCountryFor(AppConfig.defaultDialCode);
   bool _busy = false;
 
   @override
@@ -41,7 +40,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
       showInfo(context, serviceNotAvailable);
       return;
     }
-    final phone = composePhone(_dial, _number.text);
+    final phone = composePhone(_country.dialCode, _number.text);
     if (phone.length < 9) {
       showInfo(context, 'Enter a valid phone number.');
       return;
@@ -62,11 +61,19 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
           context.push(Uri(path: '/login/closed', queryParameters: {'phone': phone}).toString());
           return;
         }
-      }
-      if (lookup.hasPin) {
+        // No SMS (and no account) until they say this is a new account.
+        setState(() => _busy = false);
+        if (!await _confirmNewAccount(phone) || !mounted) return;
+        setState(() => _busy = true);
+        await auth.sendOtp(phone, createUser: true);
+        if (!mounted) return;
+        context.push(
+          Uri(path: '/login/otp', queryParameters: {'phone': phone, 'next': 'set-pin', 'new': '1'}).toString(),
+        );
+      } else if (lookup.hasPin) {
         context.push(Uri(path: '/login/pin', queryParameters: {'phone': phone}).toString());
       } else {
-        await auth.sendOtp(phone);
+        await auth.sendOtp(phone, createUser: false);
         if (!mounted) return;
         context.push(Uri(path: '/login/otp', queryParameters: {'phone': phone, 'next': 'set-pin'}).toString());
       }
@@ -77,6 +84,58 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
     }
   }
 
+  /// Expo's "Create a new account?" sheet: the number isn't known, so say so
+  /// before texting it a code that would open an account.
+  Future<bool> _confirmNewAccount(String phone) async {
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) {
+        final t = Theme.of(c);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: t.colorScheme.surfaceContainerHighest,
+                child: Icon(Icons.person_add_alt_1_outlined, color: t.colorScheme.onSurface),
+              ),
+              const SizedBox(height: 16),
+              Text('Create a new account?', textAlign: TextAlign.center, style: t.textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text(
+                "We don't recognise this number. We'll text a 6-digit code to:",
+                textAlign: TextAlign.center,
+                style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 4),
+              Text(phone, key: const ValueKey('signup-phone'), textAlign: TextAlign.center, style: t.textTheme.titleMedium),
+              const SizedBox(height: 24),
+              FilledButton(
+                key: const ValueKey('signup-send-code'),
+                onPressed: () => Navigator.pop(c, true),
+                child: const Text('Sign up & send code'),
+              ),
+              const SizedBox(height: 8),
+              TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Use a different number')),
+            ]),
+          ),
+        );
+      },
+    );
+    return ok == true;
+  }
+
+  Future<void> _pickCountry() async {
+    final picked = await showModalBottomSheet<DialCountry>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => const _CountrySheet(),
+    );
+    if (picked != null && mounted) setState(() => _country = picked);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +149,15 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
             maxWidth: 440,
             padding: const EdgeInsets.all(24),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const SizedBox(height: 48),
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  key: const ValueKey('phone-diagnostics'),
+                  tooltip: 'Connection diagnostics',
+                  icon: const Icon(Icons.medical_services_outlined),
+                  onPressed: () => context.push('/diagnostics'),
+                ),
+              ),
               if (showLogo) ...[
                 const Center(key: ValueKey('sign-in-logo'), child: BrandMark(size: 40)),
                 const SizedBox(height: 8),
@@ -102,15 +169,19 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
               Text('We\'ll sign you in, or create your account.', style: t.textTheme.bodyMedium),
               const SizedBox(height: 20),
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                SizedBox(
-                  width: 110,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _dial,
-                    items: [
-                      for (final c in {..._dialCodes, _dial}) DropdownMenuItem(value: c, child: Text(c)),
-                    ],
-                    onChanged: (v) => setState(() => _dial = v ?? _dial),
+                OutlinedButton(
+                  key: const ValueKey('dial-country'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 52),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                   ),
+                  onPressed: _pickCountry,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text(_country.flag, style: const TextStyle(fontSize: 20)),
+                    const SizedBox(width: 6),
+                    Text(_country.dialCode),
+                    const Icon(Icons.arrow_drop_down),
+                  ]),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -161,6 +232,52 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
             ]),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Pick a country by name, code or dial code (Expo's country picker).
+class _CountrySheet extends StatefulWidget {
+  const _CountrySheet();
+
+  @override
+  State<_CountrySheet> createState() => _CountrySheetState();
+}
+
+class _CountrySheetState extends State<_CountrySheet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final list = searchDialCountries(_query);
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.75,
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              key: const ValueKey('country-search'),
+              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search country or code'),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+          Expanded(
+            child: list.isEmpty
+                ? const Center(child: Text('No country found'))
+                : ListView.builder(
+                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    itemCount: list.length,
+                    itemBuilder: (c, i) => ListTile(
+                      leading: Text(list[i].flag, style: const TextStyle(fontSize: 24)),
+                      title: Text(list[i].name),
+                      trailing: Text(list[i].dialCode),
+                      onTap: () => Navigator.pop(c, list[i]),
+                    ),
+                  ),
+          ),
+        ]),
       ),
     );
   }

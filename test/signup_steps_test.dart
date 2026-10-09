@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/auth_utils.dart';
 import 'package:get_ride/src/data/account_repository.dart';
 import 'package:get_ride/src/data/auth_repository.dart';
 import 'package:get_ride/src/data/models.dart';
@@ -12,7 +13,12 @@ import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 
 class _FakeAuth implements AuthRepository {
+  _FakeAuth({this.device = DeviceRegistration.unknown});
+  final DeviceRegistration device;
   final pins = <String>[];
+
+  @override
+  Future<DeviceRegistration> deviceRegistration() async => device;
 
   @override
   Future<void> setPin(String pin) async => pins.add(pin);
@@ -67,14 +73,19 @@ void main() {
   });
 
   group('new account', () {
-    Future<void> pump(WidgetTester tester, Map<String, dynamic> profile, _FakeAccount account) async {
+    Future<void> pump(
+      WidgetTester tester,
+      Map<String, dynamic> profile,
+      _FakeAccount account, {
+      _FakeAuth? auth,
+    }) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            authRepositoryProvider.overrideWithValue(_FakeAuth()),
+            authRepositoryProvider.overrideWithValue(auth ?? _FakeAuth()),
             accountRepositoryProvider.overrideWithValue(account),
             profileProvider.overrideWith((ref) async => Profile(profile)),
           ],
@@ -108,6 +119,27 @@ void main() {
       await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
       expect(find.text('drive'), findsOneWidget);
+    });
+
+    testWidgets('a new account must give its name, which is tidied', (tester) async {
+      final auth = _FakeAuth();
+      final account = _FakeAccount();
+      await pump(tester, {'id': 'me'}, account, auth: auth);
+      await save(tester);
+      expect(find.text('Please enter your name.'), findsOneWidget);
+      expect(auth.pins, isEmpty);
+      await save(tester, name: '  siti   aminah ');
+      expect(auth.pins, ['123456']);
+      expect(account.names, ['Siti Aminah']);
+    });
+
+    testWidgets('the device guard is asked first and its reason shown', (tester) async {
+      final auth = _FakeAuth(device: const DeviceRegistration(allowed: false, emulatorBlocked: true));
+      await pump(tester, {'id': 'me'}, _FakeAccount(), auth: auth);
+      await save(tester, name: 'Ali');
+      expect(find.text(deviceGuardMessage(emulator: true)), findsOneWidget);
+      expect(auth.pins, isEmpty);
+      expect(find.text('Add a profile photo'), findsNothing);
     });
 
     testWidgets('passenger is the default and lands on the map', (tester) async {
