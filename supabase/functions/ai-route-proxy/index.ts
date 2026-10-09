@@ -42,10 +42,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   buildPrompt,
   type FareAIRequest,
+  parseTrafficExtras,
   type ResolvedRequest,
   resolveRequest,
   retryPolicyMs,
   templateProblem,
+  type TrafficExtras,
 } from "../_shared/fare_ai_request.ts";
 
 const corsHeaders = {
@@ -99,7 +101,7 @@ interface TollBooth {
   longitude?: number;
 }
 
-interface RouteEstimate {
+interface RouteEstimate extends TrafficExtras {
   distance_km: number;
   duration_min: number;
   summary?: string;
@@ -324,6 +326,8 @@ function parseEstimate(content: string): RouteEstimate | null {
       : parseFloat(tolls.reduce((sum, t) => sum + t.charge, 0).toFixed(2));
 
     return {
+      // Fare range and traffic, when asked for and sensible.
+      ...parseTrafficExtras(obj as Record<string, unknown>),
       distance_km: parseFloat(distanceKm.toFixed(1)),
       duration_min: Math.ceil(durationMin),
       summary: typeof obj.summary === "string" ? obj.summary : undefined,
@@ -470,6 +474,7 @@ Deno.serve(async (req: Request) => {
       error: errorMsg,
       latency_ms: latencyMs,
       raw_response: result.content ? result.content.substring(0, 4000) : null,
+      extra: parsed ? extrasOf(parsed) : null,
     });
     await admin.rpc("fare_ai_record_usage", {
       p_key_id: cand.id,
@@ -486,6 +491,21 @@ Deno.serve(async (req: Request) => {
 
   return json({ ok: true, estimate: null, reason: "all_keys_failed" });
 });
+
+/** The fare-range and traffic answers of an estimate (null when none). */
+function extrasOf(e: RouteEstimate): TrafficExtras | null {
+  const x: TrafficExtras = {};
+  for (const k of [
+    "current_duration_is_baseline",
+    "current_duration_is_low",
+    "current_duration_is_heavy",
+    "traffic_congestion",
+    "traffic_congestion_stretch_location_details",
+  ] as const) {
+    if (e[k] !== undefined) (x as Record<string, unknown>)[k] = e[k];
+  }
+  return Object.keys(x).length ? x : null;
+}
 
 /** Admin "Test" on Request & format: one call with the draft, nothing recorded. */
 async function runTest(

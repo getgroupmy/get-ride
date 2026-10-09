@@ -270,15 +270,24 @@ class SecurityRepository {
     }
   }
 
-  Future<List<Map<String, dynamic>>> fareAiResponses({int limit = 150}) async => List<Map<String, dynamic>>.from(
-        await _db
-            .from('fare_ai_responses')
-            .select('id, created_at, provider, key_id, key_label, model, origin_lat, origin_lng, dest_lat, dest_lng, '
-                'success, http_status, distance_km, duration_min, summary, toll_count, toll_total, tolls, error, '
-                'latency_ms, raw_response')
-            .order('created_at', ascending: false)
-            .limit(limit),
-      );
+  static const _responseColumns =
+      'id, created_at, provider, key_id, key_label, model, origin_lat, origin_lng, dest_lat, dest_lng, '
+      'success, http_status, distance_km, duration_min, summary, toll_count, toll_total, tolls, error, '
+      'latency_ms, raw_response';
+
+  /// The log, with the fare-range / traffic answers (`extra`, migration 0114)
+  /// where the database has them; an older one is read without.
+  Future<List<Map<String, dynamic>>> fareAiResponses({int limit = 150}) async {
+    Future<List<Map<String, dynamic>>> read(String cols) async => List<Map<String, dynamic>>.from(
+          await _db.from('fare_ai_responses').select(cols).order('created_at', ascending: false).limit(limit),
+        );
+    try {
+      return await read('$_responseColumns, extra');
+    } on PostgrestException catch (e) {
+      if (!e.message.contains('extra')) rethrow;
+      return read(_responseColumns);
+    }
+  }
 
   /// Puts a cooling-down key (or, with null, every key) straight back into
   /// rotation (migration 0113, admins only). Returns how many were paused.
