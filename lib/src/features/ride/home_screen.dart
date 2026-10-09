@@ -53,6 +53,7 @@ import 'home_parts.dart';
 import 'place_search.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../meter/meter_auto_launch.dart';
+import 'unavailable_sheet.dart';
 import '../../admin/screens/commerce/get_coin.dart' show rideRewardCoins;
 
 enum _PinTarget { none, pickup, drop }
@@ -77,6 +78,10 @@ const homeStreetZoom = 17.0;
 
 /// How long the confirm screen waits for the AI fare estimate.
 const aiEstimateTimeout = Duration(seconds: 30);
+
+/// A point of a trip GET.ride can't serve ([UnavailableAt]; [stop] is the
+/// stop's index when it is a stop).
+typedef TripGap = ({UnavailableAt at, int stop, CoverageGap gap, String? region});
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -350,11 +355,72 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _updateRoute();
   }
 
+  /// The first point of the trip GET.ride can't serve (outside every
+  /// region, or in a blocked one), once the route's check has answered.
+  TripGap? _gap;
+
+  /// Checks the pickup, each stop and the destination against the regions
+  /// (Admin → Country / States / Cities): the first one GET.ride can't
+  /// serve, or null.
+  Future<TripGap?> _findGap(Place a, List<Place> stops, Place b) async {
+    final rides = ref.read(rideRepositoryProvider);
+    final geo = ref.read(geoServiceProvider);
+    Future<({CoverageGap gap, BiddingRegion? region})?> check(LatLng p) async {
+      try {
+        return await rides.coverageAt(p, () => geo.reverseArea(p));
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final points = [a, ...stops, b];
+    final found = await Future.wait([for (final p in points) check(p.point)]);
+    for (var i = 0; i < points.length; i++) {
+      final g = found[i];
+      if (g == null) continue;
+      return (
+        at: i == 0 ? UnavailableAt.pickup : (i == points.length - 1 ? UnavailableAt.drop : UnavailableAt.stop),
+        stop: i - 1,
+        gap: g.gap,
+        region: g.region?.name,
+      );
+    }
+    return null;
+  }
+
+  /// Bolt's "currently unavailable": slides up with the way out — change
+  /// the pickup or destination, or drop the stop.
+  void _showGap(TripGap g) => unawaited(showServiceUnavailable(
+        context,
+        at: g.at,
+        gap: g.gap,
+        region: g.region,
+        onChange: () {
+          switch (g.at) {
+            case UnavailableAt.pickup:
+              _choose(_PinTarget.pickup);
+            case UnavailableAt.drop:
+              _choose(_PinTarget.drop);
+            case UnavailableAt.stop:
+              if (g.stop >= 0 && g.stop < _stops.length) setState(() => _stops.removeAt(g.stop));
+              _updateRoute();
+          }
+        },
+      ));
+
+  Future<void> _checkCoverage(int seq, Place a, List<Place> stops, Place b) async {
+    final g = await _findGap(a, stops, b);
+    if (!mounted || seq != _routeSeq) return;
+    setState(() => _gap = g);
+    if (g != null) _showGap(g);
+  }
+
   Future<void> _updateRoute() async {
     final a = _pickup, b = _drop;
     final seq = ++_routeSeq;
     // A new route is a new recommended fare: any offer starts again from it.
     _adjust = 0;
+    _gap = null;
     if (a != null) unawaited(_checkBidding(a.point));
     if (a == null || b == null) {
       setState(() {
@@ -363,6 +429,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       });
       return;
     }
+    // Whether GET.ride serves the trip at all, alongside the route.
+    unawaited(_checkCoverage(seq, a, List.of(_stops), b));
     setState(() {
       _routing = true;
       _ai = null;
@@ -638,6 +706,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (mounted) showInfo(context, serviceComingSoonMessage);
       return;
     }
+    // Checked again as it is booked: a region blocked since, or a trip
+    // booked before the route's check answered, never goes out.
+    final gap = await _findGap(a, List.of(_stops), b);
+    if (gap != null) {
+      if (mounted) {
+        setState(() => _gap = gap);
+        _showGap(gap);
+      }
+      return;
+    }
+    if (!mounted) return;
     setState(() => _booking = true);
     try {
       final profile = await ref.read(profileProvider.future);
@@ -781,6 +860,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       return;
     }
+    // Already known to be outside GET.ride's regions: say so again, at once.
+    final gap = _gap;
+    if (gap != null) return _showGap(gap);
     await _book();
   }
 

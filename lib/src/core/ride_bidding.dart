@@ -40,6 +40,7 @@ class BiddingRegion {
     this.timezone,
     this.currency,
     this.currencySymbol,
+    this.blocked = false,
   });
 
   final String country;
@@ -71,6 +72,13 @@ class BiddingRegion {
   final String? currency;
   final String? currencySymbol;
 
+  /// Admin → Country / States / Cities → Block: no ride starts, stops or
+  /// ends here, whatever the regions around it allow.
+  final bool blocked;
+
+  /// Its own name: the suburb, city, state or country.
+  String get name => [suburb, city, state, country].firstWhere((n) => n.isNotEmpty);
+
   /// 0 country … 3 suburb: the more specific region wins.
   int get specificity => suburb.isNotEmpty
       ? 3
@@ -99,6 +107,7 @@ class BiddingRegion {
       timezone: s(v['timezone']).isEmpty ? null : s(v['timezone']),
       currency: RegExp(r'^[A-Za-z]{3}$').hasMatch(s(v['currencyName'])) ? s(v['currencyName']).toUpperCase() : null,
       currencySymbol: s(v['currencySymbol']).isEmpty ? null : s(v['currencySymbol']),
+      blocked: v['blocked'] == true,
     );
   }
 
@@ -309,6 +318,80 @@ List<BiddingRegion> regionsAround(List<BiddingRegion> regions, LatLng? pickup, {
         r,
   ]..sort((a, b) => b.specificity.compareTo(a.specificity));
   return out;
+}
+
+/// Why GET.ride can't serve a point.
+enum CoverageGap {
+  /// In no country / state / city / suburb the admin has set up.
+  outside,
+
+  /// In one the admin has blocked.
+  blocked,
+}
+
+/// Whether GET.ride serves [point]: null when it does, else why not and the
+/// region it concerns.
+///
+/// Every level is checked, top down: the point must be in one of the
+/// countries; if that country has states set up, in one of them; if that
+/// state has cities, in one of those; and so on to the suburbs. A region is
+/// matched by its mapped boundary where it has one, else by the name the
+/// geocoder gives that level ([area]). Missing a level's list is
+/// [CoverageGap.outside], with the region it is in (Perak, for a town Perak
+/// doesn't list); a block on any region it is in is [CoverageGap.blocked],
+/// with the most specific blocked one.
+///
+/// Errs towards serving: with no regions at all, or where a level can't be
+/// told (no boundary holds the point and the geocoder gave no name for that
+/// level), the check stops there and the point is served — a failed geocode
+/// never strands a rider.
+({CoverageGap gap, BiddingRegion? region})? coverageGap(
+  List<BiddingRegion> regions,
+  LatLng point, {
+  AreaInfo? area,
+}) {
+  if (regions.isEmpty) return null;
+  String own(BiddingRegion r, int level) => switch (level) {
+    0 => r.country,
+    1 => r.state,
+    2 => r.city,
+    _ => r.suburb,
+  };
+  final names = [area?.country, area?.state, area?.city, area?.suburb];
+  // Whether [r] holds the point: its boundary decides, else its name; null
+  // when neither can tell.
+  bool? holds(BiddingRegion r, int level) {
+    if (r.rings.isNotEmpty) return r.rings.any((ring) => ring.length >= 3 && _inRing(point, ring));
+    final name = _n(names[level]);
+    return name.isEmpty ? null : _n(own(r, level)) == name;
+  }
+
+  bool under(BiddingRegion r, BiddingRegion parent) {
+    for (var l = 0; l <= parent.specificity; l++) {
+      if (_n(own(r, l)) != _n(own(parent, l))) return false;
+    }
+    return true;
+  }
+
+  final chain = <BiddingRegion>[];
+  for (var level = 0; level <= 3; level++) {
+    final parent = chain.lastOrNull;
+    final candidates = [
+      for (final r in regions)
+        if (r.specificity == level && (parent == null || under(r, parent))) r,
+    ];
+    if (candidates.isEmpty) break;
+    final verdicts = [for (final r in candidates) holds(r, level)];
+    final i = verdicts.indexOf(true);
+    if (i >= 0) {
+      chain.add(candidates[i]);
+      continue;
+    }
+    if (verdicts.contains(null)) break;
+    return (gap: CoverageGap.outside, region: parent);
+  }
+  final block = chain.reversed.where((r) => r.blocked).firstOrNull;
+  return block == null ? null : (gap: CoverageGap.blocked, region: block);
 }
 
 /// What a pickup's regions say about each service, now: the rules around it
