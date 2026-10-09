@@ -41,27 +41,13 @@ String assignableStatusLabel(AssignableStatus s) => switch (s) {
   AssignableStatus.contactAdmin => 'Contact admin',
 };
 
-const _blocked = {'blocked', 'deleted', 'rejected'};
-const _pending = {
-  'unapproved',
-  'unapproved-docs',
-  'permit-pending',
-  'permit-non-verified',
-  'permit-verified',
-  'pending',
-};
-
 String _t(Object? v) => '${v ?? ''}'.trim().toLowerCase();
 
-/// Expo `classifyVehicle`.
+/// Expo `classifyVehicle`, on the same rule as the vehicle's review card
+/// ([vehicleApproved]): locked, approved, or still with an admin.
 AssignableStatus _approval(Map<String, dynamic> v) {
-  final s = _t(v['status']);
-  final p = _t(v['permit']);
-  if (_blocked.contains(s) || _blocked.contains(p)) return AssignableStatus.contactAdmin;
-  if (v['documents_ok'] != true || _pending.contains(s) || _pending.contains(p)) {
-    return AssignableStatus.pendingReview;
-  }
-  return AssignableStatus.available;
+  if (lockedVehicleStatuses.contains(_t(v['status']))) return AssignableStatus.contactAdmin;
+  return vehicleApproved(v) ? AssignableStatus.available : AssignableStatus.pendingReview;
 }
 
 class AssignableVehicle {
