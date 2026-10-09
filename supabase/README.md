@@ -170,7 +170,7 @@ The function reads tokens with the `service_role` key, which Supabase injects
 as `SUPABASE_SERVICE_ROLE_KEY` for deployed functions — no extra secret needed.
 `--no-verify-jwt` stays because the database webhook has no user JWT. The
 function checks every caller itself: only the webhook (`x-push-secret`, the
-Vault secret `push_webhook_secret` that migration `0127` creates), the
+Vault secret `push_webhook_secret` that migration `0128` creates), the
 service-role key, or a signed-in admin may send. The webhook also needs the
 Vault secret `project_url`; see `docs/backend.md`.
 "Partners" vs "Users" is resolved by membership in the `partners` table

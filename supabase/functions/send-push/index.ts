@@ -30,7 +30,7 @@
 // Reads tokens with the service-role key (bypasses RLS) and logs the dispatch
 // to `public.push_notifications`.
 //
-// Callers: only the database webhook (`x-push-secret`, migration 0127), the
+// Callers: only the database webhook (`x-push-secret`, migration 0128), the
 // service-role key, or a signed-in admin. Everyone else gets 401/403 before
 // the body is read — see _shared/push_auth.ts.
 //

@@ -2,7 +2,7 @@
  * Who may make send-push send. The function is deployed --no-verify-jwt (the
  * database webhook carries no user JWT), so it checks every caller itself:
  *
- *   * the database webhook (`public.send_push_webhook`, migration 0127)
+ *   * the database webhook (`public.send_push_webhook`, migration 0128)
  *     sends `x-push-secret` with the Vault secret `push_webhook_secret`;
  *     the database says whether it matches (`push_webhook_secret_ok`), so
  *     the secret lives in one place;

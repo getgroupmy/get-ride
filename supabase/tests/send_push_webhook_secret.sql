@@ -1,5 +1,5 @@
 -- ============================================================================
--- Regression test for migration 0127: the send-push webhook secret exists,
+-- Regression test for migration 0128: the send-push webhook secret exists,
 -- only the service role can check it, and the check is exact.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/send_push_webhook_secret.sql
