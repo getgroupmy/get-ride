@@ -181,6 +181,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(find.text('Save place'), findsWidgets);
+    // The map spans the screen, not the width of the back button.
+    final map = find.byWidgetPredicate((w) => '${w.key}'.contains('saved-place-map'));
+    expect(tester.getSize(map).width, 500);
     FilledButton save() => tester.widget<FilledButton>(find.byKey(const ValueKey('saved-place-save')));
     expect(save().onPressed, isNull, reason: 'no name yet');
     await tester.enterText(find.byKey(const ValueKey('saved-place-name')), 'KLCC');
