@@ -9,6 +9,7 @@ import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import '../../../widgets/in_app_page.dart';
+import '../../../widgets/net_image.dart';
 
 bool canEditPage(WidgetRef ref, String page) => ref.watch(pageAccessProvider(page)) == AccessLevel.edit;
 
@@ -33,7 +34,7 @@ class StoredImage extends StatelessWidget {
         child = placeholder();
       }
     } else if (uri.startsWith('http')) {
-      child = Image.network(uri, fit: BoxFit.cover, errorBuilder: (_, _, _) => placeholder());
+      child = Image.network(uri, fit: BoxFit.cover, frameBuilder: boneUntilPainted(), errorBuilder: (_, _, _) => placeholder());
     } else {
       child = placeholder();
     }

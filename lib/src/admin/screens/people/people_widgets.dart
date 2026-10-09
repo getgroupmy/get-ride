@@ -15,6 +15,7 @@ import '../../widgets/admin_widgets.dart';
 import 'doc_pdf.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
+import '../../../widgets/net_image.dart';
 
 /// Wide screens get a two-column form, phones one column.
 class FormColumns extends StatelessWidget {
@@ -135,7 +136,7 @@ class ImageSlot extends StatelessWidget {
     if (pending != null && !isPdfUri(pending!.name)) {
       content = Image.memory(pending!.bytes, fit: BoxFit.cover);
     } else if (url != null && url!.startsWith('http') && !isPdfUri(url)) {
-      content = Image.network(url!, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined));
+      content = Image.network(url!, fit: BoxFit.cover, frameBuilder: boneUntilPainted(), errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined));
     } else if (url != null && url!.startsWith('data:image')) {
       content = const Center(child: Text('Embedded image'));
     } else if (pending != null || isPdfUri(url)) {

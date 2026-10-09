@@ -15,6 +15,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/loading_skeleton.dart';
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/net_image.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 
@@ -314,11 +315,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       subtitle: 'Riders see this on every trip. Use a clear photo of your face.',
       children: [
         Center(
-          child: CircleAvatar(
-            radius: 56,
-            backgroundImage: url.isEmpty ? null : NetworkImage(url),
-            child: url.isEmpty ? const Icon(Icons.person, size: 56) : null,
-          ),
+          child: NetAvatar(url: url, radius: 56, fallback: const Icon(Icons.person, size: 56)),
         ),
         const SizedBox(height: 16),
         BusyButton.filled(

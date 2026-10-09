@@ -18,6 +18,7 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
+import '../../widgets/net_image.dart';
 
 /// Dials a number from the shared page's SOS: the phone app, overridden in
 /// tests.
@@ -219,10 +220,7 @@ class _SharedRideView extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 ListTile(
-                  leading: CircleAvatar(
-                    backgroundImage: r.driverPhoto == null ? null : NetworkImage(r.driverPhoto!),
-                    child: r.driverPhoto == null ? const Icon(Icons.person) : null,
-                  ),
+                  leading: NetAvatar(url: r.driverPhoto, fallback: const Icon(Icons.person)),
                   title: Text(r.driverName!),
                   subtitle: r.driverRating == null ? null : Text('★ ${r.driverRating!.toStringAsFixed(1)}'),
                 ),

@@ -12,6 +12,7 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/net_image.dart';
 
 /// The built-in rider menu items (Expo `MenuSideSheet`), on this app's
 /// screens; false for one with no screen here ("coming soon"). Expo's City,
@@ -88,11 +89,7 @@ class RiderMenu extends ConsumerWidget {
           child: ListTile(
             key: const ValueKey('menu-profile'),
             contentPadding: const EdgeInsets.all(16),
-            leading: CircleAvatar(
-              radius: 28,
-              backgroundImage: p?.avatarUrl != null ? NetworkImage(p!.avatarUrl!) : null,
-              child: p?.avatarUrl == null ? const Icon(Icons.person, size: 28) : null,
-            ),
+            leading: NetAvatar(url: p?.avatarUrl, radius: 28, fallback: const Icon(Icons.person, size: 28)),
             title: Text(p?.name ?? 'Add your name', style: t.textTheme.titleLarge),
             subtitle: Text([p?.phone, p?.displayId].whereType<String>().join(' · ')),
             trailing: const Icon(Icons.edit_outlined),

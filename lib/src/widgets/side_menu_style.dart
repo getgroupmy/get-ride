@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'net_image.dart';
 
 /// Every side menu's look (the user's, the driver's and the admin's), taken
 /// from the reference menu: a charcoal panel in either theme, grey outline
@@ -134,13 +135,11 @@ class SideMenuHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(18, 14, 16, 18),
       child: Row(
         children: [
-          CircleAvatar(
+          NetAvatar(
+            url: avatarUrl,
             radius: 22,
             backgroundColor: c.selected,
-            backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl!) : null,
-            child: avatarUrl == null
-                ? Icon(Icons.sentiment_satisfied_alt, size: 28, color: c.icon)
-                : null,
+            fallback: Icon(Icons.sentiment_satisfied_alt, size: 28, color: c.icon),
           ),
           const SizedBox(width: 18),
           Expanded(

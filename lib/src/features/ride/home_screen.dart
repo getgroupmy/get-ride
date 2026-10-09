@@ -688,11 +688,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     void whereTo() => serviceOn ? _choose(_PinTarget.drop) : comingSoon(serviceComingSoonMessage);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (sections.vehicleBar) ...[
-        VehicleTypeBar(
-          services: _services,
-          selected: _service,
-          onSelect: (s) => setState(() => _serviceName = s.name),
-        ),
+        // Until the catalogue lands, a skeleton: the built-in names and car
+        // icons would read as the real services and then change.
+        if (ref.watch(rideServicesProvider).hasValue)
+          VehicleTypeBar(
+            services: _services,
+            selected: _service,
+            onSelect: (s) => setState(() => _serviceName = s.name),
+          )
+        else
+          const VehicleTypeBarSkeleton(),
         const SizedBox(height: 12),
       ],
       if (!sections.addressBar)

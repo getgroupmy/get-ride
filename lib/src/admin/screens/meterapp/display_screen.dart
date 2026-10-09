@@ -19,6 +19,7 @@ import '../../widgets/admin_widgets.dart';
 import 'display_logic.dart';
 import 'display_store.dart';
 import 'pick_image.dart';
+import '../../../widgets/net_image.dart';
 
 const displayPage = 'admin-settings-display';
 
@@ -563,7 +564,7 @@ class _BoxPreview extends StatelessWidget {
         img = Image.memory(base64Decode(src.substring(src.indexOf(',') + 1)), fit: BoxFit.cover);
       } catch (_) {}
     } else if (src != null && src.startsWith('http')) {
-      img = Image.network(src, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback());
+      img = Image.network(src, fit: BoxFit.cover, frameBuilder: boneUntilPainted(), errorBuilder: (_, _, _) => fallback());
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),

@@ -9,6 +9,7 @@ import '../admin_filters.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
+import '../../widgets/net_image.dart';
 
 final adminUsersProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).users());
 final adminPartnersProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).partners());
@@ -92,10 +93,7 @@ class _RecordListState extends ConsumerState<_RecordList> {
 
 Widget _avatar(Object? url) {
   final u = url is String && url.startsWith('http') ? url : null;
-  return CircleAvatar(
-    backgroundImage: u != null ? NetworkImage(u) : null,
-    child: u == null ? const Icon(Icons.person_outline) : null,
-  );
+  return NetAvatar(url: u, fallback: const Icon(Icons.person_outline));
 }
 
 Widget _statusPicker({

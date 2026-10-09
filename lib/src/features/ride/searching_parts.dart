@@ -6,6 +6,7 @@ import '../../core/search_stage.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../../data/models.dart';
 import 'confirm_parts.dart';
+import '../../widgets/net_image.dart';
 
 // The rider's search for a driver, drawn as inDrive draws it: the sheet
 // (stage headline and countdown, fare stepper, auto-accept, payment, route,
@@ -484,6 +485,7 @@ class SearchOfferCard extends StatelessWidget {
                             width: 44,
                             height: 44,
                             fit: BoxFit.cover,
+                            frameBuilder: boneUntilPainted(width: 44, height: 44, circle: true),
                             errorBuilder: (_, _, _) => const Icon(Icons.person),
                           ),
                         ),
@@ -902,7 +904,7 @@ class DriversViewingBar extends StatelessWidget {
     );
     final circles = <Widget>[
       for (final url in faces)
-        face(Image.network(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => const ColoredBox(color: Colors.grey))),
+        face(Image.network(url, fit: BoxFit.cover, frameBuilder: boneUntilPainted(), errorBuilder: (_, _, _) => const ColoredBox(color: Colors.grey))),
       for (final n in demo ? demoNames.take(4 - faces.length) : const <String>[])
         face(CircleAvatar(child: Text(n[0], style: const TextStyle(fontSize: 11)))),
     ];

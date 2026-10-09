@@ -9,6 +9,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/net_image.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key, this.pickPhoto = pickImage});
@@ -146,16 +147,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Center(
-              child: CircleAvatar(
-                key: const ValueKey('profile-photo'),
-                radius: 44,
-                backgroundImage: p?.avatarUrl != null ? NetworkImage(p!.avatarUrl!) : null,
-                child: _uploading
-                    ? const CircularProgressIndicator()
-                    : p?.avatarUrl == null
-                        ? const Icon(Icons.person, size: 44)
-                        : null,
-              ),
+              child: _uploading
+                  ? const CircleAvatar(
+                      key: ValueKey('profile-photo'),
+                      radius: 44,
+                      child: CircularProgressIndicator(),
+                    )
+                  : NetAvatar(
+                      key: const ValueKey('profile-photo'),
+                      url: p?.avatarUrl,
+                      radius: 44,
+                      fallback: const Icon(Icons.person, size: 44),
+                    ),
             ),
             Center(
               child: BusyButton.text(
@@ -204,6 +207,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     idImage,
                     key: const ValueKey('profile-id-image'),
                     fit: BoxFit.cover,
+                    frameBuilder: boneUntilPainted(),
                     errorBuilder: (_, _, _) => const ColoredBox(
                       color: Colors.black12,
                       child: Center(child: Icon(Icons.badge_outlined, size: 40)),

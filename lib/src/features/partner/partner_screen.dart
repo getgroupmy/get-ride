@@ -43,6 +43,7 @@ import '../../core/vehicle_assignment.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../admin/screens/people/people_logic.dart' show parseStringList;
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/net_image.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -662,6 +663,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                                   : SizedBox.square(
                                       dimension: 36,
                                       child: Image.network(m.iconUrl!,
+                                          frameBuilder: boneUntilPainted(),
                                           errorBuilder: (_, _, _) => const Icon(Icons.directions_car_outlined)),
                                     ),
                               title: Text(m.name),

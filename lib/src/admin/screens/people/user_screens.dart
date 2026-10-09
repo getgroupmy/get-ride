@@ -11,6 +11,7 @@ import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
 import '../../../widgets/in_app_page.dart';
+import '../../../widgets/net_image.dart';
 
 void _leave(BuildContext context) => context.canPop() ? context.pop(true) : context.go('/admin/users');
 
@@ -283,6 +284,7 @@ class _UserIdDocumentsScreenState extends ConsumerState<UserIdDocumentsScreen> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: Image.network(url, width: 56, height: 40, fit: BoxFit.cover,
+          frameBuilder: boneUntilPainted(width: 56, height: 40),
           errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined)),
     );
   }
@@ -499,6 +501,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
               : ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Image.network(img, height: 220, fit: BoxFit.contain,
+                      frameBuilder: boneUntilPainted(height: 220),
                       errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined)),
                 ),
         ),

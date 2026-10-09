@@ -11,6 +11,7 @@ import '../../../providers.dart';
 import 'pick_image.dart';
 import 'site_logic.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/net_image.dart';
 
 class BrandingStore {
   BrandingStore(this._db);
@@ -58,7 +59,7 @@ class BrandingImageBox extends StatelessWidget {
     final child = bytes != null
         ? Image.memory(bytes!, fit: BoxFit.cover)
         : url != null
-            ? Image.network(url!, fit: BoxFit.cover, errorBuilder: (_, _, _) => fallback())
+            ? Image.network(url!, fit: BoxFit.cover, frameBuilder: boneUntilPainted(), errorBuilder: (_, _, _) => fallback())
             : fallback();
     return Container(
       width: size,
