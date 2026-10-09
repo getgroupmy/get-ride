@@ -1528,3 +1528,53 @@ class ConfirmSwitch extends StatelessWidget {
     );
   }
 }
+
+/// Expo's "Calculating fare" overlay: over the whole confirm screen while
+/// the route and the AI's traffic-aware estimate are fetched, so no fare is
+/// read or booked before it is settled.
+class CalculatingFareOverlay extends StatelessWidget {
+  const CalculatingFareOverlay({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Stack(
+      key: const ValueKey('calculating-fare'),
+      children: [
+        const ModalBarrier(dismissible: false, color: Color(0x8C000000)),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: Material(
+                color: t.colorScheme.surfaceContainerHigh,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const SizedBox.square(dimension: 40, child: CircularProgressIndicator(color: confirmAccent)),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Calculating fare',
+                        style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Checking live traffic and distance for the best estimate…',
+                        textAlign: TextAlign.center,
+                        style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant, height: 1.45),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}

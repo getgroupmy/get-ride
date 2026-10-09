@@ -1,11 +1,14 @@
 // The confirm step (a destination chosen) laid out as Expo's ride-confirm:
 // addresses over the map, the fare inside the chosen vehicle, and a fixed
 // bar with the payment icon and "Find a driver".
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/fare.dart';
+import 'package:get_ride/src/core/route_estimate.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/coin_trade_repository.dart';
 import 'package:get_ride/src/data/device_access.dart';
@@ -52,6 +55,17 @@ class _Rides implements RideRepository {
   }
 }
 
+/// The AI estimate, held until [answer] completes.
+class _SlowAi implements RouteEstimateRepository {
+  final answer = Completer<({RouteEstimate? estimate, bool unavailable})?>();
+
+  @override
+  Future<({RouteEstimate? estimate, bool unavailable})?> estimateDetailed(LatLng from, LatLng to) => answer.future;
+
+  @override
+  dynamic noSuchMethod(Invocation i) => Future.value(null);
+}
+
 class _NoAi implements RouteEstimateRepository {
   @override
   dynamic noSuchMethod(Invocation i) => Future.value(null);
@@ -64,7 +78,7 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = true}) async {
+Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = true, RouteEstimateRepository? ai}) async {
   SharedPreferences.setMockInitialValues({});
   tester.view.physicalSize = const Size(400, 860);
   tester.view.devicePixelRatio = 1;
@@ -73,7 +87,7 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = 
     retry: (_, _) => null,
     overrides: [
       rideRepositoryProvider.overrideWithValue(rides),
-      routeEstimateRepositoryProvider.overrideWithValue(_NoAi()),
+      routeEstimateRepositoryProvider.overrideWithValue(ai ?? _NoAi()),
       geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
       coinTradeQuoteProvider.overrideWith((ref) => Future.error('offline')),
       serviceBoxNamesProvider.overrideWith((ref) async => const <String, String>{}),
@@ -133,6 +147,34 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = 
 }
 
 void main() {
+  testWidgets('"Calculating fare" covers the confirm step until the AI estimate is in', (tester) async {
+    final ai = _SlowAi();
+    await _pump(tester, _Rides(), ai: ai);
+    expect(find.byKey(const ValueKey('calculating-fare')), findsOneWidget);
+    expect(find.text('Calculating fare'), findsOneWidget);
+    ai.answer.complete((estimate: null, unavailable: false));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byKey(const ValueKey('calculating-fare')), findsNothing);
+    expect(find.byKey(const ValueKey('traffic-unavailable')), findsNothing);
+  });
+
+  testWidgets('an AI fare service that is on but gives nothing warns about traffic', (tester) async {
+    final ai = _SlowAi();
+    await _pump(tester, _Rides(), ai: ai);
+    ai.answer.complete((estimate: null, unavailable: true));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text(trafficUnavailableTitle), findsOneWidget);
+    await tester.tap(find.text('OK'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text(trafficUnavailableTitle), findsNothing);
+  });
+
   testWidgets('the main screen opens with its sheet fully down', (tester) async {
     await _pump(tester, _Rides(), book: false);
     final top = tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;

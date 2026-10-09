@@ -227,4 +227,14 @@ void main() {
     expect(sideMenuProfile(s, 'partner').show, isFalse);
     expect(sideMenuProfile(s, 'user'), (show: true, comingSoon: true));
   });
+
+  test('the traffic warning shows only when the AI fare service is on but gave nothing', () {
+    for (final reason in ['no_keys', 'keys_cooling_down', 'all_keys_failed']) {
+      expect(aiEstimateUnavailable({'ok': true, 'estimate': null, 'reason': reason}), isTrue, reason: reason);
+    }
+    expect(aiEstimateUnavailable({'ok': true, 'estimate': null, 'reason': 'service_disabled'}), isFalse);
+    expect(aiEstimateUnavailable({'ok': true, 'estimate': {'distance_km': 5, 'duration_min': 9}}), isFalse);
+    expect(aiEstimateUnavailable({'ok': false, 'error': 'bad'}), isFalse);
+    expect(aiEstimateUnavailable(null), isFalse);
+  });
 }
