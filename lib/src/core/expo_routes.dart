@@ -23,7 +23,7 @@ const _expoToFlutter = <String, String>{
   '/distances': '/account/settings',
   '/navigation': '/account/settings',
   '/rules-terms': '/account/settings',
-  '/change-pin': '/account/settings',
+  '/change-pin': '/account/settings/pin',
   '/change-number': '/account/settings/phone',
   '/user-guide': '/account/guide',
   '/safety': '/account/safety',
