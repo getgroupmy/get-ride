@@ -8,6 +8,8 @@ import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare.dart';
 import '../../core/fare_offer.dart';
 import '../../core/payment_types.dart';
+import '../../core/route_estimate.dart' show FareTrend;
+import '../../widgets/fare_trend_arrows.dart';
 import '../../core/ride_confirm.dart' show RideOptions;
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
@@ -525,10 +527,22 @@ class ConfirmServiceCard extends StatelessWidget {
     this.fare,
     this.onEdit,
     this.etaMinutes,
+    this.trend,
   });
 
   final RideService service;
   final String price;
+
+  /// The arrows before the price (fare trend); null for none.
+  final FareTrend? trend;
+
+  Widget _price(String text, TextStyle? style) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (trend != null) ...[FareTrendArrows(trend: trend!), const SizedBox(width: 4)],
+      Text(text, style: style),
+    ],
+  );
 
   /// Minutes for the nearest driver to reach the pickup ("4 • 4 min");
   /// null when none is near.
@@ -624,7 +638,7 @@ class ConfirmServiceCard extends StatelessWidget {
             context,
             trailing: Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600)),
+              child: _price(price, t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600)),
             ),
           ),
         ),
@@ -664,7 +678,7 @@ class ConfirmServiceCard extends StatelessWidget {
                       context,
                       info: true,
                       trailing: onEdit == null
-                          ? Padding(padding: const EdgeInsets.only(top: 4, right: 6), child: Text(price, style: priceStyle))
+                          ? Padding(padding: const EdgeInsets.only(top: 4, right: 6), child: _price(price, priceStyle))
                           : Material(
                               color: c.chip,
                               shape: const CircleBorder(),
@@ -711,7 +725,12 @@ class ConfirmFareSection extends StatelessWidget {
     this.onTollBooths,
     this.tollCharges,
     this.onEdit,
+    this.trend,
   });
+
+  /// The arrows before the recommended amount (fare trend); not shown once
+  /// the rider raises or lowers it.
+  final FareTrend? trend;
 
   /// A tap on the amount: the full "Offer your fare" page where there is
   /// one, else the typing sheet.
@@ -769,10 +788,19 @@ class ConfirmFareSection extends StatelessWidget {
     final center = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          money(recommended + adjust),
-          key: const ValueKey('confirm-fare'),
-          style: t.textTheme.headlineSmall?.copyWith(fontSize: 28, fontWeight: FontWeight.w600),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (trend != null && adjust == 0) ...[
+              FareTrendArrows(trend: trend!, size: 24),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              money(recommended + adjust),
+              key: const ValueKey('confirm-fare'),
+              style: t.textTheme.headlineSmall?.copyWith(fontSize: 28, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
         Text(
           adjust == 0 ? 'Recommended fare' : 'Recommended fare: ${money(recommended)}',

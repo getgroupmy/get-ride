@@ -253,3 +253,98 @@ export function retryPolicyMs(value: number, unit: string): number {
       return v * hour;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fare trend: the arrows before the recommended fare (Admin → Fare AI →
+// Fare trend arrows). The AI's drive time is compared with the standard
+// route's (OSRM, which assumes empty roads); when the request asks for the
+// fare range, the AI's own verdict decides instead.
+
+export interface FareTrendSettings {
+  /** AI time this many percent above standard shows the up arrows; null is off. */
+  upPct: number | null;
+  /** AI time this many percent below standard shows the down arrows; null is off. */
+  downPct: number | null;
+  /** The arrows' colours (#RRGGBB) in light and dark mode; null keeps the app's red / green. */
+  upColorLight: string | null;
+  upColorDark: string | null;
+  downColorLight: string | null;
+  downColorDark: string | null;
+}
+
+export type FareTrendDirection = "up" | "down";
+
+export interface FareTrend {
+  direction: FareTrendDirection | null;
+  /** What decided it: the AI's fare-range verdict, or the minutes compared. */
+  source: "fare_range" | "minutes";
+  ai_min: number;
+  standard_min?: number;
+  /** AI minutes against standard, in percent (+ is slower). */
+  pct?: number;
+  /** The admin's colours for these arrows, when set. */
+  color_light?: string;
+  color_dark?: string;
+}
+
+function pct(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 1000) : null;
+}
+
+/** "#RRGGBB" from "#rgb", "rrggbb" or "#RRGGBB"; null for anything else. */
+export function hexColor(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  let h = v.trim().replace(/^#/, "");
+  if (/^[0-9a-fA-F]{3}$/.test(h)) h = h.split("").map((c) => c + c).join("");
+  return /^[0-9a-fA-F]{6}$/.test(h) ? `#${h.toUpperCase()}` : null;
+}
+
+/** The stored `trend` settings; anything missing or unusable is off. */
+export function resolveTrendSettings(raw: unknown): FareTrendSettings {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    upPct: pct(r.upPct),
+    downPct: pct(r.downPct),
+    upColorLight: hexColor(r.upColorLight),
+    upColorDark: hexColor(r.upColorDark),
+    downColorLight: hexColor(r.downColorLight),
+    downColorDark: hexColor(r.downColorDark),
+  };
+}
+
+/** [trend] with the admin's colours for its direction, where set. */
+function withColors(trend: FareTrend, s: FareTrendSettings): FareTrend {
+  const light = trend.direction === "up" ? s.upColorLight : trend.direction === "down" ? s.downColorLight : null;
+  const dark = trend.direction === "up" ? s.upColorDark : trend.direction === "down" ? s.downColorDark : null;
+  return { ...trend, ...(light ? { color_light: light } : {}), ...(dark ? { color_dark: dark } : {}) };
+}
+
+/**
+ * The trend of an estimate. With the fare range asked for and answered,
+ * the AI's verdict decides (baseline: none, low: down, heavy: up). Otherwise
+ * the AI's minutes against the standard route's, by the thresholds. Null
+ * when there is nothing to decide on.
+ */
+export function decideFareTrend(
+  aiMin: number,
+  standardMin: number | null,
+  extras: TrafficExtras,
+  settings: FareTrendSettings,
+  fareRangeOn: boolean,
+): FareTrend | null {
+  if (!Number.isFinite(aiMin) || aiMin <= 0) return null;
+  const std = standardMin !== null && Number.isFinite(standardMin) && standardMin > 0 ? standardMin : null;
+  const diff = std === null ? undefined : Math.round(((aiMin - std) / std) * 1000) / 10;
+  const base = { ai_min: aiMin, ...(std === null ? {} : { standard_min: std, pct: diff }) };
+  if (fareRangeOn && extras.current_duration_is_baseline !== undefined) {
+    const direction = extras.current_duration_is_heavy ? "up" : extras.current_duration_is_low ? "down" : null;
+    return withColors({ direction, source: "fare_range", ...base }, settings);
+  }
+  if (diff === undefined) return null;
+  let direction: FareTrendDirection | null = null;
+  if (settings.upPct !== null && diff >= settings.upPct) direction = "up";
+  else if (settings.downPct !== null && diff <= -settings.downPct) direction = "down";
+  return withColors({ direction, source: "minutes", ...base }, settings);
+}

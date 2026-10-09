@@ -41,10 +41,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import {
   buildPrompt,
+  decideFareTrend,
   type FareAIRequest,
+  type FareTrend,
   parseTrafficExtras,
   type ResolvedRequest,
   resolveRequest,
+  resolveTrendSettings,
   retryPolicyMs,
   templateProblem,
   type TrafficExtras,
@@ -86,6 +89,8 @@ interface FareAIConfig {
   models?: Partial<Record<Provider, string>>;
   keys?: Partial<Record<Provider, FareAIKey[]>>;
   request?: FareAIRequest;
+  /** Fare trend arrows: { upPct, downPct } (see _shared/fare_ai_request.ts). */
+  trend?: unknown;
 }
 
 interface LatLng {
@@ -109,6 +114,8 @@ interface RouteEstimate extends TrafficExtras {
   toll_count?: number;
   toll_total?: number;
   tolls?: TollBooth[];
+  /** The arrows before the recommended fare; absent when undecided. */
+  trend?: FareTrend;
 }
 
 interface CallResult {
@@ -340,6 +347,25 @@ function parseEstimate(content: string): RouteEstimate | null {
   }
 }
 
+/** The standard route (OSRM, empty roads) the AI's time is compared with:
+ * minutes and kilometres, or null when it can't be had in time. */
+async function standardRoute(origin: LatLng, destination: LatLng): Promise<{ min: number; km: number } | null> {
+  const base = Deno.env.get("OSRM_URL") ?? "https://router.project-osrm.org";
+  const url = `${base}/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},` +
+    `${destination.latitude}?overview=false`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const r = data?.routes?.[0];
+    const sec = Number(r?.duration), m = Number(r?.distance);
+    if (!Number.isFinite(sec) || sec <= 0 || !Number.isFinite(m) || m <= 0) return null;
+    return { min: Math.round((sec / 60) * 10) / 10, km: Math.round((m / 1000) * 10) / 10 };
+  } catch {
+    return null;
+  }
+}
+
 function isValidCoord(v: unknown): v is LatLng {
   const c = v as LatLng | null;
   return (
@@ -430,6 +456,9 @@ Deno.serve(async (req: Request) => {
 
   const request = resolveRequest(config.request);
   const prompt = buildPrompt(request, origin, destination);
+  const trendSettings = resolveTrendSettings(config.trend);
+  // Alongside the AI: the AI usually takes longer, so this is in by then.
+  const standardFuture = standardRoute(origin, destination);
   const cooldownMs = retryPolicyMs(config.retryAfterValue ?? 1, config.retryAfterUnit ?? "hour");
 
   for (const cand of available) {
@@ -452,6 +481,11 @@ Deno.serve(async (req: Request) => {
       ? null
       : result.error ?? (result.content ? "Unparseable response" : "No response content");
     const disabledUntil = success ? null : new Date(Date.now() + cooldownMs).toISOString();
+    const standard = await standardFuture;
+    if (parsed) {
+      const trend = decideFareTrend(parsed.duration_min, standard?.min ?? null, parsed, trendSettings, request.includeFareRange);
+      if (trend) parsed.trend = trend;
+    }
 
     // Log the attempt + bump per-key counters (best-effort).
     await admin.from("fare_ai_responses").insert({
@@ -475,6 +509,8 @@ Deno.serve(async (req: Request) => {
       latency_ms: latencyMs,
       raw_response: result.content ? result.content.substring(0, 4000) : null,
       extra: parsed ? extrasOf(parsed) : null,
+      standard_duration_min: standard?.min ?? null,
+      standard_distance_km: standard?.km ?? null,
     });
     await admin.rpc("fare_ai_record_usage", {
       p_key_id: cand.id,
@@ -492,17 +528,18 @@ Deno.serve(async (req: Request) => {
   return json({ ok: true, estimate: null, reason: "all_keys_failed" });
 });
 
-/** The fare-range and traffic answers of an estimate (null when none). */
-function extrasOf(e: RouteEstimate): TrafficExtras | null {
-  const x: TrafficExtras = {};
+/** The fare-range, traffic and trend answers of an estimate (null when none). */
+function extrasOf(e: RouteEstimate): Record<string, unknown> | null {
+  const x: Record<string, unknown> = {};
   for (const k of [
     "current_duration_is_baseline",
     "current_duration_is_low",
     "current_duration_is_heavy",
     "traffic_congestion",
     "traffic_congestion_stretch_location_details",
+    "trend",
   ] as const) {
-    if (e[k] !== undefined) (x as Record<string, unknown>)[k] = e[k];
+    if (e[k] !== undefined) x[k] = e[k];
   }
   return Object.keys(x).length ? x : null;
 }
@@ -534,6 +571,7 @@ async function runTest(
   }
   const request = resolveRequest(raw);
   const prompt = buildPrompt(request, origin, destination);
+  const standardFuture = standardRoute(origin, destination);
   const key = candidates[0];
   if (!key) {
     return json({ ok: true, test: { provider, model, prompt, system: request.systemInstruction, error: "No active key for this provider" } });
@@ -546,6 +584,17 @@ async function runTest(
     result = { content: null, httpStatus: null, error: e instanceof Error ? e.message : String(e) };
   }
   const estimate = result.content ? parseEstimate(result.content) : null;
+  const standard = await standardFuture;
+  if (estimate) {
+    const trend = decideFareTrend(
+      estimate.duration_min,
+      standard?.min ?? null,
+      estimate,
+      resolveTrendSettings(config.trend),
+      request.includeFareRange,
+    );
+    if (trend) estimate.trend = trend;
+  }
   return json({
     ok: true,
     test: {

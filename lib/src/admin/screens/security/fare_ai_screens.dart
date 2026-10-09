@@ -8,6 +8,8 @@ import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
 import 'api_keys_logic.dart' show maskSecret;
+import '../../../core/route_estimate.dart' show FareTrend, FareTrendDirection, argbFromHex;
+import '../../../widgets/fare_trend_arrows.dart';
 import 'fare_ai_logic.dart';
 import 'security_data.dart';
 
@@ -32,6 +34,15 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
   final _controllers = <String, ({TextEditingController label, TextEditingController key})>{};
   final _model = TextEditingController();
   final _retry = TextEditingController();
+  final _trendUp = TextEditingController();
+  final _trendDown = TextEditingController();
+
+  /// The four arrow colour boxes, by settings key.
+  final _trendColors = {for (final k in _trendColorKeys) k: TextEditingController()};
+  static const _trendColorKeys = ['upColorLight', 'upColorDark', 'downColorLight', 'downColorDark'];
+
+  /// The logged answers' AI and standard minutes, for the trend measure.
+  List<Map<String, dynamic>> _trendSample = const [];
 
   @override
   void initState() {
@@ -47,6 +58,11 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
     }
     _model.dispose();
     _retry.dispose();
+    _trendUp.dispose();
+    _trendDown.dispose();
+    for (final c in _trendColors.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -63,9 +79,17 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
         _dirty = false;
       });
       _syncFields(c);
+      _loadTrendSample();
     } catch (e) {
       if (mounted) setState(() => _error = e);
     }
+  }
+
+  Future<void> _loadTrendSample() async {
+    try {
+      final rows = await ref.read(securityRepositoryProvider).fareAiTrendSample();
+      if (mounted) setState(() => _trendSample = rows);
+    } catch (_) {}
   }
 
   /// Opens Request & format; on the way back, picks up what was saved there
@@ -89,11 +113,18 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
   Future<void> _refreshStats() async {
     final s = await ref.read(securityRepositoryProvider).fareAiKeyStates();
     if (mounted) setState(() => _states = s);
+    await _loadTrendSample();
   }
 
   void _syncFields(FareAiConfig c) {
     _model.text = c.models[c.provider] ?? '';
     _retry.text = '${c.retryAfterValue}';
+    String pct(double? v) => v == null ? '' : (v == v.roundToDouble() ? '${v.round()}' : '$v');
+    _trendUp.text = pct(c.trend.upPct);
+    _trendDown.text = pct(c.trend.downPct);
+    for (final e in _trendColors.entries) {
+      e.value.text = c.trend.color(e.key) ?? '';
+    }
   }
 
   ({TextEditingController label, TextEditingController key}) _ctl(FareAiKey k) =>
@@ -116,6 +147,135 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
       _saving = false;
       if (ok && identical(_config, c)) _dirty = false;
     });
+  }
+
+  /// Fare trend arrows: the thresholds, what decides when the fare range is
+  /// asked for, and how far the AI has actually sat from standard.
+  Widget _trendCard(FareAiConfig c, bool canEdit) {
+    final t = Theme.of(context);
+    final muted = t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant);
+    final m = measureFareTrend(_trendSample, c.trend);
+    String share(double v) => '${(v * 100).round()}%';
+    Widget field(String label, TextEditingController ctl, ValueChanged<double?> onChanged, Key key) => TextField(
+          key: key,
+          controller: ctl,
+          readOnly: !canEdit,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onChanged: (v) => onChanged(FareTrendSettings.parse(v)),
+          decoration: InputDecoration(isDense: true, labelText: label, suffixText: '%', hintText: 'Off'),
+        );
+    return Card(
+      key: const ValueKey('fare-trend-card'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.swap_vert),
+            const SizedBox(width: 12),
+            Expanded(child: Text('Fare trend arrows', style: t.textTheme.titleMedium)),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            "Red up arrows or green down arrows before the recommended fare, when the AI's drive time is that much "
+            "above or below the standard route's. The standard route assumes empty roads, so the AI is usually above "
+            'it: set the thresholds from the measure below. A fare the rider raises or lowers shows no arrows.',
+            style: muted,
+          ),
+          if (c.request.includeFareRange) ...[
+            const SizedBox(height: 8),
+            Text(
+              "Fare range is on (Request & format): the AI's own verdict decides — usual time no arrows, lower "
+              'time down arrows, heavier traffic up arrows. The thresholds apply only when it gives no verdict.',
+              key: const ValueKey('fare-trend-fare-range'),
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: field('Up arrows when AI time is above by', _trendUp,
+                  (v) => _update(c.copyWith(trend: c.trend.withUp(v))), const ValueKey('fare-trend-up')),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: field('Down arrows when AI time is below by', _trendDown,
+                  (v) => _update(c.copyWith(trend: c.trend.withDown(v))), const ValueKey('fare-trend-down')),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          Text('Colours', style: t.textTheme.titleSmall),
+          Text('Hex, e.g. #E02424. Leave blank for the default red (up) and green (down).', style: muted),
+          const SizedBox(height: 8),
+          for (final up in [true, false])
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(children: [
+                for (final dark in [false, true]) ...[
+                  if (dark) const SizedBox(width: 12),
+                  Expanded(child: _trendColorField(c, canEdit, up: up, dark: dark)),
+                ],
+              ]),
+            ),
+          const SizedBox(height: 4),
+          Text(
+            m == null
+                ? 'Not measured yet: from now on every answer is logged with the standard time it is compared with.'
+                : 'Last ${m.count} answer${m.count == 1 ? '' : 's'}: the AI is typically ${signedPct(m.median)} against '
+                    'standard (middle half ${signedPct(m.p25)} to ${signedPct(m.p75)}). With these settings up arrows '
+                    'would show on ${share(m.upShare)} of trips and down arrows on ${share(m.downShare)}.',
+            key: const ValueKey('fare-trend-measure'),
+            style: muted,
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// One colour box: the hex, with the arrows drawn in it on the mode's card.
+  Widget _trendColorField(FareAiConfig c, bool canEdit, {required bool up, required bool dark}) {
+    final key = '${up ? 'up' : 'down'}Color${dark ? 'Dark' : 'Light'}';
+    final ctl = _trendColors[key]!;
+    final typed = ctl.text.trim();
+    final valid = typed.isEmpty || FareTrendSettings.hex(typed) != null;
+    final chosen = argbFromHex(c.trend.color(key));
+    final fallback = up
+        ? (dark ? FareTrendArrows.upDark : FareTrendArrows.upLight)
+        : (dark ? FareTrendArrows.downDark : FareTrendArrows.downLight);
+    final preview = Container(
+      width: 36,
+      height: 36,
+      margin: const EdgeInsets.all(6),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF262626) : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: FareTrendArrows(
+        trend: FareTrend(direction: up ? FareTrendDirection.up : FareTrendDirection.down, fromFareRange: true),
+        size: 22,
+        animate: false,
+        color: chosen == null ? fallback : Color(chosen),
+      ),
+    );
+    return TextField(
+      key: ValueKey('fare-trend-$key'),
+      controller: ctl,
+      readOnly: !canEdit,
+      onChanged: (v) {
+        setState(() {}); // the preview and the error follow the typing
+        if (v.trim().isEmpty || FareTrendSettings.hex(v) != null) {
+          _update(c.copyWith(trend: c.trend.withColor(key, v)));
+        }
+      },
+      decoration: InputDecoration(
+        isDense: true,
+        labelText: '${up ? 'Up' : 'Down'} arrows · ${dark ? 'dark' : 'light'} mode',
+        hintText: '#${(fallback.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}',
+        errorText: valid ? null : 'Use a hex colour like #E02424',
+        suffixIcon: preview,
+      ),
+    );
   }
 
   @override
@@ -246,6 +406,8 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
             onTap: _openRequest,
           ),
         ),
+        const SizedBox(height: 16),
+        _trendCard(c, canEdit),
         const SizedBox(height: 20),
         Row(children: [
           Expanded(child: Text('${meta.label} keys', style: t.textTheme.titleMedium)),

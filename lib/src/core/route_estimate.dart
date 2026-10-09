@@ -48,6 +48,7 @@ class RouteEstimate {
     this.tollCount,
     this.tollTotal,
     this.tolls = const [],
+    this.trend,
   });
 
   final double distanceKm;
@@ -57,6 +58,10 @@ class RouteEstimate {
   final int? tollCount;
   final double? tollTotal;
   final List<TollBooth> tolls;
+
+  /// The arrows before the recommended fare (Admin → Fare AI → Fare trend
+  /// arrows), decided by `ai-route-proxy`; null when it decided none.
+  final FareTrend? trend;
 
   /// The tolls to show the rider: the model's total, else the sum of the
   /// booths it listed, else none.
@@ -111,7 +116,75 @@ RouteEstimate? parseRouteEstimate(Object? payload) {
     tollCount: count?.round(),
     tollTotal: _num(e['toll_total']),
     tolls: tolls,
+    trend: parseFareTrend(e['trend']),
   );
+}
+
+enum FareTrendDirection { up, down }
+
+/// Why the fare is up or down: the AI's drive time against the standard
+/// route's (empty roads), or the AI's own fare-range verdict.
+class FareTrend {
+  const FareTrend({
+    required this.direction,
+    required this.fromFareRange,
+    this.aiMin,
+    this.standardMin,
+    this.colorLight,
+    this.colorDark,
+  });
+
+  final FareTrendDirection direction;
+
+  /// The admin's colours (ARGB) for these arrows in light and dark mode;
+  /// null keeps the app's red / green.
+  final int? colorLight, colorDark;
+  final bool fromFareRange;
+  final double? aiMin;
+  final double? standardMin;
+
+  /// What the arrows mean, for their tooltip and screen readers.
+  String get explanation {
+    final up = direction == FareTrendDirection.up;
+    final ai = aiMin, std = standardMin;
+    if (!fromFareRange && ai != null && std != null) {
+      final diff = (ai - std).abs().round();
+      if (diff > 0) {
+        return up
+            ? 'Heavy traffic now: the drive takes about $diff min longer than on clear roads.'
+            : 'Light traffic now: the drive takes about $diff min less than usual.';
+      }
+    }
+    return up ? 'Heavier traffic than usual on this route right now.' : 'Lighter traffic than usual on this route right now.';
+  }
+}
+
+/// The trend in an estimate; null when there is none or it shows no arrows.
+FareTrend? parseFareTrend(Object? raw) {
+  if (raw is! Map) return null;
+  final dir = switch (raw['direction']) {
+    'up' => FareTrendDirection.up,
+    'down' => FareTrendDirection.down,
+    _ => null,
+  };
+  if (dir == null) return null;
+  return FareTrend(
+    direction: dir,
+    fromFareRange: raw['source'] == 'fare_range',
+    aiMin: _num(raw['ai_min']),
+    standardMin: _num(raw['standard_min']),
+    colorLight: argbFromHex(raw['color_light']),
+    colorDark: argbFromHex(raw['color_dark']),
+  );
+}
+
+/// An opaque ARGB colour from "#RRGGBB" / "RRGGBB" / "#RGB"; null otherwise.
+int? argbFromHex(Object? v) {
+  if (v is! String) return null;
+  var h = v.trim().replaceFirst('#', '');
+  if (RegExp(r'^[0-9a-fA-F]{3}$').hasMatch(h)) h = h.split('').map((c) => '$c$c').join();
+  if (!RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(h)) return null;
+  return 0xFF000000 | int.parse(h, radix: 16);
 }
 
 /// What the fare is priced on: the AI's traffic-aware distance and time when

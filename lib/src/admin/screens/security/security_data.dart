@@ -289,6 +289,24 @@ class SecurityRepository {
     }
   }
 
+  /// The latest answers with the standard route they were compared with
+  /// (migration 0115), for the fare trend measure; empty on an older
+  /// database.
+  Future<List<Map<String, dynamic>>> fareAiTrendSample({int limit = 300}) async {
+    try {
+      return List<Map<String, dynamic>>.from(await _db
+          .from('fare_ai_responses')
+          .select('duration_min, standard_duration_min')
+          .eq('success', true)
+          .not('standard_duration_min', 'is', null)
+          .order('created_at', ascending: false)
+          .limit(limit));
+    } on PostgrestException catch (e) {
+      if (e.message.contains('standard_duration_min')) return const [];
+      rethrow;
+    }
+  }
+
   /// Puts a cooling-down key (or, with null, every key) straight back into
   /// rotation (migration 0113, admins only). Returns how many were paused.
   Future<int> resetFareAiCooldown([String? keyId]) async {

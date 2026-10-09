@@ -237,4 +237,26 @@ void main() {
     expect(aiEstimateUnavailable({'ok': false, 'error': 'bad'}), isFalse);
     expect(aiEstimateUnavailable(null), isFalse);
   });
+
+  test('the fare trend in an estimate: only one that shows arrows', () {
+    RouteEstimate? est(Object? trend) => parseRouteEstimate({
+          'ok': true,
+          'estimate': {'distance_km': 10, 'duration_min': 30, 'trend': trend},
+        });
+    final up = est({'direction': 'up', 'source': 'minutes', 'ai_min': 30, 'standard_min': 22, 'pct': 36.4})!.trend!;
+    expect(up.direction, FareTrendDirection.up);
+    expect(up.explanation, contains('8 min longer'));
+    final down = est({'direction': 'down', 'source': 'fare_range', 'ai_min': 30})!.trend!;
+    expect(down.fromFareRange, isTrue);
+    expect(down.explanation, 'Lighter traffic than usual on this route right now.');
+    expect(est({'direction': null, 'source': 'minutes', 'ai_min': 30})!.trend, isNull);
+    expect(est(null)!.trend, isNull);
+  });
+
+  test("the admin's arrow colours come with the trend", () {
+    final t = parseFareTrend({'direction': 'up', 'source': 'minutes', 'ai_min': 30, 'color_light': '#FF0000', 'color_dark': 'nope'})!;
+    expect(t.colorLight, 0xFFFF0000);
+    expect(t.colorDark, isNull);
+    expect(argbFromHex('#0a0'), 0xFF00AA00);
+  });
 }
