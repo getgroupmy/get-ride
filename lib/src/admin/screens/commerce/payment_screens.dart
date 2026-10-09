@@ -49,6 +49,14 @@ class _PaymentTypeScreenState extends ConsumerState<PaymentTypeScreen> {
       ),
       body: Column(children: [
         ListSearch(hint: 'Search', onChanged: (v) => setState(() => _q = v)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            'Riders choose from the enabled types, in this order, on the booking screen; a change shows there '
+            'at once. The type is passed to the driver, who collects it: no gateway charges a ride yet.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
+        ),
         Expanded(
           child: AsyncView(
             value: entries,

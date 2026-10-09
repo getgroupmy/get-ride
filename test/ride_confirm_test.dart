@@ -64,4 +64,19 @@ void main() {
     expect(l.promoBarOffset, 5);
     expect(ConfirmLayout.fromSettings(const {}).promoBar, isTrue, reason: 'on by default, as Expo');
   });
+
+  test('the disclaimer offset and "discount bar in front" are read too', () {
+    final l = ConfirmLayout.fromSettings({'rcDisclaimerVertical': -20, 'rcDisclaimerHorizontal': 4, 'discountBarInFront': true});
+    expect(l.disclaimer, (4.0, -20.0));
+    expect(l.promoBarInFront, isTrue);
+    expect(ConfirmLayout.fromSettings(const {}).promoBarInFront, isFalse, reason: 'behind the sheet by default, as Expo');
+    expect(ConfirmLayout.fromSettings(const {'discountBarInFront': 'off'}).promoBarInFront, isFalse);
+  });
+
+  test("the trip maps' recenter offsets: the rider's and the driver's", () {
+    const s = {'rtRecenterHorizontal': -10, 'rtRecenterVertical': 30, 'prRecenterHorizontal': 5, 'prRecenterVertical': '-15'};
+    expect(tripRecenterOffset(s, partner: false), (-10.0, 30.0));
+    expect(tripRecenterOffset(s, partner: true), (5.0, -15.0));
+    expect(tripRecenterOffset(const {}, partner: true), (0.0, 0.0));
+  });
 }

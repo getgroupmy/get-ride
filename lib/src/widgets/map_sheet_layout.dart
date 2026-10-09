@@ -64,11 +64,28 @@ class MapBottomInset extends InheritedWidget {
   /// middle of the map left showing above the sheet when it is all the way
   /// down (inDrive keeps its pickup pin there): up by half that sheet.
   static Offset focusOffset(BuildContext context) =>
-      Offset(0, -(context.getInheritedWidgetOfExactType<MapBottomInset>()?.rest ?? 0) / 2);
+      Offset(0, -(context.getInheritedWidgetOfExactType<MapBottomInset>()?.rest ?? 0) / 2) +
+      MapFocusShift.of(context);
 
   @override
   bool updateShouldNotify(MapBottomInset old) =>
       old.extent != extent || old.pull != pull || old.height != height || old.cap != cap || old.rest != rest;
+}
+
+/// Moves the point a map keeps its pin on ([MapBottomInset.focusOffset])
+/// by [shift]: Admin → Display → Drop pin height / left-right on the home
+/// map. Only where the camera puts the pin moves; the pin still stands on
+/// the point it picks.
+class MapFocusShift extends InheritedWidget {
+  const MapFocusShift({super.key, required this.shift, required super.child});
+
+  final Offset shift;
+
+  static Offset of(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<MapFocusShift>()?.shift ?? Offset.zero;
+
+  @override
+  bool updateShouldNotify(MapFocusShift old) => old.shift != shift;
 }
 
 /// A map with a draggable sheet floating over it (phone layout): the map
@@ -90,6 +107,7 @@ class MapSheetLayout extends StatefulWidget {
     this.hidden = false,
     this.footer,
     this.aboveFooter,
+    this.front,
   });
 
   final Widget map;
@@ -123,6 +141,12 @@ class MapSheetLayout extends StatefulWidget {
   /// [max]: it fades in as the sheet gets there and out as it leaves (the
   /// confirm screen's fare disclaimer, as Expo's shows only when expanded).
   final Widget? aboveFooter;
+
+  /// Drawn over the sheet rather than under it, with the same
+  /// [MapBottomInset] the map gets (uncapped, so what stands on the sheet's
+  /// top edge rides it all the way up): the confirm screen's discount bar
+  /// when the admin puts it in front. It should only fill what it draws.
+  final Widget? front;
 
   /// How near [max] counts as up, for [aboveFooter].
   static const upSlack = 0.05;
@@ -524,6 +548,17 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
               ),
             ),
             ),
+            if (widget.front != null)
+              Positioned.fill(
+                child: MapBottomInset(
+                  extent: _extent,
+                  height: h,
+                  cap: h,
+                  pull: _bounce,
+                  rest: math.min(h * widget.min, h * (1 - widget.mapMinFraction)),
+                  child: widget.front!,
+                ),
+              ),
             if (widget.footer != null)
               Positioned(
                 left: 0,

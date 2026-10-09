@@ -45,6 +45,8 @@ const _builtInIcons = <String, IconData>{
   'vehicle': Icons.directions_car_outlined,
   'vehicle-information': Icons.speed,
   'documents': Icons.description_outlined,
+  'emergency-contacts': Icons.contact_emergency_outlined,
+  'invite-friends': Icons.card_giftcard,
 };
 
 IconData menuIcon(MenuEntry e) => (e.custom ? _expoIcons[e.iconName] : _builtInIcons[e.id]) ?? Icons.star_border;

@@ -35,6 +35,7 @@ import 'driver_permit_screen.dart' show currentPlateProvider, driverPermitProvid
 import 'driver_wallet_pills.dart';
 import 'fare_offer.dart';
 import 'partner_menu.dart';
+import 'partner_mode_picker.dart' show pendingPartnerModeProvider;
 import 'request_sheet.dart';
 import 'vehicle_picker.dart';
 import '../../core/partner_modes.dart';
@@ -614,6 +615,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         'You can go online once an admin approves your account.',
                     action: OutlinedButton(onPressed: openOnboarding, child: const Text('View application')),
                   );
+                }
+                // The service picked from the rider menu's Partner Mode button:
+                // TEKSI goes on to the meter, through its checks.
+                if (ref.watch(pendingPartnerModeProvider) != null) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!mounted) return;
+                    final mode = ref.read(pendingPartnerModeProvider.notifier).take();
+                    if (mode != null && mode.isTeksi) _openMeter(p);
+                  });
                 }
                 final modes = partnerModeOptions(
                   parseStringList(p.raw['partner_types']),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../admin/screens/meterapp/display_logic.dart' show displaySettingsTable, displaySettingsRowId;
 import '../core/app_display.dart';
 import '../core/fare.dart';
+import '../core/payment_types.dart';
 import '../core/recent_places.dart';
 import '../core/ride_services.dart';
 import 'geo_service.dart';
@@ -12,7 +13,8 @@ import '../providers.dart';
 /// The admin display settings the rider app honours (public read of
 /// `admin_display_settings`, row `global`). Unreachable or missing means the
 /// defaults: the service stays on and sign-up stays open. Live: an admin's
-/// change re-reads it on every open app (see `live_tables.dart`).
+/// change re-reads it on every open app (see `live_tables.dart`); a failed
+/// re-read keeps the last one.
 final displaySettingsBlobProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   ref.watchLive(displaySettingsTable);
   try {
@@ -22,11 +24,17 @@ final displaySettingsBlobProvider = FutureProvider<Map<String, dynamic>>((ref) a
         .select('settings')
         .eq('id', displaySettingsRowId)
         .maybeSingle();
-    return displaySettingsFromRow(row);
+    return _lastDisplayBlob = displaySettingsFromRow(row);
   } catch (_) {
-    return const {};
+    // A refetch that fails (the app back from the background before its
+    // connection is) keeps what the admin last set, rather than snapping
+    // every switch back to its default until the next change.
+    return _lastDisplayBlob ?? const {};
   }
 });
+
+/// The last blob read, for a failed refetch.
+Map<String, dynamic>? _lastDisplayBlob;
 
 /// The settings blob off a row, or the defaults (empty) without one.
 Map<String, dynamic> displaySettingsFromRow(Map<String, dynamic>? row) {
@@ -93,5 +101,27 @@ final serviceBoxNamesProvider = FutureProvider<Map<String, String>>((ref) async 
     };
   } catch (_) {
     return const {};
+  }
+});
+
+/// The payment methods the confirm sheet offers: Admin → Payment Type's
+/// enabled entries in its order (public read of `settings_entries`, category
+/// `payment-type`), live. The built-in Cash / GET.wallet pair when the admin
+/// list is empty or cannot be read.
+final paymentChoicesProvider = FutureProvider<List<PaymentChoice>>((ref) async {
+  ref.watchLive('settings_entries');
+  try {
+    final rows = await ref
+        .watch(supabaseProvider)
+        .from('settings_entries')
+        .select('values, position')
+        .eq('category', 'payment-type')
+        .order('position');
+    final choices = paymentChoicesFrom([
+      for (final r in rows) if (r['values'] is Map) Map<String, dynamic>.from(r['values'] as Map),
+    ]);
+    return choices.isEmpty ? builtInPayments : choices;
+  } catch (_) {
+    return builtInPayments;
   }
 });

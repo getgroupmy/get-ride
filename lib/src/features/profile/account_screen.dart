@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../admin/admin_providers.dart';
 import '../../core/referral.dart';
+import '../../admin/screens/meterapp/display_logic.dart' show inviteFriendsMenuItemId;
 import '../../core/side_menu.dart';
+import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../../data/app_display_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -26,6 +28,8 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
     'settings': '/account/settings',
     'user-guide': '/account/guide',
     'support': '/account/support',
+    'emergency-contacts': '/account/emergency',
+    'invite-friends': '/account/referral',
   };
   if (id == 'logout') {
     beforeOpen?.call();
@@ -96,7 +100,7 @@ class RiderMenu extends ConsumerWidget {
           ),
         ),
       ),
-      if (profile.value != null)
+      if (profile.value != null && menu.any((e) => e.id == inviteFriendsMenuItemId))
         Card(
           child: ListTile(
             key: const ValueKey('account-referral'),
@@ -112,22 +116,16 @@ class RiderMenu extends ConsumerWidget {
       Card(
         child: Column(children: [
           for (final e in menu)
-            if (e.id != 'logout')
+            // Invite friends is the card above, with the rider's code.
+            if (e.id != 'logout' && e.id != inviteFriendsMenuItemId)
               SideMenuTile(entry: e, beforeOpen: beforeOpen, builtIn: (context, id) => _builtIn(context, ref, id)),
-          // Flutter's own rows, which the Expo menu does not list.
-          ListTile(
-            leading: const Icon(Icons.contact_emergency_outlined),
-            title: const Text('Emergency contacts'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => go('/account/emergency'),
-          ),
           if (mode != null)
             ListTile(
               key: const ValueKey('menu-partner-mode'),
               leading: const Icon(Icons.local_taxi_outlined),
               title: Text(mode.label),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => mode.comingSoon ? showComingSoon(context) : go('/drive'),
+              onTap: () => mode.comingSoon ? showComingSoon(context) : openPartnerMode(context, ref, beforeOpen: beforeOpen),
             ),
           if (isAdmin)
             ListTile(

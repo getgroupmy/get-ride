@@ -76,6 +76,16 @@ List<MenuEntry> resolveSideMenu(Map<String, dynamic> settings, String menu) {
   return visible;
 }
 
+/// The profile header at the top of a menu: whether it shows, and whether
+/// the admin marked it "coming soon" (Display → Side Menus → Profile).
+({bool show, bool comingSoon}) sideMenuProfile(Map<String, dynamic> settings, String menu) {
+  final cfg = normalizeMenu(settings[menuKey(menu)]);
+  return (
+    show: !(cfg['hidden'] as List).contains(profileMenuItemId),
+    comingSoon: (cfg['comingSoon'] as List).contains(profileMenuItemId),
+  );
+}
+
 /// The footer mode switch ("Partner Mode" / "Passenger Mode"): its label,
 /// or null when hidden; [comingSoon] when the admin marked it so.
 ({String label, bool comingSoon})? sideMenuModeButton(Map<String, dynamic> settings, String menu) {

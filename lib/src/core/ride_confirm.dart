@@ -16,6 +16,7 @@ class ConfirmLayout {
     this.address = (0, 0),
     this.promoBar = true,
     this.promoBarOffset = 0,
+    this.promoBarInFront = false,
   });
 
   /// (horizontal, vertical) offsets.
@@ -29,6 +30,10 @@ class ConfirmLayout {
   /// positive value).
   final double promoBarOffset;
 
+  /// Admin → Display → "Discount bar in front": the bar is drawn over the
+  /// sheet, whole, instead of tucked behind its top edge.
+  final bool promoBarInFront;
+
   static ConfirmLayout fromSettings(Map<String, dynamic> s) {
     double n(String k) {
       final v = s[k];
@@ -37,16 +42,43 @@ class ConfirmLayout {
       return 0;
     }
 
-    final bar = s['discountBar'];
+    bool flag(String k, bool d) {
+      final v = s[k];
+      if (v is bool) return v;
+      if (v is num) return v != 0;
+      if (v is String) {
+        final t = v.trim().toLowerCase();
+        if (t == 'false' || t == '0' || t == 'off') return false;
+        if (t == 'true' || t == '1' || t == 'on') return true;
+      }
+      return d;
+    }
+
     return ConfirmLayout(
       back: (n('rcBackHorizontal'), n('rcBackVertical')),
       recenter: (n('rcRecenterHorizontal'), n('rcRecenterVertical')),
       disclaimer: (n('rcDisclaimerHorizontal'), n('rcDisclaimerVertical')),
       address: (n('rcAddressHorizontal'), n('rcAddressVertical')),
-      promoBar: bar is bool ? bar : !(bar == 0 || bar == 'false' || bar == '0'),
+      promoBar: flag('discountBar', true),
       promoBarOffset: n('discountBarHeightOffset'),
+      promoBarInFront: flag('discountBarInFront', false),
     );
   }
+}
+
+/// Admin → Display → Ride tracking: how far the recenter button on a trip
+/// map is moved, (horizontal, vertical) — the rider's map (`rtRecenter*`) or
+/// the driver's (`prRecenter*`). Positive is right / down, as in Expo.
+(double, double) tripRecenterOffset(Map<String, dynamic> s, {required bool partner}) {
+  double n(String k) {
+    final v = s[k];
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v.trim()) ?? 0;
+    return 0;
+  }
+
+  final p = partner ? 'prRecenter' : 'rtRecenter';
+  return (n('${p}Horizontal'), n('${p}Vertical'));
 }
 
 /// The trip time after the destination: "~25 min", "~1 hr, 5 min",

@@ -30,6 +30,8 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     'teksi-ev': '/ev',
     'wallet': '/wallet',
     'vehicle': '/drive/vehicles',
+    // The trips page lists the driver's trips beside their rides.
+    'trip-history': '/trips',
     vehicleInfoMenuItemId: '/meter/vehicle',
     'documents': '/drive/onboarding',
     'support': '/account/support',

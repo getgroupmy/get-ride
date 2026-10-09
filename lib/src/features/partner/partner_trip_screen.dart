@@ -397,7 +397,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         value: ride,
         onRetry: () => ref.invalidate(rideStreamProvider(widget.requestId)),
         data: (r) {
-          final map = LiveRideMap(ride: r, driverAt: _me, driverHeading: _heading, now: ref.read(tripClockProvider));
+          final map = LiveRideMap(ride: r, partner: true, driverAt: _me, driverHeading: _heading, now: ref.read(tripClockProvider));
           final panel = _panel(r);
           if (MediaQuery.sizeOf(context).width >= 900) {
             return Row(children: [

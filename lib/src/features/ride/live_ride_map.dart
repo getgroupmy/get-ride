@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/live_eta.dart';
+import '../../core/ride_confirm.dart' show tripRecenterOffset;
+import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
 import '../../providers.dart';
 import '../../data/models.dart';
@@ -28,9 +30,20 @@ LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : Lat
 /// following; the recenter button starts it again, and so does the first
 /// new position once the map has been left alone for [followResumeAfter].
 class LiveRideMap extends ConsumerStatefulWidget {
-  const LiveRideMap({super.key, required this.ride, this.now, this.driverAt, this.driverHeading});
+  const LiveRideMap({
+    super.key,
+    required this.ride,
+    this.now,
+    this.driverAt,
+    this.driverHeading,
+    this.partner = false,
+  });
 
   final RideRequest ride;
+
+  /// The driver's trip map rather than the rider's: its recenter button
+  /// takes Admin → Display's partner offsets instead of the rider's.
+  final bool partner;
 
   /// Where the driver is when this map is the driver's own (their phone's
   /// fix, fresher than the published one); null reads the ride row.
@@ -232,6 +245,11 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    // Where Admin → Display moves the recenter button (live).
+    final recenterAt = tripRecenterOffset(
+      ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{},
+      partner: widget.partner,
+    );
     final r = widget.ride;
     final route = _target == null ? null : _route;
     final driver = _driver;
@@ -273,8 +291,8 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
         MapBottomInset.listen(
           context,
           (inset) => Positioned(
-            right: 12,
-            bottom: mapAttributionClearance + inset,
+            right: 12 - recenterAt.$1,
+            bottom: mapAttributionClearance + inset - recenterAt.$2,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               // Map view above recenter on every map.
               const MapTypeButton(),
