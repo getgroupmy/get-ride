@@ -16,9 +16,6 @@ import '../../widgets/map_recenter.dart';
 import '../../widgets/map_tiles.dart';
 import '../../widgets/map_type_button.dart';
 
-/// Where the map opens with nothing better to go on (Kuala Lumpur).
-const _fallbackCentre = LatLng(3.1390, 101.6869);
-
 /// Opens the picker at [start] (else [me]); the place chosen, or null.
 Future<Place?> pickPlaceOnMap(BuildContext context, {LatLng? start, LatLng? me}) => Navigator.of(context).push<Place>(
   MaterialPageRoute(
@@ -44,7 +41,7 @@ class MapPlacePicker extends ConsumerStatefulWidget {
 
 class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
   final _map = MapController();
-  late LatLng _centre = widget.start ?? widget.me ?? _fallbackCentre;
+  late LatLng _centre = widget.start ?? widget.me ?? defaultCenter;
   Place? _place;
   bool _moving = false;
   bool _looking = true;

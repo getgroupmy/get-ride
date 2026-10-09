@@ -212,5 +212,12 @@ Future<LatLng?> currentPosition() async {
   }
 }
 
-/// Kuala Lumpur — map centre before a fix arrives.
-const defaultCenter = LatLng(3.1390, 101.6869);
+/// Kuala Lumpur, where nothing else says where to open.
+const klCenter = LatLng(3.1390, 101.6869);
+
+/// Admin → App Settings → Default Start Location, set from the branding row
+/// as it arrives (see `BrandingSync`); null keeps [klCenter].
+LatLng? adminStartCenter;
+
+/// The map centre before a fix arrives.
+LatLng get defaultCenter => adminStartCenter ?? klCenter;

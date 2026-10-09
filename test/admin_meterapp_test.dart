@@ -8,6 +8,7 @@ import 'package:get_ride/src/admin/screens/meterapp/display_logic.dart';
 import 'package:get_ride/src/admin/screens/meterapp/meter_logic.dart';
 import 'package:get_ride/src/admin/screens/meterapp/meterapp_module.dart';
 import 'package:get_ride/src/admin/screens/meterapp/site_logic.dart';
+import 'package:get_ride/src/core/app_branding.dart';
 
 Map<String, dynamic> row([Map<String, dynamic> o = const {}]) => {
       'id': 'row-1',
@@ -815,15 +816,31 @@ void main() {
       expect(isValidLatLng('x', '0'), isFalse);
     });
 
-    test('site settings merge and validate like the Expo screen', () {
-      final s = mergeSiteSettings({'light': {'accent': '#000'}, 'startLat': '1'});
-      expect((s['light'] as Map)['accent'], '#000');
-      expect((s['light'] as Map)['text'], '#111827');
-      expect(s['startLng'], '101.686855');
-      expect(validateSiteSettings(s), isNull);
-      final bad = {...s, 'dark': {...(s['dark'] as Map), 'border': 'grey'}};
-      expect(validateSiteSettings(bad), 'Invalid Dark Border color');
-      expect(validateSiteSettings({...s, 'startLat': '200'}), 'Invalid start latitude/longitude');
+    test('app settings: blanks are defaults, colours and the start are checked', () {
+      final f = appSettingsFields(const AppBranding());
+      expect(f['light.accent'], '');
+      expect(validateAppSettings(f), isNull);
+      expect(appSettingsPatch(f), {
+        'splash_bg_light': null,
+        'splash_bg_dark': null,
+        'theme': {'light': <String, String>{}, 'dark': <String, String>{}},
+        'start_lat': null,
+        'start_lng': null,
+      });
+      final set = {...f, 'light.accent': ' #000 ', 'splash.dark': '#111111', 'startLat': '1.5', 'startLng': '103.7'};
+      expect(validateAppSettings(set), isNull);
+      final patch = appSettingsPatch(set);
+      expect(patch['theme'], {'light': {'accent': '#000'}, 'dark': <String, String>{}});
+      expect(patch['splash_bg_dark'], '#111111');
+      expect((patch['start_lat'], patch['start_lng']), (1.5, 103.7));
+      // What the app reads back is what was saved.
+      final back = AppBranding.fromRow({'id': 'global', ...patch});
+      expect(appSettingsFields(back)['light.accent'], '#000');
+      expect(back.startLat, 1.5);
+      expect(validateAppSettings({...f, 'dark.border': 'grey'}), 'Invalid Dark Border colour');
+      expect(validateAppSettings({...f, 'splash.light': 'white'}), 'Invalid light splash background colour');
+      expect(validateAppSettings({...f, 'startLat': '200', 'startLng': '1'}), 'Invalid start latitude/longitude');
+      expect(validateAppSettings({...f, 'startLat': '3'}), 'Enter both the latitude and the longitude, or neither');
       expect(brandingPath('icon', 'png', DateTime.fromMillisecondsSinceEpoch(42)), 'icon-42.png');
     });
 

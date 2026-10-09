@@ -123,6 +123,12 @@ jobs:
         if: steps.creds.outputs.ready == 'true'
         run: flutter pub get
 
+      # The icon an admin published (Admin → App Settings → App Icon) is the
+      # icon on the home screen; none published keeps the built-in one.
+      - name: App icon
+        if: steps.creds.outputs.ready == 'true'
+        run: bash scripts/admin_icon.sh
+
       - name: Signing key
         if: steps.creds.outputs.ready == 'true'
         env:

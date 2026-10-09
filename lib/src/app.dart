@@ -11,6 +11,7 @@ import 'admin/admin_routes.dart';
 import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
+import 'core/app_branding.dart';
 import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
 import 'core/push_logic.dart';
@@ -67,6 +68,8 @@ import 'features/wallet/wallet_history_screen.dart';
 import 'features/wallet/wallet_qr_screens.dart';
 import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
+import 'platform/web_favicon.dart';
+import 'widgets/app_icon_changed.dart';
 import 'widgets/connection_status_dialog.dart';
 import 'widgets/map_sheet_layout.dart' show appBottomSheetTheme;
 
@@ -74,18 +77,29 @@ const brandAccent = Color(0xFF2DABE2);
 
 /// The app theme. Note that [FilledButton]s are full width by default
 /// (`Size.fromHeight`): one placed in a row or a list tile's `trailing` needs
-/// its own `minimumSize`.
-ThemeData appTheme(Brightness b) {
+/// its own `minimumSize`. [colors] are the admin's overrides for this theme
+/// (Admin → App Settings → Theme Colors, keys from [themeColorKeys]); any
+/// not set keeps the colour below.
+ThemeData appTheme(Brightness b, {Map<String, String> colors = const {}}) {
+  final light = b == Brightness.light;
+  Color? pick(String key) => brandHexColor(colors[key]);
+  final accent = pick('accent') ?? brandAccent;
+  final primary = pick('primary') ?? (light ? const Color(0xFF111827) : accent);
+  final background = pick('background') ?? (light ? Colors.white : const Color(0xFF0B0F17));
   final scheme = ColorScheme.fromSeed(
-    seedColor: brandAccent,
+    seedColor: accent,
     brightness: b,
-    primary: b == Brightness.light ? const Color(0xFF111827) : brandAccent,
-    onPrimary: b == Brightness.light ? Colors.white : Colors.black,
+    primary: primary,
+    onPrimary: primary.computeLuminance() > 0.18 ? Colors.black : Colors.white,
+    onSurface: pick('text'),
+    onSurfaceVariant: pick('textSecondary'),
+    outlineVariant: pick('border'),
+    error: pick('error'),
   );
   return ThemeData(
     colorScheme: scheme,
     useMaterial3: true,
-    scaffoldBackgroundColor: b == Brightness.light ? Colors.white : const Color(0xFF0B0F17),
+    scaffoldBackgroundColor: background,
     inputDecorationTheme: InputDecorationTheme(
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       filled: true,
@@ -292,6 +306,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   void initState() {
     super.initState();
     _branding = BrandingSync(ref.read(supabaseProvider));
+    setWebFavicon(widget.branding?.branding.appIconUrl);
+    _branding!.latest.addListener(_brandingChanged);
     unawaited(_branding!.start());
     _startSessionTracking();
     _startAlwaysOn();
@@ -305,6 +321,23 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       final route = push.takePendingRoute();
       if (route != null) _open(route);
     });
+  }
+
+  /// The admin's app icon (Admin → App Settings): the website's tab icon
+  /// follows it, and each device is told once when it changes.
+  Future<void> _brandingChanged() async {
+    final b = _branding?.latest.value;
+    if (b == null) return;
+    setWebFavicon(b.appIconUrl);
+    if (!await takeIconChange(b)) return;
+    for (var i = 0; i < 40 && mounted; i++) {
+      final ctx = ref.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        await showAppIconChanged(ctx, b.appIconUrl);
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
   }
 
   /// Admin → Display Settings → Connection Status Popups: once per launch,
@@ -380,6 +413,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     unawaited(_alwaysOn?.dispose());
     _lifecycle?.dispose();
     _tracker?.dispose();
+    _branding?.latest.removeListener(_brandingChanged);
     _branding?.stop();
     for (final sub in _subs) {
       sub.cancel();
@@ -405,14 +439,27 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
 
   @override
   Widget build(BuildContext context) {
+    final mode = ref.watch(themeModeProvider);
+    final router = ref.watch(routerProvider);
+    final live = _branding?.latest;
+    if (live == null) return _app(widget.branding?.branding, mode, router);
+    return ValueListenableBuilder<AppBranding?>(
+      valueListenable: live,
+      builder: (_, latest, _) => _app(latest ?? widget.branding?.branding, mode, router),
+    );
+  }
+
+  /// The app under [branding]'s theme colours (Admin → App Settings), which
+  /// change live as the admin saves them.
+  Widget _app(AppBranding? branding, ThemeMode mode, GoRouter router) {
     return MaterialApp.router(
       title: 'GET.ride',
       scaffoldMessengerKey: _messenger,
       debugShowCheckedModeBanner: false,
-      theme: appTheme(Brightness.light),
-      darkTheme: appTheme(Brightness.dark),
-      themeMode: ref.watch(themeModeProvider),
-      routerConfig: ref.watch(routerProvider),
+      theme: appTheme(Brightness.light, colors: branding?.lightColors ?? const {}),
+      darkTheme: appTheme(Brightness.dark, colors: branding?.darkColors ?? const {}),
+      themeMode: mode,
+      routerConfig: router,
       builder: (_, child) => SplashGate(
         cached: widget.branding,
         live: _branding?.latest,

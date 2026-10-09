@@ -1,21 +1,18 @@
-/// Pure helpers for the App Settings (site), Splash and App Icon screens,
-/// ported from the Expo `admin-settings-site.tsx` / `admin-settings-splash.tsx`.
+/// Pure helpers for Admin → App Settings (`/admin/m/site`): one page for
+/// everything every user's app takes from the single `app_branding` row —
+/// the app icon, the splash, the theme colours and where maps open.
 library;
 
 import 'dart:ui' show Color;
+
+import '../../../core/app_branding.dart';
 
 final _hexRe = RegExp(r'^#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$');
 
 bool isValidHex(String v) => _hexRe.hasMatch(v.trim());
 
 /// `#RGB` / `#RRGGBB` as an opaque colour, or null when invalid.
-Color? hexToColor(String v) {
-  final t = v.trim();
-  if (!isValidHex(t)) return null;
-  var h = t.substring(1);
-  if (h.length == 3) h = h.split('').map((c) => '$c$c').join();
-  return Color(0xFF000000 | int.parse(h, radix: 16));
-}
+Color? hexToColor(String v) => brandHexColor(v);
 
 bool isValidLatLng(String lat, String lng) {
   final la = double.tryParse(lat.trim());
@@ -24,96 +21,75 @@ bool isValidLatLng(String lat, String lng) {
   return la >= -90 && la <= 90 && lo >= -180 && lo <= 180;
 }
 
-/// Device-local key the Expo site screen saves under.
-const siteSettingsStorageKey = 'app-settings-v1';
-
-const paletteFields = [
-  ('accent', 'Accent'),
-  ('accentDark', 'Accent Dark'),
-  ('background', 'Background'),
-  ('text', 'Text'),
-  ('textSecondary', 'Text Secondary'),
-  ('border', 'Border'),
-  ('success', 'Success'),
-  ('warning', 'Warning'),
-  ('error', 'Error'),
-];
-
-const defaultLightPalette = {
-  'accent': '#2dabe2',
-  'accentDark': '#238baf',
-  'background': '#FFFFFF',
-  'text': '#111827',
-  'textSecondary': '#6B7280',
-  'border': '#E5E7EB',
-  'success': '#10B981',
-  'warning': '#F59E0B',
-  'error': '#EF4444',
+/// The labels of [themeColorKeys], in the order the page lists them.
+const themeColorLabels = {
+  'accent': 'Accent',
+  'primary': 'Buttons',
+  'background': 'Background',
+  'text': 'Text',
+  'textSecondary': 'Text Secondary',
+  'border': 'Border',
+  'error': 'Error',
 };
 
-const defaultDarkPalette = {
-  'accent': '#2dabe2',
-  'accentDark': '#238baf',
-  'background': '#000000',
-  'text': '#FFFFFF',
-  'textSecondary': '#9CA3AF',
-  'border': '#374151',
-  'success': '#10B981',
-  'warning': '#F59E0B',
-  'error': '#EF4444',
+/// The page's editable values as text, by field key: `splash.light`,
+/// `splash.dark`, `light.<colour>`, `dark.<colour>`, `startLat`, `startLng`.
+/// A blank value is "the app's default".
+Map<String, String> appSettingsFields(AppBranding b) => {
+  'splash.light': b.splashBgLight ?? '',
+  'splash.dark': b.splashBgDark ?? '',
+  for (final k in themeColorKeys) 'light.$k': b.lightColors[k] ?? '',
+  for (final k in themeColorKeys) 'dark.$k': b.darkColors[k] ?? '',
+  'startLat': b.startLat?.toString() ?? '',
+  'startLng': b.startLng?.toString() ?? '',
 };
 
-Map<String, dynamic> defaultSiteSettings() => {
-      'light': {...defaultLightPalette},
-      'dark': {...defaultDarkPalette},
-      'appIconUri': null,
-      'splashIconUri': null,
-      'splashBgColor': '#FFFFFF',
-      'startLat': '3.139003',
-      'startLng': '101.686855',
-    };
-
-/// Stored JSON merged over the defaults, as the Expo screen loads it.
-Map<String, dynamic> mergeSiteSettings(Object? raw) {
-  final p = raw is Map ? raw : const {};
-  final d = defaultSiteSettings();
-  Map<String, String> palette(Object? v, Map<String, String> base) => {
-        ...base,
-        if (v is Map)
-          for (final e in v.entries)
-            if (e.value is String) '${e.key}': e.value as String,
-      };
-  return {
-    'light': palette(p['light'], defaultLightPalette),
-    'dark': palette(p['dark'], defaultDarkPalette),
-    'appIconUri': p['appIconUri'] is String ? p['appIconUri'] : null,
-    'splashIconUri': p['splashIconUri'] is String ? p['splashIconUri'] : null,
-    'splashBgColor': p['splashBgColor'] is String ? p['splashBgColor'] : d['splashBgColor'],
-    'startLat': p['startLat'] is String ? p['startLat'] : d['startLat'],
-    'startLng': p['startLng'] is String ? p['startLng'] : d['startLng'],
-  };
-}
-
-/// First problem with the settings, or null (the Expo `validate`).
-String? validateSiteSettings(Map<String, dynamic> s) {
+/// The first problem with [f], or null.
+String? validateAppSettings(Map<String, String> f) {
+  String v(String k) => (f[k] ?? '').trim();
+  for (final (k, label) in [('splash.light', 'light'), ('splash.dark', 'dark')]) {
+    if (v(k).isNotEmpty && !isValidHex(v(k))) return 'Invalid $label splash background colour';
+  }
   for (final (mode, name) in [('light', 'Light'), ('dark', 'Dark')]) {
-    final p = (s[mode] as Map?) ?? const {};
-    for (final (key, label) in paletteFields) {
-      if (!isValidHex('${p[key] ?? ''}')) return 'Invalid $name $label color';
+    for (final k in themeColorKeys) {
+      final c = v('$mode.$k');
+      if (c.isNotEmpty && !isValidHex(c)) return 'Invalid $name ${themeColorLabels[k]} colour';
     }
   }
-  if (!isValidHex('${s['splashBgColor'] ?? ''}')) return 'Invalid splash background color';
-  if (!isValidLatLng('${s['startLat'] ?? ''}', '${s['startLng'] ?? ''}')) return 'Invalid start latitude/longitude';
+  final lat = v('startLat'), lng = v('startLng');
+  if (lat.isEmpty != lng.isEmpty) return 'Enter both the latitude and the longitude, or neither';
+  if (lat.isNotEmpty && !isValidLatLng(lat, lng)) return 'Invalid start latitude/longitude';
   return null;
 }
 
-// --- Branding (app_branding) ------------------------------------------------
+/// The `app_branding` columns [f] sets (blanks clear back to the default).
+Map<String, dynamic> appSettingsPatch(Map<String, String> f) {
+  String? v(String k) {
+    final t = (f[k] ?? '').trim();
+    return t.isEmpty ? null : t;
+  }
+
+  Map<String, String> palette(String mode) => {
+    for (final k in themeColorKeys)
+      if (v('$mode.$k') != null) k: v('$mode.$k')!,
+  };
+  final lat = double.tryParse(v('startLat') ?? ''), lng = double.tryParse(v('startLng') ?? '');
+  final located = lat != null && lng != null;
+  return {
+    'splash_bg_light': v('splash.light'),
+    'splash_bg_dark': v('splash.dark'),
+    'theme': {'light': palette('light'), 'dark': palette('dark')},
+    'start_lat': located ? lat : null,
+    'start_lng': located ? lng : null,
+  };
+}
+
+// --- Storage ------------------------------------------------------------------
 
 const brandingTable = 'app_branding';
 const brandingRowId = 'global';
 const brandingBucket = 'app-branding';
-const defaultSplashBgColor = '#2dabe2';
-const splashPresetColors = ['#2dabe2', '#000000', '#FFFFFF', '#0EA5E9', '#22C55E', '#F59E0B', '#8B5CF6', '#EF4444'];
+const splashPresetColors = ['#FFFFFF', '#000000', '#2DABE2', '#0EA5E9', '#22C55E', '#F59E0B', '#8B5CF6', '#EF4444'];
 
 /// Storage path for an uploaded branding image (`<kind>-<ms>.<ext>`).
 String brandingPath(String kind, String ext, DateTime now) => '$kind-${now.millisecondsSinceEpoch}.$ext';
