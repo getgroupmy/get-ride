@@ -7,10 +7,13 @@ import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.
 
 import {
   buildPrompt,
+  decideFareTrend,
   DEFAULT_REQUEST,
   formatClause,
+  hexColor,
   parseTrafficExtras,
   resolveRequest,
+  resolveTrendSettings,
   retryPolicyMs,
   templateProblem,
 } from "./fare_ai_request.ts";
@@ -132,4 +135,51 @@ Deno.test("the answers are kept only where they make sense", () => {
     }),
     {},
   );
+});
+
+Deno.test("fare trend: settings off unless a positive percent", () => {
+  const none = { upColorLight: null, upColorDark: null, downColorLight: null, downColorDark: null };
+  assertEquals(resolveTrendSettings(undefined), { upPct: null, downPct: null, ...none });
+  assertEquals(resolveTrendSettings({ upPct: "25", downPct: 0 }), { upPct: 25, downPct: null, ...none });
+  assertEquals(resolveTrendSettings({ upPct: -5, downPct: 10 }), { upPct: null, downPct: 10, ...none });
+});
+
+Deno.test("fare trend: minutes against the standard route, by the thresholds", () => {
+  const s = { upPct: 25, downPct: 10, upColorLight: null, upColorDark: null, downColorLight: null, downColorDark: null };
+  assertEquals(decideFareTrend(30, 20, {}, s, false)?.direction, "up"); // +50%
+  assertEquals(decideFareTrend(24, 20, {}, s, false)?.direction, null); // +20%
+  assertEquals(decideFareTrend(18, 20, {}, s, false)?.direction, "down"); // -10%
+  assertEquals(decideFareTrend(19, 20, {}, s, false)?.direction, null); // -5%
+  const t = decideFareTrend(25, 20, {}, s, false)!;
+  assertEquals([t.source, t.pct, t.standard_min], ["minutes", 25, 20]);
+  assertEquals(decideFareTrend(40, 20, {}, { ...s, upPct: null, downPct: null }, false)?.direction, null);
+  assertEquals(decideFareTrend(30, null, {}, s, false), null, "no standard, nothing to compare");
+});
+
+Deno.test("fare trend: the fare-range verdict overrides the minutes when asked for", () => {
+  const s = { upPct: 25, downPct: 10, upColorLight: null, upColorDark: null, downColorLight: null, downColorDark: null };
+  const heavy = { current_duration_is_baseline: false, current_duration_is_low: false, current_duration_is_heavy: true };
+  const low = { current_duration_is_baseline: false, current_duration_is_low: true, current_duration_is_heavy: false };
+  const base = { current_duration_is_baseline: true, current_duration_is_low: false, current_duration_is_heavy: false };
+  assertEquals(decideFareTrend(18, 20, heavy, s, true)?.direction, "up");
+  assertEquals(decideFareTrend(30, 20, low, s, true)?.direction, "down");
+  assertEquals(decideFareTrend(30, 20, base, s, true)?.direction, null);
+  assertEquals(decideFareTrend(30, 20, base, s, true)?.source, "fare_range");
+  // Fare range on but not answered: the minutes decide.
+  assertEquals(decideFareTrend(30, 20, {}, s, true)?.source, "minutes");
+  // Fare range off: its flags are ignored.
+  assertEquals(decideFareTrend(30, 20, low, s, false)?.direction, "up");
+});
+
+Deno.test("fare trend: the admin's colours ride with the arrows they belong to", () => {
+  assertEquals(hexColor("#e02424"), "#E02424");
+  assertEquals(hexColor("0f0"), "#00FF00");
+  assertEquals(hexColor("red"), null);
+  assertEquals(hexColor("#12345"), null);
+  const s = resolveTrendSettings({ upPct: 25, downPct: 10, upColorLight: "#ff0000", upColorDark: "ff6666", downColorLight: "#0a0" });
+  const up = decideFareTrend(30, 20, {}, s, false)!;
+  assertEquals([up.color_light, up.color_dark], ["#FF0000", "#FF6666"]);
+  const down = decideFareTrend(17, 20, {}, s, false)!;
+  assertEquals([down.color_light, down.color_dark], ["#00AA00", undefined]);
+  assertEquals(decideFareTrend(21, 20, {}, s, false)!.color_light, undefined, "no arrows, no colour");
 });

@@ -1074,6 +1074,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final panel = _BookingPanel(
       disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),
+      fareAdjusted: _biddingOn && _adjust != 0,
       etaFor: etaFor,
       currency: _currency,
       ongoing: _ongoing,
@@ -1107,6 +1108,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               tollCharges: (display?.showAiTollCharges ?? true) && ai?.tollsToShow != null
                   ? formatMoney(ai!.tollsToShow, _currency)
                   : null,
+              trend: ai?.trend,
             )
           : null,
       onEditFare: _biddingOn && _basis != null && !_routing ? _openOfferFare : null,
@@ -1165,6 +1167,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 class _BookingPanel extends StatelessWidget {
   const _BookingPanel({
     this.disclaimerOffset = Offset.zero,
+    this.fareAdjusted = false,
     required this.ongoing,
     required this.pickup,
     required this.drop,
@@ -1208,6 +1211,9 @@ class _BookingPanel extends StatelessWidget {
 
   /// Admin → Display → Disclaimer box height / left-right.
   final Offset disclaimerOffset;
+
+  /// The rider has raised or lowered the chosen card's fare.
+  final bool fareAdjusted;
   final bool routing;
   final List<RideService> services;
   final RideService service;
@@ -1304,6 +1310,9 @@ class _BookingPanel extends StatelessWidget {
                 onTap: () => onService(s),
                 fare: s.name == service.name ? fare : null,
                 onEdit: s.name == service.name ? onEditFare : null,
+                // The arrows stand by the recommended fare: not on a card
+                // whose fare the rider has raised or lowered.
+                trend: s.name == service.name && fareAdjusted ? null : ai?.trend,
               ),
             ),
           // Who's riding is a toggle in the footer, under GET.coin; the note

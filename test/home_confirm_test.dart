@@ -147,6 +147,28 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = 
 }
 
 void main() {
+  testWidgets('fare trend arrows stand before every fare, and leave the one the rider changes', (tester) async {
+    final ai = _SlowAi();
+    await _pump(tester, _Rides(bidding: true), ai: ai);
+    ai.answer.complete((
+      estimate: const RouteEstimate(
+        distanceKm: 12,
+        durationMin: 30,
+        trend: FareTrend(direction: FareTrendDirection.up, fromFareRange: false, aiMin: 30, standardMin: 20),
+      ),
+      unavailable: false,
+    ));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    // The chosen card's fare and the other card's price.
+    expect(find.byKey(const ValueKey('fare-trend-up')), findsNWidgets(2));
+    expect(find.bySemanticsLabel(RegExp('10 min longer than on clear roads')), findsWidgets);
+    await tester.tap(find.byKey(const ValueKey('fare-raise')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const ValueKey('fare-trend-up')), findsOneWidget, reason: 'only the untouched card');
+  });
+
   testWidgets('"Calculating fare" covers the confirm step until the AI estimate is in', (tester) async {
     final ai = _SlowAi();
     await _pump(tester, _Rides(), ai: ai);

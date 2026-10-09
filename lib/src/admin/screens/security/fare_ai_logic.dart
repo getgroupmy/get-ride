@@ -87,6 +87,7 @@ class FareAiConfig {
     required this.models,
     required this.keys,
     this.request = FareAiRequest.defaults,
+    this.trend = FareTrendSettings.off,
   });
 
   final bool serviceEnabled;
@@ -99,6 +100,9 @@ class FareAiConfig {
   /// What the AI is asked (Request & format); the default is the original prompt.
   final FareAiRequest request;
 
+  /// Fare trend arrows before the recommended fare.
+  final FareTrendSettings trend;
+
   List<FareAiKey> keysFor(String provider) => keys[provider] ?? const [];
   int activeKeyCount(String provider) => keysFor(provider).where((k) => k.isActive).length;
 
@@ -110,6 +114,7 @@ class FareAiConfig {
     Map<String, String>? models,
     Map<String, List<FareAiKey>>? keys,
     FareAiRequest? request,
+    FareTrendSettings? trend,
   }) =>
       FareAiConfig(
         serviceEnabled: serviceEnabled ?? this.serviceEnabled,
@@ -119,6 +124,7 @@ class FareAiConfig {
         models: models ?? this.models,
         keys: keys ?? this.keys,
         request: request ?? this.request,
+        trend: trend ?? this.trend,
       );
 
   FareAiConfig withKeys(String provider, List<FareAiKey> list) => copyWith(keys: {...keys, provider: list});
@@ -132,6 +138,7 @@ class FareAiConfig {
         'keys': {for (final e in keys.entries) e.key: [for (final k in e.value) k.toJson()]},
         // Only once edited: an untouched config keeps following the default.
         if (!request.isDefault) 'request': request.toJson(),
+        if (!trend.isOff) 'trend': trend.toJson(),
       };
 }
 
@@ -186,7 +193,151 @@ FareAiConfig normalizeFareAi(Object? raw) {
     models: models,
     keys: keys,
     request: FareAiRequest.fromJson(o['request']),
+    trend: FareTrendSettings.fromJson(o['trend']),
   );
+}
+
+/// Fare trend arrows (ai-route-proxy `resolveTrendSettings`): the AI's drive
+/// time this many percent above the standard route's shows the red up
+/// arrows, this many below the green down arrows; null is off. With the fare
+/// range asked for, the AI's own verdict decides instead.
+class FareTrendSettings {
+  const FareTrendSettings({
+    this.upPct,
+    this.downPct,
+    this.upColorLight,
+    this.upColorDark,
+    this.downColorLight,
+    this.downColorDark,
+  });
+
+  static const off = FareTrendSettings();
+
+  final double? upPct;
+  final double? downPct;
+
+  /// The arrows' colours ("#RRGGBB") in light and dark mode; null keeps the
+  /// app's red (up) and green (down).
+  final String? upColorLight, upColorDark, downColorLight, downColorDark;
+
+  bool get isOff =>
+      upPct == null &&
+      downPct == null &&
+      upColorLight == null &&
+      upColorDark == null &&
+      downColorLight == null &&
+      downColorDark == null;
+
+  /// "#RRGGBB" from "#rgb", "rrggbb" or "#RRGGBB"; null for anything else
+  /// (ai-route-proxy `hexColor`).
+  static String? hex(Object? v) {
+    if (v is! String) return null;
+    var h = v.trim().replaceFirst('#', '');
+    if (RegExp(r'^[0-9a-fA-F]{3}$').hasMatch(h)) h = h.split('').map((c) => '$c$c').join();
+    return RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(h) ? '#${h.toUpperCase()}' : null;
+  }
+
+  static double? _pct(Object? v) {
+    final n = v is num ? v.toDouble() : double.tryParse('${v ?? ''}'.trim());
+    return n != null && n.isFinite && n > 0 ? (n > 1000 ? 1000.0 : n) : null;
+  }
+
+  /// A percent box: empty, zero or nonsense is off.
+  static double? parse(String input) => _pct(input.replaceAll('%', ''));
+
+  static FareTrendSettings fromJson(Object? raw) => raw is Map
+      ? FareTrendSettings(
+          upPct: _pct(raw['upPct']),
+          downPct: _pct(raw['downPct']),
+          upColorLight: hex(raw['upColorLight']),
+          upColorDark: hex(raw['upColorDark']),
+          downColorLight: hex(raw['downColorLight']),
+          downColorDark: hex(raw['downColorDark']),
+        )
+      : off;
+
+  Map<String, dynamic> toJson() => {
+        'upPct': upPct,
+        'downPct': downPct,
+        'upColorLight': upColorLight,
+        'upColorDark': upColorDark,
+        'downColorLight': downColorLight,
+        'downColorDark': downColorDark,
+      };
+
+  FareTrendSettings _with(Map<String, Object?> patch) => FareTrendSettings.fromJson({...toJson(), ...patch});
+
+  FareTrendSettings withUp(double? v) => _with({'upPct': v});
+  FareTrendSettings withDown(double? v) => _with({'downPct': v});
+
+  /// [key] one of upColorLight, upColorDark, downColorLight, downColorDark.
+  FareTrendSettings withColor(String key, String? hexValue) => _with({key: hex(hexValue)});
+
+  String? color(String key) => toJson()[key] as String?;
+
+  @override
+  bool operator ==(Object other) => other is FareTrendSettings && _eq(other.toJson(), toJson());
+
+  static bool _eq(Map<String, dynamic> a, Map<String, dynamic> b) => a.keys.every((k) => a[k] == b[k]);
+
+  @override
+  int get hashCode => Object.hashAll(toJson().values);
+}
+
+/// How far the AI's drive time sits from the standard route's over the
+/// logged answers, so the thresholds can be set from real trips.
+class FareTrendMeasure {
+  const FareTrendMeasure({
+    required this.count,
+    required this.median,
+    required this.p25,
+    required this.p75,
+    required this.upShare,
+    required this.downShare,
+  });
+
+  final int count;
+
+  /// AI minutes against standard, in percent (+ is slower).
+  final double median, p25, p75;
+
+  /// The share of these trips (0–1) the settings would mark up / down.
+  final double upShare, downShare;
+}
+
+/// [rows] of the response log (`duration_min`, `standard_duration_min`);
+/// null when none has both.
+FareTrendMeasure? measureFareTrend(Iterable<Map<String, dynamic>> rows, FareTrendSettings s) {
+  final pcts = <double>[];
+  for (final r in rows) {
+    final ai = num.tryParse('${r['duration_min'] ?? ''}');
+    final std = num.tryParse('${r['standard_duration_min'] ?? ''}');
+    if (ai == null || std == null || ai <= 0 || std <= 0) continue;
+    pcts.add((ai - std) / std * 100);
+  }
+  if (pcts.isEmpty) return null;
+  pcts.sort();
+  double at(double q) {
+    final i = q * (pcts.length - 1);
+    final lo = i.floor(), hi = i.ceil();
+    return pcts[lo] + (pcts[hi] - pcts[lo]) * (i - lo);
+  }
+
+  final up = s.upPct, down = s.downPct;
+  return FareTrendMeasure(
+    count: pcts.length,
+    median: at(0.5),
+    p25: at(0.25),
+    p75: at(0.75),
+    upShare: up == null ? 0 : pcts.where((p) => p >= up).length / pcts.length,
+    downShare: down == null ? 0 : pcts.where((p) => p <= -down).length / pcts.length,
+  );
+}
+
+/// "+18%", "-6%", "0%".
+String signedPct(double v) {
+  final r = v.round();
+  return r > 0 ? '+$r%' : '$r%';
 }
 
 /// Retry window in milliseconds (a month is 30 days).
@@ -499,6 +650,19 @@ List<String> fareAiTrafficLines(Map<dynamic, dynamic>? e) {
       final delay = st['delay_min'] is num ? ' · +${(st['delay_min'] as num).round()} min' : '';
       out.add('• ${st['road'] ?? 'Road'}${where.isEmpty ? '' : ' ($where)'}$delay');
     }
+  }
+  final trend = e['trend'];
+  if (trend is Map) {
+    final dir = trend['direction'];
+    final arrows = dir == 'up' ? 'up arrows' : dir == 'down' ? 'down arrows' : 'no arrows';
+    final pct = trend['pct'];
+    final std = trend['standard_min'];
+    final why = trend['source'] == 'fare_range'
+        ? 'AI fare range'
+        : pct is num && std is num
+            ? 'AI ${signedPct(pct.toDouble())} vs standard ${std.round()} min'
+            : 'minutes';
+    out.add('Fare trend: $arrows ($why)');
   }
   return out;
 }
