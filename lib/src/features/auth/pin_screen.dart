@@ -44,7 +44,7 @@ class _PinScreenState extends ConsumerState<PinScreen> {
       case PinSignInNeedsOtp():
         // Right PIN, stale Auth password: confirm by SMS, then resync.
         try {
-          await auth.sendOtp(widget.phone);
+          await auth.sendOtp(widget.phone, createUser: false);
           if (!mounted) return;
           context.push(
             Uri(path: '/login/otp', queryParameters: {'phone': widget.phone, 'next': 'resync'}).toString(),
@@ -63,7 +63,7 @@ class _PinScreenState extends ConsumerState<PinScreen> {
   Future<void> _forgot() async {
     setState(() => _busy = true);
     try {
-      await ref.read(authRepositoryProvider).sendOtp(widget.phone);
+      await ref.read(authRepositoryProvider).sendOtp(widget.phone, createUser: false);
       if (!mounted) return;
       context.push(Uri(path: '/login/otp', queryParameters: {'phone': widget.phone, 'next': 'set-pin'}).toString());
     } catch (e) {

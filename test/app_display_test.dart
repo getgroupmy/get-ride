@@ -14,13 +14,17 @@ class _Auth implements AuthRepository {
   _Auth({required this.hasProfile});
   final bool hasProfile;
   final otps = <String>[];
+  final created = <bool>[];
 
   @override
   Future<PhoneLookup> lookupPhone(String phone) async =>
       PhoneLookup(hasProfile: hasProfile, hasPin: false, isDeleted: false);
 
   @override
-  Future<void> sendOtp(String phone) async => otps.add(phone);
+  Future<void> sendOtp(String phone, {required bool createUser}) async {
+    otps.add(phone);
+    created.add(createUser);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -128,5 +132,7 @@ void main() {
   testWidgets('an existing account still gets its code while registration is closed', (tester) async {
     final auth = await pumpPhone(tester, hasProfile: true, open: false);
     expect(auth.otps, hasLength(1));
+    // Signing in never creates an account.
+    expect(auth.created, [false]);
   });
 }
