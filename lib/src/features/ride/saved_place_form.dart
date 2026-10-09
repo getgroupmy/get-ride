@@ -251,6 +251,9 @@ class _SavedPlaceFormState extends ConsumerState<SavedPlaceForm> {
     }
     return Scaffold(
       body: Column(
+        // Stretched, so the map spans the screen rather than the width of
+        // the back button (a Stack sizes to its non-positioned children).
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
             child: Stack(
