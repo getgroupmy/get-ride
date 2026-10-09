@@ -173,6 +173,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             phone: s.uri.queryParameters['phone'] ?? '',
             next: s.uri.queryParameters['next'] ?? 'set-pin',
             pin: s.extra as String?,
+            createUser: s.uri.queryParameters['new'] == '1',
           ),
         ),
         GoRoute(path: 'pin', builder: (_, s) => PinScreen(phone: s.uri.queryParameters['phone'] ?? '')),

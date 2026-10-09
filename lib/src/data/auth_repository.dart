@@ -1,3 +1,6 @@
+import 'package:android_id/android_id.dart';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -25,6 +28,15 @@ class PinSignInOk extends PinSignInResult {
 /// by OTP, then re-sync the password.
 class PinSignInNeedsOtp extends PinSignInResult {
   const PinSignInNeedsOtp();
+}
+
+/// The number couldn't be looked up (no signal, server down). Nothing is
+/// assumed about the account: treating it as new would send an existing user
+/// to choose a new PIN.
+class PhoneLookupFailed implements Exception {
+  const PhoneLookupFailed();
+  @override
+  String toString() => 'Could not verify number. Please try again.';
 }
 
 class PinSignInError extends PinSignInResult {
@@ -61,12 +73,26 @@ class AuthRepository {
         isDeleted: r['is_deleted'] == true,
       );
     } catch (_) {
-      // Unknown → treat as new; the OTP path works for everyone.
-      return const PhoneLookup(hasProfile: false, hasPin: false, isDeleted: false);
+      throw const PhoneLookupFailed();
     }
   }
 
-  Future<void> sendOtp(String phone) => _db.auth.signInWithOtp(phone: phone);
+  /// Texts a sign-in code. [createUser] is true only once someone has said
+  /// they want a new account: signing in, a PIN reset or an account still
+  /// without a PIN must never create one (Expo `shouldCreateUser`).
+  Future<void> sendOtp(String phone, {required bool createUser}) =>
+      _db.auth.signInWithOtp(phone: phone, shouldCreateUser: createUser);
+
+  /// Whether this device may create another account (the admin's device
+  /// guard), asked before a new account chooses its PIN. Fails open.
+  Future<DeviceRegistration> deviceRegistration() async {
+    try {
+      final data = await _db.rpc('device_registration_status', params: {'p_device_id': await deviceIdentifier()});
+      return DeviceRegistration.fromRpc(data);
+    } catch (_) {
+      return DeviceRegistration.unknown;
+    }
+  }
 
   /// Starts moving the signed-in account to [phone]: Supabase Auth texts a
   /// code to the new number (Expo `sendPhoneChangeOtp`).
@@ -137,8 +163,7 @@ class AuthRepository {
     } on PostgrestException catch (e) {
       if (isRegistrationBlocked(e.message)) {
         throw AuthException(
-          'This device has reached the limit of accounts it can register. '
-          'Sign in with your existing account instead.',
+          deviceGuardMessage(emulator: RegExp('EMULATOR', caseSensitive: false).hasMatch(e.message)),
         );
       }
       rethrow;
@@ -158,8 +183,13 @@ class AuthRepository {
     }
   }
 
-  /// Stable per-install id used by the server's duplicate-account guard.
+  /// The id the server's duplicate-account guard counts accounts by. The
+  /// phone's own id where it has one (Android ID, iOS identifier for vendor,
+  /// as Expo uses), so reinstalling the app doesn't reset the count; a random
+  /// id kept for this install elsewhere.
   Future<String> deviceIdentifier() async {
+    final hardware = await _hardwareId();
+    if (hardware != null) return hardware;
     final prefs = await SharedPreferences.getInstance();
     var id = prefs.getString(_deviceIdKey);
     if (id == null) {
@@ -167,6 +197,23 @@ class AuthRepository {
       await prefs.setString(_deviceIdKey, id);
     }
     return id;
+  }
+
+  static String? _cachedHardwareId;
+
+  static Future<String?> _hardwareId() async {
+    if (_cachedHardwareId != null || kIsWeb) return _cachedHardwareId;
+    try {
+      final id = switch (defaultTargetPlatform) {
+        TargetPlatform.android => await const AndroidId().getId(),
+        TargetPlatform.iOS => (await DeviceInfoPlugin().iosInfo).identifierForVendor,
+        _ => null,
+      };
+      if (id != null && id.trim().isNotEmpty) _cachedHardwareId = id.trim();
+    } catch (_) {
+      // No plugin in this build (tests, desktop): the install id stands in.
+    }
+    return _cachedHardwareId;
   }
 
   Future<void> signOut() => _db.auth.signOut();

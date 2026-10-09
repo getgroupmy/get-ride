@@ -14,10 +14,13 @@ import '../../widgets/common.dart';
 /// [next] is `set-pin` (new user / forgot PIN → choose a PIN) or `resync`
 /// (PIN was right but the Auth password drifted → re-derive it from [pin]).
 class OtpScreen extends ConsumerStatefulWidget {
-  const OtpScreen({super.key, required this.phone, required this.next, this.pin});
+  const OtpScreen({super.key, required this.phone, required this.next, this.pin, this.createUser = false});
   final String phone;
   final String next;
   final String? pin;
+
+  /// Whether a resend may create the account (a confirmed new sign-up only).
+  final bool createUser;
 
   @override
   ConsumerState<OtpScreen> createState() => _OtpScreenState();
@@ -76,7 +79,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
 
   Future<void> _resend() async {
     try {
-      await ref.read(authRepositoryProvider).sendOtp(widget.phone);
+      await ref.read(authRepositoryProvider).sendOtp(widget.phone, createUser: widget.createUser);
       _startCooldown();
       if (mounted) showInfo(context, 'Code sent');
     } catch (e) {
