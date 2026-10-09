@@ -301,6 +301,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     return false;
   }
 
+  /// TEKSI from the mode picker or the service list (Expo `partner-teksi`):
+  /// the documents and the vehicle, then the permit screen, where Start
+  /// Pickup holds the hire to the permit's checks.
+  Future<void> _openTeksi(Partner partner) async {
+    if (!await _documentsCleared(partner, teksi: true)) return;
+    if (!mounted || !await _vehicleReady(partner, teksi: true)) return;
+    if (mounted) context.push('/drive/permit');
+  }
+
   Future<void> _openMeter(Partner partner) async {
     if (!await _documentsCleared(partner, teksi: true)) return;
     if (!mounted || !await _vehicleReady(partner, teksi: true)) return;
@@ -617,12 +626,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   );
                 }
                 // The service picked from the rider menu's Partner Mode button:
-                // TEKSI goes on to the meter, through its checks.
+                // TEKSI goes on to its permit screen, through the checks.
                 if (ref.watch(pendingPartnerModeProvider) != null) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (!mounted) return;
                     final mode = ref.read(pendingPartnerModeProvider.notifier).take();
-                    if (mode != null && mode.isTeksi) _openMeter(p);
+                    if (mode != null && mode.isTeksi) _openTeksi(p);
                   });
                 }
                 final modes = partnerModeOptions(
@@ -667,7 +676,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                               title: Text(m.name),
                               subtitle: m.description == null ? null : Text(m.description!),
                               trailing: Icon(m.isTeksi ? Icons.speed : (_online ? Icons.check_circle : Icons.chevron_right)),
-                              onTap: () => m.isTeksi ? _openMeter(p) : (_online ? null : _toggle(true)),
+                              onTap: () => m.isTeksi ? _openTeksi(p) : (_online ? null : _toggle(true)),
                             ),
                         ]),
                       ),

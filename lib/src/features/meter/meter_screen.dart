@@ -16,6 +16,7 @@ import '../../core/navigation_app.dart';
 import '../../core/obd.dart';
 import '../../core/street_hail.dart';
 import '../../core/taxi_meter.dart';
+import '../../core/teksi_tariff.dart';
 import '../../data/geo_service.dart';
 import '../../data/obd/obd_session.dart';
 import '../../data/printer/printer_service.dart';
@@ -52,8 +53,21 @@ const _fixMaxAgeMs = 3000;
 /// front, and where the platform will not turn (a browser, an iPad in split
 /// view) the [LandscapeStage] turns the content instead. Its dialogs live in
 /// a navigator inside the stage, so they turn with it.
+/// How the TEKSI flow opens the meter (Expo `partner-teksi` → Start): the
+/// tariff picked after Start Pickup, the destination set on the trip
+/// summary, and whether the hire starts on arrival.
+class MeterLaunch {
+  const MeterLaunch({this.tariff, this.destination, this.startHire = false});
+  final TeksiTariff? tariff;
+  final HailDestination? destination;
+  final bool startHire;
+}
+
 class MeterScreen extends ConsumerStatefulWidget {
-  const MeterScreen({super.key});
+  const MeterScreen({super.key, this.launch});
+
+  /// Set when the TEKSI flow opens the meter; null from anywhere else.
+  final MeterLaunch? launch;
 
   @override
   ConsumerState<MeterScreen> createState() => _MeterScreenState();
@@ -67,6 +81,10 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   int _tab = 0;
 
   ResolvedMeterProfile _card = resolveMeterProfile(const []);
+
+  /// The driver's tariff (OLD / NEW RATES): what the built-in card bills on.
+  /// An operator's card wins over it ([ratesForTariff]).
+  late TeksiTariff _tariff = widget.launch?.tariff ?? defaultTeksiTariff;
   AreaInfo? _area;
   bool _areaAsked = false;
 
@@ -80,7 +98,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
 
   /// A street hail's destination, when the driver set one: the route and
   /// the card's quote for it. The meter still bills what it measures.
-  HailDestination? _dest;
+  late HailDestination? _dest = widget.launch?.destination;
 
   /// START was pressed and the meter is reading the odometer before the
   /// hire opens.
@@ -89,6 +107,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
 
   int _now() => ref.read(meterClockProvider)();
   MeterProfile get _profile => _card.profile;
+
+  /// The rates the hire bills on: the operator's card, else the tariff.
+  MeterRates get _rates => ratesForTariff(_card, _tariff);
 
   /// Admin → Meter Digital → panels: whether a console panel shows, and
   /// whether it opens. The meter itself is always on.
@@ -149,7 +170,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       '/meter/destination',
       extra: HailDestinationArgs(
         origin: f == null ? null : LatLng(f.latitude, f.longitude),
-        rates: _profile.rates,
+        rates: _rates,
         currency: _currency,
         multiplier: periodMultiplier(_period, _profile.nightMultiplier),
         current: _dest,
@@ -168,7 +189,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   }
 
   double? get _quote =>
-      _dest == null ? null : hailEstimate(_profile.rates, _dest!, multiplier: periodMultiplier(_period, _profile.nightMultiplier));
+      _dest == null ? null : hailEstimate(_rates, _dest!, multiplier: periodMultiplier(_period, _profile.nightMultiplier));
 
   @override
   void dispose() {
@@ -184,6 +205,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     final problem = await location.prepare();
     if (!mounted) return;
     setState(() => _locationProblem = problem);
+    // Opened by the TEKSI flow's Start: the hire begins on arrival, through
+    // the same gates as the START key.
+    if (widget.launch?.startHire == true && !_m.hasHire) unawaited(_start());
     if (problem != null) return;
     _fixes = location.fixes().listen((f) {
       if (!mounted) return;
@@ -255,7 +279,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
           gpsSpeedKmh: f?.speedKmh,
           gpsPoint: f == null ? null : MeterPoint(f.latitude, f.longitude, accuracyM: f.accuracyM),
         ),
-        flagDistanceM: _profile.rates.flagDistanceM,
+        flagDistanceM: _rates.flagDistanceM,
       );
     });
   }
@@ -354,11 +378,11 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       _m,
       id: const Uuid().v4(),
       endedAt: endedAt,
-      fare: meterFare(_m, _profile.rates, multiplier: multiplier),
+      fare: meterFare(_m, _rates, multiplier: multiplier),
       details: details,
       rateLabel: _rateLabel,
       period: _period,
-      flagFare: _profile.rates.flagFare,
+      flagFare: _rates.flagFare,
       nightMultiplier: _profile.nightMultiplier,
       currency: _currency,
       cardSurcharge: meterExtraSurcharge(_profile, luggage: details.luggage, passengers: details.pax),
@@ -493,9 +517,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
 
   String _money(double n) => '$_currency ${n.toStringAsFixed(2)}';
 
-  String get _rateLabel => (_profile.label ?? '').trim().isNotEmpty ? _profile.label!.trim() : _card.scope;
+  String get _rateLabel => tariffRateLabel(_card, _tariff);
 
-  double get _fareNow => meterFare(_m, _profile.rates, multiplier: periodMultiplier(_period, _profile.nightMultiplier));
+  double get _fareNow => meterFare(_m, _rates, multiplier: periodMultiplier(_period, _profile.nightMultiplier));
 
   String get _connection {
     final sources = allowedMeterSources(_profile.sourceMode);
@@ -732,6 +756,20 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
           child: Text(block,
               maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _amber, fontSize: 12)),
         ),
+      // The built-in card's two tariffs; an operator's card names its own
+      // rates. Frozen for the life of a hire.
+      if (tariffKeysApply(_card)) ...[
+        SegmentedButton<TeksiTariff>(
+          key: const ValueKey('meter-tariff'),
+          showSelectedIcon: false,
+          segments: [
+            for (final t in TeksiTariff.values.reversed) ButtonSegment(value: t, label: Text(t.keyLabel)),
+          ],
+          selected: {_tariff},
+          onSelectionChanged: _m.hasHire ? null : (s) => setState(() => _tariff = s.first),
+        ),
+        const SizedBox(height: 8),
+      ],
       SegmentedButton<MeterPeriod>(
         segments: [
           const ButtonSegment(value: MeterPeriod.day, label: Text('DAY'), icon: Icon(Icons.wb_sunny_outlined)),

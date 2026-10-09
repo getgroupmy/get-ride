@@ -11,6 +11,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/in_app_page.dart';
+import 'teksi_pickup.dart';
 
 /// The signed-in partner's taxi driver permit, read from their uploads.
 final driverPermitProvider = FutureProvider.autoDispose<DriverPermit>((ref) async {
@@ -41,10 +42,11 @@ final currentPlateProvider = FutureProvider.autoDispose<String?>((ref) async {
 
 final _date = DateFormat('dd/MM/yyyy');
 
-/// Taxi driver permit (Expo `partner-teksi` permit card): the permit's
-/// details, its expiry and review state, and the checks a hire is held to
-/// before the meter opens (IC matches the profile, not expired, vehicle
-/// matches the permit).
+/// Taxi driver permit (Expo `partner-teksi`, the TEKSI landing screen): the
+/// permit's details, its expiry and review state, and the two ways to drive
+/// on it — Start Pickup (the permit's checks, "Select tariff", the trip) and
+/// Meter Digital. Both are held to the same checks (IC matches the profile,
+/// not expired, vehicle matches the permit).
 class DriverPermitScreen extends ConsumerWidget {
   const DriverPermitScreen({super.key, this.today});
 
@@ -97,6 +99,19 @@ class _PermitBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Text(
+          'DRIVER PERMIT',
+          style: t.textTheme.labelLarge?.copyWith(
+            color: t.colorScheme.primary,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+          ),
+        ),
+        Text(
+          "Review your active permit details below, then start your pickup when you're ready to drive.",
+          style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 12),
         if (!p.hasDocument)
           Card(
             color: t.colorScheme.secondaryContainer,
@@ -127,6 +142,16 @@ class _PermitBody extends StatelessWidget {
                         style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w800),
                       ),
                     ),
+                    if (p.documentStatus == 'Approved')
+                      Container(
+                        key: const ValueKey('permit-verified'),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(6)),
+                        child: const Text(
+                          'VERIFIED',
+                          style: TextStyle(color: Color(0xFFF5B301), fontSize: 11, fontWeight: FontWeight.w800),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -217,6 +242,15 @@ class _PermitBody extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 8),
+        Consumer(
+          builder: (context, ref, _) => FilledButton.icon(
+            key: const ValueKey('permit-start-pickup'),
+            icon: const Icon(Icons.local_taxi),
+            label: const Text('Start Pickup'),
+            onPressed: () => startTeksiPickup(context, ref),
+          ),
+        ),
+        const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -233,7 +267,7 @@ class _PermitBody extends StatelessWidget {
               label: const Text('Update documents'),
               onPressed: () => context.push('/drive/onboarding'),
             ),
-            FilledButton.icon(
+            FilledButton.tonalIcon(
               key: const ValueKey('permit-open-meter'),
               style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
               icon: const Icon(Icons.speed),

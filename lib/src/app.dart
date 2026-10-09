@@ -265,7 +265,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/diagnostics', builder: (_, _) => const AuthDiagnosticsScreen()),
       GoRoute(path: '/share/:token', builder: (_, st) => SharedRideScreen(token: st.pathParameters['token']!)),
-      GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
+      GoRoute(
+        path: '/meter',
+        builder: (_, st) => MeterScreen(launch: st.extra is MeterLaunch ? st.extra! as MeterLaunch : null),
+      ),
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
       GoRoute(path: '/meter/printer', builder: (_, _) => const PrinterScreen()),
       GoRoute(
