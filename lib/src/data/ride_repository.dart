@@ -128,9 +128,9 @@ class RideRepository {
         row.remove(col);
       }
     }
-    final req = RideRequest(data);
-    unawaited(_notifyPartners(req));
-    return req;
+    // Online partners are pushed by the database (the ride_requests insert
+    // trigger); send-push no longer takes a rider's call.
+    return RideRequest(data);
   }
 
   /// The caller's public IP as the `ip-lookup` edge function sees it, or null.
@@ -143,21 +143,6 @@ class RideRepository {
     }
   }
 
-  /// Best-effort push to online partners through the shared `send-push` edge
-  /// function (same payload as the Expo app).
-  Future<void> _notifyPartners(RideRequest r) async {
-    try {
-      await _db.functions.invoke(
-        'send-push',
-        body: {
-          'title': 'New Request',
-          'body': '${r.currency} ${r.fare?.round() ?? ''} , ${r.pickupLabel} -> ${r.dropLabel}',
-          'audience': 'partners',
-          'data': {'type': 'new_ride_request', 'requestId': r.id},
-        },
-      );
-    } catch (_) {}
-  }
 
   Future<void> expireStaleOpen() async {
     final uid = _uid;
@@ -450,24 +435,10 @@ class RideRepository {
         .select()
         .maybeSingle();
     if (row == null) return null;
-    final r = RideRequest(row);
-    unawaited(_notifyFareRaised(r));
-    return r;
+    // The database's trigger tells partners the fare went up.
+    return RideRequest(row);
   }
 
-  Future<void> _notifyFareRaised(RideRequest r) async {
-    try {
-      await _db.functions.invoke(
-        'send-push',
-        body: {
-          'title': 'Fare increased',
-          'body': '${r.currency} ${r.fare?.round() ?? ''} , ${r.pickupLabel} -> ${r.dropLabel}',
-          'audience': 'partners',
-          'data': {'type': 'ride_request_fare_raised', 'requestId': r.id},
-        },
-      );
-    } catch (_) {}
-  }
 
   /// The rider takes [partnerId]'s offer of [amount]: their own row moves
   /// to `accepted` with that partner, billed at the offer. Matched on the
