@@ -87,7 +87,7 @@ String? pushPlatformName(TargetPlatform platform) => switch (platform) {
     };
 
 /// Where tapping a notification opens, from the `data` the database
-/// triggers attach (migrations 0067 / 0077). Null
+/// triggers attach (migrations 0067 / 0077 / 0129). Null
 /// opens the app wherever it was.
 String? pushRouteFor(Map<String, dynamic> data) {
   switch (data['type']) {
@@ -98,6 +98,13 @@ String? pushRouteFor(Map<String, dynamic> data) {
     case 'wallet_transfer_request':
     case 'wallet_transfer_response':
       return '/wallet';
+    case 'ride_message':
+      // The chat over the recipient's own trip screen (migration 0129 says
+      // which side they are on).
+      final id = data['request_id'];
+      if (id is! String || id.isEmpty) return null;
+      final ride = Uri.encodeComponent(id);
+      return data['role'] == 'partner' ? '/drive/trip/$ride/chat' : '/ride/$ride/chat';
     default:
       return null;
   }
