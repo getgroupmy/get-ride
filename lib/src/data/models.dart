@@ -96,6 +96,14 @@ class RideRequest {
   double? get offeredFare => _d(raw['offered_fare']);
   bool get offerMe => raw['offer_me'] == true;
   String get currency => (raw['currency'] as String?) ?? 'MYR';
+
+  /// The pickup region's time zone at booking (IANA, migration 0124): the
+  /// ride's times are shown as the clocks there showed them. Null on rides
+  /// booked before it, or where the region has none — the phone's time then.
+  String? get timezone {
+    final z = raw['timezone'];
+    return z is String && z.trim().isNotEmpty ? z.trim() : null;
+  }
   int get passengers => _i(raw['passengers']) ?? 1;
   int? get luggage => _i(raw['luggage']);
   double? get riderRating => _d(raw['rider_rating']);

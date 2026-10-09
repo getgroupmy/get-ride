@@ -3,11 +3,11 @@
 /// ended the trip, so it can be opened again from the trip list.
 library;
 
-import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../data/models.dart';
 import 'format.dart';
+import 'region_time.dart';
 import 'ride_cancel.dart';
 
 /// A stable booking number for a request: "GR-" and the first eight
@@ -44,7 +44,12 @@ class TripReceipt {
     this.commission,
     this.commissionRate,
     this.endedEarly = false,
+    this.timezone,
   });
+
+  /// The pickup region's time zone (IANA): times are printed as the clocks
+  /// there showed them, labelled where that isn't the phone's own zone.
+  final String? timezone;
 
   /// The driver ended the trip before the drop-off; the fare is the
   /// recalculated one (migration 0104).
@@ -136,6 +141,8 @@ class TripReceipt {
       drop: r.dropLabel,
       lines: [
         (label: 'Trip fare', amount: fare),
+        // The region's surcharges and taxes in force at booking.
+        for (final l in r.chargeLines) (label: l.label, amount: l.amount),
         if (tolls > 0) (label: 'Tolls', amount: tolls),
         if (other > 0)
           (
@@ -158,6 +165,7 @@ class TripReceipt {
       asDriver: asDriver,
       commission: asDriver ? r.commissionAmount : null,
       commissionRate: asDriver ? r.commissionRate : null,
+      timezone: r.timezone,
     );
   }
 
@@ -165,10 +173,10 @@ class TripReceipt {
   List<(String, String)> get details => [
     ('Booking no.', bookingNo),
     ('Status', statusLabel),
-    if (date != null) ('Date', DateFormat('d MMM yyyy, h:mm a').format(date!.toLocal())),
+    if (date != null) ('Date', formatInZone(date, timezone)),
     if (service != null) ('Service', service!),
-    if (startedAt != null) ('Picked up', DateFormat('h:mm a').format(startedAt!.toLocal())),
-    if (endedAt != null) ('Dropped off', DateFormat('h:mm a').format(endedAt!.toLocal())),
+    if (startedAt != null) ('Picked up', formatInZone(startedAt, timezone, pattern: 'h:mm a')),
+    if (endedAt != null) ('Dropped off', formatInZone(endedAt, timezone, pattern: 'h:mm a')),
     if (tripMinutes != null) ('Trip time', formatDuration(tripMinutes)),
     if (distanceKm != null) ('Distance', formatDistance(distanceKm)),
     if (counterpart != null && counterpart!.trim().isNotEmpty) (counterpartLabel ?? 'Driver', counterpart!.trim()),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/format.dart';
+import '../../core/region_time.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -40,7 +40,7 @@ class TripsScreen extends ConsumerWidget {
                         child: ListTile(
                           leading: Icon(asDriver ? Icons.drive_eta : Icons.local_taxi),
                           title: Text('${r.pickupLabel} → ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text('${formatDateTime(r.createdAt)} · ${r.status.label}'
+                          subtitle: Text('${formatInZone(r.createdAt, r.timezone)} · ${r.status.label}'
                               '${asDriver ? ' · as driver' : ''}'),
                           trailing: Text(r.fareText(r.effectiveFare)),
                           // A finished trip opens its receipt; one still under way, the live screen.

@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../core/format.dart';
+import '../../core/region_time.dart';
 import '../../core/trip_receipt.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
@@ -124,12 +125,12 @@ class _ReceiptBody extends StatelessWidget {
                     ListTile(
                       leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
                       title: Text(rc.pickup),
-                      subtitle: rc.startedAt == null ? null : Text(formatTime(rc.startedAt)),
+                      subtitle: rc.startedAt == null ? null : Text(formatInZone(rc.startedAt, rc.timezone, pattern: 'h:mm a')),
                     ),
                     ListTile(
                       leading: Icon(Icons.location_on, color: Colors.red.shade700),
                       title: Text(rc.drop),
-                      subtitle: rc.endedAt == null ? null : Text(formatTime(rc.endedAt)),
+                      subtitle: rc.endedAt == null ? null : Text(formatInZone(rc.endedAt, rc.timezone, pattern: 'h:mm a')),
                     ),
                   ],
                 ),
