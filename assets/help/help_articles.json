@@ -604,7 +604,7 @@
       "Chat with driver",
       "Hubungi pemandu"
     ],
-    "answer": "Use Call or Message on the ride screen once a driver has accepted. Call opens your phone's dialler and Message opens your SMS app with the driver's number. There is no separate in-app chat with the driver.",
+    "answer": "Use Call or Message on the ride screen once a driver has accepted. Call rings your driver in the app over mobile data or Wi-Fi, without showing either phone number; press and hold Call for an ordinary phone call when their number is available. Message opens the in-app chat for this ride.",
     "keywords": [
       "call",
       "message",
@@ -614,7 +614,9 @@
       "sms",
       "hubungi",
       "pemandu",
-      "telefon"
+      "telefon",
+      "voice call",
+      "in-app call"
     ],
     "audience": "rider",
     "category": "During the ride",
