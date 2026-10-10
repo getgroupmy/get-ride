@@ -1,5 +1,5 @@
 -- ============================================================================
--- Regression test for migration 0132: support_agents() answers admins only.
+-- Regression test for migration 0133: support_agents() answers admins only.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/support_agents_admin_only.sql
 --

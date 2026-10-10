@@ -1,5 +1,5 @@
 -- ============================================================================
--- Regression test for migrations 0103 and 0132: SECURITY DEFINER functions
+-- Regression test for migrations 0103 and 0133: SECURITY DEFINER functions
 -- the client must not be able to call (or, for support_agents, only admins).
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/definer_function_grants.sql
