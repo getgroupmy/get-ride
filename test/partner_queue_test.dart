@@ -32,6 +32,21 @@ class _FakeRides implements RideRepository {
     return RideRequest({'id': id, 'status': 'accepted'});
   }
 
+  /// Accept is an offer at the rider's fare; this rider auto-accepts it.
+  @override
+  Future<RideRequest?> submitOffer(
+    String id,
+    double amount,
+    Partner? partner, {
+    double? lat,
+    double? lng,
+    String? fallbackName,
+    String? fallbackPhone,
+  }) async {
+    accepted.add(id);
+    return RideRequest({'id': id, 'status': 'accepted', 'partner_id': 'me'});
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -97,6 +112,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            currentUserIdProvider.overrideWithValue('me'),
             partnerProvider.overrideWith((ref) async => Partner({'id': 'p1', 'status': 'approved', 'name': 'Ali'})),
             openRequestsProvider.overrideWith((ref) => open.stream),
             rideRepositoryProvider.overrideWithValue(rides),

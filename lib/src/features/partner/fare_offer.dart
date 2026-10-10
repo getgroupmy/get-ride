@@ -95,6 +95,7 @@ class OfferPendingDialog extends StatefulWidget {
     required this.ride,
     required this.me,
     required this.amount,
+    this.accepting = false,
     this.window = counterOfferWindow,
   });
 
@@ -102,6 +103,9 @@ class OfferPendingDialog extends StatefulWidget {
   final RideRequest ride;
   final String me;
   final double amount;
+
+  /// An Accept at the rider's own fare rather than a counter-offer.
+  final bool accepting;
   final Duration window;
 
   @override
@@ -170,12 +174,17 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> {
     final r = widget.ride;
     final outcome = _outcome;
     return AlertDialog(
-      title: Text(outcome == null ? 'Offer sent' : 'Offer closed'),
+      key: const ValueKey('offer-pending'),
+      title: Text(outcome == null ? (widget.accepting ? 'Sent to the passenger' : 'Offer sent') : 'Offer closed'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (outcome == null) ...[
-            Text('You offered ${r.fareText(widget.amount)}. Waiting for the rider…'),
+            Text(
+              widget.accepting
+                  ? 'You accepted ${r.fareText(widget.amount)}. Waiting for the passenger to confirm…'
+                  : 'You offered ${r.fareText(widget.amount)}. Waiting for the rider…',
+            ),
             const SizedBox(height: 12),
             LinearProgressIndicator(value: _left.inMilliseconds / widget.window.inMilliseconds),
             const SizedBox(height: 4),

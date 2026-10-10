@@ -56,6 +56,7 @@ class RideRepository {
     String? riderPhone,
     String? deviceOs,
     bool offerMe = false,
+    double? autoAcceptFare,
     List<Place> stops = const [],
     Map<String, Object> metadata = const {},
     BookedFor? bookedFor,
@@ -102,12 +103,21 @@ class RideRepository {
       ...metadata,
       if (pricing != RegionPricing.none) ...pricing.toRideColumns(),
       'timezone': ?timezone,
+      'auto_accept_fare': ?autoAcceptFare,
     };
     // Stops, the metadata, the region's pricing and its time zone are
     // extras: a database without one of their columns (stops needs 0098,
     // pricing 0119, the zone 0124) books the ride without it rather than
     // failing.
-    final optional = {'stops', ...metadata.keys, ...RegionPricing.none.toRideColumns().keys, 'timezone'};
+    // auto_accept_fare needs 0141; without it the rider's phone still takes
+    // a matching offer while the searching screen is open.
+    final optional = {
+      'stops',
+      ...metadata.keys,
+      ...RegionPricing.none.toRideColumns().keys,
+      'timezone',
+      'auto_accept_fare',
+    };
     Map<String, dynamic> data;
     for (var attempt = 0;; attempt++) {
       try {
@@ -418,6 +428,15 @@ class RideRepository {
         .select()
         .maybeSingle();
     return row == null ? null : RideRequest(row);
+  }
+
+  /// The rider's "Auto-accept offer of RM x" on their open request: an
+  /// offer at or under [limit] is taken by the database the moment it
+  /// lands (migration 0141); null switches it off.
+  Future<void> setAutoAccept(String id, double? limit) async {
+    final uid = _uid;
+    if (uid == null) return;
+    await _db.from(_table).update({'auto_accept_fare': limit}).eq('id', id).eq('rider_id', uid).eq('status', 'open');
   }
 
   /// Takes this partner's own standing offer back off the row.
