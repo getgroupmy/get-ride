@@ -20,8 +20,10 @@ const meterDigitalPage = 'admin-settings-meter-digital';
 
 final meterStoreProvider = Provider((ref) => MeterSettingsStore(ref.watch(supabaseProvider)));
 
-final meterProfilesProvider =
-    FutureProvider.autoDispose<List<MeterProfile>>((ref) => ref.watch(meterStoreProvider).fetch());
+final meterProfilesProvider = FutureProvider.autoDispose<List<MeterProfile>>((ref) {
+  ref.watchLive('meter_digital_settings');
+  return ref.watch(meterStoreProvider).fetch();
+});
 
 /// Place-name suggestions from the shared geography tables (best effort).
 final _geoNamesProvider = FutureProvider.autoDispose<_GeoNames>((ref) async {

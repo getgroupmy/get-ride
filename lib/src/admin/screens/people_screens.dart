@@ -14,10 +14,20 @@ import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
 import 'people/people_data.dart';
 import 'people/vehicle_screens.dart' show confirmVehicleApprovable;
+import '../../data/live_tables.dart';
 
-final adminUsersProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).users());
-final adminPartnersProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).partners());
-final adminVehiclesProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).vehicles());
+final adminUsersProvider = FutureProvider.autoDispose((ref) {
+  ref.watchAdminLive('profiles');
+  return ref.watch(adminRepositoryProvider).users();
+});
+final adminPartnersProvider = FutureProvider.autoDispose((ref) {
+  ref.watchAdminLive('partners');
+  return ref.watch(adminRepositoryProvider).partners();
+});
+final adminVehiclesProvider = FutureProvider.autoDispose((ref) {
+  ref.watchAdminLive('vehicle');
+  return ref.watch(adminRepositoryProvider).vehicles();
+});
 
 /// Shared searchable, filterable record list.
 class _RecordList extends ConsumerStatefulWidget {

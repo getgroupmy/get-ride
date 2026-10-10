@@ -7,9 +7,12 @@ import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
+import '../../data/live_tables.dart';
 
-final commissionRatesProvider =
-    FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).commissionRates());
+final commissionRatesProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('commission_rates');
+  return ref.watch(adminRepositoryProvider).commissionRates();
+});
 
 const commissionLevels = ['master', 'country', 'state', 'city', 'suburb', 'user'];
 

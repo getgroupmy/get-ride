@@ -5,10 +5,22 @@ import 'package:go_router/go_router.dart';
 import '../../widgets/common.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
+import '../../data/live_tables.dart';
 
-final dashboardCountsProvider = FutureProvider.autoDispose<Map<String, int>>(
-  (ref) => ref.watch(adminRepositoryProvider).dashboardCounts(),
-);
+final dashboardCountsProvider = FutureProvider.autoDispose<Map<String, int>>((ref) {
+  for (final t in const [
+    'profiles',
+    'partners',
+    'vehicle',
+    'ride_requests',
+    'provider_documents',
+    'vehicle_documents',
+    'support_tickets',
+  ]) {
+    ref.watchAdminLive(t);
+  }
+  return ref.watch(adminRepositoryProvider).dashboardCounts();
+});
 
 class AdminDashboardScreen extends ConsumerWidget {
   const AdminDashboardScreen({super.key});

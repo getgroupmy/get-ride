@@ -4,6 +4,7 @@
 // `site-settings` name / value rows. (It replaces the separate App Icon and
 // Splash Screen pages, and the Expo screen's device-only copy of the same
 // fields, which no app ever read.)
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,6 +20,7 @@ import '../../widgets/admin_widgets.dart';
 import 'branding_screens.dart';
 import 'pick_image.dart';
 import 'site_logic.dart';
+import '../../../data/live_tables.dart';
 
 const sitePage = 'admin-settings-site';
 
@@ -34,8 +36,10 @@ const siteValuesCategory = SettingsCategory(
   ],
 );
 
-final _siteValuesProvider =
-    FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).settings(siteValuesCategory));
+final _siteValuesProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('settings_entries');
+  return ref.watch(adminRepositoryProvider).settings(siteValuesCategory);
+});
 
 class AdminSiteSettingsScreen extends ConsumerStatefulWidget {
   const AdminSiteSettingsScreen({super.key});
@@ -70,12 +74,21 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
       c.dispose();
     }
     _ctl.clear();
-    for (final e in appSettingsFields(b).entries) {
+    _adopted = appSettingsFields(b);
+    for (final e in _adopted.entries) {
       _ctl[e.key] = TextEditingController(text: e.value);
     }
     _splashUrl = b.splashImageUrl;
+    _adoptedSplash = b.splashImageUrl;
     _splashPicked = null;
   }
+
+  /// The stored settings the form was last filled from.
+  Map<String, String> _adopted = const {};
+  String? _adoptedSplash;
+
+  /// Whether the form differs from what it was filled from (unsaved edits).
+  bool get _edited => !mapEquals(_fields, _adopted) || _splashPicked != null || _splashUrl != _adoptedSplash;
 
   Map<String, String> get _fields => {for (final e in _ctl.entries) e.key: e.value.text};
 
@@ -111,6 +124,9 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
       await store.update({...appSettingsPatch(f), 'splash_image_url': url});
       _splashUrl = url;
       _splashPicked = null;
+      // Saved: what the form holds is now what is stored.
+      _adopted = f;
+      _adoptedSplash = url;
     }, success: 'Saved — every user\'s app now uses it');
     if (!mounted) return;
     setState(() {});
@@ -411,7 +427,9 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
         onRetry: () => ref.invalidate(brandingProvider),
         data: (row) {
           final stored = AppBranding.fromRow(row);
-          if (!_loaded) {
+          // Filled once, then again whenever the stored settings change (an
+          // other admin's save) while this form has no unsaved edits.
+          if (!_loaded || (!_edited && !mapEquals(appSettingsFields(stored), _adopted))) {
             _loaded = true;
             _adopt(stored);
             WidgetsBinding.instance.addPostFrameCallback((_) {

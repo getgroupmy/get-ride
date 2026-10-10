@@ -10,16 +10,19 @@ import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../data/live_tables.dart';
 
 const helpArticlesPage = 'admin-settings-help-articles';
 
-final helpArticlesProvider = FutureProvider.autoDispose<List<HelpArticle>>(
-  (ref) => ref.watch(helpRepositoryProvider).articles(),
-);
+final helpArticlesProvider = FutureProvider.autoDispose<List<HelpArticle>>((ref) {
+  ref.watchAdminLive('help_articles');
+  return ref.watch(helpRepositoryProvider).articles();
+});
 
-final unansweredHelpQuestionsProvider = FutureProvider.autoDispose<List<HelpQuestion>>(
-  (ref) => ref.watch(helpRepositoryProvider).unansweredQuestions(),
-);
+final unansweredHelpQuestionsProvider = FutureProvider.autoDispose<List<HelpQuestion>>((ref) {
+  ref.watchAdminLive('help_questions');
+  return ref.watch(helpRepositoryProvider).unansweredQuestions();
+});
 
 class AdminHelpArticlesScreen extends ConsumerStatefulWidget {
   const AdminHelpArticlesScreen({super.key});

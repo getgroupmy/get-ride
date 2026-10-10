@@ -59,7 +59,8 @@ const requiredDocumentsCategory = SettingsCategory(
 /// Entries of one category, refreshed by invalidating with the category key.
 final catalogueEntriesProvider = FutureProvider.autoDispose.family<List<SettingEntry>, SettingsCategory>(
   (ref, c) {
-  ref.watchLive('settings_entries');
+  // The category's own table (document types, required documents, …).
+  ref.watchAdminLive(c.table);
   return ref.watch(adminRepositoryProvider).settings(c);
 },
 );

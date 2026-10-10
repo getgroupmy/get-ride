@@ -38,9 +38,18 @@ void main() {
     // two lists must not drift apart.
     final sql = File('supabase/tests/live_admin_changes.sql').readAsStringSync();
     const notSettings = {'messaging_devices', 'messaging_routes', 'sms_outbox', 'sms_inbox'};
-    for (final t in [...liveSettingTables, ...liveOwnTables.keys]) {
+    for (final t in [...liveSettingTables, ...liveOwnTables.keys, ...liveAdminTables]) {
       if (notSettings.contains(t)) continue;
       expect(sql, contains("'$t'"), reason: '$t is followed live but not checked');
+    }
+  });
+
+  test('admin pages follow every row of the account tables, the app only its own', () {
+    for (final t in liveOwnTables.keys) {
+      expect(liveAdminTables, contains(t), reason: 'an admin list of $t shows everyone\'s changes');
+    }
+    for (final t in liveAdminTables) {
+      expect(liveSettingTables, isNot(contains(t)), reason: '$t is too busy for every app\'s channel');
     }
   });
 }

@@ -10,6 +10,7 @@ import '../../widgets/admin_widgets.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
+import '../../../data/live_tables.dart';
 
 /// Everything the partner forms look up.
 class PartnerFormData {
@@ -117,6 +118,8 @@ void _leave(BuildContext context) => context.canPop() ? context.pop(true) : cont
 // ---- Add partner -----------------------------------------------------------
 
 final _eligibleUsersProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.watchAdminLive('profiles');
+  ref.watchAdminLive('partners');
   final repo = ref.watch(peopleRepositoryProvider);
   final r = await Future.wait([repo.profiles(), repo.partners()]);
   return eligiblePartnerUsers(r[0], r[1]);
@@ -344,6 +347,7 @@ class _PartnerAddScreenState extends ConsumerState<PartnerAddScreen> {
             ),
           ),
           PartnerDocsUploader(
+            adminView: true,
             partnerId: c['id'] as String,
             docs: _createdDocs,
             enabled: canEdit,
@@ -492,6 +496,7 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
               onTypes: (t) => setState(() => _types = t),
               onVehicle: (v) => setState(() => _vehicle = v),
               docsBuilder: (docs, _) => PartnerDocsUploader(
+                adminView: true,
                 key: ValueKey(docs.map((d) => d.id).join(',')),
                 partnerId: p['id'] as String,
                 docs: docs,

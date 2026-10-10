@@ -8,9 +8,13 @@ import '../../../widgets/busy.dart';
 import '../../../widgets/loading_skeleton.dart';
 import '../../widgets/admin_widgets.dart';
 import 'people_widgets.dart';
+import '../../../data/live_tables.dart';
 
 final _vehicleDriversProvider = FutureProvider.autoDispose.family<List<VehicleDriver>, String>(
-  (ref, id) => ref.watch(vehicleAssignmentRepositoryProvider).driversFor(id),
+  (ref, id) {
+    ref.watchAdminLive('vehicle_user_assignment');
+    return ref.watch(vehicleAssignmentRepositoryProvider).driversFor(id);
+  },
 );
 
 /// Who may drive this vehicle besides its owner (Admin → Vehicles → edit).

@@ -12,6 +12,7 @@ import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
 import 'security_data.dart';
 import 'session_logic.dart';
+import '../../../data/live_tables.dart';
 
 const _page = 'admin-session-history';
 
@@ -19,7 +20,10 @@ const _page = 'admin-session-history';
 const _sessionRenderCap = 40;
 const _locationRenderCap = 200;
 
-final _overviewProvider = FutureProvider.autoDispose((ref) => ref.watch(securityRepositoryProvider).sessionsOverview());
+final _overviewProvider = FutureProvider.autoDispose((ref) {
+  ref.watchAdminLive('user_sessions');
+  return ref.watch(securityRepositoryProvider).sessionsOverview();
+});
 final _ipHealthProvider = FutureProvider.autoDispose((ref) => ref.watch(securityRepositoryProvider).ipLookupHealthy());
 
 String _fmt(Object? iso) {
@@ -99,6 +103,13 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The device guard as another admin set it.
+    ref.listenAdminLive(const ['app_settings'], () {
+      if (_savingGuard) return;
+      ref.read(securityRepositoryProvider).deviceGuardConfig().then((c) {
+        if (mounted && !_savingGuard) setState(() => _guard = c);
+      });
+    });
     final level = ref.watch(securityLevelProvider(_page));
     final overview = ref.watch(_overviewProvider);
     final data = overview.value;

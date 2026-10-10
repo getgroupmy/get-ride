@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
+import 'quiet_live.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/admin_repository.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
@@ -124,6 +125,7 @@ void main() {
         ProviderScope(
           overrides: [
             supabaseProvider.overrideWithValue(_db),
+            ...quietLiveOverrides,
             adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
             adminRepositoryProvider.overrideWithValue(admin),
             peopleRepositoryProvider.overrideWithValue(_People(docs)),

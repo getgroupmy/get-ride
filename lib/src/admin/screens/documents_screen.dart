@@ -9,9 +9,13 @@ import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
+import '../../data/live_tables.dart';
 
 final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
-  (ref, table) => ref.watch(adminRepositoryProvider).documents(table),
+  (ref, table) {
+    ref.watchAdminLive(table);
+    return ref.watch(adminRepositoryProvider).documents(table);
+  },
 );
 
 /// Expiry wins over a non-rejected status (Expo `computeDisplayStatus`).
