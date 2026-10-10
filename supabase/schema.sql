@@ -8136,7 +8136,7 @@ as $$
    group by aa.profile_id, p.name, p.phone, p.avatar_url, p.profile_image;
 $$;
 
--- Admins only (0132): the roster can carry an admin's phone number, and only
+-- Admins only (0133): the roster can carry an admin's phone number, and only
 -- admin screens call it.
 revoke execute on function public.support_agents() from public, anon;
 grant execute on function public.support_agents() to authenticated;
