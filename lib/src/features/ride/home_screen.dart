@@ -16,6 +16,7 @@ import '../../core/commission.dart' show Geo;
 import '../../core/driver_eta.dart';
 import '../../core/fare.dart';
 import '../../core/fare_info.dart' show fareRateLines;
+import '../../core/search_timer.dart';
 import '../../core/fare_tariff.dart';
 import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart';
@@ -274,6 +275,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void dispose() {
     _carsTimer?.cancel();
+    _expiry?.cancel();
     _note.dispose();
     _otherName.dispose();
     _otherPhone.dispose();
@@ -289,8 +291,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _ongoing = ownRide(all);
           _forOthers = ridesForOthers(all);
         });
+        _armExpiry();
       }
     } catch (_) {}
+  }
+
+  /// Runs out the rider's open request on time while the app is open, even
+  /// away from its ride screen; the server's job (0139) does it within a
+  /// minute when nothing is open. The ride's stream then takes the card
+  /// away and [_showExpired] says why.
+  Timer? _expiry;
+  String? _expiryFor;
+
+  void _armExpiry() {
+    final r = _ongoing;
+    final id = r != null && r.status == RideStatus.open ? r.id : null;
+    if (id == _expiryFor) return;
+    _expiry?.cancel();
+    _expiry = null;
+    _expiryFor = id;
+    if (r == null || id == null || r.createdAt == null) return;
+    final left = searchTimeLeft(searchElapsed(r.createdAt, DateTime.now()), AppConfig.requestExpiry);
+    _expiry = Timer(left + const Duration(seconds: 1), () async {
+      if (!mounted) return;
+      try {
+        await ref.read(rideRepositoryProvider).expireStaleOpen();
+      } catch (_) {}
+    });
+  }
+
+  /// "Request expired" on the home screen (the ride screen says the same when
+  /// it is the one open).
+  bool _expiredShownFor(String id) => !_expiredShown.add(id);
+  final _expiredShown = <String>{};
+
+  void _showExpired(RideRequest r) {
+    if (_expiredShownFor(r.id) || ModalRoute.of(context)?.isCurrent != true) return;
+    showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        key: const ValueKey('home-request-expired'),
+        title: const Text('Request expired'),
+        content: Text(
+          r.offerMe
+              ? "We couldn't find a driver in time. Try again, perhaps with a higher fare."
+              : "We couldn't find a driver in time. Please try again.",
+        ),
+        actions: [FilledButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
+      ),
+    );
   }
 
   /// The recenter button: back onto the last known fix at once, then onto
@@ -999,7 +1048,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ref.listen(rideStreamProvider(ongoing.id), (_, next) {
         final r = next.value;
         if (r == null || !mounted || _ongoing?.id != r.id) return;
+        final was = _ongoing?.status.db;
         setState(() => _ongoing = r.status.isOngoing ? r : null);
+        _armExpiry();
+        // Nobody took it: say so here, where the rider is, rather than only
+        // on the ride screen they may never open again.
+        if (requestJustExpired(was, r.status.db)) _showExpired(r);
       });
     }
     // The same for every ride booked for someone else.
