@@ -154,6 +154,15 @@ class EvOrderRepository {
 final evOrderRepositoryProvider = Provider((ref) => EvOrderRepository(ref.watch(supabaseProvider)));
 
 final evCatalogProvider = FutureProvider.autoDispose((ref) {
-  ref.watchLive('settings_entries');
+  for (final t in const [
+    'settings_entries',
+    'ev_vehicle_details',
+    'ev_vehicle_inventory',
+    'ev_delivery_advisors',
+    'ev_finance_options',
+    'ev_order_fee',
+  ]) {
+    ref.watchLive(t);
+  }
   return ref.watch(evOrderRepositoryProvider).catalog();
 });

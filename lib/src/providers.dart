@@ -7,6 +7,7 @@ import 'core/navigation_app.dart';
 import 'data/account_repository.dart';
 import 'data/auth_repository.dart';
 import 'data/geo_service.dart';
+import 'data/live_tables.dart';
 import 'data/models.dart';
 import 'data/ride_repository.dart';
 
@@ -30,11 +31,15 @@ final currentUserIdProvider = Provider<String?>((ref) {
 
 final profileProvider = FutureProvider<Profile?>((ref) async {
   if (ref.watch(currentUserIdProvider) == null) return null;
+  // An admin's change to the account (block, verify, edit) shows at once.
+  ref.watchLive('profiles');
   return ref.watch(accountRepositoryProvider).profile();
 });
 
 final partnerProvider = FutureProvider<Partner?>((ref) async {
   if (ref.watch(currentUserIdProvider) == null) return null;
+  // An admin approving, rejecting or blocking the partner shows at once.
+  ref.watchLive('partners');
   try {
     return await ref.watch(accountRepositoryProvider).partner();
   } catch (_) {

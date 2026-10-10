@@ -12,6 +12,7 @@ typedef GateCatalogue = ({List<GateRow> places, List<GateRow> gates});
 
 final placeGatesProvider = FutureProvider<GateCatalogue>((ref) async {
   ref.watchLive('multi_gate');
+  ref.watchLive('airport_areas');
   final db = ref.watch(supabaseProvider);
   GateRow row(Map<String, dynamic> r) =>
       (id: '${r['id']}', values: Map<String, dynamic>.from((r['values'] as Map?) ?? const {}));

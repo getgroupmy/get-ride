@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/admin/screens/people/people_logic.dart';
+import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/data/partner_onboarding_repository.dart';
 import 'package:get_ride/src/features/partner/partner_onboarding_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
@@ -118,6 +119,8 @@ Future<_FakeOnboarding> _pump(
       partnerOnboardingRepositoryProvider.overrideWithValue(repo),
       peopleRepositoryProvider.overrideWithValue(people ?? _FakePeople()),
       partnerProvider.overrideWith((_) async => null),
+      // No realtime socket in a test.
+      liveTablesProvider.overrideWith(_QuietLive.new),
     ],
     child: MaterialApp(theme: appTheme(brightness), home: screen),
   ));
@@ -238,4 +241,9 @@ void main() {
       expect(find.textContaining('old note'), findsNothing, reason: 'only a rejection shows its note');
     });
   }
+}
+
+class _QuietLive extends LiveTables {
+  @override
+  Map<String, int> build() => const {};
 }

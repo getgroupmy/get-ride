@@ -36,6 +36,7 @@ import '../../data/device_access.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/fare_tariff_repository.dart';
 import '../../data/geo_service.dart';
+import '../../data/live_tables.dart';
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
@@ -557,8 +558,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _updateRoute();
   }
 
+  /// An admin changed a region (bidding, pricing, services, its rules): the
+  /// pickup's are read again, so the open booking sheet follows at once.
+  void _regionsChanged() {
+    ref.read(rideRepositoryProvider).forgetRegions();
+    _biddingAt = null;
+    final a = _pickup;
+    if (a != null) unawaited(_checkBidding(a.point));
+  }
+
   /// Whether riders may set their own fare at [pickup]; checked once per
-  /// pickup. Unknown is off, which is today's fixed fare.
+  /// pickup (and again when an admin changes a region). Unknown is off,
+  /// which is today's fixed fare.
   Future<void> _checkBidding(LatLng pickup) async {
     if (_biddingAt == pickup) return;
     _biddingAt = pickup;
@@ -958,6 +969,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listenLive(liveRegionTables, _regionsChanged);
     // The ride card follows its ride: a ride that is cancelled, expires or
     // ends (on this device or anywhere else) leaves the home screen, and one
     // that moves on shows its new status, however the rider came back here

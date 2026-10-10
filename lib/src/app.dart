@@ -19,6 +19,7 @@ import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
 import 'data/branding_cache.dart';
+import 'data/live_tables.dart';
 import 'data/messaging_repository.dart';
 import 'data/push_service.dart';
 import 'data/session_tracker.dart';
@@ -415,6 +416,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       onResume: () {
         unawaited(tracker.resumed());
         unawaited(_alwaysOn?.reload());
+        unawaited(_branding?.resync());
       },
     );
   }
@@ -444,8 +446,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   }
 
   /// Keeps the screen awake on the admin's Always ON pages (see
-  /// `core/always_on.dart`). The set is re-read whenever the app comes back
-  /// to the foreground, so an admin's change lands without a relaunch.
+  /// `core/always_on.dart`). The set is re-read when an admin changes it
+  /// (live settings) and whenever the app comes back to the foreground.
   void _startAlwaysOn() {
     final controller = AlwaysOnController(
       setAwake: (on) => WakelockPlus.toggle(enable: on),
@@ -463,6 +465,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     _routeListener = onRoute;
     router.routerDelegate.addListener(onRoute);
     unawaited(controller.reload().then((_) => onRoute()));
+    ref.listenManual(liveTablesProvider.select((r) => r['settings_entries'] ?? 0), (_, _) {
+      unawaited(controller.reload().then((_) => onRoute()));
+    });
   }
 
   @override

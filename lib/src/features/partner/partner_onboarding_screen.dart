@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,6 +11,7 @@ import '../../admin/screens/people/people_widgets.dart';
 import '../../core/partner_doc_check.dart' show renewalWindowDays;
 import '../../core/partner_onboarding.dart';
 import '../../core/vehicle_onboarding.dart';
+import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
@@ -99,6 +102,31 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     } catch (e) {
       if (mounted) setState(() => _loadError = e);
     }
+  }
+
+  /// An admin changed what this form is built from (areas, partner types,
+  /// required documents) or decided on this application: read it all again,
+  /// keeping what is being typed and picked.
+  Future<void> _refresh() async {
+    if (_s == null || _busy) return;
+    try {
+      final s = await _repo.load();
+      final people = ref.read(peopleRepositoryProvider);
+      final settled = await Future.wait<Object>([
+        people.geoOptions(inUse: [_area]),
+        people.partnerTypes(),
+        people.requiredDocuments(),
+        people.documentTypes(),
+      ]);
+      if (!mounted || _busy) return;
+      setState(() {
+        _s = s;
+        _geo = settled[0] as GeoOptions;
+        _typeEntries = settled[1] as _Entries;
+        _requiredDocs = settled[2] as _Entries;
+        _vehicleTypeIds = vehicleDocTypeIds(settled[3] as _Entries);
+      });
+    } catch (_) {}
   }
 
   /// Runs one save, then shows the next step still missing.
@@ -200,6 +228,13 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
 
   @override
   Widget build(BuildContext context) {
+    ref.listenLive(const [
+      ...liveRegionTables,
+      'required_document',
+      'document_type',
+      'partners',
+      'provider_documents',
+    ], () => unawaited(_refresh()));
     final s = _s;
     Widget body;
     if (_loadError != null) {

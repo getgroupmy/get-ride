@@ -87,7 +87,8 @@ void applyBrandingGlobals(AppBranding? b) {
 }
 
 /// Keeps the cache in step with the `app_branding` row: once at launch, then
-/// live while the app runs, so an admin's change shows on the next launch.
+/// live while the app runs (and again on coming back to the foreground, in
+/// case the socket dropped meanwhile), so an admin's change shows at once.
 class BrandingSync {
   BrandingSync(this._db);
   final SupabaseClient _db;
@@ -102,11 +103,16 @@ class BrandingSync {
     await BrandingCache.save(b);
   }
 
-  Future<void> start() async {
+  /// Reads the row again.
+  Future<void> resync() async {
     try {
       final row = await _db.from(brandingTable).select().eq('id', brandingRowId).maybeSingle();
       await _apply(AppBranding.fromRow(row));
     } catch (_) {}
+  }
+
+  Future<void> start() async {
+    await resync();
     try {
       _channel = _db
           .channel('app_branding_changes')
