@@ -207,6 +207,49 @@ void main() {
     expect(find.byKey(const ValueKey('fare-trend-up')), findsOneWidget, reason: 'only the untouched card');
   });
 
+  for (final dir in FareTrendDirection.values) {
+    testWidgets('a fixed fare carries the ${dir.name} arrows on every row, chosen too, and its demand bar', (tester) async {
+      final ai = _SlowAi();
+      await _pump(tester, _Rides(), ai: ai);
+      ai.answer.complete((
+        estimate: RouteEstimate(
+          distanceKm: 12,
+          durationMin: 30,
+          trend: FareTrend(direction: dir, fromFareRange: true),
+        ),
+        unavailable: false,
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      final key = ValueKey('fare-trend-${dir.name}');
+      expect(find.byKey(const ValueKey('fare-raise')), findsNothing, reason: 'no bidding');
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('service-Teksi')), matching: find.byKey(key)),
+        findsOneWidget,
+        reason: 'the chosen row',
+      );
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('service-GET XL')), matching: find.byKey(key)),
+        findsOneWidget,
+        reason: 'the other row',
+      );
+      final up = dir == FareTrendDirection.up;
+      expect(find.byKey(const ValueKey('high-demand')), up ? findsOneWidget : findsNothing);
+      expect(find.byKey(const ValueKey('low-demand')), up ? findsNothing : findsOneWidget);
+      // And beside the fare in its details.
+      await tester.tap(find.byKey(const ValueKey('fare-details')));
+      // The arrows never settle: they move on.
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('fare-details-sheet')), matching: find.byKey(key)),
+        findsOneWidget,
+      );
+    });
+  }
+
   Future<void> addStop(WidgetTester tester, String name) async {
     await tester.tap(find.byKey(const ValueKey('confirm-add-stop')));
     await _settle(tester);

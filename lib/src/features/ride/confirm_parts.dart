@@ -8,7 +8,7 @@ import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare.dart';
 import '../../core/fare_offer.dart';
 import '../../core/payment_types.dart';
-import '../../core/route_estimate.dart' show FareTrend;
+import '../../core/route_estimate.dart' show FareTrend, FareTrendDirection;
 import '../../widgets/fare_trend_arrows.dart';
 import '../../core/ride_confirm.dart' show RideOptions;
 import '../../data/geo_service.dart';
@@ -1695,31 +1695,37 @@ class CalculatingFareOverlay extends StatelessWidget {
   }
 }
 
-/// inDrive's bar over a fixed-fare list while fares are above the usual
-/// (the AI's trend is up): no stepper to argue with, just the reason.
-class HighDemandBar extends StatelessWidget {
-  const HighDemandBar({super.key});
+/// inDrive's bar over a fixed-fare list when the fare is off the usual,
+/// beside the same up / down arrows the prices carry: "High demand" while
+/// the AI's trend is up, "Low demand" while it is down.
+class FareDemandBar extends StatelessWidget {
+  const FareDemandBar({super.key, required this.direction});
+
+  final FareTrendDirection direction;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final dark = t.brightness == Brightness.dark;
-    final ink = dark ? const Color(0xFFFCD34D) : const Color(0xFF92400E);
+    final up = direction == FareTrendDirection.up;
+    final ink = up
+        ? (dark ? const Color(0xFFFCA5A5) : const Color(0xFF991B1B))
+        : (dark ? const Color(0xFF86EFAC) : const Color(0xFF166534));
+    final bg = up
+        ? (dark ? const Color(0xFF3B1414) : const Color(0xFFFEE2E2))
+        : (dark ? const Color(0xFF12301C) : const Color(0xFFDCFCE7));
     return Container(
-      key: const ValueKey('high-demand'),
+      key: ValueKey(up ? 'high-demand' : 'low-demand'),
       margin: const EdgeInsets.fromLTRB(4, 0, 4, 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: dark ? const Color(0xFF3A2E12) : const Color(0xFFFEF3C7),
-        borderRadius: BorderRadius.circular(14),
-      ),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14)),
       child: Row(
         children: [
-          Icon(Icons.trending_up, size: 18, color: ink),
+          Icon(up ? Icons.trending_up : Icons.trending_down, size: 18, color: ink),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'High demand — fare is higher',
+              up ? 'High demand — fare is higher' : 'Low demand — fare is lower',
               style: t.textTheme.bodyMedium?.copyWith(color: ink, fontWeight: FontWeight.w600),
             ),
           ),

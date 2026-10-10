@@ -1559,9 +1559,8 @@ class _BookingPanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
             child: RouteBasisLine(route: route!, ai: ai),
           ),
-          // A fixed fare above the usual: inDrive's "High demand" bar.
-          if (!bidding && ai?.trend?.direction == FareTrendDirection.up)
-            const HighDemandBar(),
+          // A fixed fare off the usual: inDrive's demand bar, high or low.
+          if (!bidding && ai?.trend != null) FareDemandBar(direction: ai!.trend!.direction),
           for (final s in services)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
