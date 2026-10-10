@@ -7,12 +7,14 @@ import { assertEquals } from "jsr:@std/assert@1.0.19";
 
 import {
   ANDROID_CHANNEL_ID,
+  fcmCallMessage,
   fcmData,
   fcmMessage,
   fcmOutcome,
   fcmSendUrl,
   isExpoToken,
   parseServiceAccount,
+  planDeliveries,
   splitTokens,
 } from "./push.ts";
 
@@ -96,4 +98,67 @@ Deno.test("only tokens FCM says are gone get pruned", () => {
   assertEquals(fcmOutcome(401, { error: { status: "UNAUTHENTICATED" } }), "failed");
   assertEquals(fcmOutcome(429, { error: { details: [{ errorCode: "QUOTA_EXCEEDED" }] } }), "failed");
   assertEquals(fcmOutcome(503, null), "failed");
+});
+
+Deno.test("a ride call rings a capable Android build with a data message, an older one with a notification", () => {
+  const rows = [
+    { token: "new-android", platform: "android", profile_id: "p", capabilities: ["call_ui"] },
+    { token: "old-android", platform: "android", profile_id: "p", capabilities: [] },
+    { token: "ExponentPushToken[x]", platform: "android", profile_id: "p" },
+  ];
+  assertEquals(planDeliveries(rows, "ride_call", false), [
+    { via: "fcm", token: "new-android", style: "call" },
+    { via: "fcm", token: "old-android", style: "alert" },
+    { via: "expo", token: "ExponentPushToken[x]" },
+  ]);
+  assertEquals(planDeliveries(rows, "ride_call_end", false)[0], { via: "fcm", token: "new-android", style: "call" });
+  // Anything else is a notification, whatever the build can do.
+  assertEquals(planDeliveries(rows, "ride_message", false)[0], { via: "fcm", token: "new-android", style: "alert" });
+});
+
+Deno.test("VoIP tokens get ride calls only, and only with the APNs key", () => {
+  const rows = [
+    { token: "voip", platform: "ios_voip", profile_id: "p" },
+    { token: "iphone", platform: "ios", profile_id: "p", capabilities: ["call_ui"] },
+    { token: "other-iphone", platform: "ios", profile_id: "q" },
+  ];
+  // Without the key: the iPhone is told by notification, the VoIP token is left alone.
+  assertEquals(planDeliveries(rows, "ride_call", false), [
+    { via: "fcm", token: "iphone", style: "alert" },
+    { via: "fcm", token: "other-iphone", style: "alert" },
+  ]);
+  // With it: CallKit rings, so that account's iPhone is not told twice.
+  assertEquals(planDeliveries(rows, "ride_call", true), [
+    { via: "voip", token: "voip" },
+    { via: "fcm", token: "other-iphone", style: "alert" },
+  ]);
+  // A missed call is a notification; no VoIP push ever carries anything but a call.
+  assertEquals(planDeliveries(rows, "ride_call_end", true), [
+    { via: "fcm", token: "iphone", style: "alert" },
+    { via: "fcm", token: "other-iphone", style: "alert" },
+  ]);
+  assertEquals(planDeliveries(rows, "ride_request", true).some((d) => d.via === "voip"), false);
+});
+
+Deno.test("devices are deduplicated and blanks dropped", () => {
+  assertEquals(
+    planDeliveries([{ token: " a " }, { token: "a" }, { token: "" }, { token: null as unknown as string }], undefined, true),
+    [{ via: "fcm", token: "a", style: "alert" }],
+  );
+});
+
+Deno.test("the Android call push is data only, urgent and short-lived", () => {
+  const { message } = fcmCallMessage("tok", "Aina is calling", "Voice call about your ride.", {
+    type: "ride_call",
+    call_id: "c1",
+  });
+  assertEquals("notification" in message, false);
+  assertEquals(message.data, {
+    type: "ride_call",
+    call_id: "c1",
+    title: "Aina is calling",
+    body: "Voice call about your ride.",
+  });
+  assertEquals(message.android, { priority: "HIGH", ttl: "45s" });
+  assertEquals(fcmCallMessage("tok", "Missed call", "b", { type: "ride_call_end" }).message.android.ttl, "120s");
 });

@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme, routerProvider;
+import 'package:get_ride/src/core/call_ring.dart';
 import 'package:get_ride/src/core/ride_call.dart';
 import 'package:get_ride/src/core/support_call.dart';
+import 'package:get_ride/src/data/call_ringer.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/ride_call_repository.dart';
 import 'package:get_ride/src/features/ride/ride_call_screen.dart';
@@ -91,6 +93,32 @@ class _Repo implements RideCallRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// The phone's own call screen, recorded.
+class _Ringer implements CallRinger {
+  final log = <String>[];
+  final pressed = StreamController<(RingAction, String)>.broadcast();
+  List<String> accepted = const [];
+
+  @override
+  bool get available => true;
+  @override
+  Future<bool> ring(CallRing ring) async {
+    log.add('ring:${ring.callId}:${ring.callerName}');
+    return true;
+  }
+
+  @override
+  Future<void> stop(String callId) async => log.add('stop:$callId');
+  @override
+  Future<void> connected(String callId) async => log.add('connected:$callId');
+  @override
+  Stream<(RingAction, String)> get actions => pressed.stream;
+  @override
+  Future<List<String>> acceptedCalls() async => accepted;
+  @override
+  Future<String?> voipToken() async => null;
+}
+
 class _Media implements CallMedia {
   final log = <String>[];
 
@@ -134,6 +162,7 @@ void main() {
     required String me,
     Brightness brightness = Brightness.light,
     String? phone = '+60123456789',
+    CallRinger? ringer,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(600, 1000);
@@ -165,7 +194,11 @@ void main() {
         ),
         GoRoute(
           path: '/ride-call/:id',
-          builder: (_, s) => RideCallScreen(callId: s.pathParameters['id']!),
+          builder: (_, s) => RideCallScreen(
+            key: ValueKey(s.uri.toString()),
+            callId: s.pathParameters['id']!,
+            answer: s.uri.queryParameters['answer'] == '1',
+          ),
         ),
       ],
     );
@@ -182,6 +215,7 @@ void main() {
             return true;
           }),
           routerProvider.overrideWithValue(router),
+          callRingerProvider.overrideWithValue(ringer ?? NoCallRinger()),
         ],
         child: MaterialApp.router(
           theme: appTheme(brightness),
@@ -275,6 +309,92 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  group('the phone\'s own call screen', () {
+    testWidgets('an incoming call rings it instead of opening the app', (tester) async {
+      final ringer = _Ringer();
+      final router = await pump(tester, me: driver, ringer: ringer);
+      repo.incoming.add(RideCall(callRow()));
+      await tester.pumpAndSettle();
+      expect(ringer.log, ['ring:k1:Aina']);
+      expect(router.state.matchedLocation, '/');
+      // The same row again doesn't ring twice.
+      repo.incoming.add(RideCall(callRow()));
+      await tester.pumpAndSettle();
+      expect(ringer.log, ['ring:k1:Aina']);
+      // The caller gives up: it stops ringing.
+      repo.incoming.add(RideCall(callRow(status: 'cancelled')));
+      await tester.pumpAndSettle();
+      expect(ringer.log, ['ring:k1:Aina', 'stop:k1']);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Accept there opens the call and answers it', (tester) async {
+      final ringer = _Ringer();
+      final router = await pump(tester, me: driver, ringer: ringer);
+      repo.incoming.add(RideCall(callRow()));
+      await tester.pumpAndSettle();
+      ringer.pressed.add((RingAction.accept, 'k1'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump();
+      expect(router.state.uri.toString(), '/ride-call/k1?answer=1');
+      expect(repo.log, ['answer:k1']);
+      expect(ringer.log, contains('connected:k1'), reason: 'the phone keeps the call it answered');
+      expect(media.log, ['open']);
+      expect(find.byKey(const ValueKey('ride-call-mute')), findsOneWidget);
+
+      // End on the phone's screen hangs up here too.
+      ringer.pressed.add((RingAction.end, 'k1'));
+      await tester.pump();
+      await tester.pump();
+      expect(repo.log.last, 'finish:ended');
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.text('trip'), findsOneWidget);
+      expect(ringer.log.last, 'stop:k1');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Decline there turns the call down', (tester) async {
+      final ringer = _Ringer();
+      await pump(tester, me: driver, ringer: ringer);
+      repo.incoming.add(RideCall(callRow()));
+      await tester.pumpAndSettle();
+      ringer.pressed.add((RingAction.decline, 'k1'));
+      await tester.pumpAndSettle();
+      expect(repo.log, ['finish:declined']);
+      expect(find.text('trip'), findsOneWidget);
+    });
+
+    testWidgets('an Accept that opened a closed app opens that call', (tester) async {
+      final ringer = _Ringer()..accepted = ['k1'];
+      final router = await pump(tester, me: driver, ringer: ringer);
+      await tester.pump();
+      await tester.pump();
+      expect(router.state.uri.toString(), '/ride-call/k1?answer=1');
+      expect(repo.log, ['answer:k1']);
+      await tester.tap(find.byKey(const ValueKey('ride-call-end')));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a call answered in the app stops the phone ringing', (tester) async {
+      final ringer = _Ringer();
+      final router = await pump(tester, me: driver, ringer: ringer);
+      // The notification was tapped: the in-app incoming call is up.
+      unawaited(router.push('/ride-call/k1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('ride-call-accept')));
+      await tester.pump();
+      await tester.pump();
+      expect(ringer.log, contains('stop:k1'));
+      expect(ringer.log, isNot(contains('connected:k1')));
+      await tester.tap(find.byKey(const ValueKey('ride-call-end')));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+    });
+  });
 
   testWidgets('declining an incoming call', (tester) async {
     await pump(tester, me: driver, brightness: Brightness.dark);

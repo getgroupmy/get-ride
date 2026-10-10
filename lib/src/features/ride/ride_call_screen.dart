@@ -7,9 +7,12 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app.dart' show routerProvider;
+import '../../core/call_ring.dart';
 import '../../core/ride_call.dart';
 import '../../core/support_call.dart';
+import '../../data/call_ringer.dart';
 import '../../data/models.dart';
+import '../../data/push_service.dart';
 import '../../data/ride_call_repository.dart';
 import '../../providers.dart';
 import '../support/call/call_session.dart';
@@ -18,14 +21,22 @@ import 'ride_tracking_screen.dart' show rideStreamProvider;
 /// Opens the phone's dialer for the fallback phone call (overridden in tests).
 final rideCallDialerProvider = Provider<Future<bool> Function(Uri)>((ref) => launchUrl);
 
+/// Calls hung up from the phone's own call screen (End on an iPhone's lock
+/// screen), for the open [RideCallScreen] to hang up too.
+final _phoneHangUps = StreamController<String>.broadcast();
+
 /// A call between a rider and their driver (migration 0131), full screen:
 /// an incoming call with answer and decline, then the call itself with mute,
 /// speaker and hang-up. The same screen for both sides and both directions;
 /// the call row says which end this is. The call ends by itself when the
 /// ride does.
 class RideCallScreen extends ConsumerStatefulWidget {
-  const RideCallScreen({super.key, required this.callId});
+  const RideCallScreen({super.key, required this.callId, this.answer = false});
   final String callId;
+
+  /// Accept was pressed on the phone's own call screen: answer as it opens,
+  /// and keep the phone's record of the call until it ends.
+  final bool answer;
 
   @override
   ConsumerState<RideCallScreen> createState() => _RideCallScreenState();
@@ -42,12 +53,19 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
   String? _error;
   bool _answering = false;
   bool _leaving = false;
+  StreamSubscription<String>? _hangUpSub;
+  late final CallRinger _ringer;
 
   RideCall? get _current => _session?.call ?? _call;
 
   @override
   void initState() {
     super.initState();
+    _ringer = ref.read(callRingerProvider);
+    _hangUpSub = _phoneHangUps.stream.listen((id) {
+      final s = _session;
+      if (id == widget.callId && s != null && !s.isOver) unawaited(s.hangUp());
+    });
     unawaited(_open());
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && (_session?.connected ?? false)) setState(() {});
@@ -69,6 +87,10 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
         await _join(call);
       } else if (canAnswerRideCall(call, me, now)) {
         setState(() => _call = call);
+        if (widget.answer) {
+          unawaited(_answer());
+          return;
+        }
         _ringSub = repo.watch(call.id).listen(_onRinging, onError: (Object _) {});
         final left = callRingTimeout - now.difference(call.createdAt ?? now);
         _ringOut = Timer(left.isNegative ? Duration.zero : left, () {
@@ -122,6 +144,9 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
     _ringSub = null;
     if (ok) {
       setState(() => _answering = false);
+      // Answered here: the phone's call screen stops ringing. Answered there:
+      // the phone keeps the call (its audio, its timer) until it ends.
+      unawaited(widget.answer ? _ringer.connected(c.id) : _ringer.stop(c.id));
       await _join(c.withStatus(CallStatus.accepted));
     } else {
       _answering = false;
@@ -132,6 +157,7 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
   Future<void> _decline() async {
     final c = _call;
     if (c == null || _session != null) return;
+    unawaited(_ringer.stop(c.id));
     _over(c.withStatus(CallStatus.declined));
     try {
       await ref.read(rideCallRepositoryProvider).finish(c.id, CallStatus.declined);
@@ -141,6 +167,7 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
   /// The call is over before this end joined it: say how, then leave.
   void _over(RideCall c) {
     if (!mounted) return;
+    unawaited(_ringer.stop(c.id));
     _ringOut?.cancel();
     unawaited(_ringSub?.cancel());
     _ringSub = null;
@@ -152,7 +179,10 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
     if (!mounted) return;
     setState(() {});
     final s = _session;
-    if (s != null && s.isOver) _leaveSoon(error: s.error != null);
+    if (s != null && s.isOver) {
+      unawaited(_ringer.stop(s.call.id));
+      _leaveSoon(error: s.error != null);
+    }
   }
 
   void _leaveSoon({bool error = false}) {
@@ -187,10 +217,12 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
     _tick?.cancel();
     _ringOut?.cancel();
     unawaited(_ringSub?.cancel());
+    unawaited(_hangUpSub?.cancel());
     _session?.removeListener(_changed);
     // Leaving the screen any other way still hangs up.
     final s = _session;
     if (s != null && !s.isOver) unawaited(s.hangUp());
+    if (s != null) unawaited(_ringer.stop(s.call.id));
     s?.dispose();
     super.dispose();
   }
@@ -534,9 +566,16 @@ Future<void> startRideCall(BuildContext context, WidgetRef ref, RideRequest ride
   }
 }
 
-/// Rings on any screen: a call from the other person on a ride opens the
-/// full-screen incoming call over whatever is showing. Ride calls only; the
-/// support card is [IncomingCallListener].
+/// Rings on any screen: a call from the other person on a ride rings the
+/// phone's own incoming-call screen (call_ringer.dart, migration 0134) or,
+/// where there is none (web, desktop), opens the full-screen incoming call
+/// over whatever is showing. Ride calls only; the support card is
+/// [IncomingCallListener].
+///
+/// It also answers for the phone's call screen while the app is open: a
+/// call stops ringing there when its row (or a `ride_call_end` push) says it
+/// stopped, and Accept, Decline and End pressed there act on the call —
+/// including an Accept that opened a closed app.
 class RideCallListener extends ConsumerStatefulWidget {
   const RideCallListener({super.key, required this.child});
   final Widget child;
@@ -547,15 +586,36 @@ class RideCallListener extends ConsumerStatefulWidget {
 
 class _RideCallListenerState extends ConsumerState<RideCallListener> {
   StreamSubscription<RideCall>? _sub;
+  StreamSubscription<Map<String, dynamic>>? _pushSub;
+  StreamSubscription<(RingAction, String)>? _actionSub;
   String? _uid;
+  late final CallRinger _ringer;
 
-  /// Calls already put on screen (each rings once, however often its row
-  /// changes).
+  /// Calls already rung or put on screen (each rings once, however often
+  /// its row changes or a push repeats it).
   final _shown = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _ringer = ref.read(callRingerProvider);
+    if (_ringer.available) {
+      _actionSub = _ringer.actions.listen(_onAction, onError: (Object _) {});
+      _pushSub = PushService.instance?.calls.listen(_onPush, onError: (Object _) {});
+      // Accept on the phone's screen of a closed app: open that call now.
+      unawaited(_ringer.acceptedCalls().then((ids) {
+        for (final id in ids) {
+          _onAction((RingAction.accept, id));
+        }
+      }));
+    }
+  }
 
   @override
   void dispose() {
     unawaited(_sub?.cancel());
+    unawaited(_pushSub?.cancel());
+    unawaited(_actionSub?.cancel());
     super.dispose();
   }
 
@@ -570,14 +630,60 @@ class _RideCallListenerState extends ConsumerState<RideCallListener> {
     } catch (_) {}
   }
 
+  String get _path => ref.read(routerProvider).routerDelegate.currentConfiguration.uri.path;
+
   void _onCall(RideCall c) {
-    if (!mounted || !canAnswerRideCall(c, _uid, ref.read(callClockProvider)()) || !_shown.add(c.id)) return;
-    final router = ref.read(routerProvider);
-    final path = '/ride-call/${Uri.encodeComponent(c.id)}';
+    if (!mounted) return;
+    // It stopped ringing (the caller hung up, or it rang out).
+    if (ringShouldStop(c.status)) {
+      if (_ringer.available && c.status != CallStatus.accepted) unawaited(_ringer.stop(c.id));
+      return;
+    }
+    final ring = callRingFromCall(c, _uid, ref.read(callClockProvider)());
+    if (ring != null) unawaited(_ring(ring));
+  }
+
+  void _onPush(Map<String, dynamic> data) {
+    final ended = endedCallFromPush(data);
+    if (ended != null) {
+      unawaited(_ringer.stop(ended));
+      return;
+    }
+    final ring = callRingFromPush(data);
+    if (ring != null) unawaited(_ring(ring));
+  }
+
+  Future<void> _ring(CallRing ring) async {
+    if (!_shown.add(ring.callId)) return;
+    final path = rideCallRoute(ring.callId);
     // Already open (the notification was tapped first).
-    if (router.routerDelegate.currentConfiguration.uri.path == path) return;
+    if (_path == path) return;
+    if (_ringer.available && await _ringer.ring(ring)) return;
+    if (!mounted) return;
     unawaited(HapticFeedback.heavyImpact());
-    unawaited(router.push(path));
+    unawaited(ref.read(routerProvider).push(path));
+  }
+
+  void _onAction((RingAction, String) action) {
+    if (!mounted) return;
+    final (what, id) = action;
+    switch (what) {
+      case RingAction.accept:
+        _shown.add(id);
+        final router = ref.read(routerProvider);
+        // The in-app incoming call is already up: answer it there.
+        if (_path == rideCallRoute(id)) {
+          router.replace(rideCallRoute(id, answer: true));
+        } else {
+          unawaited(router.push(rideCallRoute(id, answer: true)));
+        }
+      case RingAction.decline:
+        unawaited(ref.read(rideCallRepositoryProvider).finish(id, CallStatus.declined).catchError((Object _) {}));
+      case RingAction.end:
+        _phoneHangUps.add(id);
+      case RingAction.timeout:
+        break;
+    }
   }
 
   @override
