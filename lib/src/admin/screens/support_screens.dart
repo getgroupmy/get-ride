@@ -6,10 +6,14 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/format.dart';
+import '../../data/models.dart' show SupportMessage;
 import '../../features/support/call/call_screen.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/chat_photo.dart';
 import '../../widgets/common.dart';
+import '../../widgets/net_image.dart';
+import '../../widgets/voice_note.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
@@ -313,7 +317,14 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
                                 style: t.textTheme.labelSmall?.copyWith(
                                     color: mine ? t.colorScheme.onPrimary.withValues(alpha: 0.75) : null),
                               ),
-                              SelectableText(body, style: TextStyle(color: mine ? t.colorScheme.onPrimary : null)),
+                              _AdminMedia(
+                                message: m,
+                                color: mine ? t.colorScheme.onPrimary : t.colorScheme.onSurface,
+                                fallback: SelectableText(
+                                  body,
+                                  style: TextStyle(color: mine ? t.colorScheme.onPrimary : null),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -348,5 +359,42 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
         ]),
       ),
     );
+  }
+}
+
+/// A support message's photo or voice note, as the customer sees it; any
+/// other message is [fallback].
+class _AdminMedia extends StatelessWidget {
+  const _AdminMedia({required this.message, required this.color, required this.fallback});
+  final Map<String, dynamic> message;
+  final Color color;
+  final Widget fallback;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = SupportMessage(message);
+    final url = m.mediaUrl;
+    if (url == null || url.isEmpty) return fallback;
+    if (m.type == 'audio') {
+      return VoiceNotePlayer(url: () async => url, length: m.mediaDuration, color: color);
+    }
+    if (m.type == 'image') {
+      return GestureDetector(
+        onTap: () => openPhotoViewer(context, url),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 240, maxHeight: 240),
+            child: Image.network(
+              url,
+              fit: BoxFit.cover,
+              frameBuilder: boneUntilPainted(),
+              errorBuilder: (_, _, _) => fallback,
+            ),
+          ),
+        ),
+      );
+    }
+    return fallback;
   }
 }

@@ -11,11 +11,11 @@
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>GET.ride connects to your Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>GET.ride uses the camera to scan payment and wallet QR codes, and to photograph your documents, vehicle and profile picture.</string>
+	<string>GET.ride uses the camera to scan payment and wallet QR codes, and to photograph your documents, vehicle and profile picture, and to take photos to send in chats.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>GET.ride lets you choose photos of your documents, vehicle and profile picture from your photo library.</string>
+	<string>GET.ride lets you choose photos of your documents, vehicle and profile picture from your photo library, and send photos in chats with your driver, passenger or support.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>GET.ride uses the microphone for voice calls with support and, with VoiceProtection on, to record trip audio during your rides. Trip recordings stay on your phone for 24 hours and are only sent to support if a ride is reported.</string>
+	<string>GET.ride uses the microphone for voice calls, for voice notes you send in chats and, with VoiceProtection on, to record trip audio during your rides. Trip recordings stay on your phone for 24 hours and are only sent to support if a ride is reported.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>GET.ride keeps sharing your location while a trip is in progress, while you are online as a driver, and while Meter Digital is running, even when the app is in the background.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

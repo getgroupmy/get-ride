@@ -4,11 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
+import '../../core/ride_chat.dart' show rideVoiceNoteMax;
 import '../../core/support_media.dart';
 import '../../data/models.dart';
+import '../../data/photo_picker.dart';
+import '../../data/voice_recorder.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/chat_photo.dart';
 import '../../widgets/common.dart';
+import '../../widgets/voice_note.dart';
+import '../../widgets/voice_note_composer.dart';
 import 'call/call_screen.dart';
 import 'support_screen.dart';
 import '../../widgets/in_app_page.dart';
@@ -39,18 +45,26 @@ class SupportChatScreen extends ConsumerStatefulWidget {
   ConsumerState<SupportChatScreen> createState() => _SupportChatScreenState();
 }
 
-class _SupportChatScreenState extends ConsumerState<SupportChatScreen> {
+class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with VoiceNoteComposer {
   final _text = TextEditingController();
   bool _sending = false;
+
+  /// Send while the box has text, the microphone while it hasn't.
+  bool _hasText = false;
 
   @override
   void initState() {
     super.initState();
+    _text.addListener(() {
+      final has = _text.text.trim().isNotEmpty;
+      if (has != _hasText) setState(() => _hasText = has);
+    });
     ref.read(accountRepositoryProvider).markTicketRead(widget.ticketId).catchError((_) {});
   }
 
   @override
   void dispose() {
+    disposeVoiceNote();
     _text.dispose();
     super.dispose();
   }
@@ -71,12 +85,17 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> {
     }
   }
 
-  /// Sends a photo or video (Expo's attach button).
+  /// Sends a photo snapped now, or a photo or video from the gallery
+  /// (Expo's attach button).
   Future<void> _attach() async {
     if (_sending) return;
+    final source = await choosePhotoSource(context, camera: ref.read(photoCameraAvailableProvider));
+    if (source == null || !mounted) return;
     final SupportAttachment? file;
     try {
-      file = await widget.pickAttachment();
+      file = source == PhotoSource.camera
+          ? await ref.read(photoPickerProvider)(PhotoSource.camera)
+          : await widget.pickAttachment();
     } catch (e) {
       if (mounted) showError(context, e);
       return;
@@ -98,11 +117,36 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> {
     }
   }
 
+  @override
+  Future<void> sendVoiceClip(VoiceClip clip) async {
+    setState(() => _sending = true);
+    try {
+      final name = ref.read(profileProvider).value?.name;
+      await ref
+          .read(accountRepositoryProvider)
+          .sendVoiceNote(widget.ticketId, clip.bytes, ext: clip.ext, duration: clip.duration, senderName: name);
+      ref.invalidate(ticketsProvider);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   Widget _content(SupportMessage m, bool mine, ThemeData t) {
     final fg = mine ? t.colorScheme.onPrimary : null;
     final url = m.mediaUrl;
+    if (url != null && url.isNotEmpty && m.type == 'audio') {
+      return VoiceNotePlayer(
+        key: ValueKey('support-voice-${m.id}'),
+        url: () async => url,
+        length: m.mediaDuration,
+        color: fg ?? t.colorScheme.onSurface,
+      );
+    }
     if (url != null && url.isNotEmpty && (m.type == 'image' || m.type == 'video')) {
-      void open() => openInApp(context, url, title: m.type == 'image' ? 'Photo' : 'Video');
+      void open() =>
+          m.type == 'image' ? openPhotoViewer(context, url) : openInApp(context, url, title: 'Video');
       if (m.type == 'image') {
         return GestureDetector(
           key: ValueKey('support-image-${m.id}'),
@@ -204,7 +248,14 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.all(8),
-              child: Row(children: [
+              child: recording
+                  ? VoiceRecordingBar(
+                      elapsed: recordElapsed,
+                      max: rideVoiceNoteMax,
+                      onCancel: cancelVoiceNote,
+                      onSend: finishVoiceNote,
+                    )
+                  : Row(children: [
                 BusyIconButton(
                   key: const ValueKey('support-attach'),
                   tooltip: 'Send a photo or video',
@@ -222,7 +273,20 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton.filled(onPressed: _sending ? null : _send, icon: const Icon(Icons.send)),
+                if (_hasText)
+                  IconButton.filled(
+                    key: const ValueKey('support-send'),
+                    tooltip: 'Send',
+                    onPressed: _sending ? null : _send,
+                    icon: const Icon(Icons.send),
+                  )
+                else
+                  IconButton.filled(
+                    key: const ValueKey('support-voice'),
+                    tooltip: 'Record a voice note',
+                    onPressed: _sending ? null : startVoiceNote,
+                    icon: const Icon(Icons.mic_none),
+                  ),
               ]),
             ),
           ),

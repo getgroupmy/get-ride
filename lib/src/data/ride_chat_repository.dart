@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../core/ride_chat.dart';
+import '../core/support_media.dart' show fileExt;
 import '../providers.dart';
 
 /// The rider ↔ driver chat of a ride (`ride_messages`, migration 0129). RLS
@@ -63,6 +66,50 @@ class RideChatRepository {
   Future<void> sendLocation(String requestId, RideChatRole role, double lat, double lng) =>
       _send({'request_id': requestId, 'sender_role': role.name, 'type': 'location', 'latitude': lat, 'longitude': lng});
 
+  /// Uploads a file into the ride's folder of the private bucket; its path.
+  Future<String> _upload(String requestId, RideMessageType kind, Uint8List bytes, String ext) async {
+    final path = rideChatMediaPath(requestId, kind, ext, DateTime.now(), const Uuid().v4().substring(0, 8));
+    await _db.storage
+        .from(rideChatMediaBucket)
+        .uploadBinary(path, bytes, fileOptions: FileOptions(contentType: rideChatContentType(kind, ext)));
+    return path;
+  }
+
+  /// Sends a photo (from the gallery or the camera) with an optional caption.
+  Future<void> sendPhoto(String requestId, RideChatRole role, Uint8List bytes, {required String name, String? caption}) async {
+    final problem = ridePhotoProblem(bytes.length);
+    if (problem != null) throw StateError(problem);
+    final ext = fileExt(name);
+    final path = await _upload(requestId, RideMessageType.image, bytes, ext.isEmpty ? 'jpg' : ext);
+    final c = caption?.trim() ?? '';
+    await _send({
+      'request_id': requestId,
+      'sender_role': role.name,
+      'type': 'image',
+      'media_path': path,
+      if (c.isNotEmpty) 'body': c.length > rideMessageMaxLength ? c.substring(0, rideMessageMaxLength) : c,
+    });
+  }
+
+  /// Sends a voice note.
+  Future<void> sendVoiceNote(String requestId, RideChatRole role, Uint8List bytes, {required String ext, required Duration duration}) async {
+    if (bytes.isEmpty) throw StateError('Nothing was recorded.');
+    if (bytes.length > rideChatMediaMaxBytes) throw StateError('That voice note is too long to send.');
+    final path = await _upload(requestId, RideMessageType.audio, bytes, ext);
+    await _send({
+      'request_id': requestId,
+      'sender_role': role.name,
+      'type': 'audio',
+      'media_path': path,
+      'media_duration': rideVoiceNoteSeconds(duration),
+    });
+  }
+
+  /// A short-lived link to a photo or voice note; only the ride's two
+  /// participants can get one.
+  Future<String> mediaUrl(String path) =>
+      _db.storage.from(rideChatMediaBucket).createSignedUrl(path, rideChatMediaLinkTtl.inSeconds);
+
   /// Moves the tick of the messages [ids] up to [to]; rows already past it
   /// are left alone (the database refuses a tick going back).
   Future<void> mark(List<String> ids, RideMessageStatus to) async {
@@ -73,6 +120,19 @@ class RideChatRepository {
 }
 
 final rideChatRepositoryProvider = Provider((ref) => RideChatRepository(ref.watch(supabaseProvider)));
+
+/// The link to a chat photo or voice note, renewed a little before the link
+/// itself runs out so a stale one is never handed out.
+final rideChatMediaUrlProvider = FutureProvider.autoDispose.family<String, String>((ref, path) async {
+  final url = await ref.watch(rideChatRepositoryProvider).mediaUrl(path);
+  final keep = ref.keepAlive();
+  final timer = Timer(rideChatMediaLinkTtl - const Duration(minutes: 10), () {
+    keep.close();
+    ref.invalidateSelf();
+  });
+  ref.onDispose(timer.cancel);
+  return url;
+});
 
 /// The live thread of a ride. Incoming messages are marked delivered as soon
 /// as they reach this device. Empty when signed out or unreadable.

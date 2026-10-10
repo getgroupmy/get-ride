@@ -2,12 +2,20 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/support_media.dart';
 import 'package:get_ride/src/data/account_repository.dart';
 import 'package:get_ride/src/data/models.dart';
+import 'package:get_ride/src/data/photo_picker.dart';
+import 'package:get_ride/src/data/voice_recorder.dart';
+import 'package:get_ride/src/features/support/call/mic_gate.dart';
+import 'package:get_ride/src/widgets/voice_note.dart';
 import 'package:get_ride/src/features/support/support_chat_screen.dart';
 import 'package:get_ride/src/providers.dart';
+
+import 'chat_media_fakes.dart';
+import 'fake_mic.dart';
 
 class _FakeAccount implements AccountRepository {
   final sent = <String>[];
@@ -18,6 +26,15 @@ class _FakeAccount implements AccountRepository {
   @override
   Future<void> sendAttachment(String ticketId, Uint8List bytes, {required String name, String? senderName}) async =>
       sent.add('$ticketId:$name:${bytes.length}');
+
+  @override
+  Future<void> sendVoiceNote(
+    String ticketId,
+    Uint8List bytes, {
+    required String ext,
+    required Duration duration,
+    String? senderName,
+  }) async => sent.add('$ticketId:voice:$ext:${duration.inSeconds}');
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -51,7 +68,13 @@ void main() {
     expect(supportMediaProblem('a.mp4', 1024), isNull);
   });
 
-  Future<_FakeAccount> pump(WidgetTester tester, SupportAttachment? file, List<SupportMessage> msgs) async {
+  Future<_FakeAccount> pump(
+    WidgetTester tester,
+    SupportAttachment? file,
+    List<SupportMessage> msgs, {
+    List<Override> extra = const [],
+    bool camera = false,
+  }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(600, 1000);
     addTearDown(tester.view.reset);
@@ -62,6 +85,8 @@ void main() {
           accountRepositoryProvider.overrideWithValue(account),
           profileProvider.overrideWith((ref) async => Profile({'id': 'me', 'name': 'Ali'})),
           supportMessagesProvider.overrideWith((ref, id) => Stream.value(msgs)),
+          photoCameraAvailableProvider.overrideWithValue(camera),
+          ...extra,
         ],
         child: MaterialApp(
           home: SupportChatScreen(ticketId: 't1', pickAttachment: () async => file),
@@ -95,5 +120,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(account.sent, isEmpty);
     expect(find.text('Send a photo or a video.'), findsOneWidget);
+  });
+
+  testWidgets('a photo can be snapped with the camera', (tester) async {
+    final account = await pump(
+      tester,
+      null,
+      const [],
+      camera: true,
+      extra: [
+        photoPickerProvider.overrideWithValue((source) async => (bytes: Uint8List(512), name: 'snap.jpg')),
+      ],
+    );
+    await tester.tap(find.byKey(const ValueKey('support-attach')));
+    // The attach key spins while the sheet is up, so the screen never settles.
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    await tester.tap(find.byKey(const ValueKey('photo-camera')));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    expect(account.sent, ['t1:snap.jpg:512']);
+  });
+
+  testWidgets('a voice note is recorded and sent; voice notes play in the thread', (tester) async {
+    final rec = FakeRecorder(clip: fakeClip(4));
+    final player = FakePlayback();
+    final account = await pump(
+      tester,
+      null,
+      [
+        SupportMessage({
+          'id': 'a1',
+          'sender_role': 'admin',
+          'type': 'audio',
+          'media_url': 'https://x.test/a.m4a',
+          'media_duration': 9,
+        }),
+      ],
+      extra: [
+        micPermissionProvider.overrideWithValue(FakeMic()),
+        voiceRecorderFactoryProvider.overrideWithValue(() => rec),
+        voicePlaybackFactoryProvider.overrideWithValue(() => player),
+      ],
+    );
+    expect(find.byKey(const ValueKey('support-voice-a1')), findsOneWidget);
+    expect(find.text('0:09'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('voice-note-play')));
+    await tester.pump();
+    expect(player.played, ['https://x.test/a.m4a']);
+
+    await tester.tap(find.byKey(const ValueKey('support-voice')));
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.byKey(const ValueKey('voice-recording')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('voice-send')));
+    await tester.pump();
+    await tester.pump();
+    expect(account.sent, ['t1:voice:m4a:4']);
   });
 }

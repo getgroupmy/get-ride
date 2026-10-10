@@ -17,15 +17,21 @@ enum RideChatRole {
   };
 }
 
-/// `ride_messages.type`. A quick reply is a canned line, still text in `body`.
+/// `ride_messages.type`. A quick reply is a canned line, still text in `body`;
+/// a photo (optional caption in `body`) and a voice note keep their file in
+/// the private `ride-chat-media` bucket (migration 0140).
 enum RideMessageType {
   text,
   quick,
-  location;
+  location,
+  image,
+  audio;
 
   static RideMessageType parse(String? s) => switch (s) {
     'quick' => quick,
     'location' => location,
+    'image' => image,
+    'audio' => audio,
     _ => text,
   };
 }
@@ -63,6 +69,8 @@ class RideMessage {
     this.body,
     this.latitude,
     this.longitude,
+    this.mediaPath,
+    this.mediaDuration,
     this.status = RideMessageStatus.sent,
     this.createdAt,
   });
@@ -75,6 +83,12 @@ class RideMessage {
   final String? body;
   final double? latitude;
   final double? longitude;
+
+  /// The photo's or voice note's file in `ride-chat-media`.
+  final String? mediaPath;
+
+  /// A voice note's length.
+  final Duration? mediaDuration;
   final RideMessageStatus status;
   final DateTime? createdAt;
 
@@ -93,6 +107,11 @@ class RideMessage {
       body: r['body'] as String?,
       latitude: (r['latitude'] as num?)?.toDouble(),
       longitude: (r['longitude'] as num?)?.toDouble(),
+      mediaPath: r['media_path'] as String?,
+      mediaDuration: switch (r['media_duration']) {
+        final num s => Duration(milliseconds: (s * 1000).round()),
+        _ => null,
+      },
       status: RideMessageStatus.parse(r['status'] as String?),
       createdAt: DateTime.tryParse((r['created_at'] as String?) ?? ''),
     );
@@ -107,14 +126,91 @@ class RideMessage {
     body: body,
     latitude: latitude,
     longitude: longitude,
+    mediaPath: mediaPath,
+    mediaDuration: mediaDuration,
     status: status ?? this.status,
     createdAt: createdAt,
   );
 
   bool get hasLocation => type == RideMessageType.location && latitude != null && longitude != null;
 
-  /// One line for a preview or a notification.
-  String get summary => type == RideMessageType.location ? 'Shared a location' : (body ?? '').trim();
+  bool get hasMedia =>
+      (type == RideMessageType.image || type == RideMessageType.audio) && (mediaPath ?? '').isNotEmpty;
+
+  /// A photo's caption, or null.
+  String? get caption => type == RideMessageType.image && (body ?? '').trim().isNotEmpty ? body!.trim() : null;
+
+  /// One line for a preview or a notification (as `ride_message_push_body`).
+  String get summary => switch (type) {
+    RideMessageType.location => 'Shared a location',
+    RideMessageType.audio => 'Sent a voice note',
+    RideMessageType.image => caption == null ? 'Sent a photo' : 'Photo: $caption',
+    _ => (body ?? '').trim(),
+  };
+}
+
+// ---- Photos and voice notes (migration 0140) ----------------------------------
+
+/// The private bucket the chat's files live in, one folder per ride.
+const rideChatMediaBucket = 'ride-chat-media';
+
+/// The largest file the bucket takes.
+const rideChatMediaMaxBytes = 15 * 1024 * 1024;
+
+/// The longest voice note the database takes; recording stops there.
+const rideVoiceNoteMax = Duration(minutes: 5);
+
+/// Shorter than this is a slip of the finger, not a voice note.
+const rideVoiceNoteMin = Duration(milliseconds: 700);
+
+/// How long a signed link to a file stays good.
+const rideChatMediaLinkTtl = Duration(hours: 1);
+
+/// `<request>/<kind>-<ms>-<tag>.<ext>`: in the ride's own folder, which is
+/// what the bucket's policies and the message's check both look at.
+String rideChatMediaPath(String requestId, RideMessageType kind, String ext, DateTime now, String tag) =>
+    '$requestId/${kind.name}-${now.millisecondsSinceEpoch}-$tag.${ext.toLowerCase()}';
+
+/// The upload's content type for a photo's or a voice note's extension.
+String rideChatContentType(RideMessageType kind, String ext) {
+  final e = ext.toLowerCase();
+  if (kind == RideMessageType.image) {
+    return switch (e) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      'gif' => 'image/gif',
+      'heic' => 'image/heic',
+      _ => 'image/png',
+    };
+  }
+  return switch (e) {
+    'webm' => 'audio/webm',
+    'ogg' || 'opus' => 'audio/ogg',
+    'wav' => 'audio/wav',
+    'mp3' => 'audio/mpeg',
+    'aac' => 'audio/aac',
+    _ => 'audio/mp4',
+  };
+}
+
+/// Why a picked photo can't be sent, or null.
+String? ridePhotoProblem(int bytes) {
+  if (bytes <= 0) return "That photo couldn't be read.";
+  if (bytes > rideChatMediaMaxBytes) return 'Choose a photo under 15 MB.';
+  return null;
+}
+
+/// A voice note's length as the player shows it: `0:07`, `1:42`.
+String formatVoiceDuration(Duration d) {
+  final s = d.inSeconds.clamp(0, 5999);
+  return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+}
+
+/// A voice note's length as the database stores it: seconds, to a tenth,
+/// within what it takes.
+double rideVoiceNoteSeconds(Duration d) {
+  final ms = d.inMilliseconds.clamp(0, rideVoiceNoteMax.inMilliseconds);
+  return (ms / 100).round() / 10;
 }
 
 /// The side [userId] is on in [ride], or null when they're neither.

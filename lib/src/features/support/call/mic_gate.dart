@@ -46,15 +46,23 @@ final micPermissionProvider = Provider<MicPermission>((ref) => _DeviceMic());
 /// How long a trip to Settings may take before the call is given up.
 const micSettingsWait = Duration(minutes: 2);
 
+/// What the microphone is wanted for, which is what the ask says.
+enum MicUse { call, voiceNote }
+
 /// Gets the microphone before a call starts or is answered: true when the
 /// call may go ahead. When the microphone is off, says so and offers the
 /// app's Settings page; coming back with it switched on carries on with the
 /// call, and anything else leaves it unplaced. A call is never started
 /// without the microphone, so the other person never hears silence.
-Future<bool> ensureMicForCall(BuildContext context, WidgetRef ref) async {
+Future<bool> ensureMicForCall(BuildContext context, WidgetRef ref) => ensureMic(context, ref, MicUse.call);
+
+/// Gets the microphone for [use]; see [ensureMicForCall].
+Future<bool> ensureMic(BuildContext context, WidgetRef ref, MicUse use) async {
   final mic = ref.read(micPermissionProvider);
   if (await mic.ensure()) return true;
   if (!context.mounted) return false;
+  final what = use == MicUse.call ? 'Calls need' : 'Voice notes need';
+  final then = use == MicUse.call ? 'the call will start when you come back' : 'you can record when you come back';
   final go = await showDialog<bool>(
     context: context,
     builder: (c) => AlertDialog(
@@ -62,7 +70,9 @@ Future<bool> ensureMicForCall(BuildContext context, WidgetRef ref) async {
       icon: const Icon(Icons.mic_off_outlined),
       title: const Text('Allow microphone'),
       content: Text(
-        kIsWeb ? 'Calls need your microphone. Allow microphone for this site in your browser, then try again.' : 'Calls need your microphone. Turn on Microphone for GET.ride in Settings, and the call will start when you come back.',
+        kIsWeb
+            ? '$what your microphone. Allow microphone for this site in your browser, then try again.'
+            : '$what your microphone. Turn on Microphone for GET.ride in Settings, and $then.',
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')),

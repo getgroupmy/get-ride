@@ -305,6 +305,12 @@ class SupportMessage {
   String get type => (raw['type'] as String?) ?? 'text';
   String? get body => raw['body'] as String?;
   String? get mediaUrl => raw['media_url'] as String?;
+
+  /// A voice note's length.
+  Duration? get mediaDuration => switch (raw['media_duration']) {
+    final num s => Duration(milliseconds: (s * 1000).round()),
+    _ => null,
+  };
   DateTime? get createdAt => _t(raw['created_at']);
   bool get fromUser => senderRole == 'user';
 }
