@@ -18,6 +18,9 @@ import 'package:get_ride/src/features/support/call/call_media.dart';
 import 'package:get_ride/src/features/support/call/call_session.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
+import 'package:get_ride/src/features/support/call/mic_gate.dart';
+
+import 'fake_mic.dart';
 
 const rider = 'rider-1', driver = 'driver-1';
 
@@ -206,6 +209,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          micPermissionProvider.overrideWithValue(FakeMic()),
           rideCallRepositoryProvider.overrideWithValue(repo),
           callMediaFactoryProvider.overrideWithValue(() => media),
           currentUserIdProvider.overrideWithValue(me),
@@ -501,6 +505,7 @@ void main() {
       ProviderScope(
         overrides: [
           currentUserIdProvider.overrideWithValue(driver),
+          micPermissionProvider.overrideWithValue(FakeMic()),
           rideCallRepositoryProvider.overrideWithValue(repo),
           rideCallDialerProvider.overrideWithValue((uri) async {
             calls.add(uri);
@@ -531,6 +536,30 @@ void main() {
     expect(callsPassengerDirectly(forMak, rider), isFalse);
     expect(callsPassengerDirectly(own, driver), isFalse);
     expect(callsPassengerDirectly(forMak, null), isFalse);
+  });
+
+  testWidgets('with the microphone off, the other phone is never rung', (tester) async {
+    final repo = _Repo();
+    final mic = FakeMic(granted: false);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentUserIdProvider.overrideWithValue(rider),
+          micPermissionProvider.overrideWithValue(mic),
+          rideCallRepositoryProvider.overrideWithValue(repo),
+        ],
+        child: MaterialApp(
+          home: Scaffold(body: RideCallButton(ride: rideRow('accepted'), peerName: 'Ravi')),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('ride-call')));
+    await tester.pumpAndSettle();
+    expect(find.text('Allow microphone'), findsOneWidget);
+    expect(repo.log, isEmpty, reason: 'nothing rings while the microphone is off');
+    await tester.tap(find.text('Not now'));
+    await tester.pumpAndSettle();
+    expect(repo.log, isEmpty);
   });
 
   testWidgets('no call button on a ride nobody can call', (tester) async {

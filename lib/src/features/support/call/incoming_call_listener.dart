@@ -10,6 +10,7 @@ import '../../../app.dart' show routerProvider;
 import '../../../core/support_call.dart';
 import '../../../data/support_call_repository.dart';
 import '../../../providers.dart';
+import 'mic_gate.dart';
 
 /// Rings on any screen (Expo `SupportCallListener`, which only ever rang
 /// users): a user sees an agent calling them; an agent with access to
@@ -97,6 +98,7 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
   }
 
   Future<void> _answer(SupportCall c) async {
+    if (!await ensureMicForCall(context, ref) || !mounted) return;
     setState(() => _answering = c.id);
     final repo = ref.read(supportCallRepositoryProvider);
     var ok = false;
