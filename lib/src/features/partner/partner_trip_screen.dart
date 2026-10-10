@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../data/active_location.dart';
 import '../../core/early_end.dart';
 import '../../core/format.dart';
 import '../../core/navigation_app.dart';
@@ -59,7 +60,11 @@ final tripPositionStreamProvider = Provider<Stream<TripFix> Function()>((ref) =>
     if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
     yield* Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 15),
+      locationSettings: activeLocationSettings(
+        ActiveLocationUse.driverTrip,
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 15,
+      ),
     ).map((p) => (at: LatLng(p.latitude, p.longitude), heading: p.heading < 0 ? null : p.heading, accuracy: p.accuracy));
   } catch (_) {}
 });

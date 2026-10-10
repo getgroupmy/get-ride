@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../data/active_location.dart';
 import '../../admin/screens/meterapp/meter_logic.dart';
 import '../../admin/screens/meterapp/meter_store.dart';
 import '../../data/meter_launch_store.dart';
@@ -56,7 +57,7 @@ class GeolocatorMeterLocation implements MeterLocation {
 
   @override
   Stream<MeterFix> fixes() => Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.bestForNavigation),
+        locationSettings: activeLocationSettings(ActiveLocationUse.meter, accuracy: LocationAccuracy.bestForNavigation),
       ).map((p) => MeterFix(
             latitude: p.latitude,
             longitude: p.longitude,

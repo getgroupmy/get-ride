@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../data/active_location.dart';
 import '../../core/destination_mode.dart';
 import '../../core/driver_permit.dart';
 import '../../core/format.dart';
@@ -75,7 +76,11 @@ final driverPositionStreamProvider = Provider<Stream<LatLng> Function()>((ref) =
     if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
     yield* Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 5),
+      locationSettings: activeLocationSettings(
+        ActiveLocationUse.driverOnline,
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      ),
     ).map((p) => LatLng(p.latitude, p.longitude));
   } catch (_) {}
 });

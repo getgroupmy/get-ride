@@ -260,11 +260,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  /// Back from the background: the rides on the go as they are now (one
+  /// may have been taken, expired or booked from another device meanwhile).
+  AppLifecycleListener? _lifecycle;
+
   @override
   void initState() {
     super.initState();
     _locate();
     _checkOngoing();
+    _lifecycle = AppLifecycleListener(onResume: _checkOngoing);
     // A TEKSI driver whose rate card asks for it lands on the meter, once
     // per launch.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -275,6 +280,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void dispose() {
     _carsTimer?.cancel();
+    _lifecycle?.dispose();
     _expiry?.cancel();
     _note.dispose();
     _otherName.dispose();

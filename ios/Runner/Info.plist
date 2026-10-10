@@ -16,6 +16,8 @@
 	<string>GET.ride lets you choose photos of your documents, vehicle and profile picture from your photo library.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>GET.ride uses the microphone for voice calls with support and, with VoiceProtection on, to record trip audio during your rides. Trip recordings stay on your phone for 24 hours and are only sent to support if a ride is reported.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>GET.ride keeps sharing your location while a trip is in progress, while you are online as a driver, and while Meter Digital is running, even when the app is in the background.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>GET.ride uses your location to set your pickup point and to share your position with your driver or passenger during a trip.</string>
 	<key>NSLocalNetworkUsageDescription</key>
@@ -54,6 +56,8 @@
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>audio</string>
+		<string>location</string>
 		<string>remote-notification</string>
 		<string>voip</string>
 	</array>
