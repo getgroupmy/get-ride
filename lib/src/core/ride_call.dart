@@ -67,6 +67,12 @@ class RideCall implements CallRecord<RideCall> {
 bool rideCallsAvailable(RideRequest ride) =>
     ride.riderId != null && ride.partnerId != null && ride.riderId != ride.partnerId && rideChatOpen(ride.status);
 
+/// Whether the driver's Call goes straight to the passenger's phone: on a
+/// ride booked for someone else, the person waiting at the pickup is the
+/// passenger, and the in-app call would ring the booker's account instead.
+bool callsPassengerDirectly(RideRequest ride, String? me) =>
+    ride.isForOthers && me != null && me == ride.partnerId;
+
 /// Whether a call on a ride now at [status] has to end: the ride is over,
 /// or went back to looking for a driver.
 bool rideCallMustEnd(RideStatus status) => !rideChatOpen(status);

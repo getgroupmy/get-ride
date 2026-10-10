@@ -463,9 +463,21 @@ class RideCallButton extends ConsumerWidget {
     final hasPhone = number != null && number.isNotEmpty;
     if (!inApp && !hasPhone) return const SizedBox.shrink();
     void dial() => unawaited(ref.read(rideCallDialerProvider)(Uri(scheme: 'tel', path: number)));
-    void call() => inApp ? unawaited(startRideCall(context, ref, ride, phone: hasPhone ? number : null)) : dial();
+    void ring() => unawaited(startRideCall(context, ref, ride, phone: hasPhone ? number : null));
+    // Booked for someone else: the driver rings the passenger's own phone;
+    // the in-app call (to the booker's account) is the long-press option.
+    final direct = hasPhone && callsPassengerDirectly(ride, me);
+    void call() => inApp && !direct ? ring() : dial();
     VoidCallback? more = inApp && hasPhone
-        ? () => unawaited(_options(context, onInApp: call, onPhone: dial, number: number))
+        ? () => unawaited(
+            _options(
+              context,
+              onInApp: ring,
+              onPhone: dial,
+              number: number,
+              inAppTitle: direct ? 'Call the booker in the app' : 'Call in the app',
+            ),
+          )
         : null;
     final label = 'Call $peerName';
     return Semantics(
@@ -503,6 +515,7 @@ class RideCallButton extends ConsumerWidget {
     required VoidCallback onInApp,
     required VoidCallback onPhone,
     required String number,
+    String inAppTitle = 'Call in the app',
   }) async {
     final choice = await showModalBottomSheet<String>(
       context: context,
@@ -514,7 +527,7 @@ class RideCallButton extends ConsumerWidget {
             ListTile(
               key: const ValueKey('ride-call-in-app'),
               leading: const Icon(Icons.wifi_calling_3),
-              title: const Text('Call in the app'),
+              title: Text(inAppTitle),
               subtitle: const Text('Uses mobile data or Wi-Fi'),
               onTap: () => Navigator.pop(c, 'app'),
             ),
