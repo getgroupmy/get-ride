@@ -3,9 +3,13 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_callkit_incoming/entities/call_event.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/call_ring.dart';
 import '../core/push_logic.dart';
+import 'call_ringer.dart';
 
 /// The device's push-notification lifecycle (the Flutter counterpart of
 /// `PushNotificationContext` in the Expo app):
@@ -19,11 +23,16 @@ import '../core/push_logic.dart';
 ///     works without a session, so the next account on this phone does not
 ///     get the previous one's notifications;
 ///   * reports taps ([taps], a route to open) and, on Android, messages that
-///     arrive while the app is open ([foreground]) — iOS shows those itself.
+///     arrive while the app is open ([foreground]) — iOS shows those itself;
+///   * on a phone with a native call screen (call_ringer.dart), registers the
+///     token with the `call_ui` capability (migration 0134), so a ride call
+///     arrives as a data message that rings it — through
+///     [firebaseBackgroundPush] while the app is closed, and [calls] while it
+///     is open — and on an iPhone also registers the PushKit (VoIP) token.
 ///
-/// The OS displays notifications while the app is in the background, so no
-/// background handler is needed. Everything is best-effort: a failure here
-/// is logged and never stops the app.
+/// The OS displays every other notification while the app is in the
+/// background. Everything is best-effort: a failure here is logged and never
+/// stops the app.
 class PushService {
   PushService._(this._db, this._messaging);
 
@@ -46,12 +55,20 @@ class PushService {
 
   final _taps = StreamController<String>.broadcast();
   final _foreground = StreamController<RemoteMessage>.broadcast();
+  final _calls = StreamController<Map<String, dynamic>>.broadcast();
+
+  /// The VoIP token stored for the signed-in profile.
+  String? _registeredVoip;
 
   /// Routes to open because a notification was tapped.
   Stream<String> get taps => _taps.stream;
 
   /// Messages received while the app is in the foreground on Android.
   Stream<RemoteMessage> get foreground => _foreground.stream;
+
+  /// Ride-call data messages (`ride_call`, `ride_call_end`) received while
+  /// the app is open.
+  Stream<Map<String, dynamic>> get calls => _calls.stream;
 
   /// The route from the notification the app was launched from, once.
   String? takePendingRoute() {
@@ -70,6 +87,8 @@ class PushService {
     if (options == null) return null;
     try {
       await Firebase.initializeApp(options: options);
+      // A ride call to a closed app is a data message, rung from here.
+      if (nativeCallRingerAvailable) FirebaseMessaging.onBackgroundMessage(firebaseBackgroundPush);
       final service = PushService._(db, FirebaseMessaging.instance);
       _instance = service;
       service._listen();
@@ -89,8 +108,17 @@ class PushService {
     }
 
     FirebaseMessaging.onMessage.listen((message) {
+      if (callRingFromPush(message.data) != null || endedCallFromPush(message.data) != null) {
+        _calls.add(message.data);
+      }
       if (defaultTargetPlatform == TargetPlatform.android) _foreground.add(message);
     });
+    if (nativeCallRingerAvailable && defaultTargetPlatform == TargetPlatform.iOS) {
+      // iOS hands the app its PushKit token whenever it likes.
+      FlutterCallkitIncoming.onEvent.listen((event) {
+        if (event is CallEventActionDidUpdateDevicePushTokenVoip) unawaited(_registerVoip());
+      }, onError: (Object _) {});
+    }
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       final route = pushRouteFor(message.data);
       if (route != null) _taps.add(route);
@@ -143,13 +171,10 @@ class PushService {
       final key = '$userId:$fcmToken';
       if (_registeredFor == key) return;
 
-      await _db.rpc('push_register_token', params: {
-        'p_token': fcmToken,
-        'p_platform': pushPlatformName(defaultTargetPlatform),
-        'p_device_name': null,
-      });
+      await _registerDevice(fcmToken, pushPlatformName(defaultTargetPlatform));
       _registeredToken = fcmToken;
       _registeredFor = key;
+      unawaited(_registerVoip());
     } catch (e) {
       debugPrint('[push] registration failed: $e');
     } finally {
@@ -173,15 +198,60 @@ class PushService {
     return _messaging.getToken();
   }
 
+  /// Stores [token] for the signed-in profile, saying whether this build
+  /// rings ride calls on the phone's call screen. A database without
+  /// migration 0134 gets the old registration (and ordinary notifications).
+  Future<void> _registerDevice(String token, String? platform) async {
+    final caps = nativeCallRingerAvailable ? const [callUiCapability] : const <String>[];
+    try {
+      await _db.rpc('push_register_device', params: {
+        'p_token': token,
+        'p_platform': platform,
+        'p_device_name': null,
+        'p_capabilities': caps,
+      });
+    } on PostgrestException catch (e) {
+      if (!_missingRpc(e) || platform == voipPlatform) rethrow;
+      await _db.rpc('push_register_token', params: {
+        'p_token': token,
+        'p_platform': platform,
+        'p_device_name': null,
+      });
+    }
+  }
+
+  /// PostgREST's "no such function" (a database before the migration).
+  static bool _missingRpc(PostgrestException e) =>
+      e.code == 'PGRST202' || e.code == '42883' || e.message.contains('push_register_device');
+
+  /// The iPhone's PushKit token, which rings a closed app's CallKit screen
+  /// (send-push only sends it ride calls, and only with the APNs key).
+  Future<void> _registerVoip() async {
+    if (!nativeCallRingerAvailable || defaultTargetPlatform != TargetPlatform.iOS) return;
+    if (_db.auth.currentUser == null) return;
+    try {
+      final token = await NativeCallRinger().voipToken();
+      if (token == null || token == _registeredVoip) return;
+      await _registerDevice(token, voipPlatform);
+      _registeredVoip = token;
+    } catch (e) {
+      debugPrint('[push] VoIP registration failed: $e');
+    }
+  }
+
   Future<void> _unregister() async {
     final token = _registeredToken;
+    final voip = _registeredVoip;
     _registeredToken = null;
     _registeredFor = null;
-    if (token == null) return;
-    try {
-      await _db.rpc('push_unregister_token', params: {'p_token': token});
-    } catch (e) {
-      debugPrint('[push] unregister failed: $e');
+    _registeredVoip = null;
+    for (final t in [token, voip]) {
+      if (t == null) continue;
+      try {
+        await _db.rpc('push_unregister_token', params: {'p_token': t});
+      } catch (e) {
+        debugPrint('[push] unregister failed: $e');
+      }
     }
   }
 }

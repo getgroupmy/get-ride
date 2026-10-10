@@ -300,7 +300,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, s) => CallScreen(callId: s.pathParameters['id']!, peerName: s.uri.queryParameters['name']),
       ),
       // A rider ↔ driver call (migration 0131).
-      GoRoute(path: '/ride-call/:id', builder: (_, s) => RideCallScreen(callId: s.pathParameters['id']!)),
+      GoRoute(
+        path: '/ride-call/:id',
+        builder: (_, s) => RideCallScreen(
+          // A new key per answer, so Accept on the phone over the in-app
+          // incoming call replaces it with one that answers.
+          key: ValueKey('${s.pathParameters['id']}:${s.uri.queryParameters['answer']}'),
+          callId: s.pathParameters['id']!,
+          answer: s.uri.queryParameters['answer'] == '1',
+        ),
+      ),
       adminRoute,
     ],
   );

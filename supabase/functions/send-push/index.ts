@@ -43,12 +43,23 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { googleAccessToken } from "../_shared/google_auth.ts";
 import {
+  apnsJwt,
+  apnsOutcome,
+  apnsRequest,
+  APNS_DEVELOPMENT,
+  APNS_PRODUCTION,
+  parseApnsKey,
+  voipPayload,
+} from "../_shared/apns.ts";
+import {
+  type DeviceRow,
   FCM_SCOPE,
+  fcmCallMessage,
   fcmMessage,
   fcmOutcome,
   fcmSendUrl,
   parseServiceAccount,
-  splitTokens,
+  planDeliveries,
 } from "../_shared/push.ts";
 import { livePushAuthDeps } from "../_shared/push_auth.ts";
 import { handleSendPush, json, type SendBody } from "../_shared/send_push_handler.ts";
@@ -136,19 +147,31 @@ async function dispatch(payload: SendBody): Promise<Response> {
     }
   }
 
-  let query = supabase.from("push_tokens").select("token");
-  if (profileFilter) {
-    query = query.in("profile_id", profileFilter);
+  // `capabilities` arrived with migration 0134; a database without it is
+  // read without it, and every device gets an ordinary notification.
+  const loadTokens = (columns: string) => {
+    let query = supabase.from("push_tokens").select(columns);
+    if (profileFilter) query = query.in("profile_id", profileFilter);
+    return query;
+  };
+  let { data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id, capabilities");
+  if (tokensErr && /capabilities/.test(tokensErr.message ?? "")) {
+    ({ data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id"));
   }
-  const { data: tokenRows, error: tokensErr } = await query;
   if (tokensErr) {
     return json({ error: `Failed to load tokens: ${tokensErr.message}` }, 500);
   }
 
-  const { expo: tokens, fcm: fcmTokens } = splitTokens(
-    (tokenRows ?? []).map((r: { token: string }) => r.token)
-  );
-  const recipients = tokens.length + fcmTokens.length;
+  // Each device's way of being told (push.ts: planDeliveries). A ride call
+  // rings capable Android builds through a data message and iPhones through
+  // a VoIP push once the APNs key is configured.
+  const apnsKey = parseApnsKey((name) => Deno.env.get(name));
+  const kind = payload.data?.type;
+  const deliveries = planDeliveries((tokenRows ?? []) as unknown as DeviceRow[], kind, apnsKey !== null);
+  const tokens = deliveries.flatMap((d) => (d.via === "expo" ? [d.token] : []));
+  const fcmDeliveries = deliveries.flatMap((d) => (d.via === "fcm" ? [d] : []));
+  const voipTokens = deliveries.flatMap((d) => (d.via === "voip" ? [d.token] : []));
+  const recipients = deliveries.length;
 
   const loggedAudience = profileId ? "direct" : audience;
 
@@ -217,7 +240,7 @@ async function dispatch(payload: SendBody): Promise<Response> {
   }
 
   // ---- FCM (the Flutter app) ----------------------------------------------
-  if (fcmTokens.length > 0) {
+  if (fcmDeliveries.length > 0) {
     const account = parseServiceAccount(Deno.env.get("FCM_SERVICE_ACCOUNT"));
     let accessToken: string | null = null;
     let setupError: string | null = null;
@@ -235,12 +258,13 @@ async function dispatch(payload: SendBody): Promise<Response> {
     }
 
     if (!accessToken || !account?.project_id) {
-      failed += fcmTokens.length;
-      tickets.push({ status: "error", service: "fcm", message: setupError, count: fcmTokens.length });
+      failed += fcmDeliveries.length;
+      tickets.push({ status: "error", service: "fcm", message: setupError, count: fcmDeliveries.length });
       console.log("[send-push] FCM not sent:", setupError);
     } else {
       const url = fcmSendUrl(account.project_id);
-      const sendOne = async (token: string) => {
+      const sendOne = async ({ token, style }: { token: string; style: "alert" | "call" }) => {
+        const data = payload.data ?? { audience };
         try {
           const res = await fetch(url, {
             method: "POST",
@@ -248,7 +272,9 @@ async function dispatch(payload: SendBody): Promise<Response> {
               Authorization: `Bearer ${accessToken}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify(fcmMessage(token, title, body, payload.data ?? { audience })),
+            body: JSON.stringify(
+              style === "call" ? fcmCallMessage(token, title, body, data) : fcmMessage(token, title, body, data)
+            ),
           });
           const result = await res.json().catch(() => null);
           const outcome = fcmOutcome(res.status, result);
@@ -265,9 +291,53 @@ async function dispatch(payload: SendBody): Promise<Response> {
           tickets.push({ status: "error", service: "fcm", message: String(e) });
         }
       };
-      for (let i = 0; i < fcmTokens.length; i += FCM_CONCURRENCY) {
-        await Promise.all(fcmTokens.slice(i, i + FCM_CONCURRENCY).map(sendOne));
+      for (let i = 0; i < fcmDeliveries.length; i += FCM_CONCURRENCY) {
+        await Promise.all(fcmDeliveries.slice(i, i + FCM_CONCURRENCY).map(sendOne));
       }
+    }
+  }
+
+  // ---- VoIP (iPhones, ride calls only) -------------------------------------
+  if (apnsKey && voipTokens.length > 0) {
+    let jwt: string | null = null;
+    try {
+      jwt = await apnsJwt(apnsKey, Date.now() / 1000);
+    } catch (e) {
+      failed += voipTokens.length;
+      tickets.push({ status: "error", service: "apns", message: String(e instanceof Error ? e.message : e) });
+    }
+    if (jwt) {
+      const voip = voipPayload(payload.data ?? {}, title);
+      const post = async (host: string, token: string) => {
+        const { url, init } = apnsRequest(host, apnsKey, jwt!, token, voip);
+        const res = await fetch(url, init);
+        const reason = res.ok ? null : ((await res.json().catch(() => null))?.reason ?? null);
+        return apnsOutcome(res.status, reason);
+      };
+      await Promise.all(
+        voipTokens.map(async (token) => {
+          try {
+            // A token is production's or development's, and nothing records
+            // which: BadDeviceToken from one is a try at the other.
+            let outcome = await post(APNS_PRODUCTION, token);
+            if (outcome === "wrong_environment") {
+              outcome = await post(APNS_DEVELOPMENT, token);
+              if (outcome === "wrong_environment") outcome = "unregistered";
+            }
+            if (outcome === "sent") {
+              sent += 1;
+              tickets.push({ status: "ok", service: "apns" });
+            } else {
+              failed += 1;
+              if (outcome === "unregistered") deadTokens.add(token);
+              tickets.push({ status: "error", service: "apns", outcome });
+            }
+          } catch (e) {
+            failed += 1;
+            tickets.push({ status: "error", service: "apns", message: String(e) });
+          }
+        })
+      );
     }
   }
 

@@ -1,13 +1,32 @@
+import CallKit
 import ExternalAccessory
 import Flutter
+import PushKit
 import UIKit
+import flutter_callkit_incoming
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, PKPushRegistryDelegate {
+  /// PushKit: a ride call to a closed app arrives as a VoIP push and rings
+  /// CallKit (lib/src/data/call_ringer.dart, migration 0134).
+  private var voipRegistry: PKPushRegistry?
+
+  /// An engine started only when a VoIP push wakes the app before any
+  /// scene, and so before the implicit engine and its plugins, exists.
+  private var voipEngine: FlutterEngine?
+
+  /// Where flutter_callkit_incoming keeps the VoIP token (read by
+  /// getDevicePushTokenVoIP), for a token that arrives before the plugin.
+  private static let voipTokenKey = "DevicePushTokenVoIP"
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    let registry = PKPushRegistry(queue: DispatchQueue.main)
+    registry.delegate = self
+    registry.desiredPushTypes = [.voIP]
+    voipRegistry = registry
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -17,6 +36,91 @@ import UIKit
       MfiObdPlugin.register(with: registrar)
     }
   }
+
+  // MARK: PushKit
+
+  func pushRegistry(_ registry: PKPushRegistry, didUpdate credentials: PKPushCredentials, for type: PKPushType) {
+    guard type == .voIP else { return }
+    let token = credentials.token.map { String(format: "%02x", $0) }.joined()
+    if let plugin = SwiftFlutterCallkitIncomingPlugin.sharedInstance {
+      plugin.setDevicePushTokenVoIP(token)
+    } else {
+      UserDefaults.standard.set(token, forKey: Self.voipTokenKey)
+    }
+  }
+
+  func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
+    guard type == .voIP else { return }
+    if let plugin = SwiftFlutterCallkitIncomingPlugin.sharedInstance {
+      plugin.setDevicePushTokenVoIP("")
+    } else {
+      UserDefaults.standard.set("", forKey: Self.voipTokenKey)
+    }
+  }
+
+  /// iOS requires every VoIP push to be reported to CallKit at once, or it
+  /// stops waking the app: the call rings through the plugin, and if the
+  /// plugin can't be reached it is still reported (and ended) here.
+  func pushRegistry(
+    _ registry: PKPushRegistry,
+    didReceiveIncomingPushWith payload: PKPushPayload,
+    for type: PKPushType,
+    completion: @escaping () -> Void
+  ) {
+    guard type == .voIP else {
+      completion()
+      return
+    }
+    if SwiftFlutterCallkitIncomingPlugin.sharedInstance == nil {
+      startVoipEngine()
+    }
+    let args = payload.dictionaryPayload as NSDictionary
+    guard let plugin = SwiftFlutterCallkitIncomingPlugin.sharedInstance else {
+      FallbackCallReporter.shared.reportAndEnd(args, completion: completion)
+      return
+    }
+    plugin.showCallkitIncoming(flutter_callkit_incoming.Data(args: args), fromPushKit: true) {
+      completion()
+    }
+  }
+
+  private func startVoipEngine() {
+    guard voipEngine == nil else { return }
+    let engine = FlutterEngine(name: "voip", project: nil, allowHeadlessExecution: true)
+    guard engine.run() else { return }
+    GeneratedPluginRegistrant.register(with: engine)
+    voipEngine = engine
+  }
+}
+
+/// The last resort for a VoIP push the plugin couldn't take: report it so
+/// iOS keeps delivering them, then end it straight away.
+final class FallbackCallReporter: NSObject, CXProviderDelegate {
+  static let shared = FallbackCallReporter()
+  private let provider: CXProvider
+
+  private override init() {
+    let config = CXProviderConfiguration()
+    config.supportsVideo = false
+    config.maximumCallGroups = 1
+    config.maximumCallsPerCallGroup = 1
+    provider = CXProvider(configuration: config)
+    super.init()
+    provider.setDelegate(self, queue: nil)
+  }
+
+  func reportAndEnd(_ args: NSDictionary, completion: @escaping () -> Void) {
+    let uuid = UUID(uuidString: args["id"] as? String ?? "") ?? UUID()
+    let update = CXCallUpdate()
+    update.remoteHandle = CXHandle(type: .generic, value: args["nameCaller"] as? String ?? "GET.ride")
+    update.hasVideo = false
+    provider.reportNewIncomingCall(with: uuid, update: update) { _ in
+      self.provider.reportCall(with: uuid, endedAt: Date(), reason: .failed)
+      completion()
+    }
+  }
+
+  func providerDidReset(_ provider: CXProvider) {}
 }
 
 /// Bluetooth MFi OBD-II readers (OBDLink MX+ &co.) through Apple's External
@@ -32,7 +136,7 @@ final class MfiObdPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, StreamD
 
   private var session: EASession?
   private var sink: FlutterEventSink?
-  private var pending = Data()
+  private var pending = Foundation.Data()
 
   static func register(with registrar: FlutterPluginRegistrar) {
     let instance = MfiObdPlugin()
@@ -86,7 +190,7 @@ final class MfiObdPlugin: NSObject, FlutterPlugin, FlutterStreamHandler, StreamD
         result(FlutterError(code: "closed", message: "Not connected to the reader.", details: nil))
         return
       }
-      pending.append(Data(text.utf8))
+      pending.append(Foundation.Data(text.utf8))
       flush(output)
       result(nil)
     case "disconnect":
