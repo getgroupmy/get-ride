@@ -34,6 +34,22 @@ void main() {
       expect(pinLockMessage(30), 'Too many incorrect attempts. Try again in 1 minute.');
     });
 
+    test('parseRateLimitSeconds reads the 0137 marker', () {
+      expect(parseRateLimitSeconds('RATE_LIMITED:300'), 300);
+      expect(parseRateLimitSeconds('error: RATE_LIMITED'), 60);
+      expect(parseRateLimitSeconds('PIN_LOCKED:300'), isNull);
+      expect(rateLimitMessage(301), 'Too many tries from this network. Try again in 6 minutes.');
+      expect(rateLimitMessage(5), 'Too many tries from this network. Try again in 1 minute.');
+    });
+
+    test('otpNextFor: what an SMS code confirms', () {
+      expect(otpNextFor('set-pin'), OtpNext.setPin);
+      expect(otpNextFor('resync', pin: '123456'), OtpNext.resync);
+      expect(otpNextFor('resync'), OtpNext.setPin, reason: 'no PIN to re-sync from');
+      expect(otpNextFor('unlock'), OtpNext.unlock);
+      expect(otpNextFor('anything'), OtpNext.setPin);
+    });
+
     test('isRegistrationBlocked recognises device-guard errors', () {
       expect(isRegistrationBlocked('DEVICE_LIMIT:3'), isTrue);
       expect(isRegistrationBlocked('EMULATOR_BLOCKED'), isTrue);
