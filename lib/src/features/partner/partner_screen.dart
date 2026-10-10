@@ -105,15 +105,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   final _seen = <String>{};
 
   /// The incoming-request alert (Expo's request modal): the request being
-  /// spotlighted, since when, those already spotlighted, and those the
-  /// driver declined (gone from the queue on this device).
+  /// spotlighted, since when, and those already spotlighted. A skipped
+  /// request stays on the queue; it just doesn't pop up again.
   String? _alertId;
   DateTime? _alertAt;
   final _alertSeen = <String>{};
-  final _hidden = <String>{};
 
-  /// The fare each declined request asked when it was declined; a raise
-  /// over it brings the request back (Expo). [_raisedFrom] keeps the old fare
+  /// The fare each skipped request asked when it was skipped; a raise over
+  /// it pops the request up again (Expo). [_raisedFrom] keeps the old fare
   /// of those brought back, for the alert's "was" line.
   final _declinedFare = <String, double>{};
   final _raisedFrom = <String, double>{};
@@ -136,7 +135,6 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     if (!mounted) return;
     for (final id in raisedAfterDecline(_declinedFare, [for (final r in open) (id: r.id, fare: r.effectiveFare)])) {
       _raisedFrom[id] = _declinedFare.remove(id)!;
-      _hidden.remove(id);
       _alertSeen.remove(id);
     }
     String? next;
@@ -145,7 +143,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       next = nextRequestAlert(
         openIds: [for (final r in ordered) r.id],
         seen: _alertSeen,
-        hidden: _hidden,
+        hidden: const {},
         current: _alertId,
       );
     }
@@ -181,16 +179,16 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     if (!mounted || _alertAt == null) return;
     setState(() => _alertNow = ref.read(requestAlertClockProvider)());
     // Left alone, the request drops back into the queue below.
-    if (requestAlertExpired(_alertNow.difference(_alertAt!))) _dismissAlert(hide: false);
+    if (requestAlertExpired(_alertNow.difference(_alertAt!))) _dismissAlert(skipped: false);
   }
 
-  /// Ends the spotlight: a decline also takes the request off this
-  /// driver's queue; a timeout leaves it there.
-  void _dismissAlert({required bool hide}) {
+  /// Ends the spotlight. Skipped or timed out, the request stays on the
+  /// queue below; a skip also remembers its fare, so a raise brings it up
+  /// again.
+  void _dismissAlert({required bool skipped}) {
     final id = _alertId;
     if (id == null) return;
-    if (hide) {
-      _hidden.add(id);
+    if (skipped) {
       final fare = (ref.read(openRequestsProvider).value ?? const <RideRequest>[])
           .where((r) => r.id == id)
           .firstOrNull
@@ -410,34 +408,18 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
   }
 
+  /// Accept: an offer at the rider's own fare. The rider still says yes,
+  /// unless they booked with "Auto-accept offer of RM x" at that fare or
+  /// more, which the database takes at once (migration 0141).
   Future<void> _accept(RideRequest r, Partner partner) async {
-    setState(() => _accepting = r.id);
-    try {
-      final profile = await ref.read(profileProvider.future);
-      final won = await ref.read(rideRepositoryProvider).accept(
-            r.id,
-            partner,
-            lat: _me?.latitude,
-            lng: _me?.longitude,
-            fallbackName: profile?.name,
-            fallbackPhone: profile?.phone,
-          );
-      if (!mounted) return;
-      if (won == null) {
-        showInfo(context, 'Another driver already took this request.');
-      } else {
-        context.push('/drive/trip/${won.id}');
-      }
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _accepting = null);
-    }
+    final fare = r.effectiveFare ?? r.fare;
+    if (fare == null) return;
+    await _offer(r, partner, preset: fare, accepting: true);
   }
 
   /// A counter-offer on [r]: [preset] when one was tapped, else the amount
-  /// the driver types.
-  Future<void> _offer(RideRequest r, Partner partner, {double? preset}) async {
+  /// the driver types. [accepting] is an Accept at the rider's own fare.
+  Future<void> _offer(RideRequest r, Partner partner, {double? preset, bool accepting = false}) async {
     final amount = preset ?? await askCounterOffer(context, r);
     if (amount == null || !mounted) return;
     setState(() => _accepting = r.id);
@@ -461,16 +443,21 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       if (mounted) setState(() => _accepting = null);
     }
     if (!mounted) return;
+    final me = ref.read(currentUserIdProvider);
     if (sent == null) {
-      showInfo(context, 'This request is no longer open.');
+      showInfo(context, accepting ? 'Another driver already took this request.' : 'This request is no longer open.');
       return;
     }
-    final me = ref.read(currentUserIdProvider);
     if (me == null) return;
+    // Taken in the same write: the rider auto-accepts offers like this one.
+    if (sent.status != RideStatus.open && sent.partnerId == me) {
+      context.push('/drive/trip/${sent.id}');
+      return;
+    }
     final won = await showDialog<RideRequest>(
       context: context,
       barrierDismissible: false,
-      builder: (_) => OfferPendingDialog(repo: repo, ride: r, me: me, amount: amount),
+      builder: (_) => OfferPendingDialog(repo: repo, ride: r, me: me, amount: amount, accepting: accepting),
     );
     if (won != null && mounted) context.push('/drive/trip/${won.id}');
   }
@@ -845,7 +832,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   towardDestination: _destinationOn && _towardDestination(r),
                   busy: _accepting != null,
                   onAccept: () => _accept(r, partner),
-                  onSkip: () => _dismissAlert(hide: true),
+                  onSkip: () => _dismissAlert(skipped: true),
                   onOffer: canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)
                       ? (amount) => _offer(r, partner, preset: amount)
                       : null,
@@ -862,9 +849,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Widget _floatingButton({Key? key, required String tooltip, required IconData icon, required BusyAction onPressed}) =>
       BusyFab(key: key, tooltip: tooltip, onPressed: onPressed, child: Icon(icon));
 
-  /// The requests on this driver's queue (all open ones but those declined
-  /// here), which are also the map's pins.
-  List<RideRequest> _pinned(List<RideRequest> open) => [for (final r in open) if (!_hidden.contains(r.id)) r];
+  /// The requests on this driver's queue (every open one, skipped ones
+  /// included), which are also the map's pins.
+  List<RideRequest> _pinned(List<RideRequest> open) => open;
 
   /// The new request over the map (desktop): it flies in from the right and
   /// back out when it is accepted, declined, taken or times out.
@@ -1200,8 +1187,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             Expanded(
               child: OutlinedButton(
                 key: const ValueKey('request-alert-decline'),
-                onPressed: _accepting != null ? null : () => _dismissAlert(hide: true),
-                child: const Text('Decline'),
+                onPressed: _accepting != null ? null : () => _dismissAlert(skipped: true),
+                child: const Text('Skip'),
               ),
             ),
             if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[

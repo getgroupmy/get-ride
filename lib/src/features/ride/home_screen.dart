@@ -867,6 +867,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             riderPhone: profile?.phone,
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
             offerMe: offerMe,
+            autoAcceptFare: _autoAccept && offerMe ? _fareFor(_service, biddingOn: offerMe) : null,
             stops: List.of(_stops),
             metadata: metadata,
             bookedFor: forWhom,

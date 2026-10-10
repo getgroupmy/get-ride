@@ -692,6 +692,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               onChanged: (on) {
                 final n = ref.read(autoAcceptProvider.notifier);
                 on ? n.set(r.id, current) : n.clear(r.id);
+                // Kept on the request too, so it holds with the app closed.
+                unawaited(
+                  ref.read(rideRepositoryProvider).setAutoAccept(r.id, on ? current : null).catchError((_) {}),
+                );
                 final offer = _visibleOffer;
                 if (on && shouldAutoAccept(limit: current, offer: offer)) _acceptOffer(offer!);
               },

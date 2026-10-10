@@ -18,6 +18,11 @@ class _FakeRides implements RideRepository {
   final accepted = <String>[];
   final offers = <double>[];
 
+  /// What an offer write answers: null (no longer open), the row still open
+  /// with the bid on it, or taken at once (the rider auto-accepts).
+  String? offerAnswer;
+  final rows = StreamController<RideRequest>.broadcast();
+
   @override
   Future<RideRequest?> submitOffer(
     String id,
@@ -29,8 +34,15 @@ class _FakeRides implements RideRepository {
     String? fallbackPhone,
   }) async {
     offers.add(amount);
-    return null;
+    if (offerAnswer == null) return null;
+    return RideRequest({..._req(id).raw, 'status': offerAnswer, 'partner_id': 'p1', 'offered_fare': amount});
   }
+
+  @override
+  Stream<RideRequest> watch(String id) => rows.stream;
+
+  @override
+  Future<void> withdrawOffer(String id) async {}
 
   @override
   Future<RideRequest?> ongoingForPartner() async => null;
@@ -114,7 +126,10 @@ void main() {
       rides = _FakeRides();
       now = DateTime(2026, 10, 6, 11);
     });
-    tearDown(() => open.close());
+    tearDown(() {
+      open.close();
+      rides.rows.close();
+    });
 
     Future<void> pump(WidgetTester tester, {Size size = const Size(700, 2000)}) async {
       tester.view.devicePixelRatio = 1;
@@ -143,6 +158,7 @@ void main() {
               ],
             ),
             requestAlertClockProvider.overrideWithValue(() => now),
+            currentUserIdProvider.overrideWithValue('p1'),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -248,18 +264,58 @@ void main() {
       expect(rides.accepted, isEmpty);
     });
 
-    testWidgets('accept from the alert takes the request', (tester) async {
+    testWidgets('accept sends the rider an offer at their fare and waits for them', (tester) async {
+      rides.offerAnswer = 'open';
       await pump(tester);
       open.add([_req('r1')]);
       await tester.pump();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
       await tester.tap(find.byKey(const ValueKey('request-alert-accept')));
+      await tester.pump();
+      await tester.pump();
+      expect(rides.offers, [12], reason: 'an offer at the fare asked');
+      expect(rides.accepted, isEmpty, reason: 'not taken outright');
+      expect(find.byKey(const ValueKey('offer-pending')), findsOneWidget);
+      expect(find.text('You accepted RM12.00. Waiting for the passenger to confirm…'), findsOneWidget);
+
+      // The rider says yes: the trip is this driver's.
+      rides.rows.add(RideRequest({..._req('r1').raw, 'status': 'accepted', 'partner_id': 'p1'}));
+      await tester.pump();
       await tester.pumpAndSettle();
-      expect(rides.accepted, ['r1']);
+      expect(find.text('trip r1'), findsOneWidget);
     });
 
-    testWidgets('decline hides it; the next new request pops up', (tester) async {
+    testWidgets('a rider who auto-accepts takes it at once', (tester) async {
+      rides.offerAnswer = 'accepted';
+      await pump(tester);
+      open.add([_req('r1')]);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const ValueKey('request-alert-accept')));
+      await tester.pumpAndSettle();
+      expect(rides.offers, [12]);
+      expect(find.byKey(const ValueKey('offer-pending')), findsNothing);
+      expect(find.text('trip r1'), findsOneWidget);
+    });
+
+    testWidgets('a fixed-fare request is offered too, never taken outright', (tester) async {
+      rides.offerAnswer = 'open';
+      await pump(tester);
+      open.add([RideRequest({..._req('r1').raw, 'offer_me': false})]);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const ValueKey('request-alert-accept')));
+      await tester.pump();
+      await tester.pump();
+      expect(rides.offers, [12]);
+      expect(rides.accepted, isEmpty);
+      expect(find.byKey(const ValueKey('offer-pending')), findsOneWidget);
+    });
+
+    testWidgets('skip keeps it in the list; the next new request pops up', (tester) async {
       await pump(tester);
       open.add([_req('r1'), _req('r2', fare: 20)]);
       await tester.pump();
@@ -272,7 +328,8 @@ void main() {
       // The declined card flies out.
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const ValueKey('request-alert')), findsOneWidget);
-      expect(find.text('Accept for RM12.00'), findsNothing, reason: 'r1 is gone from this driver\'s queue');
+      expect(find.text('Accept for RM12.00'), findsNothing, reason: 'r1 is out of the sheet');
+      expect(find.text('Accept RM12.00'), findsOneWidget, reason: 'r1 is still on the list');
       expect(find.text('Accept for RM20.00'), findsOneWidget, reason: 'r2 comes up next');
     });
 
@@ -306,12 +363,12 @@ void main() {
       expect(find.text('Accept for RM12.00'), findsOneWidget);
       expect(countdown(tester), 1, reason: 'a fresh countdown');
 
-      // Skipped from there: off this driver's list.
+      // Skipped from there: back on the list, not popped up again.
       await tester.tap(find.text('Skip'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.byKey(const ValueKey('request-alert')), findsNothing);
-      expect(find.byKey(const ValueKey('queue-open-r1')), findsNothing);
+      expect(find.byKey(const ValueKey('queue-open-r1')), findsOneWidget);
     });
 
     testWidgets('a request taken by someone else closes its alert', (tester) async {
@@ -341,7 +398,8 @@ void main() {
       await tester.pump();
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400)); // the cards fly in
-      expect(find.byKey(const ValueKey('request-alert')), findsNothing, reason: 'same fare stays declined');
+      expect(find.byKey(const ValueKey('request-alert')), findsNothing, reason: 'same fare does not pop up again');
+      expect(find.text('Accept RM12.00'), findsOneWidget, reason: 'but it is still on the list');
       open.add([_req('r1', fare: 17)]);
       await tester.pump();
       await tester.pump();
@@ -351,7 +409,7 @@ void main() {
       expect(countdown(tester), 1, reason: 'a fresh window');
       await tester.tap(find.byKey(const ValueKey('request-alert-accept')));
       await tester.pumpAndSettle();
-      expect(rides.accepted, ['r1']);
+      expect(rides.offers, [17]);
     });
   });
 }
