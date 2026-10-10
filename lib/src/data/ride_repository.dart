@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -715,7 +716,20 @@ class RideRepository {
   Stream<RideRequest> watch(String id) {
     final controller = StreamController<RideRequest>();
     RealtimeChannel? channel;
+    AppLifecycleListener? lifecycle;
+    // Realtime does not replay what changed while the phone held the app
+    // suspended: coming back, read the row again (expired, taken, moved on).
+    Future<void> reread() async {
+      try {
+        final r = await fetch(id);
+        if (r != null && !controller.isClosed) controller.add(r);
+      } catch (_) {}
+    }
+
     controller.onListen = () async {
+      try {
+        lifecycle = AppLifecycleListener(onResume: () => unawaited(reread()));
+      } catch (_) {}
       final first = await fetch(id);
       if (first != null && !controller.isClosed) controller.add(first);
       channel = _db
@@ -734,6 +748,7 @@ class RideRepository {
           .subscribe();
     };
     controller.onCancel = () async {
+      lifecycle?.dispose();
       if (channel != null) await _db.removeChannel(channel!);
       await controller.close();
     };
@@ -754,8 +769,13 @@ class RideRepository {
       }
     }
 
+    AppLifecycleListener? lifecycle;
     controller.onListen = () {
       refresh();
+      // Back from the background: the queue as it is now, not as it was.
+      try {
+        lifecycle = AppLifecycleListener(onResume: () => unawaited(refresh()));
+      } catch (_) {}
       channel = _db
           .channel('ride_requests_open_${DateTime.now().microsecondsSinceEpoch}')
           .onPostgresChanges(
@@ -770,6 +790,7 @@ class RideRepository {
     };
     controller.onCancel = () async {
       ticker?.cancel();
+      lifecycle?.dispose();
       if (channel != null) await _db.removeChannel(channel!);
       await controller.close();
     };

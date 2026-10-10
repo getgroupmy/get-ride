@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../data/active_location.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart' show fareOfferStep;
@@ -57,7 +58,11 @@ final riderPositionStreamProvider = Provider<Stream<LatLng> Function()>((ref) =>
     if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
     yield* Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium, distanceFilter: 10),
+      locationSettings: activeLocationSettings(
+        ActiveLocationUse.riderTrip,
+        accuracy: LocationAccuracy.medium,
+        distanceFilter: 10,
+      ),
     ).map((p) => LatLng(p.latitude, p.longitude));
   } catch (_) {}
 });
