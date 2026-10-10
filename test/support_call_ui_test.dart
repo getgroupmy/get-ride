@@ -15,6 +15,9 @@ import 'package:get_ride/src/features/support/call/call_session.dart';
 import 'package:get_ride/src/features/support/call/incoming_call_listener.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
+import 'package:get_ride/src/features/support/call/mic_gate.dart';
+
+import 'fake_mic.dart';
 
 const user = 'user-1', agent = 'agent-1';
 
@@ -148,6 +151,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          micPermissionProvider.overrideWithValue(FakeMic()),
           supportCallRepositoryProvider.overrideWithValue(repo),
           callMediaFactoryProvider.overrideWithValue(() => media),
           currentUserIdProvider.overrideWithValue(me),
