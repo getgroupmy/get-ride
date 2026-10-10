@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -101,17 +102,22 @@ Future<void> maybeAutoLaunchMeter(BuildContext context, WidgetRef ref) async {
     ..invalidate(ongoingRidesProvider)
     ..invalidate(rideInProgressProvider)
     ..invalidate(meterAutoLaunchProvider);
+  final size = MediaQuery.sizeOf(context);
+  final tablet = isTabletSize(size.width, size.height, web: kIsWeb);
   final LaunchTarget target;
   try {
     final ongoing = await ref.read(ongoingRidesProvider.future).timeout(meterLaunchTimeout);
+    final busy = ongoing.rider || ongoing.partnerTripId != null;
     // The meter rule is only asked when no ride is in progress.
-    final meter = ongoing.rider || ongoing.partnerTripId != null
-        ? false
-        : await ref.read(meterAutoLaunchProvider.future).timeout(meterLaunchTimeout);
+    final meter = busy ? false : await ref.read(meterAutoLaunchProvider.future).timeout(meterLaunchTimeout);
+    // Nor whether a tablet's account is a partner's.
+    final partnerTablet =
+        !busy && !meter && tablet && await ref.read(partnerProvider.future).timeout(meterLaunchTimeout) != null;
     target = resolveLaunchTarget(
       riderRideInProgress: ongoing.rider,
       partnerTripId: ongoing.partnerTripId,
       meterAutoLaunch: meter,
+      partnerTablet: partnerTablet,
     );
   } catch (_) {
     return;
@@ -122,6 +128,8 @@ Future<void> maybeAutoLaunchMeter(BuildContext context, WidgetRef ref) async {
       unawaited(GoRouter.of(context).push('/drive/trip/$requestId'));
     case LaunchMeter():
       unawaited(GoRouter.of(context).push('/meter'));
+    case LaunchPartnerConsole():
+      GoRouter.of(context).go('/drive');
     case LaunchHome():
       break;
   }

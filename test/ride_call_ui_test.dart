@@ -489,6 +489,50 @@ void main() {
     expect(dialled.single.toString(), 'tel:+60123456789');
   });
 
+  testWidgets('booked for someone else, the driver rings the passenger\'s own phone', (tester) async {
+    final calls = <Uri>[];
+    final repo = _Repo();
+    final forMak = RideRequest({
+      ...rideRow('accepted').raw,
+      'booked_for_name': 'Mak',
+      'booked_for_phone': '+60111222333',
+    });
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentUserIdProvider.overrideWithValue(driver),
+          rideCallRepositoryProvider.overrideWithValue(repo),
+          rideCallDialerProvider.overrideWithValue((uri) async {
+            calls.add(uri);
+            return true;
+          }),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: RideCallButton(ride: forMak, peerName: forMak.passengerName, phone: forMak.passengerPhone, compact: true),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('ride-call')));
+    await tester.pump();
+    expect(calls.single.toString(), 'tel:+60111222333', reason: 'the person at the pickup, not the booker');
+    expect(repo.log, isEmpty, reason: 'no in-app call to the booker');
+    // The booker is still a long press away.
+    await tester.longPress(find.byKey(const ValueKey('ride-call')));
+    await tester.pumpAndSettle();
+    expect(find.text('Call the booker in the app'), findsOneWidget);
+  });
+
+  test('callsPassengerDirectly: only the driver, only on a ride booked for someone else', () {
+    final own = rideRow('accepted');
+    final forMak = RideRequest({...own.raw, 'booked_for_phone': '+60111222333'});
+    expect(callsPassengerDirectly(forMak, driver), isTrue);
+    expect(callsPassengerDirectly(forMak, rider), isFalse);
+    expect(callsPassengerDirectly(own, driver), isFalse);
+    expect(callsPassengerDirectly(forMak, null), isFalse);
+  });
+
   testWidgets('no call button on a ride nobody can call', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(600, 1000);

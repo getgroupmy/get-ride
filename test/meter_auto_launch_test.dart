@@ -41,6 +41,33 @@ void main() {
     expect(resolveLaunchTarget(riderRideInProgress: false, partnerTripId: '', meterAutoLaunch: false), isA<LaunchHome>());
   });
 
+  test('a partner on a tablet lands on the console, after everything that outranks it', () {
+    expect(
+      resolveLaunchTarget(riderRideInProgress: false, meterAutoLaunch: false, partnerTablet: true),
+      isA<LaunchPartnerConsole>(),
+    );
+    expect(
+      resolveLaunchTarget(riderRideInProgress: false, meterAutoLaunch: true, partnerTablet: true),
+      isA<LaunchMeter>(),
+    );
+    expect(
+      resolveLaunchTarget(riderRideInProgress: false, partnerTripId: 'r1', meterAutoLaunch: false, partnerTablet: true),
+      isA<LaunchPartnerTrip>(),
+    );
+    expect(
+      resolveLaunchTarget(riderRideInProgress: true, meterAutoLaunch: false, partnerTablet: true),
+      isA<LaunchHome>(),
+    );
+  });
+
+  test('a tablet is a shortest side of 600 on a device, 768 in a browser', () {
+    expect(isTabletSize(1280, 800, web: false), isTrue);
+    expect(isTabletSize(600, 960, web: false), isTrue);
+    expect(isTabletSize(393, 852, web: false), isFalse, reason: 'a phone');
+    expect(isTabletSize(1280, 700, web: true), isFalse);
+    expect(isTabletSize(1366, 1024, web: true), isTrue);
+  });
+
   group('the rule', () {
     test('a TEKSI partner whose card asks for it lands on the meter', () {
       final r = resolveMeterAutoLaunch(profiles: [_card()], partnerTypes: _teksi, canDrive: true);
