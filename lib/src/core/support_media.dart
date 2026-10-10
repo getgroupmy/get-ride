@@ -36,6 +36,16 @@ String supportContentType(String kind, String ext) {
       _ => 'image/png',
     };
   }
+  if (kind == 'audio') {
+    return switch (e) {
+      'webm' => 'audio/webm',
+      'ogg' || 'opus' => 'audio/ogg',
+      'wav' => 'audio/wav',
+      'mp3' => 'audio/mpeg',
+      'aac' => 'audio/aac',
+      _ => 'audio/mp4',
+    };
+  }
   return switch (e) {
     'mov' => 'video/quicktime',
     'webm' => 'video/webm',

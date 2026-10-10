@@ -7,10 +7,16 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/format.dart';
 import '../../core/ride_chat.dart';
 import '../../data/models.dart';
+import '../../data/photo_picker.dart';
 import '../../data/ride_chat_repository.dart';
+import '../../data/voice_recorder.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/chat_photo.dart';
 import '../../widgets/common.dart';
+import '../../widgets/net_image.dart';
+import '../../widgets/voice_note.dart';
+import '../../widgets/voice_note_composer.dart';
 import '../partner/partner_trip_screen.dart' show tripFixProvider;
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 
@@ -30,9 +36,16 @@ class RideChatScreen extends ConsumerStatefulWidget {
   ConsumerState<RideChatScreen> createState() => _RideChatScreenState();
 }
 
-class _RideChatScreenState extends ConsumerState<RideChatScreen> {
+class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteComposer {
   final _text = TextEditingController();
   bool _sending = false;
+
+  /// Whether the box has something to send: Send while it has, the
+  /// microphone while it hasn't.
+  bool _hasText = false;
+
+  /// My side of the ride, as last built.
+  RideChatRole? _role;
 
   /// Messages already marked read from this screen, so a re-read of the
   /// thread doesn't ask again.
@@ -41,6 +54,10 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
   @override
   void initState() {
     super.initState();
+    _text.addListener(() {
+      final has = _text.text.trim().isNotEmpty;
+      if (has != _hasText) setState(() => _hasText = has);
+    });
     // Fires at once too: a thread the Message badge already loaded is read
     // the moment it is opened.
     ref.listenManual(rideMessagesProvider(widget.requestId), (_, next) {
@@ -51,6 +68,7 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
 
   @override
   void dispose() {
+    disposeVoiceNote();
     _text.dispose();
     super.dispose();
   }
@@ -105,12 +123,50 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
     await repo.sendLocation(widget.requestId, role, at.latitude, at.longitude);
   });
 
+  /// A photo from the gallery or the camera, looked at (and captioned)
+  /// before it goes.
+  Future<void> _sendPhoto(RideChatRole role) async {
+    if (_sending) return;
+    final source = await choosePhotoSource(context, camera: ref.read(photoCameraAvailableProvider));
+    if (source == null || !mounted) return;
+    final PickedPhoto? photo;
+    try {
+      photo = await ref.read(photoPickerProvider)(source);
+    } catch (e) {
+      if (mounted) {
+        showInfo(
+          context,
+          source == PhotoSource.camera
+              ? "Couldn't open the camera. Check that GET.ride may use it in Settings."
+              : "Couldn't open your photos. Check that GET.ride may use them in Settings.",
+        );
+      }
+      return;
+    }
+    if (photo == null || !mounted) return;
+    final problem = ridePhotoProblem(photo.bytes.length);
+    if (problem != null) return showInfo(context, problem);
+    final caption = await confirmPhoto(context, photo.bytes, maxCaption: rideMessageMaxLength);
+    if (caption == null || !mounted) return;
+    await _run((repo) => repo.sendPhoto(widget.requestId, role, photo!.bytes, name: photo.name, caption: caption));
+  }
+
+  @override
+  Future<void> sendVoiceClip(VoiceClip clip) async {
+    final role = _role;
+    if (role == null) return;
+    await _run(
+      (repo) => repo.sendVoiceNote(widget.requestId, role, clip.bytes, ext: clip.ext, duration: clip.duration),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ride = ref.watch(rideStreamProvider(widget.requestId));
     final uid = ref.watch(currentUserIdProvider);
     final r = ride.value;
     final role = r == null ? null : rideChatRoleFor(r, uid);
+    _role = role;
     final peer = switch (role) {
       RideChatRole.rider => r?.partnerName ?? 'Your driver',
       RideChatRole.partner => r?.passengerName ?? 'Your passenger',
@@ -227,7 +283,14 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: Row(
+            child: recording
+                ? VoiceRecordingBar(
+                    elapsed: recordElapsed,
+                    max: rideVoiceNoteMax,
+                    onCancel: cancelVoiceNote,
+                    onSend: finishVoiceNote,
+                  )
+                : Row(
               children: [
                 IconButton(
                   key: const ValueKey('ride-chat-location'),
@@ -235,6 +298,13 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
                   color: t.colorScheme.primary,
                   onPressed: _sending ? null : () => _shareLocation(role),
                   icon: const Icon(Icons.my_location),
+                ),
+                IconButton(
+                  key: const ValueKey('ride-chat-photo'),
+                  tooltip: 'Send a photo',
+                  color: t.colorScheme.primary,
+                  onPressed: _sending ? null : () => _sendPhoto(role),
+                  icon: const Icon(Icons.photo_camera_outlined),
                 ),
                 Expanded(
                   child: TextField(
@@ -250,12 +320,20 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton.filled(
-                  key: const ValueKey('ride-chat-send'),
-                  tooltip: 'Send',
-                  onPressed: _sending ? null : () => _sendText(role),
-                  icon: const Icon(Icons.send),
-                ),
+                if (_hasText)
+                  IconButton.filled(
+                    key: const ValueKey('ride-chat-send'),
+                    tooltip: 'Send',
+                    onPressed: _sending ? null : () => _sendText(role),
+                    icon: const Icon(Icons.send),
+                  )
+                else
+                  IconButton.filled(
+                    key: const ValueKey('ride-chat-voice'),
+                    tooltip: 'Record a voice note',
+                    onPressed: _sending ? null : startVoiceNote,
+                    icon: const Icon(Icons.mic_none),
+                  ),
               ],
             ),
           ),
@@ -347,6 +425,10 @@ class _Bubble extends StatelessWidget {
           ],
         ),
       );
+    } else if (m.type == RideMessageType.image && m.hasMedia) {
+      content = _PhotoContent(message: m, color: fg);
+    } else if (m.type == RideMessageType.audio && m.hasMedia) {
+      content = _VoiceContent(message: m, color: fg);
     } else {
       content = Text(m.body ?? '', style: t.textTheme.bodyMedium?.copyWith(color: fg));
     }
@@ -394,6 +476,70 @@ class _Bubble extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A sent photo: a thumbnail that opens full screen, and its caption.
+class _PhotoContent extends ConsumerWidget {
+  const _PhotoContent({required this.message, required this.color});
+  final RideMessage message;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final m = message;
+    final url = ref.watch(rideChatMediaUrlProvider(m.mediaPath!));
+    final t = Theme.of(context);
+    const side = 220.0;
+    Widget placeholder(IconData icon) => SizedBox.square(
+      dimension: side,
+      child: Icon(icon, color: color.withValues(alpha: 0.7), size: 40),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          key: ValueKey('ride-photo-${m.id}'),
+          onTap: url.value == null ? null : () => openPhotoViewer(context, url.value!, caption: m.caption),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: side, maxHeight: side, minWidth: 120, minHeight: 80),
+              child: switch (url) {
+                AsyncData(:final value) => Image.network(
+                  value,
+                  fit: BoxFit.cover,
+                  frameBuilder: boneUntilPainted(width: side, height: side),
+                  errorBuilder: (_, _, _) => placeholder(Icons.broken_image_outlined),
+                ),
+                AsyncError() => placeholder(Icons.broken_image_outlined),
+                _ => const ImageBone(width: side, height: side),
+              },
+            ),
+          ),
+        ),
+        if (m.caption != null) ...[
+          const SizedBox(height: 6),
+          Text(m.caption!, style: t.textTheme.bodyMedium?.copyWith(color: color)),
+        ],
+      ],
+    );
+  }
+}
+
+/// A voice note: play it where it is.
+class _VoiceContent extends ConsumerWidget {
+  const _VoiceContent({required this.message, required this.color});
+  final RideMessage message;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => VoiceNotePlayer(
+    key: ValueKey('ride-voice-${message.id}'),
+    url: () => ref.read(rideChatMediaUrlProvider(message.mediaPath!).future),
+    length: message.mediaDuration,
+    color: color,
+  );
 }
 
 /// [child] (the Message icon) with the ride chat's unread count on it.

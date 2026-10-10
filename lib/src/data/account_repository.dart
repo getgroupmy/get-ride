@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../core/avatar.dart';
 import '../core/profile_identity.dart';
+import '../core/ride_chat.dart' show rideVoiceNoteSeconds;
 import '../core/support_media.dart';
 import 'models.dart';
 
@@ -217,6 +218,36 @@ class AccountRepository {
       'status': 'sent',
     });
     await _bumpTicket(ticketId, supportSummary(kind, null));
+  }
+
+  /// Sends a voice note: uploads it to the ticket's folder in
+  /// `support-media`, then posts it as an `audio` message.
+  Future<void> sendVoiceNote(
+    String ticketId,
+    Uint8List bytes, {
+    required String ext,
+    required Duration duration,
+    String? senderName,
+  }) async {
+    if (bytes.isEmpty) throw StateError('Nothing was recorded.');
+    final path = supportMediaPath(ticketId, 'audio', ext, DateTime.now(), const Uuid().v4().substring(0, 8));
+    final bucket = _db.storage.from('support-media');
+    await bucket.uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(upsert: true, contentType: supportContentType('audio', ext)),
+    );
+    await _db.from('support_messages').insert({
+      'ticket_id': ticketId,
+      'sender_role': 'user',
+      'sender_id': _uid,
+      'sender_name': senderName,
+      'type': 'audio',
+      'media_url': bucket.getPublicUrl(path),
+      'media_duration': rideVoiceNoteSeconds(duration),
+      'status': 'sent',
+    });
+    await _bumpTicket(ticketId, supportSummary('audio', null));
   }
 
   /// Bumps the ticket summary; the admin-side unread counter goes up.
