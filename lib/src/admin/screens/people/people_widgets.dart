@@ -16,6 +16,7 @@ import 'doc_pdf.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
 import '../../../widgets/net_image.dart';
+import '../../../data/live_tables.dart';
 
 /// Wide screens get a two-column form, phones one column.
 class FormColumns extends StatelessWidget {
@@ -601,6 +602,7 @@ class PartnerDocsUploader extends ConsumerStatefulWidget {
     this.renewalLock = false,
     this.actionSummary = false,
     this.now,
+    this.adminView = false,
   });
   final String partnerId;
   final List<RequiredDoc> docs;
@@ -630,6 +632,11 @@ class PartnerDocsUploader extends ConsumerStatefulWidget {
 
   /// Clock override for tests.
   final DateTime? now;
+
+  /// On an admin page: follows every account's uploads live. In the
+  /// partner's own app it follows only that account's (the app-wide
+  /// channel), so a rider or driver never opens the admin channel.
+  final bool adminView;
 
   @override
   ConsumerState<PartnerDocsUploader> createState() => _PartnerDocsUploaderState();
@@ -662,7 +669,20 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<List<Map<String, dynamic>>>(
+  Widget build(BuildContext context) {
+    // An upload or a review elsewhere shows here (the last list stays up
+    // while the new one loads).
+    final table = widget.vehicleId == null ? 'provider_documents' : 'vehicle_documents';
+    void reload() => setState(() => _uploads = _load());
+    if (widget.adminView) {
+      ref.listenAdminLive([table], reload);
+    } else {
+      ref.listenLive([table], reload);
+    }
+    return _uploadsView(context);
+  }
+
+  Widget _uploadsView(BuildContext context) => FutureBuilder<List<Map<String, dynamic>>>(
         future: _uploads,
         builder: (context, snap) {
           final t = Theme.of(context);

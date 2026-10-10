@@ -9,8 +9,10 @@ import '../admin_access.dart';
 import '../admin_filters.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
+import '../../data/live_tables.dart';
 
 final adminRidesProvider = FutureProvider.autoDispose.family<List<RideRequest>, String>((ref, group) async {
+  ref.watchAdminLive('ride_requests');
   final rows = await ref.watch(adminRepositoryProvider).rides(statuses: rideStatusGroups[group]);
   return rows.map(RideRequest.new).toList();
 });

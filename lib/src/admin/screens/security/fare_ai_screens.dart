@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +14,7 @@ import '../../../core/route_estimate.dart' show FareTrend, FareTrendDirection, a
 import '../../../widgets/fare_trend_arrows.dart';
 import 'fare_ai_logic.dart';
 import 'security_data.dart';
+import '../../../data/live_tables.dart';
 
 const _page = 'admin-settings-fare-ai';
 const _logsPage = 'admin-settings-fare-ai-logs';
@@ -280,6 +283,11 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Another admin's save (or a key's state changing) shows here, unless
+    // this form has unsaved edits.
+    ref.listenAdminLive(const ['app_settings', 'fare_ai_key_states'], () {
+      if (!_dirty && !_saving) unawaited(_load());
+    });
     final canEdit = ref.watch(securityLevelProvider(_page)) == AccessLevel.edit;
     final c = _config;
     return AdminPage(
@@ -544,7 +552,10 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
 
 // ---- Response log ------------------------------------------------------------
 
-final _responsesProvider = FutureProvider.autoDispose((ref) => ref.watch(securityRepositoryProvider).fareAiResponses());
+final _responsesProvider = FutureProvider.autoDispose((ref) {
+  ref.watchAdminLive('fare_ai_responses');
+  return ref.watch(securityRepositoryProvider).fareAiResponses();
+});
 
 class AdminFareAiLogsScreen extends ConsumerWidget {
   const AdminFareAiLogsScreen({super.key});

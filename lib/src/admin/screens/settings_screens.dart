@@ -115,7 +115,8 @@ class AdminSettingsScreen extends ConsumerWidget {
 
 final _entriesProvider = FutureProvider.autoDispose.family<List<SettingEntry>, String>(
   (ref, key) {
-  ref.watchLive('settings_entries');
+  // The category's own table: not every category is in settings_entries.
+  ref.watchAdminLive(categoryFor(key).table);
   return ref.watch(adminRepositoryProvider).settings(categoryFor(key));
 },
 );

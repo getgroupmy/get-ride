@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,6 +12,7 @@ import '../../widgets/admin_widgets.dart';
 import 'api_keys_screens.dart' show apiKeysPage;
 import 'elife_logic.dart';
 import 'security_data.dart';
+import '../../../data/live_tables.dart';
 
 const _page = 'admin-settings-api-elife';
 
@@ -125,6 +128,10 @@ class _ElifeState extends ConsumerState<AdminElifeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Another admin's save shows here, unless this form has unsaved edits.
+    ref.listenAdminLive(const ['app_settings'], () {
+      if (!_dirty && !_saving && !_testing) unawaited(_load());
+    });
     final canEdit = ref.watch(securityLevelProvider('$apiKeysPage,$_page')) == AccessLevel.edit;
     final cfg = _config;
     return AdminPage(

@@ -41,6 +41,11 @@ const liveSettingTables = <String>[
   'ev_delivery_advisors',
   'ev_finance_options',
   'ev_order_fee',
+  'insurance_providers',
+  'insurance_types',
+  'insurance_durations',
+  'insurance_premium',
+  'driver_incentive',
   // Not settings, but the balances on screen: a commission or a transfer
   // lands without a pull to refresh (row-level security limits it to the
   // signed-in account's own wallets).
@@ -159,10 +164,113 @@ extension LiveTableRef on Ref {
   void watchLive(String table) => watch(liveTablesProvider.select((r) => r[table] ?? 0));
 }
 
+/// The tables admin pages list in full (every account's rows, not only the
+/// admin's own): followed live only while an admin page that reads them is
+/// open ([adminLiveTablesProvider] is built by those pages alone), so no
+/// rider or driver ever opens this channel, and row-level security keeps
+/// anyone but an admin from receiving its rows anyway.
+const liveAdminTables = <String>[
+  'profiles',
+  'partners',
+  'vehicle',
+  'provider_documents',
+  'vehicle_documents',
+  'vehicle_user_assignment',
+  'ride_requests',
+  'support_tickets',
+  'push_notifications',
+  'ev_orders',
+  'help_articles',
+  'help_questions',
+  'fare_ai_responses',
+  'fare_ai_key_states',
+  'user_sessions',
+];
+
+/// Rides and sessions change every few seconds while trips run; an admin
+/// list re-reads at most this often.
+const liveAdminDebounce = Duration(milliseconds: 1500);
+
+/// Every row of [liveAdminTables], for admin pages (see [LiveTables] for the
+/// settings and the account's own rows). Disposed when the last admin page
+/// reading it closes.
+class AdminLiveTables extends Notifier<Map<String, int>> {
+  final _pending = <String>{};
+  Timer? _debounce;
+
+  @override
+  Map<String, int> build() {
+    RealtimeChannel? channel;
+    SupabaseClient? db;
+    try {
+      final client = ref.read(supabaseProvider);
+      db = client;
+      var c = client.channel('live_admin');
+      for (final table in liveAdminTables) {
+        c = c.onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: table,
+          callback: (_) => changed([table]),
+        );
+      }
+      channel = c.subscribe();
+    } catch (_) {
+      // No client (tests): admin lists are read once, as before.
+    }
+    AppLifecycleListener? lifecycle;
+    try {
+      lifecycle = AppLifecycleListener(onResume: () => changed(liveAdminTables));
+    } catch (_) {}
+    ref.onDispose(() {
+      _debounce?.cancel();
+      lifecycle?.dispose();
+      if (channel != null) unawaited(db!.removeChannel(channel));
+    });
+    return const {};
+  }
+
+  /// Marks [tables] as changed; their readers refetch after [liveAdminDebounce].
+  void changed(Iterable<String> tables) {
+    _pending.addAll(tables);
+    _debounce?.cancel();
+    _debounce = Timer(liveAdminDebounce, () {
+      final due = {..._pending};
+      _pending.clear();
+      if (ref.mounted) state = bumpRevisions(state, due);
+    });
+  }
+}
+
+final adminLiveTablesProvider = NotifierProvider.autoDispose<AdminLiveTables, Map<String, int>>(AdminLiveTables.new);
+
+extension AdminLiveTableRef on Ref {
+  /// Re-runs this admin provider whenever any row of [table] changes, the
+  /// admin's own or anyone's: a settings table through [liveSettingTables],
+  /// the rest through [liveAdminTables].
+  void watchAdminLive(String table) {
+    if (liveAdminTables.contains(table)) {
+      watch(adminLiveTablesProvider.select((r) => r[table] ?? 0));
+    } else {
+      watchLive(table);
+    }
+  }
+}
+
 extension LiveTableWidgetRef on WidgetRef {
   /// Calls [onChange] whenever a row of any of [tables] changes, for a
   /// screen that loads in initState and must keep what is being typed (call
   /// it from build).
   void listenLive(List<String> tables, void Function() onChange) =>
       listen(liveTablesProvider.select((r) => liveStamp(r, tables)), (_, _) => onChange());
+
+  /// [listenLive] for an admin page: every row of [tables], anyone's.
+  void listenAdminLive(List<String> tables, void Function() onChange) {
+    final admin = [for (final t in tables) if (liveAdminTables.contains(t)) t];
+    final settings = [for (final t in tables) if (!liveAdminTables.contains(t)) t];
+    if (admin.isNotEmpty) {
+      listen(adminLiveTablesProvider.select((r) => liveStamp(r, admin)), (_, _) => onChange());
+    }
+    if (settings.isNotEmpty) listenLive(settings, onChange);
+  }
 }

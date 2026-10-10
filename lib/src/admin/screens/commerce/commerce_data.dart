@@ -38,7 +38,8 @@ typedef Entry = ({String id, Map<String, dynamic> values});
 
 /// Entries of one category, in `position` order.
 final commerceEntriesProvider = FutureProvider.autoDispose.family<List<Entry>, String>((ref, key) async {
-  ref.watchLive('settings_entries');
+  // The category's own table (the ev_* catalogue tables, …).
+  ref.watchAdminLive(commerceCategories[key]!.table);
   final rows = await ref.watch(adminRepositoryProvider).settings(commerceCategories[key]!);
   return [for (final r in rows) (id: r.id, values: r.values)];
 });
@@ -187,4 +188,7 @@ final getCoinProvider = FutureProvider.autoDispose(
   },
 );
 
-final evOrdersProvider = FutureProvider.autoDispose((ref) => ref.watch(commerceRepositoryProvider).evOrders());
+final evOrdersProvider = FutureProvider.autoDispose((ref) {
+  ref.watchAdminLive('ev_orders');
+  return ref.watch(commerceRepositoryProvider).evOrders();
+});

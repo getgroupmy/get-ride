@@ -15,6 +15,7 @@ import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import '../widgets/trip_audio_panel.dart';
 import 'support_agents.dart';
+import '../../data/live_tables.dart';
 
 /// Ticket statuses and the labels the Expo panel shows for them.
 const ticketStatusLabels = {
@@ -24,7 +25,10 @@ const ticketStatusLabels = {
   'closed': 'Resolved',
 };
 
-final adminTicketsProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).tickets());
+final adminTicketsProvider = FutureProvider.autoDispose((ref) {
+  ref.watchAdminLive('support_tickets');
+  return ref.watch(adminRepositoryProvider).tickets();
+});
 
 class AdminSupportScreen extends ConsumerStatefulWidget {
   const AdminSupportScreen({super.key});
@@ -215,6 +219,8 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
 
   @override
   Widget build(BuildContext context) {
+    // The ticket's status and assignee as another admin changes them.
+    ref.listenAdminLive(const ['support_tickets'], () => unawaited(_load()));
     final t = Theme.of(context);
     final canEdit = ref.watch(moduleAccessProvider('support')) == AccessLevel.edit;
     final ticket = _ticket;

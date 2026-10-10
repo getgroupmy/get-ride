@@ -16,6 +16,7 @@ typedef _GrantsView = ({List<AdminGrant> grants, Map<String, Map<String, dynamic
 
 final _grantsProvider = FutureProvider.autoDispose<_GrantsView>((ref) async {
   ref.watchLive('admin_access');
+  ref.watchAdminLive('profiles');
   final repo = ref.watch(adminRepositoryProvider);
   final grants = (await repo.allGrants()).map(AdminGrant.fromRow).toList();
   final people = await repo.profilesByIds(grants.map((g) => g.profileId).whereType<String>());

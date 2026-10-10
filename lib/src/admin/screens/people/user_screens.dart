@@ -12,6 +12,7 @@ import 'people_logic.dart';
 import 'people_widgets.dart';
 import '../../../widgets/in_app_page.dart';
 import '../../../widgets/net_image.dart';
+import '../../../data/live_tables.dart';
 
 void _leave(BuildContext context) => context.canPop() ? context.pop(true) : context.go('/admin/users');
 
@@ -255,8 +256,10 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
 
 // ---- User ID documents -----------------------------------------------------
 
-final _idDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
-    (ref, tab) => ref.watch(peopleRepositoryProvider).idDocuments(tab));
+final _idDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, tab) {
+  ref.watchAdminLive('profiles');
+  return ref.watch(peopleRepositoryProvider).idDocuments(tab);
+});
 
 /// `admin-documents-users`: review the ID images users uploaded.
 class UserIdDocumentsScreen extends ConsumerStatefulWidget {

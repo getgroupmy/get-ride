@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
+import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/meterapp/branding_screens.dart';
 import 'package:get_ride/src/admin/screens/meterapp/meterapp_module.dart';
@@ -34,6 +35,8 @@ void main() {
       ProviderScope(
         overrides: [
           supabaseProvider.overrideWithValue(_db),
+          // No realtime socket in a test.
+          liveTablesProvider.overrideWith(_QuietLive.new),
           adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
           brandingStoreProvider.overrideWithValue(store),
           brandingProvider.overrideWith(
@@ -100,4 +103,9 @@ void main() {
     final site = meterappEntries.firstWhere((e) => e.path == '/admin/m/site');
     expect(site.pages, containsAll(['admin-settings-site', 'admin-settings-app-icon', 'admin-settings-splash']));
   });
+}
+
+class _QuietLive extends LiveTables {
+  @override
+  Map<String, int> build() => const {};
 }

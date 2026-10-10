@@ -1,5 +1,5 @@
 -- ============================================================================
--- Regression test for migration 0135: every table the app follows live
+-- Regression test for migrations 0135 and 0136: every table the app follows live
 -- (lib/src/data/live_tables.dart: liveSettingTables and liveOwnTables) is in
 -- the `supabase_realtime` publication, so an admin's change reaches running
 -- apps without a relaunch.
@@ -20,7 +20,13 @@ begin
     'countries', 'states', 'cities', 'suburbs', 'fare_tariffs', 'get_coin_rate_history',
     'required_document', 'document_type', 'ev_vehicle_details', 'ev_vehicle_inventory',
     'ev_delivery_advisors', 'ev_finance_options', 'ev_order_fee', 'wallets',
-    'profiles', 'partners', 'provider_documents', 'vehicle', 'vehicle_documents'
+    'profiles', 'partners', 'provider_documents', 'vehicle', 'vehicle_documents',
+    'insurance_providers', 'insurance_types', 'insurance_durations', 'insurance_premium',
+    'driver_incentive',
+    -- Admin pages (liveAdminTables, migration 0136).
+    'vehicle_user_assignment', 'ride_requests', 'support_tickets', 'push_notifications',
+    'ev_orders', 'help_articles', 'help_questions', 'fare_ai_responses', 'fare_ai_key_states',
+    'user_sessions'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +10,7 @@ import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
 import 'fare_ai_logic.dart';
 import 'security_data.dart';
+import '../../../data/live_tables.dart';
 
 const _page = 'admin-settings-fare-ai';
 
@@ -160,6 +163,10 @@ class _RequestState extends ConsumerState<AdminFareAiRequestScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Another admin's save shows here, unless this form has unsaved edits.
+    ref.listenAdminLive(const ['app_settings'], () {
+      if (!_dirty) unawaited(_load());
+    });
     final canEdit = ref.watch(securityLevelProvider(_page)) == AccessLevel.edit;
     return AdminPage(
       title: 'Fare AI · Request & format',

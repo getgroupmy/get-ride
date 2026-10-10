@@ -13,6 +13,7 @@ import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
 import 'vehicle_drivers.dart';
+import '../../../data/live_tables.dart';
 
 /// Whether a vehicle may be approved (Expo `runApprovalDocCheck`): only
 /// once every one of its documents is approved. Otherwise says why, offers
@@ -383,8 +384,10 @@ class _VehiclePhotosState extends ConsumerState<_VehiclePhotos> {
       ]);
 }
 
-final _vehicleDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
-    (ref, id) => ref.watch(peopleRepositoryProvider).vehicleDocuments(id));
+final _vehicleDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, id) {
+  ref.watchAdminLive('vehicle_documents');
+  return ref.watch(peopleRepositoryProvider).vehicleDocuments(id);
+});
 
 class _VehicleDocumentsList extends ConsumerWidget {
   const _VehicleDocumentsList({required this.vehicleId});

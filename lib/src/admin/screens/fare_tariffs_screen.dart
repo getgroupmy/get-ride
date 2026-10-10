@@ -10,8 +10,12 @@ import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import 'geo/geo_data.dart';
 import 'geo/geo_logic.dart';
+import '../../data/live_tables.dart';
 
-final fareTariffRowsProvider = FutureProvider.autoDispose((ref) => ref.watch(adminRepositoryProvider).fareTariffs());
+final fareTariffRowsProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('fare_tariffs');
+  return ref.watch(adminRepositoryProvider).fareTariffs();
+});
 
 /// What the page's pickers are set to: a place (from Country / States /
 /// Cities) and a Service Settings type.
