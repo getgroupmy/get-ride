@@ -40,8 +40,20 @@ class PhoneLookupFailed implements Exception {
 }
 
 class PinSignInError extends PinSignInResult {
-  const PinSignInError(this.message);
+  const PinSignInError(this.message, {this.locked = false});
   final String message;
+
+  /// The PIN can't be tried now (the account is locked, or this network has
+  /// tried too often): signing in with an SMS code still works.
+  final bool locked;
+}
+
+/// Too many number lookups from this network (migration 0137).
+class PhoneLookupRateLimited implements Exception {
+  const PhoneLookupRateLimited(this.seconds);
+  final int seconds;
+  @override
+  String toString() => rateLimitMessage(seconds);
 }
 
 /// Phone OTP + 6-digit PIN authentication, wire-compatible with the Expo app
@@ -72,6 +84,10 @@ class AuthRepository {
         hasPin: r['has_pin'] == true,
         isDeleted: r['is_deleted'] == true,
       );
+    } on PostgrestException catch (e) {
+      final wait = parseRateLimitSeconds(e.message);
+      if (wait != null) throw PhoneLookupRateLimited(wait);
+      throw const PhoneLookupFailed();
     } catch (_) {
       throw const PhoneLookupFailed();
     }
@@ -127,7 +143,9 @@ class AuthRepository {
         return const PinSignInError('Incorrect PIN. Please try again.');
       } on PostgrestException catch (pe) {
         final lock = parsePinLockSeconds(pe.message);
-        if (lock != null) return PinSignInError(pinLockMessage(lock));
+        if (lock != null) return PinSignInError(pinLockMessage(lock), locked: true);
+        final wait = parseRateLimitSeconds(pe.message);
+        if (wait != null) return PinSignInError(rateLimitMessage(wait), locked: true);
         return const PinSignInError('Incorrect PIN. Please try again.');
       }
     }
@@ -147,10 +165,21 @@ class AuthRepository {
     } on PostgrestException catch (pe) {
       final lock = parsePinLockSeconds(pe.message);
       if (lock != null) return pinLockMessage(lock);
+      final wait = parseRateLimitSeconds(pe.message);
+      if (wait != null) return rateLimitMessage(wait);
       return "Couldn't check your PIN. Please try again.";
     } catch (_) {
       return "Couldn't check your PIN. Please try again.";
     }
+  }
+
+  /// Lifts the signed-in account's PIN lock (`clear_my_pin_lock`, migration
+  /// 0137): an SMS sign-in proved the number is theirs. Best effort — a
+  /// database without it, or no signal, leaves the lock to run out.
+  Future<void> clearPinLock() async {
+    try {
+      await _db.rpc('clear_my_pin_lock');
+    } catch (_) {}
   }
 
   /// Saves the PIN server-side (bcrypt via `set_login_pin`) and syncs the

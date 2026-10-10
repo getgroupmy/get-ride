@@ -22,6 +22,9 @@ class _PinScreenState extends ConsumerState<PinScreen> {
   bool _busy = false;
   String? _error;
 
+  /// The PIN can't be tried now: offer an SMS code instead.
+  bool _locked = false;
+
   @override
   void dispose() {
     _pin.dispose();
@@ -34,6 +37,7 @@ class _PinScreenState extends ConsumerState<PinScreen> {
     setState(() {
       _busy = true;
       _error = null;
+      _locked = false;
     });
     final auth = ref.read(authRepositoryProvider);
     final result = await auth.signInWithPin(widget.phone, pin);
@@ -53,19 +57,24 @@ class _PinScreenState extends ConsumerState<PinScreen> {
         } catch (e) {
           if (mounted) showError(context, e);
         }
-      case PinSignInError(:final message):
+      case PinSignInError(:final message, :final locked):
         _pin.clear();
-        setState(() => _error = message);
+        setState(() {
+          _error = message;
+          _locked = locked;
+        });
     }
     if (mounted) setState(() => _busy = false);
   }
 
-  Future<void> _forgot() async {
+  /// An SMS code, then a new PIN ([next] `set-pin`) or straight in past the
+  /// lock with the PIN unchanged (`unlock`).
+  Future<void> _smsCode(String next) async {
     setState(() => _busy = true);
     try {
       await ref.read(authRepositoryProvider).sendOtp(widget.phone, createUser: false);
       if (!mounted) return;
-      context.push(Uri(path: '/login/otp', queryParameters: {'phone': widget.phone, 'next': 'set-pin'}).toString());
+      context.push(Uri(path: '/login/otp', queryParameters: {'phone': widget.phone, 'next': next}).toString());
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
@@ -95,7 +104,18 @@ class _PinScreenState extends ConsumerState<PinScreen> {
             const SizedBox(height: 24),
             BusyButton.filled(onPressed: _busy ? null : _submit, child: const Text('Sign in')),
             const SizedBox(height: 8),
-            BusyButton.text(onPressed: _busy ? null : _forgot, child: const Text('Forgot PIN? Verify by SMS')),
+            if (_locked) ...[
+              BusyButton.tonal(
+                key: const ValueKey('pin-sms-unlock'),
+                onPressed: _busy ? null : () => _smsCode('unlock'),
+                child: const Text('Sign in with an SMS code instead'),
+              ),
+              const SizedBox(height: 8),
+            ],
+            BusyButton.text(
+              onPressed: _busy ? null : () => _smsCode('set-pin'),
+              child: const Text('Forgot PIN? Verify by SMS'),
+            ),
           ]),
         ),
       ),

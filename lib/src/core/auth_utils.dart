@@ -65,6 +65,30 @@ String pinLockMessage(int seconds) {
   return 'Too many incorrect attempts. Try again in $mins minute${mins == 1 ? '' : 's'}.';
 }
 
+/// Parses the `RATE_LIMITED:<seconds>` marker the pre-login checks raise
+/// when one network address has asked too often (migration 0137).
+int? parseRateLimitSeconds(String? message) {
+  final m = RegExp(r'RATE_LIMITED:?(\d+)?').firstMatch(message ?? '');
+  if (m == null) return null;
+  return int.tryParse(m.group(1) ?? '') ?? 60;
+}
+
+String rateLimitMessage(int seconds) {
+  final mins = (seconds / 60).ceil().clamp(1, 1 << 30);
+  return 'Too many tries from this network. Try again in $mins minute${mins == 1 ? '' : 's'}.';
+}
+
+/// What an SMS code confirms, from the OTP screen's `next`: choosing a PIN
+/// (new account, forgot PIN), re-syncing a drifted password from the PIN
+/// just typed, or signing in past a PIN lock without changing the PIN.
+enum OtpNext { setPin, resync, unlock }
+
+OtpNext otpNextFor(String next, {String? pin}) => switch (next) {
+  'resync' when pin != null => OtpNext.resync,
+  'unlock' => OtpNext.unlock,
+  _ => OtpNext.setPin,
+};
+
 /// Errors from `set_login_pin` when the device-based duplicate-account guard
 /// refuses a new registration.
 bool isRegistrationBlocked(String? message) =>

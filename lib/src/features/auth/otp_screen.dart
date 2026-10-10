@@ -5,14 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth_utils.dart';
 import '../../data/auth_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 
 /// SMS code verification.
 ///
-/// [next] is `set-pin` (new user / forgot PIN → choose a PIN) or `resync`
-/// (PIN was right but the Auth password drifted → re-derive it from [pin]).
+/// [next] is `set-pin` (new user / forgot PIN → choose a PIN), `resync`
+/// (PIN was right but the Auth password drifted → re-derive it from [pin]) or
+/// `unlock` (the PIN is locked → sign in by SMS, keeping the PIN).
 class OtpScreen extends ConsumerStatefulWidget {
   const OtpScreen({super.key, required this.phone, required this.next, this.pin, this.createUser = false});
   final String phone;
@@ -58,15 +60,21 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
     if (_code.text.length != 6 || _busy) return;
     setState(() => _busy = true);
     final auth = ref.read(authRepositoryProvider);
-    final setPin = widget.next != 'resync' || widget.pin == null;
-    AuthRepository.pinSetupPending = setPin;
+    final next = otpNextFor(widget.next, pin: widget.pin);
+    AuthRepository.pinSetupPending = next == OtpNext.setPin;
     try {
       await auth.verifyOtp(widget.phone, _code.text);
-      if (!setPin) {
-        await auth.syncPinPassword(widget.pin!);
-        if (mounted) context.go('/');
-      } else if (mounted) {
-        context.go('/login/set-pin');
+      switch (next) {
+        case OtpNext.resync:
+          await auth.syncPinPassword(widget.pin!);
+          if (mounted) context.go('/');
+        case OtpNext.unlock:
+          // Signed in past the PIN lock: the code proved the number, so the
+          // lock goes and the PIN stays as it was.
+          await auth.clearPinLock();
+          if (mounted) context.go('/');
+        case OtpNext.setPin:
+          if (mounted) context.go('/login/set-pin');
       }
     } catch (e) {
       AuthRepository.pinSetupPending = false;

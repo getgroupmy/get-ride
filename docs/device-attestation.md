@@ -5,6 +5,15 @@ nothing until a native build + provider credentials exist. Nothing in the
 current app flow depends on them, and they can never block a legitimate
 sign-up while inactive.
 
+**`attest-device` is undeployed on purpose.** It is not missing from the
+project by accident. Deploying it now would only add an endpoint that
+records `passed: false` for every iPhone and is never called, because
+neither app produces attestation tokens yet. Deploy it only when the
+activation checklist below is done: a native build that makes the tokens,
+the provider secrets, and an App Attest verifier built on a vetted library.
+Until then, sign-up abuse is held back by the device guard and by the
+pre-login rate limits (migration `0137`, see `docs/backend.md`).
+
 ## Why
 
 The device-based duplicate-account guard (migrations `0071`/`0072`) relies on
