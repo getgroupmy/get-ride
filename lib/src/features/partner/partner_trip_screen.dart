@@ -23,6 +23,7 @@ import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../ride/live_ride_map.dart';
+import '../ride/ride_call_screen.dart' show RideCallButton;
 import '../ride/ride_chat_screen.dart' show RideChatBadge;
 import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
 import '../safety/voice_protection_controller.dart';
@@ -445,12 +446,9 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                   icon: RideChatBadge(requestId: r.id, child: const Icon(Icons.chat_bubble_outline)),
                   onPressed: () => context.push('/drive/trip/${r.id}/chat'),
                 ),
-                if (r.passengerPhone != null)
-                  IconButton(
-                    tooltip: 'Call ${r.passengerName}',
-                    icon: const Icon(Icons.call),
-                    onPressed: () => launchUrl(Uri(scheme: 'tel', path: r.passengerPhone)),
-                  ),
+                // An in-app call to the rider's account (migration 0131); a
+                // long press offers the phone call when the number is known.
+                RideCallButton(ride: r, peerName: r.passengerName, phone: r.passengerPhone, compact: true),
               ]),
             ),
             ListTile(

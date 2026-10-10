@@ -49,6 +49,7 @@ import 'features/profile/user_guide_screen.dart';
 import 'features/safety/safety_screen.dart';
 import 'features/ride/demo_ride.dart';
 import 'features/ride/home_screen.dart';
+import 'features/ride/ride_call_screen.dart';
 import 'features/ride/ride_chat_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
@@ -298,6 +299,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/call/:id',
         builder: (_, s) => CallScreen(callId: s.pathParameters['id']!, peerName: s.uri.queryParameters['name']),
       ),
+      // A rider ↔ driver call (migration 0131).
+      GoRoute(path: '/ride-call/:id', builder: (_, s) => RideCallScreen(callId: s.pathParameters['id']!)),
       adminRoute,
     ],
   );
@@ -476,6 +479,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     final title = message.notification?.title ?? '';
     final body = message.notification?.body ?? '';
     if (title.isEmpty && body.isEmpty) return;
+    // A ride call already rings full screen (RideCallListener).
+    if (message.data['type'] == 'ride_call') return;
     final route = pushRouteFor(message.data);
     // A chat message while that chat is on screen is already in front of them.
     if (route != null && route == ref.read(routerProvider).routerDelegate.currentConfiguration.uri.path) return;
@@ -516,9 +521,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
           child: VoiceProtectionHost(
             child: IncomingTransferListener(
               child: IncomingCallListener(
-                child: KeyboardDismissOnChange(
-                  listenable: router.routerDelegate,
-                  child: KeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+                child: RideCallListener(
+                  child: KeyboardDismissOnChange(
+                    listenable: router.routerDelegate,
+                    child: KeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+                  ),
                 ),
               ),
             ),

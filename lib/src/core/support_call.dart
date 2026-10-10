@@ -6,18 +6,56 @@
 // (caller_role 'user') and whichever agent answers first takes it. The voice
 // itself goes peer to peer over WebRTC; `support_call_signals` carries the
 // setup between the two people on the call.
+//
+// The engine (CallSession) is not tied to support calls: rider ↔ driver
+// calls (lib/src/core/ride_call.dart, migration 0131) run on it too, through
+// [CallRecord] and [CallSignalling].
 
 enum CallStatus {
   ringing,
   accepted,
   declined,
   ended,
-  missed;
+  missed,
+
+  /// The caller hung up before it was answered (ride calls only; a support
+  /// call given up on is `ended`).
+  cancelled;
 
   static CallStatus parse(Object? raw) =>
       CallStatus.values.firstWhere((s) => s.name == '$raw', orElse: () => CallStatus.ended);
 
-  bool get isOver => this == declined || this == ended || this == missed;
+  bool get isOver => this == declined || this == ended || this == missed || this == cancelled;
+}
+
+/// One call as the engine sees it, whichever table it lives in.
+abstract interface class CallRecord<C extends CallRecord<C>> {
+  String get id;
+  CallStatus get status;
+  DateTime? get createdAt;
+
+  /// When it was answered.
+  DateTime? get startedAt;
+
+  /// Whether [uid] started this call (and so sends the WebRTC offer).
+  bool startedBy(String? uid);
+
+  /// This call with its status moved to [status] (shown before the database
+  /// confirms it).
+  C withStatus(CallStatus status);
+
+  /// What hanging up on this end records.
+  CallStatus hangUpStatus({required bool outgoing});
+}
+
+/// What the engine needs from where a kind of call is kept: its row, its
+/// signals, hanging up, and the ICE servers.
+abstract interface class CallSignalling<C extends CallRecord<C>> {
+  Stream<C> watch(String callId);
+  Stream<CallSignal> watchSignals(String callId);
+  Future<void> sendSignal(String callId, String kind, Map<String, dynamic> payload);
+  Future<void> finish(String callId, CallStatus status);
+  Future<List<Map<String, dynamic>>> iceServers();
 }
 
 /// How long a call rings before the caller gives up on it (Expo's call
@@ -29,10 +67,11 @@ const callRingTimeout = Duration(seconds: 45);
 /// the other end with no audio, such as Expo's call screen).
 const callConnectTimeout = Duration(seconds: 30);
 
-class SupportCall {
+class SupportCall implements CallRecord<SupportCall> {
   SupportCall(this.raw);
   final Map<String, dynamic> raw;
 
+  @override
   String get id => '${raw['id']}';
   String? get ticketId => raw['ticket_id'] as String?;
 
@@ -45,16 +84,27 @@ class SupportCall {
   String? get callerName => _text(raw['caller_name']);
   String? get answeredBy => raw['answered_by'] as String?;
   String? get answeredByName => _text(raw['answered_by_name']);
+  @override
   CallStatus get status => CallStatus.parse(raw['status']);
+  @override
   DateTime? get startedAt => _time(raw['started_at']);
+  @override
   DateTime? get createdAt => _time(raw['created_at']);
 
-  /// Whether [uid] started this call (and so sends the WebRTC offer).
+  @override
   bool startedBy(String? uid) =>
       uid != null && (callerId == uid || (callerId == null && !fromUser && uid != profileId));
 
   /// Whether [uid] is one of the two people on the call.
   bool involves(String? uid) => uid != null && (uid == profileId || uid == callerId || uid == answeredBy);
+
+  @override
+  SupportCall withStatus(CallStatus status) => SupportCall({...raw, 'status': status.name});
+
+  /// An unanswered incoming call is declined, anything else ended.
+  @override
+  CallStatus hangUpStatus({required bool outgoing}) =>
+      status == CallStatus.ringing && !outgoing ? CallStatus.declined : CallStatus.ended;
 
   static String? _text(Object? v) {
     final s = v?.toString().trim() ?? '';
@@ -65,7 +115,7 @@ class SupportCall {
 }
 
 /// Whether a ringing call has rung out by [now].
-bool rangOut(SupportCall c, DateTime now) {
+bool rangOut(CallRecord c, DateTime now) {
   final at = c.createdAt;
   return c.status == CallStatus.ringing && at != null && now.difference(at) >= callRingTimeout;
 }
@@ -98,6 +148,7 @@ String callHeadline(
   CallStatus.declined => outgoing ? 'Call declined' : 'Call ended',
   CallStatus.missed => outgoing ? 'No answer' : 'Missed call',
   CallStatus.ended => 'Call ended',
+  CallStatus.cancelled => outgoing ? 'Call cancelled' : 'Missed call',
 };
 
 /// The ICE servers turn-credentials answered, shaped for WebRTC; Google's

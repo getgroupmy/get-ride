@@ -11,7 +11,7 @@ import '../providers.dart';
 /// Row-level security keeps each side to its own calls; the 0105 guard keeps
 /// a user from doing anything but ring support as themselves and move the
 /// status of their own calls.
-class SupportCallRepository {
+class SupportCallRepository implements CallSignalling<SupportCall> {
   SupportCallRepository(this._db);
   final SupabaseClient _db;
 
@@ -78,6 +78,7 @@ class SupportCallRepository {
 
   /// Ends [callId] with [status] (declined, missed or ended). A call already
   /// over is left as it is.
+  @override
   Future<void> finish(String callId, CallStatus status) async {
     await _db.from(_calls).update({'status': status.name, 'ended_at': _now()}).eq('id', callId).inFilter('status', [
       CallStatus.ringing.name,
@@ -91,6 +92,7 @@ class SupportCallRepository {
   }
 
   /// [callId]'s row now and on every change.
+  @override
   Stream<SupportCall> watch(String callId) => _watchRows(
     'call_$callId',
     _calls,
@@ -132,10 +134,12 @@ class SupportCallRepository {
     ),
   ).map(SupportCall.new);
 
+  @override
   Future<void> sendSignal(String callId, String kind, Map<String, dynamic> payload) =>
       _db.from(_signals).insert({'call_id': callId, 'kind': kind, 'payload': payload});
 
   /// Every setup message on [callId], the ones already sent first, each once.
+  @override
   Stream<CallSignal> watchSignals(String callId) {
     final seen = <int>{};
     return _watchRows(
@@ -150,6 +154,7 @@ class SupportCallRepository {
 
   /// The ICE servers for a call (turn-credentials); STUN only when the
   /// function is unreachable or not deployed.
+  @override
   Future<List<Map<String, dynamic>>> iceServers() async {
     try {
       final res = await _db.functions.invoke('turn-credentials');
@@ -165,32 +170,43 @@ class SupportCallRepository {
     PostgresChangeFilter filter, {
     PostgresChangeEvent event = PostgresChangeEvent.all,
     required Future<List<Map<String, dynamic>>> Function() initial,
-  }) {
-    final controller = StreamController<Map<String, dynamic>>();
-    RealtimeChannel? channel;
-    controller.onListen = () {
-      void emit(Map<String, dynamic> row) {
-        if (!controller.isClosed && row.isNotEmpty) controller.add(row);
-      }
+  }) => watchCallRows(_db, name, table, filter, event: event, initial: initial);
+}
 
-      channel = _db
-          .channel('${name}_${DateTime.now().microsecondsSinceEpoch}')
-          .onPostgresChanges(
-            event: event,
-            schema: 'public',
-            table: table,
-            filter: filter,
-            callback: (p) => emit(p.newRecord),
-          )
-          .subscribe();
-      initial().then((rows) => rows.forEach(emit), onError: (Object _) {});
-    };
-    controller.onCancel = () async {
-      if (channel != null) await _db.removeChannel(channel!);
-      await controller.close();
-    };
-    return controller.stream;
-  }
+/// Rows of [table] matching [filter]: [initial] first, then every change, as
+/// one stream (support calls and ride calls follow their rows this way).
+Stream<Map<String, dynamic>> watchCallRows(
+  SupabaseClient db,
+  String name,
+  String table,
+  PostgresChangeFilter filter, {
+  PostgresChangeEvent event = PostgresChangeEvent.all,
+  required Future<List<Map<String, dynamic>>> Function() initial,
+}) {
+  final controller = StreamController<Map<String, dynamic>>();
+  RealtimeChannel? channel;
+  controller.onListen = () {
+    void emit(Map<String, dynamic> row) {
+      if (!controller.isClosed && row.isNotEmpty) controller.add(row);
+    }
+
+    channel = db
+        .channel('${name}_${DateTime.now().microsecondsSinceEpoch}')
+        .onPostgresChanges(
+          event: event,
+          schema: 'public',
+          table: table,
+          filter: filter,
+          callback: (p) => emit(p.newRecord),
+        )
+        .subscribe();
+    initial().then((rows) => rows.forEach(emit), onError: (Object _) {});
+  };
+  controller.onCancel = () async {
+    if (channel != null) await db.removeChannel(channel!);
+    await controller.close();
+  };
+  return controller.stream;
 }
 
 final supportCallRepositoryProvider = Provider((ref) => SupportCallRepository(ref.watch(supabaseProvider)));

@@ -263,7 +263,8 @@ void main() {
       final badge = tester.widget<Badge>(find.byKey(const ValueKey('ride-chat-badge')));
       expect(badge.isLabelVisible, isTrue);
       expect(find.descendant(of: find.byType(Badge), matching: find.text('2')), findsOneWidget);
-      expect(find.byTooltip('Call Aina'), findsNothing, reason: 'no phone on this ride');
+      // No phone on this ride, but an in-app call needs none (migration 0131).
+      expect(find.byKey(const ValueKey('ride-call')), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('trip-message')));
       await tester.pump();
