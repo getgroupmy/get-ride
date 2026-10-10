@@ -235,9 +235,25 @@ void main() {
         reason: 'the other row',
       );
       final up = dir == FareTrendDirection.up;
-      expect(find.byKey(const ValueKey('high-demand')), up ? findsOneWidget : findsNothing);
-      expect(find.byKey(const ValueKey('low-demand')), up ? findsNothing : findsOneWidget);
-      // And beside the fare in its details.
+      // The band in the discount bar's place, opening why.
+      final band = find.byKey(ValueKey(up ? 'high-demand' : 'low-demand'));
+      expect(band, findsOneWidget);
+      expect(find.byKey(ValueKey(up ? 'low-demand' : 'high-demand')), findsNothing);
+      expect(find.byKey(const ValueKey('promo-banner')), findsNothing);
+      await tester.tap(band);
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('Fare details'), findsOneWidget);
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('demand-sheet')), matching: find.byKey(key)),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('fare-info-ok')));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      // And in the chosen vehicle's details.
       await tester.tap(find.byKey(const ValueKey('fare-details')));
       // The arrows never settle: they move on.
       for (var i = 0; i < 6; i++) {
@@ -377,17 +393,15 @@ void main() {
     expect(info, findsOneWidget);
     await tester.tap(info);
     await tester.pumpAndSettle();
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('fare-details-sheet')),
-        matching: find.byKey(const ValueKey('confirm-fare')),
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Fixed fare'), findsOneWidget);
-    expect(find.byKey(const ValueKey('fare-raise')), findsNothing);
-    await tester.tapAt(const Offset(200, 100));
+    // inDrive's details: the vehicle, its rates, what an in-app fare covers.
+    final sheet = find.byKey(const ValueKey('fare-details-sheet'));
+    expect(find.descendant(of: sheet, matching: find.text('GET XL')), findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.textContaining('Flag fall')), findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.text('Fares in the app:')), findsOneWidget);
+    expect(find.byKey(const ValueKey('metered-note')), findsNothing, reason: 'not a taxi');
+    await tester.tap(find.byKey(const ValueKey('fare-info-ok')));
     await tester.pumpAndSettle();
+    expect(sheet, findsNothing);
 
     // Back leaves the confirm step for the home map.
     await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 600));
@@ -440,7 +454,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('fare-tax')), findsOneWidget);
     expect(find.textContaining('SST 6%'), findsOneWidget);
-    await tester.tapAt(const Offset(200, 100));
+    // Teksi is a metered taxi: the meter decides.
+    expect(find.byKey(const ValueKey('metered-note')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('fare-info-ok')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('book')));
     for (var i = 0; i < 10; i++) {

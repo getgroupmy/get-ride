@@ -15,6 +15,7 @@ import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
 import '../../core/driver_eta.dart';
 import '../../core/fare.dart';
+import '../../core/fare_info.dart' show fareRateLines;
 import '../../core/fare_tariff.dart';
 import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart';
@@ -654,6 +655,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return [for (final l in lines) '+ ${l.label}: ${formatMoney(l.amount, _currency)}'].join('\n');
   }
 
+  /// A fixed-fare vehicle's (i) (inDrive's): what [s] is priced on at the
+  /// pickup, with this trip's coins, tolls, taxes and fare trend.
+  void _showFareInfo(RideService s, RouteEstimate? ai, bool showTolls, String? earn) {
+    showFareInfo(
+      context,
+      FareInfoSheet(
+        service: s,
+        rates: fareRateLines(_tariffFor(s), s, fallbackCurrency: AppConfig.currency),
+        earn: earn,
+        tollCharges: showTolls && ai?.tollsToShow != null
+            ? formatMoney(ai!.tollsToShow, _currency)
+            : null,
+        tax: _chargeLines(),
+        trend: ai?.trend,
+      ),
+    );
+  }
+
   /// "Offer your fare" (inDrive's page): the fare typed in, with the
   /// payment, auto-accept and entrance alongside; "Find a driver" there
   /// books straight away.
@@ -1011,8 +1030,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // A destination chosen: the confirm step (Expo ride-confirm).
     final confirming = _drop != null;
     final layout = ConfirmLayout.fromSettings(blob);
+    // A fixed fare off the usual: inDrive's demand band in the promo bar's place.
+    final demand = !_biddingFor(_service) && _basis != null && !_routing ? _ai?.trend : null;
     // The back and route buttons stand clear of the promo bar's visible top.
-    final aboveBar = layout.promoBar
+    final aboveBar = layout.promoBar || demand != null
         ? PromoBanner.visibleHeight + (layout.promoBarInFront ? PromoBanner.tuck : 0) + 12 - layout.promoBarOffset
         : 12.0;
     // Places that move with the sheet: [build] gets how far up it reaches.
@@ -1028,7 +1049,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // Behind, its foot tucks under the sheet's top edge; in front it
             // stands whole on that edge.
             bottom: inset - (layout.promoBarInFront ? 0 : PromoBanner.tuck) - layout.promoBarOffset,
-            child: PromoBanner(onTap: () => showPromoSheet(context)),
+            // A fixed fare off the usual takes the bar's place: inDrive's
+            // demand band, opening why.
+            child: demand != null
+                ? DemandBanner(trend: demand, onTap: () => showDemandSheet(context, demand))
+                : PromoBanner(onTap: () => showPromoSheet(context)),
           ),
         );
     // Admin → Display → Map Layout, while the pickup is being set.
@@ -1184,7 +1209,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
       // Behind the sheet: its top shows above it, which overlaps the rest.
-      if (confirming && !wide && layout.promoBar && !layout.promoBarInFront) promoBar(),
+      if (confirming && !wide && (layout.promoBar || demand != null) && !layout.promoBarInFront) promoBar(),
       if (confirming && _pinTarget == _PinTarget.none)
         Positioned(
           top: 16 + layout.address.$2,
@@ -1324,6 +1349,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),
       fareAdjusted: _biddingFor(_service) && _adjust != 0,
       bidding: _biddingFor(_service),
+      onFareInfo: _basis != null && !_routing ? (s) => _showFareInfo(
+              s,
+              ai,
+              display?.showAiTollCharges ?? true,
+              coinEarnLabel(rideRewardCoins(_fareFor(s), earnRate)),
+            ) : null,
       etaFor: etaFor,
       currency: _currency,
       ongoing: _ongoing,
@@ -1408,7 +1439,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: const ConfirmDisclaimer(),
                   ),
                 ),
-          front: confirming && !wide && layout.promoBar && layout.promoBarInFront ? Stack(children: [promoBar()]) : null,
+          front: confirming && !wide && (layout.promoBar || demand != null) && layout.promoBarInFront ? Stack(children: [promoBar()]) : null,
         ),
       )),
     );
@@ -1420,6 +1451,7 @@ class _BookingPanel extends StatelessWidget {
     this.disclaimerOffset = Offset.zero,
     this.fareAdjusted = false,
     this.bidding = false,
+    this.onFareInfo,
     required this.ongoing,
     required this.pickup,
     required this.drop,
@@ -1451,6 +1483,9 @@ class _BookingPanel extends StatelessWidget {
   /// Whether the chosen vehicle takes offers; without, the list is inDrive's
   /// fixed-fare one.
   final bool bidding;
+
+  /// The (i) on the chosen fixed-fare vehicle.
+  final ValueChanged<RideService>? onFareInfo;
 
   /// Rides on the go booked for other people, and how to open one.
   final List<RideRequest> forOthers;
@@ -1559,8 +1594,6 @@ class _BookingPanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
             child: RouteBasisLine(route: route!, ai: ai),
           ),
-          // A fixed fare off the usual: inDrive's demand bar, high or low.
-          if (!bidding && ai?.trend != null) FareDemandBar(direction: ai!.trend!.direction),
           for (final s in services)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
@@ -1573,6 +1606,7 @@ class _BookingPanel extends StatelessWidget {
                 fare: s.name == service.name ? fare : null,
                 onEdit: s.name == service.name ? onEditFare : null,
                 fixed: !bidding,
+                onInfo: s.name == service.name && onFareInfo != null ? () => onFareInfo!(s) : null,
                 // The arrows stand by the recommended fare: not on a card
                 // whose fare the rider has raised or lowered.
                 trend: s.name == service.name && fareAdjusted ? null : ai?.trend,

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare.dart';
+import '../../core/fare_info.dart';
 import '../../core/fare_offer.dart';
 import '../../core/payment_types.dart';
 import '../../core/route_estimate.dart' show FareTrend, FareTrendDirection;
@@ -517,8 +518,8 @@ class ConfirmCardColors {
 /// One vehicle on the confirm sheet (inDrive's): the car, its name, seats
 /// and description, and the price. Where bidding is on the chosen one is a
 /// white card raised in a grey tray, with a pencil in place of the price and
-/// the fare below it; a [fixed] fare is an outlined row keeping
-/// its price, with the fare's details behind the (i).
+/// the fare below it; a [fixed] fare is inDrive's outlined row keeping its
+/// price, the arrows after the name and what it is priced on behind the (i).
 class ConfirmServiceCard extends StatelessWidget {
   const ConfirmServiceCard({
     super.key,
@@ -531,7 +532,11 @@ class ConfirmServiceCard extends StatelessWidget {
     this.etaMinutes,
     this.trend,
     this.fixed = false,
+    this.onInfo,
   });
+
+  /// The (i) on a chosen fixed fare: what it is priced on ([FareInfoSheet]).
+  final VoidCallback? onInfo;
 
   final RideService service;
   final String price;
@@ -563,31 +568,13 @@ class ConfirmServiceCard extends StatelessWidget {
   /// The pencil: the rider's own fare (only where bidding is on).
   final VoidCallback? onEdit;
 
-  /// inDrive's (i) after the name of the chosen fixed-fare vehicle: the fare
-  /// and what comes with it (coins, tolls, tax) in a sheet.
-  void _showDetails(BuildContext context) {
-    final details = fare;
-    if (details == null) return;
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          key: const ValueKey('fare-details-sheet'),
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(service.name, style: Theme.of(ctx).textTheme.titleMedium),
-              details,
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _row(BuildContext context, {required Widget trailing, bool info = false, VoidCallback? onInfo}) {
+  Widget _row(
+    BuildContext context, {
+    required Widget trailing,
+    bool info = false,
+    VoidCallback? onInfo,
+    bool nameArrows = false,
+  }) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
     final ink = t.colorScheme.onSurface;
@@ -622,6 +609,11 @@ class ConfirmServiceCard extends StatelessWidget {
                       style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500, color: ink),
                     ),
                   ),
+                  // inDrive's fixed fare: the arrows stand after the name.
+                  if (nameArrows && trend != null) ...[
+                    const SizedBox(width: 6),
+                    FareTrendArrows(trend: trend!, size: 16),
+                  ],
                   if (info) ...[
                     const SizedBox(width: 2),
                     onInfo == null
@@ -680,9 +672,12 @@ class ConfirmServiceCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           child: _row(
             context,
+            nameArrows: fixed,
             trailing: Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: _price(price, t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600)),
+              child: fixed
+                  ? Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600))
+                  : _price(price, t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600)),
             ),
           ),
         ),
@@ -699,18 +694,19 @@ class ConfirmServiceCard extends StatelessWidget {
           color: c.card,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
-            side: BorderSide(color: t.colorScheme.onSurface, width: 1.5),
+            side: BorderSide(color: t.colorScheme.outlineVariant, width: 2),
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(22),
-            onTap: fare == null ? null : () => _showDetails(context),
+            onTap: onInfo,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               child: _row(
                 context,
                 info: true,
-                onInfo: fare == null ? null : () => _showDetails(context),
-                trailing: Padding(padding: const EdgeInsets.only(top: 2), child: _price(price, priceStyle)),
+                nameArrows: true,
+                onInfo: onInfo,
+                trailing: Padding(padding: const EdgeInsets.only(top: 2), child: Text(price, style: priceStyle)),
               ),
             ),
           ),
@@ -878,11 +874,7 @@ class ConfirmFareSection extends StatelessWidget {
           ],
         ),
         Text(
-          !bidding
-              ? 'Fixed fare'
-              : adjust == 0
-              ? 'Recommended fare'
-              : 'Recommended fare: ${money(recommended)}',
+          adjust == 0 ? 'Recommended fare' : 'Recommended fare: ${money(recommended)}',
           style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
         ),
         if (earn != null)
@@ -1695,42 +1687,231 @@ class CalculatingFareOverlay extends StatelessWidget {
   }
 }
 
-/// inDrive's bar over a fixed-fare list when the fare is off the usual,
-/// beside the same up / down arrows the prices carry: "High demand" while
-/// the AI's trend is up, "Low demand" while it is down.
-class FareDemandBar extends StatelessWidget {
-  const FareDemandBar({super.key, required this.direction});
+/// inDrive's band over a fixed-fare list while the fare is off the usual:
+/// in the discount bar's place, tucked under the sheet's top edge, opening
+/// [showDemandSheet].
+class DemandBanner extends StatelessWidget {
+  const DemandBanner({super.key, required this.trend, required this.onTap});
 
-  final FareTrendDirection direction;
+  final FareTrend trend;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final dark = t.brightness == Brightness.dark;
-    final up = direction == FareTrendDirection.up;
-    final ink = up
-        ? (dark ? const Color(0xFFFCA5A5) : const Color(0xFF991B1B))
-        : (dark ? const Color(0xFF86EFAC) : const Color(0xFF166534));
-    final bg = up
-        ? (dark ? const Color(0xFF3B1414) : const Color(0xFFFEE2E2))
-        : (dark ? const Color(0xFF12301C) : const Color(0xFFDCFCE7));
-    return Container(
+    final up = trend.direction == FareTrendDirection.up;
+    return Material(
       key: ValueKey(up ? 'high-demand' : 'low-demand'),
-      margin: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14)),
-      child: Row(
-        children: [
-          Icon(up ? Icons.trending_up : Icons.trending_down, size: 18, color: ink),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              up ? 'High demand — fare is higher' : 'Low demand — fare is lower',
-              style: t.textTheme.bodyMedium?.copyWith(color: ink, fontWeight: FontWeight.w600),
+      color: t.colorScheme.surfaceContainerHigh,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      child: InkWell(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 12, PromoBanner.tuck + 8),
+          child: SizedBox(
+            height: PromoBanner.visibleHeight - 16,
+            child: Row(
+              children: [
+                FareTrendArrows(trend: trend, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    demandHeadline(trend.direction),
+                    style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurface),
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: t.colorScheme.onSurfaceVariant),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
+
+/// The trend as inDrive's details put it: the arrows, the headline and why.
+class DemandNote extends StatelessWidget {
+  const DemandNote({super.key, required this.trend});
+
+  final FareTrend trend;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Row(
+      key: const ValueKey('demand-note'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(padding: const EdgeInsets.only(top: 2), child: FareTrendArrows(trend: trend, size: 22)),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(demandDetail(trend.direction), style: t.textTheme.titleMedium),
+              if (trend.explanation.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    trend.explanation,
+                    style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Widget _okButton(BuildContext context) => SizedBox(
+  width: double.infinity,
+  child: FilledButton.tonal(
+    key: const ValueKey('fare-info-ok'),
+    style: FilledButton.styleFrom(
+      minimumSize: const Size.fromHeight(56),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    ),
+    onPressed: () => Navigator.of(context).pop(),
+    child: const Text('OK', style: TextStyle(fontSize: 18)),
+  ),
+);
+
+/// The demand band's "Fare details" (inDrive's): why the fare is off the
+/// usual, and OK.
+Future<void> showDemandSheet(BuildContext context, FareTrend trend) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  builder: (ctx) => SafeArea(
+    child: Padding(
+      key: const ValueKey('demand-sheet'),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Fare details', style: Theme.of(ctx).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 20),
+          DemandNote(trend: trend),
+          const SizedBox(height: 28),
+          _okButton(ctx),
+        ],
+      ),
+    ),
+  ),
+);
+
+/// A fixed-fare vehicle's (i) (inDrive's): its picture, name and
+/// description; for a metered taxi, that the meter decides, else the rates
+/// the fare is priced on and what an in-app fare covers; then the coins,
+/// tolls and taxes on this trip, the demand note, and OK.
+class FareInfoSheet extends StatelessWidget {
+  const FareInfoSheet({
+    super.key,
+    required this.service,
+    required this.rates,
+    this.tollCharges,
+    this.tax,
+    this.earn,
+    this.trend,
+  });
+
+  final RideService service;
+
+  /// [fareRateLines] for it at the pickup.
+  final List<String> rates;
+
+  /// This trip's estimated tolls, formatted; null for none.
+  final String? tollCharges;
+
+  /// The region's surcharges and taxes on the fare, one per line.
+  final String? tax;
+
+  /// "Earn 12 GC on this booking"; null for none.
+  final String? earn;
+  final FareTrend? trend;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final body = t.textTheme.bodyLarge;
+    final metered = isMeteredService(service);
+    return SafeArea(
+      child: SingleChildScrollView(
+        key: const ValueKey('fare-details-sheet'),
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 132,
+              height: 80,
+              child: uriImage(
+                service.image,
+                width: 132,
+                height: 80,
+                fallback: Icon(
+                  metered ? Icons.local_taxi : Icons.directions_car,
+                  size: 64,
+                  color: t.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(service.name, style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+            if (service.description.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(service.description, style: body),
+            ],
+            if (metered) ...[const SizedBox(height: 12), Text(meteredFareNote, key: const ValueKey('metered-note'), style: body)],
+            if (rates.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              for (final r in rates) Text(r, style: body),
+            ],
+            if (!metered) ...[
+              const SizedBox(height: 20),
+              Text(appFareNotesTitle, style: body),
+              for (final n in appFareNotes) Text('• $n', style: body),
+            ],
+            if (earn != null || tollCharges != null || tax != null) ...[
+              const SizedBox(height: 20),
+              if (earn != null)
+                Text(
+                  earn!,
+                  key: const ValueKey('booking-coin-earn'),
+                  style: body?.copyWith(color: t.brightness == Brightness.dark ? const Color(0xFFFCD34D) : const Color(0xFFB45309)),
+                ),
+              if (tollCharges != null)
+                Text(
+                  'Est. Toll Charges $tollCharges',
+                  key: const ValueKey('route-tolls'),
+                  style: body?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                ),
+              if (tax != null)
+                Text(tax!, key: const ValueKey('fare-tax'), style: body?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+            ],
+            if (trend != null) ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: t.colorScheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: DemandNote(trend: trend!),
+              ),
+            ],
+            const SizedBox(height: 20),
+            _okButton(context),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> showFareInfo(BuildContext context, FareInfoSheet sheet) =>
+    showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => sheet);
