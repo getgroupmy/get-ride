@@ -1323,6 +1323,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final panel = _BookingPanel(
       disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),
       fareAdjusted: _biddingFor(_service) && _adjust != 0,
+      bidding: _biddingFor(_service),
       etaFor: etaFor,
       currency: _currency,
       ongoing: _ongoing,
@@ -1418,6 +1419,7 @@ class _BookingPanel extends StatelessWidget {
   const _BookingPanel({
     this.disclaimerOffset = Offset.zero,
     this.fareAdjusted = false,
+    this.bidding = false,
     required this.ongoing,
     required this.pickup,
     required this.drop,
@@ -1445,6 +1447,10 @@ class _BookingPanel extends StatelessWidget {
   /// Minutes for the nearest driver to reach the pickup, per vehicle; null
   /// when none is near.
   final int? Function(RideService)? etaFor;
+
+  /// Whether the chosen vehicle takes offers; without, the list is inDrive's
+  /// fixed-fare one.
+  final bool bidding;
 
   /// Rides on the go booked for other people, and how to open one.
   final List<RideRequest> forOthers;
@@ -1553,6 +1559,9 @@ class _BookingPanel extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
             child: RouteBasisLine(route: route!, ai: ai),
           ),
+          // A fixed fare above the usual: inDrive's "High demand" bar.
+          if (!bidding && ai?.trend?.direction == FareTrendDirection.up)
+            const HighDemandBar(),
           for (final s in services)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
@@ -1564,6 +1573,7 @@ class _BookingPanel extends StatelessWidget {
                 onTap: () => onService(s),
                 fare: s.name == service.name ? fare : null,
                 onEdit: s.name == service.name ? onEditFare : null,
+                fixed: !bidding,
                 // The arrows stand by the recommended fare: not on a card
                 // whose fare the rider has raised or lowered.
                 trend: s.name == service.name && fareAdjusted ? null : ai?.trend,

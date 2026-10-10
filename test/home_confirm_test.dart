@@ -290,15 +290,15 @@ void main() {
     expect(find.byKey(const ValueKey('map-dot-pickup')), findsOneWidget);
     expect(find.byKey(const ValueKey('map-dot-drop')), findsOneWidget);
     expect(find.byKey(const ValueKey('promo-banner')), findsOneWidget);
-    // The fare sits inside the chosen card; without bidding, no −/+.
+    // A fixed fare (inDrive's): the chosen row keeps its price, outlined,
+    // with no fare section and no −/+; its details are behind the (i).
+    expect(find.byKey(const ValueKey('confirm-fare')), findsNothing);
+    expect(find.text('Recommended fare'), findsNothing);
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('service-Teksi')),
-        matching: find.byKey(const ValueKey('confirm-fare')),
-      ),
+      find.descendant(of: find.byKey(const ValueKey('service-Teksi')), matching: find.byKey(const ValueKey('fare-details'))),
       findsOneWidget,
     );
-    expect(find.text('Recommended fare'), findsOneWidget);
+    expect(find.byKey(const ValueKey('fare-edit')), findsNothing);
     expect(find.byKey(const ValueKey('fare-raise')), findsNothing);
     expect(find.text('Fare does not include state entry tax, tolls, or parking fees'), findsOneWidget);
     // Above the pinned bar, faded out until the sheet is all the way up
@@ -310,7 +310,7 @@ void main() {
       tester.getBottomLeft(find.byKey(const ValueKey('confirm-disclaimer'))).dy,
       lessThan(tester.getTopLeft(find.text('Find a driver')).dy),
     );
-    await tester.drag(find.text('Recommended fare'), const Offset(0, -600));
+    await tester.drag(find.byKey(const ValueKey('service-Teksi')), const Offset(0, -600));
     await tester.pumpAndSettle();
     expect(shown(), 1);
     await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 600));
@@ -321,19 +321,30 @@ void main() {
     // A fixed fare takes no offers, so there is nothing to auto-accept.
     expect(find.textContaining('Auto-accept offer of'), findsNothing);
 
-    // Choosing another vehicle moves the fare into its card (the sheet
-    // raised to reach it above the footer).
+    // Choosing another vehicle outlines it instead (the sheet raised to
+    // reach it above the footer), and its (i) opens the fare's details.
     await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -300));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('service-GET XL')));
     await tester.pump();
+    final info = find.descendant(
+      of: find.byKey(const ValueKey('service-GET XL')),
+      matching: find.byKey(const ValueKey('fare-details')),
+    );
+    expect(info, findsOneWidget);
+    await tester.tap(info);
+    await tester.pumpAndSettle();
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey('service-GET XL')),
+        of: find.byKey(const ValueKey('fare-details-sheet')),
         matching: find.byKey(const ValueKey('confirm-fare')),
       ),
       findsOneWidget,
     );
+    expect(find.text('Fixed fare'), findsOneWidget);
+    expect(find.byKey(const ValueKey('fare-raise')), findsNothing);
+    await tester.tapAt(const Offset(200, 100));
+    await tester.pumpAndSettle();
 
     // Back leaves the confirm step for the home map.
     await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 600));
@@ -381,8 +392,13 @@ void main() {
     const pricing = RegionPricing(wholeFare: true, tax: RegionTax(name: 'SST', kind: TaxKind.percent, value: 6));
     final rides = _Rides(pricing: pricing);
     await _pump(tester, rides);
+    // A fixed fare: the tax line is in the fare's details, behind the (i).
+    await tester.tap(find.byKey(const ValueKey('fare-details')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('fare-tax')), findsOneWidget);
     expect(find.textContaining('SST 6%'), findsOneWidget);
+    await tester.tapAt(const Offset(200, 100));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('book')));
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));

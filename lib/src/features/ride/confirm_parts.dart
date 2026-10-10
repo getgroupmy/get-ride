@@ -515,8 +515,10 @@ class ConfirmCardColors {
 }
 
 /// One vehicle on the confirm sheet (inDrive's): the car, its name, seats
-/// and description, and the price. The chosen one is a white card raised in
-/// a grey tray, with a pencil in place of the price and the fare below it.
+/// and description, and the price. Where bidding is on the chosen one is a
+/// white card raised in a grey tray, with a pencil in place of the price and
+/// the fare below it; a [fixed] fare is an outlined row keeping
+/// its price, with the fare's details behind the (i).
 class ConfirmServiceCard extends StatelessWidget {
   const ConfirmServiceCard({
     super.key,
@@ -528,10 +530,15 @@ class ConfirmServiceCard extends StatelessWidget {
     this.onEdit,
     this.etaMinutes,
     this.trend,
+    this.fixed = false,
   });
 
   final RideService service;
   final String price;
+
+  /// A fixed fare (bidding off): chosen, it is an outlined row keeping its
+  /// price, and [fare] opens from the (i) instead of sitting in the card.
+  final bool fixed;
 
   /// The arrows before the price (fare trend); null for none.
   final FareTrend? trend;
@@ -556,7 +563,31 @@ class ConfirmServiceCard extends StatelessWidget {
   /// The pencil: the rider's own fare (only where bidding is on).
   final VoidCallback? onEdit;
 
-  Widget _row(BuildContext context, {required Widget trailing, bool info = false}) {
+  /// inDrive's (i) after the name of the chosen fixed-fare vehicle: the fare
+  /// and what comes with it (coins, tolls, tax) in a sheet.
+  void _showDetails(BuildContext context) {
+    final details = fare;
+    if (details == null) return;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          key: const ValueKey('fare-details-sheet'),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(service.name, style: Theme.of(ctx).textTheme.titleMedium),
+              details,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, {required Widget trailing, bool info = false, VoidCallback? onInfo}) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
     final ink = t.colorScheme.onSurface;
@@ -592,8 +623,21 @@ class ConfirmServiceCard extends StatelessWidget {
                     ),
                   ),
                   if (info) ...[
-                    const SizedBox(width: 6),
-                    Icon(Icons.info_outline, size: 16, color: muted),
+                    const SizedBox(width: 2),
+                    onInfo == null
+                        ? Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Icon(Icons.info_outline, size: 16, color: muted),
+                          )
+                        : InkResponse(
+                            key: const ValueKey('fare-details'),
+                            radius: 18,
+                            onTap: onInfo,
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(Icons.info_outline, size: 16, color: muted),
+                            ),
+                          ),
                   ],
                 ],
               ),
@@ -644,10 +688,37 @@ class ConfirmServiceCard extends StatelessWidget {
         ),
       );
     }
-    // Shaken by the fare's −/+ when a step would leave the range, and kept
-    // whole above the pinned footer, as Expo scrolls the chosen one.
     final c = ConfirmCardColors.of(context);
     final priceStyle = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600);
+    // A fixed fare (no bidding): inDrive's outlined row with its price, and
+    // nothing to raise or lower; the fare's details are behind the (i).
+    if (fixed) {
+      return MapSheetReveal(
+        child: Material(
+          key: ValueKey('service-${service.name}'),
+          color: c.card,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+            side: BorderSide(color: t.colorScheme.onSurface, width: 1.5),
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(22),
+            onTap: fare == null ? null : () => _showDetails(context),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: _row(
+                context,
+                info: true,
+                onInfo: fare == null ? null : () => _showDetails(context),
+                trailing: Padding(padding: const EdgeInsets.only(top: 2), child: _price(price, priceStyle)),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    // Shaken by the fare's −/+ when a step would leave the range, and kept
+    // whole above the pinned footer, as Expo scrolls the chosen one.
     return Shake(
       child: MapSheetReveal(
         child: Container(
@@ -807,7 +878,11 @@ class ConfirmFareSection extends StatelessWidget {
           ],
         ),
         Text(
-          adjust == 0 ? 'Recommended fare' : 'Recommended fare: ${money(recommended)}',
+          !bidding
+              ? 'Fixed fare'
+              : adjust == 0
+              ? 'Recommended fare'
+              : 'Recommended fare: ${money(recommended)}',
           style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
         ),
         if (earn != null)
@@ -1616,6 +1691,40 @@ class CalculatingFareOverlay extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// inDrive's bar over a fixed-fare list while fares are above the usual
+/// (the AI's trend is up): no stepper to argue with, just the reason.
+class HighDemandBar extends StatelessWidget {
+  const HighDemandBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final dark = t.brightness == Brightness.dark;
+    final ink = dark ? const Color(0xFFFCD34D) : const Color(0xFF92400E);
+    return Container(
+      key: const ValueKey('high-demand'),
+      margin: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: dark ? const Color(0xFF3A2E12) : const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.trending_up, size: 18, color: ink),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'High demand — fare is higher',
+              style: t.textTheme.bodyMedium?.copyWith(color: ink, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
