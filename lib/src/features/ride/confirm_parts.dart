@@ -1003,7 +1003,7 @@ class ConfirmFooter extends StatelessWidget {
     super.key,
     required this.payment,
     required this.onPayment,
-    required this.autoAcceptLabel,
+    this.autoAcceptLabel,
     required this.autoAccept,
     required this.onAutoAccept,
     required this.label,
@@ -1023,7 +1023,9 @@ class ConfirmFooter extends StatelessWidget {
   /// The methods offered (Admin → Payment Type), for [payment]'s label.
   final List<PaymentChoice> payments;
   final VoidCallback onPayment;
-  final String autoAcceptLabel;
+  /// "Auto-accept offer of RM x"; null hides the row (the service is not
+  /// open to offers, so there is nothing to accept).
+  final String? autoAcceptLabel;
   final bool autoAccept;
   final ValueChanged<bool> onAutoAccept;
   final String label;
@@ -1095,20 +1097,21 @@ class ConfirmFooter extends StatelessWidget {
                   ],
                 ),
               ?whoRiding,
-              Row(
-                children: [
-                  const AutoAcceptIcon(),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(autoAcceptLabel, style: t.textTheme.bodyLarge?.copyWith(fontSize: 16)),
-                  ),
-                  ConfirmSwitch(
-                    key: const ValueKey('auto-accept'),
-                    value: autoAccept,
-                    onChanged: onAutoAccept,
-                  ),
-                ],
-              ),
+              if (autoAcceptLabel != null)
+                Row(
+                  children: [
+                    const AutoAcceptIcon(),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(autoAcceptLabel!, style: t.textTheme.bodyLarge?.copyWith(fontSize: 16)),
+                    ),
+                    ConfirmSwitch(
+                      key: const ValueKey('auto-accept'),
+                      value: autoAccept,
+                      onChanged: onAutoAccept,
+                    ),
+                  ],
+                ),
               const SizedBox(height: 4),
               Row(
                 children: [

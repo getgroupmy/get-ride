@@ -67,15 +67,25 @@ class DriversVerified extends StatelessWidget {
 /// The headline: the stage the search is at, the time left on the request
 /// and its bar.
 class SearchHeader extends StatelessWidget {
-  const SearchHeader({super.key, required this.elapsed, required this.left, required this.progress});
+  const SearchHeader({
+    super.key,
+    required this.elapsed,
+    required this.left,
+    required this.progress,
+    this.bidding = true,
+  });
   final Duration elapsed;
   final String left;
   final double progress;
 
+  /// Whether the request is open to offers; a fixed-fare one says nothing
+  /// about prices or offers.
+  final bool bidding;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final stage = searchStageAt(elapsed);
+    final stage = searchStageAt(elapsed, bidding: bidding);
     final ink = t.colorScheme.onSurface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

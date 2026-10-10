@@ -168,6 +168,39 @@ void main() {
       expect(find.text('No driver yet'), findsNothing, reason: 'asked once per screen');
     });
 
+    testWidgets('a fixed-fare request has nothing to raise, confirm or auto-accept, and is never asked to raise',
+        (tester) async {
+      await pump(tester);
+      rows.add(open(age: const Duration(seconds: 58), extra: const {'offer_me': false}));
+      await tester.pump();
+      await tick(tester, const Duration(seconds: 1));
+      expect(find.byKey(const ValueKey('search-fare')), findsNothing);
+      expect(find.byKey(const ValueKey('search-fare-confirm')), findsNothing);
+      expect(find.textContaining('Confirm'), findsNothing);
+      expect(find.byKey(const ValueKey('search-auto-accept')), findsNothing);
+      expect(find.textContaining('Auto-accept'), findsNothing);
+      await tick(tester, const Duration(seconds: 2));
+      await tick(tester, const Duration(seconds: 5));
+      expect(find.text('No driver yet'), findsNothing);
+      expect(find.textContaining('Raise fare'), findsNothing);
+      // Its headline never talks about offering a price or choosing a driver.
+      for (var i = 0; i < 4; i++) {
+        expect(find.text('Offering your fare'), findsNothing);
+        expect(find.text('Waiting for responses'), findsNothing);
+        await tick(tester, const Duration(seconds: 5));
+      }
+      expect(find.byKey(const ValueKey('cancel-request')), findsOneWidget);
+    });
+
+    testWidgets('a request open to offers keeps its stepper and auto-accept', (tester) async {
+      await pump(tester);
+      rows.add(open(age: const Duration(seconds: 10)));
+      await tester.pump();
+      await tick(tester, const Duration(seconds: 1));
+      expect(find.byKey(const ValueKey('search-fare')), findsOneWidget);
+      expect(find.byKey(const ValueKey('search-auto-accept')), findsOneWidget);
+    });
+
     testWidgets('a standing offer holds off the prompt and counts down its 45 s', (tester) async {
       await pump(tester);
       rows.add(

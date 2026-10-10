@@ -219,7 +219,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       _tick?.cancel();
       _tick = null;
     }
-    final demo = open && ref.read(demoSettingsProvider).riderOffers;
+    // Demo driver offers only on a request that takes offers.
+    final demo = open && widget.ride.offerMe && ref.read(demoSettingsProvider).riderOffers;
     if (demo && _demo == null) {
       _demo = DemoOfferTimeline(widget.ride.fare ?? 0, clock: ref.read(searchClockProvider))
         ..addListener(() {
@@ -311,7 +312,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       unawaited(_showExpired());
       return;
     }
-    if (shouldPromptRaise(elapsed: elapsed, offerStanding: _visibleOffer != null, alreadyAsked: _askedRaise)) {
+    // A fixed-fare request is never offered a raise: its fare is the fare.
+    if (r.offerMe &&
+        shouldPromptRaise(elapsed: elapsed, offerStanding: _visibleOffer != null, alreadyAsked: _askedRaise)) {
       _askedRaise = true;
       unawaited(_promptRaise());
     }
@@ -357,7 +360,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Request expired'),
-        content: const Text("We couldn't find a driver in time. Try again, perhaps with a higher fare."),
+        content: Text(
+          widget.ride.offerMe
+              ? "We couldn't find a driver in time. Try again, perhaps with a higher fare."
+              : "We couldn't find a driver in time. Please try again.",
+        ),
         actions: [FilledButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
       ),
     );
@@ -625,6 +632,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final target = _target;
     String money(double v) => r.fareText(v);
     final limit = ref.watch(autoAcceptProvider)[r.id];
+    // Raising the fare, confirming a raise and auto-accepting an offer are
+    // bidding; a fixed-fare request has none of them.
+    final bidding = r.offerMe;
     return [
       if (_viewers.any)
         DriversViewingBar(viewers: _viewers)
@@ -636,43 +646,46 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           demoNames: demoViewerNames,
         ),
       SearchHeader(
+        bidding: bidding,
         elapsed: elapsed,
         left: formatCountdown(left),
         progress: (left.inMilliseconds / AppConfig.requestExpiry.inMilliseconds).clamp(0.0, 1.0),
       ),
       const SizedBox(height: 16),
-      SearchFareStepper(
-        amount: money(target),
-        canLower: !_busy && target > current,
-        canRaise: !_busy && raisedFare(target, fareOfferStep, quoted: quoted) > target,
-        onLower: () => _stepFare(-fareOfferStep),
-        onRaise: () => _stepFare(fareOfferStep),
-        onConfirm: _busy || target <= current ? null : _confirmRaise,
-        confirmLabel: target > current ? 'Confirm ${money(target)}' : 'Confirm',
-      ),
-      SearchBlock(
-        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
-        child: Row(children: [
-          const AutoAcceptIcon(),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              'Auto-accept an offer of ${money(limit ?? current)}',
-              style: Theme.of(context).textTheme.titleMedium,
+      if (bidding) ...[
+        SearchFareStepper(
+          amount: money(target),
+          canLower: !_busy && target > current,
+          canRaise: !_busy && raisedFare(target, fareOfferStep, quoted: quoted) > target,
+          onLower: () => _stepFare(-fareOfferStep),
+          onRaise: () => _stepFare(fareOfferStep),
+          onConfirm: _busy || target <= current ? null : _confirmRaise,
+          confirmLabel: target > current ? 'Confirm ${money(target)}' : 'Confirm',
+        ),
+        SearchBlock(
+          padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+          child: Row(children: [
+            const AutoAcceptIcon(),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                'Auto-accept an offer of ${money(limit ?? current)}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
-          ),
-          ConfirmSwitch(
-            key: const ValueKey('search-auto-accept'),
-            value: limit != null,
-            onChanged: (on) {
-              final n = ref.read(autoAcceptProvider.notifier);
-              on ? n.set(r.id, current) : n.clear(r.id);
-              final offer = _visibleOffer;
-              if (on && shouldAutoAccept(limit: current, offer: offer)) _acceptOffer(offer!);
-            },
-          ),
-        ]),
-      ),
+            ConfirmSwitch(
+              key: const ValueKey('search-auto-accept'),
+              value: limit != null,
+              onChanged: (on) {
+                final n = ref.read(autoAcceptProvider.notifier);
+                on ? n.set(r.id, current) : n.clear(r.id);
+                final offer = _visibleOffer;
+                if (on && shouldAutoAccept(limit: current, offer: offer)) _acceptOffer(offer!);
+              },
+            ),
+          ]),
+        ),
+      ],
       SearchBlock(child: SearchPaymentRow(amount: money(r.effectiveFare ?? current), mode: r.paymentMode)),
       SearchBlock(child: SearchRouteCard(ride: r)),
       const SizedBox(height: 12),

@@ -318,7 +318,8 @@ void main() {
     expect(shown(), 0);
     expect(find.text('Find a driver'), findsOneWidget);
     expect(find.byKey(const ValueKey('confirm-payment')), findsOneWidget);
-    expect(find.textContaining('Auto-accept offer of'), findsOneWidget);
+    // A fixed fare takes no offers, so there is nothing to auto-accept.
+    expect(find.textContaining('Auto-accept offer of'), findsNothing);
 
     // Choosing another vehicle moves the fare into its card (the sheet
     // raised to reach it above the footer).
@@ -344,7 +345,8 @@ void main() {
   });
 
   testWidgets('the entrance, the payment and auto-accept go with the booking', (tester) async {
-    final rides = _Rides();
+    // Auto-accept is an offer setting: only where bidding is on.
+    final rides = _Rides(bidding: true);
     final container = await _pump(tester, rides);
 
     await tester.tap(find.byKey(const ValueKey('confirm-entrance')));
