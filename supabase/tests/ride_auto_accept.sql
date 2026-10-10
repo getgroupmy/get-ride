@@ -72,10 +72,16 @@ update public.ride_requests set auto_accept_fare = 15 where id = '00000000-0000-
 reset role;
 select pg_temp.expect('00000000-0000-0000-0000-0000000141c4', 'accepted', 15);
 
--- 4. Nobody else sets the amount.
+-- 4. Nobody else sets the amount: refused outright (RLS) or left as it was
+-- (the trigger), never stored.
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000141b1');
-update public.ride_requests set auto_accept_fare = 999 where id = '00000000-0000-0000-0000-0000000141c5';
+do $$
+begin
+  update public.ride_requests set auto_accept_fare = 999 where id = '00000000-0000-0000-0000-0000000141c5';
+exception when insufficient_privilege then
+  null;
+end $$;
 reset role;
 do $$
 begin
