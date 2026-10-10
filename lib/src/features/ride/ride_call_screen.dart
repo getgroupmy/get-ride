@@ -17,6 +17,7 @@ import '../../data/ride_call_repository.dart';
 import '../../providers.dart';
 import '../support/call/call_session.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
+import '../support/call/mic_gate.dart';
 
 /// Opens the phone's dialer for the fallback phone call (overridden in tests).
 final rideCallDialerProvider = Provider<Future<bool> Function(Uri)>((ref) => launchUrl);
@@ -133,6 +134,8 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
   Future<void> _answer() async {
     final c = _call;
     if (c == null || _answering) return;
+    // No microphone, no call: it keeps ringing while the rider turns it on.
+    if (!await ensureMicForCall(context, ref) || !mounted) return;
     setState(() => _answering = true);
     var ok = false;
     try {
@@ -551,6 +554,8 @@ class RideCallButton extends ConsumerWidget {
 /// same moment, their call is opened instead. A failure is reported where
 /// the button was, offering the phone call when [phone] is known.
 Future<void> startRideCall(BuildContext context, WidgetRef ref, RideRequest ride, {String? phone}) async {
+  // The other phone only rings once this one can be heard.
+  if (!await ensureMicForCall(context, ref) || !context.mounted) return;
   final repo = ref.read(rideCallRepositoryProvider);
   final dialer = ref.read(rideCallDialerProvider);
   try {

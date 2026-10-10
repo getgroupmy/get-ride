@@ -8,6 +8,7 @@ import '../../../core/support_call.dart';
 import '../../../data/support_call_repository.dart';
 import '../../../providers.dart';
 import 'call_session.dart';
+import 'mic_gate.dart';
 
 /// A support call in progress (Expo `support-call`, now with audio): who is
 /// on the other end, the state of the call or its running time, and mute,
@@ -231,6 +232,7 @@ class _RoundKey extends StatelessWidget {
 /// Rings support from [ticketId] and opens the call. A failure (signed out,
 /// an older database) is reported where the button was.
 Future<void> callSupport(BuildContext context, WidgetRef ref, {String? ticketId, String? name}) async {
+  if (!await ensureMicForCall(context, ref) || !context.mounted) return;
   try {
     final c = await ref.read(supportCallRepositoryProvider).ringSupport(ticketId: ticketId, callerName: name);
     if (context.mounted) unawaited(context.push('/call/${c.id}'));
@@ -251,6 +253,7 @@ Future<void> callUser(
   String? userName,
   String? agentName,
 }) async {
+  if (!await ensureMicForCall(context, ref) || !context.mounted) return;
   try {
     final c = await ref
         .read(supportCallRepositoryProvider)
