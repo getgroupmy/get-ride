@@ -8132,10 +8132,14 @@ as $$
          min(aa.support) as priority
     from public.admin_access aa
     join public.profiles p on p.id = aa.profile_id
+   where public.caller_is_admin()
    group by aa.profile_id, p.name, p.phone, p.avatar_url, p.profile_image;
 $$;
 
-grant execute on function public.support_agents() to anon, authenticated;
+-- Admins only (0132): the roster can carry an admin's phone number, and only
+-- admin screens call it.
+revoke execute on function public.support_agents() from public, anon;
+grant execute on function public.support_agents() to authenticated;
 
 -- ============================================================================
 -- Part 2 — ride_requests: participant-scoped dispatch
