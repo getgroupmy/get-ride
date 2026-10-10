@@ -248,6 +248,14 @@ void main() {
     final o = standingOffer(open(extra: {'offered_fare': 24, 'partner_id': 'p1', 'partner_photo': 'https://x/p.png'}));
     expect(o?.photo, 'https://x/p.png');
   });
+
+  test('requestJustExpired: only an open request that runs out', () {
+    expect(requestJustExpired('open', 'expired'), isTrue);
+    expect(requestJustExpired('expired', 'expired'), isFalse);
+    expect(requestJustExpired('open', 'cancelled'), isFalse);
+    expect(requestJustExpired('accepted', 'expired'), isFalse);
+    expect(requestJustExpired(null, 'expired'), isFalse);
+  });
 }
 
 class _Preset extends AutoAcceptRides {

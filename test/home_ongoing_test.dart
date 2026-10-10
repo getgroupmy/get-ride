@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/fare.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
@@ -33,6 +34,10 @@ RideRequest _ride(String status) => RideRequest({
 class _FakeRides implements RideRepository {
   _FakeRides([this.rides]);
   final List<RideRequest>? rides;
+  int expired = 0;
+
+  @override
+  Future<void> expireStaleOpen() async => expired++;
 
   @override
   Future<RideRequest?> ongoingForRider() async => _ride('open');
@@ -44,7 +49,70 @@ class _FakeRides implements RideRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+List<Override> _overrides(_FakeRides rides, Stream<RideRequest> rows) => [
+  rideRepositoryProvider.overrideWithValue(rides),
+  rideStreamProvider.overrideWith((ref, id) => rows.where((r) => r.id == id)),
+  geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
+  coinTradeQuoteProvider.overrideWith((ref) => Future.error('offline')),
+  serviceBoxNamesProvider.overrideWith((ref) async => const <String, String>{}),
+  rideServicesProvider.overrideWith((ref) async => const [RideService('Teksi', 'Metered taxi', 1, 4)]),
+  recentPlacesProvider.overrideWith((ref) async => const []),
+  displaySettingsBlobProvider.overrideWith((ref) async => const <String, dynamic>{}),
+  appDisplayProvider.overrideWith((ref) => Future.error('offline')),
+  fareTariffsProvider.overrideWith((ref) async => const []),
+  meterLaunchSessionProvider.overrideWithValue(null),
+];
+
 void main() {
+  testWidgets('a request that expires while the rider is home leaves the card and says so', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final rows = StreamController<RideRequest>.broadcast();
+    addTearDown(rows.close);
+    await tester.pumpWidget(
+      ProviderScope(overrides: _overrides(_FakeRides(), rows.stream), child: const MaterialApp(home: HomeScreen())),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+    expect(find.text('Finding a driver'), findsOneWidget);
+    // The server's job (0139) expired it: realtime brings the change.
+    rows.add(_ride('expired'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Finding a driver'), findsNothing);
+    expect(find.byKey(const ValueKey('home-request-expired')), findsOneWidget);
+    expect(find.text('Request expired'), findsOneWidget);
+    await tester.tap(find.text('OK'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Request expired'), findsNothing);
+  });
+
+  testWidgets('the home screen runs out its open request on time, ride screen or not', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final rows = StreamController<RideRequest>.broadcast();
+    addTearDown(rows.close);
+    // Sent 6 min 58 s ago: two seconds (and the one-second margin) to go.
+    final sent = DateTime.now().toUtc().subtract(const Duration(minutes: 6, seconds: 58));
+    final ride = RideRequest({..._ride('open').raw, 'created_at': sent.toIso8601String()});
+    final rides = _FakeRides([ride]);
+    await tester.pumpWidget(
+      ProviderScope(overrides: _overrides(rides, rows.stream), child: const MaterialApp(home: HomeScreen())),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+    expect(rides.expired, 0);
+    await tester.pump(const Duration(seconds: 4));
+    expect(rides.expired, 1, reason: 'expired on time without opening the ride');
+  });
+
   testWidgets('a ride cancelled elsewhere leaves the home screen; one that moves on shows its new status', (
     tester,
   ) async {
