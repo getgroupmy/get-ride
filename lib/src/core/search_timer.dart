@@ -48,3 +48,8 @@ double offerProgress(Duration shownFor, Duration window) =>
 /// Whether an offer has been on screen longer than its window; the rider
 /// side stops showing it (the bidder's own app withdraws it at the same time).
 bool offerLapsed(Duration shownFor, Duration window) => shownFor >= window;
+
+/// Whether a request the rider was waiting on has just run out with nobody
+/// taking it ([before] open, [after] expired), wherever that was decided:
+/// this screen, another screen, or the server's every-minute job (0139).
+bool requestJustExpired(String? before, String after) => before == 'open' && after == 'expired';

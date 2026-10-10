@@ -199,6 +199,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _syncLocationShare();
     _syncSearch();
     WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel());
+    // Expired elsewhere (the home screen's timer, or the server's job, 0139)
+    // before this screen's own clock got there: say so all the same.
+    if (!_expiryShown && requestJustExpired(old.ride.status.db, widget.ride.status.db)) {
+      _expiryShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_showExpired());
+      });
+    }
     if (riderCancelDeclined(old.ride, widget.ride)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) showInfo(context, 'Your driver declined the cancellation. The ride continues.');

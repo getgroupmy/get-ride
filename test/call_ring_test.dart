@@ -44,6 +44,7 @@ void main() {
       expect(pushRouteFor({'type': 'ride_call_end', 'request_id': 'r 1', 'role': 'partner'}), '/drive/trip/r%201');
       expect(pushRouteFor({'type': 'ride_call_end', 'request_id': 'r1', 'role': 'rider'}), '/ride/r1');
       expect(pushRouteFor({'type': 'ride_call_end'}), isNull);
+      expect(pushRouteFor({'type': 'ride_expired', 'request_id': 'r1'}), '/');
     });
   });
 
