@@ -17,13 +17,24 @@ const searchStages = <SearchStage>[
   (id: 'further', title: 'Searching further', subtitle: 'Expanding search area'),
 ];
 
+/// The stages of a fixed-fare request (bidding off for its region or
+/// service): nothing about prices, offers or choosing a driver, since
+/// drivers can only take it at its fare.
+const fixedFareSearchStages = <SearchStage>[
+  (id: 'searching', title: 'Searching for drivers', subtitle: 'All drivers verified'),
+  (id: 'sending', title: 'Sending your request', subtitle: 'Drivers nearby can see your ride'),
+  (id: 'further', title: 'Searching further', subtitle: 'Expanding search area'),
+];
+
 /// How long each stage stays up before the next.
 const searchStageEvery = Duration(seconds: 5);
 
-/// The stage shown [elapsed] into the search.
-SearchStage searchStageAt(Duration elapsed) {
+/// The stage shown [elapsed] into the search; [bidding] is whether the
+/// request is open to offers (`ride_requests.offer_me`).
+SearchStage searchStageAt(Duration elapsed, {bool bidding = true}) {
+  final stages = bidding ? searchStages : fixedFareSearchStages;
   final i = elapsed.isNegative ? 0 : elapsed.inMilliseconds ~/ searchStageEvery.inMilliseconds;
-  return searchStages[i % searchStages.length];
+  return stages[i % stages.length];
 }
 
 double _round2(double v) => (v * 100).roundToDouble() / 100;

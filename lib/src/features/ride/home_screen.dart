@@ -789,7 +789,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             pricing: pricing,
             timezone: rules.timezone,
           );
-      if (_autoAccept) {
+      if (_autoAccept && offerMe) {
         ref.read(autoAcceptProvider.notifier).set(req.id, _fareFor(_service, biddingOn: offerMe));
       }
       final coins = _coins;
@@ -1257,7 +1257,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               final p = await showPaymentSheet(context, _payment, payments: _payments);
               if (p != null && mounted) setState(() => _paymentPick = p);
             },
-            autoAcceptLabel: 'Auto-accept offer of ${_fareMoney(_fareFor(_service))}',
+            // Offers only come where bidding is on for this service.
+            autoAcceptLabel: _biddingFor(_service) ? 'Auto-accept offer of ${_fareMoney(_fareFor(_service))}' : null,
             autoAccept: _autoAccept,
             onAutoAccept: (v) => setState(() => _autoAccept = v),
             label: _forOther ? 'Find a driver for ${otherName.isEmpty ? 'someone else' : otherName}' : 'Find a driver',

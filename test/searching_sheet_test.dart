@@ -25,6 +25,12 @@ void main() {
     expect(searchStageAt(const Duration(seconds: -3)).id, 'searching');
   });
 
+  test('a fixed-fare request never talks about offers or choosing a driver', () {
+    final seen = {for (var s = 0; s < 40; s += 5) searchStageAt(Duration(seconds: s), bidding: false).title};
+    expect(seen, {'Searching for drivers', 'Sending your request', 'Searching further'});
+    expect(searchStageAt(Duration.zero, bidding: false).id, 'searching');
+  });
+
   test('the stepper never goes under the fare and caps a raise', () {
     expect(stepSearchFare(current: 20, target: 20, step: 5, quoted: 20), 25);
     expect(stepSearchFare(current: 20, target: 25, step: -5, quoted: 20), 20);
