@@ -271,6 +271,9 @@ class RideRepository {
     return list;
   }
 
+  /// Drops the kept regions, so the next check reads the admin's change.
+  void forgetRegions() => _regions = null;
+
   static const regionsCacheFor = Duration(seconds: 20);
   ({DateTime at, Future<List<BiddingRegion>> list})? _regions;
 

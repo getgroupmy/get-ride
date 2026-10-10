@@ -6,6 +6,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../admin/screens/people/people_data.dart';
 import '../../core/driver_permit.dart';
+import '../../data/live_tables.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
@@ -16,6 +17,8 @@ import 'teksi_pickup.dart';
 
 /// The signed-in partner's taxi driver permit, read from their uploads.
 final driverPermitProvider = FutureProvider.autoDispose<DriverPermit>((ref) async {
+  ref.watchLive('required_document');
+  ref.watchLive('provider_documents');
   final partner = await ref.watch(partnerProvider.future);
   final profile = await ref.watch(profileProvider.future);
   Map<String, dynamic>? document;

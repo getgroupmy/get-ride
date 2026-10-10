@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/data/partner_onboarding_repository.dart';
 import 'package:get_ride/src/data/vehicle_onboarding_repository.dart';
 import 'package:get_ride/src/features/partner/vehicle_screens.dart';
@@ -125,6 +126,8 @@ Future<_FakeVehicles> _pump(
       partnerOnboardingRepositoryProvider.overrideWithValue(_FakeOnboarding()),
       vehicleOnboardingRepositoryProvider.overrideWithValue(repo),
       peopleRepositoryProvider.overrideWithValue(people ?? _FakePeople()),
+      // No realtime socket in a test.
+      liveTablesProvider.overrideWith(_QuietLive.new),
     ],
     child: router == null
         ? MaterialApp(theme: appTheme(brightness), home: screen)
@@ -340,4 +343,9 @@ void main() {
       expect(tester.widget<Text>(note).style?.color, Theme.of(tester.element(note)).colorScheme.error);
     });
   }
+}
+
+class _QuietLive extends LiveTables {
+  @override
+  Map<String, int> build() => const {};
 }

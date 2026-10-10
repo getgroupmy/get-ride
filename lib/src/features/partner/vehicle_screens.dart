@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +10,7 @@ import '../../admin/screens/people/people_logic.dart';
 import '../../admin/screens/people/people_widgets.dart';
 import '../../core/partner_onboarding.dart';
 import '../../core/vehicle_onboarding.dart';
+import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../data/vehicle_onboarding_repository.dart';
 import '../../widgets/busy.dart';
@@ -53,7 +56,13 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    // An admin's decision on a vehicle shows here at once.
+    ref.listenLive(const ['vehicle', 'vehicle_documents'], () => setState(() => _vehicles = _load()));
+    return _scaffold(context);
+  }
+
+  Widget _scaffold(BuildContext context) => Scaffold(
         appBar: AppBar(leading: sideMenuLeading(context), title: const Text('My vehicles')),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => _open('/drive/vehicles/new'),
@@ -192,6 +201,27 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
     }
   }
 
+  /// An admin changed the required documents or decided on this vehicle:
+  /// read them again, keeping what is being typed.
+  Future<void> _refresh() async {
+    if (!_loaded || _busy) return;
+    try {
+      final people = ref.read(peopleRepositoryProvider);
+      final id = _v?['id'] as String? ?? widget.vehicleId;
+      final settled = await Future.wait<Object?>([
+        people.requiredDocuments(),
+        people.documentTypes(),
+        if (id != null) _repo.vehicle(id),
+      ]);
+      if (!mounted || _busy) return;
+      setState(() {
+        _requiredDocs = settled[0] as _Entries;
+        _vehicleTypeIds = vehicleDocTypeIds(settled[1] as _Entries);
+        if (id != null && settled[2] != null) _v = settled[2] as Map<String, dynamic>;
+      });
+    } catch (_) {}
+  }
+
   void _hydrate(Map<String, dynamic>? v) {
     _v = v;
     if (v == null) return;
@@ -311,6 +341,9 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
 
   @override
   Widget build(BuildContext context) {
+    ref.listenLive(const ['required_document', 'document_type', 'vehicle', 'vehicle_documents'], () {
+      unawaited(_refresh());
+    });
     Widget body;
     if (_loadError != null) {
       body = EmptyState(

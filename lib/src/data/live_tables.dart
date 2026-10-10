@@ -32,6 +32,15 @@ const liveSettingTables = <String>[
   'states',
   'cities',
   'suburbs',
+  'fare_tariffs',
+  'get_coin_rate_history',
+  'required_document',
+  'document_type',
+  'ev_vehicle_details',
+  'ev_vehicle_inventory',
+  'ev_delivery_advisors',
+  'ev_finance_options',
+  'ev_order_fee',
   // Not settings, but the balances on screen: a commission or a transfer
   // lands without a pull to refresh (row-level security limits it to the
   // signed-in account's own wallets).
@@ -41,6 +50,32 @@ const liveSettingTables = <String>[
   'sms_outbox',
   'sms_inbox',
 ];
+
+/// The signed-in account's own rows that an admin decides on (approving,
+/// rejecting or blocking the account, a document or a vehicle), each with
+/// the column that names the account. Watched for that account only, so a
+/// decision shows on the partner's open screens at once.
+const liveOwnTables = <String, String>{
+  'profiles': 'id',
+  'partners': 'auth_user_id',
+  'provider_documents': 'auth_user_id',
+  'vehicle': 'auth_user_id',
+  'vehicle_documents': 'auth_user_id',
+};
+
+/// The region tables (Admin → Country / States / Cities / Suburbs, and the
+/// legacy settings entries) that decide bidding, pricing and services.
+const liveRegionTables = <String>['countries', 'states', 'cities', 'suburbs', 'settings_entries'];
+
+/// One number for [tables] that moves whenever any of them changes (each
+/// revision only grows). Pure.
+int liveStamp(Map<String, int> revisions, Iterable<String> tables) {
+  var stamp = 0;
+  for (final t in tables) {
+    stamp += revisions[t] ?? 0;
+  }
+  return stamp;
+}
 
 /// Changes landing this close together are one refetch, not one each (an
 /// admin save can touch several rows of a table at once).
@@ -60,10 +95,15 @@ class LiveTables extends Notifier<Map<String, int>> {
   Map<String, int> build() {
     RealtimeChannel? channel;
     SupabaseClient? db;
+    // A new account (signing in or out) is a new set of own rows to follow.
+    String? uid;
+    try {
+      uid = ref.watch(currentUserIdProvider);
+    } catch (_) {}
     try {
       final client = ref.read(supabaseProvider);
       db = client;
-      var c = client.channel('live_settings');
+      var c = client.channel(uid == null ? 'live_settings' : 'live_settings_$uid');
       for (final table in liveSettingTables) {
         c = c.onPostgresChanges(
           event: PostgresChangeEvent.all,
@@ -72,13 +112,24 @@ class LiveTables extends Notifier<Map<String, int>> {
           callback: (_) => changed([table]),
         );
       }
+      if (uid != null) {
+        for (final MapEntry(key: table, value: column) in liveOwnTables.entries) {
+          c = c.onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: table,
+            filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: column, value: uid),
+            callback: (_) => changed([table]),
+          );
+        }
+      }
       channel = c.subscribe();
     } catch (_) {
       // No client (tests, an unconfigured build): settings are read once, as before.
     }
     AppLifecycleListener? lifecycle;
     try {
-      lifecycle = AppLifecycleListener(onResume: () => changed(liveSettingTables));
+      lifecycle = AppLifecycleListener(onResume: () => changed([...liveSettingTables, ...liveOwnTables.keys]));
     } catch (_) {}
     ref.onDispose(() {
       _debounce?.cancel();
@@ -104,6 +155,14 @@ final liveTablesProvider = NotifierProvider<LiveTables, Map<String, int>>(LiveTa
 
 extension LiveTableRef on Ref {
   /// Re-runs this provider whenever a row of [table] changes (see
-  /// [liveSettingTables]).
+  /// [liveSettingTables] and [liveOwnTables]).
   void watchLive(String table) => watch(liveTablesProvider.select((r) => r[table] ?? 0));
+}
+
+extension LiveTableWidgetRef on WidgetRef {
+  /// Calls [onChange] whenever a row of any of [tables] changes, for a
+  /// screen that loads in initState and must keep what is being typed (call
+  /// it from build).
+  void listenLive(List<String> tables, void Function() onChange) =>
+      listen(liveTablesProvider.select((r) => liveStamp(r, tables)), (_, _) => onChange());
 }

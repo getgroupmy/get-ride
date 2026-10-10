@@ -102,6 +102,7 @@ final coinTradeQuoteProvider = FutureProvider.autoDispose((ref) {
 /// The last 48 recorded GET.coin rates, oldest first, for the price line.
 /// Empty when they can't be read: the chart then says it is still building.
 final coinRateHistoryProvider = FutureProvider.autoDispose<List<double>>((ref) async {
+  ref.watchLive('get_coin_rate_history');
   try {
     final rows = await ref
         .watch(supabaseProvider)

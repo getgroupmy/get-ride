@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/fare_tariff.dart';
+import 'live_tables.dart';
 import '../providers.dart';
 
 /// Booking tariff cards (migration 0109).
@@ -23,4 +24,7 @@ class FareTariffRepository {
 
 final fareTariffRepositoryProvider = Provider((ref) => FareTariffRepository(ref.watch(supabaseProvider)));
 
-final fareTariffsProvider = FutureProvider<List<FareTariff>>((ref) => ref.watch(fareTariffRepositoryProvider).active());
+final fareTariffsProvider = FutureProvider<List<FareTariff>>((ref) {
+  ref.watchLive('fare_tariffs');
+  return ref.watch(fareTariffRepositoryProvider).active();
+});
