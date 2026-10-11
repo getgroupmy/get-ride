@@ -12,23 +12,43 @@ insert into auth.users (id) values ('00000000-0000-0000-0000-0000000151a1') on c
 insert into public.profiles (id) values ('00000000-0000-0000-0000-0000000151a1') on conflict do nothing;
 update public.profiles set phone = '+60100000151' where id = '00000000-0000-0000-0000-0000000151a1';
 
+-- 1. A client can't write a PIN column, plain text or hash; the owner's
+--    functions still can (below).
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000151a1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare
+  w text;
+begin
+  foreach w in array array[
+    'update public.profiles set pin = ''123456'' where id = ''00000000-0000-0000-0000-0000000151a1''',
+    'update public.profiles set login_pin = ''123456'' where id = ''00000000-0000-0000-0000-0000000151a1''',
+    'update public.profiles set pin_hash = ''x'' where id = ''00000000-0000-0000-0000-0000000151a1''',
+    'update public.profiles set pin_locked_until = now() where id = ''00000000-0000-0000-0000-0000000151a1'''
+  ] loop
+    begin
+      execute w;
+    exception when insufficient_privilege then
+      continue;
+    end;
+    raise exception 'FAILED: a client wrote a PIN column: %', w;
+  end loop;
+end $$;
+reset role;
+
 do $$
 begin
-  -- 1. A plain-text PIN can't be written.
+  -- 2. The plain-text columns can't hold a PIN even for the owner.
   begin
+    alter table public.profiles disable trigger trg_profiles_hash_pin;
     update public.profiles set pin = '123456' where id = '00000000-0000-0000-0000-0000000151a1';
     raise exception 'FAILED: a plain-text pin was stored';
   exception when check_violation then
     null;
   end;
-  begin
-    update public.profiles set login_pin = '123456' where id = '00000000-0000-0000-0000-0000000151a1';
-    raise exception 'FAILED: a plain-text login_pin was stored';
-  exception when check_violation then
-    null;
-  end;
+  alter table public.profiles enable trigger trg_profiles_hash_pin;
 
-  -- 2. With no hash there is no PIN: the lookup says so and nothing matches.
+  -- With no hash there is no PIN: the lookup says so and nothing matches.
   if (select has_pin from public.profile_phone_lookup('+60100000151')) then
     raise exception 'FAILED: no hash should mean no PIN';
   end if;

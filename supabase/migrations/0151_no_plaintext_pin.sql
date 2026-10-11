@@ -9,6 +9,12 @@
 --   * verify_pin_for_login matches pin_hash only (rate limit and lockout as
 --     in 0137, pgcrypto reached through 0138's search path);
 --   * profile_phone_lookup reports has_pin from pin_hash only;
+--   * the profiles trigger (hash_profile_pin, 0097) no longer turns a plain-
+--     text PIN written straight onto a profile into a PIN: that let a signed-
+--     in client set its PIN without set_login_pin's checks (six digits, the
+--     duplicate-account device guard). A client now can't write any PIN
+--     column (plain text, hash, failed attempts, lockout); only the PIN
+--     functions, which run as the database owner, can;
 --   * a check constraint keeps a plain-text PIN from ever being stored again
 --     (set_login_pin already writes the hash and blanks both columns).
 --
@@ -123,6 +129,34 @@ $$;
 
 revoke all on function public.profile_phone_lookup(text) from public;
 grant execute on function public.profile_phone_lookup(text) to anon, authenticated;
+
+-- ---- Only the PIN functions write PIN columns ------------------------------------------
+create or replace function public.hash_profile_pin()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  -- A client (the app's anon or signed-in role) sets a PIN through
+  -- set_login_pin, never by writing the columns. The PIN functions run as
+  -- the database owner and pass.
+  if current_user in ('anon', 'authenticated') then
+    if coalesce(new.pin, '') <> '' or coalesce(new.login_pin, '') <> ''
+       or (tg_op = 'INSERT' and (new.pin_hash is not null or coalesce(new.pin_failed_attempts, 0) <> 0
+                                 or new.pin_locked_until is not null))
+       or (tg_op = 'UPDATE' and (new.pin_hash is distinct from old.pin_hash
+                                 or new.pin_failed_attempts is distinct from old.pin_failed_attempts
+                                 or new.pin_locked_until is distinct from old.pin_locked_until)) then
+      raise exception 'use_set_login_pin' using errcode = '42501',
+        hint = 'Set the PIN with set_login_pin.';
+    end if;
+  end if;
+  -- Nothing plain-text is ever kept.
+  new.pin := null;
+  new.login_pin := null;
+  return new;
+end;
+$$;
 
 -- ---- No plain-text PIN is stored again ----------------------------------------------
 -- Blank any stragglers first (hashing them is no longer possible without the
