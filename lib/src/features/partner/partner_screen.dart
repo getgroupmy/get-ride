@@ -30,6 +30,7 @@ import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
 import 'driver_home_map.dart';
+import '../support/call/mic_gate.dart' show primeMicForCalls;
 import 'driver_online.dart';
 import 'driver_permit_screen.dart' show currentPlateProvider, driverPermitProvider, showPermitBlock;
 import 'driver_wallet_pills.dart';
@@ -275,6 +276,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     _onlineState.set(v);
     if (!v) _syncAlert(const []);
     if (v) unawaited(_locate());
+    // Online, calls may come: ask for the microphone now, on screen, if it
+    // was never asked (a call answered from the phone's call screen can't).
+    if (v) unawaited(primeMicForCalls(ref).catchError((_) {}));
   }
 
   /// Expo's check before a service mode: compulsory documents that are

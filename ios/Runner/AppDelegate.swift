@@ -1,3 +1,4 @@
+import AVFoundation
 import CallKit
 import ExternalAccessory
 import Flutter
@@ -34,6 +35,9 @@ import flutter_callkit_incoming
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MfiObdPlugin") {
       MfiObdPlugin.register(with: registrar)
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MicStatusPlugin") {
+      MicStatusPlugin.register(with: registrar)
     }
   }
 
@@ -90,6 +94,52 @@ import flutter_callkit_incoming
     guard engine.run() else { return }
     GeneratedPluginRegistrant.register(with: engine)
     voipEngine = engine
+  }
+}
+
+/// The microphone permission as iOS keeps it (lib/src/features/support/call/
+/// mic_gate.dart): `status` answers granted / denied / undetermined, and
+/// `request` shows the system's question. iOS lists Microphone in the app's
+/// Settings only once it has been asked, so "never asked" must be told apart
+/// from "refused". Kept in this file so it needs no change to the Xcode
+/// project.
+final class MicStatusPlugin: NSObject, FlutterPlugin {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "get_ride/mic", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(MicStatusPlugin(), channel: channel)
+  }
+
+  private func status() -> String {
+    if #available(iOS 17.0, *) {
+      switch AVAudioApplication.shared.recordPermission {
+      case .granted: return "granted"
+      case .denied: return "denied"
+      case .undetermined: return "undetermined"
+      @unknown default: return "unknown"
+      }
+    }
+    switch AVAudioSession.sharedInstance().recordPermission {
+    case .granted: return "granted"
+    case .denied: return "denied"
+    case .undetermined: return "undetermined"
+    @unknown default: return "unknown"
+    }
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "status":
+      result(status())
+    case "request":
+      let done: (Bool) -> Void = { granted in DispatchQueue.main.async { result(granted) } }
+      if #available(iOS 17.0, *) {
+        AVAudioApplication.requestRecordPermission(completionHandler: done)
+      } else {
+        AVAudioSession.sharedInstance().requestRecordPermission(done)
+      }
+    default:
+      result(FlutterMethodNotImplemented)
+    }
   }
 }
 
