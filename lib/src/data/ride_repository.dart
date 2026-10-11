@@ -38,6 +38,10 @@ class RideRepository {
 
   /// The rides kept on the phone for when the server can't be reached.
   final RideCacheStore _cache;
+
+  /// Admin → Reliability: whether the copy kept on the phone is shown when
+  /// the server can't be reached.
+  bool useOfflineCopy = true;
   static const _table = 'ride_requests';
 
   String? get _uid => _db.auth.currentUser?.id;
@@ -209,6 +213,7 @@ class RideRepository {
 
   /// The rides in progress kept on the phone, or null when there are none.
   Future<List<RideRequest>?> _keptInProgress(String uid, String column, List<String> statuses) async {
+    if (!useOfflineCopy) return null;
     final kept = cachedRidesInProgress(await _cache.read(), uid: uid, column: column, statuses: statuses);
     if (kept.isEmpty) return null;
     return [for (final c in kept) RideRequest(c.row, cachedAt: c.savedAt)];
@@ -822,7 +827,7 @@ class RideRepository {
       } catch (e) {
         // No connection: the ride as this phone last saw it, until the
         // backup reads it again. Without one, the screen offers a retry.
-        final kept = e is PostgrestException ? null : await _cache.ride(id);
+        final kept = e is PostgrestException || !useOfflineCopy ? null : await _cache.ride(id);
         if (kept != null) {
           emit(RideRequest(kept.row, cachedAt: kept.savedAt));
         } else if (!controller.isClosed) {

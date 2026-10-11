@@ -10,6 +10,7 @@ import '../../core/ride_chat.dart';
 import '../../core/ride_chat_outbox.dart';
 import '../../data/models.dart';
 import '../../data/photo_picker.dart';
+import '../../data/reliability_repository.dart';
 import '../../data/ride_chat_outbox.dart';
 import '../../data/ride_chat_repository.dart';
 import '../../data/voice_recorder.dart';
@@ -147,6 +148,15 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
       longitude: lng,
       createdAt: DateTime.now(),
     );
+    if (!ref.read(reliabilityProvider).chatOutbox) {
+      // Admin → Reliability has the outbox off: send now or say it failed.
+      try {
+        await ref.read(rideChatRepositoryProvider).sendQueued(p);
+      } catch (e) {
+        if (mounted) showError(context, e);
+      }
+      return;
+    }
     try {
       final sent = await ref.read(rideChatOutboxProvider.notifier).send(p);
       if (!sent && mounted) showInfo(context, 'No connection. It will be sent when you are back online.');

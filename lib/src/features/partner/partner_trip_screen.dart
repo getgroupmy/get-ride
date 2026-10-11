@@ -21,6 +21,7 @@ import '../../core/ride_read_aloud.dart';
 import '../../core/ride_payment.dart';
 import '../../data/models.dart';
 import '../../data/read_aloud.dart';
+import '../../data/reliability_repository.dart';
 import '../../data/ride_chat_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
@@ -164,7 +165,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     heard.addAll(fresh.map((m) => m.id));
     final live = !(_status?.isFinished ?? false);
     final inFront = mounted && (ModalRoute.of(context)?.isCurrent ?? true);
-    if (!live || !inFront || !ref.read(readAloudProvider)) return;
+    if (!live || !inFront || !ref.read(reliabilityProvider).readAloud || !ref.read(readAloudProvider)) return;
     for (final m in fresh) {
       unawaited(_speaker.speak(rideMessageSpeech(m, _passenger)));
     }
@@ -482,7 +483,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         leading: onTrip
             ? null
             : BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/drive')),
-        actions: [_readAloudToggle()],
+        // Admin → Reliability can take read-aloud away altogether.
+        actions: [if (ref.watch(reliabilityProvider).readAloud) _readAloudToggle()],
       ),
       body: AsyncView(
         value: ride,
