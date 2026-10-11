@@ -108,6 +108,7 @@ class PushService {
     }
 
     FirebaseMessaging.onMessage.listen((message) {
+      unawaited(_ack(message.data, 'delivered'));
       if (callRingFromPush(message.data) != null || endedCallFromPush(message.data) != null) {
         _calls.add(message.data);
       }
@@ -120,10 +121,12 @@ class PushService {
       }, onError: (Object _) {});
     }
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      unawaited(_ack(message.data, 'read'));
       final route = pushRouteFor(message.data);
       if (route != null) _taps.add(route);
     });
     _messaging.getInitialMessage().then((message) {
+      if (message != null) unawaited(_ack(message.data, 'read'));
       final route = message == null ? null : pushRouteFor(message.data);
       if (route == null) return;
       if (_taps.hasListener) {
@@ -151,6 +154,16 @@ class PushService {
           break;
       }
     });
+  }
+
+  /// Tells the server this phone has the push, so it isn't sent again
+  /// (`ack_notification`, migration 0144). Quiet on failure.
+  Future<void> _ack(Map<String, dynamic> data, String state) async {
+    final id = pushEventId(data);
+    if (id == null || _db.auth.currentUser == null) return;
+    try {
+      await _db.rpc('ack_notification', params: {'p_event_id': id, 'p_state': state});
+    } catch (_) {}
   }
 
   Future<void> _register({String? token}) async {

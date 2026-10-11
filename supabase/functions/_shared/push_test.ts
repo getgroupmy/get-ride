@@ -9,6 +9,7 @@ import {
   ANDROID_CHANNEL_ID,
   fcmCallMessage,
   fcmData,
+  collapseIdFor,
   fcmMessage,
   fcmOutcome,
   fcmSendUrl,
@@ -68,6 +69,21 @@ Deno.test("the message is loud on both platforms", () => {
   assertEquals(message.android.notification.channel_id, ANDROID_CHANNEL_ID);
   assertEquals(message.apns.payload.aps.sound, "default");
   assertEquals(fcmSendUrl("my-proj"), "https://fcm.googleapis.com/v1/projects/my-proj/messages:send");
+});
+
+Deno.test("a retried event replaces the notification instead of stacking", () => {
+  const { message } = fcmMessage("tok", "Your driver has arrived", "ABC1234 is waiting.", {
+    type: "ride_status",
+    event_id: "r1:arrived:r",
+  });
+  assertEquals(message.android.notification.tag, "r1:arrived:r");
+  assertEquals(message.apns.headers["apns-collapse-id"], "r1:arrived:r");
+  const plain = fcmMessage("tok", "t", "b", { type: "ride_request" }).message;
+  assertEquals("tag" in plain.android.notification, false);
+  assertEquals("apns-collapse-id" in plain.apns.headers, false);
+  assertEquals(collapseIdFor({ event_id: "x".repeat(80) })?.length, 64);
+  assertEquals(collapseIdFor({ event_id: " " }), null);
+  assertEquals(collapseIdFor(null), null);
 });
 
 Deno.test("only tokens FCM says are gone get pruned", () => {

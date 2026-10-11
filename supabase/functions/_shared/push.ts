@@ -84,6 +84,10 @@ export function fcmMessage(
   body: string,
   data: Record<string, unknown> | undefined | null,
 ) {
+  // A retried event (notification_outbox, migration 0144) carries its
+  // event id: it becomes the Android tag and the iOS collapse id, so the
+  // retry replaces the notification already on screen instead of stacking.
+  const collapse = collapseIdFor(data);
   return {
     message: {
       token,
@@ -91,14 +95,28 @@ export function fcmMessage(
       data: fcmData(data),
       android: {
         priority: "HIGH",
-        notification: { channel_id: ANDROID_CHANNEL_ID, sound: "default" },
+        notification: {
+          channel_id: ANDROID_CHANNEL_ID,
+          sound: "default",
+          ...(collapse ? { tag: collapse } : {}),
+        },
       },
       apns: {
-        headers: { "apns-priority": "10" },
+        headers: { "apns-priority": "10", ...(collapse ? { "apns-collapse-id": collapse } : {}) },
         payload: { aps: { sound: "default" } },
       },
     },
   };
+}
+
+/**
+ * The collapse id for a push that carries an `event_id`: at most 64 bytes,
+ * as APNs allows. Null for a push without one.
+ */
+export function collapseIdFor(data: Record<string, unknown> | undefined | null): string | null {
+  const id = data?.["event_id"];
+  if (typeof id !== "string" || id.trim() === "") return null;
+  return id.trim().slice(0, 64);
 }
 
 export type FcmOutcome = "sent" | "unregistered" | "failed";

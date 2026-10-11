@@ -756,19 +756,31 @@ class RideRepository {
     final controller = StreamController<RideRequest>();
     RealtimeChannel? channel;
     RealtimeBackup? backup;
+    RideStatus? shown;
+    // The trip is on screen in the state it is in: the pushes about it
+    // (migration 0144) needn't be sent again.
+    void emit(RideRequest r) {
+      if (controller.isClosed) return;
+      controller.add(r);
+      if (r.status != shown) {
+        shown = r.status;
+        unawaited(ackRideNotifications(id));
+      }
+    }
+
     // Realtime does not replay what changed while the phone held the app
     // suspended, and can drop an update: the backup reads the row again.
     Future<void> reread() async {
       try {
         final r = await fetch(id);
-        if (r != null && !controller.isClosed) controller.add(r);
+        if (r != null) emit(r);
       } catch (_) {}
     }
 
     controller.onListen = () async {
       backup = RealtimeBackup(reread);
       final first = await fetch(id);
-      if (first != null && !controller.isClosed) controller.add(first);
+      if (first != null) emit(first);
       channel = _db
           .channel('ride_request_${id}_${DateTime.now().microsecondsSinceEpoch}')
           .onPostgresChanges(
@@ -777,9 +789,7 @@ class RideRepository {
             table: _table,
             filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'id', value: id),
             callback: (p) {
-              if (!controller.isClosed && p.newRecord.isNotEmpty) {
-                controller.add(RideRequest(p.newRecord));
-              }
+              if (p.newRecord.isNotEmpty) emit(RideRequest(p.newRecord));
             },
           )
           .subscribe(backup!.onStatus);
@@ -790,6 +800,15 @@ class RideRepository {
       await controller.close();
     };
     return controller.stream;
+  }
+
+  /// The caller has [requestId] on screen: its queued pushes are delivered
+  /// (`ack_ride_notifications`, 0144). Quiet when the database predates it.
+  Future<void> ackRideNotifications(String requestId) async {
+    if (_uid == null) return;
+    try {
+      await _db.rpc('ack_ride_notifications', params: {'p_request': requestId});
+    } catch (_) {}
   }
 
   /// Live partner queue: emits the full open list whenever anything changes.
