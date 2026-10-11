@@ -77,10 +77,28 @@ jobs:
           # own /_vercel/* endpoints (Speed Insights) are left alone. /privacy
           # is a static page (web/privacy.html), linked from the apps and the
           # store listings, so it gets its clean URL here rather than the app.
+          # Every response carries the security headers: no framing by other
+          # sites (clickjacking on the admin pages), no MIME sniffing, HTTPS
+          # only, a trimmed referrer, and the camera, microphone and location
+          # for this site alone. The content policy stops there on purpose: the
+          # app loads maps, Supabase, payment pages and APIs from many hosts,
+          # and a script/connect allow-list would break it for no real gain.
           cat > .vercel/output/config.json <<'JSON'
           {
             "version": 3,
             "routes": [
+              {
+                "src": "/.*",
+                "headers": {
+                  "content-security-policy": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+                  "x-frame-options": "DENY",
+                  "x-content-type-options": "nosniff",
+                  "referrer-policy": "strict-origin-when-cross-origin",
+                  "strict-transport-security": "max-age=31536000",
+                  "permissions-policy": "camera=(self), microphone=(self), geolocation=(self), payment=(self), usb=(), interest-cohort=()"
+                },
+                "continue": true
+              },
               { "src": "/(flutter_service_worker\\.js|index\\.html)", "headers": { "cache-control": "no-cache" }, "continue": true },
               { "src": "/privacy/?", "dest": "/privacy.html" },
               { "handle": "filesystem" },
