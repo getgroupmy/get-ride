@@ -764,7 +764,11 @@ class RideRepository {
               }
             },
           )
-          .subscribe();
+          .subscribe((status, _) {
+            // A change between the first read and the channel opening
+            // would otherwise be missed: read once more when it opens.
+            if (status == RealtimeSubscribeStatus.subscribed) unawaited(reread());
+          });
     };
     controller.onCancel = () async {
       lifecycle?.dispose();

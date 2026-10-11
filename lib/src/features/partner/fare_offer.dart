@@ -88,6 +88,9 @@ class _OfferSheetState extends State<_OfferSheet> {
 /// Waits on the rider's answer to an offer. Pops with the request when the
 /// rider accepts (the trip is this partner's), or null otherwise. The offer
 /// is withdrawn when the partner cancels or [counterOfferWindow] runs out.
+/// How often a waiting offer reads the request itself.
+const offerAnswerPoll = Duration(seconds: 3);
+
 class OfferPendingDialog extends StatefulWidget {
   const OfferPendingDialog({
     super.key,
@@ -115,6 +118,10 @@ class OfferPendingDialog extends StatefulWidget {
 class _OfferPendingDialogState extends State<OfferPendingDialog> {
   StreamSubscription<RideRequest>? _sub;
   Timer? _tick;
+
+  /// Reads the row every few seconds as well: the rider's answer must reach
+  /// the driver even when a realtime update never arrives.
+  Timer? _poll;
   late var _left = widget.window;
   String? _outcome;
 
@@ -122,6 +129,7 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> {
   void initState() {
     super.initState();
     _sub = widget.repo.watch(widget.ride.id).listen(_update, onError: (Object _) {});
+    _poll = Timer.periodic(offerAnswerPoll, (_) => _check());
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_outcome != null) return;
       setState(() => _left -= const Duration(seconds: 1));
@@ -135,6 +143,7 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> {
   void dispose() {
     _sub?.cancel();
     _tick?.cancel();
+    _poll?.cancel();
     super.dispose();
   }
 
@@ -158,8 +167,19 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> {
     }
   }
 
+  Future<void> _check() async {
+    if (_outcome != null) return;
+    try {
+      final r = await widget.repo.fetch(widget.ride.id);
+      if (r != null && mounted) _update(r);
+    } catch (_) {
+      // The next read, or realtime, will tell.
+    }
+  }
+
   void _stop() {
     _tick?.cancel();
+    _poll?.cancel();
     _sub?.cancel();
   }
 
