@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 import '../core/push_logic.dart';
+import 'reliability_repository.dart' show backgroundAckPrefsKey;
 
 Future<void> ackPushInBackground(Map<String, dynamic> data, {http.Client? client}) async {
   final id = pushEventId(data);
@@ -22,6 +23,8 @@ Future<void> ackPushInBackground(Map<String, dynamic> data, {http.Client? client
     final prefs = await SharedPreferences.getInstance();
     // The app may have refreshed the session since this isolate last read it.
     await prefs.reload();
+    // Admin → Reliability can turn this off (mirrored by the app).
+    if (prefs.getBool(backgroundAckPrefsKey) == false) return;
     final token = storedAccessToken(prefs.getString(supabaseSessionKey(AppConfig.supabaseUrl)), DateTime.now());
     if (token == null) return;
     final base = AppConfig.supabaseUrl.trim().replaceFirst(RegExp(r'/$'), '');

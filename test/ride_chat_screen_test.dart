@@ -9,12 +9,14 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/ride_chat.dart';
+import 'package:get_ride/src/core/reliability_settings.dart';
 import 'package:get_ride/src/core/ride_chat_outbox.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/photo_picker.dart';
 import 'package:get_ride/src/data/voice_recorder.dart';
 import 'package:get_ride/src/features/support/call/mic_gate.dart';
 import 'package:get_ride/src/widgets/voice_note.dart';
+import 'package:get_ride/src/data/reliability_repository.dart';
 import 'package:get_ride/src/data/ride_chat_repository.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/partner/partner_trip_screen.dart';
@@ -279,6 +281,27 @@ Finder waiting() => find.byWidgetPredicate((w) => w is Icon && w.semanticLabel =
     await tester.pump();
     expect(repo.sent, ["partner:quick:I've arrived"]);
     expect(waiting(), findsNothing);
+  });
+
+  testWidgets('with the outbox switched off, a message with no connection fails instead of waiting', (tester) async {
+    final (repo, _) = await pumpChat(
+      tester,
+      me: 'driver',
+      status: 'arrived',
+      brightness: Brightness.dark,
+      extra: [reliabilityProvider.overrideWithValue(const ReliabilitySettings(chatOutbox: false))],
+    );
+    repo.rows.add(const []);
+    await tester.pump();
+    repo.offline = true;
+    await tester.tap(find.byKey(const ValueKey("quick-I've arrived")));
+    await tester.pump();
+    expect(waiting(), findsNothing, reason: 'nothing is kept on the phone');
+    expect(find.textContaining('SocketException'), findsOneWidget);
+    repo.offline = false;
+    await tester.tap(find.byKey(const ValueKey("quick-I've arrived")));
+    await tester.pump();
+    expect(repo.sent, ["partner:quick:I've arrived"]);
   });
 
   testWidgets('somebody else\'s ride has no chat for them', (tester) async {

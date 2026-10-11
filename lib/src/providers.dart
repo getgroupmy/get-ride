@@ -9,12 +9,18 @@ import 'data/auth_repository.dart';
 import 'data/geo_service.dart';
 import 'data/live_tables.dart';
 import 'data/models.dart';
+import 'data/reliability_repository.dart';
 import 'data/ride_repository.dart';
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
 
 final authRepositoryProvider = Provider((ref) => AuthRepository(ref.watch(supabaseProvider)));
-final rideRepositoryProvider = Provider((ref) => RideRepository(ref.watch(supabaseProvider)));
+final rideRepositoryProvider = Provider((ref) {
+  final repo = RideRepository(ref.watch(supabaseProvider));
+  // Admin → Reliability, applied live.
+  ref.listen(reliabilityProvider, (_, s) => repo.useOfflineCopy = s.rideCache, fireImmediately: true);
+  return repo;
+});
 final accountRepositoryProvider = Provider((ref) => AccountRepository(ref.watch(supabaseProvider)));
 final geoServiceProvider = Provider((_) => GeoService());
 
