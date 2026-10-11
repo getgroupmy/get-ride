@@ -51,6 +51,16 @@ final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String
   (ref, id) => ref.watch(rideRepositoryProvider).watch(id),
 );
 
+/// The ride's trip code, for its rider (migration 0152); null when there is
+/// none to read.
+final tripCodeProvider = FutureProvider.autoDispose.family<String?, String>((ref, id) async {
+  try {
+    return await ref.watch(rideRepositoryProvider).tripCode(id);
+  } catch (_) {
+    return null;
+  }
+});
+
 /// The clock the search countdowns read (overridden in tests).
 final searchClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
@@ -742,6 +752,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final r = widget.ride;
     final t = Theme.of(context);
     final riderCancelAsk = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider';
+    // The code from ride_trip_codes (0152), else the ride row (older database,
+    // or before it has loaded).
+    final tripCode = ref.watch(tripCodeProvider(r.id)).value ?? r.otp;
 
     final content = Padding(
       padding: const EdgeInsets.all(16),
@@ -787,12 +800,13 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                             ],
                           ),
                   ),
-                  if (r.otp != null && r.status != RideStatus.onTrip)
+                  if (tripCode != null && r.status != RideStatus.onTrip)
                     ListTile(
+                      key: const ValueKey('trip-code'),
                       leading: const Icon(Icons.pin_outlined),
                       title: const Text('Trip code'),
                       subtitle: const Text('Share with your driver at pickup'),
-                      trailing: Text(r.otp!, style: t.textTheme.headlineSmall?.copyWith(letterSpacing: 4)),
+                      trailing: Text(tripCode, style: t.textTheme.headlineSmall?.copyWith(letterSpacing: 4)),
                     ),
                   if (r.partnerPhone != null || rideChatAvailable(r))
                     OverflowBar(

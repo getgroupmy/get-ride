@@ -23,6 +23,7 @@ import '../core/ride_payment.dart';
 import '../core/ride_stops.dart';
 import '../core/trip_charges.dart';
 import '../core/trip_checkpoint.dart';
+import '../core/trip_start.dart';
 import 'geo_service.dart';
 import 'models.dart';
 import 'realtime_backup.dart';
@@ -587,6 +588,31 @@ class RideRepository {
   /// The driver confirms the passenger's cash was received.
   Future<void> confirmRideCash(String id) async {
     await _db.rpc('ride_confirm_cash', params: {'p_ride': id});
+  }
+
+  /// The driver starts the trip with the passenger's code; the server checks
+  /// it (`start_trip`, migration 0152). On a database without it, the trip
+  /// starts as it used to.
+  Future<TripStartOutcome> startTrip(String id, String code) async {
+    try {
+      return tripStartOutcome(await _db.rpc('start_trip', params: {'p_request': id, 'p_code': code}));
+    } on PostgrestException catch (e) {
+      // Only "no such function" falls back; a refusal stays a refusal.
+      if (e.code != 'PGRST202' && e.code != '42883') rethrow;
+      await updateStatus(id, RideStatus.onTrip);
+      return const TripStarted();
+    }
+  }
+
+  /// The ride's trip code, for its rider (`ride_trip_codes`, 0152); null for
+  /// anyone else, or on a database without the table.
+  Future<String?> tripCode(String id) async {
+    try {
+      final row = await _db.from('ride_trip_codes').select('code').eq('request_id', id).maybeSingle();
+      return row?['code'] as String?;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> updateStatus(String id, RideStatus status) async {

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/reliability_settings.dart';
 import '../../data/reliability_repository.dart';
 import '../../widgets/common.dart';
+import '../widgets/admin_widgets.dart';
 
 const _rows = [
   (
@@ -23,6 +24,13 @@ const _rows = [
     key: 'background_ack',
     title: 'Confirm pushes while the app is closed',
     subtitle: 'A chat message shows delivered as soon as it lands, and is not sent again.',
+  ),
+  (
+    key: 'server_trip_start',
+    title: 'Trip start checked by the server',
+    subtitle:
+        'Only the server starts a trip, and drivers can\'t see the trip code. Turn on only after App Version '
+        'has made every phone update: older builds can\'t start trips with it on.',
   ),
   (
     key: 'read_aloud',
@@ -45,6 +53,16 @@ class _ReliabilityCardState extends ConsumerState<ReliabilityCard> {
   String? _saving;
 
   Future<void> _set(ReliabilitySettings current, String key, bool on) async {
+    if (key == 'server_trip_start' && on) {
+      final ok = await confirm(
+        context,
+        'Only the server starts trips?',
+        'Drivers on an app older than this build won\'t be able to start trips. Turn this on only after '
+            'App Version has made every phone update.',
+        ok: 'Turn on',
+      );
+      if (!ok || !mounted) return;
+    }
     final next = current.withSwitch(key, on);
     setState(() {
       _pending = next;
@@ -103,7 +121,7 @@ class _ReliabilityCardState extends ConsumerState<ReliabilityCard> {
             if (loaded.hasError)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text('Couldn’t load the saved switches; all are treated as on.', style: t.textTheme.bodySmall),
+                child: Text('Couldn’t load the saved switches; the offline ones are treated as on.', style: t.textTheme.bodySmall),
               ),
           ],
         ),
