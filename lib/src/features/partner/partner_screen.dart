@@ -119,13 +119,16 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Timer? _alertTick;
   late DateTime _alertNow = ref.read(requestAlertClockProvider)();
 
+  /// Back online from before this screen was built (a trip just ended):
+  /// what is already waiting goes in the list, only new requests pop up.
+  bool _restoredOnline = false;
+
   @override
   void dispose() {
     _fixes?.cancel();
     _alertTick?.cancel();
-    // Leaving the Drive screen (signing out) takes the driver offline.
-    final online = _onlineState;
-    Future.microtask(() => online.set(false));
+    // Online stays as the driver left it (driverOnlineProvider): a trip
+    // that ends comes back to the Drive screen still online.
     super.dispose();
   }
 
@@ -133,6 +136,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// none (offline, auto-accept on, or nothing new).
   void _syncAlert(List<RideRequest> open) {
     if (!mounted) return;
+    // Once the queue has loaded: requests already in it are not new.
+    if (_restoredOnline && ref.read(openRequestsProvider).hasValue) {
+      _restoredOnline = false;
+      _alertSeen.addAll(open.map((r) => r.id));
+    }
     for (final id in raisedAfterDecline(_declinedFare, [for (final r in open) (id: r.id, fare: r.effectiveFare)])) {
       _raisedFrom[id] = _declinedFare.remove(id)!;
       _alertSeen.remove(id);
@@ -203,6 +211,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   void initState() {
     super.initState();
     _onlineState = ref.read(driverOnlineProvider.notifier);
+    _online = _restoredOnline = ref.read(driverOnlineProvider);
     _resume();
     _locate();
     // Live: the map follows the driver as they move.
