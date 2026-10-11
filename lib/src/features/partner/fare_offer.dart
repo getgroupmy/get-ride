@@ -112,11 +112,18 @@ class OfferPendingDialog extends StatefulWidget {
   State<OfferPendingDialog> createState() => _OfferPendingDialogState();
 }
 
-class _OfferPendingDialogState extends State<OfferPendingDialog> {
+/// How long a closed offer's message stays up before it closes itself.
+const offerClosedAutoClose = Duration(seconds: 3);
+
+class _OfferPendingDialogState extends State<OfferPendingDialog> with SingleTickerProviderStateMixin {
   StreamSubscription<RideRequest>? _sub;
   Timer? _tick;
   late var _left = widget.window;
   String? _outcome;
+
+  /// Runs down while the outcome is shown, then closes the dialog.
+  late final _closing = AnimationController(vsync: this, duration: offerClosedAutoClose);
+  bool _popped = false;
 
   @override
   void initState() {
@@ -135,6 +142,7 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> {
   void dispose() {
     _sub?.cancel();
     _tick?.cancel();
+    _closing.dispose();
     super.dispose();
   }
 
@@ -166,7 +174,18 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> {
   void _finish(String message, {bool withdraw = false}) {
     _stop();
     if (withdraw) unawaited(widget.repo.withdrawOffer(widget.ride.id).catchError((Object _) {}));
-    if (mounted) setState(() => _outcome = message);
+    if (!mounted) return;
+    setState(() => _outcome = message);
+    _closing.forward().whenComplete(() {
+      if (mounted && _closing.isCompleted) _close();
+    });
+  }
+
+  void _close() {
+    if (_popped) return;
+    _popped = true;
+    _closing.stop();
+    Navigator.of(context).pop();
   }
 
   @override
@@ -189,8 +208,23 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> {
             LinearProgressIndicator(value: _left.inMilliseconds / widget.window.inMilliseconds),
             const SizedBox(height: 4),
             Text('${_left.inSeconds}s'),
-          ] else
+          ] else ...[
             Text(outcome),
+            const SizedBox(height: 12),
+            AnimatedBuilder(
+              animation: _closing,
+              builder: (context, _) {
+                final left = offerClosedAutoClose * (1 - _closing.value);
+                return Column(
+                  children: [
+                    LinearProgressIndicator(key: const ValueKey('offer-closed-timer'), value: 1 - _closing.value),
+                    const SizedBox(height: 4),
+                    Text('Closing in ${(left.inMilliseconds / 1000).ceil()}s'),
+                  ],
+                );
+              },
+            ),
+          ],
         ],
       ),
       actions: [
@@ -204,7 +238,7 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> {
             child: const Text('Withdraw offer'),
           )
         else
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('OK')),
+          TextButton(onPressed: _close, child: const Text('OK')),
       ],
     );
   }
