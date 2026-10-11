@@ -17,6 +17,7 @@ import 'package:get_ride/src/widgets/voice_note.dart';
 import 'package:get_ride/src/data/ride_chat_repository.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/partner/partner_trip_screen.dart';
+import 'package:get_ride/src/features/ride/ride_call_screen.dart' show rideCallDialerProvider;
 import 'package:get_ride/src/features/ride/ride_chat_screen.dart';
 import 'package:get_ride/src/data/fare_coin_store.dart';
 import 'package:get_ride/src/features/ride/ride_tracking_screen.dart';
@@ -542,4 +543,33 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('the call key in the chat is the in-app call, not the phone', (tester) async {
+    final dialed = <Uri>[];
+    final mic = FakeMic(granted: false);
+    final (repo, opened) = await pumpChat(
+      tester,
+      me: 'rider',
+      status: 'accepted',
+      extra: [
+        micPermissionProvider.overrideWithValue(mic),
+        rideCallDialerProvider.overrideWithValue((uri) async {
+          dialed.add(uri);
+          return true;
+        }),
+      ],
+    );
+    repo.rows.add(const []);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('ride-call')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('ride-call')));
+    await tester.pumpAndSettle();
+    // The in-app call asks for the microphone first; nothing is dialled.
+    expect(mic.asked, greaterThan(0));
+    expect(find.byKey(const ValueKey('mic-needed')), findsOneWidget);
+    expect(dialed, isEmpty);
+    expect(opened, isEmpty);
+    await tester.tap(find.text('Not now'));
+    await tester.pumpAndSettle();
+  });
 }
