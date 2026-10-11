@@ -87,6 +87,7 @@ class RideMessage {
     this.status = RideMessageStatus.sent,
     this.createdAt,
     this.clientMsgId,
+    this.pending = false,
   });
 
   final String id;
@@ -110,6 +111,10 @@ class RideMessage {
   /// retried after a dropped connection is stored once. Null on messages
   /// from builds before it.
   final String? clientMsgId;
+
+  /// Written on this phone and not on the server yet (no connection): shown
+  /// with a clock instead of a tick, and sent when the connection is back.
+  final bool pending;
 
   /// Null for a row that isn't a message (no id, or a role this app doesn't
   /// know).
@@ -151,6 +156,7 @@ class RideMessage {
     status: status ?? this.status,
     createdAt: createdAt,
     clientMsgId: clientMsgId,
+    pending: pending,
   );
 
   bool get hasLocation => type == RideMessageType.location && latitude != null && longitude != null;

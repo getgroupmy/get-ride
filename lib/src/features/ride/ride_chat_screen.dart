@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/format.dart';
 import '../../core/ride_chat.dart';
+import '../../core/ride_chat_outbox.dart';
 import '../../data/models.dart';
 import '../../data/photo_picker.dart';
+import '../../data/ride_chat_outbox.dart';
 import '../../data/ride_chat_repository.dart';
 import '../../data/voice_recorder.dart';
 import '../../providers.dart';
@@ -51,6 +54,10 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
   /// thread doesn't ask again.
   final _marked = <String>{};
 
+  /// Tries the messages waiting on this phone again while the chat is open.
+  Timer? _retry;
+  AppLifecycleListener? _lifecycle;
+
   @override
   void initState() {
     super.initState();
@@ -62,12 +69,24 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
     // the moment it is opened.
     ref.listenManual(rideMessagesProvider(widget.requestId), (_, next) {
       final list = next.value;
-      if (list != null) _markRead(list);
+      if (list != null) {
+        _markRead(list);
+        // What reached the server another way is no longer waiting; and a
+        // thread that loads means there is a connection to send the rest on.
+        ref.read(rideChatOutboxProvider.notifier).reconcile(list.map((m) => m.clientMsgId));
+        _flush();
+      }
     }, fireImmediately: true);
+    _retry = Timer.periodic(rideOutboxRetryEvery, (_) => _flush());
+    _lifecycle = AppLifecycleListener(onResume: _flush);
   }
+
+  void _flush() => unawaited(ref.read(rideChatOutboxProvider.notifier).flush(requestId: widget.requestId));
 
   @override
   void dispose() {
+    _retry?.cancel();
+    _lifecycle?.dispose();
     disposeVoiceNote();
     _text.dispose();
     super.dispose();
@@ -105,14 +124,36 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
       }
       return;
     }
-    await _run((repo) async {
-      await repo.sendText(widget.requestId, role, text);
-      _text.clear();
-    });
+    _text.clear();
+    await _queue(role, RideMessageType.text, body: text);
   }
 
-  Future<void> _sendQuick(RideChatRole role, String line) =>
-      _run((repo) => repo.sendText(widget.requestId, role, line, quick: true));
+  Future<void> _sendQuick(RideChatRole role, String line) => _queue(role, RideMessageType.quick, body: line);
+
+  /// Keeps the message on this phone first, then sends it: with no
+  /// connection it waits in the thread (a clock instead of a tick) and goes
+  /// out when the connection is back.
+  Future<void> _queue(RideChatRole role, RideMessageType type, {String? body, double? lat, double? lng}) async {
+    final uid = ref.read(currentUserIdProvider);
+    if (uid == null) return;
+    final p = PendingRideMessage(
+      clientMsgId: const Uuid().v4(),
+      requestId: widget.requestId,
+      senderId: uid,
+      role: role,
+      type: type,
+      body: body,
+      latitude: lat,
+      longitude: lng,
+      createdAt: DateTime.now(),
+    );
+    try {
+      final sent = await ref.read(rideChatOutboxProvider.notifier).send(p);
+      if (!sent && mounted) showInfo(context, 'No connection. It will be sent when you are back online.');
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
 
   Future<void> _shareLocation(RideChatRole role) => _run((repo) async {
     final at = await ref.read(tripFixProvider)();
@@ -120,7 +161,7 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
       if (mounted) showInfo(context, "Couldn't get your location. Check that location is on.");
       return;
     }
-    await repo.sendLocation(widget.requestId, role, at.latitude, at.longitude);
+    await _queue(role, RideMessageType.location, lat: at.latitude, lng: at.longitude);
   });
 
   /// A photo from the gallery or the camera, looked at (and captioned)
@@ -232,7 +273,8 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
 
   Widget _thread(RideChatRole role) => AsyncView(
     value: ref.watch(rideMessagesProvider(widget.requestId)),
-    data: (msgs) {
+    data: (sent) {
+      final msgs = withPendingMessages(sent, ref.watch(rideChatOutboxProvider), widget.requestId);
       if (msgs.isEmpty) {
         return EmptyState(
           icon: Icons.forum_outlined,
@@ -464,7 +506,16 @@ class _Bubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(formatTime(m.createdAt), style: t.textTheme.labelSmall?.copyWith(color: faint)),
-                if (tick != null) ...[
+                if (m.pending) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.schedule,
+                    key: ValueKey('pending-${m.id}'),
+                    size: 14,
+                    color: faint,
+                    semanticLabel: 'Waiting for network',
+                  ),
+                ] else if (tick != null) ...[
                   const SizedBox(width: 4),
                   Icon(
                     tick == RideMessageStatus.sent ? Icons.done : Icons.done_all,
