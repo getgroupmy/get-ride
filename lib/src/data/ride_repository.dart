@@ -26,13 +26,18 @@ import '../core/trip_checkpoint.dart';
 import 'geo_service.dart';
 import 'models.dart';
 import 'realtime_backup.dart';
+import 'ride_cache.dart';
+import '../core/ride_cache.dart';
 
 /// Ride booking + dispatch over `public.ride_requests`, mirroring the Expo
 /// app's `utils/rideRequestsStore.ts`. Partners are identified by their auth
 /// uid in `partner_id`, exactly as the Expo e-hailing screen does.
 class RideRepository {
-  RideRepository(this._db);
+  RideRepository(this._db, {RideCacheStore? cache}) : _cache = cache ?? RideCacheStore();
   final SupabaseClient _db;
+
+  /// The rides kept on the phone for when the server can't be reached.
+  final RideCacheStore _cache;
   static const _table = 'ride_requests';
 
   String? get _uid => _db.auth.currentUser?.id;
@@ -179,28 +184,58 @@ class RideRepository {
   Future<List<RideRequest>> ridesOnTheGo() async {
     final uid = _uid;
     if (uid == null) return const [];
-    await expireStaleOpen();
-    final rows = await _db
-        .from(_table)
-        .select()
-        .eq('rider_id', uid)
-        .inFilter('status', riderOngoingStatuses)
-        .order('created_at', ascending: false)
-        .limit(20);
-    return rows.map(RideRequest.new).toList();
+    try {
+      await expireStaleOpen();
+      final rows = await _db
+          .from(_table)
+          .select()
+          .eq('rider_id', uid)
+          .inFilter('status', riderOngoingStatuses)
+          .order('created_at', ascending: false)
+          .limit(20);
+      for (final row in rows) {
+        unawaited(_cache.save(row));
+      }
+      return rows.map(RideRequest.new).toList();
+    } on PostgrestException {
+      rethrow;
+    } catch (_) {
+      // No connection: the rides on the go as this phone last saw them.
+      final kept = await _keptInProgress(uid, 'rider_id', riderOngoingStatuses);
+      if (kept == null) rethrow;
+      return kept;
+    }
+  }
+
+  /// The rides in progress kept on the phone, or null when there are none.
+  Future<List<RideRequest>?> _keptInProgress(String uid, String column, List<String> statuses) async {
+    final kept = cachedRidesInProgress(await _cache.read(), uid: uid, column: column, statuses: statuses);
+    if (kept.isEmpty) return null;
+    return [for (final c in kept) RideRequest(c.row, cachedAt: c.savedAt)];
   }
 
   Future<RideRequest?> ongoingForPartner() async {
     final uid = _uid;
     if (uid == null) return null;
-    final rows = await _db
-        .from(_table)
-        .select()
-        .eq('partner_id', uid)
-        .inFilter('status', partnerOngoingStatuses)
-        .order('created_at', ascending: false)
-        .limit(1);
-    return rows.isEmpty ? null : RideRequest(rows.first);
+    try {
+      final rows = await _db
+          .from(_table)
+          .select()
+          .eq('partner_id', uid)
+          .inFilter('status', partnerOngoingStatuses)
+          .order('created_at', ascending: false)
+          .limit(1);
+      if (rows.isEmpty) return null;
+      unawaited(_cache.save(rows.first));
+      return RideRequest(rows.first);
+    } on PostgrestException {
+      rethrow;
+    } catch (_) {
+      // No connection: the trip as this phone last saw it.
+      final kept = await _keptInProgress(uid, 'partner_id', partnerOngoingStatuses);
+      if (kept == null) rethrow;
+      return kept.first;
+    }
   }
 
   Future<List<RideRequest>> history({int limit = 50}) async {
@@ -762,6 +797,8 @@ class RideRepository {
     void emit(RideRequest r) {
       if (controller.isClosed) return;
       controller.add(r);
+      if (r.fromCache) return;
+      unawaited(_cache.save(r.raw));
       if (r.status != shown) {
         shown = r.status;
         unawaited(ackRideNotifications(id));
@@ -779,8 +816,20 @@ class RideRepository {
 
     controller.onListen = () async {
       backup = RealtimeBackup(reread);
-      final first = await fetch(id);
-      if (first != null) emit(first);
+      try {
+        final first = await fetch(id);
+        if (first != null) emit(first);
+      } catch (e) {
+        // No connection: the ride as this phone last saw it, until the
+        // backup reads it again. Without one, the screen offers a retry.
+        final kept = e is PostgrestException ? null : await _cache.ride(id);
+        if (kept != null) {
+          emit(RideRequest(kept.row, cachedAt: kept.savedAt));
+        } else if (!controller.isClosed) {
+          controller.addError(e);
+        }
+      }
+      if (controller.isClosed) return;
       channel = _db
           .channel('ride_request_${id}_${DateTime.now().microsecondsSinceEpoch}')
           .onPostgresChanges(

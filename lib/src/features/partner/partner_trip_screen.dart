@@ -27,6 +27,7 @@ import '../../widgets/ride_stop_tiles.dart';
 import '../ride/live_ride_map.dart';
 import '../ride/ride_call_screen.dart' show RideCallButton;
 import '../ride/ride_chat_screen.dart' show RideChatBadge;
+import '../../widgets/offline_ride_banner.dart';
 import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
 import '../safety/voice_protection_controller.dart';
 
@@ -432,14 +433,20 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         data: (r) {
           final map = LiveRideMap(ride: r, partner: true, driverAt: _me, driverHeading: _heading, now: ref.read(tripClockProvider));
           final panel = _panel(r);
-          if (MediaQuery.sizeOf(context).width >= 900) {
-            return Row(children: [
-              SizedBox(width: 420, child: SingleChildScrollView(child: panel)),
-              const VerticalDivider(width: 1),
-              Expanded(child: map),
-            ]);
-          }
-          return MapSheetLayout(map: map, sheet: panel);
+          final Widget body = MediaQuery.sizeOf(context).width >= 900
+              ? Row(children: [
+                  SizedBox(width: 420, child: SingleChildScrollView(child: panel)),
+                  const VerticalDivider(width: 1),
+                  Expanded(child: map),
+                ])
+              : MapSheetLayout(map: map, sheet: panel);
+          if (!r.fromCache) return body;
+          return Column(
+            children: [
+              OfflineRideBanner(cachedAt: r.cachedAt!),
+              Expanded(child: body),
+            ],
+          );
         },
       ),
     );

@@ -56,8 +56,13 @@ const riderOngoingStatuses = ['open', 'accepted', 'arrived', 'on_trip'];
 const partnerOngoingStatuses = ['accepted', 'arrived', 'on_trip'];
 
 class RideRequest {
-  RideRequest(this.raw);
+  RideRequest(this.raw, {this.cachedAt});
   final Map<String, dynamic> raw;
+
+  /// Set when this is the copy kept on the phone (no connection): when it
+  /// was last seen on the server.
+  final DateTime? cachedAt;
+  bool get fromCache => cachedAt != null;
 
   String get id => raw['id'] as String;
   String? get riderId => raw['rider_id'] as String?;

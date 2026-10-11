@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/call_ring.dart';
 import '../core/push_logic.dart';
+import 'background_ack.dart';
 
 /// The phone's own incoming-call screen for ride calls (migration 0134):
 /// CallKit on an iPhone, flutter_callkit_incoming's full-screen call on
@@ -190,13 +191,17 @@ class NativeCallRinger implements CallRinger {
 /// background or closed (Android). Runs in its own isolate, with nothing of
 /// the app started: a ride call rings the phone's call screen, and a call
 /// that stopped ringing stops it (with a missed-call notification if it was
-/// still ringing). Everything else was a notification the OS already showed.
+/// still ringing). Everything else was a notification the OS already showed;
+/// every push is acknowledged so the server doesn't send it again.
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundPush(RemoteMessage message) async {
   final data = message.data;
   final ring = callRingFromPush(data);
   final ended = endedCallFromPush(data);
-  if (ring == null && ended == null) return;
+  if (ring == null && ended == null) {
+    await ackPushInBackground(data);
+    return;
+  }
   try {
     if (Firebase.apps.isEmpty) {
       final options = firebaseOptionsFor(defaultTargetPlatform, const FirebaseEnv.fromEnvironment(), isWeb: kIsWeb);
@@ -205,8 +210,10 @@ Future<void> firebaseBackgroundPush(RemoteMessage message) async {
   } catch (_) {}
   if (ring != null) {
     await NativeCallRinger().ring(ring);
+    await ackPushInBackground(data);
     return;
   }
+  await ackPushInBackground(data);
   try {
     final active = await FlutterCallkitIncoming.activeCalls();
     final ringing = active.where((c) => callIdFromExtra(c.extra, fallbackId: c.id) == ended && !c.isAccepted);

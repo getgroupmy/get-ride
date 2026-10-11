@@ -12,6 +12,8 @@
 //
 // These are Firebase's public client identifiers, not secrets. The server
 // side (sending) is the send-push edge function (supabase/functions/send-push).
+import 'dart:convert';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -138,4 +140,26 @@ String? pushRouteFor(Map<String, dynamic> data) {
 String? pushEventId(Map<String, dynamic> data) {
   final id = data['event_id'];
   return id is String && id.trim().isNotEmpty ? id.trim() : null;
+}
+
+/// Where supabase_flutter keeps the signed-in session on the phone.
+String supabaseSessionKey(String supabaseUrl) => 'sb-${Uri.parse(supabaseUrl).host.split('.').first}-auth-token';
+
+/// The access token of a stored session while it still has [margin] to run;
+/// null when there is none, it is unreadable, or it is (nearly) out. The
+/// background handler never refreshes a session: that is the app's to do,
+/// and two refreshes racing would sign the person out.
+String? storedAccessToken(String? stored, DateTime now, {Duration margin = const Duration(seconds: 30)}) {
+  if (stored == null || stored.isEmpty) return null;
+  Object? json;
+  try {
+    json = jsonDecode(stored);
+  } catch (_) {
+    return null;
+  }
+  if (json is! Map) return null;
+  final token = json['access_token'], expires = json['expires_at'];
+  if (token is! String || token.isEmpty || expires is! num) return null;
+  final until = DateTime.fromMillisecondsSinceEpoch(expires.toInt() * 1000, isUtc: true);
+  return until.difference(now.toUtc()) > margin ? token : null;
 }

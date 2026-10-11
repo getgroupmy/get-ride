@@ -39,6 +39,7 @@ import 'ride_payment_overlay.dart';
 import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
 import 'shared_ride_screen.dart' show shareRide;
+import '../../widgets/offline_ride_banner.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../profile/emergency_contacts_screen.dart';
 import '../safety/safety_screen.dart';
@@ -100,7 +101,14 @@ class RideTrackingScreen extends ConsumerWidget {
         data: (r) {
           // The panel lays the screen out: a driver's offer flies in over
           // the map; on a wide (desktop) screen the panel sits beside it.
-          return _RidePanel(ride: r, map: LiveRideMap(ride: r), wide: MediaQuery.sizeOf(context).width >= 900);
+          final panel = _RidePanel(ride: r, map: LiveRideMap(ride: r), wide: MediaQuery.sizeOf(context).width >= 900);
+          if (!r.fromCache) return panel;
+          return Column(
+            children: [
+              OfflineRideBanner(cachedAt: r.cachedAt!),
+              Expanded(child: panel),
+            ],
+          );
         },
       ),
     );
