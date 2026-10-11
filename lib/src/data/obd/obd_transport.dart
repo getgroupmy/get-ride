@@ -25,6 +25,14 @@ abstract class ObdTransport {
   Future<void> disconnect();
 }
 
+/// A link that can be tried another way when the reader stays silent (a
+/// Bluetooth LE reader's other characteristic pair or write mode).
+abstract interface class ObdRetunable {
+  /// Switches to the next way to talk to the reader; false when every way
+  /// has been tried.
+  Future<bool> retune();
+}
+
 /// The usual Wi-Fi ELM327: a TCP socket to the dongle's own access point
 /// (192.168.0.10:35000 unless the reader says otherwise). Uses Dart's own
 /// sockets, so there is no native module to be missing on Android, iOS or

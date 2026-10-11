@@ -226,7 +226,7 @@ class ObdSession extends Notifier<ObdSessionState> {
   }
 
   static String _describe(Object e) {
-    final text = '$e'.replaceFirst(RegExp(r'^(Exception|StateError|Bad state|SocketException|UnsupportedError|Unsupported operation):\s*'), '');
+    final text = '$e'.replaceFirst(RegExp(r'^(Exception|StateError|Bad state|SocketException|TimeoutException|UnsupportedError|Unsupported operation):\s*'), '');
     return text.isEmpty ? 'Could not reach the reader.' : text;
   }
 }
