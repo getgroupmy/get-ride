@@ -9,16 +9,30 @@ import '../../core/obd_ble.dart';
 import '../ble.dart';
 import 'obd_transport.dart';
 
+/// How long a reader is left after its replies are subscribed to before the
+/// first command: several BLE clones drop whatever arrives while they are
+/// still settling the link, so the reset was never heard.
+const bleSettleDelay = Duration(milliseconds: 500);
+
+/// How long a write-without-response is waited on. iOS only reports one done
+/// when its send queue had filled, so a short command's write never
+/// completes on its own and held every later command behind it; the bytes
+/// are already on their way once the platform has them.
+const bleUnacknowledgedWriteWait = Duration(milliseconds: 800);
+
 /// An ELM327 over Bluetooth LE (Expo `BleTransport`): connects to the
 /// peripheral picked from the scan, finds its serial characteristics and
-/// streams the replies.
-class BleObdTransport implements ObdTransport {
+/// streams the replies. A reader that doesn't answer one way is tried the
+/// next ([retune], [bleLinkCandidates]).
+class BleObdTransport implements ObdTransport, ObdRetunable {
   BleObdTransport(this.deviceId, {this.name, this.connectTimeout = const Duration(seconds: 20)});
 
   final String deviceId;
   final String? name;
   final Duration connectTimeout;
 
+  List<ResolvedBleProfile> _candidates = const [];
+  int _index = 0;
   ResolvedBleProfile? _profile;
   StreamSubscription<Uint8List>? _sub;
   final _data = StreamController<String>.broadcast();
@@ -47,7 +61,7 @@ class BleObdTransport implements ObdTransport {
   Future<void> _open() async {
     await UniversalBle.connect(deviceId, timeout: connectTimeout);
     final services = await UniversalBle.discoverServices(deviceId);
-    final profile = resolveBleProfile([
+    _candidates = bleLinkCandidates([
       for (final s in services)
         (
           uuid: s.uuid,
@@ -63,15 +77,42 @@ class BleObdTransport implements ObdTransport {
           ],
         ),
     ]);
-    if (profile == null) {
+    if (_candidates.isEmpty) {
       throw StateError('Connected, but this device has no ELM327 serial link. Is it an OBD-II reader?');
     }
+    _index = 0;
+    await _use(_candidates.first);
+  }
+
+  /// Listens on [profile]'s reply characteristic and lets the reader settle.
+  Future<void> _use(ResolvedBleProfile profile) async {
     _profile = profile;
+    await _sub?.cancel();
     _sub = UniversalBle.characteristicValueStream(deviceId, profile.notify)
         .listen((bytes) => _data.add(latin1.decode(bytes)));
     profile.indicate
         ? await UniversalBle.subscribeIndications(deviceId, profile.service, profile.notify)
         : await UniversalBle.subscribeNotifications(deviceId, profile.service, profile.notify);
+    await Future<void>.delayed(bleSettleDelay);
+  }
+
+  @override
+  Future<bool> retune() async {
+    final current = _profile;
+    if (current == null || _index + 1 >= _candidates.length) return false;
+    _index++;
+    final next = _candidates[_index];
+    if (!sameBleUuid(next.notify, current.notify)) {
+      try {
+        await UniversalBle.unsubscribe(deviceId, current.service, current.notify);
+      } catch (_) {}
+    }
+    try {
+      await _use(next);
+    } catch (_) {
+      return retune();
+    }
+    return true;
   }
 
   Future<void> _findAgain() => findBlePeripheral(deviceId,
@@ -82,8 +123,16 @@ class BleObdTransport implements ObdTransport {
     final p = _profile;
     if (p == null) throw StateError('not connected');
     for (final packet in chunkBleWrite(ascii.encode('$command$elmCr'))) {
-      await UniversalBle.write(deviceId, p.service, p.write, Uint8List.fromList(packet),
-          withoutResponse: !p.writeWithResponse);
+      if (p.writeWithResponse) {
+        await UniversalBle.write(deviceId, p.service, p.write, Uint8List.fromList(packet));
+        continue;
+      }
+      try {
+        await UniversalBle.write(deviceId, p.service, p.write, Uint8List.fromList(packet),
+            withoutResponse: true, timeout: bleUnacknowledgedWriteWait);
+      } on TimeoutException {
+        // Sent; iOS just never said so (see bleUnacknowledgedWriteWait).
+      }
     }
   }
 
