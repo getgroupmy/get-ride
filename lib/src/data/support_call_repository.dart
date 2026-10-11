@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/support_call.dart';
 import '../providers.dart';
+import 'realtime_backup.dart';
 
 /// Support calls (migration 0105): ringing, answering and hanging up on
 /// `support_calls`, and the WebRTC setup messages on `support_call_signals`.
@@ -185,10 +186,14 @@ Stream<Map<String, dynamic>> watchCallRows(
 }) {
   final controller = StreamController<Map<String, dynamic>>();
   RealtimeChannel? channel;
+  RealtimeBackup? backup;
   controller.onListen = () {
     void emit(Map<String, dynamic> row) {
       if (!controller.isClosed && row.isNotEmpty) controller.add(row);
     }
+
+    // A call rings or hangs up within seconds: read it again often.
+    backup = RealtimeBackup(() async => (await initial()).forEach(emit), every: const Duration(seconds: 3));
 
     channel = db
         .channel('${name}_${DateTime.now().microsecondsSinceEpoch}')
@@ -199,10 +204,11 @@ Stream<Map<String, dynamic>> watchCallRows(
           filter: filter,
           callback: (p) => emit(p.newRecord),
         )
-        .subscribe();
+        .subscribe(backup!.onStatus);
     initial().then((rows) => rows.forEach(emit), onError: (Object _) {});
   };
   controller.onCancel = () async {
+    backup?.dispose();
     if (channel != null) await db.removeChannel(channel!);
     await controller.close();
   };

@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../core/ride_chat.dart';
 import '../core/support_media.dart' show fileExt;
 import '../providers.dart';
+import 'realtime_backup.dart';
 
 /// The rider ↔ driver chat of a ride (`ride_messages`, migration 0129). RLS
 /// keeps each thread to the ride's two participants; a trigger lets only the
@@ -35,7 +36,9 @@ class RideChatRepository {
       }
     }
 
+    RealtimeBackup? backup;
     controller.onListen = () {
+      backup = RealtimeBackup(refresh);
       refresh();
       channel = _db
           .channel('ride_chat_${requestId}_${DateTime.now().microsecondsSinceEpoch}')
@@ -46,9 +49,10 @@ class RideChatRepository {
             filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'request_id', value: requestId),
             callback: (_) => refresh(),
           )
-          .subscribe();
+          .subscribe(backup!.onStatus);
     };
     controller.onCancel = () async {
+      backup?.dispose();
       if (channel != null) await _db.removeChannel(channel!);
       await controller.close();
     };

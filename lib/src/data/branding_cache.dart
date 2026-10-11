@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../admin/screens/meterapp/site_logic.dart' show brandingRowId, brandingTable;
 import '../core/app_branding.dart';
 import 'geo_service.dart' show adminStartCenter;
+import 'realtime_backup.dart';
 
 /// What the splash shows on this launch: the branding cached by the previous
 /// one, with the image's bytes on disk so it paints on the first frame
@@ -93,6 +94,7 @@ class BrandingSync {
   BrandingSync(this._db);
   final SupabaseClient _db;
   RealtimeChannel? _channel;
+  RealtimeBackup? _backup;
 
   /// This launch's branding once fetched, for a splash still on screen.
   final latest = ValueNotifier<AppBranding?>(null);
@@ -113,6 +115,7 @@ class BrandingSync {
 
   Future<void> start() async {
     await resync();
+    _backup = RealtimeBackup(resync, every: const Duration(minutes: 1));
     try {
       _channel = _db
           .channel('app_branding_changes')
@@ -124,11 +127,13 @@ class BrandingSync {
               if (p.newRecord['id'] == brandingRowId) unawaited(_apply(AppBranding.fromRow(p.newRecord)));
             },
           )
-          .subscribe();
+          .subscribe(_backup!.onStatus);
     } catch (_) {}
   }
 
   void stop() {
+    _backup?.dispose();
+    _backup = null;
     final c = _channel;
     if (c != null) unawaited(_db.removeChannel(c));
     _channel = null;

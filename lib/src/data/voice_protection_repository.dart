@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/voice_protection.dart';
 import '../providers.dart';
+import 'realtime_backup.dart';
 
 /// True where trip audio is recorded: the phone apps. A browser or a desktop
 /// build never records, and never answers an upload request either (it
@@ -154,6 +155,7 @@ class VoiceProtectionRepository {
   /// Calls [onChange] whenever one of [profileId]'s rows changes (an
   /// agent's request, or the phone answering it). Answers the unsubscribe.
   Future<void> Function() watch(String profileId, void Function() onChange) {
+    final backup = RealtimeBackup(onChange, every: const Duration(seconds: 15));
     final channel = _db
         .channel('voice_protection_${profileId}_${DateTime.now().microsecondsSinceEpoch}')
         .onPostgresChanges(
@@ -163,8 +165,11 @@ class VoiceProtectionRepository {
           filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'profile_id', value: profileId),
           callback: (_) => onChange(),
         )
-        .subscribe();
-    return () => _db.removeChannel(channel);
+        .subscribe(backup.onStatus);
+    return () {
+      backup.dispose();
+      return _db.removeChannel(channel);
+    };
   }
 
   // ---- Support agent -------------------------------------------------------
