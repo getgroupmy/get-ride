@@ -11,13 +11,13 @@ import '../../data/photo_picker.dart';
 import '../../data/ride_chat_repository.dart';
 import '../../data/voice_recorder.dart';
 import '../../providers.dart';
-import '../../widgets/busy.dart';
 import '../../widgets/chat_photo.dart';
 import '../../widgets/common.dart';
 import '../../widgets/net_image.dart';
 import '../../widgets/voice_note.dart';
 import '../../widgets/voice_note_composer.dart';
 import '../partner/partner_trip_screen.dart' show tripFixProvider;
+import 'ride_call_screen.dart' show RideCallButton;
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 
 /// Opens a link outside the app (overridden in tests).
@@ -192,12 +192,19 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
           ],
         ),
         actions: [
-          if (phone != null)
-            BusyIconButton(
-              key: const ValueKey('ride-chat-call'),
-              tooltip: 'Call $peer',
-              icon: const Icon(Icons.call_outlined),
-              onPressed: () => ref.read(rideChatLauncherProvider)(Uri(scheme: 'tel', path: phone)),
+          // The same call as the trip screens': in the app (long press for
+          // the phone), or the passenger's own phone on a ride booked for
+          // them.
+          if (r != null && role != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: RideCallButton(
+                key: const ValueKey('ride-chat-call'),
+                ride: r,
+                peerName: peer,
+                phone: phone,
+                compact: true,
+              ),
             ),
         ],
       ),
