@@ -16,8 +16,12 @@ import '../../core/trip_charges.dart';
 import '../../core/trip_checkpoint.dart';
 import '../../core/trip_progress.dart';
 import '../../core/ride_cancel.dart';
+import '../../core/ride_chat.dart';
+import '../../core/ride_read_aloud.dart';
 import '../../core/ride_payment.dart';
 import '../../data/models.dart';
+import '../../data/read_aloud.dart';
+import '../../data/ride_chat_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
@@ -102,9 +106,20 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   bool _busy = false;
   late final VoiceProtectionController _voice;
 
+  /// The passenger's messages already read out (or already there when the
+  /// trip opened); null until the thread first arrives.
+  Set<String>? _heard;
+  String _passenger = 'Your passenger';
+  late final Speaker _speaker;
+
   @override
   void initState() {
     super.initState();
+    _speaker = ref.read(speakerProvider);
+    ref.listenManual(rideMessagesProvider(widget.requestId), (_, next) {
+      final thread = next.value;
+      if (thread != null) _readAloud(thread);
+    }, fireImmediately: true);
     _voice = ref.read(voiceProtectionProvider.notifier);
     _gps = ref.read(tripPositionStreamProvider)().listen(_onPosition, onError: (_) {});
     // VoiceProtection records the trip from the moment it starts (gated by the
@@ -112,6 +127,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     ref.listenManual(rideStreamProvider(widget.requestId), (_, next) {
       final r = next.value;
       if (r == null) return;
+      _passenger = r.passengerName;
       final before = _status;
       _status = r.status;
       final paidBefore = _payment;
@@ -133,6 +149,26 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   }
 
   DateTime get _now => ref.read(tripClockProvider)();
+
+  /// Reads the passenger's new messages out, while the trip is on and this
+  /// screen is the one in front (the open chat shows them instead).
+  void _readAloud(List<RideMessage> thread) {
+    final me = ref.read(currentUserIdProvider);
+    final heard = _heard;
+    if (heard == null) {
+      _heard = {for (final m in thread) m.id};
+      return;
+    }
+    final fresh = rideMessagesToReadAloud(thread, me: me, heard: heard);
+    if (fresh.isEmpty) return;
+    heard.addAll(fresh.map((m) => m.id));
+    final live = !(_status?.isFinished ?? false);
+    final inFront = mounted && (ModalRoute.of(context)?.isCurrent ?? true);
+    if (!live || !inFront || !ref.read(readAloudProvider)) return;
+    for (final m in fresh) {
+      unawaited(_speaker.speak(rideMessageSpeech(m, _passenger)));
+    }
+  }
 
   final _cancelPrompt = CancelRequestPrompt();
 
@@ -235,6 +271,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
 
   @override
   void dispose() {
+    unawaited(_speaker.stop());
     _gps?.cancel();
     _tick?.cancel();
     _closeTimer?.cancel();
@@ -418,6 +455,25 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     );
   }
 
+  Widget _readAloudToggle() {
+    final on = ref.watch(readAloudProvider);
+    return IconButton(
+      key: const ValueKey('read-aloud-toggle'),
+      tooltip: on ? 'Stop reading messages aloud' : 'Read messages aloud',
+      isSelected: on,
+      icon: Icon(on ? Icons.volume_up_outlined : Icons.volume_off_outlined),
+      onPressed: () {
+        ref.read(readAloudProvider.notifier).set(!on);
+        if (on) unawaited(_speaker.stop());
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(content: Text(on ? 'Messages won\'t be read aloud.' : 'Passenger messages will be read aloud.')),
+          );
+      },
+    );
+  }
+
   Widget _scaffold(AsyncValue<RideRequest> ride, bool onTrip) {
     return Scaffold(
       appBar: AppBar(
@@ -426,6 +482,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         leading: onTrip
             ? null
             : BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/drive')),
+        actions: [_readAloudToggle()],
       ),
       body: AsyncView(
         value: ride,
