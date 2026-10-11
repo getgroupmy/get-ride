@@ -15,6 +15,7 @@ import {
 } from "jsr:@std/assert@1.0.19";
 
 import {
+  commitUrl,
   isPermanent,
   LANGUAGE,
   messageOf,
@@ -23,6 +24,7 @@ import {
   trackBody,
   trackOf,
   uploadRefusal,
+  wantsNotSentForReview,
 } from "./play_upload.ts";
 
 Deno.test("a disabled API names the switch, not the workflow", () => {
@@ -172,4 +174,23 @@ Deno.test("the message is dug out of Google's error envelope", () => {
   // entirely would leave a refusal with nothing in it.
   assertEquals(messageOf("<html>no</html>"), "<html>no</html>");
   assertEquals(messageOf(""), "");
+});
+
+Deno.test("a commit Play won't send for review is retried without sending it", () => {
+  // What Play answered on run 7 of the Android release.
+  const said = "Changes cannot be sent for review automatically. Please set the query parameter " +
+    "changesNotSentForReview to true. Once committed, the changes in this edit can be sent for review " +
+    "from the Google Play Console UI.";
+  assert(wantsNotSentForReview(said));
+  assert(wantsNotSentForReview(uploadRefusal(400, said)), "the refusal keeps the words it is recognised by");
+  assert(!wantsNotSentForReview("Play has seen this version code before."));
+});
+
+Deno.test("the commit URL carries the flag only when asked", () => {
+  const base = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications";
+  assertEquals(commitUrl(base, "com.taxxee.teksi", "123"), `${base}/com.taxxee.teksi/edits/123:commit`);
+  assertEquals(
+    commitUrl(base, "com.taxxee.teksi", "123", true),
+    `${base}/com.taxxee.teksi/edits/123:commit?changesNotSentForReview=true`,
+  );
 });

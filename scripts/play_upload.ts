@@ -170,6 +170,24 @@ export function uploadRefusal(status: number, said: string): string {
     : `Play answered ${status}`;
 }
 
+/**
+ * Whether Play refused the commit only because it can't send the changes
+ * for review by itself. It says so when the app has changes that must be
+ * sent from the Console (a rejected update, managed publishing, a policy
+ * declaration due): the edit itself is fine, and committing it with
+ * `changesNotSentForReview=true` applies it. Sending it for review is then
+ * a button in the Play Console, where it is needed at all.
+ */
+export function wantsNotSentForReview(said: string): boolean {
+  return said.includes("changesNotSentForReview");
+}
+
+/** The commit URL for an edit, with the not-sent-for-review flag when asked. */
+export function commitUrl(base: string, pkg: string, editId: string, notSentForReview = false): string {
+  const url = `${base}/${pkg}/edits/${editId}:commit`;
+  return notSentForReview ? `${url}?changesNotSentForReview=true` : url;
+}
+
 /** The message inside Play's error body, where there is one. */
 export function messageOf(body: string): string {
   try {
@@ -259,9 +277,19 @@ async function main() {
   });
   console.log(`assigned to ${track}`);
 
-  await call(`${EDITS}/${pkg}/edits/${edit.id}:commit`, token, {
-    method: "POST",
-  });
+  try {
+    await call(commitUrl(EDITS, pkg, edit.id), token, { method: "POST" });
+  } catch (error) {
+    if (!(error instanceof PlayRefusal) || !wantsNotSentForReview(error.message)) throw error;
+    // The app has changes Play won't send for review by itself. Commit
+    // the edit without sending it; the Console then offers "Send for
+    // review" where review is needed.
+    await call(commitUrl(EDITS, pkg, edit.id, true), token, { method: "POST" });
+    console.log(
+      "committed without sending for review (Play asked for that). Open the " +
+        "Play Console > Publishing overview and press Send for review if it is offered.",
+    );
+  }
   console.log(`committed. Version code ${bundle.versionCode} is on ${track}.`);
 }
 
