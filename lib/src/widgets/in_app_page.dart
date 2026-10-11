@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/link_view.dart';
+import '../data/storage_links.dart';
 
 /// Opens [url] inside the app on a screen with a back button: a web page in a
 /// web view, a picture full screen with pinch-zoom, a PDF page by page. A
@@ -15,7 +16,10 @@ import '../core/link_view.dart';
 ///
 /// The web view exists on Android and iOS only; the website (already a
 /// browser) opens a page in a new tab, and desktop builds in the browser.
-Future<void> openInApp(BuildContext context, String url, {String? title}) async {
+Future<void> openInApp(BuildContext context, String link, {String? title}) async {
+  // A file in a private document bucket opens through a signed link.
+  final url = await signedStorageUrl(link);
+  if (!context.mounted) return;
   final uri = Uri.tryParse(url.trim());
   if (uri == null) {
     _couldNotOpen(context, url);

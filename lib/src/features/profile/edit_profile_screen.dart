@@ -10,6 +10,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/net_image.dart';
+import '../../widgets/storage_image.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key, this.pickPhoto = pickImage});
@@ -203,7 +204,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 borderRadius: BorderRadius.circular(12),
                 child: AspectRatio(
                   aspectRatio: 1.6,
-                  child: Image.network(
+                  child: StorageImage(
                     idImage,
                     key: const ValueKey('profile-id-image'),
                     fit: BoxFit.cover,
