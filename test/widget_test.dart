@@ -51,6 +51,9 @@ void main() {
     final rail = tester.widget<NavigationRail>(find.byType(NavigationRail));
     expect(rail.destinations.first.disabled, isTrue);
     expect(rail.destinations.skip(1).every((d) => !d.disabled), isTrue);
+    // Offline again, so the presence reports stop with the test.
+    container.read(driverOnlineProvider.notifier).set(false);
+    await tester.pump();
   });
 
   testWidgets('desktop and web get a navigation rail', (tester) async {
