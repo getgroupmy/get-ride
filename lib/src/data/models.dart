@@ -4,6 +4,7 @@ library;
 
 import '../core/format.dart';
 import '../core/region_pricing.dart';
+import '../core/ride_payment.dart';
 import '../core/ride_stops.dart';
 import 'geo_service.dart';
 
@@ -188,6 +189,13 @@ class RideRequest {
     final left = t - fareCoinsValue;
     return left < 0 ? 0 : (left * 100).roundToDouble() / 100;
   }
+
+  /// Where paying for the completed ride stands (migration 0142); null on a
+  /// ride the database doesn't track payment for, which asks nothing.
+  RidePaymentStatus? get paymentStatus => RidePaymentStatus.parse(raw['payment_status']);
+  RidePayMethod? get paidMethod => RidePayMethod.parse(raw['paid_method']);
+  double? get paidAmount => _d(raw['paid_amount']);
+  DateTime? get paidAt => _t(raw['paid_at']);
   DateTime? get cancelRequestedAt => _t(raw['cancel_requested_at']);
   String? get cancelRequestedBy => raw['cancel_requested_by'] as String?;
 

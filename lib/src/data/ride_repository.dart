@@ -19,6 +19,7 @@ import '../core/fare_coins.dart';
 import '../core/region_pricing.dart';
 import '../core/format.dart' show setRegionCurrencySymbols;
 import '../core/ride_bidding.dart';
+import '../core/ride_payment.dart';
 import '../core/ride_stops.dart';
 import '../core/trip_charges.dart';
 import '../core/trip_checkpoint.dart';
@@ -527,6 +528,25 @@ class RideRepository {
     } catch (_) {
       return null;
     }
+  }
+
+  /// "Pay now" for a completed ride (`ride_pay`, migration 0142): the
+  /// server works out what is left to pay, takes it from the rider's
+  /// GET.wallet or GET.coin and credits the driver, once. Throws when it is
+  /// refused (`insufficient_balance` and the like; see ridePaymentFailure).
+  Future<void> payRide(String id, RidePayMethod method) async {
+    if (method == RidePayMethod.cash) return payRideCash(id);
+    await _db.rpc('ride_pay', params: {'p_ride': id, 'p_method': method.db});
+  }
+
+  /// "Paid in cash": the ride waits for the driver to confirm it.
+  Future<void> payRideCash(String id) async {
+    await _db.rpc('ride_pay_cash', params: {'p_ride': id});
+  }
+
+  /// The driver confirms the passenger's cash was received.
+  Future<void> confirmRideCash(String id) async {
+    await _db.rpc('ride_confirm_cash', params: {'p_ride': id});
   }
 
   Future<void> updateStatus(String id, RideStatus status) async {

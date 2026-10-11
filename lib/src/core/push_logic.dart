@@ -114,6 +114,9 @@ String? pushRouteFor(Map<String, dynamic> data) {
     case 'ride_expired':
       // Nobody took the request (migration 0139): home, to book again.
       return '/';
+    case 'ride_payment':
+      // Paying for the finished trip (migration 0142): the passenger to the
+      // payment popup, the driver to confirm the cash.
     case 'ride_call_end':
       // "Missed call" (migration 0134): back to the recipient's trip, where
       // Call rings them back.
