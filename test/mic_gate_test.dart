@@ -70,4 +70,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(answers, [false]);
   });
+
+  testWidgets('never asked (iOS lists no Microphone in Settings yet): Allow asks, the call goes ahead', (tester) async {
+    final mic = FakeMic(granted: false, neverAsked: true, grantOnAsk: true);
+    final answers = await _pump(tester, mic);
+    expect(find.byKey(const ValueKey('mic-ask')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mic-open-settings')), findsNothing, reason: 'nothing to switch on in Settings yet');
+    await tester.tap(find.byKey(const ValueKey('mic-allow')));
+    await tester.pumpAndSettle();
+    expect(answers, [true]);
+    expect(mic.settingsOpened, 0);
+  });
+
+  testWidgets('never asked, and refused at the question: then Settings is offered', (tester) async {
+    final mic = FakeMic(granted: false, neverAsked: true);
+    final answers = await _pump(tester, mic);
+    // The question is answered Don't Allow: now it is refused, not unasked.
+    mic.neverAsked = false;
+    await tester.tap(find.byKey(const ValueKey('mic-allow')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('mic-needed')), findsOneWidget);
+    await tester.tap(find.text('Not now'));
+    await tester.pumpAndSettle();
+    expect(answers, [false]);
+  });
+
+  testWidgets('primeMicForCalls asks only a microphone never asked', (tester) async {
+    final never = FakeMic(granted: false, neverAsked: true);
+    final refused = FakeMic(granted: false);
+    final on = FakeMic();
+    for (final mic in [never, refused, on]) {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [micPermissionProvider.overrideWithValue(mic)],
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, _) => TextButton(onPressed: () => primeMicForCalls(ref), child: const Text('go')),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('go'));
+      await tester.pumpAndSettle();
+    }
+    expect(never.asked, 1);
+    expect(refused.asked, 0, reason: 'no question pops up for one already refused');
+    expect(on.asked, 0);
+  });
 }

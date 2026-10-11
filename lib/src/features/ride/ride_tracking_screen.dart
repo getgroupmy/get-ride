@@ -32,6 +32,7 @@ import '../../widgets/map_sheet_layout.dart';
 import 'demo_ride.dart';
 import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
+import '../support/call/mic_gate.dart' show primeMicForCalls;
 import 'ride_call_screen.dart' show RideCallButton;
 import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
@@ -169,6 +170,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _maybeClaimReward();
     _syncLocationShare();
     _syncSearch();
+    _primeMic();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _askAboutCancel();
       unawaited(_pollViewers());
@@ -176,6 +178,16 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   }
 
   final _cancelPrompt = CancelRequestPrompt();
+
+  /// A driver took the ride, so a call may come: ask for the microphone now,
+  /// while the app is on screen, if it was never asked (see primeMicForCalls).
+  bool _micPrimed = false;
+  void _primeMic() {
+    final r = widget.ride;
+    if (_micPrimed || !r.status.isOngoing || r.id.startsWith('demo')) return;
+    _micPrimed = true;
+    unawaited(primeMicForCalls(ref).catchError((_) {}));
+  }
 
   /// The driver's request to cancel, as a popup the passenger answers.
   void _askAboutCancel() {
@@ -198,6 +210,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _maybeClaimReward();
     _syncLocationShare();
     _syncSearch();
+    _primeMic();
     WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel());
     // Expired elsewhere (the home screen's timer, or the server's job, 0139)
     // before this screen's own clock got there: say so all the same.
