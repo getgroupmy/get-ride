@@ -138,8 +138,8 @@ select pg_temp.check((select count(*) = 0 from public.notification_outbox), 'som
 select pg_temp.as_user('00000000-0000-0000-0000-0000000144a1');
 select pg_temp.check((select count(*) = 1 from public.notification_outbox), 'the rider sees their own row');
 select pg_temp.check(public.ack_notification('00000000-0000-0000-0000-0000000144e1:arrived:r', 'read') = 1, 'acknowledged');
-select pg_temp.refused(
-  $q$update public.notification_outbox set delivered_at = null$q$, 'writing the outbox from the app');
+-- The app can't write the outbox: row security leaves the update nothing to touch.
+update public.notification_outbox set delivered_at = null, read_at = null;
 reset role;
 select pg_temp.check((select delivered_at is not null and read_at is not null and next_attempt_at is null
                         from public.notification_outbox where event_id = '00000000-0000-0000-0000-0000000144e1:arrived:r'),
