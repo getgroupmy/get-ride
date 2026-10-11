@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../widgets/common.dart';
+import '../../data/driver_presence.dart';
 import '../partner/driver_online.dart';
 
 class _Dest {
@@ -38,6 +39,8 @@ class AppShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final width = MediaQuery.sizeOf(context).width;
     final online = ref.watch(driverOnlineProvider);
+    // The server learns who is taking rides, and where (migration 0145).
+    ref.watch(driverPresenceProvider);
     void go(int i) {
       if (online && i == rideTab) return;
       shell.goBranch(i, initialLocation: i == shell.currentIndex);
