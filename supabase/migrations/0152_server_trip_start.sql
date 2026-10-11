@@ -109,10 +109,12 @@ select r.id, r.otp
 on conflict (request_id) do nothing;
 
 -- ---- Once switched on, only the server starts a trip -----------------------------------
+-- Not security definer: current_user has to be the caller's role here (a
+-- definer function would always see the owner). start_trip runs as the owner
+-- and passes; the switch is read through its own definer function.
 create or replace function public.ride_requests_guard_trip_start()
 returns trigger
 language plpgsql
-security definer
 set search_path = public
 as $$
 begin
