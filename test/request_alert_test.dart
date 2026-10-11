@@ -120,6 +120,7 @@ void main() {
     late StreamController<List<RideRequest>> open;
     late _FakeRides rides;
     late DateTime now;
+    late GoRouter router;
 
     setUp(() {
       open = StreamController<List<RideRequest>>.broadcast();
@@ -135,7 +136,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = size;
       addTearDown(tester.view.reset);
-      final router = GoRouter(
+      router = GoRouter(
         routes: [
           GoRoute(path: '/', builder: (_, _) => const PartnerScreen()),
           GoRoute(
@@ -411,5 +412,34 @@ void main() {
       await tester.pumpAndSettle();
       expect(rides.offers, [17]);
     });
-  });
+  
+    testWidgets('a trip that ends brings the driver back online, not offline', (tester) async {
+      await pump(tester);
+      open.add([_req('r1')]);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('You are online'), findsOneWidget);
+
+      // Off to a trip (the Drive screen goes), then back to it when it ends.
+      router.go('/drive/trip/t1');
+      await tester.pumpAndSettle();
+      expect(find.text('trip t1'), findsOneWidget);
+      router.go('/');
+      await tester.pump();
+      open.add([_req('r1')]);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('You are online'), findsOneWidget, reason: 'still online');
+      expect(find.text('Accept RM12.00'), findsOneWidget, reason: 'the queue is there');
+      expect(find.byKey(const ValueKey('request-alert')), findsNothing, reason: 'nothing old pops up again');
+
+      // A new request still pops up.
+      open.add([_req('r1'), _req('r2', fare: 20)]);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Accept for RM20.00'), findsOneWidget);
+    });
+});
 }
