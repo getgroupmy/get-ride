@@ -19,7 +19,7 @@ begin
       ('public.expire_documents_daily()',                                     'authenticated', false),
       ('public.expire_documents_daily()',                                     'service_role',  true),
       ('public.admin_access_bootstrap()',                                     'anon',          false),
-      ('public.admin_access_bootstrap()',                                     'authenticated', true),
+      ('public.admin_access_bootstrap()',                                     'authenticated', false),
       ('public.support_agents()',                                             'anon',          false),
       ('public.support_agents()',                                             'authenticated', true)
     ) as t(fn, role, expected)
