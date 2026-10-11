@@ -114,6 +114,10 @@ String? pushRouteFor(Map<String, dynamic> data) {
     case 'ride_expired':
       // Nobody took the request (migration 0139): home, to book again.
       return '/';
+    case 'ride_status':
+    case 'ride_cancel_request':
+      // A trip changed state (migration 0144): driver assigned, arrived,
+      // started, cancelled, a cancellation to answer.
     case 'ride_payment':
       // Paying for the finished trip (migration 0142): the passenger to the
       // payment popup, the driver to confirm the cash.
@@ -127,4 +131,11 @@ String? pushRouteFor(Map<String, dynamic> data) {
     default:
       return null;
   }
+}
+
+/// The outbox event a push carries (migration 0144), to acknowledge it;
+/// null for a push that isn't retried.
+String? pushEventId(Map<String, dynamic> data) {
+  final id = data['event_id'];
+  return id is String && id.trim().isNotEmpty ? id.trim() : null;
 }

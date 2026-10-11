@@ -4,6 +4,7 @@ import '../core/fare_tariff.dart' show fareTariffRowWithoutServices;
 import 'admin_access.dart';
 import 'admin_settings_models.dart';
 import 'screens/support_agents.dart';
+import '../core/notification_delivery.dart';
 
 /// Data access for the admin panel. Every call runs with the signed-in
 /// user's session, so the database's `caller_is_admin()` RLS policies are the
@@ -229,6 +230,21 @@ class AdminRepository {
   Future<List<Map<String, dynamic>>> pushHistory() async => List<Map<String, dynamic>>.from(
         await _db.from('push_notifications').select().order('created_at', ascending: false).limit(50),
       );
+
+  /// How trip pushes were delivered over the last [hours] (migration 0144).
+  /// Empty on a database without it.
+  Future<List<NotificationDelivery>> notificationDelivery({int hours = 24}) async {
+    try {
+      final rows = await _db.rpc('notification_delivery_stats', params: {'p_hours': hours});
+      return [
+        for (final r in (rows as List? ?? const []))
+          if (r is Map) NotificationDelivery.fromRow(Map<String, dynamic>.from(r)),
+      ];
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST202' || e.code == '42883') return const [];
+      rethrow;
+    }
+  }
 
   // ---- Commission ----------------------------------------------------------
 
