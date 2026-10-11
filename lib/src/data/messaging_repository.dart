@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/messaging.dart';
+import '../core/sms_fallback.dart';
 import '../core/sms_limits.dart';
 import '../providers.dart';
 
@@ -87,6 +88,19 @@ class MessagingRepository {
   /// Queued, blocked and failed attempts in the last [hours].
   Future<SmsActivity> smsActivity({int hours = 1}) async =>
       smsActivityFrom(await _db.rpc('sms_activity_summary', params: {'p_hours': hours}));
+
+  /// SMS fallback for trips (migration 0150).
+  Future<SmsFallbackSettings> smsFallback() async {
+    final row = await _db.from('sms_fallback_settings').select().eq('id', 1).maybeSingle();
+    return row == null ? const SmsFallbackSettings() : SmsFallbackSettings.fromRow(row);
+  }
+
+  Future<void> saveSmsFallback(SmsFallbackSettings s) =>
+      _db.from('sms_fallback_settings').update(s.toPatch()).eq('id', 1);
+
+  /// Alerts, confirmed by the app, and texted, over the last [hours].
+  Future<SmsFallbackSummary> smsFallbackSummary({int hours = 24}) async =>
+      smsFallbackSummaryFrom(await _db.rpc('sms_fallback_summary', params: {'p_hours': hours}));
 }
 
 final messagingRepositoryProvider = Provider((ref) => MessagingRepository(ref.watch(supabaseProvider)));

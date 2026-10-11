@@ -56,6 +56,7 @@ const liveSettingTables = <String>[
   'sms_inbox',
   'sms_settings',
   'sms_log',
+  'sms_fallback_settings',
 ];
 
 /// The signed-in account's own rows that an admin decides on (approving,
