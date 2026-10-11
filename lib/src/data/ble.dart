@@ -54,20 +54,74 @@ Future<void> ensureBluetoothReady() async {
   if (problem != null) throw StateError(problem);
 }
 
+/// Shares the phone's one Bluetooth scan between everything that needs it.
+///
+/// A phone runs one scan for the whole app, and the plugin's stopScan ends
+/// it for everyone: the OBD-II reader finding itself again after a drop
+/// would cut short the printer sheet's scan (or a print job finding its
+/// printer), and the other way round, leaving the other side to time out
+/// with "not found". So scanning is counted: the scan starts with its first
+/// user and stops only when its last one is done.
+class BleScanCoordinator {
+  /// [_start] / [_stop] start and stop the phone's scan.
+  BleScanCoordinator(this._start, this._stop);
+
+  final Future<void> Function() _start;
+  final Future<void> Function() _stop;
+  int _users = 0;
+  Future<void>? _starting;
+
+  /// How many are scanning now.
+  int get users => _users;
+
+  /// Joins the scan, starting it if nobody else is scanning.
+  Future<void> acquire() async {
+    _users++;
+    if (_users == 1) {
+      final starting = _start();
+      _starting = starting;
+      try {
+        await starting;
+      } catch (_) {
+        _users--;
+        rethrow;
+      } finally {
+        if (identical(_starting, starting)) _starting = null;
+      }
+    } else {
+      // Someone else's start may still be on its way.
+      await _starting;
+    }
+  }
+
+  /// Leaves the scan, stopping it once nobody is left.
+  Future<void> release() async {
+    if (_users == 0) return;
+    _users--;
+    if (_users == 0) {
+      try {
+        await _stop();
+      } catch (_) {}
+    }
+  }
+}
+
+final bleScans = BleScanCoordinator(UniversalBle.startScan, UniversalBle.stopScan);
+
 /// Scans until [deviceId] is seen: a peripheral the phone has not seen since
 /// it restarted may need finding again before it can be connected to.
 Future<void> findBlePeripheral(String deviceId, {required String notFound}) async {
-  await UniversalBle.startScan();
+  // Listening before the scan starts, so nothing seen at once is missed.
+  final seen = UniversalBle.scanStream
+      .firstWhere((d) => d.deviceId.toLowerCase() == deviceId.toLowerCase())
+      .timeout(const Duration(seconds: 10));
+  await bleScans.acquire();
   try {
-    await UniversalBle.scanStream
-        .firstWhere((d) => d.deviceId.toLowerCase() == deviceId.toLowerCase())
-        .timeout(const Duration(seconds: 10));
+    await seen;
   } on TimeoutException {
     throw StateError(notFound);
   } finally {
-    try {
-      await UniversalBle.stopScan();
-    } catch (_) {}
+    await bleScans.release();
   }
 }
 
@@ -85,15 +139,15 @@ class UniversalBleScanner implements BleScanner {
           rssi: d.rssi,
         )));
     final stop = Timer(duration, out.close);
+    var joined = false;
     try {
-      await UniversalBle.startScan();
+      await bleScans.acquire();
+      joined = true;
       yield* out.stream;
     } finally {
       stop.cancel();
       await sub.cancel();
-      try {
-        await UniversalBle.stopScan();
-      } catch (_) {}
+      if (joined) await bleScans.release();
     }
   }
 }

@@ -10,6 +10,7 @@ import 'package:universal_ble/universal_ble.dart';
 import '../../core/obd_ble.dart' show BleCharacteristicInfo, chunkBleWrite;
 import '../../core/printers.dart';
 import '../ble.dart';
+import '../obd/obd_session.dart';
 
 /// The saved printers, on this device (Expo `printerStore`).
 class PrinterStore {
@@ -184,6 +185,13 @@ final printerSinkFactoryProvider = Provider<PrinterSink Function(SavedPrinter)>(
 
 final printerStoreProvider = Provider((_) => PrinterStore());
 
+/// The printer receipts go to now, for the meter console's status (Expo's
+/// "Printing to X"). Re-read when the driver comes back from the printer
+/// screen.
+final currentPrinterProvider = FutureProvider.autoDispose<SavedPrinter?>(
+  (ref) => ref.watch(printerStoreProvider).current(),
+);
+
 /// How long to hold the link open after the last byte: some mini printers
 /// drop the tail of a job if the socket closes at once.
 final printerSettleProvider = Provider((_) => const Duration(milliseconds: 400));
@@ -196,6 +204,13 @@ class PrinterService {
   final Ref _ref;
 
   Future<String?> send(SavedPrinter printer, String payload) async {
+    if (printerIsObdReader(printer, await _ref.read(obdAdapterStoreProvider).load())) return printerIsReaderMessage;
+    // The reader stays quiet while the receipt goes out, so the two never
+    // fight over the radio and a reply missed meanwhile is not a lost link.
+    return _ref.read(obdSessionProvider.notifier).holdWhile(() => _send(printer, payload));
+  }
+
+  Future<String?> _send(SavedPrinter printer, String payload) async {
     PrinterSink? sink;
     try {
       sink = _ref.read(printerSinkFactoryProvider)(printer);
@@ -205,7 +220,9 @@ class PrinterService {
       unawaited(_ref.read(printerStoreProvider).markPrinted(printer.id, DateTime.now().millisecondsSinceEpoch));
       return null;
     } catch (e) {
-      return describePrintError(e, printer);
+      final reader = _ref.read(obdSessionProvider);
+      final onReaderWifi = reader.adapter?.transport == 'wifi' && reader.phase != ObdPhase.idle;
+      return describePrintError(e, printer, onReaderWifi: onReaderWifi);
     } finally {
       await sink?.close();
     }
@@ -215,12 +232,19 @@ class PrinterService {
 final printerServiceProvider = Provider(PrinterService.new);
 
 /// What a failed print tells the driver.
-String describePrintError(Object e, SavedPrinter printer) {
+///
+/// [onReaderWifi]: the phone is joined to a Wi-Fi OBD-II reader's own
+/// network, which has no way out to a printer on another network.
+String describePrintError(Object e, SavedPrinter printer, {bool onReaderWifi = false}) {
   if (e is UnsupportedError) return e.message ?? 'This printer is not supported here.';
   if (e is StateError) return e.message;
   if (printer.transport == 'bluetooth') {
     return 'Could not reach ${printer.name} over Bluetooth. Check it is switched on, close to this phone '
         'and not connected to another phone.';
+  }
+  if (onReaderWifi && printer.transport == 'wifi') {
+    return 'Could not reach ${printer.name}: this phone is on the OBD-II reader\'s Wi-Fi, which cannot reach a '
+        'printer on another network. Use a Bluetooth printer, or the phone\'s print service.';
   }
   if (e is SocketException || e is TimeoutException) {
     return 'Could not reach ${printer.name} at ${printer.host}:${printer.port ?? printerWifiPort}. '

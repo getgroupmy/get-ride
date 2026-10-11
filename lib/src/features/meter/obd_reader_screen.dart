@@ -376,6 +376,10 @@ class _StatusCard extends StatelessWidget {
             if (session.adapter != null) ...[const SizedBox(height: 4), Text(session.adapter!.name)],
             if (session.device != null) Text('Device ${session.device}'),
             if (session.protocol != null) Text('Protocol ${session.protocol}'),
+            if (session.phase != ObdPhase.error && session.error != null) ...[
+              const SizedBox(height: 4),
+              Text(session.error!, key: const ValueKey('obd-reconnecting')),
+            ],
             if (session.phase == ObdPhase.error && session.error != null) ...[
               const SizedBox(height: 4),
               Text(session.error!, style: TextStyle(color: scheme.error)),

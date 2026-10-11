@@ -156,6 +156,31 @@ void main() {
       expect(isStaleResetReply('OBDII v1.5\r>'), isFalse);
     });
 
+    test('a reply missed while the sweep is held does not count towards a lost link', () async {
+      final elm = FakeElm();
+      var lost = 0;
+      final client = ObdClient(
+        elm,
+        pollInterval: const Duration(hours: 1),
+        commandTimeout: const Duration(milliseconds: 20),
+        onLinkLost: () => lost++,
+      );
+      await client.start();
+      await pumpEventQueue();
+      elm.silent = true;
+      client.setPollingPaused(true);
+      for (var i = 0; i < 3; i++) {
+        await expectLater(client.request('010D'), throwsA(isA<TimeoutException>()));
+      }
+      expect(lost, 0, reason: 'a print job had the radio');
+      client.setPollingPaused(false);
+      for (var i = 0; i < 3; i++) {
+        await expectLater(client.request('010D'), throwsA(isA<TimeoutException>()));
+      }
+      expect(lost, 1);
+      await client.stop();
+    });
+
     test('commands are answered one at a time, in order', () async {
       final elm = FakeElm();
       final client = ObdClient(elm, pollInterval: const Duration(hours: 1));
@@ -216,6 +241,25 @@ void main() {
       await session.disconnect();
       expect(container.read(obdSessionProvider).phase, ObdPhase.idle);
     });
+
+    test('a link that drops shows as reconnecting and comes back by itself', () async {
+      final session = container.read(obdSessionProvider.notifier);
+      await session.ensureConnected();
+      await pumpEventQueue();
+      expect(container.read(obdSessionProvider).phase, ObdPhase.online);
+      elm.silent = true;
+      // Three unanswered sweeps (4 s each) report the link lost.
+      await Future<void>.delayed(const Duration(seconds: 14));
+      var s = container.read(obdSessionProvider);
+      expect(s.phase, isNot(ObdPhase.error));
+      expect(s.error, obdReconnectingMessage);
+      elm.silent = false;
+      await Future<void>.delayed(const Duration(seconds: 6));
+      s = container.read(obdSessionProvider);
+      expect(s.phase, ObdPhase.online);
+      expect(s.error, isNull);
+      await session.disconnect();
+    }, timeout: const Timeout(Duration(seconds: 40)));
 
     test('a reader that cannot be reached is an error, not a crash', () async {
       elm.refuseConnect = true;

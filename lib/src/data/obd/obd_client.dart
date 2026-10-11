@@ -113,7 +113,8 @@ class ObdClient {
     try {
       final telemetry = <String, double>{};
       for (final entry in obdPids.entries) {
-        if (_stopped) return;
+        // Held mid-sweep (a print job starting): stop between readings.
+        if (_stopped || _paused) return;
         try {
           final value = decodePid(await _command(entry.value.command), entry.value);
           if (value != null) telemetry[entry.key] = value;
@@ -128,7 +129,9 @@ class ObdClient {
   }
 
   void _noteFailure() {
-    if (!_live || _stopped || _linkLostReported) return;
+    // Held for a print job or the vehicle scan, a missed reply is the radio
+    // being busy, not the reader gone.
+    if (!_live || _stopped || _linkLostReported || _paused) return;
     _failures++;
     if (_failures >= linkLostFailures) {
       _linkLostReported = true;

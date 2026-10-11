@@ -127,6 +127,15 @@ class ObdSession extends Notifier<ObdSessionState> {
   /// Whether the link should be kept up (reconnecting after a loss).
   bool _wanted = false;
 
+  /// A live link dropped and is being brought back: the attempts show as
+  /// "reconnecting", not as an unreachable reader (Expo `handleLinkLost`).
+  bool _lost = false;
+
+  /// The 1 Hz sweep is held while the vehicle scan or a print job needs
+  /// the radio; either can hold it, and it runs again once both let go.
+  bool _scanPaused = false;
+  int _printHolds = 0;
+
   @override
   ObdSessionState build() {
     ref.onDispose(() {
@@ -151,7 +160,11 @@ class ObdSession extends Notifier<ObdSessionState> {
     _wanted = true;
     _retry?.cancel();
     await _stopClient();
-    state = ObdSessionState(phase: ObdPhase.connecting, adapter: adapter);
+    state = ObdSessionState(
+      phase: ObdPhase.connecting,
+      adapter: adapter,
+      error: _lost ? obdReconnectingMessage : null,
+    );
     try {
       final transport = ref.read(obdTransportFactoryProvider)(adapter);
       final device = await transport.connect();
@@ -172,17 +185,27 @@ class ObdSession extends Notifier<ObdSessionState> {
       _client = client;
       await client.start();
       if (_client != client) return;
+      _lost = false;
+      _applyPause();
       state = state.copyWith(phase: ObdPhase.online, error: () => null);
       unawaited(ref.read(obdAdapterStoreProvider).markConnected(adapter.id, _now()));
     } catch (e) {
       await _stopClient();
-      state = state.copyWith(phase: ObdPhase.error, error: () => _describe(e));
+      state = _lost && _wanted
+          ? state.copyWith(phase: ObdPhase.connecting, error: () => obdReconnectingMessage)
+          : state.copyWith(phase: ObdPhase.error, error: () => _describe(e));
       _scheduleRetry();
     }
   }
 
   void _linkLost() {
-    state = state.copyWith(phase: ObdPhase.error, error: () => 'Lost the link to the reader.');
+    _lost = true;
+    state = state.copyWith(
+      phase: ObdPhase.connecting,
+      error: () => obdReconnectingMessage,
+      telemetry: const {},
+      lastUpdate: () => null,
+    );
     unawaited(_stopClient());
     _scheduleRetry();
   }
@@ -206,10 +229,30 @@ class ObdSession extends Notifier<ObdSessionState> {
 
   /// Holds the 1 Hz sweep while something else needs the reader to itself
   /// (the vehicle scan): the adapter answers one command at a time.
-  void setPollingPaused(bool paused) => _client?.setPollingPaused(paused);
+  void setPollingPaused(bool paused) {
+    _scanPaused = paused;
+    _applyPause();
+  }
+
+  /// Keeps the reader quiet while [job] runs: a receipt printing shares the
+  /// phone's radio, and a reply missed meanwhile must not read as a lost
+  /// link mid-hire. The sweep picks up again when the job is done.
+  Future<T> holdWhile<T>(Future<T> Function() job) async {
+    _printHolds++;
+    _applyPause();
+    try {
+      return await job();
+    } finally {
+      _printHolds--;
+      _applyPause();
+    }
+  }
+
+  void _applyPause() => _client?.setPollingPaused(_scanPaused || _printHolds > 0);
 
   Future<void> disconnect() async {
     _wanted = false;
+    _lost = false;
     _retry?.cancel();
     await _stopClient();
     state = const ObdSessionState();
@@ -230,5 +273,8 @@ class ObdSession extends Notifier<ObdSessionState> {
     return text.isEmpty ? 'Could not reach the reader.' : text;
   }
 }
+
+/// What a dropped link shows while it is brought back.
+const obdReconnectingMessage = 'Reader disconnected — reconnecting…';
 
 final obdSessionProvider = NotifierProvider<ObdSession, ObdSessionState>(ObdSession.new);

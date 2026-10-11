@@ -8,6 +8,7 @@
 
 import 'escpos.dart';
 import 'obd_ble.dart' show BleServiceInfo, normalizeBleUuid, sameBleUuid;
+import 'obd_adapters.dart';
 
 /// The raw ESC/POS port virtually every network printer listens on.
 const printerWifiPort = 9100;
@@ -145,6 +146,21 @@ final _hostname = RegExp(r'^[A-Za-z0-9._-]+$');
     ),
   );
 }
+
+/// Whether [deviceId] is a saved OBD-II reader. The printer scan can list
+/// every Bluetooth device nearby, the reader included; a "printer" that is
+/// really the reader would be sent receipts, and closing it after each job
+/// would drop the reader's link mid-hire.
+bool isObdReaderDevice(String? deviceId, Iterable<SavedObdAdapter> readers) {
+  final id = (deviceId ?? '').trim().toLowerCase();
+  return id.isNotEmpty && readers.any((r) => (r.deviceId ?? '').trim().toLowerCase() == id);
+}
+
+/// Whether [printer] is one of the saved OBD-II readers.
+bool printerIsObdReader(SavedPrinter printer, Iterable<SavedObdAdapter> readers) =>
+    printer.transport == 'bluetooth' && isObdReaderDevice(printer.address, readers);
+
+const printerIsReaderMessage = 'That device is your OBD-II reader, not a printer. Pick the printer instead.';
 
 /// The print services mini thermal printers expose, most common first: a
 /// (service, write characteristic) pair each.

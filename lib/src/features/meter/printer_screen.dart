@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/escpos.dart';
 import '../../core/printers.dart';
 import '../../data/ble.dart';
+import '../../data/obd/obd_session.dart' show obdAdapterStoreProvider;
 import '../../data/printer/printer_service.dart';
 import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
@@ -134,13 +135,15 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
   }
 
   Future<SavedPrinter?> _pickBlePrinter() async {
+    final readers = await ref.read(obdAdapterStoreProvider).load();
+    if (!mounted) return null;
     final d = await showModalBottomSheet<BleSighting>(
       context: context,
       isScrollControlled: true,
       builder: (_) => BleScanSheet(
         title: 'Bluetooth printers nearby',
         // A printer always advertises a name; nameless devices are beacons.
-        filter: (d) => (d.name ?? '').trim().isNotEmpty,
+        filter: (d) => (d.name ?? '').trim().isNotEmpty && !isObdReaderDevice(d.deviceId, readers),
         showAllHint: 'Include devices that advertise no name',
         looking: 'Looking for printers… Switch the printer on and keep it close to this phone.',
         nothingFound: 'No printer found. Check it is switched on and not connected to another phone, '
@@ -148,6 +151,10 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
       ),
     );
     if (d == null || !mounted) return null;
+    if (isObdReaderDevice(d.deviceId, readers)) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text(printerIsReaderMessage)));
+      return null;
+    }
     return showDialog<SavedPrinter>(context: context, builder: (_) => _BlePrinterDialog(sighting: d));
   }
 

@@ -450,6 +450,13 @@ List<ReceiptLine> meterReceiptLines(MeterTrip t) {
   ];
 }
 
+/// The line under a receipt's title naming the driver's licence (Expo
+/// `receiptBranding.subtitle`); null when the permit number is unknown.
+String? meterReceiptSubtitle(String? permitNumber) {
+  final n = (permitNumber ?? '').trim();
+  return n.isEmpty || n == '—' || n == '-' ? null : 'Licence $n';
+}
+
 /// Plain-text receipt, for copying or sharing.
 String meterReceiptText(MeterTrip t, {String title = 'GET TAXI METER'}) => [
       title,

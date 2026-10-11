@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/escpos.dart';
@@ -5,9 +7,12 @@ import 'package:get_ride/src/core/meter_trip.dart';
 import 'package:get_ride/src/core/obd_ble.dart';
 import 'package:get_ride/src/core/printers.dart';
 import 'package:get_ride/src/core/taxi_meter.dart';
+import 'package:get_ride/src/core/obd_adapters.dart';
+import 'package:get_ride/src/data/obd/obd_session.dart';
 import 'package:get_ride/src/data/printer/printer_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/fake_elm.dart';
 import 'support/fake_printer.dart';
 
 MeterTrip _trip() => buildMeterTrip(
@@ -144,12 +149,53 @@ void main() {
       expect((await container.read(printerStoreProvider).load()).single.lastPrintedAt, isNotNull);
     });
 
+    test('the OBD-II reader is never printed to', () async {
+      final reader = normalizeBleAdapter(id: 'r1', createdAt: 't', deviceId: 'AA:BB', name: 'OBDBLE').value!;
+      await container.read(obdAdapterStoreProvider).save([reader]);
+      final fake = normalizeBlePrinter(id: 'p2', createdAt: 't', deviceId: 'aa:bb').value!;
+      expect(await container.read(printerServiceProvider).send(fake, 'X'), printerIsReaderMessage);
+      expect(printer.jobs, isEmpty);
+    });
+
+    test('the reader\'s sweep is held while a receipt prints, and runs again after', () async {
+      final elm = FakeElm();
+      final c = ProviderContainer(overrides: [
+        printerSinkFactoryProvider.overrideWithValue((_) => _Watching(printer, () => elm.written.length)),
+        printerSettleProvider.overrideWithValue(Duration.zero),
+        obdTransportFactoryProvider.overrideWithValue((_) => elm),
+      ]);
+      addTearDown(c.dispose);
+      await c.read(obdAdapterStoreProvider).save([normalizeWifiAdapter(id: 'a', createdAt: 't').value!]);
+      final session = c.read(obdSessionProvider.notifier);
+      await session.ensureConnected();
+      expect(c.read(obdSessionProvider).phase, ObdPhase.online);
+      expect(await c.read(printerServiceProvider).send(saved, 'X'), isNull);
+      expect(printer.jobs, ['X']);
+      await session.disconnect();
+    });
+
     test('an unreachable printer is an answer, not a crash', () async {
       printer.refuse = true;
       final error = await container.read(printerServiceProvider).send(saved, 'X');
       expect(error, contains('Connection refused'));
       expect(printer.jobs, isEmpty);
     });
+  });
+
+  test('a Wi-Fi printer out of reach from the reader\'s Wi-Fi says so', () {
+    final p = normalizeWifiPrinter(id: 'p1', createdAt: 't', host: '10.0.0.2').value!;
+    expect(describePrintError(const PrinterUnreachable(), p, onReaderWifi: true), contains("OBD-II reader's Wi-Fi"));
+    expect(describePrintError(TimeoutException('x'), p), contains('same Wi-Fi'));
+  });
+
+  test('the reader is told apart from printers, whatever the spelling', () {
+    final reader = normalizeBleAdapter(id: 'r1', createdAt: 't', deviceId: 'AA:BB', name: 'OBDBLE').value!;
+    expect(isObdReaderDevice('aa:bb', [reader]), isTrue);
+    expect(isObdReaderDevice('CC:DD', [reader]), isFalse);
+    expect(isObdReaderDevice(null, [reader]), isFalse);
+    expect(meterReceiptSubtitle('TX-123'), 'Licence TX-123');
+    expect(meterReceiptSubtitle('—'), isNull);
+    expect(meterReceiptSubtitle(null), isNull);
   });
 
   group('Bluetooth printers', () {
@@ -201,4 +247,26 @@ void main() {
       expect(describePrintError(StateError('Bluetooth is off.'), p), 'Bluetooth is off.');
     });
   });
+}
+
+/// A printer that records how many reader commands went out while it printed.
+class _Watching implements PrinterSink {
+  _Watching(this.inner, this.readerCommands);
+  final FakePrinter inner;
+  final int Function() readerCommands;
+
+  @override
+  Future<void> connect() => inner.connect();
+
+  @override
+  Future<void> write(String payload) async {
+    final before = readerCommands();
+    // Longer than the 1 s sweep: a running sweep would have sent commands.
+    await Future<void>.delayed(const Duration(milliseconds: 1300));
+    expect(readerCommands(), before, reason: 'the reader is quiet while the receipt prints');
+    await inner.write(payload);
+  }
+
+  @override
+  Future<void> close() => inner.close();
 }
