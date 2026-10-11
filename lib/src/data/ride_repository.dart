@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -25,6 +24,7 @@ import '../core/trip_charges.dart';
 import '../core/trip_checkpoint.dart';
 import 'geo_service.dart';
 import 'models.dart';
+import 'realtime_backup.dart';
 
 /// Ride booking + dispatch over `public.ride_requests`, mirroring the Expo
 /// app's `utils/rideRequestsStore.ts`. Partners are identified by their auth
@@ -735,9 +735,9 @@ class RideRepository {
   Stream<RideRequest> watch(String id) {
     final controller = StreamController<RideRequest>();
     RealtimeChannel? channel;
-    AppLifecycleListener? lifecycle;
+    RealtimeBackup? backup;
     // Realtime does not replay what changed while the phone held the app
-    // suspended: coming back, read the row again (expired, taken, moved on).
+    // suspended, and can drop an update: the backup reads the row again.
     Future<void> reread() async {
       try {
         final r = await fetch(id);
@@ -746,9 +746,7 @@ class RideRepository {
     }
 
     controller.onListen = () async {
-      try {
-        lifecycle = AppLifecycleListener(onResume: () => unawaited(reread()));
-      } catch (_) {}
+      backup = RealtimeBackup(reread);
       final first = await fetch(id);
       if (first != null && !controller.isClosed) controller.add(first);
       channel = _db
@@ -764,10 +762,10 @@ class RideRepository {
               }
             },
           )
-          .subscribe();
+          .subscribe(backup!.onStatus);
     };
     controller.onCancel = () async {
-      lifecycle?.dispose();
+      backup?.dispose();
       if (channel != null) await _db.removeChannel(channel!);
       await controller.close();
     };
@@ -778,7 +776,6 @@ class RideRepository {
   Stream<List<RideRequest>> watchOpen() {
     final controller = StreamController<List<RideRequest>>();
     RealtimeChannel? channel;
-    Timer? ticker;
     Future<void> refresh() async {
       try {
         final list = await openRequests();
@@ -788,13 +785,12 @@ class RideRepository {
       }
     }
 
-    AppLifecycleListener? lifecycle;
+    RealtimeBackup? backup;
     controller.onListen = () {
       refresh();
-      // Back from the background: the queue as it is now, not as it was.
-      try {
-        lifecycle = AppLifecycleListener(onResume: () => unawaited(refresh()));
-      } catch (_) {}
+      // Back from the background, or an update dropped: the queue as it is
+      // now, not as it was (and requests drop off as they age past expiry).
+      backup = RealtimeBackup(refresh, every: const Duration(seconds: 10));
       channel = _db
           .channel('ride_requests_open_${DateTime.now().microsecondsSinceEpoch}')
           .onPostgresChanges(
@@ -803,13 +799,10 @@ class RideRepository {
             table: _table,
             callback: (_) => refresh(),
           )
-          .subscribe();
-      // Drops requests as they age past the expiry window.
-      ticker = Timer.periodic(const Duration(seconds: 30), (_) => refresh());
+          .subscribe(backup!.onStatus);
     };
     controller.onCancel = () async {
-      ticker?.cancel();
-      lifecycle?.dispose();
+      backup?.dispose();
       if (channel != null) await _db.removeChannel(channel!);
       await controller.close();
     };

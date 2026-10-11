@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/format.dart';
 import '../../data/models.dart' show SupportMessage;
+import '../../data/realtime_backup.dart';
 import '../../features/support/call/call_screen.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
@@ -140,6 +141,7 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
   List<Map<String, dynamic>> _messages = [];
   Map<String, dynamic>? _ticket;
   RealtimeChannel? _channel;
+  late final _backup = RealtimeBackup(_load);
   bool _sending = false;
 
   @override
@@ -156,7 +158,7 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
           filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'ticket_id', value: widget.ticketId),
           callback: (_) => _load(),
         )
-        .subscribe();
+        .subscribe(_backup.onStatus);
   }
 
   Future<void> _load() async {
@@ -176,6 +178,7 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
 
   @override
   void dispose() {
+    _backup.dispose();
     if (_channel != null) unawaited(ref.read(supabaseProvider).removeChannel(_channel!));
     _text.dispose();
     super.dispose();

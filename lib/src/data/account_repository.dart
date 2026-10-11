@@ -9,6 +9,7 @@ import '../core/profile_identity.dart';
 import '../core/ride_chat.dart' show rideVoiceNoteSeconds;
 import '../core/support_media.dart';
 import 'models.dart';
+import 'realtime_backup.dart';
 
 /// Profile, partner record, wallet, emergency contacts and support — the
 /// per-user tables, all protected by "own row" RLS policies.
@@ -268,6 +269,7 @@ class AccountRepository {
   Stream<List<SupportMessage>> watchMessages(String ticketId) {
     final controller = StreamController<List<SupportMessage>>();
     RealtimeChannel? channel;
+    RealtimeBackup? backup;
     Future<void> refresh() async {
       try {
         final list = await messages(ticketId);
@@ -278,6 +280,7 @@ class AccountRepository {
     }
 
     controller.onListen = () {
+      backup = RealtimeBackup(refresh);
       refresh();
       channel = _db
           .channel('support_${ticketId}_${DateTime.now().microsecondsSinceEpoch}')
@@ -292,9 +295,10 @@ class AccountRepository {
             ),
             callback: (_) => refresh(),
           )
-          .subscribe();
+          .subscribe(backup!.onStatus);
     };
     controller.onCancel = () async {
+      backup?.dispose();
       if (channel != null) await _db.removeChannel(channel!);
       await controller.close();
     };

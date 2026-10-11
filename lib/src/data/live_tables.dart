@@ -7,11 +7,11 @@
 // revision, in case the socket dropped while the app was away.
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers.dart';
+import 'realtime_backup.dart';
 
 /// The tables admins configure that the app reads. Each must be in the
 /// `supabase_realtime` publication (migration 0102 adds those that were not).
@@ -105,9 +105,17 @@ class LiveTables extends Notifier<Map<String, int>> {
     try {
       uid = ref.watch(currentUserIdProvider);
     } catch (_) {}
+    RealtimeBackup? backup;
     try {
       final client = ref.read(supabaseProvider);
       db = client;
+      // Back from the background, a channel that reopened, or every couple
+      // of minutes in case an update was dropped: everything is read again.
+      backup = RealtimeBackup(
+        () => changed([...liveSettingTables, ...liveOwnTables.keys]),
+        every: const Duration(minutes: 2),
+        onOpen: false,
+      );
       var c = client.channel(uid == null ? 'live_settings' : 'live_settings_$uid');
       for (final table in liveSettingTables) {
         c = c.onPostgresChanges(
@@ -128,17 +136,13 @@ class LiveTables extends Notifier<Map<String, int>> {
           );
         }
       }
-      channel = c.subscribe();
+      channel = c.subscribe(backup.onStatus);
     } catch (_) {
       // No client (tests, an unconfigured build): settings are read once, as before.
     }
-    AppLifecycleListener? lifecycle;
-    try {
-      lifecycle = AppLifecycleListener(onResume: () => changed([...liveSettingTables, ...liveOwnTables.keys]));
-    } catch (_) {}
     ref.onDispose(() {
       _debounce?.cancel();
-      lifecycle?.dispose();
+      backup?.dispose();
       if (channel != null) unawaited(db!.removeChannel(channel));
     });
     return const {};
@@ -202,9 +206,11 @@ class AdminLiveTables extends Notifier<Map<String, int>> {
   Map<String, int> build() {
     RealtimeChannel? channel;
     SupabaseClient? db;
+    RealtimeBackup? backup;
     try {
       final client = ref.read(supabaseProvider);
       db = client;
+      backup = RealtimeBackup(() => changed(liveAdminTables), every: const Duration(seconds: 30), onOpen: false);
       var c = client.channel('live_admin');
       for (final table in liveAdminTables) {
         c = c.onPostgresChanges(
@@ -214,17 +220,13 @@ class AdminLiveTables extends Notifier<Map<String, int>> {
           callback: (_) => changed([table]),
         );
       }
-      channel = c.subscribe();
+      channel = c.subscribe(backup.onStatus);
     } catch (_) {
       // No client (tests): admin lists are read once, as before.
     }
-    AppLifecycleListener? lifecycle;
-    try {
-      lifecycle = AppLifecycleListener(onResume: () => changed(liveAdminTables));
-    } catch (_) {}
     ref.onDispose(() {
       _debounce?.cancel();
-      lifecycle?.dispose();
+      backup?.dispose();
       if (channel != null) unawaited(db!.removeChannel(channel));
     });
     return const {};

@@ -44,8 +44,14 @@ class _FakeRides implements RideRepository {
   final calls = <String>[];
   RideRequest? acceptResult;
 
+  /// What a direct read of the row answers (the dialog's fallback check).
+  RideRequest? row;
+
   @override
   Stream<RideRequest> watch(String id) => rows.stream;
+
+  @override
+  Future<RideRequest?> fetch(String id) async => row;
 
   @override
   Future<RideRequest?> raiseFare(String id, double fare) async {
@@ -314,6 +320,18 @@ void main() {
       await tester.pump();
       expect(find.text('Offer sent'), findsOneWidget);
       rides.rows.add(ride(status: 'accepted', fare: 25, partner: _me));
+      await tester.pumpAndSettle();
+      expect((await result)!.status, RideStatus.accepted);
+    });
+
+    testWidgets('a win reaches the driver even when realtime never delivers it', (tester) async {
+      final (rides, result) = await pump(tester);
+      rides.row = ride(offered: 25, partner: _me);
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.text('Offer sent'), findsOneWidget, reason: 'still waiting');
+      // The rider accepted; no realtime update comes, but the next read sees it.
+      rides.row = ride(status: 'accepted', fare: 25, partner: _me);
+      await tester.pump(offerAnswerPoll);
       await tester.pumpAndSettle();
       expect((await result)!.status, RideStatus.accepted);
     });
