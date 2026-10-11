@@ -19,6 +19,7 @@ import '../../core/ride_chat.dart' show rideChatAvailable;
 import '../../core/ride_confirm.dart';
 import '../../core/request_viewers.dart';
 import '../../core/search_stage.dart';
+import '../../core/ride_payment.dart';
 import '../../core/search_timer.dart';
 import '../../config.dart';
 import '../../core/sos.dart';
@@ -34,6 +35,7 @@ import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
 import '../support/call/mic_gate.dart' show primeMicForCalls;
 import 'ride_call_screen.dart' show RideCallButton;
+import 'ride_payment_overlay.dart';
 import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
 import 'shared_ride_screen.dart' show shareRide;
@@ -939,6 +941,25 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         ],
       ),
     );
+    final layout = _layout(r, content);
+    // The trip is over and not paid for: the payment popup over everything,
+    // until the Done page closes it (kept up once seen here, so the payment
+    // landing ends on Done rather than vanishing).
+    if (r.status == RideStatus.completed &&
+        (r.paymentStatus == RidePaymentStatus.due || r.paymentStatus == RidePaymentStatus.cashPending)) {
+      _paymentShown = true;
+    }
+    if (!_paymentShown || r.status != RideStatus.completed) return layout;
+    return Stack(children: [
+      Positioned.fill(child: layout),
+      Positioned.fill(child: RidePaymentOverlay(ride: r)),
+    ]);
+  }
+
+  /// The payment popup has been up on this screen.
+  bool _paymentShown = false;
+
+  Widget _layout(RideRequest r, Widget content) {
     if (widget.wide) {
       return Row(
         children: [

@@ -16,6 +16,7 @@ import '../../core/trip_charges.dart';
 import '../../core/trip_checkpoint.dart';
 import '../../core/trip_progress.dart';
 import '../../core/ride_cancel.dart';
+import '../../core/ride_payment.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
@@ -112,6 +113,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       if (r == null) return;
       final before = _status;
       _status = r.status;
+      final paidBefore = _payment;
+      _payment = r.paymentStatus;
+      // Paid and confirmed: back to waiting for rides in a few seconds.
+      if (paymentJustSettled(paidBefore, r.paymentStatus)) _startClose();
       if (r.status == RideStatus.onTrip) {
         unawaited(_voice.startTrip(rideId: r.id, label: _tripLabel(r)));
         if (before != RideStatus.onTrip) _beginTrip();
@@ -207,10 +212,31 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         .catchError((_) {});
   }
 
+  RidePaymentStatus? _payment;
+
+  /// The countdown back to waiting for rides once the trip is paid
+  /// ([paymentDoneClose]); null while none runs.
+  Timer? _closeTimer;
+  int? _closeIn;
+
+  void _startClose() {
+    if (_closeTimer != null) return;
+    _closeIn = paymentDoneClose.inSeconds;
+    _closeTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return t.cancel();
+      setState(() => _closeIn = _closeIn! - 1);
+      if (_closeIn! <= 0) {
+        t.cancel();
+        context.go('/drive');
+      }
+    });
+  }
+
   @override
   void dispose() {
     _gps?.cancel();
     _tick?.cancel();
+    _closeTimer?.cancel();
     // Leaving the trip screen always files whatever was recorded — after the
     // unmount, since a provider can't change while the tree is being torn down.
     unawaited(Future.microtask(_voice.stopTrip));
@@ -528,7 +554,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             onPressed: () => context.push('/trips/${r.id}'),
           ),
         if (r.status.isFinished)
-          FilledButton(onPressed: () => context.go('/drive'), child: const Text('Back to requests')),
+          FilledButton(
+            key: const ValueKey('trip-back-to-requests'),
+            onPressed: () => context.go('/drive'),
+            child: Text(_closeIn == null ? 'Back to requests' : 'Back to requests ($_closeIn)'),
+          ),
       ]),
     );
   }
@@ -648,14 +678,27 @@ class _ChargesDialogState extends State<_ChargesDialog> {
 /// What the driver collects once the trip is complete: the total due, less
 /// whatever the rider paid with GET.coin, which is credited to the driver's
 /// GET.wallet (migration 0101) and updates here live when it lands.
-class _CollectCard extends StatelessWidget {
+///
+/// Below it, where the passenger's payment stands (migration 0142): waiting,
+/// paid in cash (the driver confirms they received it), or paid.
+class _CollectCard extends ConsumerWidget {
   const _CollectCard({required this.ride});
   final RideRequest ride;
 
+  Future<void> _confirmCash(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(rideRepositoryProvider).confirmRideCash(ride.id);
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final r = ride, t = Theme.of(context);
     final coins = r.fareCoinsValue;
+    final payment = r.paymentStatus;
+    final paidOnline = payment == RidePaymentStatus.paid && r.paidMethod == RidePayMethod.getWallet;
     return Card(
       key: const ValueKey('trip-collect'),
       child: Column(children: [
@@ -676,12 +719,71 @@ class _CollectCard extends StatelessWidget {
             subtitle: const Text('Added to your GET.wallet'),
             trailing: Text('−${formatMoney(coins, r.currency)}'),
           ),
+        if (paidOnline)
+          ListTile(
+            key: const ValueKey('trip-collect-wallet'),
+            leading: const Icon(Icons.account_balance_wallet_outlined),
+            title: const Text('Paid with GET.wallet'),
+            subtitle: const Text('Added to your GET.wallet'),
+            trailing: Text('−${formatMoney(r.paidAmount, r.currency)}'),
+          ),
         const Divider(height: 1),
         ListTile(
           title: const Text('Collect from passenger', style: TextStyle(fontWeight: FontWeight.w700)),
-          trailing: Text(formatMoney(r.cashDue, r.currency),
+          trailing: Text(formatMoney(paidOnline ? 0 : r.cashDue, r.currency),
               style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
         ),
+        if (payment != null) ...[
+          const Divider(height: 1),
+          switch (payment) {
+            RidePaymentStatus.due => ListTile(
+                key: const ValueKey('trip-payment-due'),
+                leading: const Icon(Icons.hourglass_top),
+                title: const Text('Waiting for the passenger to pay'),
+                subtitle: const Text('Paid you in cash? Confirm it below.'),
+              ),
+            RidePaymentStatus.cashPending => ListTile(
+                key: const ValueKey('trip-payment-cash'),
+                tileColor: t.colorScheme.tertiaryContainer,
+                leading: Icon(Icons.payments_outlined, color: t.colorScheme.onTertiaryContainer),
+                title: Text('Passenger paid in cash',
+                    style: TextStyle(color: t.colorScheme.onTertiaryContainer, fontWeight: FontWeight.w700)),
+                subtitle: Text('Confirm you received ${formatMoney(r.cashDue, r.currency)}',
+                    style: TextStyle(color: t.colorScheme.onTertiaryContainer)),
+              ),
+            RidePaymentStatus.paid => ListTile(
+                key: const ValueKey('trip-payment-paid'),
+                leading: const Icon(Icons.check_circle, color: Colors.green),
+                title: Text(switch (r.paidMethod) {
+                  RidePayMethod.cash => 'Cash received',
+                  RidePayMethod.getCoin => 'Paid with GET.coin',
+                  RidePayMethod.getWallet => 'Paid with GET.wallet',
+                  null => 'Paid',
+                }),
+                trailing: r.paidAmount == null ? null : Text(formatMoney(r.paidAmount, r.currency)),
+              ),
+          },
+          if (payment != RidePaymentStatus.paid)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: payment == RidePaymentStatus.cashPending
+                    ? BusyButton.filled(
+                        key: const ValueKey('trip-confirm-cash'),
+                        icon: const Icon(Icons.check),
+                        onPressed: () => _confirmCash(context, ref),
+                        child: const Text('Confirm cash received'),
+                      )
+                    : BusyButton.outlined(
+                        key: const ValueKey('trip-confirm-cash'),
+                        icon: const Icon(Icons.check),
+                        onPressed: () => _confirmCash(context, ref),
+                        child: const Text('Confirm cash received'),
+                      ),
+              ),
+            ),
+        ],
       ]),
     );
   }
