@@ -15,6 +15,7 @@ import 'package:get_ride/src/data/printer/printer_service.dart';
 import 'package:get_ride/src/features/meter/meter_leave_launcher.dart';
 import 'package:get_ride/src/features/meter/meter_providers.dart';
 import 'package:get_ride/src/core/teksi_tariff.dart';
+import 'package:get_ride/src/features/meter/meter_receipt_pdf.dart';
 import 'package:get_ride/src/features/meter/meter_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:http/http.dart' as http;
@@ -90,6 +91,7 @@ Future<_FakeLocation> _pump(WidgetTester tester, {
   _FakeOrientation? orientation,
   Widget? app,
   MeterLeaveLauncher? launcher,
+  List<String>? systemPrints,
 }) async {
   // A reader is "saved" on the phone when the test brings one.
   SharedPreferences.setMockInitialValues({
@@ -117,6 +119,11 @@ Future<_FakeLocation> _pump(WidgetTester tester, {
       partnerProvider.overrideWith((_) async => Partner({'id': 'p1', 'name': 'Aina', 'plate': 'WXY 1'})),
       meterOrientationProvider.overrideWithValue(orientation ?? _FakeOrientation()),
       meterLeaveLauncherProvider.overrideWithValue(launcher ?? _FakeLauncher()),
+      meterLicenceProvider.overrideWith((_) async => 'Licence TX-123'),
+      meterSystemPrintProvider.overrideWithValue((trip, {subtitle}) async {
+        systemPrints?.add('${trip.plate} $subtitle');
+        return true;
+      }),
     ],
     child: app ?? const MaterialApp(home: MeterScreen()),
   ));
@@ -390,6 +397,59 @@ void main() {
     expect(find.text('Receipt'), findsOneWidget, reason: 'the receipt stays open to copy');
   });
 
+  testWidgets('the paper receipt carries the driver\'s licence', (tester) async {
+    final printer = FakePrinter();
+    final loc = await _pump(tester, printer: printer);
+    await recordShortHire(tester, loc);
+    await tester.tap(find.widgetWithText(TextButton, 'Print'));
+    await tester.pumpAndSettle();
+    expect(printer.jobs.single, contains('Licence TX-123'));
+    expect(find.text('Receipt'), findsNothing, reason: 'printed, the hire is finished and the receipt closes');
+  });
+
+  testWidgets('the receipt of a hire just ended is not tapped away', (tester) async {
+    final loc = await _pump(tester);
+    await recordShortHire(tester, loc);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(find.text('Receipt'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('receipt-done')));
+    await tester.pumpAndSettle();
+    expect(find.text('Receipt'), findsNothing);
+  });
+
+  testWidgets('a printer that can\'t be reached offers the phone\'s print service', (tester) async {
+    final prints = <String>[];
+    final loc = await _pump(tester, printer: FakePrinter(refuse: true), systemPrints: prints);
+    await recordShortHire(tester, loc);
+    await tester.tap(find.widgetWithText(TextButton, 'Print'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Printer not reachable'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('receipt-system-print')));
+    await tester.pumpAndSettle();
+    expect(prints, ['WXY 1 Licence TX-123']);
+    expect(find.text('Receipt'), findsNothing);
+  });
+
+  testWidgets('with no printer set up, the phone\'s print service is offered too', (tester) async {
+    final prints = <String>[];
+    final loc = await _pump(tester, systemPrints: prints);
+    await recordShortHire(tester, loc);
+    await tester.tap(find.widgetWithText(TextButton, 'Print'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.byKey(const ValueKey('receipt-system-print')));
+    await tester.pumpAndSettle();
+    expect(prints, hasLength(1));
+  });
+
+  testWidgets('the console says where receipts print', (tester) async {
+    await _pump(tester, printer: FakePrinter());
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Printing to Wi-Fi printer'), findsOneWidget);
+  });
+
   group('the landscape console', () {
     testWidgets('pins landscape while open and hands rotation back on the way out', (tester) async {
       final orientation = _FakeOrientation();
@@ -449,7 +509,7 @@ void main() {
       addTearDown(router.dispose);
       await _pump(tester,
           size: const Size(1600, 900), orientation: orientation, app: MaterialApp.router(routerConfig: router));
-      await tester.tap(find.byTooltip('Receipt printer'));
+      await tester.tap(find.byKey(const ValueKey('meter-panel-printer')));
       await tester.pumpAndSettle();
       expect(find.text('PRINTER SETUP'), findsOneWidget);
       expect(orientation.calls, ['lock', 'release']);

@@ -19,7 +19,9 @@ import '../../core/taxi_meter.dart';
 import '../../core/teksi_tariff.dart';
 import '../../data/geo_service.dart';
 import '../../data/obd/obd_session.dart';
+import '../../core/printers.dart' show SavedPrinter;
 import '../../data/printer/printer_service.dart';
+import 'meter_receipt_pdf.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/map_sheet_layout.dart' show appBottomSheetTheme;
@@ -46,8 +48,9 @@ const _fixMaxAgeMs = 3000;
 /// TEKSI partners. Bills on the operator's rate card (or the built-in TEKSI
 /// tariff) from the vehicle's OBD-II reader where the card allows it, else
 /// GPS, with DAY / NIGHT keys, extras, an end-of-hire declaration and a
-/// device-local trip log with receipts, printed straight to a mini Wi-Fi
-/// thermal printer when one is set up.
+/// device-local trip log with receipts, printed straight to a mini Bluetooth
+/// or Wi-Fi thermal printer when one is set up, else through the phone's
+/// print service.
 ///
 /// The console is landscape: the device is pinned to landscape while it is in
 /// front, and where the platform will not turn (a browser, an iPad in split
@@ -155,6 +158,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     await _orientation.release();
     if (!mounted) return;
     await context.push(path);
+    ref.invalidate(currentPrinterProvider);
     _inFront = true;
     await _orientation.lockLandscape();
   }
@@ -423,7 +427,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         if (km != null) patch(false, (stored) => stored.withOdometer(km));
       });
     }
-    await _showReceipt(trip);
+    await _showReceipt(trip, finishing: true);
   }
 
   MeterWaypoint _waypoint(int at) {
@@ -502,10 +506,19 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         ),
       );
 
-  Future<void> _showReceipt(MeterTrip trip) => showDialog<void>(
+  /// [finishing]: the receipt of the hire just ended. It stays up until it
+  /// is printed or the driver presses Done (Expo keeps the fare-due card
+  /// until the receipt is handled); a receipt reopened from the log closes
+  /// like any dialog.
+  Future<void> _showReceipt(MeterTrip trip, {bool finishing = false}) => showDialog<void>(
         context: _stageContext,
         useRootNavigator: false,
-        builder: (_) => _ReceiptDialog(trip: trip, onSetUpPrinter: () => _openSettings('/meter/printer')),
+        barrierDismissible: !finishing,
+        builder: (_) => _ReceiptDialog(
+          trip: trip,
+          finishing: finishing,
+          onSetUpPrinter: () => _openSettings('/meter/printer'),
+        ),
       );
 
   // ---- Derived -------------------------------------------------------------------
@@ -542,6 +555,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     // Keeps the partner loaded: the plate and driver go on every receipt.
     ref.watch(partnerProvider);
     final obd = ref.watch(obdSessionProvider);
+    final printer = ref.watch(currentPrinterProvider).value;
     final locked = _m.hasHire || _ending;
     return PopScope(
       // A running or unfinished hire cannot be walked out of, and back from the
@@ -577,7 +591,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
               onPopWithResult: (_) => _stageNav.currentState?.maybePop(),
               child: Navigator(
                 key: _stageNav,
-                pages: [MaterialPage(key: const ValueKey('console'), child: _scaffold(obd))],
+                pages: [MaterialPage(key: const ValueKey('console'), child: _scaffold(obd, printer))],
                 onDidRemovePage: (_) {},
               ),
             ),
@@ -587,7 +601,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     );
   }
 
-  Widget _scaffold(ObdSessionState obd) => Scaffold(
+  Widget _scaffold(ObdSessionState obd, SavedPrinter? printer) => Scaffold(
         appBar: AppBar(
           backgroundColor: _bg,
           toolbarHeight: 44,
@@ -606,8 +620,11 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
             if (_access('printer').show)
               IconButton(
                 key: const ValueKey('meter-panel-printer'),
-                tooltip: 'Receipt printer',
-                icon: const Icon(Icons.print_outlined, color: _muted),
+                tooltip: printer == null
+                    ? 'No receipt printer set up: receipts use the phone\'s print service'
+                    : 'Printing to ${printer.name}',
+                icon: Icon(printer == null ? Icons.print_disabled_outlined : Icons.print_outlined,
+                    color: printer == null ? _muted : _lcd),
                 onPressed: _access('printer').tap ? () => _openSettings('/meter/printer') : null,
               ),
             if (obd.linked && _access('obd').show)
@@ -1065,9 +1082,12 @@ class _DeclarationSheetState extends State<_DeclarationSheet> {
 }
 
 class _ReceiptDialog extends ConsumerStatefulWidget {
-  const _ReceiptDialog({required this.trip, required this.onSetUpPrinter});
+  const _ReceiptDialog({required this.trip, required this.onSetUpPrinter, this.finishing = false});
   final MeterTrip trip;
   final VoidCallback onSetUpPrinter;
+
+  /// The hire just ended: printed, the dialog closes by itself.
+  final bool finishing;
 
   @override
   ConsumerState<_ReceiptDialog> createState() => _ReceiptDialogState();
@@ -1077,39 +1097,100 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
   bool _printing = false;
   MeterTrip get trip => widget.trip;
 
+  Future<String?> _licence() async {
+    try {
+      return await ref.read(meterLicenceProvider.future).timeout(const Duration(seconds: 3));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _say(String message) => ScaffoldMessenger.maybeOf(context)
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+
+  void _printed(String message) {
+    if (!mounted) return;
+    _say(message);
+    if (widget.finishing) Navigator.pop(context);
+  }
+
+  /// The phone's own print service (Expo `osPrintReceipt`).
+  Future<void> _systemPrint(String? licence) async {
+    bool done;
+    try {
+      done = await ref.read(meterSystemPrintProvider)(trip, subtitle: licence);
+    } catch (_) {
+      done = false;
+    }
+    if (!mounted) return;
+    if (done) {
+      _printed('Receipt sent to the print service.');
+    } else {
+      _say('Not printed. Check a printer is set up in this phone\'s print settings.');
+    }
+  }
+
   /// Straight to the saved printer, with no print dialog. With no printer
-  /// set up the driver is offered the setup screen; the hire stays on the
-  /// roll to print from the trip log afterwards.
+  /// set up, or one that can't be reached, the driver can set one up or use
+  /// the phone's print service; the hire stays on the roll either way.
   Future<void> _print() async {
     final printer = await ref.read(printerStoreProvider).current();
     if (!mounted) return;
+    setState(() => _printing = true);
+    final licence = await _licence();
+    if (!mounted) return;
     if (printer == null) {
-      final setUp = await showDialog<bool>(
+      setState(() => _printing = false);
+      final choice = await showDialog<String>(
         context: context,
         useRootNavigator: false,
         builder: (c) => AlertDialog(
           title: const Text('No printer set up'),
-          content: const Text('Add a Bluetooth or Wi-Fi receipt printer to print receipts. This receipt stays in the trip log '
-              'to print once it is set up, and can be copied as text meanwhile.'),
+          content: const Text('Add a Bluetooth or Wi-Fi receipt printer to print receipts, or use the phone\'s print '
+              'service. This receipt stays in the trip log either way.'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')),
-            FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Set up printer')),
+            TextButton(onPressed: () => Navigator.pop(c), child: const Text('Not now')),
+            TextButton(
+              key: const ValueKey('receipt-system-print'),
+              onPressed: () => Navigator.pop(c, 'system'),
+              child: const Text('Use system print'),
+            ),
+            FilledButton(onPressed: () => Navigator.pop(c, 'setup'), child: const Text('Set up printer')),
           ],
         ),
       );
-      if (setUp == true && mounted) {
+      if (!mounted) return;
+      if (choice == 'system') await _systemPrint(licence);
+      if (choice == 'setup' && mounted) {
         Navigator.pop(context);
         widget.onSetUpPrinter();
       }
       return;
     }
-    setState(() => _printing = true);
-    final error = await ref.read(printerServiceProvider).send(printer, buildMeterReceiptEscpos(trip, paper: printer.paper));
+    final error = await ref
+        .read(printerServiceProvider)
+        .send(printer, buildMeterReceiptEscpos(trip, paper: printer.paper, subtitle: licence));
     if (!mounted) return;
     setState(() => _printing = false);
-    ScaffoldMessenger.maybeOf(context)
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(error ?? 'Receipt sent to ${printer.name}.')));
+    if (error == null) return _printed('Receipt sent to ${printer.name}.');
+    final fallback = await showDialog<bool>(
+      context: context,
+      useRootNavigator: false,
+      builder: (c) => AlertDialog(
+        title: const Text('Printer not reachable'),
+        content: Text(error),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('receipt-system-print'),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Use system print'),
+          ),
+        ],
+      ),
+    );
+    if (fallback == true && mounted) await _systemPrint(licence);
   }
 
   @override
@@ -1154,7 +1235,11 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
             icon: const Icon(Icons.print_outlined),
             child: const Text('Print'),
           ),
-          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+          FilledButton(
+            key: const ValueKey('receipt-done'),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
         ],
       );
 }
