@@ -59,7 +59,35 @@ class RideChatRepository {
     return controller.stream;
   }
 
-  Future<void> _send(Map<String, dynamic> row) => _db.from('ride_messages').insert(row);
+  /// Inserts a message under an id of its own, trying again while the
+  /// connection fails: the same id every time, so it is stored once
+  /// (migration 0146). A database from before that id takes it without one.
+  Future<void> _send(Map<String, dynamic> row) async {
+    final withId = {...row, 'client_msg_id': const Uuid().v4()};
+    var useId = true;
+    for (var attempt = 0; ; attempt++) {
+      try {
+        if (useId) {
+          await _db.from('ride_messages').upsert(withId, onConflict: 'client_msg_id', ignoreDuplicates: true);
+        } else {
+          await _db.from('ride_messages').insert(row);
+        }
+        return;
+      } on PostgrestException catch (e) {
+        if (useId && rideSendLacksClientId(e.code, e.message)) {
+          useId = false;
+          attempt--;
+          continue;
+        }
+        rethrow;
+      } catch (_) {
+        // The connection, not the database (a refusal fails the same way
+        // every time and is rethrown above).
+        if (attempt >= rideSendRetryDelays.length) rethrow;
+        await Future<void>.delayed(rideSendRetryDelays[attempt]);
+      }
+    }
+  }
 
   Future<void> sendText(String requestId, RideChatRole role, String body, {bool quick = false}) async {
     final text = rideMessageText(body);

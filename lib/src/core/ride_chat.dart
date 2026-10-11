@@ -56,6 +56,19 @@ enum RideMessageStatus {
   };
 }
 
+// ---- Sending once (migration 0146) ------------------------------------------------
+
+/// The waits between the tries of one send. Every try carries the same
+/// `client_msg_id`, so a try that reached the server before the connection
+/// dropped is not stored a second time.
+const rideSendRetryDelays = [Duration(seconds: 1), Duration(seconds: 3)];
+
+/// Whether the database refused a send because it predates `client_msg_id`
+/// (no such column, or nothing unique to resolve the conflict on); the send
+/// is then made the old way, without it.
+bool rideSendLacksClientId(String? code, String message) =>
+    code == '42P10' || ((code == '42703' || code == 'PGRST204') && message.contains('client_msg_id'));
+
 /// The longest message the database takes.
 const rideMessageMaxLength = 1000;
 
@@ -73,6 +86,7 @@ class RideMessage {
     this.mediaDuration,
     this.status = RideMessageStatus.sent,
     this.createdAt,
+    this.clientMsgId,
   });
 
   final String id;
@@ -91,6 +105,11 @@ class RideMessage {
   final Duration? mediaDuration;
   final RideMessageStatus status;
   final DateTime? createdAt;
+
+  /// The id the sending phone gave the message (migration 0146), so a send
+  /// retried after a dropped connection is stored once. Null on messages
+  /// from builds before it.
+  final String? clientMsgId;
 
   /// Null for a row that isn't a message (no id, or a role this app doesn't
   /// know).
@@ -114,6 +133,7 @@ class RideMessage {
       },
       status: RideMessageStatus.parse(r['status'] as String?),
       createdAt: DateTime.tryParse((r['created_at'] as String?) ?? ''),
+      clientMsgId: r['client_msg_id'] as String?,
     );
   }
 
@@ -130,6 +150,7 @@ class RideMessage {
     mediaDuration: mediaDuration,
     status: status ?? this.status,
     createdAt: createdAt,
+    clientMsgId: clientMsgId,
   );
 
   bool get hasLocation => type == RideMessageType.location && latitude != null && longitude != null;
