@@ -291,4 +291,36 @@ void main() {
     }
     expect(find.byKey(const ValueKey('share-ride')), findsNothing, reason: 'nothing left to follow');
   });
+
+  testWidgets('with no connection the trip shows as last seen, and says so until it is back', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final rows = StreamController<RideRequest>();
+    addTearDown(rows.close);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        rideRepositoryProvider.overrideWithValue(_FakeRides()),
+        rideStreamProvider.overrideWith((ref, id) => rows.stream),
+        riderPositionStreamProvider.overrideWithValue(() => const Stream.empty()),
+        fareCoinChoiceStoreProvider.overrideWithValue(FareCoinChoiceStore()),
+        walletBalancesProvider.overrideWith((ref) async => const []),
+        walletTxProvider.overrideWith((ref) async => const []),
+      ],
+      child: const MaterialApp(home: RideTrackingScreen(requestId: 'r1')),
+    ));
+    final row = {'id': 'r1', 'status': 'accepted', 'drop_name': 'KL Sentral', 'fare': 18.5};
+    rows.add(RideRequest(row, cachedAt: DateTime(2026, 10, 11, 8, 5)));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump();
+    }
+    expect(find.byKey(const ValueKey('offline-ride-banner')), findsOneWidget);
+
+    rows.add(RideRequest(row));
+    for (var i = 0; i < 4; i++) {
+      await tester.pump();
+    }
+    expect(find.byKey(const ValueKey('offline-ride-banner')), findsNothing);
+  });
 }
