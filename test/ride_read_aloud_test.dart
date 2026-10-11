@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/core/reliability_settings.dart';
 import 'package:get_ride/src/core/ride_chat.dart';
 import 'package:get_ride/src/core/ride_read_aloud.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/read_aloud.dart';
+import 'package:get_ride/src/data/reliability_repository.dart';
 import 'package:get_ride/src/data/ride_chat_repository.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/partner/partner_trip_screen.dart';
@@ -128,4 +130,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('with read-aloud switched off by the admin, nothing is said and there is no toggle', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1200, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final thread = StreamController<List<RideMessage>>.broadcast();
+    addTearDown(thread.close);
+    final speaker = _Speaker();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          rideRepositoryProvider.overrideWithValue(_Rides()),
+          rideMessagesProvider.overrideWith((ref, id) => thread.stream),
+          rideStreamProvider.overrideWith((ref, id) => Stream.value(_ride('accepted'))),
+          tripFixProvider.overrideWithValue(() async => null),
+          currentUserIdProvider.overrideWithValue('driver'),
+          speakerProvider.overrideWithValue(speaker),
+          reliabilityProvider.overrideWithValue(const ReliabilitySettings(readAloud: false)),
+        ],
+        child: const MaterialApp(home: PartnerTripScreen(requestId: 'r1')),
+      ),
+    );
+    await tester.pump();
+    thread.add(const []);
+    await tester.pump();
+    thread.add([msg('m1', 'rider', body: 'At the gate')]);
+    await tester.pump();
+    expect(speaker.said, isEmpty);
+    expect(find.byKey(const ValueKey('read-aloud-toggle')), findsNothing);
+  });
 }
