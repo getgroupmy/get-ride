@@ -379,9 +379,7 @@ class _StatusCard extends StatelessWidget {
             if (session.phase == ObdPhase.error && session.error != null) ...[
               const SizedBox(height: 4),
               Text(session.error!, style: TextStyle(color: scheme.error)),
-              const Text(
-                'Retrying every few seconds. Check the ignition is on and the phone is on the reader\'s Wi-Fi.',
-              ),
+              Text(obdRetryHint(session.adapter?.transport)),
             ],
             if (session.linked) ...[
               const SizedBox(height: 8),

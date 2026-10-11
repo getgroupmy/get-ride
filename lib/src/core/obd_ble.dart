@@ -137,6 +137,63 @@ ResolvedBleProfile? resolveBleProfile(List<BleServiceInfo> services) {
   return null;
 }
 
+/// Every way to talk to the reader, best first: [resolveBleProfile]'s pick,
+/// then the same pair written the other way (with / without response) when
+/// the characteristic takes both, then the other known profiles and the
+/// other services' serial-looking pairs. A clone that ignores the first way
+/// (no reply to ATZ) is tried the next way before the link is given up on.
+List<ResolvedBleProfile> bleLinkCandidates(List<BleServiceInfo> services) {
+  final out = <ResolvedBleProfile>[];
+  final seen = <String>{};
+  String keyOf(String s, String w, String n, bool withResponse) =>
+      '${normalizeBleUuid(s)}|${normalizeBleUuid(w)}|${normalizeBleUuid(n)}|$withResponse';
+  // What resolveBleProfile picks is always tried first, as it always was.
+  final first = resolveBleProfile(services);
+  if (first != null) {
+    seen.add(keyOf(first.service, first.write, first.notify, first.writeWithResponse));
+    out.add(first);
+  }
+  void add(String label, BleServiceInfo s, BleCharacteristicInfo w, BleCharacteristicInfo n) {
+    final modes = [if (w.write) true, if (w.writeWithoutResponse) false];
+    for (final withResponse in modes) {
+      if (!seen.add(keyOf(s.uuid, w.uuid, n.uuid, withResponse))) continue;
+      out.add((
+        label: label,
+        service: s.uuid,
+        write: w.uuid,
+        notify: n.uuid,
+        writeWithResponse: withResponse,
+        indicate: !n.notify,
+      ));
+    }
+  }
+
+  for (final p in bleElmProfiles) {
+    final s = services.where((s) => sameBleUuid(s.uuid, p.service)).firstOrNull;
+    if (s == null) continue;
+    final w = s.characteristics.where((c) => sameBleUuid(c.uuid, p.write) && c.writable).firstOrNull;
+    final n = s.characteristics.where((c) => sameBleUuid(c.uuid, p.notify) && c.subscribable).firstOrNull;
+    if (w != null && n != null) add(p.label, s, w, n);
+  }
+  for (final s in services) {
+    if (_ignoredServices.contains(normalizeBleUuid(s.uuid))) continue;
+    final writable = s.characteristics.where((c) => c.writable).toList();
+    final subscribable = s.characteristics.where((c) => c.subscribable).toList();
+    // The same characteristic both ways first (HM-10 style), then the pairs.
+    for (final n in subscribable) {
+      for (final w in writable) {
+        if (sameBleUuid(w.uuid, n.uuid)) add('Generic serial', s, w, n);
+      }
+    }
+    for (final w in writable) {
+      for (final n in subscribable) {
+        add('Generic serial', s, w, n);
+      }
+    }
+  }
+  return out;
+}
+
 /// Splits a command into packets no longer than one BLE write carries (20
 /// bytes before an MTU exchange). ELM327 commands are short, but a reader
 /// that sees a truncated command answers "?" rather than the right thing.

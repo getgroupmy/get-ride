@@ -69,12 +69,37 @@ void main() {
       expect(resolveBleProfile(const []), isNull);
     });
 
+    test('the link is tried every way, the usual pick first', () {
+      final services = <BleServiceInfo>[
+        (uuid: '1800', characteristics: [_c('2a00', w: true, n: true)]),
+        (uuid: 'fff0', characteristics: [_c('fff1', n: true), _c('fff2', w: true, wnr: true)]),
+        (uuid: 'ffe0', characteristics: [_c('ffe1', wnr: true, n: true)]),
+      ];
+      final all = bleLinkCandidates(services);
+      expect(all.first, resolveBleProfile(services));
+      expect([for (final c in all) '${c.write}/${c.notify}/${c.writeWithResponse}'], [
+        'fff2/fff1/true',
+        'fff2/fff1/false',
+        'ffe1/ffe1/false',
+      ]);
+      expect(all.any((c) => c.service == '1800'), isFalse, reason: 'standard services never carry the stream');
+      expect(bleLinkCandidates(const []), isEmpty);
+    });
+
     test('long writes are split into 20-byte packets', () {
       final packets = chunkBleWrite(List.generate(45, (i) => i));
       expect(packets.map((p) => p.length), [20, 20, 5]);
       expect(packets.expand((p) => p), List.generate(45, (i) => i));
       expect(chunkBleWrite('ATZ\r'.codeUnits), hasLength(1));
     });
+  });
+
+  test('the retry hint names what to check for how the reader is linked', () {
+    expect(obdRetryHint('bluetooth'), contains('no other app or phone is connected'));
+    expect(obdRetryHint('bluetooth'), isNot(contains('Wi-Fi')));
+    expect(obdRetryHint('mfi'), contains('Settings → Bluetooth'));
+    expect(obdRetryHint('wifi'), contains("reader's Wi-Fi"));
+    expect(obdRetryHint(null), contains("reader's Wi-Fi"));
   });
 
   group('saved Bluetooth readers', () {

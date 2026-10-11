@@ -6,6 +6,7 @@ import 'package:get_ride/src/core/obd.dart';
 import 'package:get_ride/src/core/obd_adapters.dart';
 import 'package:get_ride/src/data/obd/obd_client.dart';
 import 'package:get_ride/src/data/obd/obd_session.dart';
+import 'package:get_ride/src/data/obd/obd_transport.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_elm.dart';
@@ -109,13 +110,50 @@ void main() {
       );
       await client.start();
       await pumpEventQueue();
-      expect(elm.written.take(7), [...elmInitCommands, elmDescribeProtocol]);
+      expect(elm.written.take(8), ['', ...elmInitCommands, elmDescribeProtocol], reason: 'woken, then reset');
       expect(protocol, 'ISO 15765-4 CAN (11-bit, 500 kbps)');
       expect(readings.single['speed'], 60);
       expect(readings.single['rpm'], 1726);
       expect(readings.single.containsKey('fuelLevel'), isFalse, reason: 'NO DATA is no reading');
       await client.stop();
       expect(elm.connected, isFalse);
+    });
+
+    test('a reader that misses the reset is tried the link\'s other way', () async {
+      final elm = _DeafUntilRetuned();
+      final client = ObdClient(
+        elm,
+        pollInterval: const Duration(hours: 1),
+        wakeTimeout: const Duration(milliseconds: 10),
+        resetTimeout: const Duration(milliseconds: 20),
+      );
+      await client.start();
+      expect(elm.retunes, 1);
+      expect(elm.written.where((c) => c == 'ATZ'), hasLength(2));
+      await client.stop();
+    });
+
+    test('a reader that never answers fails the handshake once every way is tried', () async {
+      final elm = _DeafUntilRetuned(ways: 1)..deaf = true;
+      final client = ObdClient(
+        elm,
+        pollInterval: const Duration(hours: 1),
+        wakeTimeout: const Duration(milliseconds: 10),
+        resetTimeout: const Duration(milliseconds: 20),
+      );
+      await expectLater(
+        client.start(),
+        throwsA(isA<TimeoutException>().having((e) => e.message, 'message', contains('did not answer'))),
+      );
+      await client.stop();
+    });
+
+    test('a late reply is not taken for the reset\'s answer', () {
+      expect(isStaleResetReply('?\r\r>'), isTrue);
+      expect(isStaleResetReply('41 0D 00\r\r>'), isTrue);
+      expect(isStaleResetReply('>'), isTrue);
+      expect(isStaleResetReply('ATZ\r\r\rELM327 v1.5\r\r>'), isFalse);
+      expect(isStaleResetReply('OBDII v1.5\r>'), isFalse);
     });
 
     test('commands are answered one at a time, in order', () async {
@@ -196,4 +234,32 @@ void main() {
       expect(container.read(obdSessionProvider).phase, ObdPhase.idle);
     });
   });
+}
+
+/// A Bluetooth reader that only answers once the link is retuned (the
+/// first characteristic pair / write mode reaches nothing).
+class _DeafUntilRetuned extends FakeElm implements ObdRetunable {
+  _DeafUntilRetuned({this.ways = 2}) {
+    deaf = true;
+  }
+  final int ways;
+  bool deaf = false;
+  int retunes = 0;
+
+  @override
+  Future<void> write(String command) async {
+    if (deaf) {
+      written.add(command);
+      return;
+    }
+    await super.write(command);
+  }
+
+  @override
+  Future<bool> retune() async {
+    if (retunes + 1 >= ways) return false;
+    retunes++;
+    deaf = false;
+    return true;
+  }
 }

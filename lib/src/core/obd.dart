@@ -97,6 +97,15 @@ List<String> cleanElmResponse(String raw) => raw
     .where((l) => l.isNotEmpty)
     .toList();
 
+/// Whether [raw] can't be the answer to a reset (ATZ): a "?" or a vehicle
+/// reply left over from a command that timed out. Waiting on past it keeps
+/// a late reply from shifting every later command one answer behind.
+bool isStaleResetReply(String raw) {
+  final lines = cleanElmResponse(raw);
+  if (lines.isEmpty) return true;
+  return lines.every((l) => l == '?' || l == 'NODATA' || RegExp(r'^4[1-9A-F]').hasMatch(l));
+}
+
 bool isElmError(String raw) => cleanElmResponse(raw).any(_errorTokens.contains);
 
 /// "SEARCHING..." / "BUS INIT": the adapter is still working, not answering.
