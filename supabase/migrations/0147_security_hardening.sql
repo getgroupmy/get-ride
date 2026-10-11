@@ -64,8 +64,12 @@ do $$
 declare
   r record;
 begin
-  for r in select tablename from pg_tables where schemaname = 'public' loop
-    execute format('revoke truncate on public.%I from anon, authenticated', r.tablename);
+  -- Every relation that carries the grant (views too, not only tables).
+  for r in
+    select distinct table_name from information_schema.role_table_grants
+     where table_schema = 'public' and privilege_type = 'TRUNCATE' and grantee in ('anon', 'authenticated')
+  loop
+    execute format('revoke truncate on public.%I from anon, authenticated', r.table_name);
   end loop;
 end $$;
 alter default privileges in schema public revoke truncate on tables from anon, authenticated;
