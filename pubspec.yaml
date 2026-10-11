@@ -72,6 +72,7 @@ dependencies:
   android_id: ^0.6.0
   flutter_callkit_incoming: ^3.1.6
   audioplayers: ^6.8.1
+  flutter_tts: ^4.2.5
 
 dev_dependencies:
   flutter_test:
