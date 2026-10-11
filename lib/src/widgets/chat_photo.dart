@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../data/photo_picker.dart';
 import 'net_image.dart';
+import 'storage_image.dart';
 
 /// Gallery or camera; straight to the gallery where there is no camera.
 Future<PhotoSource?> choosePhotoSource(BuildContext context, {required bool camera}) async {
@@ -132,7 +133,7 @@ void openPhotoViewer(BuildContext context, String url, {String? caption}) {
                 child: InteractiveViewer(
                   maxScale: 5,
                   child: Center(
-                    child: Image.network(
+                    child: StorageImage(
                       url,
                       fit: BoxFit.contain,
                       frameBuilder: boneUntilPainted(width: 240, height: 240),

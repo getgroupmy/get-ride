@@ -21,6 +21,8 @@ import '../widgets/admin_widgets.dart';
 import '../widgets/trip_audio_panel.dart';
 import 'support_agents.dart';
 import '../../data/live_tables.dart';
+import '../../widgets/storage_image.dart';
+import '../../data/storage_links.dart';
 
 /// Ticket statuses and the labels the Expo panel shows for them.
 const ticketStatusLabels = {
@@ -379,7 +381,7 @@ class _AdminMedia extends StatelessWidget {
     final url = m.mediaUrl;
     if (url == null || url.isEmpty) return fallback;
     if (m.type == 'audio') {
-      return VoiceNotePlayer(url: () async => url, length: m.mediaDuration, color: color);
+      return VoiceNotePlayer(url: () => signedStorageUrl(url), length: m.mediaDuration, color: color);
     }
     if (m.type == 'image') {
       return GestureDetector(
@@ -388,7 +390,7 @@ class _AdminMedia extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 240, maxHeight: 240),
-            child: Image.network(
+            child: StorageImage(
               url,
               fit: BoxFit.cover,
               frameBuilder: boneUntilPainted(),

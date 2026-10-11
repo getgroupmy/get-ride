@@ -19,6 +19,8 @@ import 'call/call_screen.dart';
 import 'support_screen.dart';
 import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
+import '../../widgets/storage_image.dart';
+import '../../data/storage_links.dart';
 
 final supportMessagesProvider = StreamProvider.autoDispose.family<List<SupportMessage>, String>(
   (ref, ticketId) => ref.watch(accountRepositoryProvider).watchMessages(ticketId),
@@ -139,7 +141,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
     if (url != null && url.isNotEmpty && m.type == 'audio') {
       return VoiceNotePlayer(
         key: ValueKey('support-voice-${m.id}'),
-        url: () async => url,
+        url: () => signedStorageUrl(url),
         length: m.mediaDuration,
         color: fg ?? t.colorScheme.onSurface,
       );
@@ -155,7 +157,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
             borderRadius: BorderRadius.circular(10),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 240, maxHeight: 240),
-              child: Image.network(
+              child: StorageImage(
                 url,
                 fit: BoxFit.cover,
                 frameBuilder: boneUntilPainted(),
