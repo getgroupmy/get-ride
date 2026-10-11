@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/config.dart';
 import 'package:get_ride/src/core/push_logic.dart';
 import 'package:get_ride/src/data/background_ack.dart';
+import 'package:get_ride/src/data/reliability_repository.dart' show backgroundAckPrefsKey;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -57,6 +58,15 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       await ackPushInBackground({'event_id': 'msg:m1'}, client: client);
       SharedPreferences.setMockInitialValues({key: session(DateTime.now().subtract(const Duration(minutes: 5)))});
+      await ackPushInBackground({'event_id': 'msg:m1'}, client: client);
+      expect(sent, isEmpty);
+    });
+
+    test('nothing is sent when Admin → Reliability has it off', () async {
+      SharedPreferences.setMockInitialValues({
+        key: session(DateTime.now().add(const Duration(hours: 1))),
+        backgroundAckPrefsKey: false,
+      });
       await ackPushInBackground({'event_id': 'msg:m1'}, client: client);
       expect(sent, isEmpty);
     });
