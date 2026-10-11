@@ -59,6 +59,19 @@ class BleObdTransport implements ObdTransport, ObdRetunable {
   }
 
   Future<void> _open() async {
+    // A scan still running (the add-reader sheet's) is stopped first: the
+    // plugin asks for no scan while connecting.
+    try {
+      await UniversalBle.stopScan();
+    } catch (_) {}
+    // Any link the phone still holds to the reader is dropped first, as Expo
+    // does: after Bluetooth was toggled, or with another app on this phone
+    // holding the reader, the platform reports "already connected" and hands
+    // back a link that never delivers a reply, so every command (ATZ first)
+    // times out while the reader looks connected.
+    try {
+      await UniversalBle.disconnect(deviceId);
+    } catch (_) {}
     await UniversalBle.connect(deviceId, timeout: connectTimeout);
     final services = await UniversalBle.discoverServices(deviceId);
     _candidates = bleLinkCandidates([
