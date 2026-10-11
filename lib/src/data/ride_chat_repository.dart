@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/ride_chat.dart';
+import '../core/ride_chat_outbox.dart';
 import '../core/support_media.dart' show fileExt;
 import '../providers.dart';
 import 'realtime_backup.dart';
@@ -19,7 +22,36 @@ class RideChatRepository {
 
   Future<List<RideMessage>> messages(String requestId) async {
     final rows = await _db.from('ride_messages').select().eq('request_id', requestId).order('created_at');
+    unawaited(_saveCache(requestId, rows));
     return [for (final r in rows) ?RideMessage.fromRow(r)];
+  }
+
+  // ---- The thread kept on the phone (reliability Phase C) -------------------
+  // The last copy the server sent, so an open chat shows its history with no
+  // connection. Best effort: a phone that can't store it just loads.
+
+  static String _cacheKey(String requestId) => 'ride_chat_cache_v1_$requestId';
+
+  Future<void> _saveCache(String requestId, List<Map<String, dynamic>> rows) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_cacheKey(requestId), jsonEncode(rows));
+    } catch (_) {}
+  }
+
+  /// The thread as last loaded on this phone; empty when there is none.
+  Future<List<RideMessage>> cachedMessages(String requestId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_cacheKey(requestId));
+      if (raw == null) return const [];
+      return [
+        for (final r in jsonDecode(raw) as List)
+          if (r is Map) ?RideMessage.fromRow(Map<String, dynamic>.from(r)),
+      ];
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// The thread for [requestId], re-read whenever a message arrives or a
@@ -27,18 +59,33 @@ class RideChatRepository {
   Stream<List<RideMessage>> watch(String requestId) {
     final controller = StreamController<List<RideMessage>>();
     RealtimeChannel? channel;
+    var loaded = false;
     Future<void> refresh() async {
       try {
         final list = await messages(requestId);
+        loaded = true;
         if (!controller.isClosed) controller.add(list);
       } catch (e, st) {
-        if (!controller.isClosed) controller.addError(e, st);
+        // No connection: the copy kept on the phone, rather than an error
+        // in place of the whole thread.
+        final cached = loaded ? null : await cachedMessages(requestId);
+        if (controller.isClosed) return;
+        if (cached != null && cached.isNotEmpty) {
+          controller.add(cached);
+        } else if (!loaded) {
+          controller.addError(e, st);
+        }
       }
     }
 
     RealtimeBackup? backup;
     controller.onListen = () {
       backup = RealtimeBackup(refresh);
+      // The copy on the phone first, so the thread is there at once; the
+      // server's replaces it as soon as it answers.
+      cachedMessages(requestId).then((cached) {
+        if (!loaded && cached.isNotEmpty && !controller.isClosed) controller.add(cached);
+      });
       refresh();
       channel = _db
           .channel('ride_chat_${requestId}_${DateTime.now().microsecondsSinceEpoch}')
@@ -86,6 +133,19 @@ class RideChatRepository {
         if (attempt >= rideSendRetryDelays.length) rethrow;
         await Future<void>.delayed(rideSendRetryDelays[attempt]);
       }
+    }
+  }
+
+  /// Sends a message kept on the phone (ride_chat_outbox.dart), once, under
+  /// its own id, so a send that reached the server before the connection
+  /// dropped is not stored twice. Throws a [PostgrestException] when the
+  /// database refused it, anything else when it didn't get there.
+  Future<void> sendQueued(PendingRideMessage p) async {
+    try {
+      await _db.from('ride_messages').upsert(p.toRow(), onConflict: 'client_msg_id', ignoreDuplicates: true);
+    } on PostgrestException catch (e) {
+      if (!rideSendLacksClientId(e.code, e.message)) rethrow;
+      await _db.from('ride_messages').insert(p.toRow()..remove('client_msg_id'));
     }
   }
 

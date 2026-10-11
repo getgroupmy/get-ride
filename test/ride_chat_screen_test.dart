@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/ride_chat.dart';
+import 'package:get_ride/src/core/ride_chat_outbox.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/photo_picker.dart';
 import 'package:get_ride/src/data/voice_recorder.dart';
@@ -35,6 +36,9 @@ class _Repo implements RideChatRepository {
   final sent = <String>[];
   final marked = <String>[];
 
+  /// No connection: a queued send fails the way a dropped network does.
+  bool offline = false;
+
   @override
   Stream<List<RideMessage>> watch(String requestId) => rows.stream;
 
@@ -45,6 +49,19 @@ class _Repo implements RideChatRepository {
   @override
   Future<void> sendLocation(String requestId, RideChatRole role, double lat, double lng) async =>
       sent.add('${role.name}:location:$lat,$lng');
+
+  @override
+  Future<void> sendQueued(PendingRideMessage p) async {
+    if (offline) throw Exception('SocketException: no route to host');
+    sent.add(
+    p.type == RideMessageType.location
+        ? '${p.role.name}:location:${p.latitude},${p.longitude}'
+        : '${p.role.name}:${p.type.name}:${p.body}',
+    );
+  }
+
+  @override
+  Future<List<RideMessage>> cachedMessages(String requestId) async => const [];
 
   @override
   Future<void> sendPhoto(String requestId, RideChatRole role, Uint8List bytes, {required String name, String? caption}) async =>
@@ -200,7 +217,11 @@ void main() {
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('ride-chat-send')));
       await tester.pump();
-      expect(find.text('Blue shirt'), findsNothing, reason: 'the box clears once sent');
+      expect(
+        tester.widget<TextField>(find.byKey(const ValueKey('ride-chat-input'))).controller!.text,
+        isEmpty,
+        reason: 'the box clears once sent',
+      );
       await tester.tap(find.byKey(const ValueKey('ride-chat-location')));
       await tester.pump();
       expect(repo.sent, ['rider:quick:Please call me', 'rider:text:Blue shirt', 'rider:location:2.93,101.83']);
@@ -236,6 +257,28 @@ void main() {
     await tester.tap(find.byKey(const ValueKey("quick-I've arrived")));
     await tester.pump();
     expect(repo.sent, ["partner:quick:I've arrived"]);
+  });
+
+Finder waiting() => find.byWidgetPredicate((w) => w is Icon && w.semanticLabel == 'Waiting for network');
+
+  testWidgets('with no connection a message waits in the thread and goes when it is back', (tester) async {
+    final (repo, _) = await pumpChat(tester, me: 'driver', status: 'arrived', brightness: Brightness.light);
+    repo.rows.add(const []);
+    await tester.pump();
+    repo.offline = true;
+    await tester.tap(find.byKey(const ValueKey("quick-I've arrived")));
+    await tester.pump();
+    expect(repo.sent, isEmpty);
+    expect(find.text("I've arrived"), findsWidgets, reason: 'it is in the thread already');
+    expect(waiting(), findsOneWidget);
+    expect(find.textContaining('No connection'), findsOneWidget);
+
+    // Back online: the open chat tries again on its own.
+    repo.offline = false;
+    await tester.pump(rideOutboxRetryEvery);
+    await tester.pump();
+    expect(repo.sent, ["partner:quick:I've arrived"]);
+    expect(waiting(), findsNothing);
   });
 
   testWidgets('somebody else\'s ride has no chat for them', (tester) async {
