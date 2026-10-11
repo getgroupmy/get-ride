@@ -15,6 +15,7 @@ import '../../core/navigation_app.dart';
 import '../../core/trip_charges.dart';
 import '../../core/trip_checkpoint.dart';
 import '../../core/trip_progress.dart';
+import '../../core/trip_start.dart';
 import '../../core/ride_cancel.dart';
 import '../../core/ride_chat.dart';
 import '../../core/ride_read_aloud.dart';
@@ -294,32 +295,40 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   }
 
   Future<void> _start(RideRequest r) async {
-    if (r.otp != null && r.otp!.isNotEmpty) {
-      final code = await showDialog<String>(
-        context: context,
-        builder: (ctx) {
-          final c = TextEditingController();
-          return AlertDialog(
-            title: const Text('Enter trip code'),
-            content: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text('Ask the passenger for the 4-digit code shown in their app.'),
-              const SizedBox(height: 12),
-              CodeField(controller: c, length: 4),
-            ]),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Start trip')),
-            ],
-          );
-        },
-      );
-      if (code == null) return;
-      if (code != r.otp) {
-        if (mounted) showInfo(context, 'That code is not correct.');
-        return;
-      }
+    final code = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final c = TextEditingController();
+        return AlertDialog(
+          key: const ValueKey('trip-code-dialog'),
+          title: const Text('Enter trip code'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('Ask the passenger for the 4-digit code shown in their app.'),
+            const SizedBox(height: 12),
+            CodeField(controller: c, length: 4),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              key: const ValueKey('trip-code-start'),
+              onPressed: () => Navigator.pop(ctx, c.text),
+              child: const Text('Start trip'),
+            ),
+          ],
+        );
+      },
+    );
+    if (code == null || !mounted) return;
+    final clean = cleanTripCode(code);
+    if (clean == null) {
+      showInfo(context, 'Enter the 4-digit code.');
+      return;
     }
-    await _run(() => ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.onTrip));
+    // The server checks the code (start_trip, 0152); the app never sees it.
+    await _run(() async {
+      final message = tripStartMessage(await ref.read(rideRepositoryProvider).startTrip(r.id, clean));
+      if (message != null && mounted) showInfo(context, message);
+    });
   }
 
   /// The driver cancels before pickup, with a reason; the passenger is told
