@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/messaging.dart';
+import '../core/sms_limits.dart';
 import '../providers.dart';
 
 /// SMS / WhatsApp routing (migration 0120): devices, routes and the SMS
@@ -66,6 +67,26 @@ class MessagingRepository {
   Future<List<Map<String, dynamic>>> recentInbox({int limit = 20}) async => List<Map<String, dynamic>>.from(
     await _db.from('sms_inbox').select().order('created_at', ascending: false).limit(limit),
   );
+
+  // ---- Sign-in SMS limits (migration 0149) --------------------------------
+
+  Future<SmsLimits> smsLimits() async {
+    final row = await _db.from('sms_settings').select().eq('id', 1).maybeSingle();
+    return row == null ? const SmsLimits() : SmsLimits.fromRow(row);
+  }
+
+  Future<void> saveSmsLimits(SmsLimits s) => _db.from('sms_settings').update(s.toPatch()).eq('id', 1);
+
+  /// The newest sign-in SMS attempts, optionally only one [status].
+  Future<List<SmsLogEntry>> smsLog({String? status, int limit = 50}) async {
+    var q = _db.from('sms_log').select('id, phone, status, reason, created_at');
+    if (status != null) q = q.eq('status', status);
+    return [for (final r in await q.order('created_at', ascending: false).limit(limit)) SmsLogEntry.fromRow(r)];
+  }
+
+  /// Queued, blocked and failed attempts in the last [hours].
+  Future<SmsActivity> smsActivity({int hours = 1}) async =>
+      smsActivityFrom(await _db.rpc('sms_activity_summary', params: {'p_hours': hours}));
 }
 
 final messagingRepositoryProvider = Provider((ref) => MessagingRepository(ref.watch(supabaseProvider)));

@@ -54,6 +54,8 @@ const liveSettingTables = <String>[
   'messaging_routes',
   'sms_outbox',
   'sms_inbox',
+  'sms_settings',
+  'sms_log',
 ];
 
 /// The signed-in account's own rows that an admin decides on (approving,
