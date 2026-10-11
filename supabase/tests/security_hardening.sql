@@ -135,9 +135,14 @@ insert into public.partners (auth_user_id, name, phone) values
   ('00000000-0000-0000-0000-0000000147a1', 'Rider', '+60100000147');
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000147a1');
-select case when current_setting('test.partner_docs', true) = 'yes' then pg_temp.refused(
-  $q$update public.partners set documents_ok = true where auth_user_id = '00000000-0000-0000-0000-0000000147a1'$q$,
-  'a driver marking their own documents checked') end;
+do $$
+begin
+  if current_setting('test.partner_docs', true) = 'yes' then
+    perform pg_temp.refused(
+      'update public.partners set documents_ok = true where auth_user_id = ''00000000-0000-0000-0000-0000000147a1''',
+      'a driver marking their own documents checked');
+  end if;
+end $$;
 reset role;
 
 -- 6. currency_symbol ------------------------------------------------------------------------
