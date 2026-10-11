@@ -142,4 +142,30 @@ void main() {
     expect(pushRouteFor({'type': 'ride_message', 'request_id': 'r1'}), '/ride/r1/chat');
     expect(pushRouteFor({'type': 'ride_message'}), isNull);
   });
+
+  group('sending once (0146)', () {
+    test('a message keeps the id its phone gave it', () {
+      final m = RideMessage.fromRow({'id': 'm1', 'sender_role': 'rider', 'client_msg_id': 'c1'})!;
+      expect(m.clientMsgId, 'c1');
+      expect(m.copyWith(status: RideMessageStatus.read).clientMsgId, 'c1');
+      expect(RideMessage.fromRow({'id': 'm2', 'sender_role': 'rider'})!.clientMsgId, isNull);
+    });
+
+    test('an older database is recognised and the send made without the id', () {
+      expect(rideSendLacksClientId('42P10', 'there is no unique constraint matching the ON CONFLICT'), isTrue);
+      expect(rideSendLacksClientId('PGRST204', "Could not find the 'client_msg_id' column"), isTrue);
+      expect(rideSendLacksClientId('42703', 'column "client_msg_id" does not exist'), isTrue);
+      expect(rideSendLacksClientId('42501', 'new row violates row-level security policy'), isFalse);
+      expect(rideSendLacksClientId('PGRST204', "Could not find the 'media_path' column"), isFalse);
+      expect(rideSendLacksClientId(null, 'client_msg_id'), isFalse);
+    });
+
+    test('a failed send is tried twice more, after a short wait', () {
+      expect(rideSendRetryDelays, [const Duration(seconds: 1), const Duration(seconds: 3)]);
+    });
+
+    test('a chat push carries its outbox event', () {
+      expect(pushEventId({'type': 'ride_message', 'event_id': 'msg:m1'}), 'msg:m1');
+    });
+  });
 }
