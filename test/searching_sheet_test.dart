@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/ride_cancel.dart';
@@ -43,30 +45,84 @@ void main() {
     expect(searchCancelReasons, hasLength(6));
   });
 
-  testWidgets('offers rise in from below and slide out to the left', (tester) async {
-    Widget host(List<SearchOfferView> offers) => MaterialApp(
-      home: Scaffold(
-        body: SingleChildScrollView(child: OfferStack(offers: offers)),
-      ),
+  double angleOf(WidgetTester tester, String key) {
+    final rotate = tester.widget<Transform>(
+      find.ancestor(of: find.byKey(ValueKey('card-$key')), matching: find.byType(Transform)).first,
     );
+    // The z-rotation of the card's transform.
+    return math.atan2(rotate.transform.entry(1, 0), rotate.transform.entry(0, 0));
+  }
+
+  Widget host(List<SearchOfferView> offers) => MaterialApp(
+    home: Scaffold(
+      body: SingleChildScrollView(child: OfferStack(offers: offers)),
+    ),
+  );
+
+  testWidgets('offers fly in from the right, tilted, and tilt off to the left', (tester) async {
     await tester.pumpWidget(host([_offer('1')]));
-    await tester.pump(const Duration(milliseconds: 100));
-    final rising = tester.getTopLeft(find.byKey(const ValueKey('card-1')));
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 80));
+    final coming = tester.getTopLeft(find.byKey(const ValueKey('card-1')));
+    expect(angleOf(tester, '1'), greaterThan(0.05), reason: 'tilted as it comes in');
+    await tester.pump(const Duration(milliseconds: 500));
     final settled = tester.getTopLeft(find.byKey(const ValueKey('card-1')));
-    expect(rising.dy, greaterThan(settled.dy), reason: 'came up from below');
-    expect(rising.dx, settled.dx);
+    expect(coming.dx, greaterThan(settled.dx), reason: 'came in from the right');
+    expect(angleOf(tester, '1'), closeTo(0, 0.001), reason: 'level once landed');
 
     await tester.pumpWidget(host([_offer('1'), _offer('2')]));
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byKey(const ValueKey('card-2')), findsOneWidget);
 
     await tester.pumpWidget(host([_offer('2')]));
-    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pump(const Duration(milliseconds: 250));
     expect(tester.getTopLeft(find.byKey(const ValueKey('card-1'))).dx, lessThan(settled.dx), reason: 'going left');
-    await tester.pump(const Duration(milliseconds: 400));
+    expect(angleOf(tester, '1'), lessThan(-0.05), reason: 'tilting as it goes');
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const ValueKey('card-1')), findsNothing);
     expect(find.byKey(const ValueKey('card-2')), findsOneWidget);
+  });
+
+  testWidgets('a card swiped left declines it; a short swipe springs back', (tester) async {
+    var declined = 0;
+    SearchOfferView offer() => SearchOfferView(
+      key: '1',
+      price: 'RM1',
+      yourFare: false,
+      progress: 1,
+      onAccept: () {},
+      onDecline: () => declined++,
+      cardKey: const ValueKey('card-1'),
+    );
+    await tester.pumpWidget(host([offer()]));
+    await tester.pumpAndSettle();
+    final home = tester.getTopLeft(find.byKey(const ValueKey('card-1')));
+
+    // A little way: it follows and tilts, then springs back.
+    final g = await tester.startGesture(tester.getCenter(find.byKey(const ValueKey('card-1'))));
+    await g.moveBy(const Offset(-30, 0));
+    await g.moveBy(const Offset(-40, 0));
+    await tester.pump();
+    expect(tester.getTopLeft(find.byKey(const ValueKey('card-1'))).dx, lessThan(home.dx));
+    expect(angleOf(tester, '1'), lessThan(0), reason: 'tilts with the finger');
+    await g.up();
+    await tester.pumpAndSettle();
+    expect(declined, 0);
+    expect(tester.getTopLeft(find.byKey(const ValueKey('card-1'))).dx, closeTo(home.dx, 0.5));
+
+    // To the right: nothing to do there, it stays put.
+    await tester.drag(find.byKey(const ValueKey('card-1')), const Offset(200, 0));
+    await tester.pump();
+    expect(tester.getTopLeft(find.byKey(const ValueKey('card-1'))).dx, closeTo(home.dx, 0.5));
+    await tester.pumpAndSettle();
+    expect(declined, 0);
+
+    // Far enough left: declined, and it flies on off.
+    await tester.drag(find.byKey(const ValueKey('card-1')), const Offset(-500, 0));
+    await tester.pump();
+    expect(declined, 1);
+    await tester.pumpWidget(host(const []));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('card-1')), findsNothing);
   });
 
   testWidgets('the Accept key drains with the offer window', (tester) async {

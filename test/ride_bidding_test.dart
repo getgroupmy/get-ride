@@ -349,5 +349,24 @@ void main() {
       expect(find.textContaining('did not answer in time'), findsOneWidget);
       expect(rides.calls, ['withdraw']);
     });
+
+    testWidgets('a closed offer closes itself after 3 seconds, counting down', (tester) async {
+      final (rides, _) = await pump(tester);
+      rides.rows.add(ride());
+      await tester.pump();
+      expect(find.text('The rider declined your offer.'), findsOneWidget);
+      expect(find.text('Closing in 3s'), findsOneWidget);
+      final full = tester.widget<LinearProgressIndicator>(find.byKey(const ValueKey('offer-closed-timer'))).value!;
+      await tester.pump(const Duration(milliseconds: 1500));
+      expect(find.text('Closing in 2s'), findsOneWidget);
+      expect(
+        tester.widget<LinearProgressIndicator>(find.byKey(const ValueKey('offer-closed-timer'))).value,
+        lessThan(full),
+        reason: 'the bar drains',
+      );
+      await tester.pump(const Duration(milliseconds: 1600));
+      await tester.pumpAndSettle();
+      expect(find.text('The rider declined your offer.'), findsNothing, reason: 'closed by itself');
+    });
   });
 }

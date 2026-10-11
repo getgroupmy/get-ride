@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/request_viewers.dart';
@@ -570,8 +572,10 @@ class _DemoTag extends StatelessWidget {
   );
 }
 
-/// Offer cards that rise into place from below as they arrive and slide
-/// away to the left as they are answered, replaced or lapse (inDrive's).
+/// Offer cards as inDrive deals them: each flies in from the right, tilted,
+/// and straightens as it lands; an answered, replaced or lapsed one tilts
+/// and flies off to the left. The rider can also throw a card away by
+/// swiping it left, which declines it.
 class OfferStack extends StatefulWidget {
   const OfferStack({super.key, required this.offers, this.gap = 12});
   final List<SearchOfferView> offers;
@@ -586,11 +590,27 @@ class _OfferEntry {
   SearchOfferView view;
   final AnimationController controller;
   bool leaving = false;
+
+  /// How far the rider has dragged the card, in pixels (negative is left).
+  double drag = 0;
+
+  /// Where the card was, as a share of its width, when it began to leave:
+  /// a swiped card flies on from where the finger let go.
+  double leaveFrom = 0;
 }
 
 /// How long a card takes to come in, and to go.
-const offerInDuration = Duration(milliseconds: 420);
-const offerOutDuration = Duration(milliseconds: 320);
+const offerInDuration = Duration(milliseconds: 460);
+const offerOutDuration = Duration(milliseconds: 340);
+
+/// The tilt a card comes in and goes out with: 15°, as Expo's
+/// (`ride-confirm.tsx`), in radians.
+const offerTilt = 0.2618;
+
+/// A left swipe past this share of the card's width (or a quick flick)
+/// declines it; anything less springs back.
+const offerSwipeDecline = 0.32;
+const offerFlickVelocity = 700.0;
 
 class _OfferStackState extends State<OfferStack> with TickerProviderStateMixin {
   final _entries = <_OfferEntry>[];
@@ -610,6 +630,21 @@ class _OfferStackState extends State<OfferStack> with TickerProviderStateMixin {
     return e;
   }
 
+  /// Sends [e] off to the left, from wherever it is now.
+  void _leave(_OfferEntry e, double width) {
+    if (e.leaving) return;
+    e.leaving = true;
+    e.leaveFrom = width > 0 ? e.drag / width : 0;
+    e.drag = 0;
+    e.controller.reverse(from: 1).whenComplete(() {
+      if (!mounted || !e.leaving) return;
+      setState(() => _entries.remove(e));
+      e.controller.dispose();
+    });
+  }
+
+  double _width = 0;
+
   @override
   void didUpdateWidget(covariant OfferStack old) {
     super.didUpdateWidget(old);
@@ -618,17 +653,14 @@ class _OfferStackState extends State<OfferStack> with TickerProviderStateMixin {
       final fresh = now[e.view.key];
       if (fresh != null) {
         e.view = fresh;
-        if (e.leaving) {
+        if (e.leaving && !e.controller.isAnimating) {
+          // Still offered after all (a decline that didn't go through).
           e.leaving = false;
+          e.leaveFrom = 0;
           e.controller.forward();
         }
       } else if (!e.leaving) {
-        e.leaving = true;
-        e.controller.reverse().whenComplete(() {
-          if (!mounted || !e.leaving) return;
-          setState(() => _entries.remove(e));
-          e.controller.dispose();
-        });
+        _leave(e, _width);
       }
     }
     final known = {for (final e in _entries) e.view.key};
@@ -645,41 +677,112 @@ class _OfferStackState extends State<OfferStack> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  void _dragUpdate(_OfferEntry e, DragUpdateDetails d) {
+    if (e.leaving) return;
+    // Left only, as Expo's: there is nothing to the right.
+    setState(() => e.drag = math.min(0, e.drag + d.delta.dx));
+  }
+
+  void _dragEnd(_OfferEntry e, DragEndDetails d) {
+    if (e.leaving) return;
+    final v = d.primaryVelocity ?? 0;
+    final decline = e.view.onDecline;
+    if (decline != null && _width > 0 && (e.drag < -_width * offerSwipeDecline || v < -offerFlickVelocity)) {
+      _leave(e, _width);
+      setState(() {});
+      decline();
+      return;
+    }
+    // Not far enough: back into place.
+    final from = e.drag;
+    final back = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
+    final curve = CurvedAnimation(parent: back, curve: Curves.easeOutBack);
+    back.addListener(() {
+      if (mounted && !e.leaving) setState(() => e.drag = from * (1 - curve.value));
+    });
+    back.forward().whenComplete(back.dispose);
+  }
+
   @override
-  Widget build(BuildContext context) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      for (final e in _entries)
-        AnimatedBuilder(
-          key: ValueKey('offer-entry-${e.view.key}'),
-          animation: e.controller,
-          builder: (context, child) {
-            final v = e.controller.value;
-            final curved = (e.leaving ? Curves.easeInCubic : Curves.easeOutCubic).transform(v);
-            // In: up from below. Out: away to the left.
-            final slide = e.leaving ? Offset(-(1 - curved) * 1.1, 0) : Offset(0, (1 - curved) * 0.6);
-            return ClipRect(
-              child: Align(
-                alignment: Alignment.topCenter,
-                heightFactor: Curves.easeInOut.transform(v),
-                child: FractionalTranslation(
-                  translation: slide,
-                  child: Opacity(opacity: curved.clamp(0.0, 1.0), child: child),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      _width = constraints.maxWidth.isFinite ? constraints.maxWidth : MediaQuery.sizeOf(context).width;
+      final w = _width;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final e in _entries)
+            AnimatedBuilder(
+              key: ValueKey('offer-entry-${e.view.key}'),
+              animation: e.controller,
+              builder: (context, child) {
+                final v = e.controller.value;
+                final double dx; // share of the card's width
+                final double angle;
+                final double opacity;
+                if (e.leaving) {
+                  // 1 → 0 as it goes: tilt and fly off to the left.
+                  final p = Curves.easeInCubic.transform(1 - v);
+                  dx = e.leaveFrom + p * (-1.5 - e.leaveFrom);
+                  // The swipe's tilt carries on to the full 15° as it goes.
+                  final from = math.max(-offerTilt, e.leaveFrom * offerTilt);
+                  angle = from + p * (-offerTilt - from);
+                  opacity = (1 - p * 0.9).clamp(0.0, 1.0);
+                } else {
+                  // 0 → 1 as it comes: in from the right, tilted, then level.
+                  final p = Curves.easeOutCubic.transform(v);
+                  final drag = w > 0 ? e.drag / w : 0.0;
+                  dx = (1 - p) * 1.2 + drag;
+                  // Dragging tilts it with the finger, up to 15° at a full
+                  // width (Expo's).
+                  angle = (1 - p) * offerTilt + math.max(-offerTilt, drag * offerTilt);
+                  opacity = Curves.easeOut.transform(v).clamp(0.0, 1.0);
+                }
+                // The slot opens before the card lands, and closes once it
+                // has gone.
+                final height = Curves.easeInOut.transform((v / 0.5).clamp(0.0, 1.0));
+                final card = FractionalTranslation(
+                  translation: Offset(dx, 0),
+                  child: Transform.rotate(
+                    angle: angle,
+                    alignment: Alignment.bottomCenter,
+                    child: Opacity(opacity: opacity, child: child),
+                  ),
+                );
+                final slot = Align(alignment: Alignment.topCenter, heightFactor: height, child: card);
+                return height >= 0.999 ? slot : ClipRect(clipper: const _SideOpenClip(), child: slot);
+              },
+              child: Padding(
+                padding: EdgeInsets.only(bottom: widget.gap),
+                child: IgnorePointer(
+                  ignoring: e.leaving,
+                  child: GestureDetector(
+                    key: ValueKey('offer-swipe-${e.view.key}'),
+                    behavior: HitTestBehavior.translucent,
+                    onHorizontalDragUpdate: (d) => _dragUpdate(e, d),
+                    onHorizontalDragEnd: (d) => _dragEnd(e, d),
+                    child: SearchOfferCard(offer: e.view),
+                  ),
                 ),
               ),
-            );
-          },
-          child: Padding(
-            padding: EdgeInsets.only(bottom: widget.gap),
-            child: IgnorePointer(
-              ignoring: e.leaving,
-              child: SearchOfferCard(offer: e.view),
             ),
-          ),
-        ),
-    ],
+        ],
+      );
+    },
   );
+}
+
+/// Clips a card's slot top and bottom only, so a card flying in or out
+/// sideways is not cut off at the column's edge.
+class _SideOpenClip extends CustomClipper<Rect> {
+  const _SideOpenClip();
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(-size.width * 3, 0, size.width * 4, size.height);
+
+  @override
+  bool shouldReclip(covariant _SideOpenClip old) => false;
 }
 
 /// inDrive's "Choose a driver": the screen dims, and the offers stack under
