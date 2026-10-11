@@ -38,6 +38,11 @@
 // and returns the prompt, the raw reply and the parsed estimate. Nothing is
 // logged and no key counter or cooldown is touched.
 //
+// Callers: signed-in users only (the token is checked here, since the
+// gateway's JWT check is off), at most ROUTE_ESTIMATES_PER_WINDOW estimates
+// per ROUTE_ESTIMATE_WINDOW each (auth_rate_take). The test path is for
+// admins only on top of that.
+//
 // Deploy:
 //   supabase functions deploy ai-route-proxy --no-verify-jwt
 // ============================================================================
@@ -376,6 +381,11 @@ async function standardRoute(
   }
 }
 
+// Per signed-in caller: a booking screen asks a handful of times while the
+// rider edits the route; this many in the window is a script, not a rider.
+const ROUTE_ESTIMATES_PER_WINDOW = 30;
+const ROUTE_ESTIMATE_WINDOW = "10 minutes";
+
 function isValidCoord(v: unknown): v is LatLng {
   const c = v as LatLng | null;
   return (
@@ -397,6 +407,32 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: "POST only" }, 405);
   }
 
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !serviceKey) {
+    return json({ ok: false, error: "Function is missing Supabase credentials" }, 500);
+  }
+  const admin = createClient(supabaseUrl, serviceKey);
+
+  // Signed-in callers only, each held to a few estimates a minute: the
+  // function spends the operator's AI provider keys. Both apps fall back
+  // to their standard estimate when it refuses.
+  const token = /^Bearer\s+(\S+)$/i.exec(req.headers.get("Authorization") ?? "")?.[1] ?? null;
+  const { data: who } = token ? await admin.auth.getUser(token) : { data: { user: null } };
+  const userId = who?.user?.id;
+  if (!userId) {
+    return json({ ok: false, error: "sign_in_required" }, 401);
+  }
+  const { data: wait, error: rateErr } = await admin.rpc("auth_rate_take", {
+    p_bucket: "ai_route",
+    p_key: userId,
+    p_limit: ROUTE_ESTIMATES_PER_WINDOW,
+    p_window: ROUTE_ESTIMATE_WINDOW,
+  });
+  if (!rateErr && typeof wait === "number" && wait > 0) {
+    return json({ ok: false, error: "rate_limited", retry_after: wait }, 429);
+  }
+
   let body: { origin?: unknown; destination?: unknown; waypoints?: unknown; test?: unknown; request?: unknown };
   try {
     body = await req.json();
@@ -414,12 +450,6 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: "waypoints must be up to 5 { latitude, longitude }" }, 400);
   }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceKey) {
-    return json({ ok: false, error: "Function is missing Supabase credentials" }, 500);
-  }
-  const admin = createClient(supabaseUrl, serviceKey);
 
   const { data: settingsRow, error: settingsErr } = await admin
     .from("app_settings")
