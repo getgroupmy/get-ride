@@ -79,14 +79,16 @@ Duration tileRetryDelay(int attempt) => Duration(milliseconds: 500 * (1 << attem
 /// few that got through and showed grey for the rest, for good. It is also
 /// built once rather than on every rebuild, each of which used to open (and
 /// never close) its own HTTP client.
-final appTileProvider = NetworkTileProvider(
-  httpClient: RetryClient(
-    http.Client(),
-    retries: 4,
-    when: (r) => retryTileResponse(r.statusCode),
-    whenError: (e, _) => retryTileError(e),
-    delay: tileRetryDelay,
-  ),
+final appTileProvider = NetworkTileProvider(httpClient: retryingTileClient());
+
+/// The HTTP client behind every tile provider: retries a throttled (429) or
+/// failing (5xx) tile and a dropped request, with [tileRetryDelay] between.
+http.Client retryingTileClient() => RetryClient(
+  http.Client(),
+  retries: 4,
+  when: (r) => retryTileResponse(r.statusCode),
+  whenError: (e, _) => retryTileError(e),
+  delay: tileRetryDelay,
 );
 
 /// The base tile layer for [context]'s theme, or satellite imagery.
