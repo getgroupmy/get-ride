@@ -74,4 +74,6 @@ const allOwnedCategories = <String>{
   ...commerceOwnedCategories,
   ...meterappOwnedCategories,
   ...securityOwnedCategories,
+  // Saved push notifications: edited on the Push notifications screen.
+  'push-notification',
 };
