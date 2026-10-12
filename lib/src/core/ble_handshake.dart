@@ -4,6 +4,8 @@
 // what it saw, and the server decides it's the right car, and, where the
 // operator allows it, starts the trip without the code. Pure.
 
+import 'dart:math' as math;
+
 /// The admin's Bluetooth switches, kept in the reliability-messaging row
 /// beside the others (read the same way server-side by reliability_ble()).
 class BleSettings {
@@ -314,4 +316,28 @@ class BleStartStats {
       if (unknown > 0) '$unknown from older apps',
     ].join(' · ');
   }
+}
+
+// ---- How far away the other phone is -------------------------------------------------
+
+/// The signal a phone's advert arrives with at 1 m, and how fast it fades
+/// (log-distance path loss; 2.5 is a street with people and cars about).
+const bleTxPowerAt1m = -59;
+const blePathLossExponent = 2.5;
+
+/// Roughly how far away a phone heard at [rssi] dBm is, in metres. Phones,
+/// pockets and bodies make this rough: it's a hint, never a measurement.
+double bleDistanceM(int rssi, {int txPower = bleTxPowerAt1m, double n = blePathLossExponent}) =>
+    math.pow(10, (txPower - rssi) / (10 * n)).toDouble();
+
+/// The smoothed signal after one more advert: quick to start, slow to swing.
+int bleSmoothRssi(int? previous, int rssi) => previous == null ? rssi : (previous * 0.7 + rssi * 0.3).round();
+
+/// The distance as the badge shows it: "right next to you" under 2 m, the
+/// nearest metre under 10, the nearest 5 m after, "30+ m" beyond that.
+String bleDistanceLabel(double m) {
+  if (m < 2) return 'right next to you';
+  if (m < 10) return '~${m.round()} m';
+  if (m < 30) return '~${(m / 5).round() * 5} m';
+  return '30+ m away';
 }

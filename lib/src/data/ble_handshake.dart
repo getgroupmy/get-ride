@@ -134,6 +134,12 @@ class BleHandshakeEngine {
   /// Seconds left to cancel while counting down.
   final countdownLeft = ValueNotifier(0);
 
+  /// The other phone's signal, smoothed, while it's in range; null when it
+  /// isn't. Every sighting counts here, however weak (it's for the distance
+  /// hint, not the match).
+  final peerRssi = ValueNotifier<int?>(null);
+  DateTime? _peerAt;
+
   String? _status;
   BleTicket? _ticket;
   String? _unavailable;
@@ -196,6 +202,7 @@ class BleHandshakeEngine {
     await _stopAll();
     phase.dispose();
     countdownLeft.dispose();
+    peerRssi.dispose();
   }
 
   Future<BleTicket?> _fetchTicket() async {
@@ -239,6 +246,8 @@ class BleHandshakeEngine {
     final t = _ticket;
     if (t == null || !_running) return;
     if (tokenFromServiceUuid(a.uuid) != t.peerToken?.toLowerCase()) return;
+    _peerAt = _now();
+    peerRssi.value = bleSmoothRssi(peerRssi.value, a.rssi);
     _seen = _seen.add(a.rssi, _now(), thresholdDbm: t.settings.rssiThresholdDbm);
     if (phase.value == BleHandshakePhase.searching && _seen.count > 0) phase.value = BleHandshakePhase.nearby;
   }
@@ -247,6 +256,10 @@ class BleHandshakeEngine {
     if (!_running) return;
     final now = _now();
     _seen = _seen.expire(now);
+    if (_peerAt != null && now.difference(_peerAt!) > bleSightingGap) {
+      _peerAt = null;
+      peerRssi.value = null;
+    }
     if (_seen.count == 0 && phase.value == BleHandshakePhase.nearby) phase.value = BleHandshakePhase.searching;
     if (!_seen.qualifies || _reporting || phase.value == BleHandshakePhase.countdown) return;
     if (_holdUntil != null && now.isBefore(_holdUntil!)) return;
@@ -319,6 +332,8 @@ class BleHandshakeEngine {
     _countdown?.cancel();
     _tick = _refresh = _countdown = null;
     _seen = const PeerSighting();
+    _peerAt = null;
+    if (!_disposed) peerRssi.value = null;
     final sub = _sub;
     _sub = null;
     // Bluetooth is let go first; the listener goes in its own time.

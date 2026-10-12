@@ -159,6 +159,17 @@ void main() {
       expect(bleNeedsCountdown(side: 'driver', status: 'arrived', settings: const BleSettings(enabled: true)), isFalse);
     });
 
+    test('how far away the other phone is: a rough hint from the signal', () {
+      expect(bleDistanceM(bleTxPowerAt1m), closeTo(1, 0.001));
+      expect(bleDistanceM(-84), closeTo(10, 0.01), reason: '25 dB weaker at n = 2.5 is ten times as far');
+      expect(bleDistanceLabel(bleDistanceM(-55)), 'right next to you');
+      expect(bleDistanceLabel(bleDistanceM(-75)), '~4 m');
+      expect(bleDistanceLabel(13.2), '~15 m');
+      expect(bleDistanceLabel(bleDistanceM(-100)), '30+ m away');
+      expect(bleSmoothRssi(null, -70), -70);
+      expect(bleSmoothRssi(-70, -50), -64, reason: 'one loud advert moves it only part of the way');
+    });
+
     test('the admin\'s summary', () {
       expect(const BleStartStats().describe(7), contains('No trips'));
       final s = BleStartStats.fromRow([
@@ -234,6 +245,20 @@ void main() {
         expect(proofs.single.token, _peer);
         expect(proofs.single.seenFor, greaterThanOrEqualTo(bleSeenFor));
         expect(e.phase.value, BleHandshakePhase.matched);
+        finish(async, e);
+      });
+    });
+
+    test('the distance hint follows the other phone, however weak, and clears when it goes', () {
+      run((async, now) {
+        final e = engine(_ticket(), now);
+        e.start();
+        seePeer(async, 2, token: 'aaaaaaaaaaaaaaaa');
+        expect(e.peerRssi.value, isNull, reason: 'a stranger\'s phone gives no distance');
+        seePeer(async, 2, rssi: -90);
+        expect(e.peerRssi.value, -90, reason: 'too weak to match, close enough to hint');
+        async.elapse(const Duration(seconds: 5));
+        expect(e.peerRssi.value, isNull);
         finish(async, e);
       });
     });
@@ -364,7 +389,7 @@ void main() {
         radio.see(_peer, -60);
         await clock.advance(tester, const Duration(seconds: 1));
       }
-      expect(find.text('✓ Correct car'), findsOneWidget);
+      expect(find.text('✓ Correct car · right next to you'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     });
