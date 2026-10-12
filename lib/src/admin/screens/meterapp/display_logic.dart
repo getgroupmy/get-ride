@@ -25,12 +25,14 @@ const emergencyContactsMenuItemId = 'emergency-contacts';
 const inviteFriendsMenuItemId = 'invite-friends';
 const helpAssistantMenuItemId = 'help-assistant';
 const myRideMenuItemId = 'my-ride';
+const myQrMenuItemId = 'my-qr';
 
 const defaultUserMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
   ('city', 'City'),
   ('request-history', 'Request history'),
   (myRideMenuItemId, 'My Ride'), // favourite drivers (0160); this app's own, the Expo menu skips it
+  (myQrMenuItemId, 'My QR'), // personal QR codes (0161); this app's own, the Expo menu skips it
   ('freight', 'Freight'),
   ('wallet', 'Wallet'),
   ('notifications', 'Notifications'),
@@ -50,6 +52,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   ('dashboard', 'Dashboard'),
   ('earnings', 'Earnings'),
   ('wallet', 'Wallet'),
+  (myQrMenuItemId, 'My QR'), // GET.Referral / GET.me / GET.now (0161); this app's own
   ('trip-history', 'Trip history'),
   ('vehicle', 'Vehicle'),
   (vehicleInfoMenuItemId, 'Vehicle information'),
@@ -70,6 +73,7 @@ const defaultMenuRoutes = <String, Map<String, String>>{
     'city': '/',
     'request-history': '/',
     myRideMenuItemId: '/my-ride',
+    myQrMenuItemId: '/my-qr',
     'freight': '/',
     'wallet': '/wallet',
     'notifications': '/',
@@ -81,6 +85,7 @@ const defaultMenuRoutes = <String, Map<String, String>>{
   'partner': {
     'teksi-ev': '/teksi-ev',
     'wallet': '/wallet',
+    myQrMenuItemId: '/my-qr',
     'documents': '/partner-documents',
     'safety': '/safety',
     'support': '/support',
@@ -107,7 +112,7 @@ const allAppRoutes = <String>[
   '/', '/onboarding', '/role-selection', '/phone-auth', '/otp-verify', '/pin-setup', '/pin-verify',
   '/change-pin', '/change-number', '/name-entry', '/profile', '/edit-profile', '/profile-photo', '/settings',
   '/dark-mode', '/language', '/distances', '/navigation', '/user-guide', '/rules-terms', '/safety',
-  '/emergency-contacts', '/emergency-contact-edit', '/my-ride', '/search', '/map-picker', '/offer-fare', '/ride-detail',
+  '/emergency-contacts', '/emergency-contact-edit', '/my-ride', '/my-qr', '/search', '/map-picker', '/offer-fare', '/ride-detail',
   '/ride-confirm', '/ride-running', '/ride-tracking', '/teksi-ev', '/support', '/support-call',
   '/support-chat', '/partner-teksi', '/partner-ehailing', '/partner-onboarding', '/partner-documents',
   '/vehicle-onboarding', '/auth-diagnostics', '/admin-login', '/admin-dashboard', '/admin-orders',

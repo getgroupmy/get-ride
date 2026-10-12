@@ -31,6 +31,7 @@ const _builtInIcons = <String, IconData>{
   'city': Icons.directions_car_outlined,
   'request-history': Icons.schedule,
   'my-ride': Icons.favorite_border,
+  'my-qr': Icons.qr_code_2,
   'freight': Icons.local_shipping_outlined,
   'wallet': Icons.account_balance_wallet_outlined,
   'notifications': Icons.notifications_outlined,

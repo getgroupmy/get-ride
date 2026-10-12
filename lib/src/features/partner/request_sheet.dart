@@ -16,6 +16,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/ride_map.dart';
 import '../ride/confirm_parts.dart' show confirmAccent;
 import '../../widgets/net_image.dart';
+import 'direct_booking_badge.dart';
 
 /// A new ride request on a phone, as inDrive's: a sheet up from the bottom
 /// with the route on a map ("Ride request" over it, the time and distance
@@ -72,6 +73,16 @@ class RideRequestSheet extends ConsumerStatefulWidget {
 }
 
 class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
+  /// The signed-in driver's account id (what a GET.now booking names);
+  /// null when it can't be read.
+  String? get _driverId {
+    try {
+      return ref.read(currentUserIdProvider);
+    } catch (_) {
+      return null;
+    }
+  }
+
   final _map = MapController();
   List<LatLng> _toPickup = const [];
   List<LatLng> _trip = const [];
@@ -386,6 +397,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                       key: const ValueKey('request-fare'),
                       style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                     ),
+                    DirectBookingLabel(request: r, me: _driverId),
                     // The region's surcharges and taxes, collected on top.
                     if (r.chargeLines.isNotEmpty)
                       Text(

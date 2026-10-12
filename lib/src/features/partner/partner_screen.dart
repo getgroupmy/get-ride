@@ -29,6 +29,7 @@ import '../../widgets/ride_map.dart' show mapAttributionClearance;
 import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
+import 'direct_booking_badge.dart';
 import 'driver_home_map.dart';
 import '../support/call/mic_gate.dart' show primeMicForCalls;
 import 'driver_online.dart';
@@ -149,7 +150,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
     String? next;
     if (_online && !_autoAccept) {
-      final ordered = destinationOrder(open, toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo);
+      // A passenger who booked this driver directly (GET.now) comes first.
+      final ordered = pinDirectFirst(
+        destinationOrder(open, toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo),
+        _meId,
+      );
       next = nextRequestAlert(
         openIds: [for (final r in ordered) r.id],
         seen: _alertSeen,
@@ -902,11 +907,26 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final queued = [for (final r in _pinned(list)) if (r.id != _alertId) r];
     ref.watch(destinationModeProvider);
     final destinationOn = _destinationOn;
+    // Booked directly with this driver (GET.now) on top; the one tapped on
+    // the map above all.
     final sorted = focusFirst(
-      destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+      pinDirectFirst(
+        destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+        _meId,
+      ),
       _focusId,
     );
     return (alert: alert, sorted: sorted);
+  }
+
+  /// The signed-in driver's account id (what a GET.now booking names);
+  /// null when it can't be read.
+  String? get _meId {
+    try {
+      return ref.read(currentUserIdProvider);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// The requests floating on the phone's map, flying in as they arrive and
@@ -1012,6 +1032,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             Text(r.fareText(r.effectiveFare),
                 style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
           ]),
+          DirectBookingLabel(request: r, me: _meId),
           if (destinationOn && _towardDestination(r))
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -1116,6 +1137,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           ]),
           const SizedBox(height: 6),
           LinearProgressIndicator(key: const ValueKey('request-alert-countdown'), value: requestAlertProgress(shown)),
+          DirectBookingLabel(request: r, me: _meId),
           if (_raisedFrom[r.id] case final was?)
             Padding(
               padding: const EdgeInsets.only(top: 6),

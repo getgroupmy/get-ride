@@ -10,12 +10,14 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../admin/screens/commerce/get_coin.dart';
 import '../../core/format.dart';
+import '../../core/my_qr.dart' show parsePersonalQr;
 import '../../core/wallet_qr.dart';
 import '../../data/coin_trade_repository.dart';
 import '../../data/wallet_pay_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/image_share.dart';
+import '../my_qr/qr_result_sheet.dart' show showQrResultSheet;
 import 'wallet_screen.dart';
 
 /// The account's own code (Expo `wallet-receive.tsx`, and `wallet-coin-qr.tsx`
@@ -351,6 +353,23 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
 
   Future<void> _handle(String raw) async {
     if (_handled) return;
+    // A personal GET code (GET.me, GET.now, GET.Referral) opens its own
+    // sheet; scanning resumes when it closes.
+    final personal = parsePersonalQr(raw);
+    if (personal != null) {
+      _handled = true;
+      HapticFeedback.mediumImpact();
+      await _scanner.stop();
+      if (!mounted) return;
+      await showQrResultSheet(context, personal);
+      if (!mounted) return;
+      _manual.clear();
+      _handled = false;
+      try {
+        await _scanner.start();
+      } catch (_) {}
+      return;
+    }
     final qr = parseWalletQr(raw);
     if (qr == null) return;
     _handled = true;
