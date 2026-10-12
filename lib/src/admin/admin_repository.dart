@@ -5,7 +5,6 @@ import 'admin_access.dart';
 import 'admin_settings_models.dart';
 import 'profile_search.dart';
 import 'saved_push.dart';
-import 'sub_admin_grants.dart' show looksLikeUuid, profileSearchTerm;
 import 'screens/support_agents.dart';
 import '../core/notification_delivery.dart';
 
@@ -74,29 +73,6 @@ class AdminRepository {
       ], onConflict: 'profile_id,page');
     }
     if (deletes.isNotEmpty) await _db.from('admin_access').delete().inFilter('id', deletes);
-  }
-
-  /// Accounts matching [query] by name, phone, email or account id, or the
-  /// exact profile id when [query] is one (Expo's sub-admin user search).
-  Future<List<Map<String, dynamic>>> searchProfiles(String query, {int limit = 20}) async {
-    const cols = 'id, name, phone, email, display_id';
-    final q = query.trim();
-    if (looksLikeUuid(q)) return List<Map<String, dynamic>>.from(await _db.from('profiles').select(cols).eq('id', q));
-    final term = profileSearchTerm(q);
-    if (term == null) return const [];
-    final digits = term.replaceAll(RegExp(r'[^\d]'), '');
-    final rows = await _db
-        .from('profiles')
-        .select(cols)
-        .or([
-          'name.ilike.*$term*',
-          'email.ilike.*$term*',
-          'display_id.ilike.*$term*',
-          if (digits.length >= 3) 'phone.ilike.*$digits*',
-        ].join(','))
-        .order('name')
-        .limit(limit);
-    return List<Map<String, dynamic>>.from(rows);
   }
 
   Future<Map<String, dynamic>?> profileByPhone(String phone) async {

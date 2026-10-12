@@ -8,6 +8,7 @@ import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_categories.g.dart';
 import '../admin_providers.dart';
+import '../profile_search.dart';
 import '../sub_admin_grants.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
@@ -281,7 +282,7 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
 
   Future<void> _find() async {
     final q = _search.text.trim();
-    if (!looksLikeUuid(q) && profileSearchTerm(q) == null) {
+    if (!isProfileUuid(q) && peopleSearchTerm(q) == null) {
       setState(() => _searchError = 'Type at least two characters.');
       return;
     }
@@ -290,7 +291,7 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
       _searchError = null;
     });
     try {
-      final rows = await ref.read(adminRepositoryProvider).searchProfiles(q);
+      final rows = await ref.read(adminRepositoryProvider).searchPeople(q);
       if (mounted) setState(() => _results = rows);
     } catch (e) {
       if (mounted) setState(() => _searchError = 'Search failed: $e');
