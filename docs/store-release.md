@@ -268,7 +268,13 @@ What you do once:
 3. **Optional: `APPLE_TEAM_ID`** (repository variable, the 10-character
    team id) — only used when `IOS_PROVISIONING_PROFILE` is not set.
 4. **DNS**, only if the deploy warned about it: add the record it names at
-   the DNS provider of `getride.my`.
+   the DNS provider of `getride.my`. On Cloudflare the deploy can do it
+   itself: create an API token (My Profile → API Tokens → Create Token →
+   *Edit zone DNS*, zone `getride.my`) and save it as the Actions secret
+   `CLOUDFLARE_API_TOKEN`. Every domain in `deploy/domains.txt` then gets
+   its CNAME on the next production deploy, **DNS only** (grey cloud) — a
+   proxied record stops Vercel issuing the certificate. Existing records are
+   never overwritten.
 
 After the next push to `main` (web deploy), check:
 
@@ -303,4 +309,5 @@ or why nothing was. The console's *Recent builds* list links to each run.
 | 403 "caller does not have permission" | Step 3 of the service account setup |
 | iOS run warns "profile has no Associated Domains" | Step 1 of the app links setup |
 | A scanned My QR code opens the browser, not the app | Verification file missing or wrong (check the URLs in step 6), a Play install without `ANDROID_APP_LINK_SHA256`, or an iOS build made before Associated Domains was on |
-| Web deploy warns about `qr.getride.my` DNS | Add the record the warning names at the DNS provider |
+| Web deploy warns about `qr.getride.my` DNS | Add the record the warning names at the DNS provider, or set `CLOUDFLARE_API_TOKEN` (step 4) |
+| Web deploy warns the Cloudflare CNAME is proxied | Cloudflare → DNS → the record → switch the cloud to grey (DNS only) |

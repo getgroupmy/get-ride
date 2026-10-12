@@ -18,7 +18,7 @@ name: Deploy web
 #     by scripts/ci/app_links.ts from the signing material the release
 #     workflows already have (IOS_PROVISIONING_PROFILE for the team id,
 #     ANDROID_KEYSTORE_BASE64 for the upload key's fingerprint) plus the
-#     optional repository variables APPLE_TEAM_ID and
+#     optional repository variables (or secrets) APPLE_TEAM_ID and
 #     ANDROID_APP_LINK_SHA256 (the Play App Signing key). A file whose
 #     inputs are missing is skipped with a notice.
 #   * deploy/domains.txt: on a production deploy scripts/ci/vercel_domains.ts
@@ -148,8 +148,10 @@ jobs:
           IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-          ANDROID_APP_LINK_SHA256: ${{ vars.ANDROID_APP_LINK_SHA256 }}
+          # Fingerprints and team ids are not secret, so a repository
+          # variable is the natural home; a secret of the same name works too.
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID || secrets.APPLE_TEAM_ID }}
+          ANDROID_APP_LINK_SHA256: ${{ vars.ANDROID_APP_LINK_SHA256 || secrets.ANDROID_APP_LINK_SHA256 }}
         run: |
           set -euo pipefail
           work="$RUNNER_TEMP/app-links"
@@ -210,12 +212,16 @@ jobs:
           echo "Deployed ($VERCEL_ENV): $url" >> "$GITHUB_STEP_SUMMARY"
 
       # deploy/domains.txt: add any listed domain the project lacks (e.g.
-      # qr.getride.my) and point its DNS here when Vercel runs the zone.
-      # Production only; warns rather than fails.
+      # qr.getride.my) and point its DNS here when Vercel runs the zone, or
+      # on Cloudflare when the optional CLOUDFLARE_API_TOKEN secret is set
+      # (a token scoped to Zone -> DNS -> Edit on that zone). Production
+      # only; warns rather than fails.
       - name: Domains
         if: steps.secrets.outputs.present == 'true' && env.VERCEL_ENV == 'production'
         continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          deno run --allow-read --allow-env --allow-net=api.vercel.com \
+          deno run --allow-read --allow-env --allow-net=api.vercel.com,api.cloudflare.com \
             --allow-write="$GITHUB_STEP_SUMMARY" \
             scripts/ci/vercel_domains.ts deploy/domains.txt

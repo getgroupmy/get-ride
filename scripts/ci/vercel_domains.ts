@@ -17,14 +17,19 @@
  *      zone it lives in is on Vercel DNS, the CNAME is created (unless a
  *      record of that name is already there -- an existing record is
  *      somebody's decision and is never overwritten). If the zone is
- *      elsewhere, a warning names the exact record to add.
+ *      elsewhere, a warning names the exact record to add -- unless the zone
+ *      is on Cloudflare and CLOUDFLARE_API_TOKEN is set, in which case the
+ *      CNAME is created there (DNS only, never proxied: Vercel has to see
+ *      its own address to issue the certificate), under the same rule of
+ *      never overwriting a record that is already there.
  *
  * It never fails the deploy: the site is already live by now, and a domain
  * that could not be registered is a warning to act on, not a red build.
  * Transient API errors (429, 5xx, a dropped connection) are retried.
  *
- * Reads VERCEL_TOKEN, VERCEL_ORG_ID (the team) and VERCEL_PROJECT_ID. The
- * token goes in the Authorization header and nowhere else.
+ * Reads VERCEL_TOKEN, VERCEL_ORG_ID (the team) and VERCEL_PROJECT_ID, and
+ * the optional CLOUDFLARE_API_TOKEN (Zone -> DNS -> Edit on the zone). Each
+ * token goes in its own Authorization header and nowhere else.
  *
  * Endpoints (https://vercel.com/docs/rest-api):
  *   GET  /v9/projects/{project}/domains/{domain}    on the project?
@@ -34,9 +39,16 @@
  *   GET  /v5/domains/{zone}                         zone on Vercel DNS?
  *   GET  /v4/domains/{zone}/records                 existing records
  *   POST /v2/domains/{zone}/records                 create the CNAME
+ *
+ * Cloudflare (https://developers.cloudflare.com/api/):
+ *   GET  /client/v4/zones?name={zone}                    the zone's id
+ *   GET  /client/v4/zones/{id}/dns_records?name={fqdn}   existing records
+ *   POST /client/v4/zones/{id}/dns_records               create the CNAME
  */
 
 export const API = "https://api.vercel.com";
+
+export const CLOUDFLARE_API = "https://api.cloudflare.com/client/v4";
 
 /** What Vercel asks a subdomain to CNAME to when it recommends nothing. */
 export const DEFAULT_CNAME = "cname.vercel-dns.com";
@@ -168,6 +180,101 @@ export class Vercel {
   }
 }
 
+/** The same client against Cloudflare's API (no team parameter). */
+export class Cloudflare extends Vercel {
+  constructor(token: string, fetcher: Fetch = fetch, attempts = 4, delayMs = 2000) {
+    super(token, null, fetcher, attempts, delayMs);
+  }
+
+  override url(path: string): string {
+    return `${CLOUDFLARE_API}${path}`;
+  }
+}
+
+/** Cloudflare's error messages in [r], for a warning. */
+export function cloudflareErrorOf(r: Reply): string {
+  const errs = Array.isArray(r.body?.errors) ? r.body.errors : [];
+  const msg = errs.map((e: Json) => `${e?.code ?? ""} ${e?.message ?? ""}`.trim()).join("; ") ||
+    r.body?.raw || "no message";
+  return `HTTP ${r.status}: ${msg}`;
+}
+
+/**
+ * Creates [domain] CNAME [target] on Cloudflare, DNS only. Null when the
+ * domain's zone is not on this Cloudflare account (so the caller can fall
+ * back to naming the record); otherwise what happened.
+ */
+export async function ensureCloudflareRecord(
+  cf: Cloudflare,
+  domain: string,
+  target: string,
+): Promise<Report | null> {
+  const notes: string[] = [];
+  const warnings: string[] = [];
+  let zoneId: string | null = null;
+  let zone = "";
+  for (const z of zoneCandidates(domain)) {
+    const r = await cf.call("GET", `/zones?name=${encodeURIComponent(z)}`);
+    if (r.status !== 200) {
+      warnings.push(`${domain}: could not look up ${z} on Cloudflare (${cloudflareErrorOf(r)}).`);
+      return { notes, warnings };
+    }
+    const hit = (r.body?.result ?? []).find((x: Json) => x?.name === z);
+    if (hit?.id) {
+      zoneId = String(hit.id);
+      zone = z;
+      break;
+    }
+  }
+  if (!zoneId) return null;
+
+  const id = encodeURIComponent(zoneId);
+  const records = await cf.call("GET", `/zones/${id}/dns_records?name=${encodeURIComponent(domain)}`);
+  if (records.status !== 200) {
+    warnings.push(`${domain}: could not list its Cloudflare records (${cloudflareErrorOf(records)}).`);
+    return { notes, warnings };
+  }
+  const existing = (records.body?.result ?? []).filter((r: Json) => r?.name === domain);
+  if (existing.length) {
+    const ours = existing.find(
+      (r: Json) => r.type === "CNAME" && String(r.content ?? "").replace(/\.$/, "") === target,
+    );
+    if (ours?.proxied === true) {
+      warnings.push(
+        `${domain}: the Cloudflare CNAME is proxied (orange cloud). Vercel cannot issue its certificate ` +
+          `through the proxy: set it to DNS only (grey cloud) in Cloudflare.`,
+      );
+    } else if (ours) {
+      notes.push(`${domain}: the Cloudflare CNAME is there; DNS is still settling.`);
+    } else {
+      warnings.push(
+        `${domain}: Cloudflare already has a record named ${domain} (` +
+          existing.map((r: Json) => `${r.type} ${r.content}`).join(", ") +
+          `), left as it is. For the site it should be: ${domain} CNAME ${target}, DNS only.`,
+      );
+    }
+    return { notes, warnings };
+  }
+
+  const created = await cf.call("POST", `/zones/${id}/dns_records`, {
+    type: "CNAME",
+    name: domain,
+    content: target,
+    ttl: 1,
+    proxied: false,
+    comment: "GET.ride web app (deploy/domains.txt)",
+  });
+  if (created.status >= 200 && created.status < 300 && created.body?.success !== false) {
+    notes.push(`${domain}: created CNAME ${target} in Cloudflare (${zone}, DNS only).`);
+  } else {
+    warnings.push(
+      `${domain}: could not create the Cloudflare record (${cloudflareErrorOf(created)}). ` +
+        `Add: ${domain} CNAME ${target}, DNS only.`,
+    );
+  }
+  return { notes, warnings };
+}
+
 /** Vercel's error message in [r], for a warning. */
 export function errorOf(r: Reply): string {
   const e = r.body?.error;
@@ -186,7 +293,12 @@ function verificationText(v: Json): string {
 }
 
 /** Ensures one domain. Never throws: what went wrong is a warning. */
-export async function ensureDomain(api: Vercel, project: string, domain: string): Promise<Report> {
+export async function ensureDomain(
+  api: Vercel,
+  project: string,
+  domain: string,
+  cf: Cloudflare | null = null,
+): Promise<Report> {
   const notes: string[] = [];
   const warnings: string[] = [];
   const p = encodeURIComponent(project);
@@ -245,6 +357,17 @@ export async function ensureDomain(api: Vercel, project: string, domain: string)
   }
   const target = cnameTarget(config.body);
 
+  // DNS outside Vercel: on Cloudflare with a token, the record is made
+  // there; anywhere else it is named for somebody to add.
+  const viaCloudflare = async (): Promise<boolean> => {
+    if (!cf) return false;
+    const r = await ensureCloudflareRecord(cf, domain, target);
+    if (!r) return false;
+    notes.push(...r.notes);
+    warnings.push(...r.warnings);
+    return true;
+  };
+
   let zone: string | null = null;
   let vercelDns = false;
   for (const z of zones) {
@@ -256,6 +379,7 @@ export async function ensureDomain(api: Vercel, project: string, domain: string)
     }
   }
   if (!zone) {
+    if (await viaCloudflare()) return { notes, warnings };
     warnings.push(
       `${domain}: DNS is not pointing at Vercel, and its zone is not in this Vercel team. ` +
         `Add this record at your DNS provider: ${domain} CNAME ${target}`,
@@ -265,6 +389,7 @@ export async function ensureDomain(api: Vercel, project: string, domain: string)
   const name = recordName(domain, zone);
   const record = `${name} CNAME ${target} (in the ${zone} zone, i.e. ${domain} -> ${target})`;
   if (!vercelDns) {
+    if (await viaCloudflare()) return { notes, warnings };
     warnings.push(
       `${domain}: DNS is not pointing at Vercel and ${zone} is not on Vercel DNS. ` +
         `Add this record at your DNS provider: ${record}`,
@@ -336,10 +461,12 @@ async function main(): Promise<void> {
     const { domains, rejected } = parseDomainList(text);
     for (const r of rejected) warn(`${file}: "${r}" is not a domain name; skipped.`);
     const api = new Vercel(token, teamOf(Deno.env.get("VERCEL_ORG_ID")));
+    const cfToken = (Deno.env.get("CLOUDFLARE_API_TOKEN") ?? "").trim();
+    const cf = cfToken ? new Cloudflare(cfToken) : null;
     for (const domain of domains) {
       let report: Report;
       try {
-        report = await ensureDomain(api, project, domain);
+        report = await ensureDomain(api, project, domain, cf);
       } catch (e) {
         report = { notes: [], warnings: [`${domain}: ${e instanceof Error ? e.message : e}`] };
       }
