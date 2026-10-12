@@ -17,6 +17,10 @@
 #   ANDROID_KEY_PASSWORD      the key password
 #   PLAY_SERVICE_ACCOUNT      the whole service account JSON (only to upload)
 #
+# Every run also builds an APK with the same key and version code and
+# publishes it as the `android-latest` GitHub release, which Admin → App
+# Release offers as a download, an install link and a QR code.
+#
 # Repository variable ANDROID_VERSION_CODE_OFFSET: added to the run number
 # to make the version code. Set it above the highest version code already
 # in the Play Console (the Expo app's EAS builds), or Play refuses it.
@@ -53,6 +57,9 @@ jobs:
     name: Build and upload
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # contents: write to publish the APK as the android-latest release.
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -196,6 +203,41 @@ jobs:
           fi
           echo "signed with the upload key"
 
+      # The same build as an APK, for installing directly (a bundle can only
+      # go through Play). Never in the way of the Play upload.
+      - name: Build the APK
+        id: apk
+        if: steps.creds.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_ANDROID_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID }}
+          FIREBASE_ANDROID_API_KEY: ${{ vars.FIREBASE_ANDROID_API_KEY }}
+        run: |
+          set -euo pipefail
+          flutter build apk --release --build-number="${{ steps.build.outputs.code }}" \
+            --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
+            --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID" \
+            --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID" \
+            --dart-define=FIREBASE_ANDROID_API_KEY="$FIREBASE_ANDROID_API_KEY"
+          apk=build/app/outputs/flutter-apk/app-release.apk
+          if keytool -printcert -jarfile "$apk" | grep -q "CN=Android Debug"; then
+            echo "::error::The APK is signed with the DEBUG key; not publishing it."
+            exit 1
+          fi
+
+      - name: Publish as android-latest
+        id: publish
+        if: steps.creds.outputs.ready == 'true' && steps.apk.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/ci/publish_build.sh android \
+            build/app/outputs/flutter-apk/app-release.apk \
+            "${{ steps.build.outputs.code }}" true
+
       - name: Keep the bundle for download
         if: steps.creds.outputs.ready == 'true' && inputs.upload != true
         uses: actions/upload-artifact@v4
@@ -233,6 +275,9 @@ jobs:
             echo "* version code: \`${{ steps.build.outputs.code }}\`"
             echo "* commit: \`${{ github.sha }}\`"
             if [ -n "$NOTES" ]; then echo "* notes: $NOTES"; fi
+            if [ "${{ steps.publish.outcome }}" = "success" ]; then
+              echo "* APK published as \`android-latest\` (Admin → App Release)"
+            fi
             if [ -f "$RUNNER_TEMP/sha256.txt" ]; then
               echo "* upload key: \`$(tr -d ' ' < "$RUNNER_TEMP/sha256.txt")\`"
             fi
