@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/fare_tariff.dart' show fareTariffRowWithoutServices;
 import 'admin_access.dart';
 import 'admin_settings_models.dart';
+import 'sub_admin_grants.dart' show looksLikeUuid, profileSearchTerm;
 import 'screens/support_agents.dart';
 import '../core/notification_delivery.dart';
 
@@ -54,6 +55,47 @@ class AdminRepository {
       });
 
   Future<void> revoke(String grantId) => _db.from('admin_access').delete().eq('id', grantId);
+
+  /// Writes one person's grants in one go: upserts by (profile, page), so an
+  /// existing grant changes level instead of failing on the unique key, then
+  /// deletes the pages taken away. Every grant carries the same [notes].
+  Future<void> setGrants({
+    required String profileId,
+    required List<({String page, bool edit})> upserts,
+    required List<String> deletes,
+    String? notes,
+  }) async {
+    if (upserts.isNotEmpty) {
+      await _db.from('admin_access').upsert([
+        for (final u in upserts)
+          {'profile_id': profileId, 'page': u.page, 'access_level': u.edit ? 'edit' : 'read', 'notes': notes},
+      ], onConflict: 'profile_id,page');
+    }
+    if (deletes.isNotEmpty) await _db.from('admin_access').delete().inFilter('id', deletes);
+  }
+
+  /// Accounts matching [query] by name, phone, email or account id, or the
+  /// exact profile id when [query] is one (Expo's sub-admin user search).
+  Future<List<Map<String, dynamic>>> searchProfiles(String query, {int limit = 20}) async {
+    const cols = 'id, name, phone, email, display_id';
+    final q = query.trim();
+    if (looksLikeUuid(q)) return List<Map<String, dynamic>>.from(await _db.from('profiles').select(cols).eq('id', q));
+    final term = profileSearchTerm(q);
+    if (term == null) return const [];
+    final digits = term.replaceAll(RegExp(r'[^\d]'), '');
+    final rows = await _db
+        .from('profiles')
+        .select(cols)
+        .or([
+          'name.ilike.*$term*',
+          'email.ilike.*$term*',
+          'display_id.ilike.*$term*',
+          if (digits.length >= 3) 'phone.ilike.*$digits*',
+        ].join(','))
+        .order('name')
+        .limit(limit);
+    return List<Map<String, dynamic>>.from(rows);
+  }
 
   Future<Map<String, dynamic>?> profileByPhone(String phone) async {
     final digits = phone.replaceAll(RegExp(r'[^\d]'), '');
@@ -142,6 +184,30 @@ class AdminRepository {
   Future<List<Map<String, dynamic>>> documents(String table) async => List<Map<String, dynamic>>.from(
         await _db.from(table).select().order('uploaded_at', ascending: false).limit(500),
       );
+
+  /// Whose documents these are: partner names (by partner id) and, for
+  /// vehicle documents, plates (by vehicle id). One query per kind.
+  Future<({Map<String, Map<String, dynamic>> partners, Map<String, Map<String, dynamic>> vehicles})> documentOwners(
+    Iterable<String> partnerIds,
+    Iterable<String> vehicleIds,
+  ) async {
+    final p = partnerIds.toSet().toList(), v = vehicleIds.toSet().toList();
+    final partners = p.isEmpty ? const [] : await _db.from('partners').select('id, name, phone').inFilter('id', p);
+    final vehicles = v.isEmpty ? const [] : await _db.from('vehicle').select('id, plate').inFilter('id', v);
+    return (
+      partners: {for (final r in partners) '${r['id']}': Map<String, dynamic>.from(r as Map)},
+      vehicles: {for (final r in vehicles) '${r['id']}': Map<String, dynamic>.from(r as Map)},
+    );
+  }
+
+  /// Corrects a document's details (Expo `DocumentMetadataEditModal`).
+  Future<void> updateDocument(String table, String id, Map<String, dynamic> patch) => _updateOne(table, id, patch);
+
+  /// Removes a document row; the partner is asked for it again.
+  Future<void> deleteDocument(String table, String id) async {
+    final rows = await _db.from(table).delete().eq('id', id).select('id');
+    if (rows.isEmpty) throw StateError('Nothing was deleted: the database did not allow it, or it is already gone.');
+  }
 
   Future<void> reviewDocument(String table, String id, String status, String? notes) =>
       _updateOne(table, id, {
