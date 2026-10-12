@@ -17,6 +17,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
+import '../../widgets/ride_rating_card.dart';
 import '../../widgets/trip_safety.dart';
 
 final tripProvider = FutureProvider.autoDispose.family<RideRequest?, String>((ref, id) async {
@@ -55,8 +56,13 @@ class TripReceiptScreen extends ConsumerWidget {
           return _ReceiptBody(
             receipt: TripReceipt.fromRide(r, asDriver: asDriver),
             route: receiptRoute(r),
-            // The passenger's "Left something behind?" (Phase D4).
-            extra: asDriver ? null : LostItemCard(ride: r),
+            // The passenger's rating (0159) and "Left something behind?" (Phase D4).
+            extra: asDriver
+                ? null
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [RideRatingCard(ride: r), LostItemCard(ride: r)],
+                  ),
           );
         },
       ),

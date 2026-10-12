@@ -37,6 +37,42 @@ final adminTicketsProvider = FutureProvider.autoDispose((ref) {
   return ref.watch(adminRepositoryProvider).tickets();
 });
 
+/// Assigns a ticket to the admin themselves or another support agent (Expo's
+/// assign sheet, from the ticket or the pool list). Taking it yourself also
+/// moves it to in progress. True when it was reassigned.
+Future<bool> assignSupportTicket(
+  BuildContext context,
+  WidgetRef ref, {
+  required String ticketId,
+  required String? currentId,
+}) async {
+  final repo = ref.read(adminRepositoryProvider);
+  final meId = ref.read(currentUserIdProvider);
+  String? name;
+  try {
+    name = (await ref.read(profileProvider.future))?.name;
+  } catch (_) {
+    // Profile unreadable: the ticket is still assigned, as "Support".
+  }
+  final myName = name ?? 'Support';
+  var agents = const <SupportAgent>[];
+  try {
+    agents = await repo.supportAgents();
+  } catch (_) {
+    // Roster unreadable (older database): the picker still offers "me".
+  }
+  if (!context.mounted) return false;
+  final pick = await showSupportAgentPicker(context, agents: agents, meId: meId, meName: myName, currentId: currentId);
+  if (pick == null || pick.id == currentId || !context.mounted) return false;
+  final ok = await runAdminAction(
+    context,
+    () => pick.id == meId ? repo.assignTicketToMe(ticketId, myName) : repo.assignTicket(ticketId, pick.id, pick.name),
+    success: pick.id == meId ? 'Assigned to you' : 'Assigned to ${pick.name}',
+  );
+  ref.invalidate(adminTicketsProvider);
+  return ok;
+}
+
 class AdminSupportScreen extends ConsumerStatefulWidget {
   const AdminSupportScreen({super.key});
 
@@ -51,6 +87,7 @@ class _AdminSupportScreenState extends ConsumerState<AdminSupportScreen> {
   @override
   Widget build(BuildContext context) {
     final me = ref.watch(currentUserIdProvider);
+    final canEdit = ref.watch(moduleAccessProvider('support')) == AccessLevel.edit;
     return AdminPage(
       title: 'Support',
       module: 'support',
@@ -96,6 +133,7 @@ class _AdminSupportScreenState extends ConsumerState<AdminSupportScreen> {
                 itemBuilder: (_, i) {
                   final t = list[i];
                   final unread = (t['unread_admin'] as num?)?.toInt() ?? 0;
+                  final assignee = t['assigned_admin_id'] as String?;
                   return ListTile(
                     leading: Badge(
                       isLabelVisible: unread > 0,
@@ -108,15 +146,26 @@ class _AdminSupportScreenState extends ConsumerState<AdminSupportScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(dateText(t['last_message_at'] ?? t['created_at'])),
-                        const SizedBox(height: 4),
-                        StatusChip(ticketStatusLabels[t['status']] ?? '${t['status']}'),
-                      ],
-                    ),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(dateText(t['last_message_at'] ?? t['created_at'])),
+                          const SizedBox(height: 4),
+                          StatusChip(ticketStatusLabels[t['status']] ?? '${t['status']}'),
+                        ],
+                      ),
+                      // Assign or reassign without opening the ticket (Expo pool list).
+                      if (canEdit && t['status'] != 'closed')
+                        IconButton(
+                          key: ValueKey('list-assign-${t['id']}'),
+                          tooltip: assignee == null ? 'Assign' : 'Reassign',
+                          icon: Icon(assignee == null ? Icons.person_add_alt : Icons.swap_horiz),
+                          onPressed: () =>
+                              assignSupportTicket(context, ref, ticketId: '${t['id']}', currentId: assignee),
+                        ),
+                    ]),
                     onTap: () => context.go('/admin/support/${t['id']}'),
                   );
                 },
@@ -201,29 +250,9 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
     await _load();
   }
 
-  /// Assign the ticket to yourself or another support agent (Expo's assign
-  /// sheet). Taking it yourself also moves it to in progress.
+  /// Assign the ticket to yourself or another support agent ([assignSupportTicket]).
   Future<void> _assign(String? currentId) async {
-    final repo = ref.read(adminRepositoryProvider);
-    final meId = ref.read(currentUserIdProvider);
-    var agents = const <SupportAgent>[];
-    try {
-      agents = await repo.supportAgents();
-    } catch (_) {
-      // Roster unreadable (older database): the picker still offers "me".
-    }
-    if (!mounted) return;
-    final pick = await showSupportAgentPicker(context, agents: agents, meId: meId, meName: _myName, currentId: currentId);
-    if (pick == null || pick.id == currentId || !mounted) return;
-    await runAdminAction(
-      context,
-      () => pick.id == meId
-          ? repo.assignTicketToMe(widget.ticketId, _myName)
-          : repo.assignTicket(widget.ticketId, pick.id, pick.name),
-      success: pick.id == meId ? 'Assigned to you' : 'Assigned to ${pick.name}',
-    );
-    ref.invalidate(adminTicketsProvider);
-    await _load();
+    if (await assignSupportTicket(context, ref, ticketId: widget.ticketId, currentId: currentId)) await _load();
   }
 
   @override
