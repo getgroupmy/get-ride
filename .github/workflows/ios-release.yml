@@ -208,6 +208,63 @@ jobs:
           echo "Ad Hoc profile $uuid, $devices registered device(s)"
           echo "ADHOC_UUID=$uuid" >> "$GITHUB_ENV"
 
+      # Universal links: a phone camera scanning a My QR code
+      # (https://qr.getride.my/<ref|me|now>/<token>) opens the app instead
+      # of Safari. That needs the Associated Domains entitlement, which is
+      # NOT committed in Runner.entitlements: a profile whose App ID lacks
+      # the capability is refused at archive time, so it is added here only
+      # when the profile carries it. Without it the build goes ahead and
+      # the links open the web app, with a warning saying how to fix it.
+      - name: Associated Domains
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          APP_LINK_DOMAINS: applinks:qr.getride.my
+        run: |
+          set -euo pipefail
+          profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
+          ents=ios/Runner/Runner.entitlements
+          key=com.apple.developer.associated-domains
+          pb=/usr/libexec/PlistBuddy
+
+          # Whether a profile's entitlements carry the capability.
+          has_domains() {
+            security cms -D -i "$1" > "$RUNNER_TEMP/profile-check.plist"
+            "$pb" -c "Print :Entitlements:$key" "$RUNNER_TEMP/profile-check.plist" > /dev/null 2>&1
+          }
+
+          if ! has_domains "$profiles/release.mobileprovision"; then
+            msg="The provisioning profile has no Associated Domains, so this build cannot open https://qr.getride.my links (My QR codes open the web app instead)."
+            msg="$msg To fix: Apple Developer -> Certificates, IDs & Profiles -> Identifiers -> $BUNDLE_ID -> tick Associated Domains -> Save;"
+            msg="$msg then regenerate the App Store profile (and the Ad Hoc one, if used), download it and replace the IOS_PROVISIONING_PROFILE secret"
+            msg="$msg (and IOS_ADHOC_PROVISIONING_PROFILE) with its base64. See docs/store-release.md."
+            echo "::warning::$msg"
+            echo "* Universal links: **off** (profile has no Associated Domains; see docs/store-release.md)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if ! "$pb" -c "Print :$key" "$ents" > /dev/null 2>&1; then
+            "$pb" -c "Add :$key array" "$ents"
+          fi
+          for domain in $APP_LINK_DOMAINS; do
+            # PlistBuddy prints an array as `Array {`, one indented line per
+            # item, `}`. Read once, then searched, so no pipe can cut it short.
+            current=$("$pb" -c "Print :$key" "$ents")
+            if ! grep -qxF "    $domain" <<<"$current"; then
+              n=$(grep -c '^    ' <<<"$current" || true)
+              "$pb" -c "Add :$key:$n string $domain" "$ents"
+            fi
+          done
+          echo "Runner.entitlements for this build:"
+          cat "$ents"
+          echo "* Universal links: on ($APP_LINK_DOMAINS)" >> "$GITHUB_STEP_SUMMARY"
+
+          # The Ad Hoc export re-signs this same archive, so its profile
+          # needs the capability too; one without it would fail the export.
+          if [ -n "${ADHOC_UUID:-}" ] && ! has_domains "$profiles/adhoc.mobileprovision"; then
+            echo "::warning::The Ad Hoc profile has no Associated Domains but the App Store one does. Regenerate the Ad Hoc profile from the App ID $BUNDLE_ID and replace IOS_ADHOC_PROVISIONING_PROFILE; this run publishes the App Store IPA instead."
+            echo "ADHOC_UUID=" >> "$GITHUB_ENV"
+          fi
+
       # Flutter compiles without signing, then xcodebuild archives with the
       # distribution identity named explicitly. `flutter build ipa` looks
       # for a DEVELOPMENT certificate first, which a distribution-only

@@ -1,0 +1,12 @@
+# Domains the web project (Vercel) must serve, one per line.
+#
+# Every production deploy (.github/workflows/deploy-web.yml) runs
+# scripts/ci/vercel_domains.ts over this list: a domain missing from the
+# Vercel project is added, and if its DNS is on Vercel DNS the CNAME is
+# created; if DNS is elsewhere the run warns with the exact record to add.
+# Nothing is ever removed: domains the project already has (the apex,
+# www, ...) need not be listed and are left alone.
+
+# My QR codes (lib/src/core/my_qr.dart): the app-link host a phone camera
+# opens the app on. Its /.well-known/ files are written at deploy time.
+qr.getride.my

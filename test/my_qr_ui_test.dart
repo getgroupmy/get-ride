@@ -12,7 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/display_logic.dart';
-import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/app.dart' show appTheme, routerProvider;
 import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/fare.dart' show RideService;
 import 'package:get_ride/src/core/my_qr.dart';
@@ -35,6 +35,7 @@ import 'package:get_ride/src/data/referral_repository.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
+import 'package:get_ride/src/features/auth/phone_screen.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/features/my_qr/direct_booking.dart';
 import 'package:get_ride/src/features/my_qr/my_qr_screen.dart';
@@ -56,6 +57,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show AuthClientOptions, SupabaseClient;
 
 // ---- Fixtures -----------------------------------------------------------------------
 
@@ -475,7 +477,7 @@ void main() {
     testWidgets('the QR encodes the code\'s web link', (tester) async {
       await _app(tester, qr: _FakeQr([_qr('r1', QrKind.referral, _tokRef)]));
       final container = ProviderScope.containerOf(tester.element(find.byType(MyQrScreen)));
-      expect(container.read(myQrCodesProvider).value!.single.payload, 'https://getride.my/q/ref/$_tokRef');
+      expect(container.read(myQrCodesProvider).value!.single.payload, 'https://qr.getride.my/ref/$_tokRef');
     });
 
     testWidgets('Expire now asks first, then expires it', (tester) async {
@@ -896,6 +898,88 @@ void main() {
     testWidgets('a broken link says so', (tester) async {
       await _app(tester, qr: _FakeQr(), initial: '/q/zz/short');
       expect(find.byKey(const ValueKey('qr-link-invalid')), findsOneWidget);
+    });
+  });
+
+  // The app's own router, signed out: what a phone camera opening the app on
+  // https://qr.getride.my/<kind>/<token> (or a getride:// link) lands on.
+  group('app links through the app router', () {
+    Future<GoRouter> realRouter(WidgetTester tester, _FakeQr qr) async {
+      _size(tester, const Size(400, 900));
+      final db = SupabaseClient(
+        'http://localhost',
+        'anon',
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+      );
+      final container = ProviderContainer(
+        retry: (_, _) => null,
+        overrides: [
+          supabaseProvider.overrideWithValue(db),
+          deviceBlockedProvider.overrideWith((ref) async => false),
+          appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
+          currentUserIdProvider.overrideWithValue(null),
+          partnerProvider.overrideWith((ref) async => null),
+          profileProvider.overrideWith((ref) async => null),
+          myQrRepositoryProvider.overrideWithValue(qr),
+          myQrClockProvider.overrideWithValue(() => _now),
+          referralRepositoryProvider.overrideWithValue(_FakeReferrals()),
+        ],
+      );
+      addTearDown(container.dispose);
+      final r = container.read(routerProvider);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: r),
+        ),
+      );
+      await _settle(tester);
+      return r;
+    }
+
+    for (final (label, link) in [
+      ('/ref/<token>', '/ref/$_tokRef'),
+      ('https://qr.getride.my/ref/<token>', 'https://qr.getride.my/ref/$_tokRef'),
+      ('getride://ref/<token>', 'getride://ref/$_tokRef'),
+      ('/q/ref/<token>', '/q/ref/$_tokRef'),
+    ]) {
+      testWidgets('$label opens the code signed out', (tester) async {
+        final qr = _FakeQr()..resolutions[_tokRef] = const QrActive(kind: QrKind.referral, referralCode: 'WXYZ5678');
+        final r = await realRouter(tester, qr);
+        r.go(link);
+        await _settle(tester);
+        expect(find.byType(QrLinkScreen), findsOneWidget);
+        expect(find.byType(PhoneScreen), findsNothing);
+        expect(find.text('WXYZ5678'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('a short link with a broken token says so', (tester) async {
+      final r = await realRouter(tester, _FakeQr());
+      r.go('/now/short');
+      await _settle(tester);
+      expect(find.byKey(const ValueKey('qr-link-invalid')), findsOneWidget);
+    });
+
+    testWidgets('a driver\'s short link asks to sign in, then comes back', (tester) async {
+      PendingQrLink.path = null;
+      final qr = _FakeQr()..resolutions[_tokNow] = const QrSignInRequired(QrKind.now);
+      final r = await realRouter(tester, qr);
+      r.go('/now/$_tokNow');
+      await _settle(tester);
+      expect(find.byType(QrLinkScreen), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('qr-sign-in')));
+      await _settle(tester);
+      expect(find.byType(PhoneScreen), findsOneWidget);
+      expect(PendingQrLink.take(), '/q/now/$_tokNow');
+    });
+
+    testWidgets('other paths still need signing in', (tester) async {
+      final r = await realRouter(tester, _FakeQr());
+      r.go('/now');
+      await _settle(tester);
+      expect(find.byType(PhoneScreen), findsOneWidget);
     });
   });
 

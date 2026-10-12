@@ -28,6 +28,26 @@
 		<string>sms</string>
 		<string>comgooglemaps</string>
 	</array>
+	<!-- My QR links: getride://<ref|me|now>/<token> opens the app, and
+	     Flutter hands every link (this scheme, and the universal links on
+	     qr.getride.my that ios-release.yml adds to the entitlements) to the
+	     router in lib/src/app.dart. FlutterDeepLinkingEnabled is Flutter's
+	     default; it is written down so a plugin can't quietly turn it off. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.taxxee.teksi.qr</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>getride</string>
+			</array>
+		</dict>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
