@@ -31,6 +31,7 @@ import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../ride/live_ride_map.dart';
+import '../ride/cancelled_countdown.dart';
 import '../ride/ride_call_screen.dart' show RideCallButton;
 import '../ride/ride_chat_screen.dart' show RideChatBadge;
 import '../../widgets/ble_handshake_badge.dart';
@@ -209,19 +210,35 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     });
   }
 
+  /// The passenger's cancel notice is up: it closes the screen itself.
+  bool _cancelNoticeUp = false;
+  bool _left = false;
+
+  void _leave() {
+    if (_left || !mounted) return;
+    _left = true;
+    context.go('/drive');
+  }
+
   Future<void> _showCancelled(String notice) async {
     if (!mounted) return;
+    _cancelNoticeUp = true;
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         key: const ValueKey('trip-cancelled'),
         title: const Text('Ride cancelled'),
-        content: Text(notice),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(notice),
+          const SizedBox(height: 16),
+          CancelledCountdown(label: 'Back to requests', onDone: () => Navigator.pop(ctx)),
+        ]),
         actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Back to requests'))],
       ),
     );
-    if (mounted) context.go('/drive');
+    _cancelNoticeUp = false;
+    _leave();
   }
 
   static String _tripLabel(RideRequest r) => '${r.pickupLabel} → ${r.dropLabel}';
@@ -545,7 +562,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                 if (r.isForOthers) 'Booked by ${r.riderName ?? 'another rider'}',
               ].join('\n')),
               isThreeLine: r.isForOthers,
-              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              // No Message or Call once the ride is cancelled.
+              trailing: !rideContactAllowed(r) ? null : Row(mainAxisSize: MainAxisSize.min, children: [
                 // The in-app chat with the passenger (migration 0129).
                 IconButton(
                   key: const ValueKey('trip-message'),
@@ -632,10 +650,21 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             label: const Text('View receipt'),
             onPressed: () => context.push('/trips/${r.id}'),
           ),
+        // Cancelled: the screen closes by itself (the passenger's cancel
+        // notice, when it is up, runs the same countdown).
+        if (r.status == RideStatus.cancelled) ...[
+          CancelledCountdown(
+            label: 'Back to requests',
+            onDone: () {
+              if (!_cancelNoticeUp) _leave();
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
         if (r.status.isFinished)
           FilledButton(
             key: const ValueKey('trip-back-to-requests'),
-            onPressed: () => context.go('/drive'),
+            onPressed: _leave,
             child: Text(_closeIn == null ? 'Back to requests' : 'Back to requests ($_closeIn)'),
           ),
       ]),
