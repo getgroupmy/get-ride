@@ -11,8 +11,8 @@ name: Deploy web
 # the Build Output API (`vercel deploy --prebuilt`) -- Vercel only serves it.
 #
 # The site also serves qr.getride.my, the host My QR codes point at
-# (lib/src/core/my_qr.dart). Two things make a phone camera open the app on
-# those codes rather than the browser, both done here:
+# (lib/src/core/my_qr.dart). What makes a phone camera open the app on
+# those codes rather than the browser is done here:
 #
 #   * /.well-known/apple-app-site-association and assetlinks.json, written
 #     by scripts/ci/app_links.ts from the signing material the release
@@ -21,10 +21,15 @@ name: Deploy web
 #     optional repository variables (or secrets) APPLE_TEAM_ID and
 #     ANDROID_APP_LINK_SHA256 (the Play App Signing key). A file whose
 #     inputs are missing is skipped with a notice.
-#   * deploy/domains.txt: on a production deploy scripts/ci/vercel_domains.ts
-#     adds any listed domain the project lacks and creates its DNS record
-#     when the zone is on Vercel DNS (or warns with the record to add).
-#     It never fails the deploy.
+#
+# qr.getride.my itself is not attached here: any *.getride.my subdomain is
+# served by the Cloudflare worker in cloudflare/subdomain-proxy (deployed by
+# cloudflare-worker.yml), which fetches each request from the production
+# host and answers it under the visitor's subdomain. deploy/domains.txt is
+# only for domains that must be on the Vercel project itself (e.g. another
+# apex): on a production deploy scripts/ci/vercel_domains.ts adds any listed
+# domain the project lacks and creates its DNS record (or warns with the
+# record to add). It never fails the deploy, and an empty list is fine.
 #
 # See docs/store-release.md, "App links".
 #
@@ -211,8 +216,9 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed ($VERCEL_ENV): $url" >> "$GITHUB_STEP_SUMMARY"
 
-      # deploy/domains.txt: add any listed domain the project lacks (e.g.
-      # qr.getride.my) and point its DNS here when Vercel runs the zone, or
+      # deploy/domains.txt: add any listed domain the project lacks (never
+      # a *.getride.my subdomain: the worker serves those) and point its
+      # DNS here when Vercel runs the zone, or
       # on Cloudflare when the optional CLOUDFLARE_API_TOKEN secret is set
       # (a token scoped to Zone -> DNS -> Edit on that zone). Production
       # only; warns rather than fails.

@@ -1,12 +1,17 @@
-# Domains the web project (Vercel) must serve, one per line.
+# Domains that must be attached to the Vercel project itself, one per line.
 #
 # Every production deploy (.github/workflows/deploy-web.yml) runs
 # scripts/ci/vercel_domains.ts over this list: a domain missing from the
-# Vercel project is added, and if its DNS is on Vercel DNS the CNAME is
-# created; if DNS is elsewhere the run warns with the exact record to add.
-# Nothing is ever removed: domains the project already has (the apex,
-# www, ...) need not be listed and are left alone.
-
-# My QR codes (lib/src/core/my_qr.dart): the app-link host a phone camera
-# opens the app on. Its /.well-known/ files are written at deploy time.
-qr.getride.my
+# Vercel project is added, and its DNS record is created (Vercel DNS, or
+# Cloudflare when CLOUDFLARE_API_TOKEN is set -- DNS only) or named in a
+# warning. Nothing is ever removed: domains the project already has (the
+# apex, www, ...) need not be listed and are left alone.
+#
+# Do NOT list *.getride.my subdomains here (qr.getride.my included). They
+# are served by the Cloudflare worker in cloudflare/subdomain-proxy, which
+# answers for any subdomain under a proxied wildcard record. Listing one
+# here would create a DNS-only record of that name, which overrides the
+# wildcard and sends the subdomain straight to Vercel, bypassing the worker.
+#
+# This list is for domains outside that, e.g. a different apex the web app
+# must also answer on. An empty list is fine.

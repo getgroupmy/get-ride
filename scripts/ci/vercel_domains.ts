@@ -6,9 +6,11 @@
  *       scripts/ci/vercel_domains.ts deploy/domains.txt
  *
  * Run by .github/workflows/deploy-web.yml after a production deploy, so a
- * new subdomain the app needs (qr.getride.my, for My QR's app links) is
- * registered by committing one line rather than by somebody clicking
- * through the Vercel dashboard. For each listed domain:
+ * domain that must be on the Vercel project itself is registered by
+ * committing one line rather than by somebody clicking through the Vercel
+ * dashboard. (*.getride.my subdomains such as qr.getride.my are not listed:
+ * the Cloudflare worker in cloudflare/subdomain-proxy serves them.) For
+ * each listed domain:
  *
  *   1. Added to the project if it is not on it yet. Domains the project
  *      already has and that are not listed are left alone: the list says
@@ -460,6 +462,7 @@ async function main(): Promise<void> {
     }
     const { domains, rejected } = parseDomainList(text);
     for (const r of rejected) warn(`${file}: "${r}" is not a domain name; skipped.`);
+    if (!domains.length) console.log(`${file} lists no domains; nothing to register.`);
     const api = new Vercel(token, teamOf(Deno.env.get("VERCEL_ORG_ID")));
     const cfToken = (Deno.env.get("CLOUDFLARE_API_TOKEN") ?? "").trim();
     const cf = cfToken ? new Cloudflare(cfToken) : null;

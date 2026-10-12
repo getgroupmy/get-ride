@@ -229,14 +229,44 @@ universal links); without it, the same link opens the web app. Older codes
 
 What is automatic:
 
-* **The domain.** `deploy/domains.txt` lists the domains the web project must
-  serve. Every production web deploy adds any that are missing to the Vercel
-  project and, if the zone is on Vercel DNS, creates the CNAME. If DNS is
-  elsewhere, the deploy's summary has a warning with the exact record to add
-  (`qr CNAME cname.vercel-dns.com`, or what Vercel recommends). To serve a new
-  subdomain, add a line there; nothing is ever removed.
+* **The domain: a Cloudflare worker serves every `*.getride.my` subdomain.**
+  `cloudflare/subdomain-proxy` is a worker on the route `*.getride.my/*`. For
+  any subdomain (`qr`, or one added later) it fetches the same path from the
+  production host Vercel already has a certificate for (`www.getride.my`) and
+  returns that answer under the visitor's address. So a new subdomain needs
+  no Vercel domain and no DNS record. A plain proxied record pointing at
+  Vercel would not work: Vercel has no certificate for a name it was never
+  given, and Cloudflare would answer 525. `/.well-known/*` comes back as
+  Vercel's own 200 JSON, never a redirect (Apple does not follow redirects
+  for `apple-app-site-association`).
+  `.github/workflows/cloudflare-worker.yml` deploys it on pushes to `main`
+  that touch it (or by hand: Actions → *Cloudflare worker* → Run workflow).
+  It then makes sure the zone has a **proxied** wildcard record (`*` CNAME
+  `getride.my`, orange cloud), because a worker route never fires for a DNS-only
+  (grey) record. It creates that record only when no `*` record exists. It
+  never changes an existing record, and warns if one is grey. Finally it
+  requests `https://qr.getride.my/.well-known/…` and warns if either file is
+  not a 200 JSON answer.
+  * The apex, `www` and the worker's target host are always passed through to
+    their own origin. That is also what makes a loop impossible (see
+    `worker.js`). The route catches **every proxied** `*.getride.my` host,
+    including ones with their own orange-clouded record, so before the first
+    deploy check Cloudflare → DNS for proxied subdomains served elsewhere
+    (`api`, `status`, …). Grey records are not affected. To keep those
+    subdomains off the worker, set the repository variable
+    **`SUBDOMAIN_PROXY_PASS_THROUGH`** (comma separated, `api` or
+    `api.getride.my`) and re-run the workflow. **`SUBDOMAIN_PROXY_TARGET`**
+    changes the host fetched from (default `www.getride.my`). Defaults are
+    in `cloudflare/subdomain-proxy/wrangler.toml`.
+  * A subdomain with its own explicit record (for example a grey `qr` CNAME)
+    overrides the wildcard and bypasses the worker. The workflow warns about
+    `qr`.
+  * `deploy/domains.txt` is now only for domains that must be attached to the
+    Vercel project itself (for example another apex). Do not list
+    `*.getride.my` subdomains there: the web deploy would create a DNS-only
+    record that bypasses the worker.
 * **The verification files**, written at every web deploy and served on
-  every domain of the project:
+  every domain of the project, and through the worker on every subdomain:
   `/.well-known/apple-app-site-association` (team id read from
   `IOS_PROVISIONING_PROFILE`) and `/.well-known/assetlinks.json` (the upload
   key's SHA-256 from `ANDROID_KEYSTORE_BASE64`). A file whose inputs are
@@ -267,17 +297,43 @@ What you do once:
    which is already included.
 3. **Optional: `APPLE_TEAM_ID`** (repository variable, the 10-character
    team id) — only used when `IOS_PROVISIONING_PROFILE` is not set.
-4. **DNS**, only if the deploy warned about it: add the record it names at
-   the DNS provider of `getride.my`. On Cloudflare the deploy can do it
-   itself: create an API token (My Profile → API Tokens → Create Token →
-   *Edit zone DNS*, zone `getride.my`) and save it as the Actions secret
-   `CLOUDFLARE_API_TOKEN`. Every domain in `deploy/domains.txt` then gets
-   its CNAME on the next production deploy, **DNS only** (grey cloud) — a
-   proxied record stops Vercel issuing the certificate. Existing records are
-   never overwritten.
+4. **Cloudflare: one API token for the worker and DNS.** dash.cloudflare.com →
+   My Profile → API Tokens → Create Token → **Custom token**:
+   * Account → **Workers Scripts → Edit**
+   * Zone → **Workers Routes → Edit**
+   * Zone → **DNS → Edit**
+   * Zone → **Zone → Read**
+
+   Account resources: your account. Zone resources: *Specific zone* →
+   **getride.my**. Save the token as the Actions **secret**
+   `CLOUDFLARE_API_TOKEN`. The worker workflow and the web deploy's
+   *Domains* step both use it. Also add the Actions **variable**
+   `CLOUDFLARE_ACCOUNT_ID` (the *Account ID* on the account's overview page in
+   the dashboard). Without it, wrangler has to look the account up, which
+   needs the extra permission User → Memberships → Read. Then run
+   Actions → *Cloudflare worker* → Run workflow. Without the token the
+   workflow stays green and its summary says what is missing.
+5. **Cloudflare: SSL/TLS mode Full (strict).** getride.my → SSL/TLS →
+   Overview → **Full (strict)**. The worker fetches `https://www.getride.my`,
+   a host Vercel holds a valid certificate for, so strict validation costs
+   nothing. The same goes for any proxied record that points straight at
+   Vercel (`www` or the apex, if they are orange-clouded). If `www` is
+   orange-clouded, the worker's own fetch of it also goes through the zone's
+   settings. *Flexible* would talk plain HTTP to Vercel, and Vercel's HTTPS
+   redirect would then loop.
+6. **Vercel's `qr.getride.my` domain** (added by hand, or by an earlier
+   deploy from `deploy/domains.txt`) is harmless and can stay. It is only
+   used if a DNS-only `qr` record points at Vercel. If Cloudflare has such a
+   record, delete it (the workflow warns about it) so `qr` goes through the
+   worker like every other subdomain. Removing the domain from the Vercel
+   project is optional.
 
 After the next push to `main` (web deploy), check:
 
+* `curl -I https://qr.getride.my/.well-known/apple-app-site-association`
+  answers `HTTP/2 200` with `content-type: application/json` and no
+  `location` header. Seeing both a `cf-ray` and an `x-vercel-id` header is
+  expected: Cloudflare (the worker) answered, with Vercel behind it.
 * <https://qr.getride.my/.well-known/apple-app-site-association> — JSON naming
   `<TEAMID>.com.taxxee.teksi` and `/ref/*`, `/me/*`, `/now/*`
   (Apple's CDN caches it; a new file can take a day to reach phones).
@@ -309,5 +365,14 @@ or why nothing was. The console's *Recent builds* list links to each run.
 | 403 "caller does not have permission" | Step 3 of the service account setup |
 | iOS run warns "profile has no Associated Domains" | Step 1 of the app links setup |
 | A scanned My QR code opens the browser, not the app | Verification file missing or wrong (check the URLs in step 6), a Play install without `ANDROID_APP_LINK_SHA256`, or an iOS build made before Associated Domains was on |
-| Web deploy warns about `qr.getride.my` DNS | Add the record the warning names at the DNS provider, or set `CLOUDFLARE_API_TOKEN` (step 4) |
-| Web deploy warns the Cloudflare CNAME is proxied | Cloudflare → DNS → the record → switch the cloud to grey (DNS only) |
+| *Cloudflare worker* run says "subdomain proxy was not deployed" | `CLOUDFLARE_API_TOKEN` secret missing; app links step 4 |
+| Worker deploy fails on `/memberships` or "more than one account" | Set the `CLOUDFLARE_ACCOUNT_ID` variable (app links step 4) |
+| Worker deploy fails with an authentication/permission error | The token lacks Workers Scripts → Edit (account) or Workers Routes → Edit (zone `getride.my`) |
+| Worker run warns `*.getride.my` is DNS only | Cloudflare → DNS → the `*` record → Proxied (orange cloud); a route never fires for a grey record |
+| Worker run warns `qr.getride.my` has its own DNS-only record | That record bypasses the worker. Delete it (or set it to Proxied) so the wildcard and worker serve `qr` |
+| `qr.getride.my` answers 525 / 526 | The request reached Vercel without the worker: the `*` (or `qr`) record is grey, or the route is not attached. Re-run *Cloudflare worker*. A 526 means SSL mode Full (strict) met an invalid origin certificate: check `www.getride.my` itself |
+| `qr.getride.my` does not resolve | No `*` record yet: run *Cloudflare worker* with the token set |
+| `.well-known` file answers 404 through the worker | The web deploy skipped it (inputs missing, see its *App link files* step), or `SUBDOMAIN_PROXY_TARGET` names a host without it |
+| Another subdomain (api, status…) now shows the web app | Its record is proxied (orange), so the `*.getride.my/*` route catches it too: add it to `SUBDOMAIN_PROXY_PASS_THROUGH` and re-run *Cloudflare worker*. Grey records are never affected |
+| Web deploy warns about a domain's DNS | A domain in `deploy/domains.txt`: add the record the warning names, or set `CLOUDFLARE_API_TOKEN` (step 4). Never list `*.getride.my` subdomains there |
+| Web deploy warns the Cloudflare CNAME is proxied | For a `deploy/domains.txt` domain: Cloudflare → DNS → the record → grey (DNS only) |

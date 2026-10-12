@@ -1,0 +1,33 @@
+name = "getride-subdomain-proxy"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Only the route below. No *.workers.dev address or preview URLs: the
+# worker has nothing to serve outside getride.my, and this way the API
+# token needs no workers.dev permissions either.
+workers_dev = false
+preview_urls = false
+
+# The route binds the worker to every subdomain. The leading `*.` means
+# it matches qr.getride.my and does not match the bare apex. It does
+# match www.getride.my (the default TARGET_HOST); see "Why it cannot
+# loop" in worker.js for why that is safe.
+#
+# The wildcard DNS record must be **proxied** (orange cloud), or the
+# route never fires. .github/workflows/cloudflare-worker.yml creates it
+# when it is missing.
+routes = [
+  { pattern = "*.getride.my/*", zone_name = "getride.my" },
+]
+
+[vars]
+# Where the app is fetched from: a host Vercel holds a certificate for.
+# The production alias. Overridden at deploy time by the repository
+# variable SUBDOMAIN_PROXY_TARGET, if set.
+TARGET_HOST = "www.getride.my"
+
+# Subdomains left alone because they are served elsewhere (comma
+# separated; `api` or `api.getride.my`). The apex, `www` and TARGET_HOST
+# are always passed through. Overridden at deploy time by the repository
+# variable SUBDOMAIN_PROXY_PASS_THROUGH, if set.
+PASS_THROUGH = ""

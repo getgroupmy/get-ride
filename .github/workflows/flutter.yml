@@ -21,16 +21,17 @@ jobs:
   release-scripts:
     # The Play upload script's decisions (tracks, refusal messages), so a
     # release does not find a mistake there after a full build; and the
-    # web deploy's app-link files and domain registration, whose first
-    # real run is a production deploy.
+    # web deploy's app-link files and domain registration, and the
+    # *.getride.my subdomain proxy worker and its wildcard DNS record
+    # (cloudflare-worker.yml), whose first real run is a production deploy.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: deno check scripts/play_upload.ts scripts/ci/app_links.ts scripts/ci/vercel_domains.ts
-      - run: deno test scripts/play_upload_test.ts scripts/ci/app_links_test.ts scripts/ci/vercel_domains_test.ts
+      - run: deno check scripts/play_upload.ts scripts/ci/app_links.ts scripts/ci/vercel_domains.ts scripts/ci/cloudflare_wildcard.ts cloudflare/subdomain-proxy/route_test.ts
+      - run: deno test scripts/play_upload_test.ts scripts/ci/app_links_test.ts scripts/ci/vercel_domains_test.ts scripts/ci/cloudflare_wildcard_test.ts cloudflare/subdomain-proxy/route_test.ts
 
   # Every push to the default branch that passes analyze + tests is deployed
   # to Vercel production. Other branches get the checks only: Vercel's free
