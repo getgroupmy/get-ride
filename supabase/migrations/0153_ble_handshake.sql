@@ -258,7 +258,7 @@ grant execute on function public.ble_handshake_proof(uuid, text, int, int, doubl
 
 -- ---- Admin: how trips started ------------------------------------------------------
 create or replace function public.ble_start_stats(p_days int default 7)
-returns table (ble bigint, pin bigint, none bigint, unknown bigint)
+returns table (by_ble bigint, by_pin bigint, by_none bigint, by_unknown bigint)
 language plpgsql
 stable
 security definer
