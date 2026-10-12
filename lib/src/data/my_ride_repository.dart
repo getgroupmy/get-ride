@@ -5,6 +5,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/driver_request_radius.dart';
 import '../core/my_ride.dart';
 import '../providers.dart' show supabaseProvider, currentUserIdProvider;
 
@@ -208,6 +209,30 @@ final favouriteRiderIdsProvider = FutureProvider<Set<String>>((ref) async {
     return await ref.watch(myRideRepositoryProvider).favouriteRiderIds();
   } catch (_) {
     // A star is a nicety: never fail the request list over it.
+    return const {};
+  }
+});
+
+/// The vehicle services' dispatch settings (radii, windows) by service name
+/// and entry id ([dispatchConfigsByService]), for the driver's request
+/// radius. Empty — every service on the defaults — when the catalogue
+/// cannot be read.
+final serviceDispatchConfigsProvider = FutureProvider<Map<String, ServiceDispatchConfig>>((ref) async {
+  try {
+    final rows = await ref
+        .watch(supabaseProvider)
+        .from('settings_entries')
+        .select('id, values, position')
+        .eq('category', 'vehicle-services')
+        .order('position');
+    return dispatchConfigsByService([
+      for (final r in rows)
+        (
+          id: '${r['id']}',
+          values: r['values'] is Map ? Map<String, dynamic>.from(r['values'] as Map) : <String, dynamic>{},
+        ),
+    ]);
+  } catch (_) {
     return const {};
   }
 });

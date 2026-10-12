@@ -42,6 +42,7 @@ const _builtInIcons = <String, IconData>{
   'logout': Icons.logout,
   'sign-out': Icons.logout,
   'dashboard': Icons.dashboard_outlined,
+  'my-ride-code': Icons.qr_code_2,
   'earnings': Icons.payments_outlined,
   'trip-history': Icons.schedule,
   'vehicle': Icons.directions_car_outlined,
