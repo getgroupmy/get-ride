@@ -94,6 +94,7 @@ Defaults point at the production Supabase project used by the Expo app. Override
 | `CURRENCY` | `MYR` |
 | `DIAL_CODE` | `+60` |
 | `MAP_TILE_URL` / `MAP_TILE_URL_DARK` | OpenStreetMap's standard tiles, darkened on the device in dark mode. Set a keyed provider (MapTiler, Stadia Maps, CARTO…) for production traffic; `MAP_TILE_URL_DARK` is optional and is used as-is in dark mode |
+| `MAP_TILE_URL_TRAFFIC` / `TOM_TOM_API_KEY` | The driver map's live-traffic overlay; off (button hidden) until one is set. `TOM_TOM_API_KEY` (an Actions secret) is enough: the release and web builds turn it into TomTom's relative-flow tiles (`scripts/ci/map_defines.sh`). `HERE_API_KEY` adds HERE's flow tiles as a per-tile backup (any tile TomTom fails to serve is fetched from HERE), or is the primary when there is no TomTom key. `MAP_TILE_URL_TRAFFIC` / `MAP_TILE_URL_TRAFFIC_FALLBACK` take full XYZ templates from another provider and win over the keys. The key ships inside the app, so restrict it to the app ids and getride.my domains in the provider's console |
 | `NOMINATIM_URL` / `OSRM_URL` | public OpenStreetMap endpoints (use self-hosted ones in production — the public servers have strict usage limits) |
 | `GEO_COUNTRIES` | `my` |
 | `FIREBASE_PROJECT_ID`, `FIREBASE_MESSAGING_SENDER_ID`, `FIREBASE_ANDROID_APP_ID` / `FIREBASE_ANDROID_API_KEY`, `FIREBASE_IOS_APP_ID` / `FIREBASE_IOS_API_KEY` | unset: no push. Firebase's public client ids for push notifications; the store-release workflows read them from repository variables of the same names |

@@ -284,6 +284,15 @@ jobs:
           FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
           FIREBASE_IOS_APP_ID: ${{ vars.FIREBASE_IOS_APP_ID }}
           FIREBASE_IOS_API_KEY: ${{ vars.FIREBASE_IOS_API_KEY }}
+          # Map tiles (scripts/ci/map_defines.sh): keyed providers, all
+          # optional; unset keeps OpenStreetMap and hides the traffic button.
+          MAP_TILE_URL: ${{ vars.MAP_TILE_URL || secrets.MAP_TILE_URL }}
+          MAP_TILE_URL_DARK: ${{ vars.MAP_TILE_URL_DARK || secrets.MAP_TILE_URL_DARK }}
+          MAP_TILE_URL_SATELLITE: ${{ vars.MAP_TILE_URL_SATELLITE || secrets.MAP_TILE_URL_SATELLITE }}
+          MAP_TILE_URL_TRAFFIC: ${{ secrets.MAP_TILE_URL_TRAFFIC || vars.MAP_TILE_URL_TRAFFIC }}
+          MAP_TILE_URL_TRAFFIC_FALLBACK: ${{ secrets.MAP_TILE_URL_TRAFFIC_FALLBACK || vars.MAP_TILE_URL_TRAFFIC_FALLBACK }}
+          TOM_TOM_API_KEY: ${{ secrets.TOM_TOM_API_KEY }}
+          HERE_API_KEY: ${{ secrets.HERE_API_KEY }}
         run: |
           set -euo pipefail
           build=$(( ${{ github.run_number }} + OFFSET ))
@@ -307,7 +316,9 @@ jobs:
           PLIST
 
           # The marketing version comes from pubspec.yaml, set by a person.
+          scripts/ci/map_defines.sh "$RUNNER_TEMP/map-defines.json"
           flutter build ios --release --no-codesign --build-number="$build" \
+            --dart-define-from-file="$RUNNER_TEMP/map-defines.json" \
             --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
             --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID" \
             --dart-define=FIREBASE_IOS_APP_ID="$FIREBASE_IOS_APP_ID" \

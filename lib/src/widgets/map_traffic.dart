@@ -10,7 +10,12 @@
 //                         in the query string, e.g. TomTom's flow tiles:
 //                         https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key=…
 //
-// The URL is never logged or shown: it carries the key.
+//   MAP_TILE_URL_TRAFFIC_FALLBACK  optional second source (e.g. HERE's flow
+//                         tiles) fetched for any tile the first one fails
+//                         to load: a provider outage or an exhausted quota
+//                         degrades tile by tile instead of blanking traffic.
+//
+// The URLs are never logged or shown: they carry the keys.
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -20,6 +25,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'map_tiles.dart' show appTileProvider;
 
 const _configuredTraffic = String.fromEnvironment('MAP_TILE_URL_TRAFFIC');
+const _configuredTrafficFallback = String.fromEnvironment('MAP_TILE_URL_TRAFFIC_FALLBACK');
 
 /// The traffic tile template to use, or null when none is configured (or
 /// what is configured is not an https XYZ template).
@@ -33,6 +39,20 @@ String? resolveTrafficTileUrl({String configured = _configuredTraffic}) {
 /// The configured traffic tile source (overridden in tests); null hides the
 /// traffic button.
 final trafficTileUrlProvider = Provider<String?>((_) => resolveTrafficTileUrl());
+
+/// The backup traffic source, validated the same way; null when there is
+/// none, or when it is the same as the primary (nothing to fall back to).
+String? resolveTrafficFallbackUrl({
+  String configured = _configuredTrafficFallback,
+  String? primary,
+}) {
+  final url = resolveTrafficTileUrl(configured: configured);
+  return url == primary ? null : url;
+}
+
+final trafficFallbackTileUrlProvider = Provider<String?>(
+  (ref) => resolveTrafficFallbackUrl(primary: ref.watch(trafficTileUrlProvider)),
+);
 
 /// Whether the driver has traffic switched on, persisted per device.
 class MapTraffic extends Notifier<bool> {
@@ -64,11 +84,15 @@ final mapTrafficProvider = NotifierProvider<MapTraffic, bool>(MapTraffic.new);
 
 /// The traffic layer to draw over the base tiles, when traffic is configured
 /// and switched on; null otherwise.
-TileLayer? trafficTileLayer(String? url, {required bool on}) {
+///
+/// With a [fallback], a tile the primary source fails to load is fetched
+/// from the fallback instead (flutter_map's per-tile `fallbackUrl`).
+TileLayer? trafficTileLayer(String? url, {required bool on, String? fallback}) {
   if (url == null || !on) return null;
   return TileLayer(
     key: const ValueKey('traffic-tiles'),
     urlTemplate: url,
+    fallbackUrl: fallback,
     subdomains: url.contains('{s}') ? const ['a', 'b', 'c', 'd'] : const [],
     userAgentPackageName: 'com.taxxee.teksi',
     tileProvider: appTileProvider,
