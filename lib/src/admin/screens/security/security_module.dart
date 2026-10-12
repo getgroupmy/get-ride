@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../admin_registry.dart';
 import 'api_keys_screens.dart';
 import 'backend_screen.dart';
+import 'ble_report_screen.dart';
 import 'elife_screen.dart';
 import 'fare_ai_request_screen.dart';
 import 'fare_ai_screens.dart';
@@ -23,6 +24,7 @@ final securityRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/session-history', builder: (_, _) => const AdminSessionHistoryScreen()),
   GoRoute(path: '/admin/m/trace-fraud', builder: (_, _) => const AdminTraceFraudScreen()),
   GoRoute(path: '/admin/m/messaging', builder: (_, _) => const AdminMessagingScreen()),
+  GoRoute(path: '/admin/m/ble-report', builder: (_, _) => const AdminBleReportScreen()),
   GoRoute(path: '/admin/m/ip-access', builder: (_, _) => const AdminIpAccessScreen()),
   GoRoute(path: '/admin/m/api-keys', builder: (_, _) => const AdminApiProvidersScreen()),
   GoRoute(
@@ -133,6 +135,14 @@ const securityEntries = <AdminScreenEntry>[
     path: '/admin/m/messaging',
     pages: [messagingPage],
     icon: Icons.sms_outlined,
+  ),
+  AdminScreenEntry(
+    section: _section,
+    title: 'Bluetooth & safety report',
+    subtitle: 'Trips started by Bluetooth or code, the pickup handshake, safety flags, lost items',
+    path: '/admin/m/ble-report',
+    pages: [bleReportPage],
+    icon: Icons.insights_outlined,
   ),
   AdminScreenEntry(
     section: _section,

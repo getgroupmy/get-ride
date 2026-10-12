@@ -3,6 +3,7 @@
 // A switch applies the moment it moves; every app picks it up live.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/ble_handshake.dart';
 import '../../core/reliability_settings.dart';
@@ -166,7 +167,10 @@ class _ReliabilityCardState extends ConsumerState<ReliabilityCard> {
             if (loaded.hasError)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text('Couldn’t load the saved switches; the offline ones are treated as on.', style: t.textTheme.bodySmall),
+                child: Text(
+                  'Couldn’t load the saved switches; the offline ones are treated as on.',
+                  style: t.textTheme.bodySmall,
+                ),
               ),
           ],
         ),
@@ -188,9 +192,8 @@ class _BleSection extends ConsumerWidget {
   static const _rssiSteps = [-90, -85, -80, -75, -70, -65, -60, -55, -50];
   static const _timeouts = [10, 20, 30, 60];
 
-  Widget? _spinner(String key) => saving == key
-      ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-      : null;
+  Widget? _spinner(String key) =>
+      saving == key ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)) : null;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -307,9 +310,8 @@ class _SafetySection extends ConsumerWidget {
   static const _distances = [100, 200, 300, 500, 1000];
   static const _minutes = [2, 3, 5, 10];
 
-  Widget? _spinner(String key) => saving == key
-      ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-      : null;
+  Widget? _spinner(String key) =>
+      saving == key ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)) : null;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -386,6 +388,18 @@ class _SafetySection extends ConsumerWidget {
             ),
             key: const ValueKey('reliability-safety-summary'),
             style: t.textTheme.bodySmall,
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: TextButton.icon(
+              key: const ValueKey('reliability-open-report'),
+              onPressed: () => context.push('/admin/m/ble-report'),
+              icon: const Icon(Icons.insights_outlined, size: 18),
+              label: const Text('Open the Bluetooth & safety report'),
+            ),
           ),
         ),
       ],
