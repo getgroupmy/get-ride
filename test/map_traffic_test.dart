@@ -26,6 +26,17 @@ void main() {
       expect(trafficTileLayer(_url, on: false), isNull);
       expect(trafficTileLayer(_url, on: true)!.urlTemplate, _url);
     });
+
+    test('a backup source is used per tile when the primary fails', () {
+      const backup = 'https://backup.example/{z}/{x}/{y}/png?apiKey=test';
+      expect(resolveTrafficFallbackUrl(configured: '', primary: _url), isNull);
+      expect(resolveTrafficFallbackUrl(configured: 'http://insecure/{z}/{x}/{y}', primary: _url), isNull);
+      expect(resolveTrafficFallbackUrl(configured: backup, primary: _url), backup);
+      // The same source twice is nothing to fall back to.
+      expect(resolveTrafficFallbackUrl(configured: _url, primary: _url), isNull);
+      expect(trafficTileLayer(_url, on: true, fallback: backup)!.fallbackUrl, backup);
+      expect(trafficTileLayer(_url, on: true)!.fallbackUrl, isNull);
+    });
   });
 
   test('the switch is remembered on the device', () async {

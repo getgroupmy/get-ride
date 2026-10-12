@@ -182,7 +182,9 @@ jobs:
           MAP_TILE_URL_DARK: ${{ vars.MAP_TILE_URL_DARK || secrets.MAP_TILE_URL_DARK }}
           MAP_TILE_URL_SATELLITE: ${{ vars.MAP_TILE_URL_SATELLITE || secrets.MAP_TILE_URL_SATELLITE }}
           MAP_TILE_URL_TRAFFIC: ${{ secrets.MAP_TILE_URL_TRAFFIC || vars.MAP_TILE_URL_TRAFFIC }}
+          MAP_TILE_URL_TRAFFIC_FALLBACK: ${{ secrets.MAP_TILE_URL_TRAFFIC_FALLBACK || vars.MAP_TILE_URL_TRAFFIC_FALLBACK }}
           TOM_TOM_API_KEY: ${{ secrets.TOM_TOM_API_KEY }}
+          HERE_API_KEY: ${{ secrets.HERE_API_KEY }}
         run: |
           set -euo pipefail
           scripts/ci/map_defines.sh "$RUNNER_TEMP/map-defines.json"

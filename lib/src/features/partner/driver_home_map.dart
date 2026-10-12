@@ -119,7 +119,11 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     final me = widget.me, requests = widget.requests, onSelect = widget.onSelect;
     final t = Theme.of(context);
     final trafficUrl = ref.watch(trafficTileUrlProvider);
-    final traffic = trafficTileLayer(trafficUrl, on: trafficUrl != null && ref.watch(mapTrafficProvider));
+    final traffic = trafficTileLayer(
+      trafficUrl,
+      on: trafficUrl != null && ref.watch(mapTrafficProvider),
+      fallback: ref.watch(trafficFallbackTileUrlProvider),
+    );
     final map = RideMap(
       controller: _map,
       me: me,
