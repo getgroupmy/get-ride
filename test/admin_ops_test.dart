@@ -8,6 +8,7 @@ import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/admin_repository.dart';
 import 'package:get_ride/src/admin/screens/documents_screen.dart';
 import 'package:get_ride/src/admin/screens/sub_admins_screen.dart';
+import 'package:get_ride/src/admin/profile_search.dart';
 import 'package:get_ride/src/admin/sub_admin_grants.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/providers.dart';
@@ -35,7 +36,7 @@ class _Admin extends AdminRepository {
   Future<Map<String, Map<String, dynamic>>> profilesByIds(Iterable<String> ids) async => {'p-aina': _aina};
 
   @override
-  Future<List<Map<String, dynamic>>> searchProfiles(String query, {int limit = 20}) async {
+  Future<List<Map<String, dynamic>>> searchPeople(String query, {int limit = 20}) async {
     searches.add(query);
     return [_aina];
   }
@@ -143,11 +144,11 @@ void main() {
     });
 
     test('a search term is safe inside a PostgREST or-filter', () {
-      expect(profileSearchTerm('a'), isNull);
-      expect(profileSearchTerm('ai,na).or(id'), 'ai na .or id');
-      expect(profileSearchTerm('  Siti  Aminah '), 'Siti Aminah');
-      expect(looksLikeUuid('0d7c6c4e-1a2b-4c3d-8e9f-0123456789ab'), isTrue);
-      expect(looksLikeUuid('aina'), isFalse);
+      expect(peopleSearchTerm('a'), isNull);
+      expect(peopleSearchTerm('ai,na).or(id'), 'ai na .or id');
+      expect(peopleSearchTerm('  Siti  Aminah '), 'Siti Aminah');
+      expect(isProfileUuid('0d7c6c4e-1a2b-4c3d-8e9f-0123456789ab'), isTrue);
+      expect(isProfileUuid('aina'), isFalse);
     });
   });
 
