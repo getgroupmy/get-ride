@@ -141,6 +141,132 @@ void main() {
     });
   });
 
+  group('vehicle services: search radius & My Ride', () {
+    const base = {'costPerKm': '1', 'costPerMin': '0.2', 'minFareAmount': '5'};
+    ValuesResult build({Map<String, String> dispatch = const {}, Map<String, dynamic>? existing}) =>
+        buildVehicleServiceValues(
+          text: {'name': 'Ride'},
+          numbers: base,
+          serviceTypes: const [],
+          fuel: const [],
+          status: true,
+          dispatch: dispatch,
+          existing: existing,
+        );
+
+    test('writes the five keys the dispatch reads', () {
+      final r = build(dispatch: {
+        'searchRadiusMinKm': '2.5',
+        'searchRadiusMaxKm': '20',
+        'searchWidenAfterSec': '45',
+        'myRideMaxKm': '0',
+        'myRideWindowSec': '90',
+      });
+      expect(r.error, isNull);
+      expect(r.values['searchRadiusMinKm'], 2.5);
+      expect(r.values['searchRadiusMaxKm'], 20);
+      expect(r.values['searchWidenAfterSec'], 45);
+      expect(r.values['myRideMaxKm'], 0);
+      expect(r.values['myRideWindowSec'], 90);
+    });
+
+    test('keeps keys it does not own, and the dispatch keys when not given', () {
+      final existing = {
+        'name': 'Old',
+        'costPerKm': 9,
+        'futureKey': {'a': 1},
+        'isDefault': true,
+        'searchRadiusMinKm': 4,
+        'myRideWindowSec': 120,
+      };
+      final r = build(existing: existing);
+      expect(r.error, isNull);
+      expect(r.values['futureKey'], {'a': 1});
+      expect(r.values['isDefault'], isTrue);
+      expect(r.values['searchRadiusMinKm'], 4);
+      expect(r.values['myRideWindowSec'], 120);
+      // Owned keys still take the editor's value.
+      expect(r.values['name'], 'Ride');
+      expect(r.values['costPerKm'], 1);
+      expect(existing['name'], 'Old', reason: 'the entry is not mutated');
+    });
+
+    test('a blank dispatch field removes the stored value so the default applies', () {
+      final r = build(
+        existing: {'searchRadiusMinKm': 4, 'myRideMaxKm': 12, 'other': 'x'},
+        dispatch: {'searchRadiusMinKm': ' ', 'myRideMaxKm': '', 'myRideWindowSec': '30'},
+      );
+      expect(r.error, isNull);
+      expect(r.values.containsKey('searchRadiusMinKm'), isFalse);
+      expect(r.values.containsKey('myRideMaxKm'), isFalse);
+      expect(r.values['myRideWindowSec'], 30);
+      expect(r.values['other'], 'x');
+    });
+
+    test('a new service without dispatch input stores none of the keys', () {
+      final r = build();
+      for (final f in vehicleServiceDispatchFields) {
+        expect(r.values.containsKey(f.key), isFalse, reason: f.key);
+      }
+    });
+
+    test('validation', () {
+      String? err(Map<String, String> d) => validateVehicleServiceDispatch(d)?.key;
+      expect(validateVehicleServiceDispatch(const {}), isNull);
+      expect(err({'searchRadiusMinKm': '0.5', 'searchRadiusMaxKm': '0.5'}), isNull);
+      expect(err({'searchRadiusMinKm': '0.4'}), 'searchRadiusMinKm');
+      expect(err({'searchRadiusMinKm': 'abc'}), 'searchRadiusMinKm');
+      expect(err({'searchRadiusMaxKm': '101'}), 'searchRadiusMaxKm');
+      expect(err({'searchRadiusMaxKm': '100'}), isNull);
+      expect(err({'searchRadiusMinKm': '5', 'searchRadiusMaxKm': '4'}), 'searchRadiusMaxKm');
+      // Max left blank is the default 15 km, below a 20 km start.
+      expect(err({'searchRadiusMinKm': '20'}), 'searchRadiusMaxKm');
+      // Max below the default start.
+      expect(err({'searchRadiusMaxKm': '2'}), 'searchRadiusMaxKm');
+      expect(err({'searchWidenAfterSec': '4'}), 'searchWidenAfterSec');
+      expect(err({'searchWidenAfterSec': '601'}), 'searchWidenAfterSec');
+      expect(err({'searchWidenAfterSec': '5'}), isNull);
+      expect(err({'searchWidenAfterSec': '600'}), isNull);
+      expect(err({'searchWidenAfterSec': '30.5'}), 'searchWidenAfterSec');
+      expect(err({'myRideWindowSec': '9'}), 'myRideWindowSec');
+      expect(err({'myRideWindowSec': '10'}), isNull);
+      expect(err({'myRideWindowSec': '601'}), 'myRideWindowSec');
+      expect(err({'myRideMaxKm': '0'}), isNull);
+      expect(err({'myRideMaxKm': '0.5'}), 'myRideMaxKm');
+      expect(err({'myRideMaxKm': '1'}), isNull);
+      expect(err({'myRideMaxKm': '500'}), isNull);
+      expect(err({'myRideMaxKm': '501'}), 'myRideMaxKm');
+      expect(err({'myRideMaxKm': '-1'}), 'myRideMaxKm');
+      expect(
+        validateVehicleServiceDispatch({'myRideMaxKm': '600'})!.message,
+        'My Ride: Max distance must be 0 (no limit) or 1–500 km.',
+      );
+      expect(build(dispatch: {'searchWidenAfterSec': '1'}).error, contains('Widen after'));
+    });
+
+    test('field text shows the stored value or blank', () {
+      final f = vehicleServiceDispatchFields.first;
+      expect(dispatchFieldText(null, f), '');
+      expect(dispatchFieldText({f.key: 3.0}, f), '3');
+      expect(dispatchFieldText({f.key: 2.5}, f), '2.5');
+      expect(dispatchFieldText({f.key: '4'}, f), '4');
+    });
+
+    test('row summary fills in the defaults', () {
+      expect(vehicleServiceDispatchSummary({}), 'Radius 3–15 km · My Ride: no limit, 60 s');
+      expect(
+        vehicleServiceDispatchSummary({
+          'searchRadiusMinKm': 2.5,
+          'searchRadiusMaxKm': '20',
+          'myRideMaxKm': 8,
+          'myRideWindowSec': 90,
+        }),
+        'Radius 2.5–20 km · My Ride: max 8 km, 90 s',
+      );
+      expect(vehicleServiceDispatchSummary({'myRideMaxKm': 0}), contains('no limit'));
+    });
+  });
+
   group('partner type', () {
     const json = '[{"id":"S-1","name":"A","enabled":true,"children":[{"id":"S-2","name":"A1","children":[]}]},'
         '{"name":""},{"id":"S-3","name":"B","enabled":false}]';
