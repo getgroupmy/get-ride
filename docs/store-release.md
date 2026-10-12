@@ -142,6 +142,14 @@ Refused at the commit, after "uploaded version code" and "assigned to",
 it can see the app but lacks the release permission for that track. Either
 way Play's own words are quoted after the explanation.
 
+Refused at the commit with "You must let us know whether your app uses
+any Foreground Service permissions" (or another "let us know" / App
+content item) is not an account problem: the app declares
+`FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_LOCATION` (the driver's live
+location), and Play wants each one explained once under Play Console →
+Policy → App content → Foreground service permissions. Save that and
+re-run; nothing in the workflow changes.
+
 If the Play listing has **never** had a release, Play will not take the
 first bundle through the API. Run *Android release* from the Actions tab
 with **Send it to Play unticked**, download the bundle from the run's
