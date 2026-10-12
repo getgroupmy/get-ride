@@ -11,11 +11,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/ble_handshake.dart';
 import 'package:get_ride/src/core/reliability_settings.dart';
+import 'package:get_ride/src/data/ble.dart';
 import 'package:get_ride/src/data/ble_chat.dart';
 import 'package:get_ride/src/data/ble_handshake.dart';
 import 'package:get_ride/src/data/reliability_repository.dart';
 import 'package:get_ride/src/widgets/ble_handshake_badge.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:universal_ble/universal_ble.dart';
 
 const _mine = '0123456789abcdef';
 const _peer = 'fedcba9876543210';
@@ -169,6 +171,43 @@ void main() {
       expect(bleProofResult('no_match'), BleProofResult.noMatch);
     });
 
+    test('a ticket carries the next windows, so a phone without signal keeps rotating in step', () {
+      final t = BleTicket.fromJson({
+        'enabled': true,
+        'status': 'arrived',
+        'side': 'rider',
+        'token': _mine,
+        'peer_token': _peer,
+        'expires_at': '2026-10-12T09:05:00+00:00',
+        'ahead': [
+          {'token': '1111111111111111', 'peer_token': 'aaaaaaaaaaaaaaaa', 'expires_at': '2026-10-12T09:10:00+00:00'},
+          {'token': 'nonsense', 'peer_token': 'bbbbbbbbbbbbbbbb', 'expires_at': '2026-10-12T09:15:00+00:00'},
+          {'token': '2222222222222222', 'peer_token': 'cccccccccccccccc', 'expires_at': '2026-10-12T09:15:00+00:00'},
+        ],
+        'chat_key': 'k',
+        'settings': {'enabled': true},
+      });
+      expect(t.ahead, hasLength(2), reason: 'a slot that can\'t be advertised is dropped');
+
+      expect(t.at(DateTime.utc(2026, 10, 12, 9, 4))!.token, _mine);
+      final next = t.at(DateTime.utc(2026, 10, 12, 9, 7))!;
+      expect(next.token, '1111111111111111');
+      expect(next.peerToken, 'aaaaaaaaaaaaaaaa');
+      expect(next.expiresAt, DateTime.utc(2026, 10, 12, 9, 10));
+      expect(next.chatKey, 'k', reason: 'the chat key is the ride\'s, not the window\'s');
+      expect(next.ahead.single.token, '2222222222222222');
+      expect(next.at(DateTime.utc(2026, 10, 12, 9, 12))!.token, '2222222222222222');
+      expect(t.at(DateTime.utc(2026, 10, 12, 9, 16)), isNull, reason: 'past every window it knows');
+
+      expect(t.peerTokensNear(DateTime.utc(2026, 10, 12, 9, 4)), {_peer, 'aaaaaaaaaaaaaaaa'});
+      expect(t.peerTokensNear(DateTime.utc(2026, 10, 12, 9, 7)), {
+        _peer,
+        'aaaaaaaaaaaaaaaa',
+        'cccccccccccccccc',
+      }, reason: 'the other phone\'s clock may be a little either side');
+      expect(_ticket().at(DateTime.utc(2026, 10, 12, 9, 6)), isNull, reason: 'an old server sends nothing ahead');
+    });
+
     test('a sighting counts after 5 s unbroken at or above the threshold', () {
       final t0 = DateTime.utc(2026);
       var s = const PeerSighting();
@@ -208,6 +247,57 @@ void main() {
         {'by_ble': 3, 'by_pin': 1, 'by_none': 0, 'by_unknown': 0},
       ]);
       expect(s.describe(7), 'Last 7 days: 3 by Bluetooth (75%) · 1 by code');
+    });
+  });
+
+  group('the phone\'s own advert', () {
+    test('nothing is advertised before an iPhone\'s peripheral side has powered on', () {
+      fakeAsync((async) {
+        final states = [
+          PeripheralReadinessState.unknown,
+          PeripheralReadinessState.unknown,
+          PeripheralReadinessState.ready,
+        ];
+        var asked = 0;
+        String? why = 'pending';
+        ensurePeripheralReady(state: () async => states[asked++]).then((w) => why = w);
+        async.elapse(const Duration(seconds: 1));
+        expect(why, isNull);
+        expect(asked, 3, reason: 'it waited for ready');
+      });
+    });
+
+    test('Bluetooth off says so; Android\'s permission is asked by the advert itself', () async {
+      expect(await ensurePeripheralReady(state: () async => PeripheralReadinessState.bluetoothOff), 'Bluetooth is off');
+      expect(await ensurePeripheralReady(state: () async => PeripheralReadinessState.unauthorized), isNull);
+    });
+
+    test('a peripheral side that never powers on gives up', () {
+      fakeAsync((async) {
+        String? why;
+        ensurePeripheralReady(
+          state: () async => PeripheralReadinessState.unknown,
+          timeout: Duration.zero,
+        ).then((w) => why = w);
+        async.elapse(const Duration(seconds: 1));
+        expect(why, 'Bluetooth isn\'t ready');
+      });
+    });
+
+    test('an advert counts once the phone says it is on the air, not when it was asked for', () {
+      fakeAsync((async) {
+        final states = [PeripheralAdvertisingState.starting, PeripheralAdvertisingState.advertising];
+        var i = 0;
+        bool? on;
+        confirmAdvertising(state: () async => states[i++]).then((v) => on = v);
+        async.elapse(const Duration(seconds: 1));
+        expect(on, isTrue);
+
+        bool? refused;
+        confirmAdvertising(state: () async => PeripheralAdvertisingState.error).then((v) => refused = v);
+        async.flushMicrotasks();
+        expect(refused, isFalse);
+      });
     });
   });
 
@@ -350,6 +440,96 @@ void main() {
         });
       },
     );
+
+    test('no signal: the phone keeps rotating tokens from the schedule, chat and all, until the server says stop', () {
+      run((async, now) {
+        final full = BleTicket(
+          enabled: true,
+          status: 'arrived',
+          side: 'rider',
+          token: _mine,
+          peerToken: _peer,
+          expiresAt: DateTime.utc(2026, 10, 12, 9, 5),
+          settings: const BleSettings(enabled: true),
+          ahead: [
+            BleSlot(
+              token: '1111111111111111',
+              peerToken: 'aaaaaaaaaaaaaaaa',
+              expiresAt: DateTime.utc(2026, 10, 12, 9, 10),
+            ),
+          ],
+        );
+        BleTicket? answer = full;
+        final server = BleHandshakeServer(
+          ticket: () async => answer ?? (throw StateError('no signal')),
+          proof: (_, _, _, _) async => throw StateError('no signal'),
+        );
+        final e = BleHandshakeEngine(
+          radio: radio,
+          server: server,
+          isAndroid: true,
+          isIos: false,
+          status: 'arrived',
+          position: () async => null,
+          now: now,
+        );
+        e.start();
+        async.flushMicrotasks();
+        expect(radio.started, [tokenServiceUuid(_mine)]);
+
+        answer = null; // airplane mode
+        async.elapse(const Duration(minutes: 4, seconds: 56));
+        expect(radio.started.last, tokenServiceUuid('1111111111111111'), reason: 'the next window, from the schedule');
+        expect(e.phase.value, BleHandshakePhase.searching, reason: 'still looking');
+
+        seePeer(async, 2, rssi: -90);
+        expect(e.peerRssi.value, isNotNull, reason: 'the other phone, a moment behind, is still found');
+        seePeer(async, 2, rssi: -90, token: 'aaaaaaaaaaaaaaaa');
+        expect(e.peerRssi.value, isNotNull, reason: 'and once it rotates too');
+
+        async.elapse(const Duration(minutes: 6));
+        expect(
+          e.phase.value,
+          isNot(BleHandshakePhase.idle),
+          reason: 'out of schedule: the last token stays on the air',
+        );
+        expect(radio.stops, 0);
+
+        answer = _ticket(enabled: false); // back online; the admin turned it off
+        async.elapse(bleOfflineRetry);
+        expect(e.phase.value, BleHandshakePhase.idle);
+        finish(async, e);
+      });
+    });
+
+    test('built again without signal, it carries on from the ride\'s last ticket', () {
+      run((async, now) {
+        final server = BleHandshakeServer(
+          ticket: () async => throw StateError('no signal'),
+          proof: (_, _, _, _) async => BleProofResult.waiting,
+        );
+        BleHandshakeEngine build() => BleHandshakeEngine(
+          radio: radio,
+          server: server,
+          isAndroid: true,
+          isIos: false,
+          status: 'arrived',
+          position: () async => null,
+          now: now,
+        );
+        final first = build()..start();
+        async.flushMicrotasks();
+        expect(first.phase.value, BleHandshakePhase.idle, reason: 'never had a ticket: nothing to go on');
+        finish(async, first);
+
+        server.lastTicket = _ticket();
+        final again = build()..start();
+        async.flushMicrotasks();
+        expect(radio.started.last, tokenServiceUuid(_mine));
+        expect(again.phase.value, BleHandshakePhase.searching);
+        finish(async, again);
+      });
+    });
 
     test('another phone, or a weak signal, is never reported', () {
       run((async, now) {

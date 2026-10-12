@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:universal_ble/universal_ble.dart';
 
 import '../core/ble_chat.dart';
+import 'ble.dart';
 import '../core/ride_chat.dart';
 import '../core/ride_chat_outbox.dart';
 
@@ -50,6 +51,8 @@ class UniversalBleChatTransport implements BleChatTransport {
   @override
   Future<bool> serve() async {
     if (kIsWeb) return false;
+    // A service added before the iPhone's peripheral side powers on is lost.
+    if (await ensurePeripheralReady() != null) return false;
     try {
       await UniversalBlePeripheral.addService(
         BlePeripheralService(

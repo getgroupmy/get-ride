@@ -47,10 +47,9 @@ class UniversalBleRadio implements BleRadio {
   bool _advertising = false;
 
   @override
-  Stream<BleAdvert> get adverts =>
-      UniversalBle.scanStream.expand(
-        (d) => [for (final s in d.services) (uuid: s, rssi: d.rssi ?? -127, deviceId: d.deviceId)],
-      );
+  Stream<BleAdvert> get adverts => UniversalBle.scanStream.expand(
+    (d) => [for (final s in d.services) (uuid: s, rssi: d.rssi ?? -127, deviceId: d.deviceId)],
+  );
 
   @override
   Future<String?> start(String uuid) async {
@@ -62,10 +61,17 @@ class UniversalBleRadio implements BleRadio {
     } catch (e) {
       return 'Bluetooth isn\'t available';
     }
+    final notReady = await ensurePeripheralReady();
+    if (notReady != null) return notReady;
     try {
       if (_advertising) await UniversalBlePeripheral.stopAdvertising();
-      await UniversalBlePeripheral.startAdvertising(services: [uuid]);
       _advertising = true;
+      await UniversalBlePeripheral.startAdvertising(services: [uuid]);
+      // Started is not the same as on the air: check, and try once more.
+      if (!await confirmAdvertising()) {
+        await UniversalBlePeripheral.startAdvertising(services: [uuid]);
+        if (!await confirmAdvertising()) throw StateError('not advertising');
+      }
       if (!_scanning) {
         await bleScans.acquire();
         _scanning = true;
@@ -94,10 +100,14 @@ class UniversalBleRadio implements BleRadio {
 
 /// The server half, as the engine needs it. A seam for tests.
 class BleHandshakeServer {
-  const BleHandshakeServer({required this.ticket, required this.proof});
+  BleHandshakeServer({required this.ticket, required this.proof});
 
   final Future<BleTicket> Function() ticket;
   final Future<BleProofResult> Function(String seenToken, int rssi, Duration seenFor, LatLng? at) proof;
+
+  /// The last usable ticket the server gave for this ride, so a badge that
+  /// is built again while the phone has no signal picks up where it was.
+  BleTicket? lastTicket;
 
   factory BleHandshakeServer.forRide(RideRepository repo, String rideId) => BleHandshakeServer(
     ticket: () => repo.bleTicket(rideId),
@@ -111,6 +121,12 @@ const bleReportEvery = Duration(seconds: 4);
 
 /// How long to hold off after the server says "too many".
 const bleRateLimitBackoff = Duration(seconds: 30);
+
+/// How soon to ask the server again when it couldn't be reached.
+const bleOfflineRetry = Duration(seconds: 30);
+
+/// What asking the server for a ticket came to.
+enum _Fetch { ok, refused, offline }
 
 /// Runs the handshake for one ride on this phone.
 class BleHandshakeEngine {
@@ -177,8 +193,18 @@ class BleHandshakeEngine {
   Future<void> start() async {
     if (_done || _running || !_live(_status)) return;
     _running = true;
-    final ticket = await _fetchTicket();
-    if (ticket == null || _done) return _halt(BleHandshakePhase.idle);
+    final got = await _fetchTicket();
+    if (_done) return _halt(BleHandshakePhase.idle);
+    if (got == _Fetch.offline) {
+      // No signal: carry on from the last ticket this ride had, if any.
+      final held = server.lastTicket?.at(_now());
+      if (held == null) return _halt(BleHandshakePhase.idle);
+      _ticket = held;
+      _scheduleRefresh(held);
+    } else if (got == _Fetch.refused) {
+      return _halt(BleHandshakePhase.idle);
+    }
+    final ticket = _ticket!;
     _sub = radio.adverts.listen(_onAdvert);
     if (!await _advertise(ticket)) return;
     phase.value = BleHandshakePhase.searching;
@@ -227,30 +253,54 @@ class BleHandshakeEngine {
     chat.dispose();
   }
 
-  Future<BleTicket?> _fetchTicket() async {
+  /// Asks the server for this window's ticket. A ticket it answers with
+  /// replaces the one held; no answer at all leaves it for [_scheduleRefresh]
+  /// to carry on from the tokens handed out ahead.
+  Future<_Fetch> _fetchTicket() async {
     BleTicket t;
     try {
       t = await server.ticket();
     } catch (_) {
-      return null;
+      return _Fetch.offline;
     }
-    if (!t.usable || !t.settings.runsOn(isAndroid: isAndroid, isIos: isIos)) return null;
+    if (!t.usable || !t.settings.runsOn(isAndroid: isAndroid, isIos: isIos)) return _Fetch.refused;
     _ticket = t;
+    server.lastTicket = t;
     _scheduleRefresh(t);
-    return t;
+    return _Fetch.ok;
   }
 
   /// A fresh token shortly before this one's window closes (the server still
   /// takes the last window's, so a pair seen across the boundary matches).
-  void _scheduleRefresh(BleTicket t) {
+  /// Without signal the next window's token comes from the ones handed out
+  /// ahead (0157), so the two phones keep finding each other, and chat keeps
+  /// running, for as long as those last.
+  void _scheduleRefresh(BleTicket t, {Duration? after}) {
     _refresh?.cancel();
-    var wait = t.expiresAt!.difference(_now()) - const Duration(seconds: 5);
+    var wait = after ?? t.expiresAt!.difference(_now()) - const Duration(seconds: 5);
     if (wait < const Duration(seconds: 5)) wait = const Duration(seconds: 5);
     _refresh = Timer(wait, () async {
       if (_done || !_running) return;
-      final next = await _fetchTicket();
-      if (next == null) return _halt(BleHandshakePhase.idle);
-      await _advertise(next);
+      final was = _ticket!;
+      final got = await _fetchTicket();
+      if (_done || !_running) return;
+      switch (got) {
+        case _Fetch.ok:
+          break;
+        case _Fetch.refused:
+          return _halt(BleHandshakePhase.idle);
+        case _Fetch.offline:
+          // The window about to start, from the schedule; else keep the
+          // token on the air and ask again shortly.
+          final next = was.at(_now().add(const Duration(seconds: 6)));
+          if (next == null || next.token == was.token) {
+            _scheduleRefresh(was, after: bleOfflineRetry);
+            return;
+          }
+          _ticket = next;
+          _scheduleRefresh(next);
+      }
+      if (_ticket!.token != was.token) await _advertise(_ticket!);
     });
   }
 
@@ -267,7 +317,8 @@ class BleHandshakeEngine {
   void _onAdvert(BleAdvert a) {
     final t = _ticket;
     if (t == null || !_running) return;
-    if (tokenFromServiceUuid(a.uuid) != t.peerToken?.toLowerCase()) return;
+    final seen = tokenFromServiceUuid(a.uuid);
+    if (seen == null || !t.peerTokensNear(_now()).contains(seen)) return;
     _peerAt = _now();
     peerRssi.value = bleSmoothRssi(peerRssi.value, a.rssi);
     // The rider's phone links up to the driver's for chat (Phase D3).
