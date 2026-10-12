@@ -282,6 +282,9 @@ void main() {
       rows.add(ride('cancelled', askedBy: 'partner', reason: 'passenger_no_show'));
       await settle(tester);
       expect(find.text('Your driver cancelled this ride: Passenger no-show'), findsOneWidget);
+      expect(find.text('Call'), findsNothing, reason: 'no contact once cancelled');
+      expect(find.byKey(const ValueKey('ride-message')), findsNothing);
+      expect(find.text('Closing in 5s'), findsOneWidget);
     });
 
     testWidgets("the driver's request to cancel is a popup the passenger answers", (tester) async {

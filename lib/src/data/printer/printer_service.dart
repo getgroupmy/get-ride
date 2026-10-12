@@ -11,6 +11,7 @@ import '../../core/obd_ble.dart' show BleCharacteristicInfo, chunkBleWrite;
 import '../../core/printers.dart';
 import '../ble.dart';
 import '../obd/obd_session.dart';
+import 'classic_bluetooth.dart';
 
 /// The saved printers, on this device (Expo `printerStore`).
 class PrinterStore {
@@ -173,15 +174,61 @@ class BlePrinterSink implements PrinterSink {
   }
 }
 
+/// A classic Bluetooth printer: opens the RFCOMM serial port, streams the
+/// document in chunks the printer's buffer keeps up with, and closes.
+class ClassicPrinterSink implements PrinterSink {
+  ClassicPrinterSink(
+    this.bluetooth,
+    this.address, {
+    this.connectTimeout = const Duration(seconds: 12),
+    this.chunkGap = classicPrinterChunkGap,
+  });
+
+  final ClassicBluetooth bluetooth;
+  final String address;
+  final Duration connectTimeout;
+  final Duration chunkGap;
+  bool _open = false;
+
+  @override
+  Future<void> connect() async {
+    await bluetooth.connect(address, timeout: connectTimeout);
+    _open = true;
+  }
+
+  @override
+  Future<void> write(String payload) async {
+    if (!_open) throw StateError('not connected');
+    final chunks = chunkBleWrite(latin1.encode(payload), size: classicPrinterChunkSize);
+    for (var i = 0; i < chunks.length; i++) {
+      await bluetooth.write(Uint8List.fromList(chunks[i]));
+      if (i < chunks.length - 1 && chunkGap > Duration.zero) await Future<void>.delayed(chunkGap);
+    }
+  }
+
+  @override
+  Future<void> close() async {
+    _open = false;
+    await bluetooth.close();
+  }
+}
+
 /// Builds the link for a saved printer. A seam so tests can capture output.
 final printerSinkFactoryProvider = Provider<PrinterSink Function(SavedPrinter)>(
-  (_) => (p) => switch (p.transport) {
+  (ref) => (p) => switch (p.transport) {
         'wifi' => WifiPrinterSink(p.host ?? '', p.port ?? printerWifiPort),
         'bluetooth' when p.address != null => BlePrinterSink(p.address!),
+        classicPrinterTransport when p.address != null => _classicSink(ref, p.address!),
         _ => throw UnsupportedError(
             '${printerTransportLabels[p.transport] ?? p.transport} printers are not supported in this version of the app yet.'),
       },
 );
+
+PrinterSink _classicSink(Ref ref, String address) {
+  final a = printerTransportAvailability(classicPrinterTransport, currentPrinterPlatform);
+  if (!a.available) throw UnsupportedError(a.reason!);
+  return ClassicPrinterSink(ref.read(classicBluetoothProvider), address);
+}
 
 final printerStoreProvider = Provider((_) => PrinterStore());
 
@@ -238,6 +285,8 @@ final printerServiceProvider = Provider(PrinterService.new);
 String describePrintError(Object e, SavedPrinter printer, {bool onReaderWifi = false}) {
   if (e is UnsupportedError) return e.message ?? 'This printer is not supported here.';
   if (e is StateError) return e.message;
+  if (e is ClassicBluetoothException) return describeClassicPrinterError(e.code, printer.name, message: e.message);
+  if (printer.transport == classicPrinterTransport) return describeClassicPrinterError(null, printer.name);
   if (printer.transport == 'bluetooth') {
     return 'Could not reach ${printer.name} over Bluetooth. Check it is switched on, close to this phone '
         'and not connected to another phone.';

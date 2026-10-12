@@ -252,6 +252,25 @@ void main() {
       expect(find.text('requests'), findsOneWidget);
     });
 
+    testWidgets('a cancelled trip drops Message and Call and closes itself in 5 s', (tester) async {
+      await pump(tester);
+      rows.add(ride('accepted'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('trip-message')), findsOneWidget);
+      rows.add(ride('cancelled', extra: {'cancel_requested_by': 'partner'}));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('trip-message')), findsNothing);
+      expect(find.byKey(const ValueKey('cancelled-countdown')), findsWidgets);
+      expect(find.text('Back to requests in 5s'), findsWidgets);
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('requests'), findsNothing);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.text('requests'), findsOneWidget);
+    });
+
     testWidgets('a ride booked for someone else shows and calls that passenger', (tester) async {
       await pump(tester);
       rows.add(ride('accepted', extra: {

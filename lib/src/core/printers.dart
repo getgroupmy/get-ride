@@ -2,9 +2,9 @@
 // `utils/printerStore.ts` (the pure half). Kept on the device: a printer is
 // paired to the phone in the car, not to the account.
 //
-// Printers are reached over Wi-Fi (a raw TCP socket to the ESC/POS port) or
-// Bluetooth LE (a writable characteristic); the transport field keeps the
-// list open for classic Bluetooth printers.
+// Printers are reached over Wi-Fi (a raw TCP socket to the ESC/POS port),
+// Bluetooth LE (a writable characteristic) or, on Android, classic Bluetooth
+// (an RFCOMM serial port to a printer paired in the phone's settings).
 
 import 'escpos.dart';
 import 'obd_ble.dart' show BleServiceInfo, normalizeBleUuid, sameBleUuid;
@@ -158,7 +158,8 @@ bool isObdReaderDevice(String? deviceId, Iterable<SavedObdAdapter> readers) {
 
 /// Whether [printer] is one of the saved OBD-II readers.
 bool printerIsObdReader(SavedPrinter printer, Iterable<SavedObdAdapter> readers) =>
-    printer.transport == 'bluetooth' && isObdReaderDevice(printer.address, readers);
+    (printer.transport == 'bluetooth' || printer.transport == classicPrinterTransport) &&
+    isObdReaderDevice(printer.address, readers);
 
 const printerIsReaderMessage = 'That device is your OBD-II reader, not a printer. Pick the printer instead.';
 
@@ -207,6 +208,139 @@ int blePrinterPacketSize(int? mtu) {
 /// The pause between packets written without response, so a cheap
 /// printer's buffer keeps up.
 const blePrinterPacketGap = Duration(milliseconds: 15);
+
+/// The transport value saved for a classic Bluetooth (SPP) printer.
+const classicPrinterTransport = 'bluetooth-classic';
+
+/// The Serial Port Profile service every classic Bluetooth thermal printer
+/// answers on (RFCOMM).
+const classicSppUuid = '00001101-0000-1000-8000-00805F9B34FB';
+
+/// How much of a receipt one classic Bluetooth write carries. RFCOMM has no
+/// packet limit of its own, but a cheap printer's buffer is small, so a long
+/// receipt goes in pieces with a short pause between them.
+const classicPrinterChunkSize = 512;
+
+/// The pause between classic Bluetooth chunks.
+const classicPrinterChunkGap = Duration(milliseconds: 20);
+
+/// A device paired with the phone, as Android lists it.
+typedef BondedBluetoothDevice = ({String address, String? name, int? majorClass});
+
+/// Android's `BluetoothClass.Device.Major.IMAGING`: printers, scanners and
+/// cameras. Most thermal printers report it; some report "uncategorised".
+const bluetoothMajorImaging = 0x0600;
+
+/// Android's `BluetoothClass.Device.Major.AUDIO_VIDEO` and `PHONE`: the
+/// headsets, car kits and phones a paired list is mostly made of.
+const _unlikelyPrinterClasses = {0x0400, 0x0200};
+
+/// The paired devices to offer as printers, likeliest first: anything
+/// reporting the imaging class, then the rest, then headsets, car kits and
+/// phones; by name within each. A saved OBD-II reader is left out.
+List<BondedBluetoothDevice> rankBondedPrinters(
+  Iterable<BondedBluetoothDevice> devices, {
+  Iterable<SavedObdAdapter> readers = const [],
+}) {
+  int rank(BondedBluetoothDevice d) => d.majorClass == bluetoothMajorImaging
+      ? 0
+      : _unlikelyPrinterClasses.contains(d.majorClass)
+          ? 2
+          : 1;
+  final seen = <String>{};
+  final list = [
+    for (final d in devices)
+      if (d.address.trim().isNotEmpty && !isObdReaderDevice(d.address, readers) && seen.add(d.address.toUpperCase()))
+        d,
+  ];
+  list.sort((a, b) {
+    final r = rank(a).compareTo(rank(b));
+    if (r != 0) return r;
+    return (a.name ?? '').toLowerCase().compareTo((b.name ?? '').toLowerCase());
+  });
+  return list;
+}
+
+final _btAddress = RegExp(r'^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$');
+
+/// A classic Bluetooth printer picked from the phone's paired devices;
+/// [address] is its MAC address. The name defaults to the paired name.
+({String? error, SavedPrinter? value}) normalizeClassicPrinter({
+  required String id,
+  required String createdAt,
+  required String address,
+  String? pairedName,
+  String name = '',
+  PaperWidth paper = PaperWidth.mm58,
+}) {
+  final n = name.trim();
+  if (n.length > 60) return (error: 'Name must be 60 characters or fewer.', value: null);
+  final a = address.trim().toUpperCase();
+  if (!_btAddress.hasMatch(a)) return (error: 'Pick the printer from the paired devices.', value: null);
+  final paired = (pairedName ?? '').trim();
+  return (
+    error: null,
+    value: SavedPrinter(
+      id: id,
+      name: n.isNotEmpty ? n : (paired.isNotEmpty ? paired : 'Bluetooth printer'),
+      transport: classicPrinterTransport,
+      address: a,
+      paper: paper,
+      createdAt: createdAt,
+    ),
+  );
+}
+
+/// Whether a printer transport can be used on this device, and if not, why
+/// (Expo `printerTransportAvailability`).
+typedef PrinterTransportAvailability = ({bool available, String? reason});
+
+/// The platforms [printerTransportAvailability] tells apart.
+enum PrinterPlatform { android, ios, web, desktop }
+
+PrinterTransportAvailability printerTransportAvailability(String transport, PrinterPlatform platform) {
+  const ok = (available: true, reason: null);
+  if (platform == PrinterPlatform.web) {
+    return (available: false, reason: 'A browser cannot print to a receipt printer. Use the phone app.');
+  }
+  switch (transport) {
+    case 'wifi':
+      return ok;
+    case 'bluetooth':
+      return ok;
+    case classicPrinterTransport:
+      return switch (platform) {
+        PrinterPlatform.android => ok,
+        PrinterPlatform.ios => (
+            available: false,
+            reason: 'An iPhone only talks to classic Bluetooth printers that are Apple MFi certified. '
+                'Use a Bluetooth LE or Wi-Fi printer.',
+          ),
+        _ => (
+            available: false,
+            reason: 'Classic Bluetooth printers work from the Android phone app. Use a Bluetooth LE or Wi-Fi '
+                'printer here.',
+          ),
+      };
+    default:
+      final label = printerTransportLabels[transport] ?? transport;
+      return (available: false, reason: '$label printers are not supported.');
+  }
+}
+
+/// What a classic Bluetooth failure (a platform error [code]) tells the
+/// driver.
+String describeClassicPrinterError(String? code, String printerName, {String? message}) => switch (code) {
+      'not_bonded' => 'Pair the printer in Android Bluetooth settings first, then pick it again here.',
+      'bluetooth_off' => 'Bluetooth is off. Turn it on to print.',
+      'permission' => 'GET.ride is not allowed to use Bluetooth. Allow "Nearby devices" in the phone\'s settings '
+          'for this app.',
+      'no_bluetooth' => 'This phone has no Bluetooth.',
+      'connect_failed' || 'timeout' => '$printerName is off or out of range. Switch it on, keep it close to this '
+          'phone and make sure no other phone is connected to it.',
+      'write_failed' => 'The connection to $printerName dropped while printing. Check the printer and try again.',
+      _ => 'Could not print to $printerName${message == null || message.isEmpty ? '' : ': $message'}.',
+    };
 
 /// "Wi-Fi · 192.168.0.50:9100 · 58mm".
 String describePrinter(SavedPrinter p) {
