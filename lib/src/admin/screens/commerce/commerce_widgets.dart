@@ -9,6 +9,7 @@ import 'commerce_data.dart';
 import 'commerce_logic.dart';
 import 'countries.dart';
 import '../../../widgets/net_image.dart';
+import '../../../widgets/storage_image.dart';
 
 /// Opens [child] as a full-screen dialog on phones and a centred, capped
 /// dialog on wide screens.
@@ -131,7 +132,14 @@ class StoredImage extends StatelessWidget {
         return fallback;
       }
     }
-    return Image.network(uri, width: width, height: height, fit: fit, frameBuilder: boneUntilPainted(width: width, height: height), errorBuilder: (_, _, _) => fallback);
+    // StorageImage signs a file in a private document bucket (an EV order's
+    // ID photo); any other link is shown as it is.
+    return StorageImage(uri,
+        width: width,
+        height: height,
+        fit: fit,
+        frameBuilder: boneUntilPainted(width: width, height: height),
+        errorBuilder: (_, _, _) => fallback);
   }
 }
 

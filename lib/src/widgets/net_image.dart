@@ -7,6 +7,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
+import '../core/storage_links.dart';
+import 'storage_image.dart';
+
 /// The skeleton in an image's place, in the app's light or dark theme.
 class ImageBone extends StatelessWidget {
   const ImageBone({super.key, this.width, this.height, this.circle = false, this.radius = 8});
@@ -63,15 +66,32 @@ class NetImage extends StatelessWidget {
   final double radius;
 
   @override
-  Widget build(BuildContext context) => Image.network(
-    url,
-    width: width,
-    height: height,
-    fit: fit,
-    alignment: alignment,
-    frameBuilder: boneUntilPainted(width: width, height: height, circle: circle, radius: radius),
-    errorBuilder: (_, _, _) => fallback ?? SizedBox(width: width, height: height),
-  );
+  Widget build(BuildContext context) {
+    final frame = boneUntilPainted(width: width, height: height, circle: circle, radius: radius);
+    Widget error(BuildContext _, Object _, StackTrace? _) => fallback ?? SizedBox(width: width, height: height);
+    // A file in a private document bucket (a permit portrait, a vehicle
+    // photo) opens through a signed link; anything else as it is.
+    if (privateStorageRef(url) != null) {
+      return StorageImage(
+        url,
+        width: width,
+        height: height,
+        fit: fit,
+        alignment: alignment,
+        frameBuilder: frame,
+        errorBuilder: error,
+      );
+    }
+    return Image.network(
+      url,
+      width: width,
+      height: height,
+      fit: fit,
+      alignment: alignment,
+      frameBuilder: frame,
+      errorBuilder: error,
+    );
+  }
 }
 
 /// A round picture (a person, a driver): the skeleton while it loads, the

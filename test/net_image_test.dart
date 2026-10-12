@@ -3,7 +3,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/features/ride/home_parts.dart';
+import 'package:get_ride/src/admin/screens/commerce/commerce_widgets.dart' show StoredImage;
 import 'package:get_ride/src/widgets/net_image.dart';
+import 'package:get_ride/src/widgets/storage_image.dart';
 
 const _base = Icon(Icons.directions_car, key: ValueKey('base-icon'));
 
@@ -55,5 +57,32 @@ void main() {
     expect(find.byKey(const ValueKey('vehicle-type-bar-skeleton')), findsOneWidget);
     expect(find.byIcon(Icons.directions_car), findsNothing);
     expect(find.text('Teksi'), findsNothing);
+  });
+
+  testWidgets('a picture in a private document bucket opens through a signed link; others as they are', (tester) async {
+    const permit = 'https://x.supabase.co/storage/v1/object/public/provider-documents/p1/permit/portrait.jpg';
+    const vehicle = 'https://x.supabase.co/storage/v1/object/public/vehicle-documents/v1/front.jpg';
+    const avatar = 'https://x.supabase.co/storage/v1/object/public/avatars/u1.jpg';
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Column(
+          children: [
+            NetAvatar(key: ValueKey('permit'), url: permit),
+            NetImage(vehicle, key: ValueKey('vehicle'), width: 40, height: 40),
+            NetAvatar(key: ValueKey('avatar'), url: avatar),
+          ],
+        ),
+      ),
+    );
+    Finder signed(String key) => find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(StorageImage));
+    expect(signed('permit'), findsOneWidget);
+    expect(signed('vehicle'), findsOneWidget);
+    expect(signed('avatar'), findsNothing, reason: 'avatars stay public');
+  });
+
+  testWidgets('the admin\'s stored image signs an EV order\'s ID photo', (tester) async {
+    const id = 'https://x.supabase.co/storage/v1/object/public/ID_Image/u1/ic.jpg';
+    await tester.pumpWidget(const MaterialApp(home: StoredImage(id, width: 56, height: 40)));
+    expect(find.byType(StorageImage), findsOneWidget);
   });
 }
