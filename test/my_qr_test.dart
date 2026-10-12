@@ -35,7 +35,7 @@ void main() {
 
   group('payloads', () {
     test('the web form by default, the app scheme on request', () {
-      expect(qrPayload(QrKind.now, _token), 'https://getride.my/q/now/$_token');
+      expect(qrPayload(QrKind.now, _token), 'https://qr.getride.my/now/$_token');
       expect(qrPayload(QrKind.referral, _token, web: false), 'getride://ref/$_token');
     });
 
@@ -52,6 +52,26 @@ void main() {
       expect(parsePersonalQr('getride://referral/$_token/')?.kind, QrKind.referral);
     });
 
+    test('codes printed before qr.getride.my still read', () {
+      for (final k in QrKind.values) {
+        final s = parsePersonalQr('https://getride.my/q/${k.pathSegment}/$_token');
+        expect(s?.kind, k);
+        expect(s?.token, _token);
+      }
+      expect(parsePersonalQr('http://www.getride.my/q/ref/$_token')?.kind, QrKind.referral);
+      expect(parsePersonalQr('getride://now/$_token')?.kind, QrKind.now);
+    });
+
+    test('the qr host takes the short form only', () {
+      expect(parsePersonalQr('HTTPS://QR.GETRIDE.MY/ME/$_token?x=1')?.kind, QrKind.me);
+      expect(parsePersonalQr('http://qr.getride.my/now/$_token/')?.token, _token);
+      expect(parsePersonalQr('https://qr.getride.my/q/now/$_token'), isNull);
+      expect(parsePersonalQr('https://qr.getride.my/now'), isNull);
+      expect(parsePersonalQr('https://qr.getride.my/vip/$_token'), isNull);
+      expect(parsePersonalQr('https://getride.my/now/$_token'), isNull, reason: 'the short form is the qr host only');
+      expect(parsePersonalQr('https://evil.qr.getride.my.example.com/now/$_token'), isNull);
+    });
+
     test('anything else is not a personal code', () {
       expect(parsePersonalQr('https://example.com/q/now/$_token'), isNull);
       expect(parsePersonalQr('https://getride.my/share/$_token'), isNull);
@@ -62,6 +82,38 @@ void main() {
       expect(parsePersonalQr(_token), isNull);
       expect(isQrToken(_token), isTrue);
       expect(isQrToken('has space in it 12345678'), isFalse);
+    });
+  });
+
+  group('app links', () {
+    test('the link pages open signed out', () {
+      for (final loc in [
+        '/q/now/$_token',
+        '/q/zz/short',
+        '/ref/$_token',
+        '/me/$_token',
+        '/now/$_token',
+        '/now/short',
+        '/now/$_token?utm=x',
+      ]) {
+        expect(isQrLinkLocation(loc), isTrue, reason: loc);
+      }
+      for (final loc in ['/', '/login', '/now', '/me', '/referral/$_token', '/now/$_token/extra', '/account/my-qr']) {
+        expect(isQrLinkLocation(loc), isFalse, reason: loc);
+      }
+    });
+
+    test('getride:// links go to /q/, the kind taken from the host', () {
+      expect(qrSchemeLinkLocation(Uri.parse('getride://now/$_token')), '/q/now/$_token');
+      expect(qrSchemeLinkLocation(Uri.parse('getride://referral/$_token/')), '/q/ref/$_token');
+      expect(qrSchemeLinkLocation(Uri.parse('GETRIDE://Me/$_token?x=1')), '/q/me/$_token');
+      // The link page says a broken token isn't a code.
+      expect(qrSchemeLinkLocation(Uri.parse('getride://now/short')), '/q/now/short');
+      expect(qrSchemeLinkLocation(Uri.parse('getride://myride/AB2C3D4E')), isNull);
+      expect(qrSchemeLinkLocation(Uri.parse('getride://now')), isNull);
+      expect(qrSchemeLinkLocation(Uri.parse('getride://now/$_token/extra')), isNull);
+      expect(qrSchemeLinkLocation(Uri.parse('https://qr.getride.my/now/$_token')), isNull);
+      expect(qrSchemeLinkLocation(Uri.parse('/now/$_token')), isNull);
     });
   });
 
@@ -116,7 +168,7 @@ void main() {
       final q = PersonalQr.fromJson(row(expires: now.add(const Duration(hours: 3))))!;
       expect(q.kind, QrKind.now);
       expect(q.status, QrStatus.active);
-      expect(q.payload, 'https://getride.my/q/now/$_token');
+      expect(q.payload, 'https://qr.getride.my/now/$_token');
       expect(q.isActiveAt(now), isTrue);
       expect(q.isActiveAt(now.add(const Duration(hours: 4))), isFalse, reason: 'ran out since it was read');
       expect(PersonalQr.fromJson({'id': _id, 'kind': 'vip', 'token': _token}), isNull);

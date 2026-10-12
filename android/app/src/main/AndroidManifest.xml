@@ -47,6 +47,33 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- My QR links: a phone camera scanning a code opens the app on
+                 it (lib/src/core/my_qr.dart). Flutter hands the whole URI to
+                 the router (lib/src/app.dart). Explicit, though it is
+                 Flutter's default: a plugin that turns it off would leave
+                 these links opening a blank home screen. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="true"/>
+            <!-- Android App Links, verified against
+                 https://qr.getride.my/.well-known/assetlinks.json (written by
+                 .github/workflows/deploy-web.yml), so no "open with" chooser.
+                 Only the three code paths: the rest of the host is the web app. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="qr.getride.my" android:pathPrefix="/ref/"/>
+                <data android:scheme="https" android:host="qr.getride.my" android:pathPrefix="/me/"/>
+                <data android:scheme="https" android:host="qr.getride.my" android:pathPrefix="/now/"/>
+            </intent-filter>
+            <!-- getride://<ref|me|now>/<token>, the app-scheme form of a code. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="getride" android:host="ref"/>
+                <data android:scheme="getride" android:host="me"/>
+                <data android:scheme="getride" android:host="now"/>
+            </intent-filter>
         </activity>
         <!-- Push notifications land in the high-importance channel that
              MainActivity creates. -->

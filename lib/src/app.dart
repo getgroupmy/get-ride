@@ -15,6 +15,7 @@ import 'core/always_on.dart';
 import 'core/app_branding.dart';
 import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
+import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/push_logic.dart';
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
@@ -167,6 +168,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     // their own routes and never land here.
     errorBuilder: notFoundPage,
     redirect: (context, state) {
+      // getride://<kind>/<token> opened from outside: the router is handed
+      // the whole URI, and the kind is its host, not its path.
+      final schemeLink = qrSchemeLinkLocation(state.uri);
+      if (schemeLink != null) return schemeLink;
       final signedIn = db.auth.currentSession != null;
       final loc = state.matchedLocation;
       final onAuth = loc.startsWith('/login');
@@ -177,8 +182,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // So is installing a test build: the tester has no account yet.
       if (loc.startsWith('/install/')) return null;
       // A personal QR link (My QR) works signed out too: a referral code is
-      // carried into sign-up, a driver's code asks to sign in first.
-      if (loc.startsWith('/q/')) return null;
+      // carried into sign-up, a driver's code asks to sign in first. Both
+      // /q/<kind>/<token> and the app-link form /<kind>/<token>.
+      if (isQrLinkLocation(loc)) return null;
       if (!signedIn && !onAuth) return '/login';
       // A fresh OTP session still has to choose a PIN before entering the app.
       if (signedIn && AuthRepository.pinSetupPending) {
@@ -366,6 +372,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/q/:kind/:token',
         builder: (_, st) => QrLinkScreen(kind: st.pathParameters['kind']!, token: st.pathParameters['token']!),
       ),
+      // The same page as an app link on qr.getride.my arrives (a phone camera
+      // opening the app, or the web app on that host): /ref|me|now/<token>.
+      for (final k in QrKind.values)
+        GoRoute(
+          path: '/${k.pathSegment}/:token',
+          builder: (_, st) => QrLinkScreen(kind: k.pathSegment, token: st.pathParameters['token']!),
+        ),
       GoRoute(
         path: '/install/:platform',
         builder: (_, st) => AppInstallScreen(platform: st.pathParameters['platform']!),

@@ -10,18 +10,31 @@
 // can expire it, make a new one, or bring back one of their last ten (the
 // same token works again), choosing an optional auto-expiry each time.
 //
-// The QR encodes `https://getride.my/q/<ref|me|now>/<token>`, so a phone
-// camera without the app lands on the web app; `getride://<ref|me|now>/<token>`
-// is accepted too. [parseGetQr] also recognises My Ride codes and wallet
-// codes, so one scanner can route every GET code.
+// The QR encodes `https://qr.getride.my/<ref|me|now>/<token>`. That host is
+// an app link (Android App Links, iOS universal links — see
+// docs/store-release.md), so a phone camera opens the installed app straight
+// on the code, and a phone without the app lands on the web app, which serves
+// the same paths. Codes printed before it encode
+// `https://getride.my/q/<kind>/<token>`; that and
+// `getride://<ref|me|now>/<token>` are still accepted. [parseGetQr] also
+// recognises My Ride codes and wallet codes, so one scanner can route every
+// GET code.
 //
 // Pure: the repository is lib/src/data/my_qr_repository.dart.
 import 'my_ride.dart';
 import 'referral.dart';
 import 'wallet_qr.dart';
 
-/// Where a QR's web form lives (the public web app, as `/share/` does).
-const myQrWebBase = 'https://getride.my/q/';
+/// The host a QR's link is on: an app link on Android and iOS, and the web
+/// app everywhere else.
+const myQrHost = 'qr.getride.my';
+
+/// Where a QR's web form lives: `https://qr.getride.my/<kind>/<token>`.
+const myQrWebBase = 'https://$myQrHost/';
+
+/// Where codes made before [myQrHost] point (`/q/<kind>/<token>` on the main
+/// site). Still read when scanned, and still a route in the app.
+const myQrLegacyWebBase = 'https://getride.my/q/';
 
 /// The app-scheme form, accepted when scanned.
 const myQrScheme = 'getride://';
@@ -46,7 +59,8 @@ enum QrKind {
   /// As the app names it.
   final String label;
 
-  /// Its segment in a payload (`/q/<segment>/<token>`).
+  /// Its segment in a payload (`qr.getride.my/<segment>/<token>`) and in the
+  /// app's paths (`/<segment>/<token>`, `/q/<segment>/<token>`).
   final String pathSegment;
 
   /// GET.me and GET.now are for drivers only.
@@ -263,17 +277,22 @@ bool _isGetRideHost(String host) {
 }
 
 /// The personal code in [raw], or null. Accepts
+/// `https://qr.getride.my/<kind>/<token>`, the older
 /// `https://getride.my/q/<kind>/<token>` (http and www too) and
 /// `getride://<kind>/<token>`, with or without a trailing slash or query.
+/// A bare token is not one: it doesn't say which kind of code it is.
 PersonalQrScan? parsePersonalQr(String raw) {
   final uri = Uri.tryParse(raw.trim());
   if (uri == null) return null;
   final scheme = uri.scheme.toLowerCase();
+  final web = scheme == 'https' || scheme == 'http';
   List<String> segs;
   if (scheme == 'getride') {
     // getride://now/<token>: the kind is the host.
     segs = [uri.host, ...uri.pathSegments];
-  } else if ((scheme == 'https' || scheme == 'http') && _isGetRideHost(uri.host)) {
+  } else if (web && uri.host.toLowerCase() == myQrHost) {
+    segs = uri.pathSegments;
+  } else if (web && _isGetRideHost(uri.host)) {
     final p = uri.pathSegments;
     if (p.isEmpty || p.first.toLowerCase() != 'q') return null;
     segs = p.sublist(1);
@@ -289,6 +308,31 @@ PersonalQrScan? parsePersonalQr(String raw) {
   final token = segs[1];
   if (kind == null || !isQrToken(token)) return null;
   return PersonalQrScan(kind, token);
+}
+
+/// Whether [location] (an app path) is a personal code's link page:
+/// `/q/<kind>/<token>`, or `/<kind>/<token>` as an app link on
+/// [myQrHost] arrives. These open signed out too.
+bool isQrLinkLocation(String location) {
+  if (location.startsWith('/q/')) return true;
+  final segs = location.split('?').first.split('/').where((s) => s.isNotEmpty).toList();
+  return segs.length == 2 && QrKind.values.any((k) => k.pathSegment == segs.first);
+}
+
+/// Where the app should go for a `getride://<kind>/<token>` link opened from
+/// outside (the router gets the whole URI; its path alone would lose the
+/// kind, which is the URI's host): `/q/<kind>/<token>`, which the link page
+/// then checks. Null for anything else, including the https links, whose
+/// path already is a route.
+String? qrSchemeLinkLocation(Uri uri) {
+  if (uri.scheme.toLowerCase() != 'getride') return null;
+  final kind = QrKind.parse(uri.host);
+  final rest = [
+    for (final s in uri.pathSegments)
+      if (s.isNotEmpty) s,
+  ];
+  if (kind == null || rest.length != 1) return null;
+  return '/q/${kind.pathSegment}/${Uri.encodeComponent(rest.single)}';
 }
 
 /// Reads any scanned GET code; null for an empty one.

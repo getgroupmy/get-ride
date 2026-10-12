@@ -10,6 +10,24 @@ name: Deploy web
 # Vercel has no Flutter builder, so the site is built here and uploaded with
 # the Build Output API (`vercel deploy --prebuilt`) -- Vercel only serves it.
 #
+# The site also serves qr.getride.my, the host My QR codes point at
+# (lib/src/core/my_qr.dart). Two things make a phone camera open the app on
+# those codes rather than the browser, both done here:
+#
+#   * /.well-known/apple-app-site-association and assetlinks.json, written
+#     by scripts/ci/app_links.ts from the signing material the release
+#     workflows already have (IOS_PROVISIONING_PROFILE for the team id,
+#     ANDROID_KEYSTORE_BASE64 for the upload key's fingerprint) plus the
+#     optional repository variables APPLE_TEAM_ID and
+#     ANDROID_APP_LINK_SHA256 (the Play App Signing key). A file whose
+#     inputs are missing is skipped with a notice.
+#   * deploy/domains.txt: on a production deploy scripts/ci/vercel_domains.ts
+#     adds any listed domain the project lacks and creates its DNS record
+#     when the zone is on Vercel DNS (or warns with the record to add).
+#     It never fails the deploy.
+#
+# See docs/store-release.md, "App links".
+#
 # The only credential is the VERCEL_TOKEN secret. The org and project ids
 # are identifiers, not credentials, so they are written down below; a
 # secret or repository variable of the same name overrides them. Without
@@ -54,6 +72,11 @@ jobs:
           channel: stable
           cache: true
 
+      - uses: denoland/setup-deno@v2
+        if: steps.secrets.outputs.present == 'true'
+        with:
+          deno-version: v2.x
+
       - name: Build
         if: steps.secrets.outputs.present == 'true'
         run: |
@@ -83,6 +106,11 @@ jobs:
           # for this site alone. The content policy stops there on purpose: the
           # app loads maps, Supabase, payment pages and APIs from many hosts,
           # and a script/connect allow-list would break it for no real gain.
+          # /.well-known/ (the app-link files, next step) is real files or a
+          # 404, never the app: a phone asking for apple-app-site-association
+          # and handed index.html would cache "no app" for this host. The
+          # Apple file has no extension, so its JSON type is set here.
+          # qr.getride.my/<ref|me|now>/<token> reaches the app like any path.
           cat > .vercel/output/config.json <<'JSON'
           {
             "version": 3,
@@ -100,12 +128,68 @@ jobs:
                 "continue": true
               },
               { "src": "/(flutter_service_worker\\.js|index\\.html)", "headers": { "cache-control": "no-cache" }, "continue": true },
+              { "src": "/\\.well-known/apple-app-site-association", "headers": { "content-type": "application/json", "cache-control": "max-age=3600" }, "continue": true },
+              { "src": "/\\.well-known/assetlinks\\.json", "headers": { "content-type": "application/json", "cache-control": "max-age=3600" }, "continue": true },
               { "src": "/privacy/?", "dest": "/privacy.html" },
               { "handle": "filesystem" },
-              { "src": "/(?!_vercel/).*", "dest": "/index.html" }
+              { "src": "/(?!_vercel/|\\.well-known/).*", "dest": "/index.html" }
             ]
           }
           JSON
+
+      # Never in the way of the deploy: without these files the links still
+      # work, on the web app. Secrets are decoded into the runner's temp
+      # directory and removed; only public values (a team id, certificate
+      # fingerprints) reach the files and the log.
+      - name: App link files
+        if: steps.secrets.outputs.present == 'true'
+        continue-on-error: true
+        env:
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          ANDROID_APP_LINK_SHA256: ${{ vars.ANDROID_APP_LINK_SHA256 }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/app-links"
+          rm -rf "$work" && mkdir -p "$work"
+          trap 'rm -rf "$work"' EXIT
+
+          # The team id is in the signed plist inside the profile. -noverify
+          # -nosigs: this only reads it; Apple's chain is not on the runner.
+          if [ -n "$IOS_PROVISIONING_PROFILE" ]; then
+            if printf '%s' "$IOS_PROVISIONING_PROFILE" | base64 -d > "$work/profile.mobileprovision" 2>/dev/null &&
+               openssl cms -verify -noverify -nosigs -inform der \
+                 -in "$work/profile.mobileprovision" -out "$work/profile.plist" 2>/dev/null; then
+              export APP_LINKS_PROFILE_PLIST="$work/profile.plist"
+            else
+              echo "::warning::IOS_PROVISIONING_PROFILE could not be decoded; falling back to APPLE_TEAM_ID."
+            fi
+          fi
+
+          # The upload key's fingerprint, as android-release.yml prints it.
+          # The password goes by environment, never on the command line.
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$work/upload.jks"
+            if keytool -list -v -keystore "$work/upload.jks" \
+                 -storepass:env ANDROID_KEYSTORE_PASSWORD > "$work/keytool.txt" 2>&1; then
+              export APP_LINKS_KEYTOOL="$work/keytool.txt"
+            else
+              echo "::warning::The upload keystore could not be read; assetlinks.json uses ANDROID_APP_LINK_SHA256 only."
+            fi
+          fi
+
+          out=.vercel/output/static/.well-known
+          deno run --allow-read --allow-write --allow-env scripts/ci/app_links.ts "$out"
+
+          # The Apple file has no extension: give it its type as a static
+          # file too, not only through the route header.
+          if [ -f "$out/apple-app-site-association" ]; then
+            jq '.overrides = {".well-known/apple-app-site-association": {"contentType": "application/json"}}' \
+              .vercel/output/config.json > "$work/config.json"
+            mv "$work/config.json" .vercel/output/config.json
+          fi
 
       - name: Deploy
         id: deploy
@@ -124,3 +208,14 @@ jobs:
           url=$(tail -1 <<<"$url")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "Deployed ($VERCEL_ENV): $url" >> "$GITHUB_STEP_SUMMARY"
+
+      # deploy/domains.txt: add any listed domain the project lacks (e.g.
+      # qr.getride.my) and point its DNS here when Vercel runs the zone.
+      # Production only; warns rather than fails.
+      - name: Domains
+        if: steps.secrets.outputs.present == 'true' && env.VERCEL_ENV == 'production'
+        continue-on-error: true
+        run: |
+          deno run --allow-read --allow-env --allow-net=api.vercel.com \
+            --allow-write="$GITHUB_STEP_SUMMARY" \
+            scripts/ci/vercel_domains.ts deploy/domains.txt

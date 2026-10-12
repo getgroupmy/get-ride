@@ -1,5 +1,7 @@
-// `/q/<kind>/<token>`: a personal QR code opened as a link (a phone camera,
-// a shared message, the web app). It works signed in or out — the server
+// `/<kind>/<token>` (an app link on qr.getride.my, which a phone camera
+// opens the app on) and `/q/<kind>/<token>` (codes made before it): a
+// personal QR code opened as a link (a phone camera, a shared message, the
+// web app). It works signed in or out — the server
 // tells a signed-out visitor only what it may: a GET.Referral code's
 // referral code (carried into sign-up), or "sign in" for a driver's code,
 // after which the app comes back here.

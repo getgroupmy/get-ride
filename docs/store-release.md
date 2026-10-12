@@ -220,6 +220,69 @@ step the apps build and work, just without notifications.
 The next store build picks up the variables. Notifications reach a phone once
 someone signs in there and allows notifications.
 
+### 6. App links (a scanned My QR code opens the app)
+
+My QR codes encode `https://qr.getride.my/<ref|me|now>/<token>`. On a phone
+with the app, the camera opens the app on the code (Android App Links, iOS
+universal links); without it, the same link opens the web app. Older codes
+(`https://getride.my/q/…`, `getride://…`) still scan in the app.
+
+What is automatic:
+
+* **The domain.** `deploy/domains.txt` lists the domains the web project must
+  serve. Every production web deploy adds any that are missing to the Vercel
+  project and, if the zone is on Vercel DNS, creates the CNAME. If DNS is
+  elsewhere, the deploy's summary has a warning with the exact record to add
+  (`qr CNAME cname.vercel-dns.com`, or what Vercel recommends). To serve a new
+  subdomain, add a line there; nothing is ever removed.
+* **The verification files**, written at every web deploy and served on
+  every domain of the project:
+  `/.well-known/apple-app-site-association` (team id read from
+  `IOS_PROVISIONING_PROFILE`) and `/.well-known/assetlinks.json` (the upload
+  key's SHA-256 from `ANDROID_KEYSTORE_BASE64`). A file whose inputs are
+  missing is skipped, with a notice in the run.
+* **Android**: the intent filters are in the manifest; nothing to switch on.
+* **iOS**: `ios-release.yml` adds `applinks:qr.getride.my` to the build's
+  entitlements **only when the provisioning profile allows Associated
+  Domains**. Otherwise the build still succeeds, with a warning, and the links
+  open Safari.
+
+What you do once:
+
+1. **Apple: turn on Associated Domains.** Apple Developer → Certificates,
+   IDs & Profiles → Identifiers → `com.taxxee.teksi` → tick **Associated
+   Domains** → Save. Then Profiles → regenerate (edit, save) the **App Store**
+   profile, download it and replace the `IOS_PROVISIONING_PROFILE` secret
+   (`base64 -i profile.mobileprovision`). If you use an Ad Hoc profile, do the
+   same for it and `IOS_ADHOC_PROVISIONING_PROFILE` — an Ad Hoc profile
+   without the capability makes that run publish the App Store IPA instead.
+   Then run *iOS release* again: links work from that build on.
+2. **Google Play: the App Signing key.** An app installed from Play is signed
+   by Google's **app signing key**, not the upload key. Play Console → the app
+   → Test and release → **App integrity** → App signing → copy the
+   *App signing key certificate* SHA-256, and set the repository variable
+   **`ANDROID_APP_LINK_SHA256`** to it (Settings → Secrets and variables →
+   Actions → Variables; several may be given, comma separated). Builds
+   installed from the `android-latest` APK are signed with the upload key,
+   which is already included.
+3. **Optional: `APPLE_TEAM_ID`** (repository variable, the 10-character
+   team id) — only used when `IOS_PROVISIONING_PROFILE` is not set.
+4. **DNS**, only if the deploy warned about it: add the record it names at
+   the DNS provider of `getride.my`.
+
+After the next push to `main` (web deploy), check:
+
+* <https://qr.getride.my/.well-known/apple-app-site-association> — JSON naming
+  `<TEAMID>.com.taxxee.teksi` and `/ref/*`, `/me/*`, `/now/*`
+  (Apple's CDN caches it; a new file can take a day to reach phones).
+* <https://qr.getride.my/.well-known/assetlinks.json>, and Google's
+  [Digital Asset Links tester](https://developers.google.com/digital-asset-links/tools/generator)
+  with host `qr.getride.my`, package `com.taxxee.teksi` and the fingerprint.
+* On an Android phone with the app: `adb shell pm get-app-links com.taxxee.teksi`
+  should show `qr.getride.my: verified`. If it says otherwise after fixing the
+  files, `adb shell pm verify-app-links --re-verify com.taxxee.teksi`.
+* Scan a My QR code with the camera: it should offer to open GET.ride.
+
 ## When something goes wrong
 
 Every run writes a summary on its Actions page, saying what was uploaded
@@ -238,3 +301,6 @@ or why nothing was. The console's *Recent builds* list links to each run.
 | No notifications arrive, `push_notifications` shows them failed | `FCM_SERVICE_ACCOUNT` missing or from another Firebase project; step 5 of the push setup |
 | No token in `push_tokens` after signing in | The build has no `FIREBASE_*` variables, or notifications were not allowed on the phone |
 | 403 "caller does not have permission" | Step 3 of the service account setup |
+| iOS run warns "profile has no Associated Domains" | Step 1 of the app links setup |
+| A scanned My QR code opens the browser, not the app | Verification file missing or wrong (check the URLs in step 6), a Play install without `ANDROID_APP_LINK_SHA256`, or an iOS build made before Associated Domains was on |
+| Web deploy warns about `qr.getride.my` DNS | Add the record the warning names at the DNS provider |
