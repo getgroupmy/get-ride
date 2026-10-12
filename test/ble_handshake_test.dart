@@ -4,12 +4,14 @@
 import 'dart:async';
 
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/ble_handshake.dart';
 import 'package:get_ride/src/core/reliability_settings.dart';
+import 'package:get_ride/src/data/ble_chat.dart';
 import 'package:get_ride/src/data/ble_handshake.dart';
 import 'package:get_ride/src/data/reliability_repository.dart';
 import 'package:get_ride/src/widgets/ble_handshake_badge.dart';
@@ -25,7 +27,7 @@ class _Radio implements BleRadio {
   final started = <String>[];
   int stops = 0;
 
-  void see(String token, int rssi) => _out.add((uuid: tokenServiceUuid(token)!, rssi: rssi));
+  void see(String token, int rssi) => _out.add((uuid: tokenServiceUuid(token)!, rssi: rssi, deviceId: 'dev-$token'));
 
   @override
   Stream<BleAdvert> get adverts => _out.stream;
@@ -71,6 +73,36 @@ class _Clock {
       await tester.pump(const Duration(seconds: 1));
     }
   }
+}
+
+/// A chat link that only records what the engine asks of it.
+class _ChatLink implements BleChatTransport {
+  final _linked = ValueNotifier(false);
+  final connects = <String>[];
+  bool served = false;
+  bool stopped = false;
+
+  @override
+  Stream<Uint8List> get incoming => const Stream.empty();
+
+  @override
+  ValueListenable<bool> get linked => _linked;
+
+  @override
+  Future<bool> serve() async => served = true;
+
+  @override
+  Future<bool> connect(String deviceId) async {
+    connects.add(deviceId);
+    _linked.value = true;
+    return true;
+  }
+
+  @override
+  Future<bool> send(Uint8List frame) async => true;
+
+  @override
+  Future<void> stop() async => stopped = true;
 }
 
 void main() {
@@ -262,6 +294,62 @@ void main() {
         finish(async, e);
       });
     });
+
+    test(
+      'chat over Bluetooth: started only with a key, the rider links to the phone it saw, stopped with the rest',
+      () {
+        run((async, now) {
+          final link = _ChatLink();
+          const chatKey = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+          BleHandshakeEngine withChat(BleTicket t) => BleHandshakeEngine(
+            radio: radio,
+            server: BleHandshakeServer(ticket: () async => t, proof: (_, _, _, _) async => BleProofResult.waiting),
+            isAndroid: true,
+            isIos: false,
+            status: 'arrived',
+            position: () async => null,
+            now: now,
+            chatFactory: (ticket, key) => BleChatSession(
+              transport: link,
+              key: key,
+              requestId: 'r1',
+              driver: ticket.side == 'driver',
+              pending: () => const [],
+              now: now,
+            ),
+          );
+
+          final noKey = withChat(_ticket(settings: const BleSettings(enabled: true, chat: true)));
+          noKey.start();
+          async.flushMicrotasks();
+          expect(noKey.chat.value, isNull, reason: 'no key, no chat');
+          finish(async, noKey);
+
+          final t = BleTicket(
+            enabled: true,
+            status: 'arrived',
+            side: 'rider',
+            token: _mine,
+            peerToken: _peer,
+            expiresAt: DateTime.utc(2026, 10, 12, 9, 5),
+            chatKey: chatKey,
+            settings: const BleSettings(enabled: true, chat: true),
+          );
+          final e = withChat(t);
+          e.start();
+          async.flushMicrotasks();
+          expect(e.chat.value, isNotNull);
+          expect(link.served, isFalse, reason: 'the rider\'s phone connects, it doesn\'t serve');
+          seePeer(async, 1);
+          expect(link.connects, ['dev-$_peer']);
+          e.updateStatus('on_trip');
+          async.elapse(const Duration(seconds: 1));
+          expect(link.stopped, isTrue);
+          expect(e.chat.value, isNull);
+          finish(async, e);
+        });
+      },
+    );
 
     test('another phone, or a weak signal, is never reported', () {
       run((async, now) {

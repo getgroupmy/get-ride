@@ -239,6 +239,16 @@ class _BleSection extends ConsumerWidget {
           secondary: _spinner('ble_autostart_no_pin'),
           onChanged: on ? (v) => onChanged('ble_autostart_no_pin', ble.copyWith(autostartNoPin: v)) : null,
         ),
+        SwitchListTile(
+          key: const ValueKey('reliability-ble_chat'),
+          title: const Text('Chat over Bluetooth when there\'s no signal'),
+          subtitle: const Text(
+            'At the pickup, a message that can\'t reach the server goes straight to the other phone. Short text only.',
+          ),
+          value: ble.chat,
+          secondary: _spinner('ble_chat'),
+          onChanged: on ? (v) => onChanged('ble_chat', ble.copyWith(chat: v)) : null,
+        ),
         ListTile(
           title: const Text('How close'),
           subtitle: Text(

@@ -16,6 +16,7 @@ class BleSettings {
     this.autostartNoPin = false,
     this.rssiThresholdDbm = defaultRssiThresholdDbm,
     this.matchTimeoutS = defaultMatchTimeoutS,
+    this.chat = false,
   });
 
   static const defaultRssiThresholdDbm = -70;
@@ -38,6 +39,9 @@ class BleSettings {
   /// How recent both sides' sightings must be to count.
   final int matchTimeoutS;
 
+  /// Chat messages that can't reach the server go phone to phone (0155).
+  final bool chat;
+
   factory BleSettings.fromValues(Map<String, dynamic>? v) => BleSettings(
     enabled: _onlyIfOn(v?['ble_enabled']),
     android: !_offOnly(v?['ble_android']),
@@ -45,6 +49,7 @@ class BleSettings {
     autostartNoPin: _onlyIfOn(v?['ble_autostart_no_pin']),
     rssiThresholdDbm: _clampInt(v?['ble_rssi_threshold_dbm'], defaultRssiThresholdDbm, minRssi, maxRssi),
     matchTimeoutS: _clampInt(v?['ble_match_timeout_s'], defaultMatchTimeoutS, minTimeout, maxTimeout),
+    chat: _onlyIfOn(v?['ble_chat']),
   );
 
   /// As get_trip_ble_token hands them over (`settings`).
@@ -55,6 +60,7 @@ class BleSettings {
     'ble_autostart_no_pin': v?['autostart_no_pin'],
     'ble_rssi_threshold_dbm': v?['rssi_threshold_dbm'],
     'ble_match_timeout_s': v?['match_timeout_s'],
+    'ble_chat': v?['chat'],
   });
 
   Map<String, dynamic> toValues() => {
@@ -64,6 +70,7 @@ class BleSettings {
     'ble_autostart_no_pin': autostartNoPin,
     'ble_rssi_threshold_dbm': rssiThresholdDbm,
     'ble_match_timeout_s': matchTimeoutS,
+    'ble_chat': chat,
   };
 
   BleSettings copyWith({
@@ -73,6 +80,7 @@ class BleSettings {
     bool? autostartNoPin,
     int? rssiThresholdDbm,
     int? matchTimeoutS,
+    bool? chat,
   }) => BleSettings.fromValues({
     ...toValues(),
     'ble_enabled': ?enabled,
@@ -81,6 +89,7 @@ class BleSettings {
     'ble_autostart_no_pin': ?autostartNoPin,
     'ble_rssi_threshold_dbm': ?rssiThresholdDbm,
     'ble_match_timeout_s': ?matchTimeoutS,
+    'ble_chat': ?chat,
   });
 
   /// Whether a phone of this kind takes part. Anything that is neither
@@ -95,10 +104,11 @@ class BleSettings {
       other.ios == ios &&
       other.autostartNoPin == autostartNoPin &&
       other.rssiThresholdDbm == rssiThresholdDbm &&
-      other.matchTimeoutS == matchTimeoutS;
+      other.matchTimeoutS == matchTimeoutS &&
+      other.chat == chat;
 
   @override
-  int get hashCode => Object.hash(enabled, android, ios, autostartNoPin, rssiThresholdDbm, matchTimeoutS);
+  int get hashCode => Object.hash(enabled, android, ios, autostartNoPin, rssiThresholdDbm, matchTimeoutS, chat);
 }
 
 bool _onlyIfOn(Object? v) => switch (v) {
@@ -149,6 +159,7 @@ class BleTicket {
     this.token,
     this.peerToken,
     this.expiresAt,
+    this.chatKey,
     this.settings = const BleSettings(),
   });
 
@@ -160,6 +171,10 @@ class BleTicket {
   final String? token;
   final String? peerToken;
   final DateTime? expiresAt;
+
+  /// The key Bluetooth chat frames are signed with (0155); null while the
+  /// admin has chat off.
+  final String? chatKey;
   final BleSettings settings;
 
   /// There is something to advertise and something to look for.
@@ -177,6 +192,7 @@ class BleTicket {
       token: m['token'] as String?,
       peerToken: m['peer_token'] as String?,
       expiresAt: DateTime.tryParse('${m['expires_at'] ?? ''}')?.toUtc(),
+      chatKey: m['chat_key'] as String?,
       settings: BleSettings.fromServer(settings is Map ? Map<String, dynamic>.from(settings) : null),
     );
   }
