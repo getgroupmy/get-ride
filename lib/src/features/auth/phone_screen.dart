@@ -13,6 +13,7 @@ import '../../data/device_access.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/dial_country_picker.dart';
 import '../../widgets/in_app_page.dart';
 
 class PhoneScreen extends ConsumerStatefulWidget {
@@ -128,12 +129,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   }
 
   Future<void> _pickCountry() async {
-    final picked = await showModalBottomSheet<DialCountry>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => const _CountrySheet(),
-    );
+    final picked = await showDialCountryPicker(context);
     if (picked != null && mounted) setState(() => _country = picked);
   }
 
@@ -169,20 +165,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
               Text('We\'ll sign you in, or create your account.', style: t.textTheme.bodyMedium),
               const SizedBox(height: 20),
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                OutlinedButton(
-                  key: const ValueKey('dial-country'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 52),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  onPressed: _pickCountry,
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Text(_country.flag, style: const TextStyle(fontSize: 20)),
-                    const SizedBox(width: 6),
-                    Text(_country.dialCode),
-                    const Icon(Icons.arrow_drop_down),
-                  ]),
-                ),
+                DialCountryButton(key: const ValueKey('dial-country'), country: _country, onPressed: _pickCountry),
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextField(
@@ -232,52 +215,6 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
             ]),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Pick a country by name, code or dial code (Expo's country picker).
-class _CountrySheet extends StatefulWidget {
-  const _CountrySheet();
-
-  @override
-  State<_CountrySheet> createState() => _CountrySheetState();
-}
-
-class _CountrySheetState extends State<_CountrySheet> {
-  String _query = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final list = searchDialCountries(_query);
-    return SafeArea(
-      child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * 0.75,
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: TextField(
-              key: const ValueKey('country-search'),
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search country or code'),
-              onChanged: (v) => setState(() => _query = v),
-            ),
-          ),
-          Expanded(
-            child: list.isEmpty
-                ? const Center(child: Text('No country found'))
-                : ListView.builder(
-                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                    itemCount: list.length,
-                    itemBuilder: (c, i) => ListTile(
-                      leading: Text(list[i].flag, style: const TextStyle(fontSize: 24)),
-                      title: Text(list[i].name),
-                      trailing: Text(list[i].dialCode),
-                      onTap: () => Navigator.pop(c, list[i]),
-                    ),
-                  ),
-          ),
-        ]),
       ),
     );
   }

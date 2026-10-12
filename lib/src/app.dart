@@ -62,6 +62,7 @@ import 'features/settings/change_pin_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/shell/brand_splash.dart';
+import 'features/shell/not_found_screen.dart';
 import 'features/shell/app_side_menu.dart';
 import 'features/shell/update_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
@@ -155,6 +156,11 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     refreshListenable: refresh,
+    // An address that is no page here (an old or mistyped link) gets a way
+    // home instead of the router's bare error. Signed-out visitors are still
+    // sent to sign-in first by [redirect]; /share/ and /install/ links match
+    // their own routes and never land here.
+    errorBuilder: notFoundPage,
     redirect: (context, state) {
       final signedIn = db.auth.currentSession != null;
       final loc = state.matchedLocation;

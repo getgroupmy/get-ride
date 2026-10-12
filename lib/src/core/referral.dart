@@ -32,6 +32,18 @@ String referralMessage(String code, String link) =>
     'Sign up with my referral code $code and we both earn bonus GET.coin '
     'to spend on rides.\n\n$link';
 
+/// The invite card's headline: who is inviting, when the account has a name.
+String referralCardHeadline(String? inviterName) {
+  final name = (inviterName ?? '').trim();
+  return name.isEmpty ? "You're invited to ride" : '$name is inviting you to ride';
+}
+
+/// The file name the invite card image travels under.
+String referralCardFileName(String code) {
+  final c = normalizeReferralCode(code).toLowerCase();
+  return c.isEmpty ? 'getride-invite.png' : 'getride-invite-$c.png';
+}
+
 /// The `ref` code carried by an incoming link, or null.
 String? referralCodeFromUri(Uri uri) {
   final code = normalizeReferralCode(uri.queryParameters['ref']);

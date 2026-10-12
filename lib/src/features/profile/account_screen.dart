@@ -34,8 +34,12 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
     'invite-friends': '/account/referral',
   };
   if (id == 'logout') {
-    beforeOpen?.call();
-    ref.read(authRepositoryProvider).signOut();
+    // Asked first, while the menu is still open: a stray tap must not sign out.
+    confirmSignOut(context).then((ok) {
+      if (!ok) return;
+      beforeOpen?.call();
+      ref.read(authRepositoryProvider).signOut();
+    });
     return true;
   }
   final r = routes[id];
@@ -44,6 +48,30 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
   beforeOpen?.call();
   openRoute(router, r);
   return true;
+}
+
+/// Asks before signing out; true when the rider confirmed.
+Future<bool> confirmSignOut(BuildContext context) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Sign out?'),
+      content: const Text('You will need your phone number and PIN to sign in again.'),
+      actions: [
+        TextButton(
+          key: const ValueKey('sign-out-cancel'),
+          onPressed: () => Navigator.pop(c, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey('sign-out-confirm'),
+          onPressed: () => Navigator.pop(c, true),
+          child: const Text('Sign out'),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
 }
 
 /// The rider's account: the same profile card and menu the side menu

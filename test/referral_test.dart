@@ -189,7 +189,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('A1B2C3D4'), findsOneWidget);
+      expect(tester.widget<SelectableText>(find.byKey(const ValueKey('referral-code'))).data, 'A1B2C3D4');
       expect(find.text('3 friends joined with your code'), findsOneWidget);
       expect(find.text('Invited by Aisyah'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('referral-copy-invite')));

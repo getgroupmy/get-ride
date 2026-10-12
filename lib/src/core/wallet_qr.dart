@@ -133,3 +133,39 @@ String walletPayErrorMessage(Object error) {
   }
   return 'Payment failed. Please try again.';
 }
+
+/// The file name a shared or saved wallet code travels under.
+String walletQrFileName({required bool coin, double? amount}) {
+  final base = coin ? 'getride-coin-qr' : 'getride-wallet-qr';
+  return amount != null && amount > 0 ? '$base-${amount.toStringAsFixed(2).replaceAll('.', '-')}.png' : '$base.png';
+}
+
+/// The caption printed under a shared wallet code.
+String walletQrCaption({required bool coin, required String userId, String? name}) {
+  final who = (name ?? '').trim().toUpperCase();
+  final id = coin ? userId : 'Account no. ${walletAccountNumber(userId)}';
+  return who.isEmpty ? id : '$who\n$id';
+}
+
+/// The text sent beside a shared wallet code. [amountLabel] is the
+/// formatted fixed amount, when the code carries one (it expires after
+/// [walletAmountQrTtl], so the text says so).
+String walletQrShareText({required bool coin, required String userId, String? name, String? amountLabel}) {
+  final who = (name ?? '').trim();
+  return [
+    coin
+        ? 'Scan this code in GET.ride to send GET.coin${who.isEmpty ? '' : ' to $who'}.'
+        : 'Scan this code in GET.ride to pay ${who.isEmpty ? 'me' : who}.',
+    if (amountLabel != null) 'Amount: $amountLabel (the code expires after ${walletAmountQrTtl.inSeconds} seconds).',
+    coin ? 'Wallet ID: $userId' : 'Account no. ${walletAccountNumber(userId)}',
+  ].join('\n');
+}
+
+/// The steps the Scan & Pay help sheet walks through.
+const scanPayHowToSteps = [
+  'Point the camera at a GET.ride or merchant QR code, with the whole code inside the frame.',
+  'Too dark to read? Turn on the flashlight with the torch button.',
+  "No camera, or the code won't read? Paste the code's text into the box under the camera.",
+  'A GET.ride code opens Send GET.coin to that person. A merchant code opens the pay page.',
+  'Enter the amount, choose whether to use GET.coin, and check the confirmation before you pay.',
+];
