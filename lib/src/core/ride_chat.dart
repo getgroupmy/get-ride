@@ -359,3 +359,11 @@ List<RideChatItem> rideChatItems(List<RideMessage> messages, DateTime now) {
 /// Where a shared location opens: the maps app (or site) at that point.
 Uri rideLocationUri(double lat, double lng) =>
     Uri.parse('https://www.google.com/maps/search/?api=1&query=${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}');
+
+/// How long the trip screen stays up once a ride is cancelled, on either
+/// side, before it closes by itself.
+const rideCancelledClose = Duration(seconds: 5);
+
+/// Whether the trip screen still offers Message and Call: never once the ride
+/// is cancelled (the chat history stays readable from the trip's record).
+bool rideContactAllowed(RideRequest ride) => rideChatAvailable(ride) && ride.status != RideStatus.cancelled;

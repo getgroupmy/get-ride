@@ -15,7 +15,7 @@ import '../../core/fare_offer.dart' show fareOfferStep;
 import '../../core/format.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_cancel.dart';
-import '../../core/ride_chat.dart' show rideChatAvailable;
+import '../../core/ride_chat.dart' show rideChatAvailable, rideContactAllowed;
 import '../../core/ride_confirm.dart';
 import '../../core/request_viewers.dart';
 import '../../core/search_stage.dart';
@@ -36,6 +36,7 @@ import 'demo_ride.dart';
 import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
 import '../support/call/mic_gate.dart' show primeMicForCalls;
+import 'cancelled_countdown.dart';
 import 'ride_call_screen.dart' show RideCallButton;
 import 'ride_payment_overlay.dart';
 import 'ride_chat_screen.dart' show RideChatBadge;
@@ -401,6 +402,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       await _raise(searchPromptRaise);
       if (mounted) showInfo(context, 'You raised the fare to ${r.fareText(fare + searchPromptRaise)}');
     }
+  }
+
+  bool _closed = false;
+
+  void _close() {
+    if (_closed || !mounted) return;
+    _closed = true;
+    context.go('/');
   }
 
   Future<void> _showExpired() async {
@@ -816,14 +825,15 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: BleHandshakeBadge(rideId: r.id, status: r.status.db, driver: false),
                     ),
-                  if (r.partnerPhone != null || rideChatAvailable(r))
+                  // No Message or Call once the ride is cancelled.
+                  if (r.status != RideStatus.cancelled && (r.partnerPhone != null || rideChatAvailable(r)))
                     OverflowBar(
                       children: [
                         // An in-app call (migration 0131); a long press offers
                         // the phone call when the number is known.
                         RideCallButton(ride: r, peerName: r.partnerName ?? 'your driver', phone: r.partnerPhone),
                         // The in-app chat (migration 0129), not the phone's SMS app.
-                        if (rideChatAvailable(r))
+                        if (rideContactAllowed(r))
                           TextButton.icon(
                             key: const ValueKey('ride-message'),
                             icon: RideChatBadge(requestId: r.id, child: const Icon(Icons.chat_bubble_outline)),
@@ -969,7 +979,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 subtitle: const Text('Ride reward, added to your GET.coin'),
               ),
             ),
-          if (r.status.isFinished) FilledButton(onPressed: () => context.go('/'), child: const Text('Done')),
+          // Cancelled: the screen closes by itself.
+          if (r.status == RideStatus.cancelled) ...[
+            CancelledCountdown(onDone: _close),
+            const SizedBox(height: 12),
+          ],
+          if (r.status.isFinished) FilledButton(onPressed: _close, child: const Text('Done')),
           ],
         ],
       ),
