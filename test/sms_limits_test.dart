@@ -1,8 +1,15 @@
 // Sign-in SMS limits (lib/src/core/sms_limits.dart).
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/admin/screens/sms_limits_card.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/sms_limits.dart';
 
+import 'quiet_live.dart';
+
 void main() {
+  _cardTests();
   test('reads the settings row, with the defaults for anything missing', () {
     final s = SmsLimits.fromRow({
       'enabled': false,
@@ -79,4 +86,39 @@ void main() {
     expect(smsActivityFrom({'queued': 1}), (queued: 1, blocked: 0, failed: 0));
     expect(smsActivityFrom(null), (queued: 0, blocked: 0, failed: 0));
   });
+}
+
+// The card itself: on a phone-width screen the "Last changed" line used to
+// sit beside a full-width Save button and was squeezed one letter wide.
+Future<void> _pumpCard(WidgetTester tester, Brightness b) async {
+  tester.view.physicalSize = const Size(400, 2400);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      ...quietLiveOverrides,
+      smsLimitsProvider.overrideWith((_) async => SmsLimits.fromRow({'updated_at': '2026-10-11T07:53:00Z'})),
+      smsActivityProvider.overrideWith((_) async => smsActivityFrom(null)),
+      smsLogProvider.overrideWith((_, _) async => const <SmsLogEntry>[]),
+    ],
+    child: MaterialApp(
+      theme: appTheme(b),
+      home: const Scaffold(body: SingleChildScrollView(child: SmsLimitsCard(canEdit: true))),
+    ),
+  ));
+  await tester.pumpAndSettle();
+}
+
+void _cardTests() {
+  for (final b in Brightness.values) {
+    testWidgets('the last-changed line reads across the card, with Save below it (${b.name})', (tester) async {
+      await _pumpCard(tester, b);
+      final changed = find.byKey(const ValueKey('sms-limits-changed'));
+      expect(changed, findsOneWidget);
+      expect(tester.getSize(changed).width, greaterThan(250), reason: 'across the card, not one letter per line');
+      expect(tester.getTopLeft(find.byKey(const ValueKey('sms-limits-save'))).dy,
+          greaterThan(tester.getBottomLeft(changed).dy));
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
