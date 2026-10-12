@@ -304,6 +304,7 @@ class VehicleServicesScreen extends ConsumerWidget {
           final v = e.values;
           final p = v['displayPriority'];
           final meta = vehicleServiceMeta(v);
+          final dispatch = vehicleServiceDispatchSummary(v);
           return ListTile(
             contentPadding: EdgeInsets.zero,
             leading: StoredImage(str(v['iconUri']), fallback: Icons.layers_outlined),
@@ -312,7 +313,14 @@ class VehicleServicesScreen extends ConsumerWidget {
               Pill(p == null || '$p' == '' ? '-' : '$p', icon: Icons.format_list_numbered),
               StatusChip(jsBool(v['status'], true) ? 'Active' : 'Inactive'),
             ]),
-            subtitle: meta.isEmpty ? null : Text(meta),
+            subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (meta.isNotEmpty) Text(meta),
+              Row(children: [
+                const Icon(Icons.radar, size: 14),
+                const SizedBox(width: 4),
+                Expanded(child: Text(dispatch, key: ValueKey('vs-dispatch-summary-${e.id}'))),
+              ]),
+            ]),
           );
         },
       );
@@ -342,6 +350,9 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
             : (v[f.key] == null ? '' : '${v[f.key]}'),
       ),
   };
+  late final _dispatch = {
+    for (final f in vehicleServiceDispatchFields) f.key: TextEditingController(text: dispatchFieldText(v, f)),
+  };
   late final _images = {for (final k in ['iconUri', 'heroImageUri', 'mapIconUri']) k: str(v[k])};
   late String _color = str(v['mapIconColor']);
   late List<String> _serviceTypes = stringList(v['serviceTypes']);
@@ -351,7 +362,7 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
 
   @override
   void dispose() {
-    for (final c in [..._text.values, ..._numbers.values]) {
+    for (final c in [..._text.values, ..._numbers.values, ..._dispatch.values]) {
       c.dispose();
     }
     super.dispose();
@@ -368,9 +379,38 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
       serviceTypes: _serviceTypes,
       fuel: _fuel,
       status: _status,
+      dispatch: _dispatchText,
+      existing: widget.entry?.values,
     );
     if (r.error != null) return setState(() => _error = r.error);
     Navigator.pop(context, r.values);
+  }
+
+  Map<String, String> get _dispatchText => {for (final e in _dispatch.entries) e.key: e.value.text};
+
+  Widget _dispatchField(DispatchField f, String? error) {
+    final c = _dispatch[f.key]!;
+    final noLimit = f.zeroAllowed && (c.text.trim().isEmpty || num.tryParse(c.text.trim()) == 0);
+    final unit = f.unit == 's' ? 'seconds' : f.unit;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        key: ValueKey('vs-${f.key}'),
+        controller: c,
+        enabled: widget.canEdit,
+        keyboardType: TextInputType.numberWithOptions(decimal: !f.wholeNumber),
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(
+          labelText: '${f.label} (in $unit)',
+          hintText: f.zeroAllowed ? 'No limit' : 'Default ${formatDispatchNumber(f.defaultValue)}',
+          helperText: f.helper,
+          helperMaxLines: 4,
+          errorText: error,
+          errorMaxLines: 3,
+          suffixText: noLimit && c.text.trim().isNotEmpty ? 'No limit' : f.unit,
+        ),
+      ),
+    );
   }
 
   static Color _parseHex(String hex) => Color(int.parse('FF${hex.substring(1)}', radix: 16));
@@ -380,6 +420,7 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final dispatchError = validateVehicleServiceDispatch(_dispatchText);
     return EditorBody(
       error: _error,
       saveLabel: widget.entry == null ? 'Add Vehicle Service' : 'Save changes',
@@ -477,6 +518,17 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
               ),
             ),
           ),
+        for (final section in [searchRadiusSection, myRideSection]) ...[
+          SectionLabel(
+            section,
+            hint: section == searchRadiusSection
+                ? 'How far the app looks for drivers for this service. Leave a field blank to use the default '
+                    'shown in it.'
+                : 'Riders can book their favourite drivers first. Leave a field blank to use the default shown in it.',
+          ),
+          for (final f in vehicleServiceDispatchFields)
+            if (f.section == section) _dispatchField(f, dispatchError?.key == f.key ? dispatchError!.message : null),
+        ],
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Status'),
