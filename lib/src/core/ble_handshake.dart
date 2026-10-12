@@ -161,6 +161,8 @@ class BleTicket {
     this.expiresAt,
     this.chatKey,
     this.settings = const BleSettings(),
+    this.ahead = const [],
+    this.behind,
   });
 
   final bool enabled;
@@ -177,14 +179,63 @@ class BleTicket {
   final String? chatKey;
   final BleSettings settings;
 
+  /// The tokens for the windows after this one (0157), so a phone that loses
+  /// signal keeps rotating in step with the other phone. Oldest first.
+  final List<BleSlot> ahead;
+
+  /// The window before this one, kept when a phone rotates on its own, so
+  /// it still knows the other phone if that one's clock is a moment behind.
+  final BleSlot? behind;
+
   /// There is something to advertise and something to look for.
   bool get usable =>
       enabled && tokenServiceUuid(token) != null && tokenServiceUuid(peerToken) != null && expiresAt != null;
+
+  /// This ticket's own window, as a slot.
+  BleSlot? get _current => usable ? BleSlot(token: token!, peerToken: peerToken!, expiresAt: expiresAt!) : null;
+
+  /// Every window this ticket knows, oldest first.
+  List<BleSlot> get _slots => [?behind, ?_current, ...ahead];
+
+  /// The ticket for the window [now] falls in, from the tokens handed out
+  /// ahead; null once [now] is past every window this ticket knows.
+  BleTicket? at(DateTime now) {
+    final slots = _slots;
+    final i = slots.indexWhere((s) => now.isBefore(s.expiresAt));
+    if (i < 0) return null;
+    final s = slots[i];
+    return BleTicket(
+      enabled: enabled,
+      status: status,
+      side: side,
+      token: s.token,
+      peerToken: s.peerToken,
+      expiresAt: s.expiresAt,
+      chatKey: chatKey,
+      settings: settings,
+      ahead: slots.sublist(i + 1),
+      behind: i > 0 ? slots[i - 1] : behind,
+    );
+  }
+
+  /// What the other phone may be advertising around [now]: this window's
+  /// token and the ones either side, since two clocks never quite agree on
+  /// where a window ends.
+  Set<String> peerTokensNear(DateTime now) {
+    final slots = _slots;
+    var i = slots.indexWhere((s) => now.isBefore(s.expiresAt));
+    if (i < 0) i = slots.length - 1;
+    return {
+      for (var j = i - 1; j <= i + 1; j++)
+        if (j >= 0 && j < slots.length) slots[j].peerToken.toLowerCase(),
+    };
+  }
 
   factory BleTicket.fromJson(Object? json) {
     if (json is! Map) return const BleTicket(enabled: false);
     final m = Map<String, dynamic>.from(json);
     final settings = m['settings'];
+    final ahead = m['ahead'];
     return BleTicket(
       enabled: m['enabled'] == true,
       status: m['status'] as String?,
@@ -194,7 +245,31 @@ class BleTicket {
       expiresAt: DateTime.tryParse('${m['expires_at'] ?? ''}')?.toUtc(),
       chatKey: m['chat_key'] as String?,
       settings: BleSettings.fromServer(settings is Map ? Map<String, dynamic>.from(settings) : null),
+      ahead: [
+        if (ahead is List)
+          for (final a in ahead) ?BleSlot.fromJson(a),
+      ],
     );
+  }
+}
+
+/// One 5-minute window's tokens: what this phone advertises, and what it
+/// looks for.
+class BleSlot {
+  const BleSlot({required this.token, required this.peerToken, required this.expiresAt});
+
+  final String token;
+  final String peerToken;
+  final DateTime expiresAt;
+
+  static BleSlot? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final token = json['token'];
+    final peer = json['peer_token'];
+    final until = DateTime.tryParse('${json['expires_at'] ?? ''}')?.toUtc();
+    if (token is! String || peer is! String || until == null) return null;
+    if (tokenServiceUuid(token) == null || tokenServiceUuid(peer) == null) return null;
+    return BleSlot(token: token, peerToken: peer, expiresAt: until);
   }
 }
 
