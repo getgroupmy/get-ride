@@ -63,6 +63,7 @@ const _defaultMenuIcons = <String, Map<String, String>>{
     'invite-friends': 'Gift',
     'city': 'Car',
     'request-history': 'Clock',
+    'my-ride': 'Heart',
     'freight': 'Truck',
     'notifications': 'Bell',
     'safety': 'Shield',

@@ -77,3 +77,11 @@ const allOwnedCategories = <String>{
   // Saved push notifications: edited on the Push notifications screen.
   'push-notification',
 };
+
+/// Generated list categories a dedicated editor has replaced, with where the
+/// setting lives now. They are left off the Settings hub; their rows are kept
+/// (nothing is deleted) and the list still opens from a direct link.
+const replacedCategories = <String, String>{
+  // Nothing read it; the dispatch reads each vehicle service's own radius (0160).
+  'search-radius': 'Vehicle Services → Search radius',
+};

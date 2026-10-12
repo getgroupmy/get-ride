@@ -24,6 +24,7 @@ const vehicleInfoMenuItemId = 'vehicle-information';
 const emergencyContactsMenuItemId = 'emergency-contacts';
 const inviteFriendsMenuItemId = 'invite-friends';
 const helpAssistantMenuItemId = 'help-assistant';
+const myRideMenuItemId = 'my-ride';
 
 /// The driver's My Ride code (QR and the riders who added them); shown only
 /// where the database has My Ride (migration 0160).
@@ -33,6 +34,7 @@ const defaultUserMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
   ('city', 'City'),
   ('request-history', 'Request history'),
+  (myRideMenuItemId, 'My Ride'), // favourite drivers (0160); this app's own, the Expo menu skips it
   ('freight', 'Freight'),
   ('wallet', 'Wallet'),
   ('notifications', 'Notifications'),
@@ -72,6 +74,7 @@ const defaultMenuRoutes = <String, Map<String, String>>{
     'teksi-ev': '/teksi-ev',
     'city': '/',
     'request-history': '/',
+    myRideMenuItemId: '/my-ride',
     'freight': '/',
     'wallet': '/wallet',
     'notifications': '/',
@@ -109,7 +112,7 @@ const allAppRoutes = <String>[
   '/', '/onboarding', '/role-selection', '/phone-auth', '/otp-verify', '/pin-setup', '/pin-verify',
   '/change-pin', '/change-number', '/name-entry', '/profile', '/edit-profile', '/profile-photo', '/settings',
   '/dark-mode', '/language', '/distances', '/navigation', '/user-guide', '/rules-terms', '/safety',
-  '/emergency-contacts', '/emergency-contact-edit', '/search', '/map-picker', '/offer-fare', '/ride-detail',
+  '/emergency-contacts', '/emergency-contact-edit', '/my-ride', '/search', '/map-picker', '/offer-fare', '/ride-detail',
   '/ride-confirm', '/ride-running', '/ride-tracking', '/teksi-ev', '/support', '/support-call',
   '/support-chat', '/partner-teksi', '/partner-ehailing', '/partner-onboarding', '/partner-documents',
   '/vehicle-onboarding', '/auth-diagnostics', '/admin-login', '/admin-dashboard', '/admin-orders',
