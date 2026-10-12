@@ -31,6 +31,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
+import '../../widgets/trip_safety.dart';
 import 'demo_ride.dart';
 import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
@@ -881,6 +882,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             ),
           ),
           const SizedBox(height: 12),
+          // Trip safety (Phase D4): "Are you in the car?" / "still on your trip?".
+          if (r.status == RideStatus.onTrip) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
+          if (r.status == RideStatus.completed) LostItemCard(ride: r),
           if (r.status.isOngoing && r.status != RideStatus.open)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),

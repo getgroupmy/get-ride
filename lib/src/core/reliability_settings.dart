@@ -7,6 +7,7 @@
 // (Phase D, lib/src/core/ble_handshake.dart) live in the same row. Pure.
 
 import 'ble_handshake.dart';
+import 'trip_safety.dart';
 
 const reliabilityCategory = 'reliability-messaging';
 
@@ -21,6 +22,7 @@ class ReliabilitySettings {
     this.readAloud = true,
     this.serverTripStart = false,
     this.ble = const BleSettings(),
+    this.safety = const SafetySettings(),
   });
 
   /// Chat messages written with no connection wait on the phone and go when
@@ -47,6 +49,9 @@ class ReliabilitySettings {
   /// The phones find each other at the kerb (0153); off by default.
   final BleSettings ble;
 
+  /// Trip safety signals (0154); off by default.
+  final SafetySettings safety;
+
   static const keys = ['chat_outbox', 'ride_cache', 'background_ack', 'read_aloud', 'server_trip_start'];
 
   factory ReliabilitySettings.fromValues(Map<String, dynamic>? v) => ReliabilitySettings(
@@ -56,6 +61,7 @@ class ReliabilitySettings {
     readAloud: _on(v?['read_aloud']),
     serverTripStart: _onlyIfOn(v?['server_trip_start']),
     ble: BleSettings.fromValues(v),
+    safety: SafetySettings.fromValues(v),
   );
 
   Map<String, dynamic> toValues() => {
@@ -65,6 +71,7 @@ class ReliabilitySettings {
     'read_aloud': readAloud,
     'server_trip_start': serverTripStart,
     ...ble.toValues(),
+    ...safety.toValues(),
   };
 
   /// This with the switch [key] (one of [keys]) set to [on].
@@ -73,6 +80,9 @@ class ReliabilitySettings {
 
   /// This with the Bluetooth switches replaced.
   ReliabilitySettings withBle(BleSettings b) => ReliabilitySettings.fromValues({...toValues(), ...b.toValues()});
+
+  /// This with the trip safety switches replaced.
+  ReliabilitySettings withSafety(SafetySettings v) => ReliabilitySettings.fromValues({...toValues(), ...v.toValues()});
 
   bool operator [](String key) => toValues()[key] as bool? ?? false;
 
@@ -84,10 +94,11 @@ class ReliabilitySettings {
       other.backgroundAck == backgroundAck &&
       other.readAloud == readAloud &&
       other.serverTripStart == serverTripStart &&
-      other.ble == ble;
+      other.ble == ble &&
+      other.safety == safety;
 
   @override
-  int get hashCode => Object.hash(chatOutbox, rideCache, backgroundAck, readAloud, serverTripStart, ble);
+  int get hashCode => Object.hash(chatOutbox, rideCache, backgroundAck, readAloud, serverTripStart, ble, safety);
 }
 
 /// Only an explicit "off" turns a switch off.

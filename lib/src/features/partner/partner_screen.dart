@@ -45,6 +45,7 @@ import '../../core/vehicle_assignment.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../admin/screens/people/people_logic.dart' show parseStringList;
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/trip_safety.dart';
 import '../../widgets/net_image.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
@@ -700,6 +701,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         ]),
                       ),
                     const DriverWalletPills(),
+                    // Lost item reports to answer (Phase D4).
+                    const DriverLostItemsCard(),
                     const CurrentVehicleCard(),
                     if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
                   ];

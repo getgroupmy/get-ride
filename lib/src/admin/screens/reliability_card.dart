@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ble_handshake.dart';
 import '../../core/reliability_settings.dart';
+import '../../core/trip_safety.dart';
 import '../../data/reliability_repository.dart';
 import '../../widgets/common.dart';
 import '../widgets/admin_widgets.dart';
@@ -81,6 +82,20 @@ class _ReliabilityCardState extends ConsumerState<ReliabilityCard> {
     await _save(current.withBle(next), key);
   }
 
+  Future<void> _setSafety(ReliabilitySettings current, String key, SafetySettings next) async {
+    if (key == 'safety_separation' && next.separation && !current.safety.separation) {
+      final ok = await confirm(
+        context,
+        'Ask passengers mid-trip?',
+        'When the passenger\'s and driver\'s phones stay apart during a trip, the passenger gets a notification '
+            'asking if they\'re OK. Phones that don\'t share their location can\'t be checked.',
+        ok: 'Turn on',
+      );
+      if (!ok || !mounted) return;
+    }
+    await _save(current.withSafety(next), key);
+  }
+
   Future<void> _save(ReliabilitySettings next, String key) async {
     setState(() {
       _pending = next;
@@ -141,6 +156,12 @@ class _ReliabilityCardState extends ConsumerState<ReliabilityCard> {
               saving: _saving,
               enabled: widget.canEdit && _saving == null && saved != null,
               onChanged: (key, next) => _setBle(s, key, next),
+            ),
+            _SafetySection(
+              safety: s.safety,
+              saving: _saving,
+              enabled: widget.canEdit && _saving == null && saved != null,
+              onChanged: (key, next) => _setSafety(s, key, next),
             ),
             if (loaded.hasError)
               Padding(
@@ -255,6 +276,105 @@ class _BleSection extends ConsumerWidget {
               error: (_, _) => 'Couldn\u2019t load how trips started.',
             ),
             key: const ValueKey('reliability-ble-stats'),
+            style: t.textTheme.bodySmall,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Trip safety signals (Phase D4, 0154): the start check, mid-trip
+/// separation and lost item reports.
+class _SafetySection extends ConsumerWidget {
+  const _SafetySection({required this.safety, required this.saving, required this.enabled, required this.onChanged});
+
+  final SafetySettings safety;
+  final String? saving;
+  final bool enabled;
+  final void Function(String key, SafetySettings next) onChanged;
+
+  static const _distances = [100, 200, 300, 500, 1000];
+  static const _minutes = [2, 3, 5, 10];
+
+  Widget? _spinner(String key) => saving == key
+      ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+      : null;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context);
+    final summary = ref.watch(tripSafetySummaryProvider);
+    final distances = enabled && (safety.startCheck || safety.separation);
+    return Column(
+      key: const ValueKey('reliability-safety'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 24),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text('Trip safety', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+        ),
+        SwitchListTile(
+          key: const ValueKey('reliability-safety_start_check'),
+          title: const Text('Check the passenger was there at the start'),
+          subtitle: const Text(
+            'A trip started with the two phones far apart, or with the passenger\'s phone never seeing the car, '
+            'is flagged and the passenger is asked "Are you in the car?".',
+          ),
+          value: safety.startCheck,
+          secondary: _spinner('safety_start_check'),
+          onChanged: enabled ? (v) => onChanged('safety_start_check', safety.copyWith(startCheck: v)) : null,
+        ),
+        SwitchListTile(
+          key: const ValueKey('reliability-safety_separation'),
+          title: const Text('Ask when the phones drift apart mid-trip'),
+          subtitle: const Text('The passenger is asked "Are you still on your trip?", with a button for help.'),
+          value: safety.separation,
+          secondary: _spinner('safety_separation'),
+          onChanged: enabled ? (v) => onChanged('safety_separation', safety.copyWith(separation: v)) : null,
+        ),
+        SwitchListTile(
+          key: const ValueKey('reliability-safety_lost_items'),
+          title: const Text('"Left something behind?" after a trip'),
+          subtitle: const Text('Passengers report lost items for 7 days; the driver answers found or not.'),
+          value: safety.lostItems,
+          secondary: _spinner('safety_lost_items'),
+          onChanged: enabled ? (v) => onChanged('safety_lost_items', safety.copyWith(lostItems: v)) : null,
+        ),
+        ListTile(
+          title: const Text('Apart means more than'),
+          trailing: DropdownButton<int>(
+            key: const ValueKey('reliability-safety_far_apart'),
+            value: _distances.contains(safety.farApartM) ? safety.farApartM : null,
+            hint: Text('${safety.farApartM} m'),
+            items: [for (final v in _distances) DropdownMenuItem(value: v, child: Text('$v m'))],
+            onChanged: distances
+                ? (v) => v == null ? null : onChanged('safety_far_apart_m', safety.copyWith(farApartM: v))
+                : null,
+          ),
+        ),
+        ListTile(
+          title: const Text('Apart mid-trip for'),
+          trailing: DropdownButton<int>(
+            key: const ValueKey('reliability-safety_minutes'),
+            value: _minutes.contains(safety.separationMin) ? safety.separationMin : null,
+            hint: Text('${safety.separationMin} min'),
+            items: [for (final v in _minutes) DropdownMenuItem(value: v, child: Text('$v min'))],
+            onChanged: enabled && safety.separation
+                ? (v) => v == null ? null : onChanged('safety_separation_min', safety.copyWith(separationMin: v))
+                : null,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Text(
+            summary.when(
+              data: (s) => s.describe(7),
+              loading: () => 'Loading trip safety…',
+              error: (_, _) => 'Couldn\u2019t load trip safety.',
+            ),
+            key: const ValueKey('reliability-safety-summary'),
             style: t.textTheme.bodySmall,
           ),
         ),

@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/ble_handshake.dart';
 import '../core/reliability_settings.dart';
+import '../core/trip_safety.dart';
 import '../providers.dart';
 import 'live_tables.dart';
 
@@ -40,6 +41,10 @@ class ReliabilityRepository {
   /// How trips started lately (ble_start_stats, 0153; admins only).
   Future<BleStartStats> bleStats(int days) async =>
       BleStartStats.fromRow(await _db.rpc('ble_start_stats', params: {'p_days': days}));
+
+  /// What the trip safety signals did lately (trip_safety_summary, 0154).
+  Future<TripSafetySummary> safetySummary(int days) async =>
+      TripSafetySummary.fromRow(await _db.rpc('trip_safety_summary', params: {'p_days': days}));
 }
 
 final reliabilityRepositoryProvider = Provider((ref) => ReliabilityRepository(ref.watch(supabaseProvider)));
@@ -60,6 +65,11 @@ final reliabilitySettingsProvider = FutureProvider<ReliabilitySettings>((ref) as
 /// How trips started in the last 7 days, for the Reliability card.
 final bleStartStatsProvider = FutureProvider.autoDispose<BleStartStats>(
   (ref) => ref.watch(reliabilityRepositoryProvider).bleStats(7),
+);
+
+/// What the trip safety signals did in the last 7 days, for the Reliability card.
+final tripSafetySummaryProvider = FutureProvider.autoDispose<TripSafetySummary>(
+  (ref) => ref.watch(reliabilityRepositoryProvider).safetySummary(7),
 );
 
 /// The switches now, without waiting: all on until they have loaded.
