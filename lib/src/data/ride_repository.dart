@@ -16,6 +16,7 @@ import '../core/ride_request_metadata.dart';
 import '../core/ride_share.dart';
 import '../core/session_telemetry.dart';
 import '../core/fare_coins.dart';
+import '../core/my_ride.dart' show myRideMaxTargets;
 import '../core/region_pricing.dart';
 import '../core/format.dart' show setRegionCurrencySymbols;
 import '../core/ride_bidding.dart';
@@ -75,6 +76,8 @@ class RideRepository {
     String currency = AppConfig.currency,
     RegionPricing pricing = RegionPricing.none,
     String? timezone,
+    List<String> targetDriverIds = const [],
+    double? myRideMaxKm,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -116,19 +119,26 @@ class RideRepository {
       if (pricing != RegionPricing.none) ...pricing.toRideColumns(),
       'timezone': ?timezone,
       'auto_accept_fare': ?autoAcceptFare,
+      // My Ride: the favourites to offer it to first. The server keeps only
+      // the rider's own, not hidden ones and sets the window itself.
+      if (targetDriverIds.isNotEmpty) 'target_driver_ids': targetDriverIds.take(myRideMaxTargets).toList(),
+      if (targetDriverIds.isNotEmpty && myRideMaxKm != null && myRideMaxKm > 0) 'my_ride_max_km': myRideMaxKm,
     };
     // Stops, the metadata, the region's pricing and its time zone are
     // extras: a database without one of their columns (stops needs 0098,
     // pricing 0119, the zone 0124) books the ride without it rather than
     // failing.
     // auto_accept_fare needs 0141; without it the rider's phone still takes
-    // a matching offer while the searching screen is open.
+    // a matching offer while the searching screen is open. My Ride's
+    // columns need 0160; without them the ride goes to everybody nearby.
     final optional = {
       'stops',
       ...metadata.keys,
       ...RegionPricing.none.toRideColumns().keys,
       'timezone',
       'auto_accept_fare',
+      'target_driver_ids',
+      'my_ride_max_km',
     };
     Map<String, dynamic> data;
     for (var attempt = 0;; attempt++) {

@@ -3,6 +3,7 @@
 library;
 
 import '../core/format.dart';
+import '../core/my_ride.dart';
 import '../core/region_pricing.dart';
 import '../core/ride_payment.dart';
 import '../core/ride_stops.dart';
@@ -211,6 +212,38 @@ class RideRequest {
   DateTime? get startFlagAt => _t(raw['start_flag_at']);
   DateTime? get separatedAt => _t(raw['separated_at']);
   DateTime? get safetyAckAt => _t(raw['safety_ack_at']);
+
+  /// My Ride (migration 0160): the favourite drivers this request is offered
+  /// to first, until when, the distance cap the server applied, and when it
+  /// was opened to everybody / widened to the service's max radius. All
+  /// null on an ordinary request (and on rows from before 0160).
+  List<String> get targetDriverIds {
+    final v = raw['target_driver_ids'];
+    return [for (final id in v is List ? v : const []) '$id'];
+  }
+  DateTime? get targetedUntil => _t(raw['targeted_until']);
+  double? get myRideMaxKm => _d(raw['my_ride_max_km']);
+  DateTime? get fallbackPushedAt => _t(raw['fallback_pushed_at']);
+  DateTime? get widenedPushedAt => _t(raw['widened_pushed_at']);
+
+  /// Booked with My Ride: offered to favourites (now or earlier).
+  bool get isMyRide => targetDriverIds.isNotEmpty;
+
+  /// Still only for the favourites at [now].
+  bool myRideWindowOpenAt(DateTime now) =>
+      myRideWindowOpen(targets: targetDriverIds, targetedUntil: targetedUntil, now: now);
+
+  /// What is left of the favourites window at [now]; null when none runs.
+  Duration? myRideWindowRemainingAt(DateTime now) =>
+      myRideWindowRemaining(targets: targetDriverIds, targetedUntil: targetedUntil, now: now);
+
+  /// Whether driver [me] pins this request with a gold star.
+  bool starredFor(String? me, Set<String> favouriteRiderIds) => isStarredFor(
+    riderId: riderId,
+    targetDriverIds: targetDriverIds,
+    me: me,
+    favouriteRiderIds: favouriteRiderIds,
+  );
 
   String get pickupLabel => pickupName ?? pickupAddress ?? 'Pickup';
   String get dropLabel => dropName ?? dropAddress ?? 'Drop-off';
