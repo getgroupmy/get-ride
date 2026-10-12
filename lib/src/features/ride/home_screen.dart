@@ -58,6 +58,9 @@ import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../meter/meter_auto_launch.dart';
 import 'unavailable_sheet.dart';
 import '../../admin/screens/commerce/get_coin.dart' show rideRewardCoins;
+import '../../core/my_ride.dart' show FavouriteDriver, myRideMaxTargets;
+import '../my_ride/my_ride_parts.dart';
+import '../my_ride/my_ride_settings.dart';
 
 enum _PinTarget { none, pickup, drop }
 
@@ -223,6 +226,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _forOther = false;
   final _otherName = TextEditingController();
   final _otherPhone = TextEditingController();
+
+  /// My Ride (favourite drivers first): null until the rider moves the
+  /// switch, when their setting decides; and the drivers they picked (null:
+  /// every one that can be offered it).
+  bool? _myRideOn;
+  Set<String>? _myRidePick;
+
+  /// Where the rider's favourites are measured from: the pickup, rounded
+  /// like the nearby drivers' lookup.
+  ({double lat, double lng})? get _myRideAt {
+    final p = _pickup?.point;
+    if (p == null) return null;
+    final (lat, lng) = roundedPoint(p);
+    return (lat: lat, lng: lng);
+  }
+
+  List<FavouriteDriver> get _myRideFavourites {
+    final at = _myRideAt;
+    return at == null ? const [] : ref.read(bookingFavouritesProvider(at)).value ?? const [];
+  }
+
+  /// The favourites a booking now goes to first; empty with My Ride off.
+  List<String> _myRideTargets(List<FavouriteDriver> favourites, MyRideSettings s) {
+    if (!(_myRideOn ?? s.onByDefault)) return const [];
+    final pick = _myRidePick;
+    if (pick == null) return defaultMyRideTargets(favourites, s.maxKm);
+    return [
+      for (final d in myRidePickOrder(favourites))
+        if (pick.contains(d.driverId) && myRidePickable(d, s.maxKm)) d.driverId,
+    ].take(myRideMaxTargets).toList();
+  }
+
+  /// The switch: on asks which drivers (dismissing leaves it off).
+  Future<void> _pickMyRide(List<FavouriteDriver> favourites, MyRideSettings s) async {
+    final current = _myRideTargets(favourites, s);
+    final picked = await showMyRidePicker(
+      context,
+      drivers: favourites,
+      selected: current.isNotEmpty ? current.toSet() : defaultMyRideTargets(favourites, s.maxKm).toSet(),
+      maxKm: s.maxKm,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _myRideOn = picked.isNotEmpty;
+      _myRidePick = picked.isEmpty ? null : picked;
+    });
+  }
   /// Where the pickup is, for the tariff card that prices it (0109); null
   /// until the geocoder answers, when the master card (if any) applies.
   AreaInfo? _pickupArea;
@@ -802,6 +852,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
     if (!mounted) return;
+    final myRideSettings = ref.read(myRideSettingsProvider).value ?? const MyRideSettings();
+    final myRideTargets = _myRideTargets(_myRideFavourites, myRideSettings);
     setState(() => _booking = true);
     try {
       final profile = await ref.read(profileProvider.future);
@@ -874,6 +926,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             currency: _currency,
             pricing: pricing,
             timezone: rules.timezone,
+            targetDriverIds: myRideTargets,
+            myRideMaxKm: myRideTargets.isEmpty ? null : myRideSettings.maxKm,
           );
       if (_autoAccept && offerMe) {
         ref.read(autoAcceptProvider.notifier).set(req.id, _fareFor(_service, biddingOn: offerMe));
@@ -1338,6 +1392,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final coins = _coins;
     final coinOffer = coins == null ? null : fareCoinOffer(_fareFor(_service), coins.balance, coins.rate);
     final otherName = _otherName.text.trim();
+    // My Ride: only with a favourite who can be offered the ride.
+    final myRideAt = confirming ? _myRideAt : null;
+    final myRideFavs = myRideAt == null
+        ? const <FavouriteDriver>[]
+        : ref.watch(bookingFavouritesProvider(myRideAt)).value ?? const <FavouriteDriver>[];
+    final myRideSettings = myRideAt == null ? const MyRideSettings() : myRideSettingsOf(ref);
+    final myRideTargets = _myRideTargets(myRideFavs, myRideSettings);
+    final myRideOn = myRideTargets.isNotEmpty;
     final footer = confirming && _route != null
         ? ConfirmFooter(
             onOptions: () => showRideOptionsSheet(
@@ -1390,6 +1452,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 }
               }),
             ),
+            myRide: myRideFavs.any((d) => d.available)
+                ? MyRideConfirmRow(
+                    on: myRideOn,
+                    names: myRideOn ? myRideNames(myRideTargets, myRideFavs) : null,
+                    onChanged: (v) => v ? _pickMyRide(myRideFavs, myRideSettings) : setState(() => _myRideOn = false),
+                    onEdit: () => _pickMyRide(myRideFavs, myRideSettings),
+                  )
+                : null,
           )
         : null;
     // The nearest drivers to the pickup, on the confirm step: real ones from

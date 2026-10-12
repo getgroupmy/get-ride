@@ -30,6 +30,7 @@ const _builtInIcons = <String, IconData>{
   'teksi-ev': Icons.electric_car_outlined,
   'city': Icons.directions_car_outlined,
   'request-history': Icons.schedule,
+  'my-ride': Icons.favorite_border,
   'freight': Icons.local_shipping_outlined,
   'wallet': Icons.account_balance_wallet_outlined,
   'notifications': Icons.notifications_outlined,

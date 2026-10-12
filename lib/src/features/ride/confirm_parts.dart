@@ -1080,6 +1080,7 @@ class ConfirmFooter extends StatelessWidget {
     this.useCoins = false,
     this.onUseCoins,
     this.whoRiding,
+    this.myRide,
     this.onOptions,
     this.optionsOn = false,
     this.payments = builtInPayments,
@@ -1109,6 +1110,10 @@ class ConfirmFooter extends StatelessWidget {
 
   /// A row under the GET.coin one: who's riding (a toggle for someone else).
   final Widget? whoRiding;
+
+  /// The "My Ride" switch (favourite drivers first), under who's riding;
+  /// none when the rider has no favourite to offer it to.
+  final Widget? myRide;
 
   /// The options button right of "Find a driver"; none without it.
   final VoidCallback? onOptions;
@@ -1164,6 +1169,7 @@ class ConfirmFooter extends StatelessWidget {
                   ],
                 ),
               ?whoRiding,
+              ?myRide,
               if (autoAcceptLabel != null)
                 Row(
                   children: [
