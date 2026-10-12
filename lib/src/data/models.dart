@@ -247,9 +247,12 @@ class RideRequest {
       myRideWindowRemaining(targets: targetDriverIds, targetedUntil: targetedUntil, now: now);
 
   /// Whether driver [me] pins this request with a gold star.
+  /// A GET.now booking is targeted at its driver too, but that is the
+  /// passenger's QR scan, not My Ride: it is starred only when the rider
+  /// really is one of [me]'s regulars.
   bool starredFor(String? me, Set<String> favouriteRiderIds) => isStarredFor(
     riderId: riderId,
-    targetDriverIds: targetDriverIds,
+    targetDriverIds: isDirectBooking ? const [] : targetDriverIds,
     me: me,
     favouriteRiderIds: favouriteRiderIds,
   );

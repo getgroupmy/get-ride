@@ -45,7 +45,11 @@ class MyRideForYouLabel extends StatefulWidget {
 class _MyRideForYouLabelState extends State<MyRideForYouLabel> {
   Timer? _tick;
 
-  bool _running(DateTime now) => myRideForMeFirst(
+  // A GET.now booking's window is the server's 10-minute hold for its one
+  // driver, not a favourites window: it reads "Booked you directly" instead.
+  bool _running(DateTime now) =>
+      !widget.request.isDirectBooking &&
+      myRideForMeFirst(
     me: widget.me,
     targetDriverIds: widget.request.targetDriverIds,
     targetedUntil: widget.request.targetedUntil,
