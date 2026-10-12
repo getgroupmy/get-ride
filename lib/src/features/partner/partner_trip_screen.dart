@@ -33,6 +33,7 @@ import '../../widgets/ride_stop_tiles.dart';
 import '../ride/live_ride_map.dart';
 import '../ride/ride_call_screen.dart' show RideCallButton;
 import '../ride/ride_chat_screen.dart' show RideChatBadge;
+import '../../widgets/ble_handshake_badge.dart';
 import '../../widgets/offline_ride_banner.dart';
 import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
 import '../safety/voice_protection_controller.dart';
@@ -600,6 +601,9 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             onPressed: () => _navigate(target),
           ),
         const SizedBox(height: 8),
+        // The phones find each other at the kerb (Phase D); the code still works.
+        if (r.status == RideStatus.accepted || r.status == RideStatus.arrived)
+          BleHandshakeBadge(rideId: r.id, status: r.status.db, driver: true),
         if (r.status == RideStatus.accepted)
           BusyButton.filled(
             key: const ValueKey('trip-arrive'),

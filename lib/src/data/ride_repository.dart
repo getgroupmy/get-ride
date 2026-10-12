@@ -23,6 +23,7 @@ import '../core/ride_payment.dart';
 import '../core/ride_stops.dart';
 import '../core/trip_charges.dart';
 import '../core/trip_checkpoint.dart';
+import '../core/ble_handshake.dart';
 import '../core/trip_start.dart';
 import 'geo_service.dart';
 import 'models.dart';
@@ -601,6 +602,46 @@ class RideRepository {
       if (e.code != 'PGRST202' && e.code != '42883') rethrow;
       await updateStatus(id, RideStatus.onTrip);
       return const TripStarted();
+    }
+  }
+
+  /// This side's Bluetooth token and the other side's (get_trip_ble_token,
+  /// 0153); switched off on a database without it.
+  Future<BleTicket> bleTicket(String id) async {
+    try {
+      return BleTicket.fromJson(await _db.rpc('get_trip_ble_token', params: {'p_request': id}));
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202' && e.code != '42883') rethrow;
+      return const BleTicket(enabled: false);
+    }
+  }
+
+  /// Reports the other side's token this phone saw (ble_handshake_proof).
+  Future<BleProofResult> bleProof(
+    String id, {
+    required String seenToken,
+    required int rssi,
+    required Duration seenFor,
+    double? lat,
+    double? lng,
+  }) async {
+    try {
+      return bleProofResult(
+        await _db.rpc(
+          'ble_handshake_proof',
+          params: {
+            'p_request': id,
+            'p_seen_token': seenToken,
+            'p_rssi': rssi,
+            'p_seen_ms': seenFor.inMilliseconds,
+            'p_lat': lat,
+            'p_lng': lng,
+          },
+        ),
+      );
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202' && e.code != '42883') rethrow;
+      return BleProofResult.off;
     }
   }
 

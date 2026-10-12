@@ -39,7 +39,7 @@ void main() {
       'background_ack': 0,
       'read_aloud': 'off',
     });
-    expect(off.toValues().values, everyElement(isFalse));
+    expect(ReliabilitySettings.keys.map((k) => off[k]), everyElement(isFalse));
   });
 
   test('a switch is set by its key, and survives being stored and read back', () {

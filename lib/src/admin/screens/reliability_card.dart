@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ble_handshake.dart';
 import '../../core/reliability_settings.dart';
 import '../../data/reliability_repository.dart';
 import '../../widgets/common.dart';
@@ -63,7 +64,24 @@ class _ReliabilityCardState extends ConsumerState<ReliabilityCard> {
       );
       if (!ok || !mounted) return;
     }
-    final next = current.withSwitch(key, on);
+    await _save(current.withSwitch(key, on), key);
+  }
+
+  Future<void> _setBle(ReliabilitySettings current, String key, BleSettings next) async {
+    if (key == 'ble_autostart_no_pin' && next.autostartNoPin && !current.ble.autostartNoPin) {
+      final ok = await confirm(
+        context,
+        'Start trips without the code?',
+        'When both phones find each other at the pickup, close and for at least 5 seconds, and their GPS agrees, '
+            'the trip starts by itself. The driver gets 3 seconds to cancel, and the code still works.',
+        ok: 'Turn on',
+      );
+      if (!ok || !mounted) return;
+    }
+    await _save(current.withBle(next), key);
+  }
+
+  Future<void> _save(ReliabilitySettings next, String key) async {
     setState(() {
       _pending = next;
       _saving = key;
@@ -118,6 +136,12 @@ class _ReliabilityCardState extends ConsumerState<ReliabilityCard> {
                     : null,
                 onChanged: !widget.canEdit || _saving != null || saved == null ? null : (on) => _set(s, r.key, on),
               ),
+            _BleSection(
+              ble: s.ble,
+              saving: _saving,
+              enabled: widget.canEdit && _saving == null && saved != null,
+              onChanged: (key, next) => _setBle(s, key, next),
+            ),
             if (loaded.hasError)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -126,6 +150,115 @@ class _ReliabilityCardState extends ConsumerState<ReliabilityCard> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Bluetooth at the pickup (Phase D, 0153): the phones find each other and
+/// the server confirms the right car; optionally it starts the trip.
+class _BleSection extends ConsumerWidget {
+  const _BleSection({required this.ble, required this.saving, required this.enabled, required this.onChanged});
+
+  final BleSettings ble;
+  final String? saving;
+  final bool enabled;
+  final void Function(String key, BleSettings next) onChanged;
+
+  static const _rssiSteps = [-90, -85, -80, -75, -70, -65, -60, -55, -50];
+  static const _timeouts = [10, 20, 30, 60];
+
+  Widget? _spinner(String key) => saving == key
+      ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+      : null;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context);
+    final on = enabled && ble.enabled;
+    final stats = ref.watch(bleStartStatsProvider);
+    return Column(
+      key: const ValueKey('reliability-ble'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 24),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text('Bluetooth at pickup', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+        ),
+        SwitchListTile(
+          key: const ValueKey('reliability-ble_enabled'),
+          title: const Text('Phones find each other at pickup'),
+          subtitle: const Text(
+            'The rider\'s and driver\'s phones look for each other over Bluetooth and both see "✓ Correct car". '
+            'Needs this build or newer; the trip code always still works.',
+          ),
+          value: ble.enabled,
+          secondary: _spinner('ble_enabled'),
+          onChanged: enabled ? (v) => onChanged('ble_enabled', ble.copyWith(enabled: v)) : null,
+        ),
+        SwitchListTile(
+          key: const ValueKey('reliability-ble_android'),
+          title: const Text('On Android phones'),
+          value: ble.android,
+          secondary: _spinner('ble_android'),
+          onChanged: on ? (v) => onChanged('ble_android', ble.copyWith(android: v)) : null,
+        ),
+        SwitchListTile(
+          key: const ValueKey('reliability-ble_ios'),
+          title: const Text('On iPhones'),
+          value: ble.ios,
+          secondary: _spinner('ble_ios'),
+          onChanged: on ? (v) => onChanged('ble_ios', ble.copyWith(ios: v)) : null,
+        ),
+        SwitchListTile(
+          key: const ValueKey('reliability-ble_autostart_no_pin'),
+          title: const Text('Start the trip without the code'),
+          subtitle: const Text('Once the driver has arrived and the phones match, the trip starts by itself.'),
+          value: ble.autostartNoPin,
+          secondary: _spinner('ble_autostart_no_pin'),
+          onChanged: on ? (v) => onChanged('ble_autostart_no_pin', ble.copyWith(autostartNoPin: v)) : null,
+        ),
+        ListTile(
+          title: const Text('How close'),
+          subtitle: Text(
+            'Signal of ${ble.rssiThresholdDbm} dBm or stronger. Closer to 0 means the phones must be nearer.',
+          ),
+          trailing: DropdownButton<int>(
+            key: const ValueKey('reliability-ble_rssi'),
+            value: _rssiSteps.contains(ble.rssiThresholdDbm) ? ble.rssiThresholdDbm : null,
+            hint: Text('${ble.rssiThresholdDbm}'),
+            items: [for (final v in _rssiSteps) DropdownMenuItem(value: v, child: Text('$v dBm'))],
+            onChanged: on
+                ? (v) => v == null ? null : onChanged('ble_rssi_threshold_dbm', ble.copyWith(rssiThresholdDbm: v))
+                : null,
+          ),
+        ),
+        ListTile(
+          title: const Text('Both phones within'),
+          subtitle: const Text('How recent both sightings must be to count as a match.'),
+          trailing: DropdownButton<int>(
+            key: const ValueKey('reliability-ble_timeout'),
+            value: _timeouts.contains(ble.matchTimeoutS) ? ble.matchTimeoutS : null,
+            hint: Text('${ble.matchTimeoutS} s'),
+            items: [for (final v in _timeouts) DropdownMenuItem(value: v, child: Text('$v s'))],
+            onChanged: on
+                ? (v) => v == null ? null : onChanged('ble_match_timeout_s', ble.copyWith(matchTimeoutS: v))
+                : null,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Text(
+            stats.when(
+              data: (s) => s.describe(7),
+              loading: () => 'Loading how trips started…',
+              error: (_, _) => 'Couldn\u2019t load how trips started.',
+            ),
+            key: const ValueKey('reliability-ble-stats'),
+            style: t.textTheme.bodySmall,
+          ),
+        ),
+      ],
     );
   }
 }
