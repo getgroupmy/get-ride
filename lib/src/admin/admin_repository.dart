@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/fare_tariff.dart' show fareTariffRowWithoutServices;
 import 'admin_access.dart';
 import 'admin_settings_models.dart';
+import 'profile_search.dart';
+import 'saved_push.dart';
 import 'sub_admin_grants.dart' show looksLikeUuid, profileSearchTerm;
 import 'screens/support_agents.dart';
 import '../core/notification_delivery.dart';
@@ -297,6 +299,15 @@ class AdminRepository {
         await _db.from('push_notifications').select().order('created_at', ascending: false).limit(50),
       );
 
+  /// Saved, re-sendable notifications: `settings_entries` rows under
+  /// `push-notification`, where Expo kept them (see `saved_push.dart`).
+  Future<List<SavedPush>> savedPushes() async => savedPushesFrom(await settings(savedPushCategory));
+
+  Future<void> savePushTemplate({String? id, required Map<String, dynamic> values}) =>
+      saveSetting(savedPushCategory, id: id, values: values);
+
+  Future<void> deleteSavedPush(String id) => deleteSetting(savedPushCategory, id);
+
   /// How trip pushes were delivered over the last [hours] (migration 0144).
   /// Empty on a database without it.
   Future<List<NotificationDelivery>> notificationDelivery({int hours = 24}) async {
@@ -326,6 +337,24 @@ class AdminRepository {
   }
 
   Future<void> deleteCommissionRate(String id) => _db.from('commission_rates').delete().eq('id', id);
+
+  /// Turns one rule on or off without touching the rest of it.
+  Future<void> setCommissionRateActive(String id, bool active) =>
+      _updateOne('commission_rates', id, {'active': active, 'updated_at': _now});
+
+  /// People a per-user rule can be about: matched by name, phone, email or
+  /// account id, or exactly by profile id. The term is sanitised before it
+  /// reaches the `.or()` filter (see `profile_search.dart`).
+  Future<List<Map<String, dynamic>>> searchPeople(String query, {int limit = 20}) async {
+    const cols = 'id, name, phone, email, display_id';
+    final q = query.trim();
+    if (isProfileUuid(q)) return List<Map<String, dynamic>>.from(await _db.from('profiles').select(cols).eq('id', q));
+    final term = peopleSearchTerm(q);
+    if (term == null) return const [];
+    return List<Map<String, dynamic>>.from(
+      await _db.from('profiles').select(cols).or(peopleOrFilter(term)).order('name').limit(limit),
+    );
+  }
 
   // ---- Fare tariffs (0109) --------------------------------------------------
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +8,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
+import '../profile_search.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
 
@@ -38,7 +41,7 @@ class AdminCommissionScreen extends ConsumerWidget {
   Future<void> _edit(BuildContext context, WidgetRef ref, [Map<String, dynamic>? row]) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => _RateDialog(row: row),
+      builder: (_) => _RateDialog(row: row, searchPeople: ref.read(adminRepositoryProvider).searchPeople),
     );
     if (result == null || !context.mounted) return;
     final ok = await runAdminAction(
@@ -83,7 +86,7 @@ class AdminCommissionScreen extends ConsumerWidget {
                   title: Text('${(((r['rate'] as num?) ?? 0) * 100).toStringAsFixed(2)}% · ${r['level']}'),
                   subtitle: Text(commissionScopeLabel(r)),
                   trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    if (r['active'] == false) const StatusChip('inactive'),
+                    _ActiveSwitch(key: ValueKey('commission-active-${r['id']}'), row: r, canEdit: canEdit),
                     if (canEdit)
                       BusyIconButton(
                         icon: const Icon(Icons.delete_outline),
@@ -108,9 +111,58 @@ class AdminCommissionScreen extends ConsumerWidget {
   }
 }
 
+/// The on/off switch on a rule's row: saves the moment it moves (Expo
+/// toggled `active` on the list) and goes back if the database refuses.
+class _ActiveSwitch extends ConsumerStatefulWidget {
+  const _ActiveSwitch({super.key, required this.row, required this.canEdit});
+  final Map<String, dynamic> row;
+  final bool canEdit;
+
+  @override
+  ConsumerState<_ActiveSwitch> createState() => _ActiveSwitchState();
+}
+
+class _ActiveSwitchState extends ConsumerState<_ActiveSwitch> {
+  /// The value being saved; null when the row's own value is shown.
+  bool? _pending;
+
+  Future<void> _set(bool v) async {
+    setState(() => _pending = v);
+    final ok = await runAdminAction(
+      context,
+      () => ref.read(adminRepositoryProvider).setCommissionRateActive(widget.row['id'] as String, v),
+      success: v ? 'Rule turned on' : 'Rule turned off',
+    );
+    if (ok) ref.invalidate(commissionRatesProvider);
+    if (mounted) setState(() => _pending = null);
+  }
+
+  @override
+  void didUpdateWidget(_ActiveSwitch old) {
+    super.didUpdateWidget(old);
+    // The re-read landed: show what the database now says.
+    if (old.row['active'] != widget.row['active']) _pending = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = _pending ?? widget.row['active'] != false;
+    return Tooltip(
+      message: active ? 'Active' : 'Inactive',
+      child: Switch(
+        value: active,
+        onChanged: widget.canEdit && _pending == null && widget.row['id'] != null ? _set : null,
+      ),
+    );
+  }
+}
+
 class _RateDialog extends StatefulWidget {
-  const _RateDialog({this.row});
+  const _RateDialog({this.row, required this.searchPeople});
   final Map<String, dynamic>? row;
+
+  /// Finds the people a per-user rule can be about.
+  final Future<List<Map<String, dynamic>>> Function(String query) searchPeople;
 
   @override
   State<_RateDialog> createState() => _RateDialogState();
@@ -128,6 +180,113 @@ class _RateDialogState extends State<_RateDialog> {
   };
   String? _error;
 
+  // Person search for a per-user rule.
+  final _query = TextEditingController();
+  Timer? _debounce;
+  List<Map<String, dynamic>>? _results;
+  bool _searching = false;
+  String? _searchError;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _query.dispose();
+    super.dispose();
+  }
+
+  void _queryChanged(String q) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () => _search(q));
+  }
+
+  Future<void> _search(String q) async {
+    _debounce?.cancel();
+    if (!isProfileUuid(q) && peopleSearchTerm(q) == null) {
+      setState(() {
+        _results = null;
+        _searchError = null;
+      });
+      return;
+    }
+    setState(() => _searching = true);
+    try {
+      final rows = await widget.searchPeople(q);
+      if (!mounted || _query.text != q) return; // a newer search is on its way
+      setState(() {
+        _results = rows;
+        _searchError = null;
+      });
+    } catch (e) {
+      if (mounted && _query.text == q) setState(() => _searchError = errorText(e));
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  void _pick(Map<String, dynamic> p) => setState(() {
+        _fields['user_id']!.text = '${p['id']}';
+        _fields['user_label']!.text = personLabel(p);
+        _query.clear();
+        _results = null;
+        _error = null;
+      });
+
+  Widget _personPicker(BuildContext context) {
+    final t = Theme.of(context);
+    final id = _fields['user_id']!.text.trim();
+    final label = _fields['user_label']!.text.trim();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (id.isNotEmpty)
+        ListTile(
+          key: const ValueKey('commission-person-selected'),
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.person_outline),
+          title: Text(label.isEmpty ? id : label),
+          subtitle: Text(id),
+          trailing: IconButton(
+            tooltip: 'Choose someone else',
+            icon: const Icon(Icons.close),
+            onPressed: () => setState(() {
+              _fields['user_id']!.clear();
+              _fields['user_label']!.clear();
+            }),
+          ),
+        ),
+      TextField(
+        key: const ValueKey('commission-person-search'),
+        controller: _query,
+        decoration: InputDecoration(
+          labelText: id.isEmpty ? 'Find person' : 'Find someone else',
+          helperText: 'Name, phone, email, account ID or profile ID',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _searching
+              ? const Padding(padding: EdgeInsets.all(12), child: BusySpinner(size: 16))
+              : null,
+        ),
+        textInputAction: TextInputAction.search,
+        onChanged: _queryChanged,
+        onSubmitted: _search,
+      ),
+      if (_searchError != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(_searchError!, style: TextStyle(color: t.colorScheme.error)),
+        )
+      else if (_results != null && _results!.isEmpty)
+        const Padding(padding: EdgeInsets.only(top: 8), child: Text('No one matches that search.'))
+      else if (_results != null)
+        for (final p in _results!)
+          ListTile(
+            key: ValueKey('commission-person-${p['id']}'),
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: Text(personLabel(p)),
+            subtitle: personDetails(p).isEmpty ? null : Text(personDetails(p)),
+            onTap: () => _pick(p),
+          ),
+    ]);
+  }
+
   void _save() {
     final pct = double.tryParse(_rate.text.trim());
     if (pct == null || pct < 0 || pct >= 100) {
@@ -136,7 +295,7 @@ class _RateDialogState extends State<_RateDialog> {
     }
     for (final k in requiredScope(_level)) {
       if (_fields[k]!.text.trim().isEmpty) {
-        setState(() => _error = 'Enter the ${k.replaceAll('_', ' ')}.');
+        setState(() => _error = k == 'user_id' ? 'Choose the person this rate is for.' : 'Enter the $k.');
         return;
       }
     }
@@ -175,10 +334,13 @@ class _RateDialogState extends State<_RateDialog> {
             ),
             for (final k in needed) ...[
               const SizedBox(height: 12),
-              TextField(
-                controller: _fields[k],
-                decoration: InputDecoration(labelText: k == 'user_id' ? 'User ID (profile UUID)' : k[0].toUpperCase() + k.substring(1)),
-              ),
+              if (k == 'user_id')
+                _personPicker(context)
+              else
+                TextField(
+                  controller: _fields[k],
+                  decoration: InputDecoration(labelText: k[0].toUpperCase() + k.substring(1)),
+                ),
             ],
             if (_level == 'user') ...[
               const SizedBox(height: 12),

@@ -6,6 +6,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
+import '../saved_push.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
 
@@ -20,6 +21,12 @@ final pushHistoryProvider = FutureProvider.autoDispose((ref) {
   return ref.watch(adminRepositoryProvider).pushHistory();
 });
 
+/// Notifications kept to send again (`settings_entries`, `push-notification`).
+final savedPushesProvider = FutureProvider.autoDispose((ref) {
+  ref.watchAdminLive('settings_entries');
+  return ref.watch(adminRepositoryProvider).savedPushes();
+});
+
 class AdminPushScreen extends ConsumerStatefulWidget {
   const AdminPushScreen({super.key});
 
@@ -32,6 +39,10 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
   final _body = TextEditingController();
   String _audience = 'all';
   bool _sending = false;
+  bool _saving = false;
+
+  /// The saved notification being edited in the compose card, if any.
+  SavedPush? _editing;
 
   @override
   void dispose() {
@@ -40,29 +51,115 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
     super.dispose();
   }
 
-  Future<void> _send() async {
-    if (_title.text.trim().isEmpty || _body.text.trim().isEmpty) {
-      showInfo(context, 'Add a title and a message.');
+  static const _who = {'all': 'everyone', 'users': 'all passengers', 'partners': 'all partners'};
+
+  void _resetCompose() {
+    _title.clear();
+    _body.clear();
+    _audience = 'all';
+    _editing = null;
+  }
+
+  /// Stores the compose card as a saved notification (a new one, or the one
+  /// being edited). False when nothing was saved.
+  Future<bool> _persist() async {
+    final values = savedPushValues(
+      existing: _editing?.values,
+      title: _title.text,
+      body: _body.text,
+      audience: _audience,
+      now: DateTime.now(),
+    );
+    final ok = await runAdminAction(
+      context,
+      () => ref.read(adminRepositoryProvider).savePushTemplate(id: _editing?.id, values: values),
+    );
+    if (ok) ref.invalidate(savedPushesProvider);
+    return ok;
+  }
+
+  Future<void> _save() async {
+    final problem = validatePushDraft(_title.text, _body.text);
+    if (problem != null) {
+      showInfo(context, problem);
       return;
     }
-    final who = {'all': 'everyone', 'users': 'all passengers', 'partners': 'all partners'}[_audience];
-    if (!await confirm(context, 'Send notification?', 'This goes to $who immediately and cannot be recalled.',
+    final editing = _editing != null;
+    setState(() => _saving = true);
+    final ok = await _persist();
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      if (ok) _resetCompose();
+    });
+    if (ok) showInfo(context, editing ? 'Saved notification updated' : 'Notification saved');
+  }
+
+  Future<void> _dispatch(String title, String body, String audience) async {
+    final r = await ref.read(adminRepositoryProvider).sendPush(title, body, audience);
+    if (!mounted) return;
+    showInfo(context, pushResultText(r, audience));
+    ref.invalidate(pushHistoryProvider);
+  }
+
+  Future<void> _send() async {
+    final problem = validatePushDraft(_title.text, _body.text);
+    if (problem != null) {
+      showInfo(context, problem);
+      return;
+    }
+    if (!await confirm(context, 'Send notification?',
+        'This goes to ${_who[_audience]} immediately and cannot be recalled.',
         ok: 'Send')) {
       return;
     }
     setState(() => _sending = true);
     try {
-      final r = await ref.read(adminRepositoryProvider).sendPush(_title.text.trim(), _body.text.trim(), _audience);
-      if (!mounted) return;
-      showInfo(context, 'Sent to ${r['sent'] ?? 0} of ${r['recipients'] ?? 0} devices'
-          '${(r['failed'] ?? 0) != 0 ? ' (${r['failed']} failed)' : ''}.');
-      _title.clear();
-      _body.clear();
-      ref.invalidate(pushHistoryProvider);
+      // Sending an edited saved notification keeps the edit (Expo did too).
+      if (_editing != null && !await _persist()) return;
+      await _dispatch(_title.text.trim(), _body.text.trim(), _audience);
+      if (mounted) setState(_resetCompose);
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  void _edit(SavedPush p) => setState(() {
+        _editing = p;
+        _title.text = p.title;
+        _body.text = p.body;
+        _audience = p.audience;
+      });
+
+  Future<void> _resend(SavedPush p) async {
+    if (!p.sendable) {
+      showInfo(context, 'This notification is missing a title or message.');
+      return;
+    }
+    if (!await confirm(context, 'Send notification?',
+        'Send "${p.title}" to ${_who[p.audience]}? It goes out immediately and cannot be recalled.',
+        ok: 'Send')) {
+      return;
+    }
+    try {
+      await _dispatch(p.title, p.body, p.audience);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _delete(SavedPush p) async {
+    if (!await confirm(context, 'Delete saved notification?', 'Delete "${p.title}"? Pushes already sent stay sent.',
+        ok: 'Delete')) {
+      return;
+    }
+    if (!mounted) return;
+    if (await runAdminAction(context, () => ref.read(adminRepositoryProvider).deleteSavedPush(p.id),
+        success: 'Deleted')) {
+      if (_editing?.id == p.id && mounted) setState(_resetCompose);
+      ref.invalidate(savedPushesProvider);
     }
   }
 
@@ -82,7 +179,18 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Text('New broadcast', style: Theme.of(context).textTheme.titleMedium),
+                    Row(children: [
+                      Expanded(
+                        child: Text(_editing == null ? 'New broadcast' : 'Edit saved notification',
+                            style: Theme.of(context).textTheme.titleMedium),
+                      ),
+                      if (_editing != null)
+                        TextButton(
+                          key: const ValueKey('push-cancel-edit'),
+                          onPressed: () => setState(_resetCompose),
+                          child: const Text('Cancel edit'),
+                        ),
+                    ]),
                     const SizedBox(height: 12),
                     SegmentedButton<String>(
                       segments: const [
@@ -94,24 +202,83 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
                       onSelectionChanged: (v) => setState(() => _audience = v.first),
                     ),
                     const SizedBox(height: 12),
-                    TextField(controller: _title, decoration: const InputDecoration(labelText: 'Title')),
+                    TextField(
+                      key: const ValueKey('push-title'),
+                      controller: _title,
+                      decoration: const InputDecoration(labelText: 'Title'),
+                    ),
                     const SizedBox(height: 12),
                     TextField(
+                      key: const ValueKey('push-body'),
                       controller: _body,
                       minLines: 2,
                       maxLines: 5,
                       decoration: const InputDecoration(labelText: 'Message'),
                     ),
                     const SizedBox(height: 12),
-                    BusyButton.filled(
-                      onPressed: _sending ? null : _send,
-                      icon: const Icon(Icons.send),
-                      child: const Text('Send'),
-
-                    ),
+                    Wrap(alignment: WrapAlignment.end, spacing: 8, runSpacing: 8, children: [
+                      OutlinedButton.icon(
+                        key: const ValueKey('push-save'),
+                        onPressed: _sending || _saving ? null : _save,
+                        icon: const Icon(Icons.bookmark_add_outlined),
+                        label: Text(_editing == null ? 'Save for later' : 'Save changes'),
+                      ),
+                      BusyButton.filled(
+                        key: const ValueKey('push-send'),
+                        onPressed: _sending || _saving ? null : _send,
+                        icon: const Icon(Icons.send),
+                        child: const Text('Send'),
+                      ),
+                    ]),
                   ]),
                 ),
               ),
+            const SizedBox(height: 16),
+            Text('Saved', style: Theme.of(context).textTheme.titleMedium),
+            AsyncView(
+              value: ref.watch(savedPushesProvider),
+              onRetry: () => ref.invalidate(savedPushesProvider),
+              data: (saved) => saved.isEmpty
+                  ? const EmptyState(
+                      icon: Icons.bookmarks_outlined,
+                      title: 'No saved notifications',
+                      message: 'Save a notification to send it again later.',
+                    )
+                  : Column(children: [
+                      for (final p in saved)
+                        ListTile(
+                          key: ValueKey('saved-push-${p.id}'),
+                          contentPadding: EdgeInsets.zero,
+                          selected: _editing?.id == p.id,
+                          title: Text(p.title.isEmpty ? '(no title)' : p.title),
+                          subtitle: Text('${p.body}\n${pushAudienceLabel(p.audience)}'
+                              '${p.updatedAt == null ? '' : ' · ${dateText(p.updatedAt)}'}'),
+                          isThreeLine: true,
+                          trailing: canEdit
+                              ? Row(mainAxisSize: MainAxisSize.min, children: [
+                                  IconButton(
+                                    key: ValueKey('saved-push-send-${p.id}'),
+                                    tooltip: 'Send again',
+                                    icon: const Icon(Icons.send_outlined),
+                                    onPressed: _sending ? null : () => _resend(p),
+                                  ),
+                                  IconButton(
+                                    key: ValueKey('saved-push-edit-${p.id}'),
+                                    tooltip: 'Edit',
+                                    icon: const Icon(Icons.edit_outlined),
+                                    onPressed: () => _edit(p),
+                                  ),
+                                  IconButton(
+                                    key: ValueKey('saved-push-delete-${p.id}'),
+                                    tooltip: 'Delete',
+                                    icon: const Icon(Icons.delete_outline),
+                                    onPressed: () => _delete(p),
+                                  ),
+                                ])
+                              : null,
+                        ),
+                    ]),
+            ),
             const SizedBox(height: 16),
             const DeliveryCard(),
             const SizedBox(height: 16),

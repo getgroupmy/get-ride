@@ -4,6 +4,8 @@
 /// `category` column.
 library;
 
+import 'dart:convert';
+
 enum FieldKind { text, number, boolean }
 
 class SettingsField {
@@ -132,4 +134,33 @@ List<SettingEntry> sortEntries(List<SettingEntry> entries, String? orderKey) {
     return a.position.compareTo(b.position);
   });
   return list;
+}
+
+/// The row's headline as the list shows it.
+String entryTitle(SettingsCategory c, SettingEntry e) =>
+    '${c.isRaw ? (e.values['name'] ?? e.values['title'] ?? e.id) : (e.values[c.titleKey] ?? '—')}';
+
+/// The row's second line as the list shows it ('' when there is none).
+String entrySubtitle(SettingsCategory c, SettingEntry e) => c.isRaw
+    ? jsonEncode(e.values)
+    : [
+        if (c.subtitleKey != null) e.values[c.subtitleKey],
+        for (final f in c.fields.where((f) => f.kind != FieldKind.text).take(3))
+          if (e.values[f.key] != null)
+            '${f.label}: ${f.kind == FieldKind.boolean ? (e.values[f.key] == true ? 'Yes' : 'No') : e.values[f.key]}',
+      ].whereType<Object>().map((v) => '$v').where((s) => s.isNotEmpty).join(' · ');
+
+/// Whether a list row matches a search (Expo `AdminCrudList`): every word of
+/// [query] must appear, ignoring case, in what the row shows — its title, its
+/// second line, or any of its fields' values. An empty query matches all.
+bool entryMatchesSearch(SettingsCategory c, SettingEntry e, String query) {
+  final words = query.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+  if (words.isEmpty) return true;
+  final hay = [
+    entryTitle(c, e),
+    entrySubtitle(c, e),
+    for (final f in c.fields)
+      if (e.values[f.key] != null && f.kind != FieldKind.boolean) '${e.values[f.key]}',
+  ].join('\n').toLowerCase();
+  return words.every(hay.contains);
 }

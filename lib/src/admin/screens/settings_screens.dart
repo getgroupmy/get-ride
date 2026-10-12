@@ -196,35 +196,29 @@ class AdminCategoryScreen extends ConsumerWidget {
           if (rows.isEmpty) {
             return EmptyState(icon: Icons.inbox_outlined, title: 'No ${c.title.toLowerCase()} yet', message: c.subtitle);
           }
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-            itemCount: rows.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (_, i) {
-              final e = rows[i];
-              final title = c.isRaw ? (e.values['name'] ?? e.values['title'] ?? e.id) : (e.values[c.titleKey] ?? '—');
-              final sub = c.isRaw
-                  ? jsonEncode(e.values)
-                  : [
-                      if (c.subtitleKey != null) e.values[c.subtitleKey],
-                      for (final f in c.fields.where((f) => f.kind != FieldKind.text).take(3))
-                        if (e.values[f.key] != null)
-                          '${f.label}: ${f.kind == FieldKind.boolean ? (e.values[f.key] == true ? 'Yes' : 'No') : e.values[f.key]}',
-                    ].whereType<Object>().map((v) => '$v').where((s) => s.isNotEmpty).join(' · ');
+          return _SearchableEntries(
+            key: ValueKey('settings-search-list-$categoryKey'),
+            category: c,
+            rows: rows,
+            // [i] is the row's place in the full list; reordering is only
+            // offered while nothing is filtered out.
+            itemBuilder: (e, i, searching) {
+              final title = entryTitle(c, e);
+              final sub = entrySubtitle(c, e);
               return BusyListTile(
-                title: Text('$title'),
+                title: Text(title),
                 subtitle: sub.isEmpty ? null : Text(sub, maxLines: 2, overflow: TextOverflow.ellipsis),
                 // Opening the child list is navigation, so it stays synchronous.
                 onTap: c.childCategory != null
                     ? () {
                         context.push(Uri(
                           path: '/admin/settings/${c.childCategory}',
-                          queryParameters: {...scope, c.childScopeKey!: e.id, '_label': '$title'},
+                          queryParameters: {...scope, c.childScopeKey!: e.id, '_label': title},
                         ).toString());
                       }
                     : (canEdit ? () => _edit(context, ref, all, e) : null),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (canEdit && c.orderKey != null) ...[
+                  if (canEdit && c.orderKey != null && !searching) ...[
                     BusyIconButton(icon: const Icon(Icons.arrow_upward), onPressed: () => _move(context, ref, rows, i, -1)),
                     BusyIconButton(icon: const Icon(Icons.arrow_downward), onPressed: () => _move(context, ref, rows, i, 1)),
                   ],
@@ -250,6 +244,81 @@ class AdminCategoryScreen extends ConsumerWidget {
         },
       ),
     );
+  }
+}
+
+/// A category's rows under a search box (Expo `AdminCrudList`'s search).
+/// The query is the list's own state, so a live re-read keeps it.
+class _SearchableEntries extends StatefulWidget {
+  const _SearchableEntries({super.key, required this.category, required this.rows, required this.itemBuilder});
+  final SettingsCategory category;
+  final List<SettingEntry> rows;
+
+  /// Builds one row; `index` is its place in [rows], `searching` whether a
+  /// query is filtering the list.
+  final Widget Function(SettingEntry entry, int index, bool searching) itemBuilder;
+
+  @override
+  State<_SearchableEntries> createState() => _SearchableEntriesState();
+}
+
+class _SearchableEntriesState extends State<_SearchableEntries> {
+  final _search = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.category;
+    final searching = _query.trim().isNotEmpty;
+    final shown = [
+      for (var i = 0; i < widget.rows.length; i++)
+        if (entryMatchesSearch(c, widget.rows[i], _query)) i,
+    ];
+    return Column(children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: TextField(
+          key: const ValueKey('settings-search'),
+          controller: _search,
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.search),
+            hintText: 'Search ${c.title.toLowerCase()}',
+            isDense: true,
+            suffixIcon: searching
+                ? IconButton(
+                    tooltip: 'Clear search',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(() {
+                      _search.clear();
+                      _query = '';
+                    }),
+                  )
+                : null,
+          ),
+          onChanged: (v) => setState(() => _query = v),
+        ),
+      ),
+      Expanded(
+        child: shown.isEmpty
+            ? EmptyState(
+                icon: Icons.search_off,
+                title: 'No matches',
+                message: 'Nothing in ${c.title} matches "${_query.trim()}".',
+              )
+            : ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                itemCount: shown.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (_, k) => widget.itemBuilder(widget.rows[shown[k]], shown[k], searching),
+              ),
+      ),
+    ]);
   }
 }
 
