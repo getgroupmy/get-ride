@@ -148,7 +148,13 @@ class _UpdateCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(onPressed: onLater, child: const Text('Later')),
-                if (onUpdate != null) BusyButton.filled(onPressed: onUpdate, child: const Text('Update')),
+                // The theme's filled buttons are full width; this one sits in a row.
+                if (onUpdate != null)
+                  BusyButton.filled(
+                    style: FilledButton.styleFrom(minimumSize: const Size(96, 40)),
+                    onPressed: onUpdate,
+                    child: const Text('Update'),
+                  ),
               ],
             ),
           ],

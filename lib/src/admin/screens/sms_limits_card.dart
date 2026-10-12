@@ -190,23 +190,25 @@ class _LimitsFormState extends ConsumerState<_LimitsForm> {
           maxLength: 300,
           decoration: const InputDecoration(labelText: 'Message', helperText: '{code} is replaced by the code.'),
         ),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                changed == null ? '' : 'Last changed ${DateFormat('d MMM yyyy, HH:mm').format(changed.toLocal())}',
-                style: t.textTheme.bodySmall,
-              ),
+        // The theme makes filled buttons full width, so the date sits on its
+        // own line above Save rather than beside it (where it was squeezed
+        // into a one-letter column).
+        if (changed != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Last changed ${DateFormat('d MMM yyyy, HH:mm').format(changed.toLocal())}',
+              key: const ValueKey('sms-limits-changed'),
+              style: t.textTheme.bodySmall,
             ),
-            if (edit)
-              BusyButton.filled(
-                key: const ValueKey('sms-limits-save'),
-                icon: const Icon(Icons.save_outlined),
-                onPressed: _save,
-                child: const Text('Save'),
-              ),
-          ],
-        ),
+          ),
+        if (edit)
+          BusyButton.filled(
+            key: const ValueKey('sms-limits-save'),
+            icon: const Icon(Icons.save_outlined),
+            onPressed: _save,
+            child: const Text('Save'),
+          ),
       ],
     );
   }
