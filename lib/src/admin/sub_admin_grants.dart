@@ -87,15 +87,3 @@ bool grantPersonMatches({
   ].whereType<Object>().join(' ').toLowerCase();
   return hay.contains(q);
 }
-
-final _uuid = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', caseSensitive: false);
-
-bool looksLikeUuid(String s) => _uuid.hasMatch(s.trim());
-
-/// A search term safe inside a PostgREST `or=(…ilike.*term*…)` filter:
-/// the characters that filter grammar reserves are dropped, not escaped.
-/// Null when nothing searchable is left (under two characters).
-String? profileSearchTerm(String raw) {
-  final t = raw.replaceAll(RegExp(r'[,()*:%\\"]'), ' ').trim().replaceAll(RegExp(r'\s+'), ' ');
-  return t.length < 2 ? null : t;
-}
