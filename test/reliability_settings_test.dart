@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/reliability_card.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/core/ble_handshake.dart';
 import 'package:get_ride/src/core/reliability_settings.dart';
 import 'package:get_ride/src/data/reliability_repository.dart';
 
@@ -23,6 +24,9 @@ class _Repo implements ReliabilityRepository {
     saved.add(s);
     stored = s;
   }
+
+  @override
+  Future<BleStartStats> bleStats(int days) async => const BleStartStats(ble: 3, pin: 1);
 
   @override
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
@@ -96,4 +100,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('reliability-chat_outbox'))).onChanged, isNull);
   });
+
+  for (final brightness in Brightness.values) {
+    testWidgets('Bluetooth at pickup: on, then autostart after a warning, with the week\'s numbers (${brightness.name})',
+        (tester) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final repo = _Repo(const ReliabilitySettings(rideCache: false));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [reliabilityRepositoryProvider.overrideWithValue(repo)],
+          child: MaterialApp(
+            theme: appTheme(brightness),
+            home: const Scaffold(body: SingleChildScrollView(child: ReliabilityCard(canEdit: true))),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Last 7 days: 3 by Bluetooth (75%) · 1 by code'), findsOneWidget);
+      expect(
+        tester.widget<SwitchListTile>(find.byKey(const ValueKey('reliability-ble_autostart_no_pin'))).onChanged,
+        isNull,
+        reason: 'the rest waits for Bluetooth to be on',
+      );
+
+      await tester.tap(find.byKey(const ValueKey('reliability-ble_enabled')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.last.ble.enabled, isTrue);
+      expect(repo.saved.last.rideCache, isFalse, reason: 'the other switches are kept');
+
+      await tester.tap(find.byKey(const ValueKey('reliability-ble_autostart_no_pin')));
+      await tester.pumpAndSettle();
+      expect(find.text('Start trips without the code?'), findsOneWidget);
+      await tester.tap(find.text('Turn on'));
+      await tester.pumpAndSettle();
+      expect(repo.saved.last.ble.autostartNoPin, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

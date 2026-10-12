@@ -319,8 +319,10 @@ class BleHandshakeEngine {
     _countdown?.cancel();
     _tick = _refresh = _countdown = null;
     _seen = const PeerSighting();
-    await _sub?.cancel();
+    final sub = _sub;
     _sub = null;
+    // Bluetooth is let go first; the listener goes in its own time.
+    unawaited(sub?.cancel());
     if (wasRunning) {
       try {
         await radio.stop();

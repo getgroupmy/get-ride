@@ -3,6 +3,7 @@
 // badge (lib/src/widgets/ble_handshake_badge.dart).
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -169,130 +170,164 @@ void main() {
 
   group('the engine', () {
     late _Radio radio;
-    late _Clock clock;
     late List<_Proof> proofs;
     late List<BleProofResult> answers;
 
-    BleHandshakeEngine engine(BleTicket ticket, {String status = 'arrived'}) => BleHandshakeEngine(
-      radio: radio,
-      server: BleHandshakeServer(
-        ticket: () async => ticket,
-        proof: (token, rssi, seenFor, at) async {
-          proofs.add(_Proof(token, rssi, seenFor));
-          return answers.isEmpty ? BleProofResult.waiting : answers.removeAt(0);
-        },
-      ),
-      isAndroid: true,
-      isIos: false,
-      status: status,
-      position: () async => const LatLng(3.1579, 101.7116),
-      now: clock.now,
-    );
+    /// Runs [body] with fake time; the engine's clock follows it.
+    void run(void Function(FakeAsync async, DateTime Function() now) body) => fakeAsync((async) {
+      final t0 = DateTime.utc(2026, 10, 12, 9);
+      body(async, () => t0.add(async.elapsed));
+      async.flushTimers(flushPeriodicTimers: false);
+    });
+
+    BleHandshakeEngine engine(BleTicket ticket, DateTime Function() now, {String status = 'arrived'}) =>
+        BleHandshakeEngine(
+          radio: radio,
+          server: BleHandshakeServer(
+            ticket: () async => ticket,
+            proof: (token, rssi, seenFor, at) async {
+              proofs.add(_Proof(token, rssi, seenFor));
+              return answers.isEmpty ? BleProofResult.waiting : answers.removeAt(0);
+            },
+          ),
+          isAndroid: true,
+          isIos: false,
+          status: status,
+          position: () async => const LatLng(3.1579, 101.7116),
+          now: now,
+        );
 
     /// The other phone, seen every second for [seconds].
-    Future<void> seePeer(WidgetTester tester, int seconds, {int rssi = -60, String token = _peer}) async {
+    void seePeer(FakeAsync async, int seconds, {int rssi = -60, String token = _peer}) {
       for (var i = 0; i < seconds; i++) {
         radio.see(token, rssi);
-        await clock.advance(tester, const Duration(seconds: 1));
+        async.elapse(const Duration(seconds: 1));
       }
+    }
+
+    void finish(FakeAsync async, BleHandshakeEngine e) {
+      e.dispose();
+      async.elapse(const Duration(seconds: 1));
     }
 
     setUp(() {
       radio = _Radio();
-      clock = _Clock();
       proofs = [];
       answers = [];
     });
 
-    testWidgets('the rider\'s phone advertises, sees the driver for 5 s, reports, and shows the right car', (
-      tester,
-    ) async {
-      final e = engine(_ticket());
-      await e.start();
-      expect(radio.started, [tokenServiceUuid(_mine)]);
-      expect(e.phase.value, BleHandshakePhase.searching);
+    test('the rider\'s phone advertises, sees the driver for 5 s, reports, and shows the right car', () {
+      run((async, now) {
+        final e = engine(_ticket(), now);
+        e.start();
+        async.flushMicrotasks();
+        expect(radio.started, [tokenServiceUuid(_mine)]);
+        expect(e.phase.value, BleHandshakePhase.searching);
 
-      await seePeer(tester, 3);
-      expect(e.phase.value, BleHandshakePhase.nearby);
-      expect(proofs, isEmpty, reason: 'not seen long enough yet');
+        seePeer(async, 3);
+        expect(e.phase.value, BleHandshakePhase.nearby);
+        expect(proofs, isEmpty, reason: 'not seen long enough yet');
 
-      answers.add(BleProofResult.matched);
-      await seePeer(tester, 4);
-      expect(proofs, hasLength(1));
-      expect(proofs.single.token, _peer);
-      expect(proofs.single.seenFor, greaterThanOrEqualTo(bleSeenFor));
-      expect(e.phase.value, BleHandshakePhase.matched);
-      await e.dispose();
+        answers.add(BleProofResult.matched);
+        seePeer(async, 4);
+        expect(proofs, hasLength(1));
+        expect(proofs.single.token, _peer);
+        expect(proofs.single.seenFor, greaterThanOrEqualTo(bleSeenFor));
+        expect(e.phase.value, BleHandshakePhase.matched);
+        finish(async, e);
+      });
     });
 
-    testWidgets('another phone, or a weak signal, is never reported', (tester) async {
-      final e = engine(_ticket());
-      await e.start();
-      await seePeer(tester, 8, token: 'aaaaaaaaaaaaaaaa');
-      await seePeer(tester, 8, rssi: -90);
-      expect(proofs, isEmpty);
-      expect(e.phase.value, BleHandshakePhase.searching);
-      await e.dispose();
+    test('another phone, or a weak signal, is never reported', () {
+      run((async, now) {
+        final e = engine(_ticket(), now);
+        e.start();
+        seePeer(async, 8, token: 'aaaaaaaaaaaaaaaa');
+        seePeer(async, 8, rssi: -90);
+        expect(proofs, isEmpty);
+        expect(e.phase.value, BleHandshakePhase.searching);
+        finish(async, e);
+      });
     });
 
-    testWidgets('at the pickup with autostart on, the driver counts down 3 s, then the trip starts', (tester) async {
-      final e = engine(_ticket(side: 'driver', settings: const BleSettings(enabled: true, autostartNoPin: true)));
-      await e.start();
-      await seePeer(tester, 7);
-      expect(e.phase.value, BleHandshakePhase.countdown);
-      expect(proofs, isEmpty, reason: 'nothing is sent while the driver can still cancel');
+    test('at the pickup with autostart on, the driver counts down 3 s, then the trip starts', () {
+      run((async, now) {
+        final e = engine(
+          _ticket(side: 'driver', settings: const BleSettings(enabled: true, autostartNoPin: true)),
+          now,
+        );
+        e.start();
+        seePeer(async, 7);
+        expect(e.phase.value, BleHandshakePhase.countdown);
+        expect(proofs, isEmpty, reason: 'nothing is sent while the driver can still cancel');
 
-      answers.add(BleProofResult.started);
-      await seePeer(tester, 3);
-      expect(proofs, hasLength(1));
-      expect(e.phase.value, BleHandshakePhase.started);
-      expect(radio.stops, 1, reason: 'Bluetooth is let go once the trip starts');
-      await e.dispose();
+        answers.add(BleProofResult.started);
+        seePeer(async, 3);
+        expect(proofs, hasLength(1));
+        expect(e.phase.value, BleHandshakePhase.started);
+        async.elapse(const Duration(seconds: 1));
+        expect(radio.stops, 1, reason: 'Bluetooth is let go once the trip starts');
+        finish(async, e);
+      });
     });
 
-    testWidgets('the driver cancels the countdown: nothing is sent, and the code it is', (tester) async {
-      final e = engine(_ticket(side: 'driver', settings: const BleSettings(enabled: true, autostartNoPin: true)));
-      await e.start();
-      await seePeer(tester, 7);
-      expect(e.phase.value, BleHandshakePhase.countdown);
-      e.cancel();
-      await seePeer(tester, 10);
-      expect(proofs, isEmpty);
-      expect(e.phase.value, BleHandshakePhase.cancelled);
-      await e.dispose();
+    test('the driver cancels the countdown: nothing is sent, and the code it is', () {
+      run((async, now) {
+        final e = engine(
+          _ticket(side: 'driver', settings: const BleSettings(enabled: true, autostartNoPin: true)),
+          now,
+        );
+        e.start();
+        seePeer(async, 7);
+        expect(e.phase.value, BleHandshakePhase.countdown);
+        e.cancel();
+        seePeer(async, 10);
+        expect(proofs, isEmpty);
+        expect(e.phase.value, BleHandshakePhase.cancelled);
+        finish(async, e);
+      });
     });
 
-    testWidgets('switched off by the server, or not this platform: Bluetooth is never touched', (tester) async {
-      final off = engine(_ticket(enabled: false));
-      await off.start();
-      final ios = engine(_ticket(settings: const BleSettings(enabled: true, android: false)));
-      await ios.start();
-      expect(radio.started, isEmpty);
-      expect(off.phase.value, BleHandshakePhase.idle);
-      expect(ios.phase.value, BleHandshakePhase.idle);
-      await off.dispose();
-      await ios.dispose();
+    test('switched off by the server, or not this platform: Bluetooth is never touched', () {
+      run((async, now) {
+        final off = engine(_ticket(enabled: false), now);
+        off.start();
+        final ios = engine(_ticket(settings: const BleSettings(enabled: true, android: false)), now);
+        ios.start();
+        async.flushMicrotasks();
+        expect(radio.started, isEmpty);
+        expect(off.phase.value, BleHandshakePhase.idle);
+        expect(ios.phase.value, BleHandshakePhase.idle);
+        finish(async, off);
+        finish(async, ios);
+      });
     });
 
-    testWidgets('Bluetooth off: the badge says so, and the code is the way', (tester) async {
-      radio = _Radio(refuse: 'Bluetooth is off.');
-      final e = engine(_ticket());
-      await e.start();
-      expect(e.phase.value, BleHandshakePhase.unavailable);
-      expect(e.unavailableReason, 'Bluetooth is off.');
-      await e.dispose();
+    test('Bluetooth off: the badge says so, and the code is the way', () {
+      run((async, now) {
+        radio = _Radio(refuse: 'Bluetooth is off.');
+        final e = engine(_ticket(), now);
+        e.start();
+        async.flushMicrotasks();
+        expect(e.phase.value, BleHandshakePhase.unavailable);
+        expect(e.unavailableReason, 'Bluetooth is off.');
+        finish(async, e);
+      });
     });
 
-    testWidgets('the trip starting some other way stops it', (tester) async {
-      final e = engine(_ticket());
-      await e.start();
-      e.updateStatus('on_trip');
-      await tester.pump();
-      expect(e.phase.value, BleHandshakePhase.idle);
-      expect(radio.stops, 1);
-      await seePeer(tester, 8);
-      expect(proofs, isEmpty);
-      await e.dispose();
+    test('the trip starting some other way stops it', () {
+      run((async, now) {
+        final e = engine(_ticket(), now);
+        e.start();
+        async.flushMicrotasks();
+        e.updateStatus('on_trip');
+        async.elapse(const Duration(seconds: 1));
+        expect(e.phase.value, BleHandshakePhase.idle);
+        expect(radio.stops, 1);
+        seePeer(async, 8);
+        expect(proofs, isEmpty);
+        finish(async, e);
+      });
     });
   });
 
