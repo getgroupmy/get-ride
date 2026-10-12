@@ -531,6 +531,41 @@ void main() {
       });
     });
 
+    test('no signal: the other phone close by is "detected around you", never a match', () {
+      run((async, now) {
+        var online = false;
+        final e = BleHandshakeEngine(
+          radio: radio,
+          server: BleHandshakeServer(
+            ticket: () async => _ticket(),
+            proof: (_, _, _, _) async => online ? BleProofResult.matched : throw StateError('no signal'),
+          ),
+          isAndroid: true,
+          isIos: false,
+          status: 'arrived',
+          position: () async => null,
+          now: now,
+        );
+        e.start();
+        async.flushMicrotasks();
+
+        seePeer(async, 3);
+        expect(e.phase.value, BleHandshakePhase.nearby, reason: 'not seen long enough to say yet');
+        seePeer(async, 4);
+        expect(e.phase.value, BleHandshakePhase.detectedOffline);
+        expect(bleHandshakeLabel(e.phase.value, driver: false), 'The provider is detected around you');
+        expect(bleHandshakeLabel(e.phase.value, driver: true), 'The passenger is detected around you');
+
+        async.elapse(const Duration(seconds: 6));
+        expect(e.phase.value, BleHandshakePhase.searching, reason: 'gone: not claimed any more');
+
+        online = true; // signal back while the other phone is still here
+        seePeer(async, 7);
+        expect(e.phase.value, BleHandshakePhase.matched);
+        finish(async, e);
+      });
+    });
+
     test('another phone, or a weak signal, is never reported', () {
       run((async, now) {
         final e = engine(_ticket(), now);

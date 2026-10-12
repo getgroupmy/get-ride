@@ -346,6 +346,12 @@ enum BleHandshakePhase {
   /// The other phone is in sight; checking with the server.
   nearby,
 
+  /// The other phone has been seen close by for long enough, but this phone
+  /// has no signal to check it with the server: worth telling the person,
+  /// never counted as a match (the server only takes reports from both
+  /// phones, and this one can't send its own).
+  detectedOffline,
+
   /// The driver's phone: about to report, with a moment to cancel.
   countdown,
 
@@ -365,6 +371,8 @@ String? bleHandshakeLabel(BleHandshakePhase phase, {required bool driver}) => sw
   BleHandshakePhase.unavailable => 'Bluetooth is off — use the trip code',
   BleHandshakePhase.searching => driver ? 'Looking for the passenger\'s phone…' : 'Looking for your driver\'s phone…',
   BleHandshakePhase.nearby => driver ? 'Passenger\'s phone nearby…' : 'Your driver\'s phone is nearby…',
+  BleHandshakePhase.detectedOffline =>
+    driver ? 'The passenger is detected around you' : 'The provider is detected around you',
   BleHandshakePhase.countdown => 'Passenger found — starting the trip',
   BleHandshakePhase.matched => driver ? '✓ Right passenger' : '✓ Correct car',
   BleHandshakePhase.started => 'Trip started by Bluetooth',
