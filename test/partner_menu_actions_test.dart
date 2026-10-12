@@ -45,7 +45,7 @@ void main() {
     'trip-history': '/trips',
     'vehicle': '/drive/vehicles',
     vehicleInfoMenuItemId: '/meter/vehicle',
-    myRideMenuItemId: '/drive/my-ride',
+    myRideCodeMenuItemId: '/drive/my-ride',
     'documents': '/drive/onboarding',
     'support': '/account/support',
     'help-assistant': '/account/help',

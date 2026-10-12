@@ -109,15 +109,15 @@ void main() {
 
   group('menu and copy', () {
     test('My Ride code shows only with a code; Vehicle information only when linked', () {
-      expect(partnerMenuRowShows(myRideMenuItemId, obdLinked: true, hasMyRideCode: false), isFalse);
-      expect(partnerMenuRowShows(myRideMenuItemId, obdLinked: false, hasMyRideCode: true), isTrue);
+      expect(partnerMenuRowShows(myRideCodeMenuItemId, obdLinked: true, hasMyRideCode: false), isFalse);
+      expect(partnerMenuRowShows(myRideCodeMenuItemId, obdLinked: false, hasMyRideCode: true), isTrue);
       expect(partnerMenuRowShows(vehicleInfoMenuItemId, obdLinked: false, hasMyRideCode: true), isFalse);
       expect(partnerMenuRowShows(vehicleInfoMenuItemId, obdLinked: true, hasMyRideCode: false), isTrue);
       expect(partnerMenuRowShows('wallet', obdLinked: false, hasMyRideCode: false), isTrue);
     });
 
     test('the My Ride code row is a default driver item', () {
-      expect(defaultPartnerMenuItems.map((e) => e.$1), contains(myRideMenuItemId));
+      expect(defaultPartnerMenuItems.map((e) => e.$1), contains(myRideCodeMenuItemId));
     });
 
     test('a rider row: added date and rides together', () {

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../admin/screens/meterapp/display_logic.dart' show myRideMenuItemId, vehicleInfoMenuItemId;
+import '../../admin/screens/meterapp/display_logic.dart' show myRideCodeMenuItemId, vehicleInfoMenuItemId;
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
@@ -27,7 +27,7 @@ Future<void> showPartnerMenu(BuildContext context) => showModalBottomSheet<void>
 /// (none on a database without My Ride, or while it loads).
 bool partnerMenuRowShows(String id, {required bool obdLinked, required bool hasMyRideCode}) => switch (id) {
   vehicleInfoMenuItemId => obdLinked,
-  myRideMenuItemId => hasMyRideCode,
+  myRideCodeMenuItemId => hasMyRideCode,
   _ => true,
 };
 
@@ -43,7 +43,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     // The trips page lists the driver's trips beside their rides.
     'trip-history': '/trips',
     vehicleInfoMenuItemId: '/meter/vehicle',
-    myRideMenuItemId: '/drive/my-ride',
+    myRideCodeMenuItemId: '/drive/my-ride',
     'documents': '/drive/onboarding',
     'support': '/account/support',
     'help-assistant': '/account/help',
