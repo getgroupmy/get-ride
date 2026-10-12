@@ -22,6 +22,7 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
     'teksi-ev': '/ev',
     'city': '/',
     'request-history': '/trips',
+    'my-ride': '/account/my-ride',
     'freight': '/',
     'wallet': '/wallet',
     'notifications': '/',

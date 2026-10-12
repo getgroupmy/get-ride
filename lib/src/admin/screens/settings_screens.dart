@@ -50,7 +50,10 @@ class AdminSettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final visible = crudCategories.where((c) => !c.nested && _categoryLevel(ref, c) != AccessLevel.none).toList();
+    final visible = crudCategories
+        .where((c) =>
+            !c.nested && !replacedCategories.containsKey(c.key) && _categoryLevel(ref, c) != AccessLevel.none)
+        .toList();
     final others = ref.watch(_otherCategoriesProvider);
     return AdminPage(
       title: 'Settings',

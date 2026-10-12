@@ -9,6 +9,7 @@ library;
 
 import 'dart:convert';
 
+import '../../../core/my_ride.dart';
 import '../../admin_settings_models.dart';
 
 // ---------------------------------------------------------------------------
@@ -178,12 +179,19 @@ List<String> serviceTypeOptions(List<SettingEntry> serviceSettings) => sortByPri
     .where((n) => n.isNotEmpty)
     .toList();
 
+/// Builds an entry's values from the editor. [dispatch] holds the Search
+/// radius / My Ride fields by key (see [vehicleServiceDispatchFields]): a key
+/// present but blank is removed, so the server's default applies. [existing]
+/// is the entry being edited: every key this editor doesn't own (written by
+/// another screen, the Expo app or a later migration) is kept as it was.
 ValuesResult buildVehicleServiceValues({
   required Map<String, String> text, // name, description, shortDescription, iconUri, heroImageUri, mapIconUri, mapIconColor
   required Map<String, String> numbers,
   required List<String> serviceTypes,
   required List<String> fuel,
   required bool status,
+  Map<String, String> dispatch = const {},
+  Map<String, dynamic>? existing,
 }) {
   final name = (text['name'] ?? '').trim();
   if (name.isEmpty) return (values: const {}, error: 'Please fill in Service Name.');
@@ -192,7 +200,10 @@ ValuesResult buildVehicleServiceValues({
       return (values: const {}, error: 'Please fill in ${f.label}.');
     }
   }
+  final invalid = validateVehicleServiceDispatch(dispatch);
+  if (invalid != null) return (values: const {}, error: invalid.message);
   final values = <String, dynamic>{
+    ...?existing,
     'iconUri': text['iconUri'] ?? '',
     'heroImageUri': text['heroImageUri'] ?? '',
     'mapIconUri': text['mapIconUri'] ?? '',
@@ -208,7 +219,178 @@ ValuesResult buildVehicleServiceValues({
     final n = num.tryParse((numbers[f.key] ?? '').trim());
     values[f.key] = (n != null && n.isFinite) ? n : 0;
   }
+  for (final f in vehicleServiceDispatchFields) {
+    if (!dispatch.containsKey(f.key)) continue;
+    final n = _dispatchNumber(dispatch[f.key]);
+    if (n == null) {
+      values.remove(f.key);
+    } else {
+      values[f.key] = n;
+    }
+  }
   return (values: values, error: null);
+}
+
+// ---- Search radius & My Ride (read by the dispatch, migration 0160) ----------
+
+/// One Search radius / My Ride setting of a vehicle service.
+class DispatchField {
+  const DispatchField(
+    this.key,
+    this.label, {
+    required this.section,
+    required this.unit,
+    required this.defaultValue,
+    required this.helper,
+    required this.min,
+    required this.max,
+    this.wholeNumber = false,
+    this.zeroAllowed = false,
+  });
+
+  final String key;
+  final String label;
+
+  /// 'Search radius' or 'My Ride'.
+  final String section;
+
+  /// 'km' or 's'.
+  final String unit;
+  final num defaultValue;
+  final String helper;
+  final num min;
+  final num max;
+  final bool wholeNumber;
+
+  /// 0 is allowed besides [min]–[max] (My Ride max distance: no limit).
+  final bool zeroAllowed;
+}
+
+const searchRadiusSection = 'Search radius';
+const myRideSection = 'My Ride';
+
+const vehicleServiceDispatchFields = [
+  DispatchField(
+    searchRadiusMinKmKey,
+    'Starting radius',
+    section: searchRadiusSection,
+    unit: 'km',
+    defaultValue: ServiceDispatchConfig.defaultMinKm,
+    helper: 'A new request first goes to drivers within this distance of the pickup. 0.5–100 km.',
+    min: 0.5,
+    max: 100,
+  ),
+  DispatchField(
+    searchRadiusMaxKmKey,
+    'Widest radius',
+    section: searchRadiusSection,
+    unit: 'km',
+    defaultValue: ServiceDispatchConfig.defaultMaxKm,
+    helper: 'While nobody accepts, the search widens step by step up to this distance. At least the starting '
+        'radius, at most 100 km.',
+    min: 0.5,
+    max: 100,
+  ),
+  DispatchField(
+    searchWidenAfterSecKey,
+    'Widen after',
+    section: searchRadiusSection,
+    unit: 's',
+    defaultValue: ServiceDispatchConfig.defaultWidenSec,
+    helper: 'How long the search waits at each radius before widening. 5–600 seconds.',
+    min: 5,
+    max: 600,
+    wholeNumber: true,
+  ),
+  DispatchField(
+    myRideMaxKmKey,
+    'Max distance',
+    section: myRideSection,
+    unit: 'km',
+    defaultValue: 0,
+    helper: 'Favourite drivers farther than this from the pickup are not offered the ride. 0 means no limit; '
+        'otherwise 1–500 km. A rider\'s own limit applies too, whichever is smaller.',
+    min: 1,
+    max: 500,
+    zeroAllowed: true,
+  ),
+  DispatchField(
+    myRideWindowSecKey,
+    'Favourites-only window',
+    section: myRideSection,
+    unit: 's',
+    defaultValue: ServiceDispatchConfig.defaultWindowSec,
+    helper: 'A My Ride booking is offered only to the rider\'s picked favourites for this long, then opens to '
+        'every nearby driver. 10–600 seconds.',
+    min: 10,
+    max: 600,
+    wholeNumber: true,
+  ),
+];
+
+num? _dispatchNumber(String? text) {
+  final t = (text ?? '').trim();
+  if (t.isEmpty) return null;
+  final n = num.tryParse(t);
+  return n == null || !n.isFinite ? null : n;
+}
+
+/// `3.0` → `3`, `2.5` → `2.5`.
+String formatDispatchNumber(num n) => n == n.roundToDouble() ? '${n.round()}' : '$n';
+
+/// The text a dispatch field's input starts with for an entry: the stored
+/// value, or blank (the hint shows the default).
+String dispatchFieldText(Map<String, dynamic>? values, DispatchField f) {
+  final v = values?[f.key];
+  if (v == null) return '';
+  if (v is num) return formatDispatchNumber(v);
+  return '$v'.trim();
+}
+
+/// Checks the Search radius / My Ride inputs ([dispatch] by key; blank is
+/// the default). Null when they are all valid, else the first problem and
+/// which field it's on.
+({String key, String message})? validateVehicleServiceDispatch(Map<String, String> dispatch) {
+  num? effective(DispatchField f) {
+    final t = (dispatch[f.key] ?? '').trim();
+    return t.isEmpty ? f.defaultValue : _dispatchNumber(t);
+  }
+
+  for (final f in vehicleServiceDispatchFields) {
+    final t = (dispatch[f.key] ?? '').trim();
+    if (t.isEmpty) continue;
+    final n = _dispatchNumber(t);
+    final range = f.zeroAllowed
+        ? '0 (no limit) or ${formatDispatchNumber(f.min)}–${formatDispatchNumber(f.max)} ${f.unit}'
+        : '${formatDispatchNumber(f.min)}–${formatDispatchNumber(f.max)} ${f.unit == 's' ? 'seconds' : f.unit}';
+    final label = '${f.section}: ${f.label}';
+    if (n == null) return (key: f.key, message: '$label must be a number.');
+    if (f.wholeNumber && n != n.roundToDouble()) {
+      return (key: f.key, message: '$label must be a whole number of seconds.');
+    }
+    if (f.zeroAllowed && n == 0) continue;
+    if (n < f.min || n > f.max) return (key: f.key, message: '$label must be $range.');
+  }
+  final minF = vehicleServiceDispatchFields[0];
+  final maxF = vehicleServiceDispatchFields[1];
+  final lo = effective(minF), hi = effective(maxF);
+  if (lo != null && hi != null && hi < lo) {
+    return (
+      key: maxF.key,
+      message: 'Search radius: Widest radius (${formatDispatchNumber(hi)} km) must be at least the starting radius '
+          '(${formatDispatchNumber(lo)} km).',
+    );
+  }
+  return null;
+}
+
+/// One line for a service's row: `Radius 3–15 km · My Ride: no limit, 60 s`,
+/// as the dispatch will read the values (defaults filled in).
+String vehicleServiceDispatchSummary(Map<String, dynamic> values) {
+  final c = ServiceDispatchConfig.fromValues(values);
+  final limit = c.myRideMaxKm == null ? 'no limit' : 'max ${formatDispatchNumber(c.myRideMaxKm!)} km';
+  return 'Radius ${formatDispatchNumber(c.searchRadiusMinKm)}–${formatDispatchNumber(c.searchRadiusMaxKm)} km · '
+      'My Ride: $limit, ${c.myRideWindow.inSeconds} s';
 }
 
 String vehicleServiceMeta(Map<String, dynamic> v) {
