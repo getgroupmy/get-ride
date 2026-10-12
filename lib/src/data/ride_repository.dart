@@ -16,6 +16,7 @@ import '../core/ride_request_metadata.dart';
 import '../core/ride_share.dart';
 import '../core/session_telemetry.dart';
 import '../core/fare_coins.dart';
+import '../core/my_qr.dart' show QrBookingError, QrBookingFailure;
 import '../core/my_ride.dart' show myRideMaxTargets;
 import '../core/region_pricing.dart';
 import '../core/format.dart' show setRegionCurrencySymbols;
@@ -78,6 +79,7 @@ class RideRepository {
     String? timezone,
     List<String> targetDriverIds = const [],
     double? myRideMaxKm,
+    String? directQrToken,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -123,6 +125,10 @@ class RideRepository {
       // the rider's own, not hidden ones and sets the window itself.
       if (targetDriverIds.isNotEmpty) 'target_driver_ids': targetDriverIds.take(myRideMaxTargets).toList(),
       if (targetDriverIds.isNotEmpty && myRideMaxKm != null && myRideMaxKm > 0) 'my_ride_max_km': myRideMaxKm,
+      // GET.now (0161): the scanned code books that driver alone. The server
+      // checks it and refuses the request (QR_EXPIRED &co.) rather than
+      // sending it to anybody else; favourites sent with it are dropped.
+      if (directQrToken != null && directQrToken.trim().isNotEmpty) 'direct_qr_token': directQrToken.trim(),
     };
     // Stops, the metadata, the region's pricing and its time zone are
     // extras: a database without one of their columns (stops needs 0098,
@@ -152,9 +158,19 @@ class RideRepository {
         // A place GET.ride doesn't serve: the database's own check (0125).
         final unserved = ServiceUnavailableError.parse(e.message);
         if (unserved != null) throw unserved;
+        // A GET.now code that has expired, is the rider's own, or whose
+        // driver can't take rides: nothing was stored.
+        final qr = QrBookingError.parse(e.message);
+        if (qr != null) throw qr;
         // Never quietly book someone else's ride as the rider's own.
         if (bookedFor != null && e.message.contains('booked_for')) {
           throw StateError("Booking for someone else isn't available yet. Please try again later.");
+        }
+        // Never quietly turn a direct booking into one for everybody: a
+        // database without 0161 can't book by code.
+        if (row.containsKey('direct_qr_token') &&
+            missingColumn('${e.message} ${e.details}') == 'direct_qr_token') {
+          throw const QrBookingError(QrBookingFailure.notAvailable);
         }
         final col = droppableRideColumn('${e.message} ${e.details}', optional, row.keys);
         if (attempt >= optional.length || col == null) rethrow;

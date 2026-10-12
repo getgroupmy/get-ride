@@ -279,6 +279,12 @@ enum AddFavouriteError {
   limitReached,
   rateLimited,
   noProfile,
+
+  /// A GET.me code that has expired (migration 0161).
+  expiredCode,
+
+  /// A personal code that isn't a GET.me code (0161).
+  wrongCode,
   unknown;
 
   static AddFavouriteError parse(Object? v) => switch (v) {
@@ -289,6 +295,8 @@ enum AddFavouriteError {
     'limit_reached' => AddFavouriteError.limitReached,
     'rate_limited' => AddFavouriteError.rateLimited,
     'no_profile' => AddFavouriteError.noProfile,
+    'expired' => AddFavouriteError.expiredCode,
+    'wrong_kind' => AddFavouriteError.wrongCode,
     _ => AddFavouriteError.unknown,
   };
 
@@ -301,6 +309,8 @@ enum AddFavouriteError {
       'You have $myRideMaxFavourites favourite drivers already. Remove one to add another.',
     AddFavouriteError.rateLimited => 'Too many codes tried. Please wait a while and try again.',
     AddFavouriteError.noProfile => 'Finish setting up your account first.',
+    AddFavouriteError.expiredCode => 'This GET.me code has expired. Ask the driver for their current code.',
+    AddFavouriteError.wrongCode => "That isn't a driver's GET.me code.",
     AddFavouriteError.unknown => "Couldn't add the driver. Please try again.",
   };
 }
