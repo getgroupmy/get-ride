@@ -119,7 +119,38 @@ export class PlayRefusal extends Error {
   }
 }
 
-export function uploadRefusal(status: number, said: string): string {
+/**
+ * Which call Play refused: opening the edit, uploading the bundle,
+ * assigning it to the track, or committing.
+ *
+ * It matters for a 403. Refused at `open`, the account cannot see the
+ * app at all. Refused later, it already could -- the edit opened -- and
+ * what is missing is the permission for that one step, most often
+ * "Release apps to testing tracks" at the commit.
+ */
+export type Stage = "open" | "upload" | "track" | "commit";
+
+/** Play's own words, quoted after ours, when they fit on a line. */
+function quoted(said: string): string {
+  const trimmed = said.trim();
+  return trimmed.length > 0 && trimmed.length <= 400
+    ? ` Play said: "${trimmed}"`
+    : "";
+}
+
+/** The Play Console permission a track's release needs. */
+export function releasePermission(track: Track | null): string {
+  return track === "production"
+    ? "Release to production, exclude devices, and use Play App Signing"
+    : "Release apps to testing tracks";
+}
+
+export function uploadRefusal(
+  status: number,
+  said: string,
+  stage: Stage = "open",
+  track: Track | null = null,
+): string {
   // The Cloud project has the service account but not the API. It is
   // a separate switch in a separate part of the console from creating
   // the account, and creating one does not turn it on.
@@ -146,10 +177,25 @@ export function uploadRefusal(status: number, said: string): string {
       "workflow can do every one after it. See docs/store-release.md.";
   }
   if (status === 403 && said.includes("permission")) {
-    return "The service account cannot see this app. Granting it in " +
-      "Google Cloud is not enough -- it also has to be invited under " +
-      "Play Console, Users and permissions, with Release access to " +
-      "this app, and that invitation is a separate screen.";
+    if (stage === "open") {
+      return "The service account cannot see this app. Granting it in " +
+        "Google Cloud is not enough -- it also has to be invited under " +
+        "Play Console, Users and permissions, with Release access to " +
+        "this app, and that invitation is a separate screen." + quoted(said);
+    }
+    // The edit opened, so the account can see the app; it is one
+    // permission short for this step.
+    const step = stage === "commit"
+      ? "release it"
+      : stage === "track"
+      ? "assign it to a track"
+      : "upload a bundle";
+    return `The service account can open an edit for this app but may not ${step}. ` +
+      "In Play Console, Users and permissions, open the service account, " +
+      `App permissions, this app, and tick "${releasePermission(track)}", ` +
+      "then Apply. A permission change can take up to a day to reach " +
+      "the Publishing API, so a run straight after the change may still " +
+      "be refused." + quoted(said);
   }
   if (said.includes("already been used") || said.includes("already exists")) {
     return "Play has seen this version code before. It is the workflow " +
@@ -204,6 +250,8 @@ async function call(
   url: string,
   token: string,
   init: RequestInit = {},
+  stage: Stage = "open",
+  track: Track | null = null,
 ): Promise<unknown> {
   const res = await fetch(url, {
     ...init,
@@ -215,7 +263,7 @@ async function call(
   const body = await res.text();
   if (!res.ok) {
     throw new PlayRefusal(
-      uploadRefusal(res.status, messageOf(body)),
+      uploadRefusal(res.status, messageOf(body), stage, track),
       isPermanent(res.status),
     );
   }
@@ -267,6 +315,8 @@ async function main() {
       headers: { "Content-Type": "application/octet-stream" },
       body: await Deno.readFile(path),
     },
+    "upload",
+    track,
   ) as { versionCode: number };
   console.log(`uploaded version code ${bundle.versionCode}`);
 
@@ -274,17 +324,17 @@ async function main() {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(trackBody(bundle.versionCode, notes)),
-  });
+  }, "track", track);
   console.log(`assigned to ${track}`);
 
   try {
-    await call(commitUrl(EDITS, pkg, edit.id), token, { method: "POST" });
+    await call(commitUrl(EDITS, pkg, edit.id), token, { method: "POST" }, "commit", track);
   } catch (error) {
     if (!(error instanceof PlayRefusal) || !wantsNotSentForReview(error.message)) throw error;
     // The app has changes Play won't send for review by itself. Commit
     // the edit without sending it; the Console then offers "Send for
     // review" where review is needed.
-    await call(commitUrl(EDITS, pkg, edit.id, true), token, { method: "POST" });
+    await call(commitUrl(EDITS, pkg, edit.id, true), token, { method: "POST" }, "commit", track);
     console.log(
       "committed without sending for review (Play asked for that). Open the " +
         "Play Console > Publishing overview and press Send for review if it is offered.",

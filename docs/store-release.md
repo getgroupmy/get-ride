@@ -130,7 +130,17 @@ believe the others cover:
 2. Google Cloud Console → APIs & Services → enable the **Google Play
    Android Developer API**.
 3. Play Console → Users and permissions → invite the service account's
-   email with **Release** access to this app.
+   email with **Release** access to this app: under App permissions,
+   tick **Release apps to testing tracks** (internal / alpha / beta) and,
+   for production, **Release to production, exclude devices, and use Play
+   App Signing**. A permission change can take up to a day to reach the
+   Publishing API.
+
+When the upload is refused, the run says at which step. Refused when
+opening the edit, the account cannot see the app (step 3 is missing).
+Refused at the commit, after "uploaded version code" and "assigned to",
+it can see the app but lacks the release permission for that track. Either
+way Play's own words are quoted after the explanation.
 
 If the Play listing has **never** had a release, Play will not take the
 first bundle through the API. Run *Android release* from the Actions tab
