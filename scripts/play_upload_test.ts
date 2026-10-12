@@ -16,6 +16,7 @@ import {
 
 import {
   commitUrl,
+  isDeclarationRefusal,
   isPermanent,
   LANGUAGE,
   messageOf,
@@ -149,6 +150,19 @@ Deno.test("a 403 at the commit names the release permission, not the invitation"
   assertStringIncludes(said, "may not release it");
   assertStringIncludes(said, "Release apps to testing tracks");
   assertStringIncludes(said, "up to a day");
+});
+
+Deno.test("a missing App content declaration is not called an account permission", () => {
+  // Android release run 12: refused at the commit with this, which the
+  // permission branch matched on the word "permissions".
+  const raw = "You must let us know whether your app uses any Foreground Service permissions.";
+  assert(isDeclarationRefusal(raw));
+  const said = uploadRefusal(403, raw, "commit", "internal");
+  assertStringIncludes(said, "App content");
+  assertStringIncludes(said, "Foreground service permissions");
+  assert(!said.includes("Release apps to testing tracks"));
+  // A plain permission refusal is still read as one.
+  assert(!isDeclarationRefusal("The caller does not have permission"));
 });
 
 Deno.test("production needs the production permission", () => {

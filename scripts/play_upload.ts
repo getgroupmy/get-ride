@@ -156,6 +156,14 @@ export function releasePermission(track: Track | null): string {
     : "Release apps to testing tracks";
 }
 
+/**
+ * Whether Play refused because a Play Console declaration (App content)
+ * is missing, rather than for anything about the account or the bundle.
+ */
+export function isDeclarationRefusal(said: string): boolean {
+  return /you must let us know|declaration|app content/i.test(said);
+}
+
 export function uploadRefusal(
   status: number,
   said: string,
@@ -186,6 +194,19 @@ export function uploadRefusal(
       "Publishing API cannot create an app or take its first bundle: " +
       "upload one build by hand in the Play Console, once, and this " +
       "workflow can do every one after it. See docs/store-release.md.";
+  }
+  // Play wants a declaration filled in under App content first (Android
+  // release run 12: "You must let us know whether your app uses any
+  // Foreground Service permissions."). Checked before the permission
+  // branch below, which that sentence would otherwise match on the word
+  // "permissions" and send whoever reads it to the wrong screen.
+  if (isDeclarationRefusal(said)) {
+    return "Play wants a declaration filled in before it will release " +
+      "this build. In Play Console, open the app, Policy > App content, " +
+      "and complete the item Play names below (for a foreground service: " +
+      "Foreground service permissions, saying what each one is used for). " +
+      "Nothing is wrong with the service account, and the next run needs " +
+      "no change here once the declaration is saved.";
   }
   if (status === 403 && said.includes("permission")) {
     if (stage === "open") {
