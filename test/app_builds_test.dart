@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/core/app_branding.dart';
 import 'package:get_ride/src/core/app_builds.dart';
 import 'package:get_ride/src/features/install/app_install_screen.dart';
 import 'package:get_ride/src/widgets/app_build_widgets.dart';
@@ -172,6 +173,8 @@ void main() {
       String platform,
       AppBuild b, {
       Size size = const Size(400, 900),
+      AppBranding branding = const AppBranding(),
+      ThemeMode mode = ThemeMode.light,
     }) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
@@ -181,6 +184,7 @@ void main() {
         ProviderScope(
           overrides: [
             appBuildProvider.overrideWith((ref, p) async => b),
+            installBrandingProvider.overrideWith((ref) async => branding),
             appLinkOpenerProvider.overrideWithValue((u) async {
               opened.add(u);
               return true;
@@ -188,6 +192,8 @@ void main() {
           ],
           child: MaterialApp(
             theme: appTheme(Brightness.light),
+            darkTheme: appTheme(Brightness.dark),
+            themeMode: mode,
             home: AppInstallScreen(platform: platform),
           ),
         ),
@@ -217,6 +223,23 @@ void main() {
       expect(find.byKey(const ValueKey('app-install-button')), findsNothing);
       expect(find.textContaining('not installed directly'), findsOneWidget);
       expect(find.text('Download getride.ipa'), findsOneWidget);
+    });
+
+    for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+      testWidgets('branded: the built-in icon, the wordmark and the tagline (${mode.name})', (tester) async {
+        await pump(tester, 'android', _android(), mode: mode);
+        expect(find.byKey(const ValueKey('install-icon-builtin')), findsOneWidget);
+        expect(find.byKey(const ValueKey('install-icon-admin')), findsNothing);
+        expect(find.text('Your ride, your way.'), findsOneWidget);
+        expect(find.text('For Android'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('the icon the admin published replaces the built-in one', (tester) async {
+      await pump(tester, 'ios', _ios(), branding: const AppBranding(appIconUrl: 'https://cdn.example.com/icon.png'));
+      expect(find.byKey(const ValueKey('install-icon-admin')), findsOneWidget);
+      expect(find.text('For iPhone'), findsOneWidget);
     });
 
     testWidgets('an unknown platform is not a page', (tester) async {

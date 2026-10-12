@@ -17,7 +17,6 @@ class AppInstallScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final ios = platform == 'ios';
     final other = ios ? 'android' : 'ios';
     final wide = MediaQuery.sizeOf(context).width >= 720;
@@ -39,9 +38,7 @@ class AppInstallScreen extends ConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                Icon(ios ? Icons.phone_iphone : Icons.android, size: 64, color: scheme.primary),
-                const SizedBox(height: 12),
-                Text('GET.ride', textAlign: TextAlign.center, style: theme.textTheme.headlineSmall),
+                AppInstallHeader(platform: platform),
                 const SizedBox(height: 24),
                 build.when(
                   loading: () => const Center(child: CircularProgressIndicator()),
