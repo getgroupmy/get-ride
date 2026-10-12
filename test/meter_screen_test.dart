@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/meter_logic.dart';
+import 'package:get_ride/src/core/meter_console.dart';
 import 'package:get_ride/src/core/obd_adapters.dart';
+import 'package:get_ride/src/core/vehicle_assignment.dart';
 import 'package:get_ride/src/core/printers.dart';
 import 'package:get_ride/src/core/street_hail.dart';
 import 'package:get_ride/src/data/geo_service.dart';
@@ -35,6 +37,10 @@ class _FakeLocation implements MeterLocation {
 
   @override
   Stream<MeterFix> fixes() => controller.stream;
+
+  var settingsOpened = 0;
+  @override
+  Future<void> openSettings() async => settingsOpened++;
 }
 
 /// Records what the meter asked of the device's rotation.
@@ -71,17 +77,17 @@ class _FakeLauncher implements MeterLeaveLauncher {
 var _clock = DateTime(2026, 10, 4, 12).millisecondsSinceEpoch;
 
 /// ~11.1 m per 0.0001° of latitude.
-MeterFix _fixAt(double northM) =>
-    MeterFix(latitude: 3.0 + northM / 111195, longitude: 101.0, at: _clock, accuracyM: 5);
+MeterFix _fixAt(double northM) => MeterFix(latitude: 3.0 + northM / 111195, longitude: 101.0, at: _clock, accuracyM: 5);
 
 MeterProfile _card({String source = 'gps'}) => defaultMeterProfile.copyWith(
-      id: 'm1',
-      level: 'master',
-      label: () => 'Global (TEKSI old rates)',
-      sourceMode: source,
-    );
+  id: 'm1',
+  level: 'master',
+  label: () => 'Global (TEKSI old rates)',
+  sourceMode: source,
+);
 
-Future<_FakeLocation> _pump(WidgetTester tester, {
+Future<_FakeLocation> _pump(
+  WidgetTester tester, {
   MeterProfile? card,
   bool noCard = false,
   _FakeLocation? location,
@@ -92,41 +98,52 @@ Future<_FakeLocation> _pump(WidgetTester tester, {
   Widget? app,
   MeterLeaveLauncher? launcher,
   List<String>? systemPrints,
+  List<AssignableVehicle>? fleet,
+  List<String>? claims,
+  MeterDriverIdentity driver = const MeterDriverIdentity(name: 'Aina'),
 }) async {
   // A reader is "saved" on the phone when the test brings one.
   SharedPreferences.setMockInitialValues({
     if (reader != null)
       ObdAdapterStore.listKey: jsonEncode([normalizeWifiAdapter(id: 'r1', createdAt: 't').value!.toJson()]),
     if (printer != null)
-      PrinterStore.listKey: jsonEncode([normalizeWifiPrinter(id: 'p1', createdAt: 't', host: '10.0.0.2').value!.toJson()]),
+      PrinterStore.listKey: jsonEncode([
+        normalizeWifiPrinter(id: 'p1', createdAt: 't', host: '10.0.0.2').value!.toJson(),
+      ]),
   });
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   _clock = DateTime(2026, 10, 4, 12).millisecondsSinceEpoch;
   final loc = location ?? _FakeLocation();
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      meterLocationProvider.overrideWithValue(loc),
-      meterClockProvider.overrideWithValue(() => _clock),
-      obdClockProvider.overrideWithValue(() => _clock),
-      obdTransportFactoryProvider.overrideWithValue((_) => reader ?? FakeElm()),
-      printerSinkFactoryProvider.overrideWithValue((_) => printer ?? FakePrinter()),
-      printerSettleProvider.overrideWithValue(Duration.zero),
-      meterCardsProvider.overrideWith((_) async => noCard ? const <MeterProfile>[] : [card ?? _card()]),
-      // The geocoder is unreachable in tests: ends stay as coordinates.
-      geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
-      partnerProvider.overrideWith((_) async => Partner({'id': 'p1', 'name': 'Aina', 'plate': 'WXY 1'})),
-      meterOrientationProvider.overrideWithValue(orientation ?? _FakeOrientation()),
-      meterLeaveLauncherProvider.overrideWithValue(launcher ?? _FakeLauncher()),
-      meterLicenceProvider.overrideWith((_) async => 'Licence TX-123'),
-      meterSystemPrintProvider.overrideWithValue((trip, {subtitle}) async {
-        systemPrints?.add('${trip.plate} $subtitle');
-        return true;
-      }),
-    ],
-    child: app ?? const MaterialApp(home: MeterScreen()),
-  ));
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        meterLocationProvider.overrideWithValue(loc),
+        meterClockProvider.overrideWithValue(() => _clock),
+        obdClockProvider.overrideWithValue(() => _clock),
+        obdTransportFactoryProvider.overrideWithValue((_) => reader ?? FakeElm()),
+        printerSinkFactoryProvider.overrideWithValue((_) => printer ?? FakePrinter()),
+        printerSettleProvider.overrideWithValue(Duration.zero),
+        meterCardsProvider.overrideWith((_) async => noCard ? const <MeterProfile>[] : [card ?? _card()]),
+        // The geocoder is unreachable in tests: ends stay as coordinates.
+        geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
+        partnerProvider.overrideWith((_) async => Partner({'id': 'p1', 'name': 'Aina', 'plate': 'WXY 1'})),
+        meterOrientationProvider.overrideWithValue(orientation ?? _FakeOrientation()),
+        meterLeaveLauncherProvider.overrideWithValue(launcher ?? _FakeLauncher()),
+        meterLicenceProvider.overrideWith((_) async => 'Licence TX-123'),
+        // Unreadable unless the test brings a fleet: nothing is asked.
+        meterFleetProvider.overrideWith((_) async => fleet),
+        meterClaimVehicleProvider.overrideWithValue((id) async => claims?.add(id)),
+        meterDriverProvider.overrideWith((_) async => driver),
+        meterSystemPrintProvider.overrideWithValue((trip, {subtitle}) async {
+          systemPrints?.add('${trip.plate} $subtitle');
+          return true;
+        }),
+      ],
+      child: app ?? const MaterialApp(home: MeterScreen()),
+    ),
+  );
   await tester.pump();
   await tester.pump();
   // Lets a saved reader finish its handshake.
@@ -193,22 +210,36 @@ void main() {
 
   testWidgets('a street hail goes to its destination: quoted, metered, and both on the receipt', (tester) async {
     final orientation = _FakeOrientation();
-    final router = GoRouter(initialLocation: '/meter', routes: [
-      GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
-      GoRoute(
-        path: '/meter/destination',
-        builder: (context, _) => Scaffold(
-          body: TextButton(
-            onPressed: () => context.pop(const HailDestination(
-                name: 'KL Sentral', latitude: 3.1340, longitude: 101.6860, routeKm: 8.2, routeMin: 18)),
-            child: const Text('PICK KL SENTRAL'),
+    final router = GoRouter(
+      initialLocation: '/meter',
+      routes: [
+        GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
+        GoRoute(
+          path: '/meter/destination',
+          builder: (context, _) => Scaffold(
+            body: TextButton(
+              onPressed: () => context.pop(
+                const HailDestination(
+                  name: 'KL Sentral',
+                  latitude: 3.1340,
+                  longitude: 101.6860,
+                  routeKm: 8.2,
+                  routeMin: 18,
+                ),
+              ),
+              child: const Text('PICK KL SENTRAL'),
+            ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
     addTearDown(router.dispose);
-    final loc = await _pump(tester,
-        size: const Size(1600, 900), orientation: orientation, app: MaterialApp.router(routerConfig: router));
+    final loc = await _pump(
+      tester,
+      size: const Size(1600, 900),
+      orientation: orientation,
+      app: MaterialApp.router(routerConfig: router),
+    );
     expect(find.text('NO DESTINATION'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('meter-destination')));
     await tester.pumpAndSettle();
@@ -273,7 +304,13 @@ void main() {
           home: MeterScreen(
             launch: MeterLaunch(
               tariff: TeksiTariff.newTariff,
-              destination: HailDestination(name: 'KLCC', latitude: 3.158, longitude: 101.712, routeKm: 8.2, routeMin: 18),
+              destination: HailDestination(
+                name: 'KLCC',
+                latitude: 3.158,
+                longitude: 101.712,
+                routeKm: 8.2,
+                routeMin: 18,
+              ),
               startHire: true,
             ),
           ),
@@ -316,17 +353,28 @@ void main() {
   });
 
   testWidgets('an OBD-only rate card cannot be billed on GPS', (tester) async {
-    await _pump(tester, card: _card(source: 'obd'));
+    final loc = await _pump(tester, card: _card(source: 'obd'));
+    loc.controller.add(_fixAt(0));
+    await tester.pump();
     expect(find.textContaining("bills on the vehicle's OBD-II reader only"), findsOneWidget);
     await tester.tap(find.text('START'));
     await tester.pumpAndSettle();
-    expect(find.text('Cannot start the meter'), findsOneWidget);
+    expect(find.byKey(const ValueKey('meter-start-gate')), findsOneWidget);
+    expect(find.text('No vehicle link'), findsOneWidget);
+    expect(find.byKey(const ValueKey('meter-gate-gps')), findsNothing, reason: 'the card took GPS away');
+    expect(find.text('ADD A READER'), findsOneWidget, reason: 'no reader is saved on this phone');
+    await tester.tap(find.byKey(const ValueKey('meter-gate-cancel')));
+    await tester.pumpAndSettle();
     expect(find.text('FOR HIRE'), findsOneWidget);
   });
 
   testWidgets('an OBD-only rate card starts on the reader and bills on its speed', (tester) async {
     final elm = FakeElm(speed: 36);
-    await _pump(tester, card: _card(source: 'obd'), reader: elm);
+    await _pump(
+      tester,
+      card: _card(source: 'obd'),
+      reader: elm,
+    );
     expect(find.text('OBD-II'), findsOneWidget, reason: 'the connection type, GPS taken away by the card');
     await tester.tap(find.text('START'));
     await tester.pump(const Duration(milliseconds: 10));
@@ -465,15 +513,19 @@ void main() {
       expect(tester.widget<RotatedBox>(stage).quarterTurns, 1);
       await tester.tap(find.text('START'));
       await tester.pumpAndSettle();
-      expect(find.descendant(of: stage, matching: find.text('Cannot start the meter')), findsOneWidget);
-      await tester.tap(find.text('OK'));
+      expect(find.descendant(of: stage, matching: find.text('No vehicle link')), findsOneWidget);
+      await tester.tap(find.text('CANCEL'));
       await tester.pumpAndSettle();
-      expect(find.text('Cannot start the meter'), findsNothing);
+      expect(find.text('No vehicle link'), findsNothing);
     });
 
     testWidgets('a landscape phone gets the console as is, fitted without overflow', (tester) async {
       // An OBD-only card shows the longest key panel: the start block.
-      await _pump(tester, size: const Size(844, 390), card: _card(source: 'obd'));
+      await _pump(
+        tester,
+        size: const Size(844, 390),
+        card: _card(source: 'obd'),
+      );
       expect(find.byType(RotatedBox), findsNothing);
       expect(find.text('START'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -502,13 +554,23 @@ void main() {
 
     testWidgets('a settings screen gets the app rotation back, and the console re-pins it', (tester) async {
       final orientation = _FakeOrientation();
-      final router = GoRouter(initialLocation: '/meter', routes: [
-        GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
-        GoRoute(path: '/meter/printer', builder: (_, _) => const Scaffold(body: Text('PRINTER SETUP'))),
-      ]);
+      final router = GoRouter(
+        initialLocation: '/meter',
+        routes: [
+          GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
+          GoRoute(
+            path: '/meter/printer',
+            builder: (_, _) => const Scaffold(body: Text('PRINTER SETUP')),
+          ),
+        ],
+      );
       addTearDown(router.dispose);
-      await _pump(tester,
-          size: const Size(1600, 900), orientation: orientation, app: MaterialApp.router(routerConfig: router));
+      await _pump(
+        tester,
+        size: const Size(1600, 900),
+        orientation: orientation,
+        app: MaterialApp.router(routerConfig: router),
+      );
       await tester.tap(find.byKey(const ValueKey('meter-panel-printer')));
       await tester.pumpAndSettle();
       expect(find.text('PRINTER SETUP'), findsOneWidget);
@@ -520,11 +582,18 @@ void main() {
   });
 
   testWidgets('no location permission means no hire', (tester) async {
-    await _pump(tester, location: _FakeLocation()..problem = 'Location permission is needed to meter on GPS.');
+    final loc = await _pump(
+      tester,
+      location: _FakeLocation()..problem = 'Location permission is needed to meter on GPS.',
+    );
     expect(find.text('NO SIGNAL'), findsOneWidget);
     await tester.tap(find.text('START'));
     await tester.pumpAndSettle();
-    expect(find.text('Cannot start the meter'), findsOneWidget);
+    expect(find.text('Location is off'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('meter-gate-location')));
+    await tester.pumpAndSettle();
+    expect(loc.settingsOpened, 1, reason: 'the popup points at location permission');
+    expect(find.text('FOR HIRE'), findsOneWidget);
   });
 
   testWidgets('extras step and are included in the fare shown', (tester) async {
@@ -538,16 +607,29 @@ void main() {
   });
 
   group('leaving the meter', () {
-    GoRouter routerFor() => GoRouter(initialLocation: '/meter', routes: [
-          GoRoute(path: '/', builder: (_, _) => const Scaffold(body: Text('PASSENGER HOME'))),
-          GoRoute(path: '/drive', builder: (_, _) => const Scaffold(body: Text('E-HAILING QUEUE'))),
-          GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
-        ]);
+    GoRouter routerFor() => GoRouter(
+      initialLocation: '/meter',
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, _) => const Scaffold(body: Text('PASSENGER HOME')),
+        ),
+        GoRoute(
+          path: '/drive',
+          builder: (_, _) => const Scaffold(body: Text('E-HAILING QUEUE')),
+        ),
+        GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
+      ],
+    );
 
     testWidgets('back asks where to; staying keeps the console', (tester) async {
       final router = routerFor();
       addTearDown(router.dispose);
-      await _pump(tester, size: const Size(1600, 900), app: MaterialApp.router(routerConfig: router));
+      await _pump(
+        tester,
+        size: const Size(1600, 900),
+        app: MaterialApp.router(routerConfig: router),
+      );
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(find.text('Leave the meter?'), findsOneWidget);
@@ -561,7 +643,11 @@ void main() {
     testWidgets('the in-app keys go to passenger mode or the e-hailing queue', (tester) async {
       final router = routerFor();
       addTearDown(router.dispose);
-      await _pump(tester, size: const Size(1600, 900), app: MaterialApp.router(routerConfig: router));
+      await _pump(
+        tester,
+        size: const Size(1600, 900),
+        app: MaterialApp.router(routerConfig: router),
+      );
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('meter-leave-ehailing')));
@@ -620,16 +706,122 @@ void main() {
   });
 
   testWidgets('the rate card hides and locks console panels', (tester) async {
-    await _pump(tester, card: _card().copyWith(panels: {
-      ...allPanelsOn(),
-      'trips': const MeterPanelAccess(show: false, tap: false),
-      'printer': const MeterPanelAccess(show: true, tap: false),
-      'obd': const MeterPanelAccess(show: false, tap: false),
-    }));
+    await _pump(
+      tester,
+      card: _card().copyWith(
+        panels: {
+          ...allPanelsOn(),
+          'trips': const MeterPanelAccess(show: false, tap: false),
+          'printer': const MeterPanelAccess(show: true, tap: false),
+          'obd': const MeterPanelAccess(show: false, tap: false),
+        },
+      ),
+    );
     await tester.pump();
     expect(find.text('Trip log'), findsNothing);
     expect(find.byKey(const ValueKey('meter-panel-obd')), findsNothing);
     final printer = tester.widget<IconButton>(find.byKey(const ValueKey('meter-panel-printer')));
     expect(printer.onPressed, isNull);
+  });
+
+  group('Batch 1 parity', () {
+    AssignableVehicle car(String id, String plate, AssignableStatus status) => AssignableVehicle(
+      vehicle: {'id': id, 'plate': plate, 'make': 'Proton', 'model': 'Saga'},
+      role: VehicleRole.driver,
+      status: status,
+    );
+
+    testWidgets('a car this driver already holds binds silently', (tester) async {
+      await _pump(tester, fleet: [car('v1', 'VBD 1', AssignableStatus.inUseByYou)]);
+      await tester.pumpAndSettle();
+      expect(find.text('Choose a vehicle'), findsNothing);
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('meter-plate')), matching: find.text('VBD 1')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('with no car held the driver is asked, and the pick is claimed', (tester) async {
+      final claims = <String>[];
+      await _pump(tester, fleet: [car('v2', 'VAV 2', AssignableStatus.available)], claims: claims);
+      await tester.pumpAndSettle();
+      expect(find.text('Choose a vehicle'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('pick-v2')));
+      await tester.pumpAndSettle();
+      expect(claims, ['v2']);
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('meter-plate')), matching: find.text('VAV 2')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the picker is dismissible, and the plate chip reopens it', (tester) async {
+      await _pump(tester, fleet: [car('v2', 'VAV 2', AssignableStatus.available)]);
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.text('Choose a vehicle'), findsNothing);
+      expect(find.text('SELECT'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('meter-plate')));
+      await tester.pumpAndSettle();
+      expect(find.text('Choose a vehicle'), findsOneWidget);
+    });
+
+    testWidgets('an unreadable fleet asks nothing', (tester) async {
+      await _pump(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Choose a vehicle'), findsNothing);
+      expect(find.text('SELECT'), findsOneWidget);
+    });
+
+    testWidgets('the driver strip reads the permit', (tester) async {
+      await _pump(
+        tester,
+        driver: const MeterDriverIdentity(name: 'Siti Aminah', licence: 'TX-123'),
+      );
+      expect(find.text('SITI AMINAH'), findsOneWidget);
+      expect(find.text('TX-123'), findsOneWidget);
+    });
+
+    testWidgets('a GPS-only card holds START for the first fix, then opens by itself', (tester) async {
+      final loc = await _pump(tester);
+      await tester.tap(find.text('START'));
+      // The popup's spinner never settles while it waits.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Acquiring GPS…'), findsOneWidget);
+      loc.controller.add(_fixAt(0));
+      await tester.pump();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('meter-start-gate')), findsNothing);
+      expect(find.textContaining('HIRED'), findsOneWidget);
+      expect(find.byKey(const ValueKey('meter-pickup')), findsOneWidget, reason: 'where the passenger got in');
+    });
+
+    testWidgets('a reader that will not answer offers GPS on a card that bills on both', (tester) async {
+      final loc = await _pump(
+        tester,
+        card: _card(source: 'gps+obd'),
+        reader: FakeElm()..refuseConnect = true,
+      );
+      loc.controller.add(_fixAt(0));
+      await tester.pump();
+      await tester.tap(find.text('START'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('meter-start-gate')), findsOneWidget);
+      expect(find.text('START ON GPS'), findsOneWidget);
+      await tester.tap(find.text('START ON GPS'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('HIRED'), findsOneWidget);
+    });
+
+    testWidgets('the settings panel names the card, charge by charge, and the sensors', (tester) async {
+      await _pump(tester);
+      await tester.tap(find.byKey(const ValueKey('meter-tab-settings')));
+      await tester.pumpAndSettle();
+      expect(find.text('Global (TEKSI old rates)'), findsOneWidget);
+      expect(find.textContaining('• '), findsWidgets);
+      expect(find.text('Waiting for a fix…'), findsOneWidget);
+    });
   });
 }
