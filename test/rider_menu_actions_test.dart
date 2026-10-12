@@ -25,7 +25,7 @@ class _Auth implements AuthRepository {
 void main() {
   const pages = [
     '/', '/ev', '/trips', '/wallet', '/account/safety', '/account/settings', '/account/guide', '/account/support', '/account/help',
-    '/account/emergency', '/account/referral', '/account/my-ride',
+    '/account/emergency', '/account/referral', '/account/my-ride', '/account/my-qr',
   ];
 
   /// Taps [id]'s row as [settings] arrange the menu; the page on top after,
@@ -62,6 +62,7 @@ void main() {
       'city': '/',
       'request-history': '/trips',
       myRideMenuItemId: '/account/my-ride',
+      myQrMenuItemId: '/account/my-qr',
       'freight': '/',
       'wallet': '/wallet',
       'notifications': '/',

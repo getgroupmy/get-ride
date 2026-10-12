@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../admin/screens/meterapp/display_logic.dart' show myRideCodeMenuItemId, vehicleInfoMenuItemId;
+import '../../admin/screens/meterapp/display_logic.dart'
+    show myQrMenuItemId, myRideCodeMenuItemId, vehicleInfoMenuItemId;
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
@@ -39,6 +40,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
   const routes = {
     'teksi-ev': '/ev',
     'wallet': '/wallet',
+    myQrMenuItemId: '/account/my-qr',
     'vehicle': '/drive/vehicles',
     // The trips page lists the driver's trips beside their rides.
     'trip-history': '/trips',

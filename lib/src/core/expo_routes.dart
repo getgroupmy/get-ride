@@ -31,6 +31,7 @@ const _expoToFlutter = <String, String>{
   '/emergency-contact-edit': '/account/emergency',
   '/referral-card': '/account/referral',
   '/my-ride': '/account/my-ride',
+  '/my-qr': '/account/my-qr',
   '/support': '/account/support',
   '/support-chat': '/account/support',
   '/teksi-ev': '/ev',

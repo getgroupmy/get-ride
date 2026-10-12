@@ -13,6 +13,7 @@ import '../../data/my_ride_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/net_image.dart';
+import '../my_qr/direct_booking.dart' show directBookingNamesProvider;
 import '../ride/confirm_parts.dart' show ConfirmSwitch;
 import '../ride/searching_parts.dart' show SearchBlock;
 import 'my_ride_settings.dart';
@@ -414,6 +415,11 @@ class MyRideConfirmRow extends StatelessWidget {
 /// the countdown to it opening to everybody, "Offer to all nearby" and "Add
 /// a driver". When the countdown ends the app opens it itself (once), so
 /// nearby drivers hear of it without waiting for the server's tick.
+///
+/// A GET.now request ([RideRequest.isDirectBooking]) gets its own banner
+/// instead: booked directly with one driver, with no countdown (nothing
+/// opens it to all by itself) and no "Add a driver"; "Offer to all nearby"
+/// stays, as the rider's own choice.
 class MyRideSearchBanner extends ConsumerStatefulWidget {
   const MyRideSearchBanner({super.key, required this.ride, required this.now});
   final RideRequest ride;
@@ -458,7 +464,7 @@ class _MyRideSearchBannerState extends ConsumerState<MyRideSearchBanner> {
   /// them now, once.
   void _maybeOpenToAll() {
     final r = _r;
-    if (_autoOffered || _offeredAll || r.status != RideStatus.open || !r.isMyRide) return;
+    if (_autoOffered || _offeredAll || r.status != RideStatus.open || !r.isMyRide || r.isDirectBooking) return;
     if (r.targetedUntil == null || r.fallbackPushedAt != null || r.myRideWindowOpenAt(widget.now)) return;
     _autoOffered = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -533,9 +539,77 @@ class _MyRideSearchBannerState extends ConsumerState<MyRideSearchBanner> {
     }
   }
 
+  /// Who a direct request went to: as booked on this phone, else the
+  /// rider's favourite of that id, else "your driver".
+  String _directName() {
+    final r = _r;
+    final booked = ref.watch(directBookingNamesProvider)[r.id];
+    if (booked != null && booked.trim().isNotEmpty) return booked.trim();
+    final id = r.directDriverId;
+    final favourites = ref.watch(bookingFavouritesProvider(_at)).value ?? const <FavouriteDriver>[];
+    for (final d in favourites) {
+      if (d.driverId == id && d.name.trim().isNotEmpty) return d.name.trim();
+    }
+    return 'your driver';
+  }
+
+  Widget _direct(BuildContext context) {
+    final t = Theme.of(context);
+    final r = _r;
+    if (_offeredAll || r.fallbackPushedAt != null) {
+      return SearchBlock(
+        key: const ValueKey('my-ride-opened'),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(Icons.groups_outlined, color: t.colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(child: Text('Now offered to all nearby drivers', style: t.textTheme.bodyMedium)),
+          ],
+        ),
+      );
+    }
+    final name = _directName();
+    return SearchBlock(
+      key: const ValueKey('direct-booking-banner'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.qr_code_2, color: t.colorScheme.primary, size: 20),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Booked directly with $name', style: t.textTheme.titleSmall)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "Only $name gets this request. If they can't take it, offer it to every driver nearby.",
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                key: const ValueKey('direct-offer-all'),
+                onPressed: _busy ? null : _offerToAll,
+                icon: const Icon(Icons.groups_outlined),
+                label: const Text('Offer to all nearby'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = _r;
+    if (r.isDirectBooking) return _direct(context);
     if (!r.isMyRide) return const SizedBox.shrink();
     final t = Theme.of(context);
     if (!_windowOpen) {

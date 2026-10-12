@@ -8,10 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../core/my_qr.dart';
 import '../../core/my_ride.dart';
 import '../../data/my_ride_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
+import '../my_qr/qr_result_sheet.dart' show showQrResultSheet;
 import '../wallet/wallet_qr_screens.dart' show scannerTorchProvider, scannerTorchAvailable;
 import 'my_ride_parts.dart';
 import 'my_ride_settings.dart';
@@ -201,17 +203,22 @@ class _Empty extends StatelessWidget {
 
 // ---- Adding a driver -------------------------------------------------------------
 
-/// The "Add driver" sheet: enter the code or scan its QR.
-Future<void> showAddFavouriteSheet(BuildContext context, {String? code}) => showModalBottomSheet<void>(
-  context: context,
-  isScrollControlled: true,
-  showDragHandle: true,
-  useSafeArea: true,
-  builder: (c) => Padding(
-    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(c).bottom),
-    child: AddFavouriteSheet(initialCode: code),
-  ),
-);
+/// The "Add driver" sheet: enter the code or scan its QR. A personal code
+/// scanned there (a driver's GET.me or GET.now, a GET.Referral) closes it
+/// and opens that code's own sheet.
+Future<void> showAddFavouriteSheet(BuildContext context, {String? code}) async {
+  final personal = await showModalBottomSheet<PersonalQrScan>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    useSafeArea: true,
+    builder: (c) => Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(c).bottom),
+      child: AddFavouriteSheet(initialCode: code),
+    ),
+  );
+  if (personal != null && context.mounted) await showQrResultSheet(context, personal);
+}
 
 class AddFavouriteSheet extends ConsumerStatefulWidget {
   const AddFavouriteSheet({super.key, this.initialCode});
@@ -280,6 +287,11 @@ class _AddFavouriteSheetState extends ConsumerState<AddFavouriteSheet> {
     final raw = await Navigator.of(context)
         .push<String>(MaterialPageRoute(builder: (_) => const MyRideScanScreen(), fullscreenDialog: true));
     if (raw == null || !mounted) return;
+    final personal = parsePersonalQr(raw);
+    if (personal != null) {
+      Navigator.pop(context, personal);
+      return;
+    }
     await _submit(raw);
   }
 
@@ -432,8 +444,13 @@ final myRideScanViewProvider =
     );
 
 /// Scans a driver's My Ride QR; pops with the code (or what was pasted).
+/// A personal code (GET.me &co.) pops with its whole text, for the caller
+/// to open. [universal]: any GET code at all, popped as scanned (My QR's
+/// scanner, routed by `openScannedGetQr`).
 class MyRideScanScreen extends ConsumerStatefulWidget {
-  const MyRideScanScreen({super.key});
+  const MyRideScanScreen({super.key, this.universal = false});
+
+  final bool universal;
 
   @override
   ConsumerState<MyRideScanScreen> createState() => _MyRideScanScreenState();
@@ -457,14 +474,28 @@ class _MyRideScanScreenState extends ConsumerState<MyRideScanScreen> {
 
   void _seen(String raw) {
     if (_done) return;
-    final code = parseMyRideCode(raw);
-    if (code == null) {
-      setState(() => _error = "That isn't a My Ride QR. Ask your driver to show their My Ride code.");
+    final scan = parseGetQr(raw);
+    final String? out;
+    if (widget.universal) {
+      out = scan == null || scan is OtherQrScan ? null : raw.trim();
+    } else {
+      out = switch (scan) {
+        PersonalQrScan() => raw.trim(),
+        MyRideCodeScan(:final code) => code,
+        _ => null,
+      };
+    }
+    if (out == null) {
+      setState(
+        () => _error = widget.universal
+            ? "That isn't a GET.ride code."
+            : "That isn't a My Ride QR. Ask your driver to show their My Ride code.",
+      );
       return;
     }
     _done = true;
     HapticFeedback.mediumImpact();
-    Navigator.pop(context, code);
+    Navigator.pop(context, out);
   }
 
   Future<void> _toggleTorch() async {
@@ -488,7 +519,7 @@ class _MyRideScanScreenState extends ConsumerState<MyRideScanScreen> {
     final t = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scan My Ride QR'),
+        title: Text(widget.universal ? 'Scan a GET code' : 'Scan My Ride QR'),
         actions: [
           ValueListenableBuilder<MobileScannerState>(
             valueListenable: _scanner,
@@ -528,7 +559,10 @@ class _MyRideScanScreenState extends ConsumerState<MyRideScanScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  "Point the camera at your driver's My Ride QR.",
+                  widget.universal
+                      ? 'Point the camera at a GET.ride QR code: a GET.me, GET.now or referral code, '
+                            'a My Ride code or a wallet code.'
+                      : "Point the camera at your driver's My Ride QR.",
                   textAlign: TextAlign.center,
                   style: t.textTheme.bodyMedium,
                 ),

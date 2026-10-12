@@ -49,6 +49,9 @@ import 'features/profile/edit_profile_screen.dart';
 import 'features/profile/emergency_contacts_screen.dart';
 import 'features/profile/referral_screen.dart';
 import 'features/my_ride/my_ride_screen.dart';
+import 'features/my_qr/my_qr_screen.dart';
+import 'features/my_qr/qr_link_screen.dart';
+import 'features/my_qr/qr_result_sheet.dart' show PendingQrLink;
 import 'features/profile/user_guide_screen.dart';
 import 'features/safety/safety_screen.dart';
 import 'features/ride/demo_ride.dart';
@@ -173,11 +176,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loc.startsWith('/share/')) return null;
       // So is installing a test build: the tester has no account yet.
       if (loc.startsWith('/install/')) return null;
+      // A personal QR link (My QR) works signed out too: a referral code is
+      // carried into sign-up, a driver's code asks to sign in first.
+      if (loc.startsWith('/q/')) return null;
       if (!signedIn && !onAuth) return '/login';
       // A fresh OTP session still has to choose a PIN before entering the app.
       if (signedIn && AuthRepository.pinSetupPending) {
         return loc == '/login/set-pin' ? null : '/login/set-pin';
       }
+      // Signed in after opening a driver's code: back to that code.
+      if (signedIn && (onAuth || loc == '/') && PendingQrLink.path != null) return PendingQrLink.take();
       if (signedIn && onAuth) return '/';
       return null;
     },
@@ -271,6 +279,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                         builder: (_, _) => const MyRideScreen(),
                         routes: [GoRoute(path: 'settings', builder: (_, _) => const MyRideSettingsScreen())],
                       ),
+                      GoRoute(path: 'my-qr', builder: (_, _) => const MyQrScreen()),
                       GoRoute(path: 'safety', builder: (_, _) => const SafetyScreen()),
                       GoRoute(path: 'emergency', builder: (_, _) => const EmergencyContactsScreen()),
                       GoRoute(path: 'guide', builder: (_, _) => const UserGuideScreen()),
@@ -352,6 +361,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/share/:token',
         builder: (_, st) => SharedRideScreen(token: st.pathParameters['token']!),
+      ),
+      GoRoute(
+        path: '/q/:kind/:token',
+        builder: (_, st) => QrLinkScreen(kind: st.pathParameters['kind']!, token: st.pathParameters['token']!),
       ),
       GoRoute(
         path: '/install/:platform',

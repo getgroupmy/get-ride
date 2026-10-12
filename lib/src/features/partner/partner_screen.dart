@@ -32,6 +32,7 @@ import '../../widgets/ride_map.dart' show mapAttributionClearance;
 import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
+import 'direct_booking_badge.dart';
 import 'driver_home_map.dart';
 import '../support/call/mic_gate.dart' show primeMicForCalls;
 import 'driver_online.dart';
@@ -153,14 +154,18 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
     String? next;
     if (_online && !_autoAccept) {
-      // Only what is on the driver's list pops up, starred requests first.
-      // The list is the whole open queue as it is now, whatever change
-      // brought it (watchOpen refetches on any event), so a request first
-      // seen in an UPDATE — a My Ride request opening to everybody when its
-      // favourites window ends — pops up as new just as an INSERT does.
-      final ordered = pinStarredFirst(
-        destinationOrder(_pinned(open), toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo),
-        _starred,
+      // Only what is on the driver's list pops up: booked directly with this
+      // driver (GET.now) first, then starred requests. The list is the whole
+      // open queue as it is now, whatever change brought it (watchOpen
+      // refetches on any event), so a request first seen in an UPDATE — a
+      // My Ride request opening to everybody when its favourites window
+      // ends — pops up as new just as an INSERT does.
+      final ordered = pinDirectFirst(
+        pinStarredFirst(
+          destinationOrder(_pinned(open), toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo),
+          _starred,
+        ),
+        _myId,
       );
       next = nextRequestAlert(
         openIds: [for (final r in ordered) r.id],
@@ -945,11 +950,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final queued = [for (final r in _pinned(list)) if (r.id != _alertId) r];
     ref.watch(destinationModeProvider);
     final destinationOn = _destinationOn;
-    // Starred (My Ride) requests on top; the one tapped on the map above all.
+    // Booked directly with this driver (GET.now) on top, then starred (My
+    // Ride) requests; the one tapped on the map above all.
     final sorted = focusFirst(
-      pinStarredFirst(
-        destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
-        _starred,
+      pinDirectFirst(
+        pinStarredFirst(
+          destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+          _starred,
+        ),
+        _myId,
       ),
       _focusId,
     );
@@ -1064,6 +1073,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
           ]),
           MyRideForYouLabel(request: r, me: _myId, clock: ref.read(requestAlertClockProvider)),
+          DirectBookingLabel(request: r, me: _myId),
           if (destinationOn && _towardDestination(r))
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -1173,6 +1183,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           const SizedBox(height: 6),
           LinearProgressIndicator(key: const ValueKey('request-alert-countdown'), value: requestAlertProgress(shown)),
           MyRideForYouLabel(request: r, me: _myId, clock: ref.read(requestAlertClockProvider)),
+          DirectBookingLabel(request: r, me: _myId),
           if (_raisedFrom[r.id] case final was?)
             Padding(
               padding: const EdgeInsets.only(top: 6),

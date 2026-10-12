@@ -60,6 +60,8 @@ import 'unavailable_sheet.dart';
 import '../../admin/screens/commerce/get_coin.dart' show rideRewardCoins;
 import '../../core/my_ride.dart' show FavouriteDriver, myRideMaxTargets;
 import '../my_ride/my_ride_parts.dart';
+import '../my_qr/direct_booking.dart';
+import '../../core/my_qr.dart' show QrBookingError;
 import '../my_ride/my_ride_settings.dart';
 
 enum _PinTarget { none, pickup, drop }
@@ -853,7 +855,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     if (!mounted) return;
     final myRideSettings = ref.read(myRideSettingsProvider).value ?? const MyRideSettings();
-    final myRideTargets = _myRideTargets(_myRideFavourites, myRideSettings);
+    // GET.now: a scanned driver's code books that driver alone, without
+    // My Ride's favourites.
+    final direct = ref.read(directBookingProvider);
+    final myRideTargets = direct != null ? const <String>[] : _myRideTargets(_myRideFavourites, myRideSettings);
     setState(() => _booking = true);
     try {
       final profile = await ref.read(profileProvider.future);
@@ -928,7 +933,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             timezone: rules.timezone,
             targetDriverIds: myRideTargets,
             myRideMaxKm: myRideTargets.isEmpty ? null : myRideSettings.maxKm,
+            directQrToken: direct?.token,
           );
+      if (direct != null) {
+        ref.read(directBookingNamesProvider.notifier).remember(req.id, direct.driverName);
+        ref.read(directBookingProvider.notifier).clear();
+      }
       if (_autoAccept && offerMe) {
         ref.read(autoAcceptProvider.notifier).set(req.id, _fareFor(_service, biddingOn: offerMe));
       }
@@ -946,6 +956,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       await _checkOngoing();
       final open = e.forOthers ? null : _ongoing;
       if (mounted && open != null) context.push('/ride/${open.id}').then((_) => _checkOngoing());
+    } on QrBookingError catch (e) {
+      // Nothing was stored and no driver told: the code can't book now, so
+      // the booking goes back to an ordinary one for the rider to send.
+      ref.read(directBookingProvider.notifier).clear();
+      if (mounted) await showNotice(context, title: "Couldn't book this driver", message: e.toString());
     } on ServiceUnavailableError catch (e) {
       // The database's own check refused it (0125): the same sheet.
       if (!mounted) return;
@@ -1400,6 +1415,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final myRideSettings = myRideAt == null ? const MyRideSettings() : myRideSettingsOf(ref);
     final myRideTargets = _myRideTargets(myRideFavs, myRideSettings);
     final myRideOn = myRideTargets.isNotEmpty;
+    final direct = ref.watch(directBookingProvider);
     final footer = confirming && _route != null
         ? ConfirmFooter(
             onOptions: () => showRideOptionsSheet(
@@ -1421,7 +1437,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             autoAcceptLabel: _biddingFor(_service) ? 'Auto-accept offer of ${_fareMoney(_fareFor(_service))}' : null,
             autoAccept: _autoAccept,
             onAutoAccept: (v) => setState(() => _autoAccept = v),
-            label: _forOther ? 'Find a driver for ${otherName.isEmpty ? 'someone else' : otherName}' : 'Find a driver',
+            label: _forOther
+                ? 'Find a driver for ${otherName.isEmpty ? 'someone else' : otherName}'
+                : direct != null
+                ? 'Book ${direct.driverName}'
+                : 'Find a driver',
             onFind: _booking ||
                     _routing ||
                     _basis == null ||
@@ -1452,7 +1472,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 }
               }),
             ),
-            myRide: myRideFavs.any((d) => d.available)
+            myRide: direct != null
+                ? DirectBookingConfirmRow(
+                    booking: direct,
+                    onCancel: () => ref.read(directBookingProvider.notifier).clear(),
+                  )
+                : myRideFavs.any((d) => d.available)
                 ? MyRideConfirmRow(
                     on: myRideOn,
                     names: myRideOn ? myRideNames(myRideTargets, myRideFavs) : null,

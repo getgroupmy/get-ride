@@ -10,7 +10,7 @@ import 'package:go_router/go_router.dart';
 void main() {
   const pages = [
     '/ev', '/drive', '/wallet', '/trips', '/drive/vehicles', '/meter/vehicle', '/drive/my-ride', '/drive/onboarding',
-    '/account/support', '/account/help', '/account/settings',
+    '/account/support', '/account/help', '/account/settings', '/account/my-qr',
   ];
 
   Future<(String, bool?)> tap(WidgetTester tester, String id) async {
@@ -42,6 +42,7 @@ void main() {
     'teksi-ev': '/ev',
     'dashboard': '/drive',
     'wallet': '/wallet',
+    myQrMenuItemId: '/account/my-qr',
     'trip-history': '/trips',
     'vehicle': '/drive/vehicles',
     vehicleInfoMenuItemId: '/meter/vehicle',

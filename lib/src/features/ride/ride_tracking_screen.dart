@@ -711,7 +711,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         progress: (left.inMilliseconds / AppConfig.requestExpiry.inMilliseconds).clamp(0.0, 1.0),
       ),
       // Booked with My Ride: offered to the rider's favourites first.
-      if (r.isMyRide) MyRideSearchBanner(ride: r, now: _now),
+      if (r.isMyRide || r.isDirectBooking) MyRideSearchBanner(ride: r, now: _now),
       const SizedBox(height: 16),
       if (bidding) ...[
         SearchFareStepper(
