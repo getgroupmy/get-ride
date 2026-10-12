@@ -88,6 +88,7 @@ class RideMessage {
     this.createdAt,
     this.clientMsgId,
     this.pending = false,
+    this.viaBluetooth = false,
   });
 
   final String id;
@@ -115,6 +116,10 @@ class RideMessage {
   /// Written on this phone and not on the server yet (no connection): shown
   /// with a clock instead of a tick, and sent when the connection is back.
   final bool pending;
+
+  /// Arrived phone to phone over Bluetooth (no signal, reliability Phase
+  /// D3) and not on the server yet.
+  final bool viaBluetooth;
 
   /// Null for a row that isn't a message (no id, or a role this app doesn't
   /// know).

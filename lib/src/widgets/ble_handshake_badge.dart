@@ -8,7 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/ble_handshake.dart';
+import '../data/ble_chat.dart';
 import '../data/ble_handshake.dart';
+import '../data/ride_chat_outbox.dart';
 import '../data/reliability_repository.dart';
 import '../providers.dart';
 
@@ -43,6 +45,29 @@ class BleHandshakeBadge extends ConsumerStatefulWidget {
 class _BleHandshakeBadgeState extends ConsumerState<BleHandshakeBadge> {
   BleHandshakeEngine? _engine;
 
+  /// Where the chat screen finds this ride's Bluetooth chat (Phase D3).
+  late final BleChatSessions _sessions;
+  BleChatSession? _session;
+
+  BleChatSession _newChat(BleTicket t, Uint8List key) => BleChatSession(
+    transport: ref.read(bleChatTransportProvider)(),
+    key: key,
+    requestId: widget.rideId,
+    driver: widget.driver,
+    pending: () => ref.read(rideChatOutboxProvider),
+    now: ref.read(bleClockProvider),
+  );
+
+  /// Publishes (or withdraws) the engine's chat, outside any build.
+  void _publishChat(BleChatSession? s) {
+    final old = _session;
+    _session = s;
+    Future.microtask(() {
+      if (old != null) _sessions.remove(old);
+      if (s != null) _sessions.put(s);
+    });
+  }
+
   void _sync(BleSettings settings) {
     final p = ref.read(blePlatformProvider);
     final wanted = settings.runsOn(isAndroid: p.android, isIos: p.ios);
@@ -55,18 +80,22 @@ class _BleHandshakeBadgeState extends ConsumerState<BleHandshakeBadge> {
         status: widget.status,
         position: ref.read(blePositionProvider),
         now: ref.read(bleClockProvider),
+        chatFactory: _newChat,
       );
       _engine = e;
+      e.chat.addListener(() => _publishChat(e.chat.value));
       e.start();
     } else if (!wanted && _engine != null) {
       _engine!.dispose();
       _engine = null;
+      _publishChat(null);
     }
   }
 
   @override
   void initState() {
     super.initState();
+    _sessions = ref.read(bleChatSessionsProvider.notifier);
     _sync(ref.read(reliabilityProvider).ble);
     ref.listenManual(reliabilityProvider.select((s) => s.ble), (_, b) => setState(() => _sync(b)));
   }
@@ -77,6 +106,7 @@ class _BleHandshakeBadgeState extends ConsumerState<BleHandshakeBadge> {
     if (old.rideId != widget.rideId) {
       _engine?.dispose();
       _engine = null;
+      _publishChat(null);
       _sync(ref.read(reliabilityProvider).ble);
     } else if (old.status != widget.status) {
       _engine?.updateStatus(widget.status);
@@ -86,6 +116,7 @@ class _BleHandshakeBadgeState extends ConsumerState<BleHandshakeBadge> {
   @override
   void dispose() {
     _engine?.dispose();
+    _publishChat(null);
     super.dispose();
   }
 
