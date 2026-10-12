@@ -14,9 +14,10 @@
 
 export type BuildPlatform = "ios" | "android";
 
-export const BUILD_ASSETS: Record<BuildPlatform, { tag: string; asset: string }> = {
+export const BUILD_ASSETS: Record<BuildPlatform, { tag: string; asset: string; bundle?: string }> = {
   ios: { tag: "ios-latest", asset: "getride.ipa" },
-  android: { tag: "android-latest", asset: "getride.apk" },
+  // The App Bundle Play takes: downloadable from Admin, never installable.
+  android: { tag: "android-latest", asset: "getride.apk", bundle: "getride.aab" },
 };
 
 export const DEFAULT_BUILDS_REPOSITORY = "getgroupmy/get-ride";
@@ -77,6 +78,9 @@ export interface AppBuild {
   manifest_url?: string;
   /** What installs it on a phone: the itms-services link, or the APK. */
   install_url?: string;
+  /** Android: the App Bundle (.aab) for a hand upload to Play, when published. */
+  bundle_url?: string;
+  bundle_size?: number;
 }
 
 const text = (v: unknown): string | undefined =>
@@ -92,8 +96,11 @@ export function appBuildFrom(
   info: unknown,
   manifestUrl: string,
 ): AppBuild {
-  const asset = assetsOf(release).get(BUILD_ASSETS[platform].asset);
+  const assets = assetsOf(release);
+  const asset = assets.get(BUILD_ASSETS[platform].asset);
   if (!asset) return { available: false, platform };
+  const bundleName = BUILD_ASSETS[platform].bundle;
+  const bundle = bundleName ? assets.get(bundleName) : undefined;
   const b = (info && typeof info === "object" ? info : {}) as Record<string, unknown>;
   // An Android APK always installs; an iPhone build only when Ad Hoc.
   const installable = platform === "android" ? true : b.installable === true;
@@ -110,6 +117,10 @@ export function appBuildFrom(
     created_at: text(b.created_at) ?? asset.updatedAt ?? undefined,
     download_url: asset.url,
   };
+  if (bundle) {
+    out.bundle_url = bundle.url;
+    if (bundle.size) out.bundle_size = bundle.size;
+  }
   if (platform === "ios" && installable) {
     out.manifest_url = manifestUrl;
     out.install_url = itmsServicesUrl(manifestUrl);

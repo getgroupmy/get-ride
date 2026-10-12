@@ -165,6 +165,7 @@ this (public) repository, replaced by the next run
 | Release | Asset | Installs on |
 | --- | --- | --- |
 | `android-latest` | `getride.apk`, same key and version code as the Play bundle | any Android phone. It is signed with the upload key, not Play's app signing key, so remove a Play-installed copy first |
+| `android-latest` | `getride.aab`, the bundle Play takes, for a hand upload in the Play Console (Admin → App Release → Download .aab) | no phone: download only, so no install link or QR |
 | `ios-latest` | `getride.ipa`, Ad Hoc signed | only the iPhones registered in the Ad Hoc profile |
 
 Admin → App Release shows the latest build on each card, with **Download

@@ -19,6 +19,8 @@ class AppBuild {
     this.createdAt,
     this.downloadUrl,
     this.installUrl,
+    this.bundleUrl,
+    this.bundleSize,
   });
 
   final String platform;
@@ -38,6 +40,11 @@ class AppBuild {
 
   /// What installs it on a phone: the itms-services link, or the APK.
   final String? installUrl;
+
+  /// Android: the App Bundle (.aab) Play takes, for a hand upload. It
+  /// installs on no phone, so it is downloaded and never shared.
+  final String? bundleUrl;
+  final int? bundleSize;
 
   bool get ios => platform == 'ios';
 
@@ -61,6 +68,10 @@ class AppBuild {
       createdAt: DateTime.tryParse(text(json['created_at']) ?? '')?.toLocal(),
       downloadUrl: download,
       installUrl: https(json['install_url']),
+      bundleUrl: platform == 'android' && text(json['bundle_url'])?.startsWith('https://') == true
+          ? text(json['bundle_url'])
+          : null,
+      bundleSize: json['bundle_size'] is num ? (json['bundle_size'] as num).toInt() : null,
     );
   }
 
