@@ -26,6 +26,7 @@ import '../../core/sos.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/ble_handshake_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
@@ -807,6 +808,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                       title: const Text('Trip code'),
                       subtitle: const Text('Share with your driver at pickup'),
                       trailing: Text(tripCode, style: t.textTheme.headlineSmall?.copyWith(letterSpacing: 4)),
+                    ),
+                  // The phones find each other at the kerb (Phase D).
+                  if (r.status == RideStatus.accepted || r.status == RideStatus.arrived)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: BleHandshakeBadge(rideId: r.id, status: r.status.db, driver: false),
                     ),
                   if (r.partnerPhone != null || rideChatAvailable(r))
                     OverflowBar(

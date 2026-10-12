@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/ble_handshake.dart';
 import '../core/reliability_settings.dart';
 import '../providers.dart';
 import 'live_tables.dart';
@@ -35,6 +36,10 @@ class ReliabilityRepository {
     'values': s.toValues(),
     'updated_at': DateTime.now().toUtc().toIso8601String(),
   }, onConflict: 'id');
+
+  /// How trips started lately (ble_start_stats, 0153; admins only).
+  Future<BleStartStats> bleStats(int days) async =>
+      BleStartStats.fromRow(await _db.rpc('ble_start_stats', params: {'p_days': days}));
 }
 
 final reliabilityRepositoryProvider = Provider((ref) => ReliabilityRepository(ref.watch(supabaseProvider)));
@@ -51,6 +56,11 @@ final reliabilitySettingsProvider = FutureProvider<ReliabilitySettings>((ref) as
   unawaited(_mirrorBackgroundAck(s.backgroundAck));
   return s;
 });
+
+/// How trips started in the last 7 days, for the Reliability card.
+final bleStartStatsProvider = FutureProvider.autoDispose<BleStartStats>(
+  (ref) => ref.watch(reliabilityRepositoryProvider).bleStats(7),
+);
 
 /// The switches now, without waiting: all on until they have loaded.
 final reliabilityProvider = Provider<ReliabilitySettings>(

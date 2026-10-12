@@ -3,7 +3,10 @@
 // settings_entries row, readable by every app; anything missing or unreadable
 // counts as on, so an outage never turns a safety net off. The one exception
 // is the server-only trip start, which is off unless turned on: it stops
-// builds older than 0152 starting trips. Pure.
+// builds older than 0152 starting trips. The Bluetooth handshake's switches
+// (Phase D, lib/src/core/ble_handshake.dart) live in the same row. Pure.
+
+import 'ble_handshake.dart';
 
 const reliabilityCategory = 'reliability-messaging';
 
@@ -17,6 +20,7 @@ class ReliabilitySettings {
     this.backgroundAck = true,
     this.readAloud = true,
     this.serverTripStart = false,
+    this.ble = const BleSettings(),
   });
 
   /// Chat messages written with no connection wait on the phone and go when
@@ -40,6 +44,9 @@ class ReliabilitySettings {
   /// start_trip.
   final bool serverTripStart;
 
+  /// The phones find each other at the kerb (0153); off by default.
+  final BleSettings ble;
+
   static const keys = ['chat_outbox', 'ride_cache', 'background_ack', 'read_aloud', 'server_trip_start'];
 
   factory ReliabilitySettings.fromValues(Map<String, dynamic>? v) => ReliabilitySettings(
@@ -48,6 +55,7 @@ class ReliabilitySettings {
     backgroundAck: _on(v?['background_ack']),
     readAloud: _on(v?['read_aloud']),
     serverTripStart: _onlyIfOn(v?['server_trip_start']),
+    ble: BleSettings.fromValues(v),
   );
 
   Map<String, dynamic> toValues() => {
@@ -56,11 +64,15 @@ class ReliabilitySettings {
     'background_ack': backgroundAck,
     'read_aloud': readAloud,
     'server_trip_start': serverTripStart,
+    ...ble.toValues(),
   };
 
   /// This with the switch [key] (one of [keys]) set to [on].
   ReliabilitySettings withSwitch(String key, bool on) =>
       ReliabilitySettings.fromValues({...toValues(), if (keys.contains(key)) key: on});
+
+  /// This with the Bluetooth switches replaced.
+  ReliabilitySettings withBle(BleSettings b) => ReliabilitySettings.fromValues({...toValues(), ...b.toValues()});
 
   bool operator [](String key) => toValues()[key] as bool? ?? false;
 
@@ -71,10 +83,11 @@ class ReliabilitySettings {
       other.rideCache == rideCache &&
       other.backgroundAck == backgroundAck &&
       other.readAloud == readAloud &&
-      other.serverTripStart == serverTripStart;
+      other.serverTripStart == serverTripStart &&
+      other.ble == ble;
 
   @override
-  int get hashCode => Object.hash(chatOutbox, rideCache, backgroundAck, readAloud, serverTripStart);
+  int get hashCode => Object.hash(chatOutbox, rideCache, backgroundAck, readAloud, serverTripStart, ble);
 }
 
 /// Only an explicit "off" turns a switch off.
