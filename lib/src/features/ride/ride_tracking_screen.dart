@@ -50,6 +50,7 @@ import '../safety/safety_screen.dart';
 import '../wallet/wallet_screen.dart';
 import '../../core/demo_mode.dart';
 import 'auto_accept.dart';
+import '../my_ride/my_ride_parts.dart' show MyRideSearchBanner;
 
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>(
   (ref, id) => ref.watch(rideRepositoryProvider).watch(id),
@@ -709,6 +710,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         left: formatCountdown(left),
         progress: (left.inMilliseconds / AppConfig.requestExpiry.inMilliseconds).clamp(0.0, 1.0),
       ),
+      // Booked with My Ride: offered to the rider's favourites first.
+      if (r.isMyRide) MyRideSearchBanner(ride: r, now: _now),
       const SizedBox(height: 16),
       if (bidding) ...[
         SearchFareStepper(

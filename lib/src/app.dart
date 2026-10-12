@@ -47,6 +47,7 @@ import 'features/profile/account_screen.dart';
 import 'features/profile/edit_profile_screen.dart';
 import 'features/profile/emergency_contacts_screen.dart';
 import 'features/profile/referral_screen.dart';
+import 'features/my_ride/my_ride_screen.dart';
 import 'features/profile/user_guide_screen.dart';
 import 'features/safety/safety_screen.dart';
 import 'features/ride/demo_ride.dart';
@@ -264,6 +265,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                     routes: [
                       GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
                       GoRoute(path: 'referral', builder: (_, _) => const ReferralScreen()),
+                      GoRoute(
+                        path: 'my-ride',
+                        builder: (_, _) => const MyRideScreen(),
+                        routes: [GoRoute(path: 'settings', builder: (_, _) => const MyRideSettingsScreen())],
+                      ),
                       GoRoute(path: 'safety', builder: (_, _) => const SafetyScreen()),
                       GoRoute(path: 'emergency', builder: (_, _) => const EmergencyContactsScreen()),
                       GoRoute(path: 'guide', builder: (_, _) => const UserGuideScreen()),
