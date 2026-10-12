@@ -17,6 +17,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ride_map.dart';
+import '../../widgets/trip_safety.dart';
 
 final tripProvider = FutureProvider.autoDispose.family<RideRequest?, String>((ref, id) async {
   final repo = ref.watch(rideRepositoryProvider);
@@ -51,7 +52,12 @@ class TripReceiptScreen extends ConsumerWidget {
             return const EmptyState(icon: Icons.receipt_long_outlined, title: 'Trip not found');
           }
           final asDriver = r.partnerId == uid && r.riderId != uid;
-          return _ReceiptBody(receipt: TripReceipt.fromRide(r, asDriver: asDriver), route: receiptRoute(r));
+          return _ReceiptBody(
+            receipt: TripReceipt.fromRide(r, asDriver: asDriver),
+            route: receiptRoute(r),
+            // The passenger's "Left something behind?" (Phase D4).
+            extra: asDriver ? null : LostItemCard(ride: r),
+          );
         },
       ),
     );
@@ -59,8 +65,11 @@ class TripReceiptScreen extends ConsumerWidget {
 }
 
 class _ReceiptBody extends StatelessWidget {
-  const _ReceiptBody({required this.receipt, this.route = const []});
+  const _ReceiptBody({required this.receipt, this.route = const [], this.extra});
   final TripReceipt receipt;
+
+  /// Shown under the total (the passenger's lost item card).
+  final Widget? extra;
 
   /// Pickup, stops, drop-off ([receiptRoute]); no map when empty.
   final List<LatLng> route;
@@ -101,6 +110,7 @@ class _ReceiptBody extends StatelessWidget {
                   ),
                 ),
               ),
+              ?extra,
               if (route.length > 1)
                 Card(
                   key: const ValueKey('receipt-map'),

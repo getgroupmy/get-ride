@@ -57,6 +57,8 @@ const liveSettingTables = <String>[
   'sms_settings',
   'sms_log',
   'sms_fallback_settings',
+  // Lost item reports and the driver's answers (0154; parties only).
+  'ride_lost_items',
 ];
 
 /// The signed-in account's own rows that an admin decides on (approving,

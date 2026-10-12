@@ -204,6 +204,14 @@ class RideRequest {
   DateTime? get cancelRequestedAt => _t(raw['cancel_requested_at']);
   String? get cancelRequestedBy => raw['cancel_requested_by'] as String?;
 
+  /// Trip safety signals (migration 0154): why the start was flagged, when,
+  /// when the phones were found apart mid-trip, and when the passenger said
+  /// they were OK.
+  String? get startFlag => raw['start_flag'] as String?;
+  DateTime? get startFlagAt => _t(raw['start_flag_at']);
+  DateTime? get separatedAt => _t(raw['separated_at']);
+  DateTime? get safetyAckAt => _t(raw['safety_ack_at']);
+
   String get pickupLabel => pickupName ?? pickupAddress ?? 'Pickup';
   String get dropLabel => dropName ?? dropAddress ?? 'Drop-off';
 
