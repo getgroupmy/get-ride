@@ -19,6 +19,7 @@ import {
   isPermanent,
   LANGUAGE,
   messageOf,
+  releasePermission,
   PERMANENT_EXIT,
   SCOPE,
   trackBody,
@@ -134,6 +135,47 @@ Deno.test("a 403 about permission names the invitation, not the IAM role", () =>
   // different screen and is what is actually missing.
   assertStringIncludes(said, "Play Console");
   assertStringIncludes(said, "Users and permissions");
+});
+
+Deno.test("a 403 at the commit names the release permission, not the invitation", () => {
+  // Android release run 10, second attempt: the edit opened, the bundle
+  // uploaded and the track was assigned, then the commit was refused --
+  // and the old message said the account could not see the app, which
+  // it plainly could.
+  const said = uploadRefusal(403, "The caller does not have permission", "commit", "internal");
+  assert(!said.includes("cannot see this app"));
+  assertStringIncludes(said, "may not release it");
+  assertStringIncludes(said, "Release apps to testing tracks");
+  assertStringIncludes(said, "up to a day");
+  assertStringIncludes(said, 'Play said: "The caller does not have permission"');
+});
+
+Deno.test("production needs the production permission", () => {
+  assertEquals(releasePermission("internal"), "Release apps to testing tracks");
+  assertEquals(releasePermission("beta"), "Release apps to testing tracks");
+  assertStringIncludes(releasePermission("production"), "Release to production");
+  const said = uploadRefusal(403, "The caller does not have permission", "commit", "production");
+  assertStringIncludes(said, "Release to production");
+});
+
+Deno.test("a 403 at the upload or track step names that step", () => {
+  assertStringIncludes(
+    uploadRefusal(403, "The caller does not have permission", "upload", "internal"),
+    "may not upload a bundle",
+  );
+  assertStringIncludes(
+    uploadRefusal(403, "The caller does not have permission", "track", "internal"),
+    "may not assign it to a track",
+  );
+});
+
+Deno.test("Play's own words are quoted after a permission refusal, within reason", () => {
+  assertStringIncludes(
+    uploadRefusal(403, "The caller does not have permission"),
+    'Play said: "The caller does not have permission"',
+  );
+  const huge = "permission " + "x".repeat(500);
+  assert(!uploadRefusal(403, huge).includes("Play said"), "a page of HTML is not quoted");
 });
 
 Deno.test("a duplicate version code points away from the workflow", () => {
