@@ -4,10 +4,12 @@
 # download, as an install link and as a QR code (supabase/functions/
 # app-install reads it back).
 #
-#   scripts/ci/publish_build.sh <ios|android> <file> <build number> <installable: true|false>
+#   scripts/ci/publish_build.sh <ios|android> <file> <build number> <installable: true|false> [bundle.aab]
 #
-# The release holds two assets: the app (getride.ipa / getride.apk) and
-# build.json describing it. It is deleted and created again each time, like
+# The release holds the app (getride.ipa / getride.apk) and build.json
+# describing it; on Android, given the fifth argument, also getride.aab,
+# the bundle Play takes, for an admin to download and upload by hand (it
+# is not installable, so it gets no install link or QR). It is deleted and created again each time, like
 # gateway-latest, so its tag always points at the commit that was built.
 # Needs GH_TOKEN with contents: write.
 set -euo pipefail
@@ -16,6 +18,7 @@ platform=$1
 file=$2
 build=$3
 installable=$4
+bundle=${5:-}
 
 case "$platform" in
   ios) asset=getride.ipa; title=iOS ;;
@@ -29,6 +32,12 @@ dir="$RUNNER_TEMP/publish-$platform"
 rm -rf "$dir" && mkdir -p "$dir"
 cp "$file" "$dir/$asset"
 size=$(wc -c < "$dir/$asset" | tr -d ' ')
+extra=()
+if [ -n "$bundle" ]; then
+  [ "$platform" = android ] || { echo "::error::only an Android release carries a bundle"; exit 2; }
+  cp "$bundle" "$dir/getride.aab"
+  extra=("$dir/getride.aab")
+fi
 
 cat > "$dir/build.json" <<JSON
 {
@@ -55,10 +64,10 @@ else
 fi
 
 gh release delete "$tag" --cleanup-tag --yes 2>/dev/null || true
-gh release create "$tag" "$dir/$asset" "$dir/build.json" \
+gh release create "$tag" "$dir/$asset" "$dir/build.json" "${extra[@]}" \
   --target "$GITHUB_SHA" \
   --prerelease \
   --title "GET.ride $title $version ($build)" \
   --notes "$how Built from ${GITHUB_SHA::7}, run #$GITHUB_RUN_NUMBER."
 
-echo "published $asset ($size bytes) as $tag"
+echo "published $asset ($size bytes)${bundle:+ and getride.aab} as $tag"

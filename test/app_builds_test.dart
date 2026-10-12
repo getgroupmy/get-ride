@@ -12,6 +12,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 const _ipa = 'https://github.com/getgroupmy/get-ride/releases/download/ios-latest/getride.ipa';
 const _apk = 'https://github.com/getgroupmy/get-ride/releases/download/android-latest/getride.apk';
+const _aab = 'https://github.com/getgroupmy/get-ride/releases/download/android-latest/getride.aab';
 const _itms =
     'itms-services://?action=download-manifest&url=https%3A%2F%2Fx.supabase.co%2Ffunctions%2Fv1%2Fapp-install';
 
@@ -152,6 +153,56 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    testWidgets('Android offers the .aab as a download beside the APK, light and dark', (tester) async {
+      for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+        final opened = <String>[];
+        final b = AppBuild.fromJson('android', {
+          'available': true,
+          'download_url': _apk,
+          'install_url': _apk,
+          'installable': true,
+          'bundle_url': _aab,
+        });
+        await tester.pumpWidget(
+          ProviderScope(
+            key: UniqueKey(),
+            overrides: [
+              appBuildProvider.overrideWith((ref, p) async => b),
+              appLinkOpenerProvider.overrideWithValue((u) async {
+                opened.add(u);
+                return true;
+              }),
+            ],
+            child: MaterialApp(
+              theme: appTheme(Brightness.light),
+              darkTheme: appTheme(Brightness.dark),
+              themeMode: mode,
+              home: const Scaffold(body: AppBuildPanel(platform: 'android')),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('app-build-download-aab-android')));
+        await tester.pump();
+        expect(opened, [_aab]);
+        expect(find.text('Download .aab'), findsOneWidget);
+        // Share and QR are the APK's: one of each, none for the bundle.
+        expect(find.byKey(const ValueKey('app-build-share-android')), findsOneWidget);
+        expect(find.byKey(const ValueKey('app-build-qr-android')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+    });
+
+    test('a bundle link is Android-only and https-only', () {
+      expect(_android().bundleUrl, isNull, reason: 'older releases have none');
+      expect(AppBuild.fromJson('ios', {'available': true, 'download_url': _ipa, 'bundle_url': _aab}).bundleUrl, isNull);
+      expect(
+        AppBuild.fromJson('android', {'available': true, 'download_url': _apk, 'bundle_url': 'http://x/getride.aab'})
+            .bundleUrl,
+        isNull,
+      );
+    });
 
     testWidgets('an App Store IPA downloads, but offers no install link or QR', (tester) async {
       await pump(tester, _ios(installable: false));

@@ -247,6 +247,15 @@ class AppBuildPanel extends ConsumerWidget {
                   icon: const Icon(Icons.download_outlined),
                   label: Text('Download .${b.ios ? 'ipa' : 'apk'}'),
                 ),
+                // The bundle Play takes: a download only, since no phone
+                // installs an .aab (so no share link or QR for it).
+                if (b.bundleUrl != null)
+                  OutlinedButton.icon(
+                    key: ValueKey('app-build-download-aab-$platform'),
+                    onPressed: () => _open(context, ref, b.bundleUrl!),
+                    icon: const Icon(Icons.inventory_2_outlined),
+                    label: const Text('Download .aab'),
+                  ),
                 if (b.installable) ...[
                   OutlinedButton.icon(
                     key: ValueKey('app-build-share-$platform'),

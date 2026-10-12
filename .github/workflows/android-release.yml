@@ -248,7 +248,8 @@ jobs:
         run: |
           bash scripts/ci/publish_build.sh android \
             build/app/outputs/flutter-apk/app-release.apk \
-            "${{ steps.build.outputs.code }}" true
+            "${{ steps.build.outputs.code }}" true \
+            build/app/outputs/bundle/release/app-release.aab
 
       - name: Keep the bundle for download
         if: steps.creds.outputs.ready == 'true' && inputs.upload != true

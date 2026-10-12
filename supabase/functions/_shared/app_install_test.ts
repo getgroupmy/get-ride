@@ -63,6 +63,26 @@ Deno.test("an APK installs from its own address", () => {
   assertEquals(manifestPlist(b), null, "no manifest for Android");
 });
 
+Deno.test("the Android bundle is offered for download beside the APK, never to install", () => {
+  const withAab = {
+    assets: [
+      ...release("getride.apk").assets,
+      {
+        name: "getride.aab",
+        size: 40_000_000,
+        browser_download_url: "https://github.com/getgroupmy/get-ride/releases/download/x/getride.aab",
+      },
+    ],
+  };
+  const b = appBuildFrom("android", withAab, {}, MANIFEST);
+  assertEquals(b.bundle_url, "https://github.com/getgroupmy/get-ride/releases/download/x/getride.aab");
+  assertEquals(b.bundle_size, 40_000_000);
+  assertEquals(b.install_url, b.download_url, "the APK still installs, not the bundle");
+  assertEquals(appBuildFrom("android", release("getride.apk"), {}, MANIFEST).bundle_url, undefined, "older releases");
+  const iosWithAab = { assets: [...release("getride.ipa").assets, withAab.assets[2]] };
+  assertEquals(appBuildFrom("ios", iosWithAab, {}, MANIFEST).bundle_url, undefined, "iOS has no bundle");
+});
+
 Deno.test("no asset, nothing on offer; odd input never breaks", () => {
   assertEquals(appBuildFrom("android", release("getride.ipa"), {}, MANIFEST), { available: false, platform: "android" });
   assertEquals(appBuildFrom("ios", { assets: "nope" }, {}, MANIFEST).available, false);
