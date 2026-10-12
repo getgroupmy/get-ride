@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/partner_status.dart';
 import '../../widgets/busy.dart';
@@ -28,6 +29,89 @@ final adminVehiclesProvider = FutureProvider.autoDispose((ref) {
   ref.watchAdminLive('vehicle');
   return ref.watch(adminRepositoryProvider).vehicles();
 });
+
+/// Opens the phone's dialer for a list card's call button (overridden in tests).
+final adminDialerProvider = Provider<Future<bool> Function(Uri)>((ref) => launchUrl);
+
+/// A list card: the record's tile, with a call button when a phone is known
+/// and, for an admin who can edit, the one-tap status actions under it
+/// (Expo `AdminUserList` / `AdminPartnerList` / `AdminVehicleList`).
+class _RecordCard extends ConsumerWidget {
+  const _RecordCard({
+    required this.id,
+    required this.leading,
+    required this.title,
+    required this.subtitle,
+    required this.status,
+    required this.phone,
+    required this.canEdit,
+    required this.onAction,
+  });
+
+  final String id;
+  final Widget leading;
+  final String title;
+  final String subtitle;
+  final String status;
+  final Object? phone;
+  final bool canEdit;
+  final Future<void> Function(QuickStatusAction) onAction;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final call = phoneCallUri(phone);
+    final actions = canEdit ? quickStatusActions(status) : const <QuickStatusAction>[];
+    final c = Theme.of(context).colorScheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      ListTile(
+        leading: leading,
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (call != null)
+            IconButton(
+              key: ValueKey('call-$id'),
+              tooltip: 'Call $phone',
+              icon: const Icon(Icons.call_outlined),
+              onPressed: () async {
+                final ok = await ref.read(adminDialerProvider)(call);
+                if (!ok && context.mounted) showInfo(context, 'Call $phone');
+              },
+            ),
+          StatusChip(status),
+        ]),
+      ),
+      if (actions.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+          child: Wrap(spacing: 8, runSpacing: 4, alignment: WrapAlignment.end, children: [
+            for (final a in actions)
+              a.destructive
+                  ? OutlinedButton(
+                      key: ValueKey('quick-${a.next}-$id'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: c.error,
+                        side: BorderSide(color: c.error.withValues(alpha: 0.6)),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () => onAction(a),
+                      child: Text(a.label),
+                    )
+                  : FilledButton.tonal(
+                      key: ValueKey('quick-${a.next}-$id'),
+                      // Not the theme's full-width filled button.
+                      style: FilledButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        minimumSize: const Size(64, 36),
+                      ),
+                      onPressed: () => onAction(a),
+                      child: Text(a.label),
+                    ),
+          ]),
+        ),
+    ]);
+  }
+}
 
 /// Shared searchable, filterable record list.
 class _RecordList extends ConsumerStatefulWidget {
@@ -136,17 +220,40 @@ Widget _statusPicker({
 
 /// Why a partner is being rejected or blocked, shown to them on the Drive
 /// tab. Optional; null when the admin cancels the change.
-Future<String?> _askStatusReason(BuildContext context, String status, String? current) async {
-  final c = TextEditingController(text: current ?? '');
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (d) => AlertDialog(
-      title: Text(status == 'blocked' ? 'Block this partner?' : 'Reject this application?'),
+Future<String?> _askStatusReason(BuildContext context, String status, String? current) =>
+    showDialog<String>(context: context, builder: (_) => _StatusReasonDialog(status: status, current: current));
+
+/// The reason dialog. It owns its text controller, so the controller lives
+/// until the dialog has finished closing (disposing it as soon as the dialog
+/// returned broke the closing animation).
+class _StatusReasonDialog extends StatefulWidget {
+  const _StatusReasonDialog({required this.status, this.current});
+  final String status;
+  final String? current;
+
+  @override
+  State<_StatusReasonDialog> createState() => _StatusReasonDialogState();
+}
+
+class _StatusReasonDialogState extends State<_StatusReasonDialog> {
+  late final _c = TextEditingController(text: widget.current ?? '');
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blocked = widget.status == 'blocked';
+    return AlertDialog(
+      title: Text(blocked ? 'Block this partner?' : 'Reject this application?'),
       content: SizedBox(
         width: 420,
         child: TextField(
           key: const ValueKey('status-reason'),
-          controller: c,
+          controller: _c,
           maxLines: 3,
           maxLength: 500,
           decoration: const InputDecoration(
@@ -156,18 +263,15 @@ Future<String?> _askStatusReason(BuildContext context, String status, String? cu
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         FilledButton(
           key: const ValueKey('status-reason-save'),
-          onPressed: () => Navigator.pop(d, true),
-          child: Text(status == 'blocked' ? 'Block' : 'Reject'),
+          onPressed: () => Navigator.pop(context, _c.text),
+          child: Text(blocked ? 'Block' : 'Reject'),
         ),
       ],
-    ),
-  );
-  final text = c.text;
-  c.dispose();
-  return ok == true ? text : null;
+    );
+  }
 }
 
 /// "Edit" in a detail sheet: opens the ported edit form, then refreshes.
@@ -193,6 +297,34 @@ Widget _editButton(BuildContext ctx, WidgetRef ref, String page, String path, St
 class AdminUsersScreen extends ConsumerWidget {
   const AdminUsersScreen({super.key, this.initialFilter});
   final String? initialFilter;
+
+  /// Changes a user's status: the one path for the detail sheet's picker and
+  /// the list card's quick actions. True when it saved.
+  static Future<bool> _setStatus(BuildContext ctx, WidgetRef ref, Map<String, dynamic> u, String s) async {
+    if (s == 'deleted' &&
+        !await confirm(ctx, 'Mark as deleted?', 'The account is hidden from the app but its data is kept.')) {
+      return false;
+    }
+    if (!ctx.mounted) return false;
+    final ok = await runAdminAction(
+      ctx,
+      () => ref.read(adminRepositoryProvider).setUserStatus(u['id'] as String, s),
+      success: 'Status updated',
+    );
+    if (ok) ref.invalidate(adminUsersProvider);
+    return ok;
+  }
+
+  /// A list card's quick action; Reject / Block are confirmed first.
+  static Future<void> _quick(BuildContext context, WidgetRef ref, Map<String, dynamic> u, QuickStatusAction a) async {
+    if (a.destructive && !await confirm(context, '${a.label} this user?', _userName(u), ok: a.label)) return;
+    if (context.mounted) await _setStatus(context, ref, u, a.next);
+  }
+
+  static String _userName(Map<String, dynamic> u) => [
+        (u['name'] as String?)?.isNotEmpty == true ? u['name'] : '(no name)',
+        u['display_id'] ?? u['id'],
+      ].whereType<String>().join(' · ');
 
   void _open(BuildContext context, WidgetRef ref, Map<String, dynamic> u) {
     final canEdit = ref.read(moduleAccessProvider('users')) == AccessLevel.edit;
@@ -231,20 +363,7 @@ class AdminUsersScreen extends ConsumerWidget {
           choices: userStatusChoices,
           enabled: canEdit,
           onPick: (s) async {
-            if (s == 'deleted' &&
-                !await confirm(ctx, 'Mark as deleted?', 'The account is hidden from the app but its data is kept.')) {
-              return;
-            }
-            if (!ctx.mounted) return;
-            final ok = await runAdminAction(
-              ctx,
-              () => ref.read(adminRepositoryProvider).setUserStatus(u['id'] as String, s),
-              success: 'Status updated',
-            );
-            if (ok) {
-              ref.invalidate(adminUsersProvider);
-              if (ctx.mounted) Navigator.pop(ctx);
-            }
+            if (await _setStatus(ctx, ref, u, s) && ctx.mounted) Navigator.pop(ctx);
           },
         ),
         _editButton(ctx, ref, 'admin-user-edit', '/admin/m/user-edit', u['id'] as String, () => ref.invalidate(adminUsersProvider)),
@@ -253,7 +372,9 @@ class AdminUsersScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => _RecordList(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = ref.watch(moduleAccessProvider('users')) == AccessLevel.edit;
+    return _RecordList(
         title: 'Users',
         module: 'users',
         watch: (r) => r.watch(adminUsersProvider),
@@ -262,13 +383,18 @@ class AdminUsersScreen extends ConsumerWidget {
         matches: userMatches,
         searchColumns: const ['name', 'phone', 'email', 'display_id', 'ic'],
         onOpen: (u) => _open(context, ref, u),
-        tile: (u) => ListTile(
+        tile: (u) => _RecordCard(
+          id: '${u['id']}',
           leading: _avatar(u['avatar_url'] ?? u['profile_image']),
-          title: Text((u['name'] as String?)?.isNotEmpty == true ? u['name'] as String : '(no name)'),
-          subtitle: Text([u['phone'], u['display_id']].whereType<String>().join(' · ')),
-          trailing: StatusChip(userStatus(u)),
+          title: (u['name'] as String?)?.isNotEmpty == true ? u['name'] as String : '(no name)',
+          subtitle: [u['phone'], u['display_id']].whereType<String>().join(' · '),
+          status: userStatus(u),
+          phone: u['phone'],
+          canEdit: canEdit,
+          onAction: (a) => _quick(context, ref, u, a),
         ),
       );
+  }
 }
 
 // ---- Partners & vehicles ---------------------------------------------------
@@ -280,30 +406,76 @@ class AdminPartnersScreen extends ConsumerWidget {
 
   String get _module => vehicles ? 'vehicles' : 'partners';
 
+  /// Saves a change to a partner or vehicle. True when it saved.
+  Future<bool> _patch(BuildContext ctx, WidgetRef ref, String id, Map<String, dynamic> change) async {
+    final repo = ref.read(adminRepositoryProvider);
+    final ok = await runAdminAction(
+      ctx,
+      () async {
+        if (vehicles) return repo.updateVehicle(id, change);
+        try {
+          await repo.updatePartner(id, change);
+        } on PostgrestException catch (e) {
+          // A database without migration 0118 has no reason column: the
+          // status still changes.
+          if (!change.containsKey('status_note') || !e.message.contains('status_note')) rethrow;
+          await repo.updatePartner(id, {...change}..remove('status_note'));
+        }
+      },
+      success: 'Saved',
+    );
+    if (ok) ref.invalidate(vehicles ? adminVehiclesProvider : adminPartnersProvider);
+    return ok;
+  }
+
+  /// Changes a partner's or vehicle's status: the one path for the detail
+  /// sheet's picker and the list card's quick actions, with the same checks
+  /// (a vehicle's documents before approving it, a partner's reason for a
+  /// rejection or block). True when it saved.
+  Future<bool> _setStatus(BuildContext ctx, WidgetRef ref, Map<String, dynamic> p, String s) async {
+    final id = p['id'] as String;
+    if (vehicles) {
+      // Approving needs every vehicle document approved, as in the form.
+      if (s == 'approved' &&
+          p['status'] != 'approved' &&
+          !await confirmVehicleApprovable(
+            ctx,
+            documents: () => ref.read(peopleRepositoryProvider).vehicleDocuments(id),
+            plate: '${p['plate'] ?? ''}',
+            documentsOk: p['documents_ok'] == true,
+          )) {
+        return false;
+      }
+      if (!ctx.mounted) return false;
+      return _patch(ctx, ref, id, {'status': s});
+    }
+    String? reason;
+    if (statusTakesReason(s)) {
+      reason = await _askStatusReason(ctx, s, p['status_note'] as String?);
+      if (reason == null || !ctx.mounted) return false;
+    }
+    return _patch(ctx, ref, id, partnerStatusPatch(s, reason: reason));
+  }
+
+  /// A list card's quick action. A vehicle's Reject / Block is confirmed
+  /// first; a partner's is confirmed by the reason dialog it already asks.
+  Future<void> _quick(BuildContext context, WidgetRef ref, Map<String, dynamic> p, QuickStatusAction a) async {
+    if (a.destructive &&
+        vehicles &&
+        !await confirm(context, '${a.label} this vehicle?', _vehicleTitle(p), ok: a.label)) {
+      return;
+    }
+    if (context.mounted) await _setStatus(context, ref, p, a.next);
+  }
+
+  static String _vehicleTitle(Map<String, dynamic> p) =>
+      [p['plate'], p['make'], p['model']].whereType<String>().join(' ');
+
   void _open(BuildContext context, WidgetRef ref, Map<String, dynamic> p) {
     final canEdit = ref.read(moduleAccessProvider(_module)) == AccessLevel.edit;
-    final repo = ref.read(adminRepositoryProvider);
     final id = p['id'] as String;
     Future<void> patch(BuildContext ctx, Map<String, dynamic> change) async {
-      final ok = await runAdminAction(
-        ctx,
-        () async {
-          if (vehicles) return repo.updateVehicle(id, change);
-          try {
-            await repo.updatePartner(id, change);
-          } on PostgrestException catch (e) {
-            // A database without migration 0118 has no reason column: the
-            // status still changes.
-            if (!change.containsKey('status_note') || !e.message.contains('status_note')) rethrow;
-            await repo.updatePartner(id, {...change}..remove('status_note'));
-          }
-        },
-        success: 'Saved',
-      );
-      if (ok) {
-        ref.invalidate(vehicles ? adminVehiclesProvider : adminPartnersProvider);
-        if (ctx.mounted) Navigator.pop(ctx);
-      }
+      if (await _patch(ctx, ref, id, change) && ctx.mounted) Navigator.pop(ctx);
     }
 
     final title = vehicles
@@ -364,27 +536,7 @@ class AdminPartnersScreen extends ConsumerWidget {
           choices: partnerStatusChoices,
           enabled: canEdit,
           onPick: (s) async {
-            if (vehicles) {
-              // Approving needs every vehicle document approved, as in the form.
-              if (s == 'approved' &&
-                  p['status'] != 'approved' &&
-                  !await confirmVehicleApprovable(
-                    ctx,
-                    documents: () => ref.read(peopleRepositoryProvider).vehicleDocuments(id),
-                    plate: '${p['plate'] ?? ''}',
-                    documentsOk: p['documents_ok'] == true,
-                  )) {
-                return;
-              }
-              if (!ctx.mounted) return;
-              return patch(ctx, {'status': s});
-            }
-            String? reason;
-            if (statusTakesReason(s)) {
-              reason = await _askStatusReason(ctx, s, p['status_note'] as String?);
-              if (reason == null || !ctx.mounted) return;
-            }
-            await patch(ctx, partnerStatusPatch(s, reason: reason));
+            if (await _setStatus(ctx, ref, p, s) && ctx.mounted) Navigator.pop(ctx);
           },
         ),
         _statusPicker(
@@ -411,7 +563,9 @@ class AdminPartnersScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => _RecordList(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = ref.watch(moduleAccessProvider(_module)) == AccessLevel.edit;
+    return _RecordList(
         title: vehicles ? 'Vehicles' : 'Partners',
         module: _module,
         watch: (r) => r.watch(vehicles ? adminVehiclesProvider : adminPartnersProvider),
@@ -433,15 +587,18 @@ class AdminPartnersScreen extends ConsumerWidget {
                 },
               )
             : null,
-        tile: (p) => ListTile(
+        tile: (p) => _RecordCard(
+          id: '${p['id']}',
           leading: _avatar(p['avatar_url'] ?? p['image_front']),
-          title: Text(vehicles
-              ? [p['plate'], p['make'], p['model']].whereType<String>().join(' ')
-              : ((p['name'] as String?) ?? '(no name)')),
-          subtitle: Text(vehicles
+          title: vehicles ? _vehicleTitle(p) : ((p['name'] as String?) ?? '(no name)'),
+          subtitle: vehicles
               ? [p['owner_name'], p['display_id']].whereType<String>().join(' · ')
-              : [p['phone'], p['plate'], p['display_id']].whereType<String>().join(' · ')),
-          trailing: StatusChip(p['status'] as String?),
+              : [p['phone'], p['plate'], p['display_id']].whereType<String>().join(' · '),
+          status: '${p['status'] ?? ''}',
+          phone: vehicles ? p['owner_phone'] : p['phone'],
+          canEdit: canEdit,
+          onAction: (a) => _quick(context, ref, p, a),
         ),
       );
+  }
 }

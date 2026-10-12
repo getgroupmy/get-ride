@@ -65,6 +65,44 @@ const userStatusChoices = ['approved', 'unapproved', 'blocked', 'rejected', 'del
 const partnerStatusChoices = ['approved', 'unapproved', 'unapproved-docs', 'blocked', 'rejected'];
 const permitChoices = ['pending', 'non-verified', 'verified', 'none'];
 
+/// A one-tap status change on a list card (Expo `AdminUserList`
+/// `primaryActions`). [destructive] ones are confirmed first.
+class QuickStatusAction {
+  const QuickStatusAction(this.label, this.next, {this.destructive = false});
+  final String label;
+  final String next;
+  final bool destructive;
+
+  @override
+  bool operator ==(Object other) =>
+      other is QuickStatusAction && other.label == label && other.next == next && other.destructive == destructive;
+
+  @override
+  int get hashCode => Object.hash(label, next, destructive);
+}
+
+/// The quick actions a user, partner or vehicle card offers in [status]:
+/// waiting → Approve / Reject, approved → Block, blocked → Unblock,
+/// rejected → Re-open; none for anything else (deleted).
+List<QuickStatusAction> quickStatusActions(String? status) => switch (status) {
+      'unapproved' || 'unapproved-docs' => const [
+          QuickStatusAction('Approve', 'approved'),
+          QuickStatusAction('Reject', 'rejected', destructive: true),
+        ],
+      'approved' => const [QuickStatusAction('Block', 'blocked', destructive: true)],
+      'blocked' => const [QuickStatusAction('Unblock', 'approved')],
+      'rejected' => const [QuickStatusAction('Re-open', 'unapproved')],
+      _ => const [],
+    };
+
+/// The `tel:` link for a stored phone number, keeping only `+` and digits;
+/// null when there is no number to call.
+Uri? phoneCallUri(Object? phone) {
+  final cleaned = '${phone ?? ''}'.replaceAll(RegExp(r'[^+\d]'), '');
+  if (cleaned.replaceAll('+', '').length < 3) return null;
+  return Uri(scheme: 'tel', path: cleaned);
+}
+
 /// Rides grouped the way the admin rides filter offers them.
 const rideStatusGroups = {
   'all': <String>[],

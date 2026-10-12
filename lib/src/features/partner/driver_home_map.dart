@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../../data/models.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
+import '../../widgets/map_traffic.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 import '../../widgets/road_info_layers.dart';
@@ -117,6 +118,8 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   Widget build(BuildContext context) {
     final me = widget.me, requests = widget.requests, onSelect = widget.onSelect;
     final t = Theme.of(context);
+    final trafficUrl = ref.watch(trafficTileUrlProvider);
+    final traffic = trafficTileLayer(trafficUrl, on: trafficUrl != null && ref.watch(mapTrafficProvider));
     final map = RideMap(
       controller: _map,
       me: me,
@@ -129,6 +132,8 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
         _center(jump: true);
       },
       satellite: ref.watch(mapSatelliteProvider),
+      // Live traffic, when a traffic tile source is configured and switched on.
+      tileOverlays: [?traffic],
       extraMarkers: [
         for (final r in requests)
           if (r.pickupLat != null && r.pickupLng != null)
@@ -178,7 +183,8 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
             right: 12,
             bottom: mapAttributionClearance + inset,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // Map view above recenter on every map.
+              // Traffic (when configured), then map view above recenter.
+              const TrafficButton(),
               const MapTypeButton(),
               const SizedBox(height: 8),
               // Expo's driver map recenters on the driver.

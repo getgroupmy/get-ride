@@ -42,6 +42,7 @@ import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
 import 'shared_ride_screen.dart' show shareRide;
 import '../../widgets/offline_ride_banner.dart';
+import '../../widgets/ride_rating_card.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../profile/emergency_contacts_screen.dart';
 import '../safety/safety_screen.dart';
@@ -884,6 +885,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           const SizedBox(height: 12),
           // Trip safety (Phase D4): "Are you in the car?" / "still on your trip?".
           if (r.status == RideStatus.onTrip) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
+          if (r.status == RideStatus.completed) RideRatingCard(ride: r),
           if (r.status == RideStatus.completed) LostItemCard(ride: r),
           if (r.status.isOngoing && r.status != RideStatus.open)
             Padding(

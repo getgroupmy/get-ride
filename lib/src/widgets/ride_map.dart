@@ -162,6 +162,7 @@ class RideMap extends StatefulWidget {
     this.extraLayers = const [],
     this.hideCredit = false,
     this.trafficSignals = true,
+    this.tileOverlays = const [],
   });
 
   final LatLng? pickup;
@@ -230,6 +231,10 @@ class RideMap extends StatefulWidget {
   final bool hideCredit;
   /// OSM traffic signals drawn once zoomed in ([TrafficSignalsLayer]).
   final bool trafficSignals;
+
+  /// Transparent tile layers drawn straight over the base tiles, under the
+  /// route and pins (the driver map's live traffic).
+  final List<Widget> tileOverlays;
 
   @override
   State<RideMap> createState() => _RideMapState();
@@ -338,6 +343,7 @@ class _RideMapState extends State<RideMap> {
           ),
           children: [
             baseTileLayer(context, satellite: widget.satellite),
+            ...widget.tileOverlays,
             if (widget.route.length > 1)
               PolylineLayer(
                 polylines: [
