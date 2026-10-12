@@ -84,9 +84,19 @@ jobs:
 
       - name: Build
         if: steps.secrets.outputs.present == 'true'
+        env:
+          # Map tiles (scripts/ci/map_defines.sh): keyed providers, all
+          # optional; unset keeps OpenStreetMap and hides the traffic button.
+          MAP_TILE_URL: ${{ vars.MAP_TILE_URL || secrets.MAP_TILE_URL }}
+          MAP_TILE_URL_DARK: ${{ vars.MAP_TILE_URL_DARK || secrets.MAP_TILE_URL_DARK }}
+          MAP_TILE_URL_SATELLITE: ${{ vars.MAP_TILE_URL_SATELLITE || secrets.MAP_TILE_URL_SATELLITE }}
+          MAP_TILE_URL_TRAFFIC: ${{ secrets.MAP_TILE_URL_TRAFFIC || vars.MAP_TILE_URL_TRAFFIC }}
+          TOM_TOM_API_KEY: ${{ secrets.TOM_TOM_API_KEY }}
         run: |
           flutter pub get
-          flutter build web --release --no-web-resources-cdn
+          scripts/ci/map_defines.sh "$RUNNER_TEMP/map-defines.json"
+          flutter build web --release --no-web-resources-cdn \
+            --dart-define-from-file="$RUNNER_TEMP/map-defines.json"
 
       - name: Link the Vercel project
         if: steps.secrets.outputs.present == 'true'
