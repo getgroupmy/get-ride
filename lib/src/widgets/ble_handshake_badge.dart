@@ -129,11 +129,21 @@ class _BleHandshakeBadgeState extends ConsumerState<BleHandshakeBadge> {
                             style: TextStyle(color: fg, fontWeight: FontWeight.w600),
                           ),
                         )
-                      : Text(
-                          label,
-                          style: TextStyle(color: fg, fontWeight: good ? FontWeight.w700 : FontWeight.w500),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                      : ValueListenableBuilder<int?>(
+                          valueListenable: e.peerRssi,
+                          builder: (_, rssi, _) {
+                            // "Driver nearby (~X m)": a hint from the signal, while in range.
+                            final near =
+                                rssi != null &&
+                                (phase == BleHandshakePhase.nearby || phase == BleHandshakePhase.matched);
+                            return Text(
+                              near ? '$label · ${bleDistanceLabel(bleDistanceM(rssi))}' : label,
+                              key: const ValueKey('ble-label'),
+                              style: TextStyle(color: fg, fontWeight: good ? FontWeight.w700 : FontWeight.w500),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            );
+                          },
                         ),
                 ),
                 if (phase == BleHandshakePhase.countdown)
