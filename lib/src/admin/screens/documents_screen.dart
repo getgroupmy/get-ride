@@ -12,11 +12,82 @@ import '../../widgets/in_app_page.dart';
 import '../../data/live_tables.dart';
 
 final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
-  (ref, table) {
+  (ref, table) async {
     ref.watchAdminLive(table);
-    return ref.watch(adminRepositoryProvider).documents(table);
+    final repo = ref.watch(adminRepositoryProvider);
+    final docs = await repo.documents(table);
+    // Whose document it is (Expo joined these in). The list still works
+    // without them when the lookup fails.
+    try {
+      final owners = await repo.documentOwners(
+        docs.map((d) => d['partner_id']).whereType<String>(),
+        table == 'vehicle_documents' ? docs.map((d) => d['vehicle_id']).whereType<String>() : const [],
+      );
+      return [for (final d in docs) withDocumentOwner(d, owners.partners, owners.vehicles)];
+    } catch (_) {
+      return docs;
+    }
   },
 );
+
+/// [d] with `_owner` (the partner's name, else phone) and `_plate` (the
+/// vehicle's plate) filled in from the lookups, where known.
+Map<String, dynamic> withDocumentOwner(
+  Map<String, dynamic> d,
+  Map<String, Map<String, dynamic>> partners,
+  Map<String, Map<String, dynamic>> vehicles,
+) {
+  String? text(Object? v) {
+    final t = '${v ?? ''}'.trim();
+    return t.isEmpty ? null : t;
+  }
+
+  final partner = partners['${d['partner_id']}'];
+  final vehicle = vehicles['${d['vehicle_id']}'];
+  return {...d, '_owner': text(partner?['name']) ?? text(partner?['phone']), '_plate': text(vehicle?['plate'])};
+}
+
+/// The list search: document name and number, whose it is, and the plate.
+bool documentMatches(Map<String, dynamic> d, String query) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  return [d['doc_name'], d['document_number'], d['_owner'], d['_plate']]
+      .whereType<Object>()
+      .join(' ')
+      .toLowerCase()
+      .contains(q);
+}
+
+/// The detail fields an admin may correct on a document (Expo
+/// `DocumentMetadataEditModal`); a blank field is cleared.
+Map<String, dynamic> documentEditPatch({
+  required String name,
+  required String number,
+  required String insurer,
+  required String country,
+  required String start,
+  required String expiry,
+  required bool pwd,
+}) {
+  String? t(String s) => s.trim().isEmpty ? null : s.trim();
+  return {
+    'doc_name': t(name),
+    'document_number': t(number),
+    'insurance_provider_name': t(insurer),
+    'issuance_country': t(country),
+    'start_date': t(start),
+    'expiry_date': t(expiry),
+    'is_pwd': pwd,
+  };
+}
+
+/// A yyyy-mm-dd date, or blank. Null when it is fine.
+String? documentDateError(String s) {
+  final t = s.trim();
+  if (t.isEmpty) return null;
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(t) || DateTime.tryParse(t) == null) return 'Use YYYY-MM-DD';
+  return null;
+}
 
 /// Expiry wins over a non-rejected status (Expo `computeDisplayStatus`).
 String documentDisplayStatus(Map<String, dynamic> d, {DateTime? now}) {
@@ -57,7 +128,24 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
       context,
       title: (d['doc_name'] as String?) ?? 'Document',
       builder: (ctx) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [StatusChip(documentDisplayStatus(d))]),
+        Row(children: [
+          StatusChip(documentDisplayStatus(d)),
+          const Spacer(),
+          if (canEdit) ...[
+            TextButton.icon(
+              key: const ValueKey('doc-edit'),
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Edit details'),
+              onPressed: () => _editDetails(ctx, d),
+            ),
+            IconButton(
+              key: const ValueKey('doc-delete'),
+              tooltip: 'Delete document',
+              icon: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
+              onPressed: () => _delete(ctx, d),
+            ),
+          ],
+        ]),
         const SizedBox(height: 12),
         DetailTable({
           'Document number': d['document_number'],
@@ -67,8 +155,8 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
           'Start': d['start_date'],
           'Expiry': d['expiry_date'],
           'PWD': d['is_pwd'] == true ? 'Yes' : null,
-          'Partner ID': d['partner_id'],
-          if (_vehicle) 'Vehicle ID': d['vehicle_id'],
+          'Partner': d['_owner'] ?? d['partner_id'],
+          if (_vehicle) 'Vehicle': d['_plate'] ?? d['vehicle_id'],
           'AI verified': d['ai_verified'] == null ? null : (d['ai_verified'] == true ? 'Yes' : 'No'),
           'Uploaded': dateText(d['uploaded_at']),
           'Reviewed': dateText(d['reviewed_at']),
@@ -121,6 +209,115 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
     );
   }
 
+  Future<void> _editDetails(BuildContext sheet, Map<String, dynamic> d) async {
+    String v(String k) => '${d[k] ?? ''}';
+    final name = TextEditingController(text: v('doc_name'));
+    final number = TextEditingController(text: v('document_number'));
+    final insurer = TextEditingController(text: v('insurance_provider_name'));
+    final country = TextEditingController(text: v('issuance_country'));
+    final start = TextEditingController(text: v('start_date').split('T').first);
+    final expiry = TextEditingController(text: v('expiry_date').split('T').first);
+    var pwd = d['is_pwd'] == true;
+    final patch = await showDialog<Map<String, dynamic>>(
+      context: sheet,
+      builder: (c) => StatefulBuilder(
+        builder: (c, set) {
+          final startErr = documentDateError(start.text), expiryErr = documentDateError(expiry.text);
+          return AlertDialog(
+            key: const ValueKey('doc-edit-dialog'),
+            title: const Text('Edit document details'),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  TextField(controller: name, decoration: const InputDecoration(labelText: 'Document name')),
+                  TextField(
+                    key: const ValueKey('doc-edit-number'),
+                    controller: number,
+                    decoration: const InputDecoration(labelText: 'Document number'),
+                  ),
+                  TextField(controller: insurer, decoration: const InputDecoration(labelText: 'Insurance provider')),
+                  TextField(controller: country, decoration: const InputDecoration(labelText: 'Issuing country')),
+                  TextField(
+                    controller: start,
+                    onChanged: (_) => set(() {}),
+                    decoration: InputDecoration(labelText: 'Start (YYYY-MM-DD)', errorText: startErr),
+                  ),
+                  TextField(
+                    key: const ValueKey('doc-edit-expiry'),
+                    controller: expiry,
+                    onChanged: (_) => set(() {}),
+                    decoration: InputDecoration(labelText: 'Expiry (YYYY-MM-DD)', errorText: expiryErr),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('PWD'),
+                    value: pwd,
+                    onChanged: (x) => set(() => pwd = x),
+                  ),
+                ]),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+              FilledButton(
+                key: const ValueKey('doc-edit-save'),
+                onPressed: startErr != null || expiryErr != null
+                    ? null
+                    : () => Navigator.pop(
+                          c,
+                          documentEditPatch(
+                            name: name.text,
+                            number: number.text,
+                            insurer: insurer.text,
+                            country: country.text,
+                            start: start.text,
+                            expiry: expiry.text,
+                            pwd: pwd,
+                          ),
+                        ),
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (patch == null || !sheet.mounted) return;
+    final ok = await runAdminAction(
+      sheet,
+      () => ref.read(adminRepositoryProvider).updateDocument(_table, d['id'] as String, patch),
+      success: 'Document details saved',
+    );
+    if (ok) {
+      ref.invalidate(adminDocsProvider(_table));
+      if (sheet.mounted) Navigator.pop(sheet);
+    }
+  }
+
+  Future<void> _delete(BuildContext sheet, Map<String, dynamic> d) async {
+    final whose = [d['_owner'], d['_plate']].whereType<Object>().join(' · ');
+    if (!await confirm(
+      sheet,
+      'Delete this document?',
+      '${d['doc_name'] ?? 'The document'}${whose.isEmpty ? '' : ' ($whose)'} is removed. '
+          'The partner will need to upload it again. This cannot be undone.',
+      ok: 'Delete',
+    )) {
+      return;
+    }
+    if (!sheet.mounted) return;
+    final ok = await runAdminAction(
+      sheet,
+      () => ref.read(adminRepositoryProvider).deleteDocument(_table, d['id'] as String),
+      success: 'Document deleted',
+    );
+    if (ok) {
+      ref.invalidate(adminDocsProvider(_table));
+      if (sheet.mounted) Navigator.pop(sheet);
+    }
+  }
+
   Future<void> _review(BuildContext ctx, Map<String, dynamic> d, String status, String notes) async {
     if (status == 'Rejected' && notes.trim().isEmpty) {
       showInfo(ctx, 'Add a note telling the partner why the document was rejected.');
@@ -164,7 +361,7 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
           selected: _filter,
           onSelected: (f) => setState(() => _filter = f),
           onSearch: (q) => setState(() => _query = q),
-          hint: 'Search document name or number…',
+          hint: _vehicle ? 'Search document, partner or plate…' : 'Search document, number or partner…',
         ),
         Expanded(
           child: AsyncView(
@@ -174,8 +371,7 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
               final q = _query.trim().toLowerCase();
               final list = docs.where((d) {
                 if (_filter != 'all' && documentDisplayStatus(d) != _filter) return false;
-                if (q.isEmpty) return true;
-                return '${d['doc_name']} ${d['document_number']}'.toLowerCase().contains(q);
+                return documentMatches(d, q);
               }).toList();
               if (list.isEmpty) return const EmptyState(icon: Icons.task_alt, title: 'Nothing to show');
               return ListView.separated(
@@ -188,6 +384,8 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
                     leading: const Icon(Icons.description_outlined),
                     title: Text((d['doc_name'] as String?) ?? 'Document'),
                     subtitle: Text([
+                      d['_owner'],
+                      if (_vehicle) d['_plate'],
                       d['document_number'],
                       if (d['expiry_date'] != null) 'expires ${d['expiry_date']}',
                       dateText(d['uploaded_at']),
