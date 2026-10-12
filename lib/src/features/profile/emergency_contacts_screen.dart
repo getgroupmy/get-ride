@@ -1,15 +1,19 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_native_contact_picker/flutter_native_contact_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../config.dart';
+import '../../core/contact_phone.dart';
 import '../../core/picked_contact.dart';
 import '../../platform/web_contacts.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/dial_country_picker.dart';
 import '../../widgets/side_menu_host.dart';
 
 final emergencyContactsProvider = FutureProvider.autoDispose<List<EmergencyContact>>(
@@ -49,62 +53,112 @@ class EmergencyContactsScreen extends ConsumerWidget {
   static const maxContacts = 5;
 
   Future<void> _edit(BuildContext context, WidgetRef ref, [EmergencyContact? c]) async {
+    final split = splitContactPhone(c?.phone, defaultDialCode: AppConfig.defaultDialCode);
+    var country = split.country;
     final name = TextEditingController(text: c?.name);
-    final phone = TextEditingController(text: c?.phone);
+    final phone = TextEditingController(text: split.local);
     final pick = ref.read(contactPickerProvider);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(c == null ? 'Add contact' : 'Edit contact'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (pick != null)
-            Align(
-              alignment: Alignment.centerRight,
-              child: BusyButton.text(
-                key: const ValueKey('contact-pick'),
-                icon: const Icon(Icons.contacts_outlined),
-                child: const Text('Contacts'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(c == null ? 'Add contact' : 'Edit contact'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (pick != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: BusyButton.text(
+                  key: const ValueKey('contact-pick'),
+                  icon: const Icon(Icons.contacts_outlined),
+                  child: const Text('Contacts'),
+                  onPressed: () async {
+                    try {
+                      final p = await pick();
+                      if (p == null) return;
+                      if (p.name != null) name.text = p.name!;
+                      if (p.phone != null) {
+                        final picked = splitContactPhone(p.phone, defaultDialCode: country.dialCode);
+                        setDialog(() => country = picked.country);
+                        phone.text = picked.local;
+                      } else if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('The selected contact has no phone number.')),
+                        );
+                      }
+                    } catch (_) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text("Couldn't open your contacts. Please try again.")),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ),
+            TextField(controller: name, decoration: const InputDecoration(labelText: 'Name')),
+            const SizedBox(height: 12),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              DialCountryButton(
+                key: const ValueKey('contact-dial-country'),
+                country: country,
+                height: 56,
                 onPressed: () async {
-                  try {
-                    final p = await pick();
-                    if (p == null) return;
-                    if (p.name != null) name.text = p.name!;
-                    if (p.phone != null) {
-                      phone.text = p.phone!;
-                    } else if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text('The selected contact has no phone number.')),
-                      );
-                    }
-                  } catch (_) {
-                    if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text("Couldn't open your contacts. Please try again.")),
-                      );
-                    }
-                  }
+                  final picked = await showDialCountryPicker(ctx);
+                  if (picked != null) setDialog(() => country = picked);
                 },
               ),
-            ),
-          TextField(controller: name, decoration: const InputDecoration(labelText: 'Name')),
-          const SizedBox(height: 12),
-          TextField(
-            controller: phone,
-            keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'Phone'),
-          ),
-        ]),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('contact-phone'),
+                  controller: phone,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s+()-]'))],
+                  decoration: const InputDecoration(labelText: 'Phone'),
+                ),
+              ),
+            ]),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+    final number = composeContactPhone(country.dialCode, phone.text);
+    if (ok != true || name.text.trim().isEmpty || number.isEmpty) return;
+    try {
+      await ref.read(accountRepositoryProvider).saveEmergencyContact(id: c?.id, name: name.text.trim(), phone: number);
+      ref.invalidate(emergencyContactsProvider);
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _delete(BuildContext context, WidgetRef ref, EmergencyContact c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete contact?'),
+        content: Text('${c.name} will no longer be told about your trips in an emergency.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          FilledButton(
+            key: const ValueKey('contact-delete-confirm'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
-    if (ok != true || name.text.trim().isEmpty || phone.text.trim().isEmpty) return;
+    if (ok != true) return;
     try {
-      await ref
-          .read(accountRepositoryProvider)
-          .saveEmergencyContact(id: c?.id, name: name.text.trim(), phone: phone.text.trim());
+      await ref.read(accountRepositoryProvider).deleteEmergencyContact(c.id);
       ref.invalidate(emergencyContactsProvider);
     } catch (e) {
       if (context.mounted) showError(context, e);
@@ -149,11 +203,10 @@ class EmergencyContactsScreen extends ConsumerWidget {
                               onPressed: () => launchUrl(Uri(scheme: 'tel', path: c.phone)),
                             ),
                             BusyIconButton(
+                              key: ValueKey('contact-delete-${c.id}'),
+                              tooltip: 'Delete',
                               icon: const Icon(Icons.delete_outline),
-                              onPressed: () async {
-                                await ref.read(accountRepositoryProvider).deleteEmergencyContact(c.id);
-                                ref.invalidate(emergencyContactsProvider);
-                              },
+                              onPressed: () => _delete(context, ref, c),
                             ),
                           ]),
                         ),

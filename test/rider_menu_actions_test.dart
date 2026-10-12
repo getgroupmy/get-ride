@@ -80,10 +80,23 @@ void main() {
       });
     }
 
-    testWidgets('logout signs out', (tester) async {
+    testWidgets('logout asks first, then signs out', (tester) async {
       final auth = _Auth();
       await tap(tester, 'logout', auth: auth);
+      expect(find.text('Sign out?'), findsOneWidget);
+      expect(auth.signOuts, 0);
+      await tester.tap(find.byKey(const ValueKey('sign-out-confirm')));
+      await tester.pumpAndSettle();
       expect(auth.signOuts, 1);
+    });
+
+    testWidgets('cancelling logout keeps the rider signed in', (tester) async {
+      final auth = _Auth();
+      await tap(tester, 'logout', auth: auth);
+      await tester.tap(find.byKey(const ValueKey('sign-out-cancel')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sign out?'), findsNothing);
+      expect(auth.signOuts, 0);
     });
 
     test('every default user item is covered', () {

@@ -15,6 +15,7 @@ import '../../data/coin_trade_repository.dart';
 import '../../data/wallet_pay_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/image_share.dart';
 import 'wallet_screen.dart';
 
 /// The account's own code (Expo `wallet-receive.tsx`, and `wallet-coin-qr.tsx`
@@ -77,6 +78,7 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
     final expired = _amount != null && _left <= Duration.zero;
     final payload = walletQrPayload(userId, amount: _amount);
     final quote = widget.coin ? ref.watch(coinTradeQuoteProvider).value : null;
+    final qrColor = widget.coin ? Colors.black : const Color(0xFFED2E67);
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.coin ? 'GET.coin QR' : 'Receive')),
@@ -119,11 +121,11 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
                           errorCorrectionLevel: QrErrorCorrectLevel.M,
                           eyeStyle: QrEyeStyle(
                             eyeShape: QrEyeShape.square,
-                            color: widget.coin ? Colors.black : const Color(0xFFED2E67),
+                            color: qrColor,
                           ),
                           dataModuleStyle: QrDataModuleStyle(
                             dataModuleShape: QrDataModuleShape.square,
-                            color: widget.coin ? Colors.black : const Color(0xFFED2E67),
+                            color: qrColor,
                           ),
                         ),
                         if (expired)
@@ -195,6 +197,28 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
                     TextButton(onPressed: () => _setAmount(null), child: const Text('Cancel amount')),
                   ],
                 ],
+                const SizedBox(height: 8),
+                // The code as a picture on white, so it scans from a chat in dark mode too.
+                ShareSaveImageButtons(
+                  keyPrefix: 'wallet-qr',
+                  enabled: !expired,
+                  image: (origin) async => ShareableImage(
+                    png: await ref.read(qrPngRendererProvider)(
+                      payload,
+                      color: qrColor,
+                      caption: walletQrCaption(coin: widget.coin, userId: userId, name: name),
+                    ),
+                    fileName: walletQrFileName(coin: widget.coin, amount: _amount),
+                    text: walletQrShareText(
+                      coin: widget.coin,
+                      userId: userId,
+                      name: name,
+                      amountLabel: _amount == null ? null : formatMoney(_amount),
+                    ),
+                    subject: widget.coin ? 'My GET.coin code' : 'My GET.ride pay code',
+                    origin: origin,
+                  ),
+                ),
               ],
             ),
           ),
@@ -247,6 +271,58 @@ class _AmountDialogState extends State<_AmountDialog> {
   }
 }
 
+/// Turns the scanner's flashlight on or off. Overridden in tests.
+final scannerTorchProvider = Provider<Future<void> Function(MobileScannerController controller)>(
+  (ref) => (controller) => controller.toggleTorch(),
+);
+
+/// Whether a torch button can do anything: not once a running camera has
+/// said it has no flashlight (a laptop, most browsers).
+bool scannerTorchAvailable(MobileScannerState s) =>
+    !(s.isInitialized && s.isRunning && s.torchState == TorchState.unavailable);
+
+/// The Scan & Pay help: what to point at and what happens next.
+Future<void> showScanPayHelp(BuildContext context) => showModalBottomSheet<void>(
+  context: context,
+  showDragHandle: true,
+  isScrollControlled: true,
+  builder: (c) {
+    final t = Theme.of(c);
+    return SafeArea(
+      child: SingleChildScrollView(
+        key: const ValueKey('scan-help-sheet'),
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('How to pay', style: t.textTheme.titleLarge),
+            const SizedBox(height: 12),
+            for (final (i, step) in scanPayHowToSteps.indexed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 13,
+                      backgroundColor: t.colorScheme.primaryContainer,
+                      foregroundColor: t.colorScheme.onPrimaryContainer,
+                      child: Text('${i + 1}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(step, style: t.textTheme.bodyMedium)),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 4),
+            FilledButton(onPressed: () => Navigator.pop(c), child: const Text('Got it')),
+          ],
+        ),
+      ),
+    );
+  },
+);
+
 /// Scan & Pay (Expo `wallet-scan.tsx`). A GET account's code opens the
 /// GET.coin send flow addressed to that account; any other code is paid out
 /// of GET.wallet through `wallet_pay`, optionally part-paid with GET.coin.
@@ -296,6 +372,14 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
     }
   }
 
+  Future<void> _toggleTorch() async {
+    try {
+      await ref.read(scannerTorchProvider)(_scanner);
+    } catch (_) {
+      if (mounted) showInfo(context, "The flashlight isn't available right now.");
+    }
+  }
+
   Future<void> _scanAgain() async {
     setState(() => _merchant = null);
     _manual.clear();
@@ -315,6 +399,31 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
       appBar: AppBar(
         title: const Text('Scan & Pay'),
         actions: [
+          ValueListenableBuilder<MobileScannerState>(
+            valueListenable: _scanner,
+            builder: (_, state, _) {
+              final on = state.torchState == TorchState.on;
+              final available = scannerTorchAvailable(state);
+              return IconButton(
+                key: const ValueKey('scan-torch'),
+                tooltip: !available
+                    ? 'No flashlight on this device'
+                    : on
+                    ? 'Turn flashlight off'
+                    : 'Turn flashlight on',
+                isSelected: on,
+                icon: const Icon(Icons.flashlight_off_outlined),
+                selectedIcon: const Icon(Icons.flashlight_on),
+                onPressed: available ? _toggleTorch : null,
+              );
+            },
+          ),
+          IconButton(
+            key: const ValueKey('scan-help'),
+            tooltip: 'How to pay',
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showScanPayHelp(context),
+          ),
           TextButton.icon(
             onPressed: () => context.push('/wallet/receive'),
             icon: const Icon(Icons.qr_code_2),

@@ -8,7 +8,9 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../data/coin_trade_repository.dart';
+import '../../widgets/image_share.dart';
 import '../../widgets/side_menu_host.dart';
+import 'referral_card.dart';
 
 final myReferrerProvider = FutureProvider.autoDispose<MyReferrer?>(
   (ref) => ref.watch(referralRepositoryProvider).myReferrer(),
@@ -103,15 +105,39 @@ class ReferralScreen extends ConsumerWidget {
                           label: const Text('Copy code'),
                           onPressed: () => _copy(context, code, 'Referral code copied'),
                         ),
-                        FilledButton.icon(
+                        OutlinedButton.icon(
                           key: const ValueKey('referral-copy-invite'),
-                          style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-                          icon: const Icon(Icons.send),
+                          icon: const Icon(Icons.content_paste_go),
                           label: const Text('Copy invite'),
                           onPressed: () =>
                               _copy(context, referralMessage(code, link), 'Invite copied, paste it to a friend'),
                         ),
+                        Builder(
+                          builder: (bc) => FilledButton.icon(
+                            key: const ValueKey('referral-share-invite'),
+                            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                            icon: const Icon(Icons.send),
+                            label: const Text('Share invite'),
+                            onPressed: () => ref.read(textSharerProvider)(
+                              referralMessage(code, link),
+                              subject: 'Join me on GET.ride',
+                              origin: shareOriginOf(bc),
+                            ),
+                          ),
+                        ),
                       ],
+                    ),
+                    const SizedBox(height: 24),
+                    ReferralCardSection(
+                      code: code,
+                      link: link,
+                      inviterName: p.name,
+                      referredBonus: coin != null && coin.referralEnabled && coin.referralReferredCoins > 0
+                          ? formatCoins(coin.referralReferredCoins)
+                          : null,
+                      referrerBonus: coin != null && coin.referralEnabled && coin.referralReferrerCoins > 0
+                          ? formatCoins(coin.referralReferrerCoins)
+                          : null,
                     ),
                     if (referrer != null) ...[
                       const SizedBox(height: 16),

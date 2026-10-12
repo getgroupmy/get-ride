@@ -54,7 +54,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('contact-pick')));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(TextField, 'Aina'), findsOneWidget);
-    expect(find.widgetWithText(TextField, '+60123456789'), findsOneWidget);
+    // The number lands on its own dial code, local part in the field.
+    expect(find.widgetWithText(TextField, '123456789'), findsOneWidget);
+    expect(find.text('+60'), findsOneWidget);
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(account.saved, ['Aina|+60123456789']);
