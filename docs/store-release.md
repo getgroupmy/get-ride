@@ -138,7 +138,49 @@ with **Send it to Play unticked**, download the bundle from the run's
 Artifacts, upload it by hand in the Play Console once, and every release
 after that can come from the button.
 
-### 4. Push notifications (Firebase)
+### 4. Download, install link and QR code (testing without a store)
+
+Every release run also publishes its build as a rolling GitHub release in
+this (public) repository, replaced by the next run
+(`scripts/ci/publish_build.sh`):
+
+| Release | Asset | Installs on |
+| --- | --- | --- |
+| `android-latest` | `getride.apk`, same key and version code as the Play bundle | any Android phone. It is signed with the upload key, not Play's app signing key, so remove a Play-installed copy first |
+| `ios-latest` | `getride.ipa`, Ad Hoc signed | only the iPhones registered in the Ad Hoc profile |
+
+Admin → App Release shows the latest build on each card, with **Download
+.ipa / .apk**, **Share install link** and **QR code**. The link and the
+QR both open the public page `https://getride.my/install/<ios|android>`.
+On that page, **Install** opens the APK on Android, or the itms-services
+link on an iPhone (open it in Safari).
+
+The `app-install` edge function serves the build details and the iPhone's
+install manifest. It is public, because the files are public release assets
+already:
+
+```
+supabase functions deploy app-install --no-verify-jwt
+```
+
+It uses `GITHUB_RELEASE_TOKEN` when it is set, for GitHub's higher rate
+limit, and works without it.
+
+**For iPhone installs**, add the Actions secret
+`IOS_ADHOC_PROVISIONING_PROFILE`. It is the base64 of an **Ad Hoc**
+provisioning profile for `com.taxxee.teksi`, made with the same Apple
+Distribution certificate:
+
+1. Register each tester's iPhone UDID under Devices in the Apple Developer
+   account.
+2. Create the profile with those devices selected.
+3. Regenerate the profile whenever you add a device.
+
+Without this secret, the App Store IPA is published instead. It can be
+downloaded (for example, for Transporter) but not installed, and the page
+says so.
+
+### 5. Push notifications (Firebase)
 
 The apps get push through Firebase Cloud Messaging (FCM), which delivers to
 Android directly and to iPhones through Apple's push service. Without this

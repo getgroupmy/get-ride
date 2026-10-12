@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../providers.dart';
+import '../../../widgets/app_build_widgets.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/in_app_page.dart';
@@ -34,18 +35,34 @@ class ReleaseDestination {
 
 const releaseDestinations = <ReleasePlatform, List<ReleaseDestination>>{
   ReleasePlatform.ios: [
-    ReleaseDestination('testflight', 'TestFlight',
-        'Reaches your TestFlight testers once Apple finishes processing, usually within minutes.'),
-    ReleaseDestination('appstore', 'App Store',
-        "Uploads a build ready to submit. You still submit it for review in App Store Connect, and Apple's review takes hours to days."),
+    ReleaseDestination(
+      'testflight',
+      'TestFlight',
+      'Reaches your TestFlight testers once Apple finishes processing, usually within minutes.',
+    ),
+    ReleaseDestination(
+      'appstore',
+      'App Store',
+      "Uploads a build ready to submit. You still submit it for review in App Store Connect, and Apple's review takes hours to days.",
+    ),
   ],
   ReleasePlatform.android: [
     ReleaseDestination('internal', 'Internal testing', 'Reaches internal testers once Play has processed it.'),
-    ReleaseDestination('alpha', 'Closed testing (alpha)',
-        'Goes to the alpha track. Play reviews closed-testing releases before testers get them.'),
-    ReleaseDestination('beta', 'Open testing (beta)', 'Goes to the beta track. Play reviews it before it is available.'),
-    ReleaseDestination('production', 'Production',
-        "Rolls out to everybody once Play's review approves it, which takes hours to days."),
+    ReleaseDestination(
+      'alpha',
+      'Closed testing (alpha)',
+      'Goes to the alpha track. Play reviews closed-testing releases before testers get them.',
+    ),
+    ReleaseDestination(
+      'beta',
+      'Open testing (beta)',
+      'Goes to the beta track. Play reviews it before it is available.',
+    ),
+    ReleaseDestination(
+      'production',
+      'Production',
+      "Rolls out to everybody once Play's review approves it, which takes hours to days.",
+    ),
   ],
 };
 
@@ -63,13 +80,13 @@ class ReleaseRun {
   });
 
   factory ReleaseRun.fromJson(Map<String, dynamic> j) => ReleaseRun(
-        id: (j['id'] as num?)?.toInt() ?? 0,
-        number: (j['number'] as num?)?.toInt() ?? 0,
-        status: '${j['status'] ?? 'unknown'}',
-        conclusion: j['conclusion'] as String?,
-        startedAt: DateTime.tryParse('${j['startedAt'] ?? ''}'),
-        url: '${j['url'] ?? ''}',
-      );
+    id: (j['id'] as num?)?.toInt() ?? 0,
+    number: (j['number'] as num?)?.toInt() ?? 0,
+    status: '${j['status'] ?? 'unknown'}',
+    conclusion: j['conclusion'] as String?,
+    startedAt: DateTime.tryParse('${j['startedAt'] ?? ''}'),
+    url: '${j['url'] ?? ''}',
+  );
 
   final int id;
   final int number;
@@ -120,25 +137,35 @@ ReleaseState releaseStateFrom(int status, Object? body) {
   final message = map['error'] is String ? map['error'] as String : '';
   if (status >= 200 && status < 300) {
     final runs = map['runs'];
-    return ReleaseState(ReleaseStateKind.ok,
-        runs: runs is List
-            ? [for (final r in runs.whereType<Map>()) ReleaseRun.fromJson(Map<String, dynamic>.from(r))]
-            : const []);
+    return ReleaseState(
+      ReleaseStateKind.ok,
+      runs: runs is List
+          ? [for (final r in runs.whereType<Map>()) ReleaseRun.fromJson(Map<String, dynamic>.from(r))]
+          : const [],
+    );
   }
   if (status == 503) {
-    return ReleaseState(ReleaseStateKind.notConfigured,
-        message: message.isNotEmpty ? message : 'Store releases are not set up yet.');
+    return ReleaseState(
+      ReleaseStateKind.notConfigured,
+      message: message.isNotEmpty ? message : 'Store releases are not set up yet.',
+    );
   }
   if (status == 404) {
-    return const ReleaseState(ReleaseStateKind.notConfigured,
-        message: "The release functions aren't deployed to Supabase yet.");
+    return const ReleaseState(
+      ReleaseStateKind.notConfigured,
+      message: "The release functions aren't deployed to Supabase yet.",
+    );
   }
   if (status == 401 || status == 403) {
-    return ReleaseState(ReleaseStateKind.forbidden,
-        message: message.isNotEmpty ? message : "You don't have access to store releases.");
+    return ReleaseState(
+      ReleaseStateKind.forbidden,
+      message: message.isNotEmpty ? message : "You don't have access to store releases.",
+    );
   }
-  return ReleaseState(ReleaseStateKind.error,
-      message: message.isNotEmpty ? message : 'The release function answered $status.');
+  return ReleaseState(
+    ReleaseStateKind.error,
+    message: message.isNotEmpty ? message : 'The release function answered $status.',
+  );
 }
 
 class AppReleaseStore {
@@ -165,8 +192,7 @@ class AppReleaseStore {
 
   /// Null on success, otherwise what went wrong.
   Future<String?> start(ReleasePlatform p, String destination, String notes) async {
-    final (status, body) =
-        await _invoke(p, {'action': 'release', releaseInput(p): destination, 'notes': notes.trim()});
+    final (status, body) = await _invoke(p, {'action': 'release', releaseInput(p): destination, 'notes': notes.trim()});
     if (status >= 200 && status < 300 && body is Map && body['started'] == true) return null;
     final state = releaseStateFrom(status, body);
     return state.kind == ReleaseStateKind.ok ? 'The build did not start.' : state.message;
@@ -175,8 +201,9 @@ class AppReleaseStore {
 
 final appReleaseStoreProvider = Provider((ref) => AppReleaseStore(ref.watch(supabaseProvider)));
 
-final releaseRunsProvider =
-    FutureProvider.autoDispose.family<ReleaseState, ReleasePlatform>((ref, p) => ref.watch(appReleaseStoreProvider).runs(p));
+final releaseRunsProvider = FutureProvider.autoDispose.family<ReleaseState, ReleasePlatform>(
+  (ref, p) => ref.watch(appReleaseStoreProvider).runs(p),
+);
 
 class AdminAppReleaseScreen extends ConsumerWidget {
   const AdminAppReleaseScreen({super.key});
@@ -186,23 +213,29 @@ class AdminAppReleaseScreen extends ConsumerWidget {
     return AdminPage(
       title: 'App Release',
       page: appReleasePage,
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        ResponsiveCenter(
-          maxWidth: 760,
-          padding: EdgeInsets.zero,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(
-              'Each release builds this app from GitHub, signs it and uploads it as com.taxxee.teksi, '
-              "replacing whatever was last published in that store. Uploading never skips Apple's or Google's review.",
-              style: Theme.of(context).textTheme.bodyMedium,
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          ResponsiveCenter(
+            maxWidth: 760,
+            padding: EdgeInsets.zero,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Each release builds this app from GitHub, signs it and uploads it as com.taxxee.teksi, '
+                  "replacing whatever was last published in that store. Uploading never skips Apple's or Google's review.",
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 16),
+                const _ReleaseCard(ReleasePlatform.ios),
+                const SizedBox(height: 16),
+                const _ReleaseCard(ReleasePlatform.android),
+              ],
             ),
-            const SizedBox(height: 16),
-            const _ReleaseCard(ReleasePlatform.ios),
-            const SizedBox(height: 16),
-            const _ReleaseCard(ReleasePlatform.android),
-          ]),
-        ),
-      ]),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -251,11 +284,11 @@ class _ReleaseCardState extends ConsumerState<_ReleaseCard> {
   }
 
   Color _toneColor(RunTone tone, ColorScheme scheme) => switch (tone) {
-        RunTone.success => Colors.green.shade700,
-        RunTone.danger => scheme.error,
-        RunTone.warning => Colors.orange.shade800,
-        RunTone.neutral => scheme.onSurfaceVariant,
-      };
+    RunTone.success => Colors.green.shade700,
+    RunTone.danger => scheme.error,
+    RunTone.warning => Colors.orange.shade800,
+    RunTone.neutral => scheme.onSurfaceVariant,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -268,82 +301,108 @@ class _ReleaseCardState extends ConsumerState<_ReleaseCard> {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Row(children: [
-            Icon(_ios ? Icons.phone_iphone : Icons.android),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(_ios ? 'iOS — App Store' : 'Android — Google Play', style: theme.textTheme.titleMedium),
-            ),
-            IconButton(
-              tooltip: 'Refresh builds',
-              onPressed: () => ref.invalidate(releaseRunsProvider(widget.platform)),
-              icon: const Icon(Icons.refresh),
-            ),
-          ]),
-          const SizedBox(height: 8),
-          runs.when(
-            loading: () => const LoadingSkeleton(rows: 3),
-            error: (e, _) => Text('$e', style: TextStyle(color: theme.colorScheme.error)),
-            data: (state) {
-              if (state.kind != ReleaseStateKind.ok) {
-                return ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(state.kind == ReleaseStateKind.error ? Icons.error_outline : Icons.info_outline),
-                  title: Text(switch (state.kind) {
-                    ReleaseStateKind.notConfigured => 'Not set up yet',
-                    ReleaseStateKind.forbidden => 'No access',
-                    _ => "Couldn't load builds",
-                  }),
-                  subtitle: Text(state.message),
-                );
-              }
-              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final d in destinations)
-                    ChoiceChip(
-                      label: Text(d.label),
-                      selected: d.value == _destination,
-                      onSelected: (_) => setState(() => _destination = d.value),
-                    ),
-                ]),
-                const SizedBox(height: 8),
-                Text(chosen.detail, style: theme.textTheme.bodySmall),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _notes,
-                  enabled: canEdit,
-                  maxLength: 200,
-                  decoration: const InputDecoration(labelText: 'What changed (optional)'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(_ios ? Icons.phone_iphone : Icons.android),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(_ios ? 'iOS — App Store' : 'Android — Google Play', style: theme.textTheme.titleMedium),
                 ),
-                BusyButton.filled(
-                  onPressed: canEdit && !_starting ? () => _start(chosen) : null,
-                  icon: const Icon(Icons.rocket_launch_outlined),
-                  child: Text('Release to ${chosen.label}'),
+                IconButton(
+                  tooltip: 'Refresh builds',
+                  onPressed: () {
+                    ref.invalidate(releaseRunsProvider(widget.platform));
+                    ref.invalidate(appBuildProvider(widget.platform.name));
+                  },
+                  icon: const Icon(Icons.refresh),
                 ),
-                const SizedBox(height: 16),
-                Text('Recent builds', style: theme.textTheme.titleSmall),
-                if (state.runs.isEmpty)
-                  const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('Nothing yet.'))
-                else
-                  for (final run in state.runs)
-                    Builder(builder: (context) {
-                      final d = describeRun(run.status, run.conclusion);
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text('#${run.number}'),
-                        subtitle: Text(run.startedAt != null ? dateText(run.startedAt!.toIso8601String()) : '—'),
-                        trailing: Text(d.label,
-                            style: TextStyle(color: _toneColor(d.tone, theme.colorScheme), fontWeight: FontWeight.w700)),
-                        onTap: run.url.isEmpty
-                            ? null
-                            : () => openInApp(context, run.url, title: 'Build #${run.number}'),
-                      );
+              ],
+            ),
+            const SizedBox(height: 8),
+            // The latest build, to download or install directly (no store).
+            Text('Latest build', style: theme.textTheme.titleSmall),
+            AppBuildPanel(platform: widget.platform.name),
+            const Divider(height: 24),
+            runs.when(
+              loading: () => const LoadingSkeleton(rows: 3),
+              error: (e, _) => Text('$e', style: TextStyle(color: theme.colorScheme.error)),
+              data: (state) {
+                if (state.kind != ReleaseStateKind.ok) {
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(state.kind == ReleaseStateKind.error ? Icons.error_outline : Icons.info_outline),
+                    title: Text(switch (state.kind) {
+                      ReleaseStateKind.notConfigured => 'Not set up yet',
+                      ReleaseStateKind.forbidden => 'No access',
+                      _ => "Couldn't load builds",
                     }),
-              ]);
-            },
-          ),
-        ]),
+                    subtitle: Text(state.message),
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final d in destinations)
+                          ChoiceChip(
+                            label: Text(d.label),
+                            selected: d.value == _destination,
+                            onSelected: (_) => setState(() => _destination = d.value),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(chosen.detail, style: theme.textTheme.bodySmall),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _notes,
+                      enabled: canEdit,
+                      maxLength: 200,
+                      decoration: const InputDecoration(labelText: 'What changed (optional)'),
+                    ),
+                    BusyButton.filled(
+                      onPressed: canEdit && !_starting ? () => _start(chosen) : null,
+                      icon: const Icon(Icons.rocket_launch_outlined),
+                      child: Text('Release to ${chosen.label}'),
+                    ),
+                    const SizedBox(height: 16),
+                    Text('Recent builds', style: theme.textTheme.titleSmall),
+                    if (state.runs.isEmpty)
+                      const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('Nothing yet.'))
+                    else
+                      for (final run in state.runs)
+                        Builder(
+                          builder: (context) {
+                            final d = describeRun(run.status, run.conclusion);
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text('#${run.number}'),
+                              subtitle: Text(run.startedAt != null ? dateText(run.startedAt!.toIso8601String()) : '—'),
+                              trailing: Text(
+                                d.label,
+                                style: TextStyle(
+                                  color: _toneColor(d.tone, theme.colorScheme),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              onTap: run.url.isEmpty
+                                  ? null
+                                  : () => openInApp(context, run.url, title: 'Build #${run.number}'),
+                            );
+                          },
+                        ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

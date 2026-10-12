@@ -26,6 +26,14 @@
 #   APP_STORE_CONNECT_ISSUER_ID  the issuer UUID
 #   APP_STORE_CONNECT_KEY_P8     the whole AuthKey_XXXX.p8, PEM
 #
+# Optional: IOS_ADHOC_PROVISIONING_PROFILE, base64 of an Ad Hoc
+# .mobileprovision for the same bundle id and certificate. With it, every
+# run also exports an Ad Hoc IPA and publishes it as the `ios-latest`
+# GitHub release, which Admin → App Release offers as a download, an
+# over-the-air install link and a QR code (only on the iPhones registered in
+# that profile). Without it the App Store IPA is published instead, which
+# can be downloaded but not installed.
+#
 # Repository variable IOS_BUILD_NUMBER_OFFSET: added to the run number to
 # make the build number. Set it above the highest build already uploaded
 # for this version (the Expo app's EAS builds), or App Store Connect
@@ -61,6 +69,9 @@ jobs:
     name: Build and upload
     runs-on: macos-latest
     timeout-minutes: 90
+    # contents: write to publish the build as the ios-latest release.
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -168,6 +179,35 @@ jobs:
               ;;
           esac
 
+      # Optional: the profile that makes a build installable over the air
+      # on registered iPhones. Same certificate, so the same archive.
+      - name: Ad Hoc profile
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          IOS_ADHOC_PROVISIONING_PROFILE: ${{ secrets.IOS_ADHOC_PROVISIONING_PROFILE }}
+        run: |
+          set -euo pipefail
+          if [ -z "$IOS_ADHOC_PROVISIONING_PROFILE" ]; then
+            echo "No IOS_ADHOC_PROVISIONING_PROFILE: the App Store IPA is published, download only."
+            exit 0
+          fi
+          profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "$IOS_ADHOC_PROVISIONING_PROFILE" | base64 --decode \
+            > "$profiles/adhoc.mobileprovision"
+          plist=$(security cms -D -i "$profiles/adhoc.mobileprovision")
+          uuid=$(echo "$plist" | plutil -extract UUID raw -)
+          appid=$(echo "$plist" | plutil -extract Entitlements.application-identifier raw -)
+          case "$appid" in
+            *."$BUNDLE_ID") ;;
+            *)
+              echo "::warning::The Ad Hoc profile is for $appid, not $BUNDLE_ID; skipping it."
+              exit 0
+              ;;
+          esac
+          devices=$(echo "$plist" | plutil -extract ProvisionedDevices raw - 2>/dev/null || echo 0)
+          echo "Ad Hoc profile $uuid, $devices registered device(s)"
+          echo "ADHOC_UUID=$uuid" >> "$GITHUB_ENV"
+
       # Flutter compiles without signing, then xcodebuild archives with the
       # distribution identity named explicitly. `flutter build ipa` looks
       # for a DEVELOPMENT certificate first, which a distribution-only
@@ -242,6 +282,54 @@ jobs:
 
           ls -l "$RUNNER_TEMP/ipa"
 
+      # Same archive, re-signed for the iPhones in the Ad Hoc profile.
+      - name: Ad Hoc export
+        id: adhoc
+        if: steps.creds.outputs.ready == 'true' && env.ADHOC_UUID != ''
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/export-adhoc.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>ad-hoc</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key><string>$ADHOC_UUID</string>
+            </dict>
+            <key>compileBitcode</key><false/>
+            <key>thinning</key><string>&lt;none&gt;</string>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export-adhoc.plist" \
+            -exportPath "$RUNNER_TEMP/ipa-adhoc"
+          ls -l "$RUNNER_TEMP/ipa-adhoc"
+
+      # For Admin → App Release: download, install link and QR code. Never
+      # in the way of the App Store upload.
+      - name: Publish as ios-latest
+        id: publish
+        if: steps.creds.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.adhoc.outcome }}" = "success" ]; then
+            ipa=$(ls "$RUNNER_TEMP"/ipa-adhoc/*.ipa | head -1)
+            installable=true
+          else
+            ipa=$(ls "$RUNNER_TEMP"/ipa/*.ipa | head -1)
+            installable=false
+          fi
+          bash scripts/ci/publish_build.sh ios "$ipa" "${{ steps.archive.outputs.build }}" "$installable"
+
       - name: Upload to App Store Connect
         id: upload
         if: steps.creds.outputs.ready == 'true'
@@ -275,6 +363,13 @@ jobs:
             echo
             echo "* build number: \`${{ steps.archive.outputs.build }}\`"
             echo "* commit: \`${{ github.sha }}\`"
+            if [ "${{ steps.publish.outcome }}" = "success" ]; then
+              if [ "${{ steps.adhoc.outcome }}" = "success" ]; then
+                echo "* published as \`ios-latest\` (Ad Hoc: installable over the air)"
+              else
+                echo "* published as \`ios-latest\` (App Store IPA: download only)"
+              fi
+            fi
             if [ -n "$NOTES" ]; then echo "* notes: $NOTES"; fi
             echo
             # Reads the outcome rather than assuming one.
@@ -294,4 +389,5 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/ios-release.keychain-db" || true
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/release.mobileprovision" || true
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/adhoc.mobileprovision" || true
           rm -rf "$HOME/.appstoreconnect/private_keys" || true
