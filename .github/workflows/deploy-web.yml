@@ -18,7 +18,7 @@ name: Deploy web
 #     by scripts/ci/app_links.ts from the signing material the release
 #     workflows already have (IOS_PROVISIONING_PROFILE for the team id,
 #     ANDROID_KEYSTORE_BASE64 for the upload key's fingerprint) plus the
-#     optional repository variables APPLE_TEAM_ID and
+#     optional repository variables (or secrets) APPLE_TEAM_ID and
 #     ANDROID_APP_LINK_SHA256 (the Play App Signing key). A file whose
 #     inputs are missing is skipped with a notice.
 #   * deploy/domains.txt: on a production deploy scripts/ci/vercel_domains.ts
@@ -148,8 +148,10 @@ jobs:
           IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-          ANDROID_APP_LINK_SHA256: ${{ vars.ANDROID_APP_LINK_SHA256 }}
+          # Fingerprints and team ids are not secret, so a repository
+          # variable is the natural home; a secret of the same name works too.
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID || secrets.APPLE_TEAM_ID }}
+          ANDROID_APP_LINK_SHA256: ${{ vars.ANDROID_APP_LINK_SHA256 || secrets.ANDROID_APP_LINK_SHA256 }}
         run: |
           set -euo pipefail
           work="$RUNNER_TEMP/app-links"
