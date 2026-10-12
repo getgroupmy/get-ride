@@ -61,10 +61,17 @@ class UniversalBleRadio implements BleRadio {
     } catch (e) {
       return 'Bluetooth isn\'t available';
     }
+    final notReady = await ensurePeripheralReady();
+    if (notReady != null) return notReady;
     try {
       if (_advertising) await UniversalBlePeripheral.stopAdvertising();
-      await UniversalBlePeripheral.startAdvertising(services: [uuid]);
       _advertising = true;
+      await UniversalBlePeripheral.startAdvertising(services: [uuid]);
+      // Started is not the same as on the air: check, and try once more.
+      if (!await confirmAdvertising()) {
+        await UniversalBlePeripheral.startAdvertising(services: [uuid]);
+        if (!await confirmAdvertising()) throw StateError('not advertising');
+      }
       if (!_scanning) {
         await bleScans.acquire();
         _scanning = true;

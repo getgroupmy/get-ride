@@ -11,11 +11,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/ble_handshake.dart';
 import 'package:get_ride/src/core/reliability_settings.dart';
+import 'package:get_ride/src/data/ble.dart';
 import 'package:get_ride/src/data/ble_chat.dart';
 import 'package:get_ride/src/data/ble_handshake.dart';
 import 'package:get_ride/src/data/reliability_repository.dart';
 import 'package:get_ride/src/widgets/ble_handshake_badge.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:universal_ble/universal_ble.dart';
 
 const _mine = '0123456789abcdef';
 const _peer = 'fedcba9876543210';
@@ -245,6 +247,57 @@ void main() {
         {'by_ble': 3, 'by_pin': 1, 'by_none': 0, 'by_unknown': 0},
       ]);
       expect(s.describe(7), 'Last 7 days: 3 by Bluetooth (75%) · 1 by code');
+    });
+  });
+
+  group('the phone\'s own advert', () {
+    test('nothing is advertised before an iPhone\'s peripheral side has powered on', () {
+      fakeAsync((async) {
+        final states = [
+          PeripheralReadinessState.unknown,
+          PeripheralReadinessState.unknown,
+          PeripheralReadinessState.ready,
+        ];
+        var asked = 0;
+        String? why = 'pending';
+        ensurePeripheralReady(state: () async => states[asked++]).then((w) => why = w);
+        async.elapse(const Duration(seconds: 1));
+        expect(why, isNull);
+        expect(asked, 3, reason: 'it waited for ready');
+      });
+    });
+
+    test('Bluetooth off says so; Android\'s permission is asked by the advert itself', () async {
+      expect(await ensurePeripheralReady(state: () async => PeripheralReadinessState.bluetoothOff), 'Bluetooth is off');
+      expect(await ensurePeripheralReady(state: () async => PeripheralReadinessState.unauthorized), isNull);
+    });
+
+    test('a peripheral side that never powers on gives up', () {
+      fakeAsync((async) {
+        String? why;
+        ensurePeripheralReady(
+          state: () async => PeripheralReadinessState.unknown,
+          timeout: Duration.zero,
+        ).then((w) => why = w);
+        async.elapse(const Duration(seconds: 1));
+        expect(why, 'Bluetooth isn\'t ready');
+      });
+    });
+
+    test('an advert counts once the phone says it is on the air, not when it was asked for', () {
+      fakeAsync((async) {
+        final states = [PeripheralAdvertisingState.starting, PeripheralAdvertisingState.advertising];
+        var i = 0;
+        bool? on;
+        confirmAdvertising(state: () async => states[i++]).then((v) => on = v);
+        async.elapse(const Duration(seconds: 1));
+        expect(on, isTrue);
+
+        bool? refused;
+        confirmAdvertising(state: () async => PeripheralAdvertisingState.error).then((v) => refused = v);
+        async.flushMicrotasks();
+        expect(refused, isFalse);
+      });
     });
   });
 

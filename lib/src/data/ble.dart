@@ -22,13 +22,13 @@ final bleScannerProvider = Provider<BleScanner>((_) => const UniversalBleScanner
 
 /// Why Bluetooth cannot be used right now, in words for the driver.
 String? describeBluetoothUnavailable(AvailabilityState state) => switch (state) {
-      AvailabilityState.poweredOn => null,
-      AvailabilityState.poweredOff => 'Bluetooth is off. Turn it on to use a Bluetooth device.',
-      AvailabilityState.unauthorized =>
-        'GET.ride is not allowed to use Bluetooth. Allow it in the phone\'s settings for this app.',
-      AvailabilityState.unsupported => 'This device has no Bluetooth LE.',
-      _ => 'Bluetooth is not ready yet. Try again in a moment.',
-    };
+  AvailabilityState.poweredOn => null,
+  AvailabilityState.poweredOff => 'Bluetooth is off. Turn it on to use a Bluetooth device.',
+  AvailabilityState.unauthorized =>
+    'GET.ride is not allowed to use Bluetooth. Allow it in the phone\'s settings for this app.',
+  AvailabilityState.unsupported => 'This device has no Bluetooth LE.',
+  _ => 'Bluetooth is not ready yet. Try again in a moment.',
+};
 
 /// Asks for permission and waits for the adapter to be on, or throws with
 /// what to tell the driver.
@@ -52,6 +52,57 @@ Future<void> ensureBluetoothReady() async {
   }
   final problem = describeBluetoothUnavailable(state);
   if (problem != null) throw StateError(problem);
+}
+
+/// Waits for the phone's Bluetooth *peripheral* side (advertising and serving)
+/// to be ready, and says why not when it isn't.
+///
+/// On iPhone the peripheral manager is only created by the first call into
+/// it and starts out "unknown"; anything asked of it before it powers on is
+/// silently dropped by CoreBluetooth — the advert "starts" and nothing goes
+/// on the air. So nothing is advertised or served before this says ready.
+Future<String?> ensurePeripheralReady({
+  Future<PeripheralReadinessState> Function()? state,
+  Duration timeout = const Duration(seconds: 5),
+  Duration step = const Duration(milliseconds: 200),
+}) async {
+  final read = state ?? UniversalBlePeripheral.getAvailabilityState;
+  final until = DateTime.now().add(timeout);
+  while (true) {
+    final s = await read();
+    switch (s) {
+      case PeripheralReadinessState.ready:
+        return null;
+      case PeripheralReadinessState.bluetoothOff:
+        return 'Bluetooth is off';
+      case PeripheralReadinessState.unauthorized:
+        // Android asks for its advertise permission inside startAdvertising,
+        // so this is the moment to try; a refusal shows up there.
+        return null;
+      case PeripheralReadinessState.unsupported:
+        return 'This phone can\'t be found over Bluetooth';
+      case PeripheralReadinessState.unknown:
+        if (DateTime.now().isAfter(until)) return 'Bluetooth isn\'t ready';
+        await Future<void>.delayed(step);
+    }
+  }
+}
+
+/// Waits for an advert just started to actually be on the air; false when
+/// the phone turned it down.
+Future<bool> confirmAdvertising({
+  Future<PeripheralAdvertisingState> Function()? state,
+  Duration timeout = const Duration(seconds: 3),
+  Duration step = const Duration(milliseconds: 200),
+}) async {
+  final read = state ?? UniversalBlePeripheral.getAdvertisingState;
+  final until = DateTime.now().add(timeout);
+  while (true) {
+    final s = await read();
+    if (s == PeripheralAdvertisingState.advertising) return true;
+    if (s == PeripheralAdvertisingState.error || DateTime.now().isAfter(until)) return false;
+    await Future<void>.delayed(step);
+  }
 }
 
 /// Shares the phone's one Bluetooth scan between everything that needs it.
@@ -132,12 +183,9 @@ class UniversalBleScanner implements BleScanner {
   Stream<BleSighting> scan({Duration duration = const Duration(seconds: 12)}) async* {
     await ensureBluetoothReady();
     final out = StreamController<BleSighting>();
-    final sub = UniversalBle.scanStream.listen((d) => out.add((
-          deviceId: d.deviceId,
-          name: d.name,
-          services: d.services,
-          rssi: d.rssi,
-        )));
+    final sub = UniversalBle.scanStream.listen(
+      (d) => out.add((deviceId: d.deviceId, name: d.name, services: d.services, rssi: d.rssi)),
+    );
     final stop = Timer(duration, out.close);
     var joined = false;
     try {
