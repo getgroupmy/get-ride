@@ -335,7 +335,10 @@ class BleHandshakeEngine {
       _peerAt = null;
       peerRssi.value = null;
     }
-    if (_seen.count == 0 && phase.value == BleHandshakePhase.nearby) phase.value = BleHandshakePhase.searching;
+    if (_seen.count == 0 &&
+        (phase.value == BleHandshakePhase.nearby || phase.value == BleHandshakePhase.detectedOffline)) {
+      phase.value = BleHandshakePhase.searching;
+    }
     if (!_seen.qualifies || _reporting || phase.value == BleHandshakePhase.countdown) return;
     if (_holdUntil != null && now.isBefore(_holdUntil!)) return;
     if (_lastReport != null && now.difference(_lastReport!) < bleReportEvery) return;
@@ -385,10 +388,14 @@ class BleHandshakeEngine {
         case BleProofResult.rateLimited:
           _holdUntil = _now().add(bleRateLimitBackoff);
         case BleProofResult.noMatch || BleProofResult.waiting:
-          break;
+          if (phase.value == BleHandshakePhase.detectedOffline) phase.value = BleHandshakePhase.nearby;
       }
     } catch (_) {
-      // A dropped connection: try again on a later tick.
+      // No signal: the other phone is here, but the server can't be asked.
+      // Say so (it is not a match), and try again on a later tick.
+      if (_running && !_disposed && _seen.qualifies && phase.value == BleHandshakePhase.nearby) {
+        phase.value = BleHandshakePhase.detectedOffline;
+      }
     } finally {
       _reporting = false;
     }

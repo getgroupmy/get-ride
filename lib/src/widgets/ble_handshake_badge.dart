@@ -137,7 +137,9 @@ class _BleHandshakeBadgeState extends ConsumerState<BleHandshakeBadge> {
         final icon = switch (phase) {
           BleHandshakePhase.matched || BleHandshakePhase.started => Icons.verified,
           BleHandshakePhase.unavailable || BleHandshakePhase.cancelled => Icons.bluetooth_disabled,
-          BleHandshakePhase.nearby || BleHandshakePhase.countdown => Icons.bluetooth_connected,
+          BleHandshakePhase.nearby ||
+          BleHandshakePhase.detectedOffline ||
+          BleHandshakePhase.countdown => Icons.bluetooth_connected,
           _ => Icons.bluetooth_searching,
         };
         return Semantics(
@@ -166,7 +168,9 @@ class _BleHandshakeBadgeState extends ConsumerState<BleHandshakeBadge> {
                             // "Driver nearby (~X m)": a hint from the signal, while in range.
                             final near =
                                 rssi != null &&
-                                (phase == BleHandshakePhase.nearby || phase == BleHandshakePhase.matched);
+                                (phase == BleHandshakePhase.nearby ||
+                                    phase == BleHandshakePhase.detectedOffline ||
+                                    phase == BleHandshakePhase.matched);
                             return Text(
                               near ? '$label · ${bleDistanceLabel(bleDistanceM(rssi))}' : label,
                               key: const ValueKey('ble-label'),
