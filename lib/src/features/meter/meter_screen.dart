@@ -9,7 +9,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../admin/screens/meterapp/meter_logic.dart';
+import '../../core/meter_console.dart';
 import '../../core/meter_trip.dart';
+import '../../core/vehicle_assignment.dart';
 import '../../core/escpos.dart';
 import '../../core/landscape_stage.dart';
 import '../../core/navigation_app.dart';
@@ -19,12 +21,15 @@ import '../../core/taxi_meter.dart';
 import '../../core/teksi_tariff.dart';
 import '../../data/geo_service.dart';
 import '../../data/obd/obd_session.dart';
+import '../../data/vehicle_assignment_repository.dart';
 import '../../core/printers.dart' show SavedPrinter;
 import '../../data/printer/printer_service.dart';
 import 'meter_receipt_pdf.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/map_sheet_layout.dart' show appBottomSheetTheme;
+import '../../widgets/net_image.dart';
+import '../partner/vehicle_picker.dart';
 import 'hail_destination_screen.dart';
 import 'landscape_stage.dart';
 import 'meter_leave_launcher.dart';
@@ -81,7 +86,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   MeterPeriod _period = MeterPeriod.day;
   bool _periodTouched = false;
   double _extra = 0;
-  int _tab = 0;
+
+  /// The console panel in front: `meter`, `trips` or `settings`.
+  String _tab = 'meter';
 
   ResolvedMeterProfile _card = resolveMeterProfile(const []);
 
@@ -107,6 +114,24 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   /// hire opens.
   bool _opening = false;
   List<MeterTrip> _trips = const [];
+
+  /// The car the meter is billing for (Expo `resolveMeterVehicleLaunch`):
+  /// its plate wins on the console, every record and every receipt.
+  AssignableVehicle? _vehicle;
+  bool _choosingVehicle = false;
+
+  /// A reader is saved on this phone, so a card that allows the vehicle bus
+  /// opens hires on it.
+  bool _readerSaved = false;
+
+  /// START was pressed before the sensor the hire opens on was there: the
+  /// popup is up, and the hire opens by itself when the sensor arrives.
+  bool _held = false;
+  bool _gatePopupOpen = false;
+
+  /// Bumped when what the START popup says may have changed.
+  final _gateTicks = ValueNotifier<int>(0);
+  bool _launchStarted = false;
 
   int _now() => ref.read(meterClockProvider)();
   MeterProfile get _profile => _card.profile;
@@ -140,6 +165,10 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     // The saved OBD-II reader, if any: a dongle serves one client, so the
     // meter joins the shared session rather than opening its own link.
     Future.microtask(() => ref.read(obdSessionProvider.notifier).ensureConnected());
+    ref.read(obdAdapterStoreProvider).current().then((a) {
+      if (mounted && a != null) setState(() => _readerSaved = true);
+    }, onError: (_) {});
+    Future.microtask(_bindVehicle);
     ref.read(meterTripsStoreProvider).load().then((t) {
       if (mounted) setState(() => _trips = t);
     });
@@ -148,7 +177,10 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Coming back to the foreground can drop the lock.
-    if (state == AppLifecycleState.resumed && _inFront) _orientation.lockLandscape();
+    if (state != AppLifecycleState.resumed) return;
+    if (_inFront) _orientation.lockLandscape();
+    // Back from the location settings the START popup sent the driver to.
+    if (_locationProblem != null) _startSensors();
   }
 
   /// Opens a settings screen over the console, in the app's own rotation,
@@ -188,16 +220,20 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   void _navigateToDestination() {
     final d = _dest;
     if (d == null) return;
-    launchUrl(navigationUri(ref.read(navigationAppProvider), d.latitude, d.longitude),
-        mode: LaunchMode.externalApplication);
+    launchUrl(
+      navigationUri(ref.read(navigationAppProvider), d.latitude, d.longitude),
+      mode: LaunchMode.externalApplication,
+    );
   }
 
-  double? get _quote =>
-      _dest == null ? null : hailEstimate(_rates, _dest!, multiplier: periodMultiplier(_period, _profile.nightMultiplier));
+  double? get _quote => _dest == null
+      ? null
+      : hailEstimate(_rates, _dest!, multiplier: periodMultiplier(_period, _profile.nightMultiplier));
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _gateTicks.dispose();
     _orientation.release();
     _tick?.cancel();
     _fixes?.cancel();
@@ -209,17 +245,26 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     final problem = await location.prepare();
     if (!mounted) return;
     setState(() => _locationProblem = problem);
+    _checkHeld();
     // Opened by the TEKSI flow's Start: the hire begins on arrival, through
     // the same gates as the START key.
-    if (widget.launch?.startHire == true && !_m.hasHire) unawaited(_start());
+    if (widget.launch?.startHire == true && !_m.hasHire && !_launchStarted) {
+      _launchStarted = true;
+      unawaited(_start());
+    }
     if (problem != null) return;
-    _fixes = location.fixes().listen((f) {
-      if (!mounted) return;
-      setState(() => _fix = f);
-      if (!_areaAsked) _lookUpArea(f);
-    }, onError: (Object e) {
-      if (mounted) setState(() => _locationProblem = 'Lost the location feed ($e).');
-    });
+    await _fixes?.cancel();
+    _fixes = location.fixes().listen(
+      (f) {
+        if (!mounted) return;
+        setState(() => _fix = f);
+        if (!_areaAsked) _lookUpArea(f);
+        _checkHeld();
+      },
+      onError: (Object e) {
+        if (mounted) setState(() => _locationProblem = 'Lost the location feed ($e).');
+      },
+    );
   }
 
   /// The rate card is resolved off the first fix's geography, and only while
@@ -230,10 +275,12 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     if (!mounted || area == null) return;
     setState(() => _area = area);
     // The launch decision resolves its card for where the meter last ran.
-    unawaited(ref
-        .read(meterLaunchStoreProvider)
-        .saveGeo((country: area.country, state: area.state, city: area.city, suburb: area.suburb))
-        .catchError((_) {}));
+    unawaited(
+      ref
+          .read(meterLaunchStoreProvider)
+          .saveGeo((country: area.country, state: area.state, city: area.city, suburb: area.suburb))
+          .catchError((_) {}),
+    );
     _resolveCard();
   }
 
@@ -250,8 +297,12 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     setState(() {
       _card = next;
       if (!_periodTouched) {
-        _period = isNightPeriod(DateTime.fromMillisecondsSinceEpoch(_now()),
-                startHour: next.profile.nightStartHour, endHour: next.profile.nightEndHour)
+        _period =
+            isNightPeriod(
+              DateTime.fromMillisecondsSinceEpoch(_now()),
+              startHour: next.profile.nightStartHour,
+              endHour: next.profile.nightEndHour,
+            )
             ? MeterPeriod.night
             : MeterPeriod.day;
       }
@@ -266,6 +317,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
 
   void _onTick() {
     if (!mounted) return;
+    _checkHeld();
     if (!_m.running) return setState(() {});
     // The card takes a sensor away at the source: a GPS-only card never
     // bills on the reader, an OBD-only card never on the phone's GPS.
@@ -292,17 +344,40 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
 
   bool get _obdLinked => ref.read(obdSessionProvider).linked;
 
-  String? get _startBlock =>
-      meterStartBlock(_profile, obdLinked: _obdLinked, locationProblem: _locationProblem);
+  /// Whether START may open a hire now, and on what (Expo `evaluateMeterStart`).
+  MeterStartGate get _gate {
+    final sources = allowedMeterSources(_profile.sourceMode);
+    final obd = ref.read(obdSessionProvider);
+    return evaluateMeterStart(
+      gpsAllowed: sources.gps,
+      obdAllowed: sources.obd,
+      obdLinked: obd.linked,
+      obdConnecting: obd.phase == ObdPhase.connecting || obd.phase == ObdPhase.handshaking,
+      readerSaved: _readerSaved || obd.adapter != null,
+      hasFix: _fix != null,
+      obdError: obd.error,
+      locationProblem: _locationProblem,
+    );
+  }
 
-  Future<void> _start() async {
-    final block = _startBlock;
-    if (block != null) return _explain('Cannot start the meter', block);
+  /// [onGps]: the driver chose GPS on a card that also bills on it, rather
+  /// than wait on a reader that is not answering.
+  Future<void> _start({bool onGps = false}) async {
     if (_m.hasHire) {
       // Resuming from a pause is never gated.
       setState(() => _m = startMeter(_m, _now()));
       return;
     }
+    if (_opening) return;
+    if (!onGps && !_gate.canStart) {
+      // The press is held: the sensor is asked for, and the hire opens by
+      // itself when it answers (or the driver gives up on the popup).
+      _held = true;
+      _retryReader();
+      if (!_gatePopupOpen) unawaited(_showGate());
+      return;
+    }
+    _held = false;
     // The pickup odometer is read before the fare opens: once the car moves,
     // a late answer is no longer the pickup reading.
     double? odometer;
@@ -318,7 +393,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     setState(() => _m = startMeter(_m, now));
     _pickup = _waypoint(now).withOdometer(odometer);
     _nameEnd(_pickup!, (named) {
-      if (_pickup?.at == named.at) _pickup = named;
+      if (mounted && _pickup?.at == named.at) setState(() => _pickup = named);
     });
   }
 
@@ -339,6 +414,168 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     return null;
   }
 
+  /// Opens a held hire as soon as the gate lets it, and keeps the popup's
+  /// words current while it waits.
+  void _checkHeld() {
+    if (!_held || !mounted) return;
+    if (_m.hasHire) {
+      _held = false;
+      return;
+    }
+    if (!_gate.canStart) {
+      _gateTicks.value++;
+      return;
+    }
+    _held = false;
+    if (_gatePopupOpen) _stageNav.currentState?.pop();
+    unawaited(_start());
+  }
+
+  /// Asks the saved reader to link (again), when the hire would open on it.
+  void _retryReader() {
+    final gate = _gate;
+    if (gate.opensOn != MeterStartSource.vehicle || gate.waiting) return;
+    final session = ref.read(obdSessionProvider.notifier);
+    final adapter = ref.read(obdSessionProvider).adapter;
+    unawaited(adapter != null ? session.connect(adapter) : session.ensureConnected());
+  }
+
+  /// The START popup (Expo's connect popup): what the hire is waiting on,
+  /// and what the driver can do about it. Kept current while it is up.
+  Future<void> _showGate() async {
+    _gatePopupOpen = true;
+    final action = await showDialog<String>(
+      context: _stageContext,
+      useRootNavigator: false,
+      builder: (c) => ValueListenableBuilder<int>(
+        valueListenable: _gateTicks,
+        builder: (_, _, _) {
+          final g = _gate;
+          final readerSaved = _readerSaved || ref.read(obdSessionProvider).adapter != null;
+          return AlertDialog(
+            key: const ValueKey('meter-start-gate'),
+            title: Row(
+              children: [
+                if (g.waiting) ...[
+                  const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(child: Text(g.title)),
+              ],
+            ),
+            content: Text(g.message),
+            actions: [
+              TextButton(
+                key: const ValueKey('meter-gate-cancel'),
+                onPressed: () => Navigator.pop(c, 'cancel'),
+                child: const Text('CANCEL'),
+              ),
+              if (g.opensOn == MeterStartSource.vehicle) ...[
+                if (readerSaved && !g.waiting)
+                  TextButton(
+                    key: const ValueKey('meter-gate-retry'),
+                    onPressed: () => Navigator.pop(c, 'retry'),
+                    child: const Text('RETRY'),
+                  ),
+                TextButton(
+                  key: const ValueKey('meter-gate-reader'),
+                  onPressed: () => Navigator.pop(c, 'reader'),
+                  child: Text(readerSaved ? 'READER SETTINGS' : 'ADD A READER'),
+                ),
+              ],
+              if (g.opensOn == MeterStartSource.gps && _locationProblem != null)
+                TextButton(
+                  key: const ValueKey('meter-gate-location'),
+                  onPressed: () => Navigator.pop(c, 'location'),
+                  child: const Text('LOCATION SETTINGS'),
+                ),
+              if (g.gpsFallback)
+                FilledButton(
+                  key: const ValueKey('meter-gate-gps'),
+                  onPressed: () => Navigator.pop(c, 'gps'),
+                  child: const Text('START ON GPS'),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+    _gatePopupOpen = false;
+    if (!mounted) return;
+    switch (action) {
+      case 'retry':
+        _retryReader();
+        if (_held) unawaited(_showGate());
+        return;
+      case null:
+        // Popped by the hire opening itself (or the back key).
+        return;
+    }
+    _held = false;
+    switch (action) {
+      case 'gps':
+        await _start(onGps: true);
+      case 'reader':
+        await _openSettings('/meter/reader');
+        _retryReader();
+      case 'location':
+        await ref.read(meterLocationProvider).openSettings();
+    }
+  }
+
+  // ---- Vehicle --------------------------------------------------------------------
+
+  /// Binds the console to the car this driver already holds, or asks for
+  /// one; an unreadable fleet asks nothing (Expo `resolveMeterVehicleLaunch`).
+  Future<void> _bindVehicle() async {
+    final fleet = await ref.read(meterFleetProvider.future);
+    if (!mounted) return;
+    final launch = resolveMeterVehicleLaunch(fleet);
+    switch (launch.action) {
+      case MeterVehicleAction.bind:
+        setState(() => _vehicle = launch.vehicle);
+      case MeterVehicleAction.ask:
+        await _chooseVehicle(fleet);
+      case MeterVehicleAction.none:
+      case MeterVehicleAction.unknown:
+        break;
+    }
+  }
+
+  /// The plate chip: picks (and claims) the car the meter bills for. The
+  /// picker is dismissible: a fleet not in the app yet keeps its meter.
+  Future<void> _chooseVehicle([List<AssignableVehicle>? list]) async {
+    if (_choosingVehicle || _m.hasHire || _ending) return;
+    _choosingVehicle = true;
+    try {
+      final fleet = list ?? await ref.read(meterFleetProvider.future);
+      if (!mounted) return;
+      if (fleet == null) {
+        return _explain('Vehicle', 'Your vehicles could not be read, so the meter runs unassigned for now.');
+      }
+      final picked = await showModalBottomSheet<AssignableVehicle>(
+        context: _stageContext,
+        isScrollControlled: true,
+        backgroundColor: _panel,
+        builder: (_) => VehiclePickerSheet(vehicles: fleet),
+      );
+      if (picked == null || !mounted) return;
+      if (!picked.inUseByMe) {
+        try {
+          await ref.read(meterClaimVehicleProvider)(picked.id);
+        } catch (e) {
+          if (mounted) _explain('Could not take ${picked.plate}', claimVehicleErrorMessage(e));
+          return;
+        } finally {
+          ref.invalidate(assignableVehiclesProvider);
+        }
+      }
+      if (mounted) setState(() => _vehicle = picked);
+    } finally {
+      _choosingVehicle = false;
+    }
+  }
+
   void _pause() => setState(() => _m = pauseMeter(_m));
 
   /// END stops the meter at the instant it is pressed; the declaration
@@ -355,11 +592,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       enableDrag: false,
       isScrollControlled: true,
       backgroundColor: _panel,
-      builder: (_) => _DeclarationSheet(
-        initialCharges: _extra,
-        fareText: _money(_fareNow),
-        step: _profile.extraStep,
-      ),
+      builder: (_) => _DeclarationSheet(initialCharges: _extra, fareText: _money(_fareNow), step: _profile.extraStep),
     );
     if (!mounted) return;
     if (details == null) {
@@ -375,7 +608,6 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   }
 
   Future<void> _record(MeterTripDetails details, int endedAt) async {
-    final partner = ref.read(partnerProvider).value;
     final dropoff = _waypoint(endedAt);
     final multiplier = periodMultiplier(_period, _profile.nightMultiplier);
     final trip = buildMeterTrip(
@@ -390,8 +622,8 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       nightMultiplier: _profile.nightMultiplier,
       currency: _currency,
       cardSurcharge: meterExtraSurcharge(_profile, luggage: details.luggage, passengers: details.pax),
-      plate: partner?.plate,
-      driver: partner?.name,
+      plate: _plate,
+      driver: _driver.name,
       pickup: _pickup,
       dropoff: dropoff,
       destination: _dest?.name,
@@ -456,18 +688,24 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       builder: (c) => AlertDialog(
         key: const ValueKey('meter-leave'),
         title: const Text('Leave the meter?'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (final k in [keys.passenger, keys.ehailing])
-            ListTile(
-              key: ValueKey('meter-leave-${k.key}'),
-              leading: Icon(k.key == 'passenger'
-                  ? (k.action == 'exit' ? Icons.power_settings_new : Icons.person_outline)
-                  : (k.action == 'link' ? Icons.open_in_new : Icons.local_taxi_outlined)),
-              title: Text(k.label),
-              subtitle: Text(k.hint),
-              onTap: () => Navigator.pop(c, k),
-            ),
-        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final k in [keys.passenger, keys.ehailing])
+              ListTile(
+                key: ValueKey('meter-leave-${k.key}'),
+                leading: Icon(
+                  k.key == 'passenger'
+                      ? (k.action == 'exit' ? Icons.power_settings_new : Icons.person_outline)
+                      : (k.action == 'link' ? Icons.open_in_new : Icons.local_taxi_outlined),
+                ),
+                title: Text(k.label),
+                subtitle: Text(k.hint),
+                onTap: () => Navigator.pop(c, k),
+              ),
+          ],
+        ),
         actions: [
           TextButton(
             key: const ValueKey('meter-leave-stay'),
@@ -497,29 +735,26 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   }
 
   void _explain(String title, String message) => showDialog<void>(
-        context: _stageContext,
-        useRootNavigator: false,
-        builder: (c) => AlertDialog(
-          title: Text(title),
-          content: Text(message),
-          actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
-        ),
-      );
+    context: _stageContext,
+    useRootNavigator: false,
+    builder: (c) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK'))],
+    ),
+  );
 
   /// [finishing]: the receipt of the hire just ended. It stays up until it
   /// is printed or the driver presses Done (Expo keeps the fare-due card
   /// until the receipt is handled); a receipt reopened from the log closes
   /// like any dialog.
   Future<void> _showReceipt(MeterTrip trip, {bool finishing = false}) => showDialog<void>(
-        context: _stageContext,
-        useRootNavigator: false,
-        barrierDismissible: !finishing,
-        builder: (_) => _ReceiptDialog(
-          trip: trip,
-          finishing: finishing,
-          onSetUpPrinter: () => _openSettings('/meter/printer'),
-        ),
-      );
+    context: _stageContext,
+    useRootNavigator: false,
+    barrierDismissible: !finishing,
+    builder: (_) =>
+        _ReceiptDialog(trip: trip, finishing: finishing, onSetUpPrinter: () => _openSettings('/meter/printer')),
+  );
 
   // ---- Derived -------------------------------------------------------------------
 
@@ -530,6 +765,15 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
 
   String _money(double n) => '$_currency ${n.toStringAsFixed(2)}';
 
+  MeterDriverIdentity get _driver => ref.read(meterDriverProvider).value ?? const MeterDriverIdentity();
+
+  /// The bound car's plate, else the permit's, else the partner row's.
+  String? get _plate => resolveMeterPlate(
+    bound: _vehicle?.plate,
+    permit: _driver.permitPlate,
+    partner: ref.read(partnerProvider).value?.plate,
+  );
+
   String get _rateLabel => tariffRateLabel(_card, _tariff);
 
   double get _fareNow => meterFare(_m, _rates, multiplier: periodMultiplier(_period, _profile.nightMultiplier));
@@ -537,12 +781,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   String get _connection {
     final sources = allowedMeterSources(_profile.sourceMode);
     final gps = _locationProblem == null && _freshFix != null;
-    final label = describeMeterConnection(
-      gps: gps,
-      obd: _obdLinked,
-      gpsAllowed: sources.gps,
-      obdAllowed: sources.obd,
-    );
+    final label = describeMeterConnection(gps: gps, obd: _obdLinked, gpsAllowed: sources.gps, obdAllowed: sources.obd);
     final acc = _freshFix?.accuracyM;
     return gps && sources.gps && acc != null ? '$label · ±${acc.round()} m' : label;
   }
@@ -552,8 +791,12 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   @override
   Widget build(BuildContext context) {
     ref.listen(meterCardsProvider, (_, _) => _resolveCard());
-    // Keeps the partner loaded: the plate and driver go on every receipt.
+    ref.listen(obdSessionProvider, (_, _) => _checkHeld());
+    // Keeps the partner, the permit and the fleet loaded: the plate and the
+    // driver go on every receipt.
     ref.watch(partnerProvider);
+    ref.watch(meterDriverProvider);
+    ref.watch(meterFleetProvider);
     final obd = ref.watch(obdSessionProvider);
     final printer = ref.watch(currentPrinterProvider).value;
     final locked = _m.hasHire || _ending;
@@ -564,7 +807,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        if (_tab != 0) return setState(() => _tab = 0);
+        if (_tab != 'meter') return setState(() => _tab = 'meter');
         if (locked) {
           ScaffoldMessenger.of(context)
             ..hideCurrentSnackBar()
@@ -602,69 +845,244 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   }
 
   Widget _scaffold(ObdSessionState obd, SavedPrinter? printer) => Scaffold(
-        appBar: AppBar(
-          backgroundColor: _bg,
-          toolbarHeight: 44,
-          automaticallyImplyLeading: false,
-          leading: IconButton(
-            tooltip: 'Back',
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.maybePop(context),
+    appBar: AppBar(
+      backgroundColor: _bg,
+      toolbarHeight: 44,
+      automaticallyImplyLeading: false,
+      leading: IconButton(
+        tooltip: 'Back',
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () => Navigator.maybePop(context),
+      ),
+      titleSpacing: 0,
+      title: _driverStrip(),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: Center(
+            child: Text(_connection, style: const TextStyle(color: _muted, fontSize: 12)),
           ),
-          title: const Text('Meter Digital', style: TextStyle(fontSize: 17)),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Center(child: Text(_connection, style: const TextStyle(color: _muted, fontSize: 12))),
+        ),
+        if (_access('printer').show)
+          IconButton(
+            key: const ValueKey('meter-panel-printer'),
+            tooltip: printer == null
+                ? 'No receipt printer set up: receipts use the phone\'s print service'
+                : 'Printing to ${printer.name}',
+            icon: Icon(
+              printer == null ? Icons.print_disabled_outlined : Icons.print_outlined,
+              color: printer == null ? _muted : _lcd,
             ),
-            if (_access('printer').show)
-              IconButton(
-                key: const ValueKey('meter-panel-printer'),
-                tooltip: printer == null
-                    ? 'No receipt printer set up: receipts use the phone\'s print service'
-                    : 'Printing to ${printer.name}',
-                icon: Icon(printer == null ? Icons.print_disabled_outlined : Icons.print_outlined,
-                    color: printer == null ? _muted : _lcd),
-                onPressed: _access('printer').tap ? () => _openSettings('/meter/printer') : null,
+            onPressed: _access('printer').tap ? () => _openSettings('/meter/printer') : null,
+          ),
+        if (obd.linked && _access('obd').show)
+          IconButton(
+            tooltip: 'Vehicle information',
+            icon: const Icon(Icons.directions_car_outlined, color: _muted),
+            onPressed: _access('obd').tap ? () => _openSettings('/meter/vehicle') : null,
+          ),
+        if (_access('obd').show)
+          IconButton(
+            key: const ValueKey('meter-panel-obd'),
+            tooltip: 'OBD-II reader',
+            icon: Icon(Icons.settings_input_component, color: obd.linked ? _lcd : _muted),
+            onPressed: _access('obd').tap ? () => _openSettings('/meter/reader') : null,
+          ),
+      ],
+    ),
+    body: SafeArea(
+      top: false,
+      child: Row(
+        children: [
+          if (_rail.length > 1)
+            NavigationRail(
+              backgroundColor: _panel,
+              selectedIndex: _rail.indexOf(_shownTab),
+              labelType: NavigationRailLabelType.all,
+              minWidth: 64,
+              onDestinationSelected: (i) => setState(() => _tab = _rail[i]),
+              destinations: [
+                for (final id in _rail)
+                  NavigationRailDestination(
+                    icon: Icon(_railIcons[id]),
+                    label: Text(_railLabels[id]!, key: ValueKey('meter-tab-$id')),
+                    disabled: !_access(id).tap,
+                  ),
+              ],
+            ),
+          Expanded(
+            child: switch (_shownTab) {
+              'trips' => _tripLog(),
+              'settings' => _settingsPanel(),
+              _ => _console(),
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+
+  /// Who is driving and in which car (Expo's DRIVER panel). The plate chip
+  /// is the vehicle control: SELECT while unbound, the picker on tap.
+  Widget _driverStrip() {
+    final driver = ref.watch(meterDriverProvider).value ?? const MeterDriverIdentity();
+    final v = _vehicle;
+    return Row(
+      children: [
+        NetAvatar(
+          key: const ValueKey('meter-driver-photo'),
+          url: driver.photoUrl,
+          radius: 15,
+          backgroundColor: _lcdDim,
+          fallback: const Icon(Icons.person, color: _muted, size: 18),
+        ),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                (driver.name ?? unknownDriverName).toUpperCase(),
+                key: const ValueKey('meter-driver-name'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
               ),
-            if (obd.linked && _access('obd').show)
-              IconButton(
-                tooltip: 'Vehicle information',
-                icon: const Icon(Icons.directions_car_outlined, color: _muted),
-                onPressed: _access('obd').tap ? () => _openSettings('/meter/vehicle') : null,
+              if (driver.licence != null)
+                Text(
+                  driver.licence!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted, fontSize: 11),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        ActionChip(
+          key: const ValueKey('meter-plate'),
+          visualDensity: VisualDensity.compact,
+          avatar: Icon(v == null ? Icons.add : Icons.directions_car, size: 16, color: v == null ? _amber : _lcd),
+          label: Text(
+            v == null ? 'SELECT' : (v.plate.isEmpty ? v.title : v.plate),
+            style: TextStyle(color: v == null ? _amber : _lcd, fontWeight: FontWeight.w700),
+          ),
+          tooltip: v == null ? 'Select the vehicle you are driving' : 'Change vehicle',
+          // The car is frozen for the life of a hire, like its card.
+          onPressed: _m.hasHire || _ending ? null : () => _chooseVehicle(),
+        ),
+      ],
+    );
+  }
+
+  /// The two facts that belong to the moment the passenger got in: the
+  /// odometer the cluster showed, and where it was.
+  String _pickupText(MeterWaypoint p) {
+    final km = p.odometerKm;
+    return [
+      'PICKUP',
+      if (km != null) 'ODO ${km.toStringAsFixed(0)} km' else if (meterReadsOdometer(_profile)) 'ODO —',
+      p.label,
+    ].join(' · ');
+  }
+
+  /// SETTINGS (Expo's settings panel): the card the meter bills on, charge by
+  /// charge, and what each sensor is doing.
+  Widget _settingsPanel() {
+    final operator = !tariffKeysApply(_card);
+    final sources = allowedMeterSources(_profile.sourceMode);
+    final obd = ref.watch(obdSessionProvider);
+    final fix = _freshFix;
+    final String gps;
+    if (!sources.gps) {
+      gps = 'Not used: this rate card bills on the vehicle only';
+    } else if (_locationProblem != null) {
+      gps = _locationProblem!;
+    } else if (fix == null) {
+      gps = _fix == null ? 'Waiting for a fix…' : 'Fix lost, waiting…';
+    } else {
+      gps = fix.accuracyM == null ? 'Fix' : 'Fix ±${fix.accuracyM!.round()} m';
+    }
+    final String reader;
+    if (!sources.obd) {
+      reader = 'Not used: this rate card bills on GPS only';
+    } else if (obd.linked) {
+      reader = ['Linked', if (obd.device != null) obd.device!, if (obd.protocol != null) obd.protocol!].join(' · ');
+    } else if (obd.phase == ObdPhase.connecting || obd.phase == ObdPhase.handshaking) {
+      reader = 'Connecting…';
+    } else if (obd.adapter == null && !_readerSaved) {
+      reader = 'No reader saved on this phone';
+    } else {
+      reader = obd.error ?? 'Not connected';
+    }
+    Widget row(IconData icon, String label, String value, {Key? key}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: _muted, size: 18),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 72,
+            child: Text(label, style: const TextStyle(color: _muted)),
+          ),
+          Expanded(child: Text(value, key: key)),
+        ],
+      ),
+    );
+    return ListView(
+      padding: const EdgeInsets.all(6),
+      children: [
+        _Panel(
+          children: [
+            const Text(
+              'RATE CARD',
+              style: TextStyle(color: _muted, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              operator ? (_profile.label ?? 'Operator rate card') : 'Built-in TEKSI tariff · $_rateLabel',
+              key: const ValueKey('meter-settings-card'),
+              style: const TextStyle(color: _lcd, fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            if (operator)
+              const Text(
+                "Set by your operator. It replaces the OLD / NEW keys, and a hire keeps the card it opened on.",
+                style: TextStyle(color: _muted, fontSize: 12),
               ),
-            if (_access('obd').show)
-              IconButton(
-                key: const ValueKey('meter-panel-obd'),
-                tooltip: 'OBD-II reader',
-                icon: Icon(Icons.settings_input_component, color: obd.linked ? _lcd : _muted),
-                onPressed: _access('obd').tap ? () => _openSettings('/meter/reader') : null,
-              ),
+            const SizedBox(height: 8),
+            for (final l in describeMeterRates(_profile.copyWith(rates: _rates)))
+              Text('• $l', style: const TextStyle(fontSize: 13)),
           ],
         ),
-        body: SafeArea(
-          top: false,
-          child: Row(children: [
-            if (_access('trips').show)
-              NavigationRail(
-                backgroundColor: _panel,
-                selectedIndex: _tab,
-                labelType: NavigationRailLabelType.all,
-                minWidth: 64,
-                onDestinationSelected: (i) => setState(() => _tab = i),
-                destinations: [
-                  const NavigationRailDestination(icon: Icon(Icons.speed), label: Text('Meter')),
-                  NavigationRailDestination(
-                    icon: const Icon(Icons.receipt_long_outlined),
-                    label: const Text('Trip log'),
-                    disabled: !_access('trips').tap,
-                  ),
-                ],
-              ),
-            Expanded(child: _tab == 0 || !_access('trips').tap ? _console() : _tripLog()),
-          ]),
+        _Panel(
+          children: [
+            const Text(
+              'SENSORS',
+              style: TextStyle(color: _muted, fontWeight: FontWeight.w600),
+            ),
+            row(Icons.gps_fixed, 'GPS', gps, key: const ValueKey('meter-settings-gps')),
+            row(Icons.settings_input_component, 'OBD-II', reader, key: const ValueKey('meter-settings-obd')),
+            row(Icons.directions_car_outlined, 'Vehicle', _vehicle == null ? 'Not selected' : _vehicle!.plate),
+          ],
         ),
-      );
+      ],
+    );
+  }
+
+  static const _railLabels = {'meter': 'Meter', 'trips': 'Trip log', 'settings': 'Settings'};
+  static const _railIcons = {'meter': Icons.speed, 'trips': Icons.receipt_long_outlined, 'settings': Icons.tune};
+
+  /// The panels on the rail: the meter is pinned on, the rest are the card's.
+  List<String> get _rail => [
+    'meter',
+    for (final id in ['trips', 'settings'])
+      if (_access(id).show) id,
+  ];
+
+  /// A panel the card has since hidden or locked falls back to the meter.
+  String get _shownTab => _rail.contains(_tab) && _access(_tab).tap ? _tab : 'meter';
 
   /// The console is one fixed landscape instrument, laid out at
   /// [meterConsoleLayout] and scaled to the space it is given, so it never
@@ -676,222 +1094,293 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     final status = _m.running
         ? 'HIRED'
         : _m.hasHire
-            ? 'STOPPED'
-            : 'FOR HIRE';
-    final fareBox = _Panel(children: [
-      Row(children: [
-        Text(_m.running ? '$status · ${describeMeterSource(_m.source)}' : status,
-            style: TextStyle(color: _m.running ? _amber : _muted, fontWeight: FontWeight.w700)),
-        const Spacer(),
-        Flexible(
-          child: Text(
-            _rateLabel,
+        ? 'STOPPED'
+        : 'FOR HIRE';
+    final fareBox = _Panel(
+      children: [
+        Row(
+          children: [
+            Text(
+              _m.running ? '$status · ${describeMeterSource(_m.source)}' : status,
+              style: TextStyle(color: _m.running ? _amber : _muted, fontWeight: FontWeight.w700),
+            ),
+            const Spacer(),
+            Flexible(
+              child: Text(
+                _rateLabel,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _muted, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _Readout(label: 'FARE', value: total.toStringAsFixed(2), unit: _currency, large: true),
+        Text(_extra > 0 ? 'incl. extras ${_money(_extra)}' : ' ', style: const TextStyle(color: _muted, fontSize: 12)),
+        if (_m.hasHire && _pickup != null)
+          Text(
+            _pickupText(_pickup!),
+            key: const ValueKey('meter-pickup'),
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: _muted, fontSize: 12),
           ),
+        _destinationRow(),
+      ],
+    );
+    final readouts = _Panel(
+      spread: true,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _Readout(label: 'DISTANCE', value: formatMeterKm(_m.distanceM), unit: 'km'),
+            ),
+            Expanded(
+              child: _Readout(label: 'TIME', value: formatMeterClock(_m.elapsedMs)),
+            ),
+          ],
         ),
-      ]),
-      const SizedBox(height: 8),
-      _Readout(label: 'FARE', value: total.toStringAsFixed(2), unit: _currency, large: true),
-      Text(_extra > 0 ? 'incl. extras ${_money(_extra)}' : ' ', style: const TextStyle(color: _muted, fontSize: 12)),
-      _destinationRow(),
-    ]);
-    final readouts = _Panel(spread: true, children: [
-      Row(children: [
-        Expanded(child: _Readout(label: 'DISTANCE', value: formatMeterKm(_m.distanceM), unit: 'km')),
-        Expanded(child: _Readout(label: 'TIME', value: formatMeterClock(_m.elapsedMs))),
-      ]),
-      Row(children: [
-        Expanded(child: _Readout(label: 'WAITING', value: formatMeterClock(_m.waitingMs), small: true)),
-        Expanded(
-          child: _Readout(label: 'SPEED', value: _m.speedKmh.toStringAsFixed(0), unit: 'km/h', small: true),
+        Row(
+          children: [
+            Expanded(
+              child: _Readout(label: 'WAITING', value: formatMeterClock(_m.waitingMs), small: true),
+            ),
+            Expanded(
+              child: _Readout(label: 'SPEED', value: _m.speedKmh.toStringAsFixed(0), unit: 'km/h', small: true),
+            ),
+          ],
         ),
-      ]),
-    ]);
-    return LayoutBuilder(builder: (context, c) {
-      final layout = meterConsoleLayout(c.biggest);
-      return Padding(
-        padding: const EdgeInsets.all(6),
-        child: FittedBox(
-          child: SizedBox.fromSize(
-            size: layout,
-            child: MediaQuery.withNoTextScaling(
-              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Expanded(
-                  flex: 11,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [fareBox, Expanded(child: readouts)],
-                  ),
+      ],
+    );
+    return LayoutBuilder(
+      builder: (context, c) {
+        final layout = meterConsoleLayout(c.biggest);
+        return Padding(
+          padding: const EdgeInsets.all(6),
+          child: FittedBox(
+            child: SizedBox.fromSize(
+              size: layout,
+              child: MediaQuery.withNoTextScaling(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: 11,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          fareBox,
+                          Expanded(child: readouts),
+                        ],
+                      ),
+                    ),
+                    Expanded(flex: 8, child: _keys()),
+                  ],
                 ),
-                Expanded(flex: 8, child: _keys()),
-              ]),
+              ),
             ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   }
 
   Widget _destinationRow() {
     final d = _dest, quote = _quote;
-    return Row(children: [
-      const Icon(Icons.flag_outlined, color: _muted, size: 16),
-      const SizedBox(width: 6),
-      Expanded(
-        child: Text(
-          d == null
-              ? 'NO DESTINATION'
-              : [d.name, describeHailRoute(d), if (quote != null) 'est. ${_money(quote)}'].join(' · '),
-          key: const ValueKey('meter-destination-text'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: d == null ? _muted : _amber, fontSize: 12),
+    return Row(
+      children: [
+        const Icon(Icons.flag_outlined, color: _muted, size: 16),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            d == null
+                ? 'NO DESTINATION'
+                : [d.name, describeHailRoute(d), if (quote != null) 'est. ${_money(quote)}'].join(' · '),
+            key: const ValueKey('meter-destination-text'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: d == null ? _muted : _amber, fontSize: 12),
+          ),
         ),
-      ),
-      if (d != null)
-        IconButton(
-          tooltip: 'Navigate',
-          visualDensity: VisualDensity.compact,
-          icon: const Icon(Icons.navigation_outlined, color: _muted, size: 18),
-          onPressed: _navigateToDestination,
+        if (d != null)
+          IconButton(
+            tooltip: 'Navigate',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.navigation_outlined, color: _muted, size: 18),
+            onPressed: _navigateToDestination,
+          ),
+        TextButton(
+          key: const ValueKey('meter-destination'),
+          onPressed: _ending ? null : _setDestination,
+          child: Text(d == null ? 'SET' : 'CHANGE'),
         ),
-      TextButton(
-        key: const ValueKey('meter-destination'),
-        onPressed: _ending ? null : _setDestination,
-        child: Text(d == null ? 'SET' : 'CHANGE'),
-      ),
-    ]);
+      ],
+    );
   }
 
   Widget _keys() {
-    final block = _startBlock;
-    return _Panel(children: [
-      if (block != null)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Text(block,
-              maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _amber, fontSize: 12)),
-        ),
-      // The built-in card's two tariffs; an operator's card names its own
-      // rates. Frozen for the life of a hire.
-      if (tariffKeysApply(_card)) ...[
-        SegmentedButton<TeksiTariff>(
-          key: const ValueKey('meter-tariff'),
-          showSelectedIcon: false,
+    final gate = _gate;
+    final gated = !_m.hasHire && !gate.canStart;
+    return _Panel(
+      children: [
+        if (gated)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              '${gate.title} ${gate.message}',
+              key: const ValueKey('meter-start-gate-note'),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _amber, fontSize: 12),
+            ),
+          ),
+        // The built-in card's two tariffs; an operator's card names its own
+        // rates. Frozen for the life of a hire.
+        if (tariffKeysApply(_card)) ...[
+          SegmentedButton<TeksiTariff>(
+            key: const ValueKey('meter-tariff'),
+            showSelectedIcon: false,
+            segments: [for (final t in TeksiTariff.values.reversed) ButtonSegment(value: t, label: Text(t.keyLabel))],
+            selected: {_tariff},
+            onSelectionChanged: _m.hasHire ? null : (s) => setState(() => _tariff = s.first),
+          ),
+          const SizedBox(height: 8),
+        ],
+        SegmentedButton<MeterPeriod>(
           segments: [
-            for (final t in TeksiTariff.values.reversed) ButtonSegment(value: t, label: Text(t.keyLabel)),
+            const ButtonSegment(value: MeterPeriod.day, label: Text('DAY'), icon: Icon(Icons.wb_sunny_outlined)),
+            ButtonSegment(
+              value: MeterPeriod.night,
+              label: Text('NIGHT +${((_profile.nightMultiplier - 1) * 100).round()}%'),
+              icon: const Icon(Icons.nightlight_outlined),
+            ),
           ],
-          selected: {_tariff},
-          onSelectionChanged: _m.hasHire ? null : (s) => setState(() => _tariff = s.first),
+          selected: {_period},
+          onSelectionChanged: (s) => setState(() {
+            _period = s.first;
+            _periodTouched = true;
+          }),
         ),
-        const SizedBox(height: 8),
-      ],
-      SegmentedButton<MeterPeriod>(
-        segments: [
-          const ButtonSegment(value: MeterPeriod.day, label: Text('DAY'), icon: Icon(Icons.wb_sunny_outlined)),
-          ButtonSegment(
-            value: MeterPeriod.night,
-            label: Text('NIGHT +${((_profile.nightMultiplier - 1) * 100).round()}%'),
-            icon: const Icon(Icons.nightlight_outlined),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const Text(
+              'EXTRA',
+              style: TextStyle(color: _muted, fontWeight: FontWeight.w600),
+            ),
+            const Spacer(),
+            IconButton.filledTonal(
+              tooltip: 'Less extra',
+              onPressed: _extra > 0
+                  ? () => setState(
+                      () => _extra = adjustExtra(_extra, -1, step: _profile.extraStep, max: _profile.maxExtra),
+                    )
+                  : null,
+              icon: const Icon(Icons.remove),
+            ),
+            SizedBox(
+              width: 96,
+              child: Text(
+                _extra.toStringAsFixed(2),
+                textAlign: TextAlign.center,
+                style: _digits(22, _extra > 0 ? _lcd : _lcdDim),
+              ),
+            ),
+            IconButton.filledTonal(
+              tooltip: 'More extra',
+              onPressed: () =>
+                  setState(() => _extra = adjustExtra(_extra, 1, step: _profile.extraStep, max: _profile.maxExtra)),
+              icon: const Icon(Icons.add),
+            ),
+          ],
+        ),
+        const Spacer(),
+        SizedBox(
+          height: 56,
+          child: _m.running
+              ? FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: _amber, foregroundColor: Colors.black),
+                  onPressed: _pause,
+                  icon: const Icon(Icons.pause),
+                  label: const Text('PAUSE', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+                )
+              : FilledButton.icon(
+                  // Greyed while the hire has nothing to open on; a press still
+                  // raises the popup and holds the hire for the sensor.
+                  style: FilledButton.styleFrom(
+                    backgroundColor: gated ? _lcdDim : _lcd,
+                    foregroundColor: gated ? Colors.white70 : Colors.black,
+                  ),
+                  onPressed: _ending || _opening ? null : () => _start(),
+                  icon: const Icon(Icons.play_arrow),
+                  label: Text(
+                    _opening ? 'READING ODOMETER…' : (_m.hasHire ? 'RESUME' : 'START'),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  ),
+                ),
+        ),
+        if (_m.hasHire) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 48,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+              onPressed: _ending ? null : _end,
+              icon: const Icon(Icons.stop),
+              label: const Text('END', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            ),
           ),
         ],
-        selected: {_period},
-        onSelectionChanged: (s) => setState(() {
-          _period = s.first;
-          _periodTouched = true;
-        }),
-      ),
-      const SizedBox(height: 12),
-      Row(children: [
-        const Text('EXTRA', style: TextStyle(color: _muted, fontWeight: FontWeight.w600)),
-        const Spacer(),
-        IconButton.filledTonal(
-          tooltip: 'Less extra',
-          onPressed: _extra > 0
-              ? () => setState(() => _extra = adjustExtra(_extra, -1, step: _profile.extraStep, max: _profile.maxExtra))
-              : null,
-          icon: const Icon(Icons.remove),
-        ),
-        SizedBox(
-          width: 96,
-          child: Text(_extra.toStringAsFixed(2),
-              textAlign: TextAlign.center, style: _digits(22, _extra > 0 ? _lcd : _lcdDim)),
-        ),
-        IconButton.filledTonal(
-          tooltip: 'More extra',
-          onPressed: () =>
-              setState(() => _extra = adjustExtra(_extra, 1, step: _profile.extraStep, max: _profile.maxExtra)),
-          icon: const Icon(Icons.add),
-        ),
-      ]),
-      const Spacer(),
-      SizedBox(
-        height: 56,
-        child: _m.running
-            ? FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: _amber, foregroundColor: Colors.black),
-                onPressed: _pause,
-                icon: const Icon(Icons.pause),
-                label: const Text('PAUSE', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              )
-            : FilledButton.icon(
-                style: FilledButton.styleFrom(backgroundColor: _lcd, foregroundColor: Colors.black),
-                onPressed: _ending || _opening ? null : _start,
-                icon: const Icon(Icons.play_arrow),
-                label: Text(_opening ? 'READING ODOMETER…' : (_m.hasHire ? 'RESUME' : 'START'),
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              ),
-      ),
-      if (_m.hasHire) ...[
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 48,
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
-            onPressed: _ending ? null : _end,
-            icon: const Icon(Icons.stop),
-            label: const Text('END', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-          ),
-        ),
       ],
-    ]);
+    );
   }
 
   Widget _tripLog() {
     final s = summarizeMeterTrips(_trips);
     if (_trips.isEmpty) {
-      return const Center(child: Text('No hires on this device yet.', style: TextStyle(color: _muted)));
+      return const Center(
+        child: Text('No hires on this device yet.', style: TextStyle(color: _muted)),
+      );
     }
-    return ListView(padding: const EdgeInsets.all(12), children: [
-      _Panel(children: [
-        Text('${s.count} hire${s.count == 1 ? '' : 's'} · ${formatMeterDistance(s.distanceM)}',
-            style: const TextStyle(color: _muted)),
-        Text(_money(s.total), style: _digits(28, _lcd)),
-      ]),
-      for (final t in _trips)
-        Card(
-          color: _panel,
-          child: ListTile(
-            title: Text('${formatDashDate(t.endedAt)} · ${formatDashTime(t.startedAt)}–${formatDashTime(t.endedAt)}'),
-            subtitle: Text([
-              formatMeterDistance(t.distanceM),
-              if (t.pickup != null && t.dropoff != null)
-                '${t.pickup!.label} → ${t.dropoff!.label}'
-              else if (t.destination != null)
-                '→ ${t.destination}',
-            ].join(' · ')),
-            trailing: Text('${t.currency} ${t.total.toStringAsFixed(2)}', style: _digits(16, _lcd)),
-            onTap: () => _showReceipt(t),
-          ),
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        _Panel(
+          children: [
+            Text(
+              '${s.count} hire${s.count == 1 ? '' : 's'} · ${formatMeterDistance(s.distanceM)}',
+              style: const TextStyle(color: _muted),
+            ),
+            Text(_money(s.total), style: _digits(28, _lcd)),
+          ],
         ),
-      const SizedBox(height: 8),
-      BusyButton.text(
-        onPressed: _m.hasHire ? null : _clearLog,
-        icon: const Icon(Icons.delete_outline),
-        child: const Text('Clear the trip log'),
-      ),
-    ]);
+        for (final t in _trips)
+          Card(
+            color: _panel,
+            child: ListTile(
+              title: Text('${formatDashDate(t.endedAt)} · ${formatDashTime(t.startedAt)}–${formatDashTime(t.endedAt)}'),
+              subtitle: Text(
+                [
+                  formatMeterDistance(t.distanceM),
+                  if (t.pickup != null && t.dropoff != null)
+                    '${t.pickup!.label} → ${t.dropoff!.label}'
+                  else if (t.destination != null)
+                    '→ ${t.destination}',
+                ].join(' · '),
+              ),
+              trailing: Text('${t.currency} ${t.total.toStringAsFixed(2)}', style: _digits(16, _lcd)),
+              onTap: () => _showReceipt(t),
+            ),
+          ),
+        const SizedBox(height: 8),
+        BusyButton.text(
+          onPressed: _m.hasHire ? null : _clearLog,
+          icon: const Icon(Icons.delete_outline),
+          child: const Text('Clear the trip log'),
+        ),
+      ],
+    );
   }
 
   Future<void> _clearLog() async {
@@ -914,13 +1403,13 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
 }
 
 TextStyle _digits(double size, Color color) => TextStyle(
-      fontFamily: 'monospace',
-      fontFamilyFallback: const ['Courier New', 'Courier'],
-      fontSize: size,
-      fontWeight: FontWeight.w700,
-      color: color,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
+  fontFamily: 'monospace',
+  fontFamilyFallback: const ['Courier New', 'Courier'],
+  fontSize: size,
+  fontWeight: FontWeight.w700,
+  color: color,
+  fontFeatures: const [FontFeature.tabularFigures()],
+);
 
 class _Panel extends StatelessWidget {
   const _Panel({required this.children, this.spread = false});
@@ -931,15 +1420,15 @@ class _Panel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        margin: const EdgeInsets.all(6),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(12)),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisAlignment: spread ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.start,
-          children: children,
-        ),
-      );
+    margin: const EdgeInsets.all(6),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(12)),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisAlignment: spread ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.start,
+      children: children,
+    ),
+  );
 }
 
 class _Readout extends StatelessWidget {
@@ -953,20 +1442,29 @@ class _Readout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = large ? 64.0 : (small ? 22.0 : 30.0);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: const TextStyle(color: _muted, fontSize: 11, letterSpacing: 1.2)),
-      // Shrinks rather than overflowing, and ignores the OS font scale: the
-      // fare must stay inside its panel.
-      FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
-          if (unit != null && large) Text('$unit ', style: _digits(size * 0.35, _muted), textScaler: TextScaler.noScaling),
-          Text(value, style: _digits(size, _lcd), textScaler: TextScaler.noScaling),
-          if (unit != null && !large) Text(' $unit', style: _digits(size * 0.5, _muted), textScaler: TextScaler.noScaling),
-        ]),
-      ),
-    ]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: _muted, fontSize: 11, letterSpacing: 1.2)),
+        // Shrinks rather than overflowing, and ignores the OS font scale: the
+        // fare must stay inside its panel.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              if (unit != null && large)
+                Text('$unit ', style: _digits(size * 0.35, _muted), textScaler: TextScaler.noScaling),
+              Text(value, style: _digits(size, _lcd), textScaler: TextScaler.noScaling),
+              if (unit != null && !large)
+                Text(' $unit', style: _digits(size * 0.5, _muted), textScaler: TextScaler.noScaling),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -1005,14 +1503,21 @@ class _DeclarationSheetState extends State<_DeclarationSheet> {
   Widget _choices<T>(String title, List<T> values, T? selected, String Function(T) label, void Function(T) onPick) =>
       Padding(
         padding: const EdgeInsets.only(bottom: 14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: const TextStyle(color: _muted, fontSize: 12, letterSpacing: 1)),
-          const SizedBox(height: 6),
-          Wrap(spacing: 6, runSpacing: 6, children: [
-            for (final v in values)
-              ChoiceChip(label: Text(label(v)), selected: v == selected, onSelected: (_) => onPick(v)),
-          ]),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(color: _muted, fontSize: 12, letterSpacing: 1)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final v in values)
+                  ChoiceChip(label: Text(label(v)), selected: v == selected, onSelected: (_) => onPick(v)),
+              ],
+            ),
+          ],
+        ),
       );
 
   @override
@@ -1023,58 +1528,85 @@ class _DeclarationSheetState extends State<_DeclarationSheet> {
       child: Padding(
         padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.viewInsetsOf(context).bottom),
         child: SingleChildScrollView(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('Hire ended · fare ${widget.fareText}', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
-            const Text('Declare what the meter cannot measure. Each charge prints on the receipt on its own line.',
-                style: TextStyle(color: _muted, fontSize: 12)),
-            const SizedBox(height: 14),
-            _choices<int>('PASSENGERS', [for (var i = minPax; i <= maxPax; i++) i], _d.pax, (v) => '$v',
-                (v) => setState(() => _d = _d.copyWith(pax: v))),
-            _choices<int>('LUGGAGE', [for (var i = minLuggage; i <= maxLuggage; i++) i], _d.luggage,
-                (v) => v == 0 ? 'None' : '$v', (v) => setState(() => _d = _d.copyWith(luggage: v))),
-            _choices<MeterAirport>(
-              'AIRPORT',
-              MeterAirport.values,
-              _d.airport,
-              (a) => describeAirportLeg(a) ?? 'No airport',
-              (v) => setState(() => _d = _d.copyWith(airport: v)),
-            ),
-            const Text('TOLLS & OTHER CHARGES', style: TextStyle(color: _muted, fontSize: 12, letterSpacing: 1)),
-            const SizedBox(height: 6),
-            Row(children: [
-              IconButton.filledTonal(
-                  tooltip: 'Less', onPressed: () => _stepCharges(-1), icon: const Icon(Icons.remove)),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _charges,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [
-                    TextInputFormatter.withFunction(
-                      (_, v) => v.copyWith(text: sanitizeChargesText(v.text), selection: TextSelection.collapsed(offset: sanitizeChargesText(v.text).length)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Hire ended · fare ${widget.fareText}', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 4),
+              const Text(
+                'Declare what the meter cannot measure. Each charge prints on the receipt on its own line.',
+                style: TextStyle(color: _muted, fontSize: 12),
+              ),
+              const SizedBox(height: 14),
+              _choices<int>(
+                'PASSENGERS',
+                [for (var i = minPax; i <= maxPax; i++) i],
+                _d.pax,
+                (v) => '$v',
+                (v) => setState(() => _d = _d.copyWith(pax: v)),
+              ),
+              _choices<int>(
+                'LUGGAGE',
+                [for (var i = minLuggage; i <= maxLuggage; i++) i],
+                _d.luggage,
+                (v) => v == 0 ? 'None' : '$v',
+                (v) => setState(() => _d = _d.copyWith(luggage: v)),
+              ),
+              _choices<MeterAirport>(
+                'AIRPORT',
+                MeterAirport.values,
+                _d.airport,
+                (a) => describeAirportLeg(a) ?? 'No airport',
+                (v) => setState(() => _d = _d.copyWith(airport: v)),
+              ),
+              const Text('TOLLS & OTHER CHARGES', style: TextStyle(color: _muted, fontSize: 12, letterSpacing: 1)),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  IconButton.filledTonal(
+                    tooltip: 'Less',
+                    onPressed: () => _stepCharges(-1),
+                    icon: const Icon(Icons.remove),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _charges,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        TextInputFormatter.withFunction(
+                          (_, v) => v.copyWith(
+                            text: sanitizeChargesText(v.text),
+                            selection: TextSelection.collapsed(offset: sanitizeChargesText(v.text).length),
+                          ),
+                        ),
+                      ],
+                      decoration: const InputDecoration(hintText: '0.00', border: OutlineInputBorder(), isDense: true),
+                      onChanged: (t) => setState(() => _d = _d.copyWith(charges: chargesFromText(t))),
                     ),
-                  ],
-                  decoration: const InputDecoration(hintText: '0.00', border: OutlineInputBorder(), isDense: true),
-                  onChanged: (t) => setState(() => _d = _d.copyWith(charges: chargesFromText(t))),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    tooltip: 'More',
+                    onPressed: () => _stepCharges(1),
+                    icon: const Icon(Icons.add),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (resolved == null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(describeMissingTripDetails(_d) ?? '', style: const TextStyle(color: _amber)),
                 ),
+              FilledButton(
+                onPressed: resolved == null ? null : () => Navigator.pop(context, resolved),
+                child: const Text('CONFIRM & RECORD'),
               ),
-              const SizedBox(width: 8),
-              IconButton.filledTonal(tooltip: 'More', onPressed: () => _stepCharges(1), icon: const Icon(Icons.add)),
-            ]),
-            const SizedBox(height: 16),
-            if (resolved == null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(describeMissingTripDetails(_d) ?? '', style: const TextStyle(color: _amber)),
-              ),
-            FilledButton(
-              onPressed: resolved == null ? null : () => Navigator.pop(context, resolved),
-              child: const Text('CONFIRM & RECORD'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('RESUME HIRE')),
-          ]),
+              const SizedBox(height: 8),
+              OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('RESUME HIRE')),
+            ],
+          ),
         ),
       ),
     );
@@ -1147,8 +1679,10 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
         useRootNavigator: false,
         builder: (c) => AlertDialog(
           title: const Text('No printer set up'),
-          content: const Text('Add a Bluetooth or Wi-Fi receipt printer to print receipts, or use the phone\'s print '
-              'service. This receipt stays in the trip log either way.'),
+          content: const Text(
+            'Add a Bluetooth or Wi-Fi receipt printer to print receipts, or use the phone\'s print '
+            'service. This receipt stays in the trip log either way.',
+          ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(c), child: const Text('Not now')),
             TextButton(
@@ -1195,51 +1729,59 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Receipt'),
-        content: SizedBox(
-          width: 360,
-          child: SingleChildScrollView(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              if (trip.plate != null) Text('Vehicle ${trip.plate}'),
-              if (trip.driver != null) Text('Driver ${trip.driver}'),
-              const Divider(),
-              for (final l in meterReceiptLines(trip))
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    title: const Text('Receipt'),
+    content: SizedBox(
+      width: 360,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (trip.plate != null) Text('Vehicle ${trip.plate}'),
+            if (trip.driver != null) Text('Driver ${trip.driver}'),
+            const Divider(),
+            for (final l in meterReceiptLines(trip))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(l.label, style: TextStyle(fontWeight: l.strong ? FontWeight.w800 : FontWeight.w400)),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(l.value,
-                          textAlign: TextAlign.right,
-                          style: TextStyle(fontWeight: l.strong ? FontWeight.w800 : FontWeight.w400)),
+                      child: Text(
+                        l.value,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(fontWeight: l.strong ? FontWeight.w800 : FontWeight.w400),
+                      ),
                     ),
-                  ]),
+                  ],
                 ),
-              const Divider(),
-              Text(meterReceiptFooterNote(trip), style: const TextStyle(fontSize: 11, color: _muted)),
-            ]),
-          ),
+              ),
+            const Divider(),
+            Text(meterReceiptFooterNote(trip), style: const TextStyle(fontSize: 11, color: _muted)),
+          ],
         ),
-        actions: [
-          TextButton.icon(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: meterReceiptText(trip)));
-              ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Receipt copied')));
-            },
-            icon: const Icon(Icons.copy),
-            label: const Text('Copy'),
-          ),
-          BusyButton.text(
-            onPressed: _printing ? null : _print,
-            icon: const Icon(Icons.print_outlined),
-            child: const Text('Print'),
-          ),
-          FilledButton(
-            key: const ValueKey('receipt-done'),
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Done'),
-          ),
-        ],
-      );
+      ),
+    ),
+    actions: [
+      TextButton.icon(
+        onPressed: () {
+          Clipboard.setData(ClipboardData(text: meterReceiptText(trip)));
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Receipt copied')));
+        },
+        icon: const Icon(Icons.copy),
+        label: const Text('Copy'),
+      ),
+      BusyButton.text(
+        onPressed: _printing ? null : _print,
+        icon: const Icon(Icons.print_outlined),
+        child: const Text('Print'),
+      ),
+      FilledButton(
+        key: const ValueKey('receipt-done'),
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Done'),
+      ),
+    ],
+  );
 }
