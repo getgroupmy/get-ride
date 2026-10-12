@@ -7,10 +7,12 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/format.dart';
 import '../../core/ride_chat.dart';
+import '../../core/ble_chat.dart';
 import '../../core/ride_chat_outbox.dart';
 import '../../data/models.dart';
 import '../../data/photo_picker.dart';
 import '../../data/reliability_repository.dart';
+import '../../data/ble_chat.dart';
 import '../../data/ride_chat_outbox.dart';
 import '../../data/ride_chat_repository.dart';
 import '../../data/voice_recorder.dart';
@@ -281,10 +283,24 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
     );
   }
 
-  Widget _thread(RideChatRole role) => AsyncView(
+  Widget _thread(RideChatRole role) {
+    // Bluetooth chat at the kerb (Phase D3): what came phone to phone, and
+    // which of this phone's waiting messages the other phone has.
+    final ble = ref.watch(bleChatSessionsProvider)[widget.requestId];
+    if (ble == null) return _threadWith(role, const [], const {});
+    return ListenableBuilder(
+      listenable: Listenable.merge([ble.received, ble.delivered]),
+      builder: (_, _) => _threadWith(role, ble.received.value, ble.delivered.value),
+    );
+  }
+
+  Widget _threadWith(RideChatRole role, List<RideMessage> viaBluetooth, Set<String> deliveredByBluetooth) => AsyncView(
     value: ref.watch(rideMessagesProvider(widget.requestId)),
     data: (sent) {
-      final msgs = withPendingMessages(sent, ref.watch(rideChatOutboxProvider), widget.requestId);
+      final msgs = withBluetoothMessages(
+        withPendingMessages(sent, ref.watch(rideChatOutboxProvider), widget.requestId),
+        viaBluetooth,
+      );
       if (msgs.isEmpty) {
         return EmptyState(
           icon: Icons.forum_outlined,
@@ -307,6 +323,7 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
             message: message,
             mine: message.senderId == uid,
             tick: rideMessageTick(message, uid),
+            deliveredByBluetooth: message.pending && deliveredByBluetooth.contains(message.clientMsgId),
             onOpenLocation: (uri) => ref.read(rideChatLauncherProvider)(uri),
           ),
         },
@@ -446,10 +463,19 @@ class _DaySeparator extends StatelessWidget {
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.message, required this.mine, required this.tick, required this.onOpenLocation});
+  const _Bubble({
+    required this.message,
+    required this.mine,
+    required this.tick,
+    required this.onOpenLocation,
+    this.deliveredByBluetooth = false,
+  });
   final RideMessage message;
   final bool mine;
   final RideMessageStatus? tick;
+
+  /// Still waiting for the server, but the other phone has it over Bluetooth.
+  final bool deliveredByBluetooth;
   final void Function(Uri) onOpenLocation;
 
   @override
@@ -516,7 +542,16 @@ class _Bubble extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(formatTime(m.createdAt), style: t.textTheme.labelSmall?.copyWith(color: faint)),
-                if (m.pending) ...[
+                if (m.pending && deliveredByBluetooth) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.bluetooth,
+                    key: ValueKey('ble-delivered-${m.id}'),
+                    size: 14,
+                    color: faint,
+                    semanticLabel: 'Delivered by Bluetooth',
+                  ),
+                ] else if (m.pending) ...[
                   const SizedBox(width: 4),
                   Icon(
                     Icons.schedule,
@@ -524,6 +559,15 @@ class _Bubble extends StatelessWidget {
                     size: 14,
                     color: faint,
                     semanticLabel: 'Waiting for network',
+                  ),
+                ] else if (m.viaBluetooth) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.bluetooth,
+                    key: ValueKey('ble-received-${m.id}'),
+                    size: 14,
+                    color: faint,
+                    semanticLabel: 'Arrived by Bluetooth',
                   ),
                 ] else if (tick != null) ...[
                   const SizedBox(width: 4),

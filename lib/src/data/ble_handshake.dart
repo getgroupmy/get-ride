@@ -11,13 +11,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:universal_ble/universal_ble.dart';
 
+import '../core/ble_chat.dart';
 import '../core/ble_handshake.dart';
 import 'ble.dart';
+import 'ble_chat.dart';
 import 'geo_service.dart';
 import 'ride_repository.dart';
 
 /// One phone in sight: the service UUID it advertised, and how strongly.
-typedef BleAdvert = ({String uuid, int rssi});
+typedef BleAdvert = ({String uuid, int rssi, String deviceId});
 
 /// The phone's own Bluetooth: advertising one UUID and scanning for others.
 /// A seam so tests can play the kerb back.
@@ -46,7 +48,9 @@ class UniversalBleRadio implements BleRadio {
 
   @override
   Stream<BleAdvert> get adverts =>
-      UniversalBle.scanStream.expand((d) => [for (final s in d.services) (uuid: s, rssi: d.rssi ?? -127)]);
+      UniversalBle.scanStream.expand(
+        (d) => [for (final s in d.services) (uuid: s, rssi: d.rssi ?? -127, deviceId: d.deviceId)],
+      );
 
   @override
   Future<String?> start(String uuid) async {
@@ -118,6 +122,7 @@ class BleHandshakeEngine {
     this._status,
     Future<LatLng?> Function()? position,
     DateTime Function()? now,
+    this.chatFactory,
   }) : _position = position ?? currentPosition,
        _now = now ?? DateTime.now;
 
@@ -127,6 +132,13 @@ class BleHandshakeEngine {
   final bool isIos;
   final Future<LatLng?> Function() _position;
   final DateTime Function() _now;
+
+  /// Builds this ride's Bluetooth chat (Phase D3) from a ticket that carries
+  /// a chat key; null leaves chat out.
+  final BleChatSession Function(BleTicket ticket, Uint8List key)? chatFactory;
+
+  /// The ride's Bluetooth chat while it runs.
+  final chat = ValueNotifier<BleChatSession?>(null);
 
   /// What the badge shows.
   final phase = ValueNotifier(BleHandshakePhase.idle);
@@ -171,6 +183,15 @@ class BleHandshakeEngine {
     if (!await _advertise(ticket)) return;
     phase.value = BleHandshakePhase.searching;
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _onTick());
+    await _startChat(ticket);
+  }
+
+  Future<void> _startChat(BleTicket t) async {
+    final key = bleChatKey(t.chatKey);
+    if (chatFactory == null || key == null || !t.settings.chat || chat.value != null || !_running) return;
+    final session = chatFactory!(t, key);
+    chat.value = session;
+    await session.start();
   }
 
   /// The ride's status, as the screen sees it. Leaving the kerb stops this.
@@ -203,6 +224,7 @@ class BleHandshakeEngine {
     phase.dispose();
     countdownLeft.dispose();
     peerRssi.dispose();
+    chat.dispose();
   }
 
   Future<BleTicket?> _fetchTicket() async {
@@ -248,6 +270,8 @@ class BleHandshakeEngine {
     if (tokenFromServiceUuid(a.uuid) != t.peerToken?.toLowerCase()) return;
     _peerAt = _now();
     peerRssi.value = bleSmoothRssi(peerRssi.value, a.rssi);
+    // The rider's phone links up to the driver's for chat (Phase D3).
+    if (t.side == 'rider') unawaited(chat.value?.connectTo(a.deviceId));
     _seen = _seen.add(a.rssi, _now(), thresholdDbm: t.settings.rssiThresholdDbm);
     if (phase.value == BleHandshakePhase.searching && _seen.count > 0) phase.value = BleHandshakePhase.nearby;
   }
@@ -334,6 +358,11 @@ class BleHandshakeEngine {
     _seen = const PeerSighting();
     _peerAt = null;
     if (!_disposed) peerRssi.value = null;
+    final session = chat.value;
+    if (session != null) {
+      if (!_disposed) chat.value = null;
+      unawaited(session.stop());
+    }
     final sub = _sub;
     _sub = null;
     // Bluetooth is let go first; the listener goes in its own time.
