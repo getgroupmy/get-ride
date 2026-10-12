@@ -27,6 +27,10 @@ const helpAssistantMenuItemId = 'help-assistant';
 const myRideMenuItemId = 'my-ride';
 const myQrMenuItemId = 'my-qr';
 
+/// The driver's My Ride code (QR and the riders who added them); shown only
+/// where the database has My Ride (migration 0160).
+const myRideCodeMenuItemId = 'my-ride-code';
+
 const defaultUserMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
   ('city', 'City'),
@@ -50,6 +54,7 @@ const defaultUserMenuItems = <(String, String)>[
 const defaultPartnerMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
   ('dashboard', 'Dashboard'),
+  (myRideCodeMenuItemId, 'My Ride code'), // this app's own; the Expo menu skips it
   ('earnings', 'Earnings'),
   ('wallet', 'Wallet'),
   (myQrMenuItemId, 'My QR'), // GET.Referral / GET.me / GET.now (0161); this app's own

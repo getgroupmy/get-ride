@@ -9,7 +9,7 @@ import 'package:go_router/go_router.dart';
 
 void main() {
   const pages = [
-    '/ev', '/drive', '/wallet', '/trips', '/drive/vehicles', '/meter/vehicle', '/drive/onboarding',
+    '/ev', '/drive', '/wallet', '/trips', '/drive/vehicles', '/meter/vehicle', '/drive/my-ride', '/drive/onboarding',
     '/account/support', '/account/help', '/account/settings', '/account/my-qr',
   ];
 
@@ -46,6 +46,7 @@ void main() {
     'trip-history': '/trips',
     'vehicle': '/drive/vehicles',
     vehicleInfoMenuItemId: '/meter/vehicle',
+    myRideCodeMenuItemId: '/drive/my-ride',
     'documents': '/drive/onboarding',
     'support': '/account/support',
     'help-assistant': '/account/help',
