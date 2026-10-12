@@ -12,8 +12,10 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 
 import {
+  Cloudflare,
   cnameTarget,
   DEFAULT_CNAME,
+  ensureCloudflareRecord,
   ensureDomain,
   isTransient,
   isVercelDns,
@@ -268,4 +270,131 @@ Deno.test("no team: no teamId parameter", () => {
   assertEquals(api.url("/v6/domains/x/config"), "https://api.vercel.com/v6/domains/x/config");
   const team = new Vercel(TOKEN, TEAM);
   assertEquals(team.url("/v4/domains/x/records?limit=100"), `https://api.vercel.com/v4/domains/x/records?limit=100&teamId=${TEAM}`);
+});
+
+// ---- Cloudflare ----------------------------------------------------------
+
+const CF_TOKEN = "cf-secret-token";
+const ZONE_ID = "zone123";
+const externalZone = {
+  domain: { serviceType: "external", nameservers: ["ana.ns.cloudflare.com"], intendedNameservers: ["ns1.vercel-dns.com"] },
+};
+
+/** A fake Cloudflare API: "METHOD /path" (after /client/v4, query kept in `url`). */
+function fakeCf(routes: Record<string, (url: URL, body: unknown) => [number, unknown]>) {
+  const calls: { method: string; url: URL; body: unknown; auth: string | null }[] = [];
+  const fetcher = (raw: string, init: RequestInit): Promise<Response> => {
+    const url = new URL(raw);
+    const method = init.method ?? "GET";
+    const body = init.body ? JSON.parse(String(init.body)) : undefined;
+    calls.push({ method, url, body, auth: new Headers(init.headers).get("authorization") });
+    const key = `${method} ${url.pathname.replace("/client/v4", "")}`;
+    const route = routes[key];
+    const [status, json] = route ? route(url, body) : [404, { success: false, errors: [{ code: 7003, message: "no route" }] }];
+    return Promise.resolve(new Response(JSON.stringify(json), { status }));
+  };
+  return { cf: new Cloudflare(CF_TOKEN, fetcher, 3, 0), calls };
+}
+
+const zones = (url: URL): [number, unknown] =>
+  url.searchParams.get("name") === "getride.my"
+    ? [200, { success: true, result: [{ id: ZONE_ID, name: "getride.my" }] }]
+    : [200, { success: true, result: [] }];
+
+Deno.test("Cloudflare: the CNAME is created there, DNS only", async () => {
+  const { api } = fakeApi({
+    [`GET ${P}`]: [200, { name: D, verified: true }],
+    [`GET /v6/domains/${D}/config`]: [200, misconfigured],
+    [`GET /v5/domains/getride.my`]: [200, externalZone],
+  });
+  const { cf, calls } = fakeCf({
+    "GET /zones": zones,
+    [`GET /zones/${ZONE_ID}/dns_records`]: () => [200, { success: true, result: [] }],
+    [`POST /zones/${ZONE_ID}/dns_records`]: () => [200, { success: true, result: { id: "rec1" } }],
+  });
+  const r = await ensureDomain(api, PROJECT, D, cf);
+  assertEquals(r.warnings, []);
+  assertStringIncludes(r.notes.join("\n"), "created CNAME abc123.vercel-dns-017.com in Cloudflare");
+  const post = calls.find((c) => c.method === "POST");
+  assertEquals(post?.body, {
+    type: "CNAME",
+    name: D,
+    content: "abc123.vercel-dns-017.com",
+    ttl: 1,
+    proxied: false,
+    comment: "GET.ride web app (deploy/domains.txt)",
+  });
+  // Each token in its own header only.
+  for (const c of calls) {
+    assertEquals(c.auth, `Bearer ${CF_TOKEN}`);
+    assert(!c.url.toString().includes(CF_TOKEN));
+    assert(!JSON.stringify(c.body ?? {}).includes(CF_TOKEN));
+  }
+});
+
+Deno.test("Cloudflare: an existing record of that name is left alone", async () => {
+  const { cf, calls } = fakeCf({
+    "GET /zones": zones,
+    [`GET /zones/${ZONE_ID}/dns_records`]: () => [200, {
+      success: true,
+      result: [{ type: "A", name: D, content: "192.0.2.1", proxied: true }],
+    }],
+  });
+  const r = await ensureCloudflareRecord(cf, D, "abc123.vercel-dns-017.com");
+  assertEquals(calls.filter((c) => c.method === "POST"), []);
+  assertStringIncludes(r!.warnings[0], "left as it is");
+});
+
+Deno.test("Cloudflare: our CNAME proxied is a warning to turn the proxy off", async () => {
+  const { cf } = fakeCf({
+    "GET /zones": zones,
+    [`GET /zones/${ZONE_ID}/dns_records`]: () => [200, {
+      success: true,
+      result: [{ type: "CNAME", name: D, content: "abc123.vercel-dns-017.com", proxied: true }],
+    }],
+  });
+  const r = await ensureCloudflareRecord(cf, D, "abc123.vercel-dns-017.com");
+  assertStringIncludes(r!.warnings[0], "DNS only");
+});
+
+Deno.test("Cloudflare: our CNAME, DNS only, is settling", async () => {
+  const { cf } = fakeCf({
+    "GET /zones": zones,
+    [`GET /zones/${ZONE_ID}/dns_records`]: () => [200, {
+      success: true,
+      result: [{ type: "CNAME", name: D, content: "abc123.vercel-dns-017.com.", proxied: false }],
+    }],
+  });
+  const r = await ensureCloudflareRecord(cf, D, "abc123.vercel-dns-017.com");
+  assertEquals(r!.warnings, []);
+  assertStringIncludes(r!.notes[0], "settling");
+});
+
+Deno.test("Cloudflare: a zone not on this account falls back to naming the record", async () => {
+  const { api } = fakeApi({
+    [`GET ${P}`]: [200, { name: D, verified: true }],
+    [`GET /v6/domains/${D}/config`]: [200, misconfigured],
+    [`GET /v5/domains/getride.my`]: [200, externalZone],
+  });
+  const { cf } = fakeCf({ "GET /zones": () => [200, { success: true, result: [] }] });
+  const r = await ensureDomain(api, PROJECT, D, cf);
+  assertStringIncludes(r.warnings[0], "at your DNS provider");
+});
+
+Deno.test("Cloudflare: a refused token is a warning, not a crash", async () => {
+  const { cf } = fakeCf({
+    "GET /zones": () => [403, { success: false, errors: [{ code: 10000, message: "Authentication error" }] }],
+  });
+  const r = await ensureCloudflareRecord(cf, D, "abc123.vercel-dns-017.com");
+  assertStringIncludes(r!.warnings[0], "Authentication error");
+});
+
+Deno.test("Cloudflare: a failed create names the record to add", async () => {
+  const { cf } = fakeCf({
+    "GET /zones": zones,
+    [`GET /zones/${ZONE_ID}/dns_records`]: () => [200, { success: true, result: [] }],
+    [`POST /zones/${ZONE_ID}/dns_records`]: () => [400, { success: false, errors: [{ code: 81053, message: "record exists" }] }],
+  });
+  const r = await ensureCloudflareRecord(cf, D, "abc123.vercel-dns-017.com");
+  assertStringIncludes(r!.warnings[0], `Add: ${D} CNAME abc123.vercel-dns-017.com, DNS only.`);
 });

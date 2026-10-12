@@ -210,12 +210,16 @@ jobs:
           echo "Deployed ($VERCEL_ENV): $url" >> "$GITHUB_STEP_SUMMARY"
 
       # deploy/domains.txt: add any listed domain the project lacks (e.g.
-      # qr.getride.my) and point its DNS here when Vercel runs the zone.
-      # Production only; warns rather than fails.
+      # qr.getride.my) and point its DNS here when Vercel runs the zone, or
+      # on Cloudflare when the optional CLOUDFLARE_API_TOKEN secret is set
+      # (a token scoped to Zone -> DNS -> Edit on that zone). Production
+      # only; warns rather than fails.
       - name: Domains
         if: steps.secrets.outputs.present == 'true' && env.VERCEL_ENV == 'production'
         continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          deno run --allow-read --allow-env --allow-net=api.vercel.com \
+          deno run --allow-read --allow-env --allow-net=api.vercel.com,api.cloudflare.com \
             --allow-write="$GITHUB_STEP_SUMMARY" \
             scripts/ci/vercel_domains.ts deploy/domains.txt
