@@ -226,6 +226,15 @@ class RideRequest {
   DateTime? get fallbackPushedAt => _t(raw['fallback_pushed_at']);
   DateTime? get widenedPushedAt => _t(raw['widened_pushed_at']);
 
+  /// GET.now (migration 0161): the driver booked directly with their QR
+  /// code, and the code it was booked through. Null on every other request.
+  String? get directDriverId => raw['direct_driver_id'] as String?;
+  String? get directQrId => raw['direct_qr_id'] as String?;
+
+  /// Booked directly with a driver's GET.now code: offered to that driver
+  /// alone, with no automatic fallback (the rider may still offer it to all).
+  bool get isDirectBooking => directDriverId != null;
+
   /// Booked with My Ride: offered to favourites (now or earlier).
   bool get isMyRide => targetDriverIds.isNotEmpty;
 
