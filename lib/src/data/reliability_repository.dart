@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/ble_handshake.dart';
+import '../core/ble_report.dart';
 import '../core/reliability_settings.dart';
 import '../core/trip_safety.dart';
 import '../providers.dart';
@@ -45,7 +46,23 @@ class ReliabilityRepository {
   /// What the trip safety signals did lately (trip_safety_summary, 0154).
   Future<TripSafetySummary> safetySummary(int days) async =>
       TripSafetySummary.fromRow(await _db.rpc('trip_safety_summary', params: {'p_days': days}));
+
+  /// The Bluetooth & safety report (ble_safety_report, 0158; admins only).
+  Future<BleSafetyReport> report(int days) async =>
+      BleSafetyReport.fromJson(await _db.rpc('ble_safety_report', params: {'p_days': days}));
+
+  /// The trips behind its safety numbers, newest first.
+  Future<List<BleReportTrip>> reportTrips(int days) async =>
+      BleReportTrip.listFrom(await _db.rpc('ble_safety_report_trips', params: {'p_days': days, 'p_limit': 100}));
 }
+
+final bleSafetyReportProvider = FutureProvider.autoDispose.family<BleSafetyReport, int>(
+  (ref, days) => ref.watch(reliabilityRepositoryProvider).report(days),
+);
+
+final bleReportTripsProvider = FutureProvider.autoDispose.family<List<BleReportTrip>, int>(
+  (ref, days) => ref.watch(reliabilityRepositoryProvider).reportTrips(days),
+);
 
 final reliabilityRepositoryProvider = Provider((ref) => ReliabilityRepository(ref.watch(supabaseProvider)));
 
