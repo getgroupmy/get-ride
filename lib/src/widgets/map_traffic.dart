@@ -16,13 +16,19 @@
 //                         degrades tile by tile instead of blanking traffic.
 //
 // The URLs are never logged or shown: they carry the keys.
+//
+// Both keys are restricted to getride.my in the providers' consoles, which
+// they check against the request's Referer. A browser sends the page's own;
+// the phone apps send none, so every traffic tile was refused there. On
+// native the traffic tiles therefore name the site they belong to
+// ([trafficTileHeaders]).
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'map_tiles.dart' show appTileProvider;
+import 'map_tiles.dart' show appTileProvider, retryingTileClient;
 
 const _configuredTraffic = String.fromEnvironment('MAP_TILE_URL_TRAFFIC');
 const _configuredTrafficFallback = String.fromEnvironment('MAP_TILE_URL_TRAFFIC_FALLBACK');
@@ -82,6 +88,23 @@ class MapTraffic extends Notifier<bool> {
 
 final mapTrafficProvider = NotifierProvider<MapTraffic, bool>(MapTraffic.new);
 
+/// The site the traffic keys are restricted to, sent as the Referer by the
+/// phone apps.
+const trafficReferer = 'https://getride.my/';
+
+/// The extra headers on a traffic tile request: the [trafficReferer] on
+/// native, nothing on the web, where the browser sends the real page and
+/// forbids setting the header anyway. A fresh, modifiable map: flutter_map
+/// writes its User-Agent into the one it is given.
+Map<String, String> trafficTileHeaders({required bool web}) => web ? {} : {'Referer': trafficReferer};
+
+/// The tile provider for traffic tiles: [appTileProvider] on the web, and the
+/// same retrying client with the [trafficReferer] on native. Built once, like
+/// [appTileProvider].
+final TileProvider trafficTileProvider = kIsWeb
+    ? appTileProvider
+    : NetworkTileProvider(httpClient: retryingTileClient(), headers: trafficTileHeaders(web: false));
+
 /// The traffic layer to draw over the base tiles, when traffic is configured
 /// and switched on; null otherwise.
 ///
@@ -95,7 +118,7 @@ TileLayer? trafficTileLayer(String? url, {required bool on, String? fallback}) {
     fallbackUrl: fallback,
     subdomains: url.contains('{s}') ? const ['a', 'b', 'c', 'd'] : const [],
     userAgentPackageName: 'com.taxxee.teksi',
-    tileProvider: appTileProvider,
+    tileProvider: trafficTileProvider,
     // Coordinates only: the URL carries the provider's key.
     errorTileCallback: (tile, _, _) => debugPrint('Traffic tile ${tile.coordinates} failed'),
     panBuffer: kIsWeb ? 0 : 1,

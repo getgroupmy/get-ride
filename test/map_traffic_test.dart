@@ -108,4 +108,10 @@ void main() {
       });
     });
   }
+
+  test('phone apps name getride.my as the Referer the traffic keys are restricted to', () {
+    expect(trafficTileHeaders(web: false), {'Referer': 'https://getride.my/'});
+    // The browser sends the real page, and refuses a script that sets it.
+    expect(trafficTileHeaders(web: true), isEmpty);
+  });
 }
