@@ -9,9 +9,13 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../admin/screens/meterapp/site_logic.dart' show brandingRowId, brandingTable;
+import '../core/app_branding.dart';
 import '../core/app_builds.dart';
 import '../core/format.dart';
 import '../providers.dart';
+import 'common.dart' show BrandMark;
+import 'net_image.dart';
 
 /// The latest published build for a platform ('ios' / 'android').
 final appBuildProvider = FutureProvider.autoDispose.family<AppBuild, String>((ref, platform) async {
@@ -21,6 +25,78 @@ final appBuildProvider = FutureProvider.autoDispose.family<AppBuild, String>((re
       .invoke('app-install', method: HttpMethod.get, queryParameters: {'platform': platform});
   return AppBuild.fromJson(platform, res.data);
 });
+
+/// The admin's branding (Admin → App Settings), for the public install page:
+/// `app_branding` is readable without an account. Never fails: no row, or no
+/// signal, is the built-in look.
+final installBrandingProvider = FutureProvider.autoDispose<AppBranding>((ref) async {
+  try {
+    final row = await ref.watch(supabaseProvider).from(brandingTable).select().eq('id', brandingRowId).maybeSingle();
+    return AppBranding.fromRow(row);
+  } catch (_) {
+    return const AppBranding();
+  }
+});
+
+/// The app as a tester recognises it: the admin's icon (the built-in one
+/// until one is published, or while it loads), the wordmark and the tagline.
+class AppInstallHeader extends ConsumerWidget {
+  const AppInstallHeader({super.key, required this.platform});
+
+  final String platform;
+
+  static const iconSize = 96.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final iconUrl = ref.watch(installBrandingProvider).value?.appIconUrl;
+    const builtIn = Image(
+      key: ValueKey('install-icon-builtin'),
+      image: AssetImage('assets/branding/icon.png'),
+      width: iconSize,
+      height: iconSize,
+      fit: BoxFit.cover,
+    );
+    return Column(
+      children: [
+        Container(
+          width: iconSize,
+          height: iconSize,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(color: scheme.shadow.withValues(alpha: 0.18), blurRadius: 16, offset: const Offset(0, 6)),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: iconUrl == null
+                ? builtIn
+                : NetImage(
+                    iconUrl,
+                    key: const ValueKey('install-icon-admin'),
+                    width: iconSize,
+                    height: iconSize,
+                    radius: 22,
+                    fallback: builtIn,
+                  ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const BrandMark(size: 36),
+        const SizedBox(height: 4),
+        Text('Your ride, your way.', style: theme.textTheme.bodyLarge),
+        const SizedBox(height: 12),
+        Chip(
+          avatar: Icon(platform == 'ios' ? Icons.phone_iphone : Icons.android, size: 18),
+          label: Text(platform == 'ios' ? 'For iPhone' : 'For Android'),
+        ),
+      ],
+    );
+  }
+}
 
 /// Sends an install link: the system share sheet, overridden in tests.
 final appInstallSharerProvider = Provider<Future<void> Function(String text)>(
