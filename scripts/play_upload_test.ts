@@ -21,6 +21,8 @@ import {
   messageOf,
   releasePermission,
   PERMANENT_EXIT,
+  PlayRefusal,
+  playSaid,
   SCOPE,
   trackBody,
   trackOf,
@@ -147,7 +149,6 @@ Deno.test("a 403 at the commit names the release permission, not the invitation"
   assertStringIncludes(said, "may not release it");
   assertStringIncludes(said, "Release apps to testing tracks");
   assertStringIncludes(said, "up to a day");
-  assertStringIncludes(said, 'Play said: "The caller does not have permission"');
 });
 
 Deno.test("production needs the production permission", () => {
@@ -169,13 +170,19 @@ Deno.test("a 403 at the upload or track step names that step", () => {
   );
 });
 
-Deno.test("Play's own words are quoted after a permission refusal, within reason", () => {
-  assertStringIncludes(
-    uploadRefusal(403, "The caller does not have permission"),
-    'Play said: "The caller does not have permission"',
-  );
-  const huge = "permission " + "x".repeat(500);
-  assert(!uploadRefusal(403, huge).includes("Play said"), "a page of HTML is not quoted");
+Deno.test("Play's own words are printed alongside our reading of them", () => {
+  const raw = "The caller does not have permission";
+  const refusal = new PlayRefusal(uploadRefusal(403, raw, "commit", "internal"), true, raw, 403);
+  assertEquals(playSaid(refusal), `Play said (HTTP 403): ${raw}`);
+
+  // Passed through unchanged: saying it twice adds nothing.
+  const same = new PlayRefusal("Something specific", true, "Something specific", 400);
+  assertEquals(playSaid(same), null);
+  assertEquals(playSaid(new PlayRefusal("x", true)), null);
+
+  // A page of HTML is clipped, not dumped.
+  const huge = new PlayRefusal("Play answered 500", false, "y".repeat(5000), 500);
+  assert(playSaid(huge)!.length < 1100);
 });
 
 Deno.test("a duplicate version code points away from the workflow", () => {

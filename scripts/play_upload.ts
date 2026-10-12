@@ -111,12 +111,31 @@ export function isPermanent(status: number): boolean {
   return status >= 400 && status < 500 && status !== 429;
 }
 
-/** A refusal, carrying whether it is worth retrying. */
+/**
+ * A refusal, carrying whether it is worth retrying -- and what Play
+ * actually said. The sentence in `message` is our reading of it; `said`
+ * is kept so the log shows Play's own words too, because the reading can
+ * be wrong (run 10's "cannot see this app" came after the same account
+ * had just uploaded a bundle to that app).
+ */
 export class PlayRefusal extends Error {
-  constructor(message: string, readonly permanent: boolean) {
+  constructor(
+    message: string,
+    readonly permanent: boolean,
+    readonly said: string = "",
+    readonly status: number = 0,
+  ) {
     super(message);
     this.name = "PlayRefusal";
   }
+}
+
+/** Play's own words for a refusal, when they add to our sentence. */
+export function playSaid(error: PlayRefusal): string | null {
+  const said = error.said.trim();
+  if (!said || said === error.message.trim()) return null;
+  const clipped = said.length > 1000 ? `${said.slice(0, 1000)}…` : said;
+  return `Play said (HTTP ${error.status}): ${clipped}`;
 }
 
 /**
@@ -129,14 +148,6 @@ export class PlayRefusal extends Error {
  * "Release apps to testing tracks" at the commit.
  */
 export type Stage = "open" | "upload" | "track" | "commit";
-
-/** Play's own words, quoted after ours, when they fit on a line. */
-function quoted(said: string): string {
-  const trimmed = said.trim();
-  return trimmed.length > 0 && trimmed.length <= 400
-    ? ` Play said: "${trimmed}"`
-    : "";
-}
 
 /** The Play Console permission a track's release needs. */
 export function releasePermission(track: Track | null): string {
@@ -181,7 +192,7 @@ export function uploadRefusal(
       return "The service account cannot see this app. Granting it in " +
         "Google Cloud is not enough -- it also has to be invited under " +
         "Play Console, Users and permissions, with Release access to " +
-        "this app, and that invitation is a separate screen." + quoted(said);
+        "this app, and that invitation is a separate screen.";
     }
     // The edit opened, so the account can see the app; it is one
     // permission short for this step.
@@ -195,7 +206,7 @@ export function uploadRefusal(
       `App permissions, this app, and tick "${releasePermission(track)}", ` +
       "then Apply. A permission change can take up to a day to reach " +
       "the Publishing API, so a run straight after the change may still " +
-      "be refused." + quoted(said);
+      "be refused.";
   }
   if (said.includes("already been used") || said.includes("already exists")) {
     return "Play has seen this version code before. It is the workflow " +
@@ -262,9 +273,12 @@ async function call(
   });
   const body = await res.text();
   if (!res.ok) {
+    const said = messageOf(body);
     throw new PlayRefusal(
-      uploadRefusal(res.status, messageOf(body), stage, track),
+      uploadRefusal(res.status, said, stage, track),
       isPermanent(res.status),
+      said,
+      res.status,
     );
   }
   return body ? JSON.parse(body) : {};
@@ -327,10 +341,13 @@ async function main() {
   }, "track", track);
   console.log(`assigned to ${track}`);
 
+  console.log(`committing edit ${edit.id}`);
   try {
     await call(commitUrl(EDITS, pkg, edit.id), token, { method: "POST" }, "commit", track);
   } catch (error) {
-    if (!(error instanceof PlayRefusal) || !wantsNotSentForReview(error.message)) throw error;
+    // Play's raw text, not our sentence: a long message is clipped to
+    // "Play answered 400" there and would hide the words looked for.
+    if (!(error instanceof PlayRefusal) || !wantsNotSentForReview(error.said || error.message)) throw error;
     // The app has changes Play won't send for review by itself. Commit
     // the edit without sending it; the Console then offers "Send for
     // review" where review is needed.
@@ -353,6 +370,8 @@ if (import.meta.main) {
     // real run printed it four times.
     if (error instanceof PlayRefusal) {
       console.error(error.message);
+      const raw = playSaid(error);
+      if (raw) console.error(raw);
       Deno.exit(error.permanent ? PERMANENT_EXIT : 1);
     }
     throw error;
