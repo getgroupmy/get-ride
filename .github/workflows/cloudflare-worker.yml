@@ -1,0 +1,182 @@
+name: Cloudflare worker
+
+# Deploys cloudflare/subdomain-proxy, the worker that serves the web app on
+# any *.getride.my subdomain (qr.getride.my, for My QR app links, first)
+# without each one being added to the Vercel project or given a DNS record
+# by hand. Why it exists, and why it cannot loop, is in the header of
+# cloudflare/subdomain-proxy/worker.js; the owner's setup is
+# docs/store-release.md, "App links".
+#
+# Default branch only. There is one zone and one route pattern, so a branch
+# deploy would not be a preview of anything: it would put unreviewed code in
+# front of every subdomain at once. Runnable by hand from the Actions tab
+# (e.g. after adding the token), which also re-runs the DNS check.
+#
+# One credential: the CLOUDFLARE_API_TOKEN secret, the same token the web
+# deploy's Domains step uses. Without it the job warns and stays green.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cloudflare/**"
+      - "scripts/ci/cloudflare_wildcard.ts"
+      - "scripts/ci/vercel_domains.ts"
+      - ".github/workflows/cloudflare-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  subdomain-proxy:
+    name: Deploy the subdomain proxy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    # Not cancelled mid-flight: a cancelled upload is not obviously atomic,
+    # and the recovery from half a deploy is another deploy.
+    concurrency:
+      group: cloudflare-worker-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      # Never echoed: it is only read by wrangler and by the DNS script,
+      # which sends it in the Authorization header and nowhere else.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # An identifier, not a credential. Set it unless the token can list
+      # its accounts itself (wrangler otherwise asks /memberships, which a
+      # token without User -> Memberships -> Read is refused).
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check the API token is present
+        id: creds
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            # Warned, not failed: adding the secret later should not mean
+            # every push in between goes red. But named on the summary --
+            # a job that silently does nothing is how a broken link lasts.
+            echo "::warning::The subdomain proxy was not deployed: CLOUDFLARE_API_TOKEN is not set."
+            {
+              echo "### The subdomain proxy was not deployed"
+              echo
+              echo "\`CLOUDFLARE_API_TOKEN\` is not set, so \`*.getride.my\` subdomains"
+              echo "(\`qr.getride.my\`, which My QR codes open) are not served by the worker."
+              echo
+              echo "1. **dash.cloudflare.com → My Profile → API Tokens → Create Token →"
+              echo "   Custom token**, with these permissions:"
+              echo "   * Account → **Workers Scripts → Edit**"
+              echo "   * Zone → **Workers Routes → Edit**"
+              echo "   * Zone → **DNS → Edit**"
+              echo "   * Zone → **Zone → Read**"
+              echo
+              echo "   Account resources: your account. Zone resources: **getride.my**."
+              echo "2. Save it in this repository under **Settings → Secrets and variables →"
+              echo "   Actions → New repository secret**, named \`CLOUDFLARE_API_TOKEN\`."
+              echo "3. Also add the variable \`CLOUDFLARE_ACCOUNT_ID\` (Cloudflare dashboard →"
+              echo "   the account → *Account ID* on the right of the overview page)."
+              echo "4. **Actions → Cloudflare worker → Run workflow**."
+              echo
+              echo "See docs/store-release.md, \"App links\"."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # The only assertions about where the worker sends a request. Run here
+      # as well as in flutter.yml, so a deploy never goes out on a commit
+      # whose routing tests fail.
+      - name: Test the worker and the DNS script
+        run: |
+          deno check cloudflare/subdomain-proxy/route_test.ts scripts/ci/cloudflare_wildcard.ts
+          deno test cloudflare/subdomain-proxy/route_test.ts scripts/ci/cloudflare_wildcard_test.ts
+
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.ready == 'true'
+        with:
+          node-version: "22"
+
+      # Pinned: a deploy tool that changes under a job is a job that starts
+      # failing on a commit that changed nothing. The repository variables
+      # SUBDOMAIN_PROXY_TARGET / SUBDOMAIN_PROXY_PASS_THROUGH override the
+      # [vars] in wrangler.toml when set, so neither needs a commit.
+      - name: Deploy
+        if: steps.creds.outputs.ready == 'true'
+        working-directory: cloudflare/subdomain-proxy
+        env:
+          TARGET_OVERRIDE: ${{ vars.SUBDOMAIN_PROXY_TARGET }}
+          PASS_THROUGH_OVERRIDE: ${{ vars.SUBDOMAIN_PROXY_PASS_THROUGH }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "$TARGET_OVERRIDE" ]; then args+=(--var "TARGET_HOST:$TARGET_OVERRIDE"); fi
+          if [ -n "$PASS_THROUGH_OVERRIDE" ]; then args+=(--var "PASS_THROUGH:$PASS_THROUGH_OVERRIDE"); fi
+          npx --yes wrangler@4.127.0 deploy "${args[@]}"
+          {
+            echo "### The subdomain proxy"
+            echo
+            echo "Deployed to the route \`*.getride.my/*\`, fetching from"
+            echo "\`${TARGET_OVERRIDE:-www.getride.my}\`."
+            if [ -n "$PASS_THROUGH_OVERRIDE" ]; then
+              echo "Passed through untouched: \`$PASS_THROUGH_OVERRIDE\` (plus the apex and www)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # After the deploy, never before: a proxied wildcard with no worker
+      # behind it would send every subdomain to the origin with a name
+      # Vercel has no certificate for (525). Creates `*` (proxied) if the
+      # zone has none; only warns about anything that is already there.
+      - name: Wildcard DNS record
+        if: steps.creds.outputs.ready == 'true'
+        continue-on-error: true
+        run: |
+          deno run --allow-env --allow-net=api.cloudflare.com \
+            --allow-write="$GITHUB_STEP_SUMMARY" \
+            scripts/ci/cloudflare_wildcard.ts getride.my qr.getride.my
+
+      # route_test.ts proves what the worker does with a URL; it cannot prove
+      # the worker is reachable. One real request for each app-link file:
+      # each must be a 200 JSON answer with no redirect (Apple does not
+      # follow redirects for apple-app-site-association). Warned, not failed:
+      # a new wildcard record or certificate can take minutes to settle, and
+      # a missing file is the web deploy's business (scripts/ci/app_links.ts
+      # skips a file whose inputs are not set).
+      - name: Confirm qr.getride.my answers
+        if: steps.creds.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          PROBE_HOST: ${{ vars.SUBDOMAIN_PROXY_PROBE_HOST || 'qr.getride.my' }}
+        run: |
+          body="$RUNNER_TEMP/probe.json"
+          for file in assetlinks.json apple-app-site-association; do
+            url="https://$PROBE_HOST/.well-known/$file"
+            code=""
+            for attempt in $(seq 1 6); do
+              code="$(curl -sS -o "$body" -w '%{http_code}' --max-time 20 \
+                        "$url?cb=$GITHUB_RUN_ID-$attempt" || echo "000")"
+              if [ "$code" = "200" ] || [ "$code" = "404" ] || [[ "$code" == 3* ]]; then break; fi
+              echo "$file attempt $attempt: $code"
+              sleep 10
+            done
+            if [ "$code" = "200" ] && jq -e . "$body" > /dev/null 2>&1; then
+              echo "$url answered 200 with JSON."
+              echo "- \`$url\` answered 200 with JSON." >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            case "$code" in
+              200) why="answered 200 but not with JSON (the app's index.html instead of the file?)" ;;
+              3*) why="answered a $code redirect; Apple does not follow redirects for app-link files" ;;
+              404) why="answered 404: the web deploy did not write this file (see its App link files step)" ;;
+              52*) why="answered $code: Cloudflare could not complete the request to the origin. Is the \`*\` (or \`qr\`) record proxied, and the worker route attached?" ;;
+              000) why="did not answer (DNS not resolving yet, or a TLS failure)" ;;
+              *) why="answered $code" ;;
+            esac
+            echo "::warning::$url $why."
+            echo "- :warning: \`$url\` $why." >> "$GITHUB_STEP_SUMMARY"
+          done
