@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin/admin_providers.dart';
-import '../../admin/screens/meterapp/display_logic.dart' show vehicleInfoMenuItemId;
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
+import '../../data/my_ride_repository.dart' show myRideCodeProvider;
 import '../../data/obd/obd_session.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -13,7 +13,7 @@ import '../../widgets/side_menu_host.dart';
 import '../../widgets/side_menu_style.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../partner/driver_online.dart';
-import '../partner/partner_menu.dart' show partnerMenuAction;
+import '../partner/partner_menu.dart' show partnerMenuAction, partnerMenuRowShows;
 import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../profile/account_screen.dart' show riderMenuAction;
 
@@ -115,6 +115,7 @@ class PartnerSideMenu extends ConsumerWidget {
     final close = SideMenuHost.of(context)?.close ?? () {};
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final linked = ref.watch(obdSessionProvider).linked;
+    final hasCode = ref.watch(myRideCodeProvider).value != null;
     final mode = sideMenuModeButton(blob, 'partner');
     final profile = sideMenuProfile(blob, 'partner');
     return SideMenuPanel(
@@ -123,7 +124,7 @@ class PartnerSideMenu extends ConsumerWidget {
       onProfile: profile.comingSoon ? showComingSoon : SideMenuPanel.editProfile,
       rows: [
         for (final e in resolveSideMenu(blob, 'partner'))
-          if (e.id != vehicleInfoMenuItemId || linked)
+          if (partnerMenuRowShows(e.id, obdLinked: linked, hasMyRideCode: hasCode))
             SideMenuTile(
               entry: e,
               plain: true,

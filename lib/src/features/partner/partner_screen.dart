@@ -9,6 +9,8 @@ import 'package:latlong2/latlong.dart';
 
 import '../../data/active_location.dart';
 import '../../core/destination_mode.dart';
+import '../../core/driver_request_radius.dart';
+import '../../core/my_ride.dart' show pinStarredFirst;
 import '../../core/driver_permit.dart';
 import '../../core/format.dart';
 import '../../core/partner_doc_check.dart';
@@ -19,6 +21,7 @@ import '../../data/destination_store.dart';
 import '../../data/device_access.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
+import '../../data/my_ride_repository.dart' show favouriteRiderIdsProvider, serviceDispatchConfigsProvider;
 import '../../data/partner_doc_check.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
@@ -35,6 +38,7 @@ import 'driver_online.dart';
 import 'driver_permit_screen.dart' show currentPlateProvider, driverPermitProvider, showPermitBlock;
 import 'driver_wallet_pills.dart';
 import 'fare_offer.dart';
+import 'my_ride_badges.dart';
 import 'partner_menu.dart';
 import 'partner_mode_picker.dart' show pendingPartnerModeProvider;
 import 'request_sheet.dart';
@@ -149,7 +153,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
     String? next;
     if (_online && !_autoAccept) {
-      final ordered = destinationOrder(open, toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo);
+      // Only what is on the driver's list pops up, starred requests first.
+      // The list is the whole open queue as it is now, whatever change
+      // brought it (watchOpen refetches on any event), so a request first
+      // seen in an UPDATE — a My Ride request opening to everybody when its
+      // favourites window ends — pops up as new just as an INSERT does.
+      final ordered = pinStarredFirst(
+        destinationOrder(_pinned(open), toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo),
+        _starred,
+      );
       next = nextRequestAlert(
         openIds: [for (final r in ordered) r.id],
         seen: _alertSeen,
@@ -247,7 +259,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final partner = ref.read(partnerProvider).value;
     if (partner == null || !partnerCanDrive(partner)) return;
     // In destination mode only trips heading that way are taken unasked.
-    final eligible = _destinationOn ? open.where(_towardDestination).toList() : open;
+    final mine = _pinned(open);
+    final eligible = _destinationOn ? mine.where(_towardDestination).toList() : mine;
     final pick = autoAcceptPick(
       [for (final r in eligible) (id: r.id, offerMe: r.offerMe, awayKm: _distanceTo(r))],
       _seen,
@@ -588,6 +601,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   @override
   Widget build(BuildContext context) {
     final partner = ref.watch(partnerProvider);
+    // My Ride's stars and the services' search radii: the queue re-sorts
+    // and re-filters as they arrive (both empty when unavailable).
+    ref.watch(favouriteRiderIdsProvider);
+    ref.watch(serviceDispatchConfigsProvider);
     ref.listen(openRequestsProvider, (_, next) {
       final open = next.value;
       if (open != null) {
@@ -846,6 +863,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   awayKm: _distanceTo(r),
                   raisedFrom: _raisedFrom[r.id],
                   towardDestination: _destinationOn && _towardDestination(r),
+                  starred: _starred(r),
+                  driverId: _myId,
                   busy: _accepting != null,
                   onAccept: () => _accept(r, partner),
                   onSkip: () => _dismissAlert(skipped: true),
@@ -865,9 +884,33 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Widget _floatingButton({Key? key, required String tooltip, required IconData icon, required BusyAction onPressed}) =>
       BusyFab(key: key, tooltip: tooltip, onPressed: onPressed, child: Icon(icon));
 
-  /// The requests on this driver's queue (every open one, skipped ones
-  /// included), which are also the map's pins.
-  List<RideRequest> _pinned(List<RideRequest> open) => open;
+  /// The requests on this driver's queue (skipped ones included), which are
+  /// also the map's pins: those whose pickup is inside their service's max
+  /// search radius ([filterByPickupRadius]), starred ones wherever they are,
+  /// and every one while the driver's position is not known.
+  List<RideRequest> _pinned(List<RideRequest> open) {
+    final configs = ref.read(serviceDispatchConfigsProvider).value ?? const {};
+    return filterByPickupRadius(
+      open,
+      awayKm: _distanceTo,
+      maxKm: (r) => dispatchConfigFor(configs, r.service).searchRadiusMaxKm,
+      uncapped: _starred,
+    );
+  }
+
+  /// My Ride's gold star: offered to this driver as a favourite, or from a
+  /// rider who has them as one (and isn't hidden).
+  bool _starred(RideRequest r) => r.starredFor(_myId, ref.read(favouriteRiderIdsProvider).value ?? const {});
+
+  /// The signed-in driver's account id (what My Ride targets); null when
+  /// it can't be read.
+  String? get _myId {
+    try {
+      return ref.read(currentUserIdProvider);
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// The new request over the map (desktop): it flies in from the right and
   /// back out when it is accepted, declined, taken or times out.
@@ -902,8 +945,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final queued = [for (final r in _pinned(list)) if (r.id != _alertId) r];
     ref.watch(destinationModeProvider);
     final destinationOn = _destinationOn;
+    // Starred (My Ride) requests on top; the one tapped on the map above all.
     final sorted = focusFirst(
-      destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+      pinStarredFirst(
+        destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+        _starred,
+      ),
       _focusId,
     );
     return (alert: alert, sorted: sorted);
@@ -1008,10 +1055,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
+            if (_starred(r)) ...[
+              MyRideStar(key: ValueKey('my-ride-star-${r.id}')),
+              const SizedBox(width: 6),
+            ],
             Expanded(child: Text(r.service ?? 'Ride', style: t.textTheme.titleMedium)),
             Text(r.fareText(r.effectiveFare),
                 style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
           ]),
+          MyRideForYouLabel(request: r, me: _myId, clock: ref.read(requestAlertClockProvider)),
           if (destinationOn && _towardDestination(r))
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -1105,6 +1157,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           Row(children: [
             Icon(Icons.notifications_active, color: t.colorScheme.primary),
             const SizedBox(width: 8),
+            if (_starred(r)) ...[
+              MyRideStar(key: ValueKey('my-ride-star-${r.id}')),
+              const SizedBox(width: 6),
+            ],
             Expanded(
               child: Text(
                 _raisedFrom.containsKey(r.id) ? 'Fare raised' : 'New request',
@@ -1116,6 +1172,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           ]),
           const SizedBox(height: 6),
           LinearProgressIndicator(key: const ValueKey('request-alert-countdown'), value: requestAlertProgress(shown)),
+          MyRideForYouLabel(request: r, me: _myId, clock: ref.read(requestAlertClockProvider)),
           if (_raisedFrom[r.id] case final was?)
             Padding(
               padding: const EdgeInsets.only(top: 6),

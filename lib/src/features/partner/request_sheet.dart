@@ -16,6 +16,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/ride_map.dart';
 import '../ride/confirm_parts.dart' show confirmAccent;
 import '../../widgets/net_image.dart';
+import 'my_ride_badges.dart';
 
 /// A new ride request on a phone, as inDrive's: a sheet up from the bottom
 /// with the route on a map ("Ride request" over it, the time and distance
@@ -35,6 +36,8 @@ class RideRequestSheet extends ConsumerStatefulWidget {
     this.onOffer,
     this.raisedFrom,
     this.towardDestination = false,
+    this.starred = false,
+    this.driverId,
     this.busy = false,
   });
 
@@ -59,6 +62,11 @@ class RideRequestSheet extends ConsumerStatefulWidget {
   /// The fare before the passenger raised it, when they did.
   final double? raisedFrom;
   final bool towardDestination;
+
+  /// My Ride: the request carries the driver's gold star, and the driver's
+  /// account id (for "for you first" while the favourites window runs).
+  final bool starred;
+  final String? driverId;
 
   /// An accept or offer is on its way: every action waits.
   final bool busy;
@@ -381,11 +389,20 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     if (r.distanceKm != null)
                       Text('~${formatDistance(r.distanceKm)}', style: t.textTheme.bodyMedium?.copyWith(color: muted)),
-                    Text(
-                      r.fareText(fare),
-                      key: const ValueKey('request-fare'),
-                      style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                    ),
+                    Row(children: [
+                      Flexible(
+                        child: Text(
+                          r.fareText(fare),
+                          key: const ValueKey('request-fare'),
+                          style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      if (widget.starred) ...[
+                        const SizedBox(width: 8),
+                        MyRideStar(key: ValueKey('my-ride-star-${r.id}'), size: 24),
+                      ],
+                    ]),
+                    MyRideForYouLabel(request: r, me: widget.driverId, clock: () => widget.now),
                     // The region's surcharges and taxes, collected on top.
                     if (r.chargeLines.isNotEmpty)
                       Text(

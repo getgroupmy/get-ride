@@ -130,7 +130,8 @@ void main() {
       expect(find.byKey(const ValueKey('waiting-for-requests')), findsOneWidget, reason: 'on the map, not in the sheet');
       expect(find.text('New requests appear here instantly.'), findsNothing);
 
-      open.add([_req('near', 3.15), _req('far', 3.30, fare: 30)]);
+      // Both inside the default 15 km search radius (farther ones aren't listed).
+      open.add([_req('near', 3.15), _req('far', 3.25, fare: 30)]);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('waiting-for-requests')), findsNothing);
       final list = find.byKey(const ValueKey('floating-requests'));
