@@ -7,16 +7,19 @@ import '../../core/escpos.dart';
 import '../../core/printers.dart';
 import '../../data/ble.dart';
 import '../../data/obd/obd_session.dart' show obdAdapterStoreProvider;
+import '../../data/printer/classic_bluetooth.dart';
 import '../../data/printer/printer_service.dart';
 import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
+import 'classic_paired_sheet.dart';
 import 'meter_providers.dart';
 
 /// Receipt printer settings (Expo `app/meter-printer.tsx`): the driver's
 /// saved mini thermal printers, which one receipts go to, a test print and a
 /// reprint of the last receipt. Printers connect over Bluetooth LE (found with
 /// an in-app scan: a mini printer never shows in the phone's own Bluetooth
-/// list) or Wi-Fi (ESC/POS over TCP).
+/// list), classic Bluetooth on Android (picked from the phone's paired
+/// devices) or Wi-Fi (ESC/POS over TCP).
 class PrinterScreen extends ConsumerStatefulWidget {
   const PrinterScreen({super.key});
 
@@ -97,6 +100,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
   }
 
   Future<void> _add() async {
+    final classic = printerTransportAvailability(classicPrinterTransport, currentPrinterPlatform);
     final kind = await showModalBottomSheet<String>(
       context: context,
       builder: (c) => SafeArea(
@@ -104,9 +108,19 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
           const ListTile(title: Text('How does the printer connect?')),
           ListTile(
             leading: const Icon(Icons.bluetooth),
-            title: const Text('Bluetooth printer'),
+            title: const Text('Bluetooth LE printer'),
             subtitle: const Text('A mini printer beside the driver; found with a scan'),
             onTap: () => Navigator.pop(c, 'bluetooth'),
+          ),
+          ListTile(
+            key: const ValueKey('add-classic-printer'),
+            enabled: classic.available,
+            leading: const Icon(Icons.bluetooth_connected),
+            title: const Text('Bluetooth (classic / paired)'),
+            subtitle: Text(classic.available
+                ? 'A printer paired in Android Bluetooth settings; not found by a scan'
+                : classic.reason ?? 'Not available on this device'),
+            onTap: () => Navigator.pop(c, classicPrinterTransport),
           ),
           ListTile(
             leading: const Icon(Icons.wifi),
@@ -118,9 +132,11 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
       ),
     );
     if (kind == null || !mounted) return;
-    final added = kind == 'wifi'
-        ? await showDialog<SavedPrinter>(context: context, builder: (_) => const _AddWifiPrinterDialog())
-        : await _pickBlePrinter();
+    final added = switch (kind) {
+      'wifi' => await showDialog<SavedPrinter>(context: context, builder: (_) => const _AddWifiPrinterDialog()),
+      classicPrinterTransport => await _pickClassicPrinter(),
+      _ => await _pickBlePrinter(),
+    };
     if (added == null) return;
     final store = ref.read(printerStoreProvider);
     final list = upsertPrinter(await store.load(), added);
@@ -155,7 +171,25 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text(printerIsReaderMessage)));
       return null;
     }
-    return showDialog<SavedPrinter>(context: context, builder: (_) => _BlePrinterDialog(sighting: d));
+    return showDialog<SavedPrinter>(
+      context: context,
+      builder: (_) => _BluetoothPrinterDialog(deviceId: d.deviceId, deviceName: d.name, classic: false),
+    );
+  }
+
+  Future<SavedPrinter?> _pickClassicPrinter() async {
+    final readers = await ref.read(obdAdapterStoreProvider).load();
+    if (!mounted) return null;
+    final d = await showModalBottomSheet<BondedBluetoothDevice>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ClassicPairedSheet(readers: readers),
+    );
+    if (d == null || !mounted) return null;
+    return showDialog<SavedPrinter>(
+      context: context,
+      builder: (_) => _BluetoothPrinterDialog(deviceId: d.address, deviceName: d.name, classic: true),
+    );
   }
 
   @override
@@ -183,7 +217,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
           const Text(
             'Receipts print straight to the selected mini thermal (ESC/POS) printer, with no print dialog. '
             'A Bluetooth printer must be switched on and close by; a Wi-Fi printer must be on the same Wi-Fi as '
-            'this phone.',
+            'this phone. A classic Bluetooth printer is paired in the phone\'s Bluetooth settings first.',
           ),
           const SizedBox(height: 8),
           if (_loaded && _printers.isEmpty)
@@ -316,17 +350,20 @@ class _AddWifiPrinterDialogState extends State<_AddWifiPrinterDialog> {
   }
 }
 
-/// Names a Bluetooth printer picked from the scan and sets its paper width.
-class _BlePrinterDialog extends StatefulWidget {
-  const _BlePrinterDialog({required this.sighting});
-  final BleSighting sighting;
+/// Names a Bluetooth printer picked from the scan (LE) or the paired devices
+/// (classic) and sets its paper width.
+class _BluetoothPrinterDialog extends StatefulWidget {
+  const _BluetoothPrinterDialog({required this.deviceId, required this.deviceName, required this.classic});
+  final String deviceId;
+  final String? deviceName;
+  final bool classic;
 
   @override
-  State<_BlePrinterDialog> createState() => _BlePrinterDialogState();
+  State<_BluetoothPrinterDialog> createState() => _BluetoothPrinterDialogState();
 }
 
-class _BlePrinterDialogState extends State<_BlePrinterDialog> {
-  late final _name = TextEditingController(text: widget.sighting.name ?? '');
+class _BluetoothPrinterDialogState extends State<_BluetoothPrinterDialog> {
+  late final _name = TextEditingController(text: widget.deviceName ?? '');
   PaperWidth _paper = PaperWidth.mm58;
   String? _error;
 
@@ -337,14 +374,25 @@ class _BlePrinterDialogState extends State<_BlePrinterDialog> {
   }
 
   void _save() {
-    final r = normalizeBlePrinter(
-      id: const Uuid().v4(),
-      createdAt: DateTime.now().toUtc().toIso8601String(),
-      deviceId: widget.sighting.deviceId,
-      advertisedName: widget.sighting.name,
-      name: _name.text,
-      paper: _paper,
-    );
+    final id = const Uuid().v4();
+    final createdAt = DateTime.now().toUtc().toIso8601String();
+    final r = widget.classic
+        ? normalizeClassicPrinter(
+            id: id,
+            createdAt: createdAt,
+            address: widget.deviceId,
+            pairedName: widget.deviceName,
+            name: _name.text,
+            paper: _paper,
+          )
+        : normalizeBlePrinter(
+            id: id,
+            createdAt: createdAt,
+            deviceId: widget.deviceId,
+            advertisedName: widget.deviceName,
+            name: _name.text,
+            paper: _paper,
+          );
     if (r.error != null) return setState(() => _error = r.error);
     Navigator.pop(context, r.value);
   }
@@ -352,10 +400,10 @@ class _BlePrinterDialogState extends State<_BlePrinterDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Bluetooth printer'),
+      title: Text(widget.classic ? 'Bluetooth printer (classic)' : 'Bluetooth printer'),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(widget.sighting.deviceId, style: Theme.of(context).textTheme.bodySmall),
+          Text(widget.deviceId, style: Theme.of(context).textTheme.bodySmall),
           TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
           const SizedBox(height: 16),
           const Text('Paper width'),

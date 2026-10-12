@@ -91,7 +91,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Add printer'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Bluetooth printer'));
+    await tester.tap(find.text('Bluetooth LE printer'));
     await tester.pumpAndSettle();
 
     expect(find.text('MTP-II'), findsOneWidget);
