@@ -98,8 +98,13 @@ jobs:
         run: |
           flutter pub get
           scripts/ci/map_defines.sh "$RUNNER_TEMP/map-defines.json"
+          # The commit is compiled in and served at /build.json, so a tab
+          # left open across a deploy notices and reloads
+          # (lib/src/core/web_build.dart).
           flutter build web --release --no-web-resources-cdn \
-            --dart-define-from-file="$RUNNER_TEMP/map-defines.json"
+            --dart-define-from-file="$RUNNER_TEMP/map-defines.json" \
+            --dart-define=WEB_BUILD_ID="$GITHUB_SHA"
+          printf '{"build":"%s"}\n' "$GITHUB_SHA" > build/web/build.json
 
       - name: Link the Vercel project
         if: steps.secrets.outputs.present == 'true'
@@ -145,7 +150,7 @@ jobs:
                 },
                 "continue": true
               },
-              { "src": "/(flutter_service_worker\\.js|index\\.html)", "headers": { "cache-control": "no-cache" }, "continue": true },
+              { "src": "/(flutter_service_worker\\.js|flutter_bootstrap\\.js|main\\.dart\\.js|index\\.html|build\\.json)", "headers": { "cache-control": "no-cache" }, "continue": true },
               { "src": "/\\.well-known/apple-app-site-association", "headers": { "content-type": "application/json", "cache-control": "max-age=3600" }, "continue": true },
               { "src": "/\\.well-known/assetlinks\\.json", "headers": { "content-type": "application/json", "cache-control": "max-age=3600" }, "continue": true },
               { "src": "/privacy/?", "dest": "/privacy.html" },
