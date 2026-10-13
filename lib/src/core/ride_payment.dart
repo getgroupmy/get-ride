@@ -3,6 +3,8 @@
 /// their balance covers it, and what a refused payment tells them. Pure.
 library;
 
+import 'dart:async';
+
 import 'payment_types.dart';
 
 /// `ride_requests.payment_status`. Null: a ride from before 0142, or one
@@ -57,11 +59,11 @@ const paymentDoneClose = Duration(seconds: 5);
 bool paymentJustSettled(RidePaymentStatus? before, RidePaymentStatus? now) =>
     now == RidePaymentStatus.paid && (before == RidePaymentStatus.due || before == RidePaymentStatus.cashPending);
 
-double _cents(double v) => (v * 100).roundToDouble() / 100;
 
-/// The GET.coin [due] costs at [coinsPerCurrency] GC a ringgit, to the
-/// hundredth as the server charges it (`ride_pay`).
-double coinsForAmount(double due, double coinsPerCurrency) => _cents(due * coinsPerCurrency);
+/// The GET.coin [due] costs at [coinsPerCurrency] GC a ringgit, rounded up
+/// to the hundredth as the server charges it (`ride_pay`, 0174). The small
+/// allowance keeps float noise from adding a hundredth.
+double coinsForAmount(double due, double coinsPerCurrency) => (due * coinsPerCurrency * 100 - 1e-6).ceilToDouble() / 100;
 
 /// One way to pay on the "Pay with" list.
 class RidePayOption {
@@ -158,8 +160,11 @@ bool bookedWithCash(String paymentMode) => paymentKindOf(paymentMode) == Payment
 /// What the passenger is told when a payment is refused, from the error the
 /// server raised.
 String ridePaymentFailure(Object error) {
+  // ride_pay pays a ride once, so after a timeout trying again is safe.
+  if (error is TimeoutException) return "The payment wasn't confirmed in time. Trying again won't charge you twice.";
   final s = '$error';
   if (s.contains('insufficient_balance')) return 'Not enough balance to pay this ride.';
+  if (s.contains('amount_changed')) return 'The amount to pay has changed. Check it and pay again.';
   if (s.contains('coins_unavailable')) return 'GET.coin can\'t be used right now.';
   if (s.contains('ride_not_completed')) return 'The trip isn\'t complete yet.';
   if (s.contains('not_authorized')) return 'Sign in again to pay for this ride.';

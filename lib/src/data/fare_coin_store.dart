@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/fare_coins.dart';
+import '../core/ride_payment.dart';
 import 'models.dart';
 import 'ride_repository.dart';
 
@@ -22,14 +23,22 @@ class FareCoinChoiceStore {
 final fareCoinChoiceStoreProvider = Provider((ref) => FareCoinChoiceStore());
 
 /// Applies GET.coin to a completed ride the rider booked with coins on.
-/// Null when they didn't, the ride isn't done, or the call failed — the
-/// choice is then kept, so a later visit tries again (the server redeems
-/// once per ride either way).
+/// Null when they didn't, the ride isn't done, it is already paid or being
+/// paid in cash (coins would pay it twice; the choice is dropped), or the
+/// call failed — the choice is then kept, so a later visit tries again (the
+/// server redeems once per ride either way).
 Future<FareCoinRedemption?> redeemChosenFareCoins(RideRepository repo, FareCoinChoiceStore store, RideRequest r) async {
   if (r.status != RideStatus.completed) return null;
   try {
     if (!await store.chosen(r.id)) return null;
   } catch (_) {
+    return null;
+  }
+  final settled = r.paymentStatus == RidePaymentStatus.paid || r.paymentStatus == RidePaymentStatus.cashPending;
+  if (settled) {
+    try {
+      await store.clear(r.id);
+    } catch (_) {}
     return null;
   }
   final result = await repo.redeemFareCoins(r);

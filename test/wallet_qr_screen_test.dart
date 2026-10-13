@@ -6,7 +6,6 @@ import 'package:get_ride/src/core/coin_trade.dart';
 import 'package:get_ride/src/core/wallet_qr.dart';
 import 'package:get_ride/src/data/coin_trade_repository.dart';
 import 'package:get_ride/src/data/models.dart';
-import 'package:get_ride/src/data/wallet_pay_repository.dart';
 import 'package:get_ride/src/features/wallet/coin_trade_screen.dart';
 import 'package:get_ride/src/features/wallet/wallet_qr_screens.dart';
 import 'package:get_ride/src/features/wallet/wallet_screen.dart';
@@ -30,27 +29,11 @@ class _FakeTrade implements CoinTradeRepository {
       throw UnimplementedError();
 }
 
-class _FakePay implements WalletPayRepository {
-  _FakePay({this.error});
-  final Object? error;
-  final calls = <({double amount, String note, bool coins})>[];
-
-  @override
-  Future<WalletPayResult> pay(double amount, {required String note, bool redeemCoins = false}) async {
-    calls.add((amount: amount, note: note, coins: redeemCoins));
-    if (error != null) throw error!;
-    return redeemCoins
-        ? WalletPayResult(walletPaid: amount - 3, coinsUsed: 300, coinValue: 3)
-        : WalletPayResult(walletPaid: amount, coinsUsed: 0, coinValue: 0);
-  }
-}
-
-Widget _app(Widget home, {WalletPayRepository? pay}) => ProviderScope(
+Widget _app(Widget home) => ProviderScope(
   overrides: [
     currentUserIdProvider.overrideWithValue(_me),
     profileProvider.overrideWith((ref) async => Profile({'id': _me, 'name': 'Aina Hassan'})),
     coinTradeRepositoryProvider.overrideWithValue(_FakeTrade()),
-    if (pay != null) walletPayRepositoryProvider.overrideWithValue(pay),
     walletBalancesProvider.overrideWith((ref) async => const []),
     walletTxProvider.overrideWith((ref) async => const []),
   ],
@@ -94,75 +77,6 @@ void main() {
     expect(find.text(_me), findsOneWidget);
     expect(find.textContaining('GET.coin 300'), findsOneWidget);
     expect(find.byKey(const ValueKey('qr-amount')), findsNothing);
-  });
-
-  group('merchant pay', () {
-    Future<void> pump(WidgetTester tester, _FakePay pay) async {
-      tester.view.physicalSize = const Size(1000, 2400);
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(
-        _app(
-          MerchantPayView(qr: const MerchantQr('KEDAI RUNCIT 88'), onScanAgain: () {}),
-          pay: pay,
-        ),
-      );
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('pays from GET.wallet with the code as the note', (tester) async {
-      final pay = _FakePay();
-      await pump(tester, pay);
-      await tester.enterText(find.byKey(const ValueKey('pay-amount')), '12');
-      await tester.pump();
-      expect(find.text('Not enough balance in GET.wallet.'), findsOneWidget);
-
-      await tester.enterText(find.byKey(const ValueKey('pay-amount')), '8.5');
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('pay-confirm')));
-      // The button spins behind the confirm dialog until it is answered.
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.tap(find.widgetWithText(FilledButton, 'Pay'));
-      await tester.pumpAndSettle();
-
-      expect(pay.calls.single.amount, 8.5);
-      expect(pay.calls.single.note, 'QR payment — KEDAI RUNCIT 88');
-      expect(pay.calls.single.coins, isFalse);
-      expect(find.text('Payment Successful'), findsOneWidget);
-    });
-
-    testWidgets('GET.coin covers part, so a larger amount becomes payable', (tester) async {
-      final pay = _FakePay();
-      await pump(tester, pay);
-      await tester.enterText(find.byKey(const ValueKey('pay-amount')), '12');
-      await tester.tap(find.byKey(const ValueKey('pay-coins')));
-      await tester.pump();
-      expect(find.textContaining('covers RM'), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('pay-confirm')));
-      // The button spins behind the confirm dialog until it is answered.
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
-      expect(find.textContaining('from GET.coin'), findsOneWidget);
-      await tester.tap(find.widgetWithText(FilledButton, 'Pay'));
-      await tester.pumpAndSettle();
-      expect(pay.calls.single.coins, isTrue);
-      expect(find.textContaining('paid with GET.coin'), findsOneWidget);
-    });
-
-    testWidgets('shows a server refusal', (tester) async {
-      final pay = _FakePay(error: Exception('insufficient_balance'));
-      await pump(tester, pay);
-      await tester.enterText(find.byKey(const ValueKey('pay-amount')), '5');
-      await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('pay-confirm')));
-      // The button spins behind the confirm dialog until it is answered.
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
-      await tester.tap(find.widgetWithText(FilledButton, 'Pay'));
-      await tester.pumpAndSettle();
-      expect(find.text('Not enough balance in GET.wallet.'), findsOneWidget);
-      expect(find.text('Payment Successful'), findsNothing);
-    });
   });
 
   testWidgets('a scanned GET code opens Send addressed to that account', (tester) async {

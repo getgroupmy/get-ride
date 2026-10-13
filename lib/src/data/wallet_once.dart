@@ -13,11 +13,24 @@ import 'package:uuid/uuid.dart';
 /// Once the server has answered, either way, the id is dropped: paying the
 /// same amount again on purpose is a new payment.
 class WalletRequestIds {
-  final _pending = <String, String>{};
+  WalletRequestIds({DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
+
+  /// How long an unanswered attempt's id is reused. A tap soon after a
+  /// timeout is a retry of the same payment; the same payment made much
+  /// later, on purpose, is a new one and must not be swallowed as a repeat.
+  static const keepFor = Duration(minutes: 10);
+
+  final DateTime Function() _clock;
+  final _pending = <String, ({String id, DateTime at})>{};
   final _uuid = const Uuid();
 
-  /// The id for [action]: the one kept from an unanswered attempt, else new.
-  String idFor(String action) => _pending[action] ??= _uuid.v4();
+  /// The id for [action]: the one kept from a recent unanswered attempt,
+  /// else new.
+  String idFor(String action) {
+    final now = _clock();
+    _pending.removeWhere((_, v) => now.difference(v.at) > keepFor);
+    return (_pending[action] ??= (id: _uuid.v4(), at: now)).id;
+  }
 
   /// The server answered [action]; its next attempt is a new request.
   void settled(String action) => _pending.remove(action);

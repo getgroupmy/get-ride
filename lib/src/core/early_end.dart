@@ -10,6 +10,7 @@ import 'dart:math' as math;
 import 'package:latlong2/latlong.dart';
 
 import 'fare.dart';
+import 'region_pricing.dart';
 
 /// Closer than this to the drop-off is arriving, not ending early.
 const earlyEndRadiusMetres = 300.0;
@@ -24,11 +25,19 @@ bool endsEarly(LatLng? at, LatLng? drop) => at != null && drop != null && _dista
 /// agreed fare in proportion to the distance covered, never more than the
 /// agreed fare and never less than the flag fall (a hire that began is
 /// charged at least that much, as the meter would). The agreed fare is kept
-/// whenever the proportion can't be known. Rounded to the cent.
-double earlyEndFare({required double agreed, required double? plannedKm, required double? drivenKm}) {
+/// whenever the proportion can't be known. Rounded as the ride's region
+/// books fares ([pricing]: up to a whole amount where whole fares are on,
+/// else to the cent), and still never above the agreed fare, which the
+/// server refuses (0174).
+double earlyEndFare({
+  required double agreed,
+  required double? plannedKm,
+  required double? drivenKm,
+  RegionPricing pricing = RegionPricing.none,
+}) {
   if (agreed <= 0) return 0;
   if (plannedKm == null || plannedKm <= 0 || drivenKm == null || drivenKm < 0) return agreed;
   final share = math.min(1.0, drivenKm / plannedKm);
   final floor = math.min(agreed, calculateFare(0, 0));
-  return double.parse(math.max(floor, agreed * share).toStringAsFixed(2));
+  return math.min(agreed, pricing.roundFare(math.max(floor, agreed * share)));
 }

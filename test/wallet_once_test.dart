@@ -61,6 +61,18 @@ void main() {
     expect(s.calls[2].body['p_request_id'], isNot(s.calls[0].body['p_request_id']));
   });
 
+  test('an unanswered attempt is retried with its id only for a while', () {
+    var now = DateTime(2026, 10, 13, 9);
+    final ids = WalletRequestIds(clock: () => now);
+    final action = walletActionKey('wallet_pay', _params);
+    final first = ids.idFor(action);
+    now = now.add(const Duration(minutes: 9));
+    expect(ids.idFor(action), first);
+    // Long after: the same amount to the same place is a new payment.
+    now = now.add(WalletRequestIds.keepFor + const Duration(minutes: 1));
+    expect(ids.idFor(action), isNot(first));
+  });
+
   test("a refusal is the server's answer: the next attempt is a new request", () async {
     final ids = WalletRequestIds();
     final s = _server((fn, body, n) async {

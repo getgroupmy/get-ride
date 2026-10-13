@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/early_end.dart';
+import 'package:get_ride/src/core/region_pricing.dart';
 import 'package:get_ride/src/core/trip_charges.dart';
 import 'package:get_ride/src/core/trip_checkpoint.dart';
 import 'package:get_ride/src/core/trip_progress.dart';
@@ -141,6 +142,10 @@ void main() {
       expect(earlyEndFare(agreed: 20, plannedKm: null, drivenKm: 2), 20);
       expect(earlyEndFare(agreed: 20, plannedKm: 10, drivenKm: null), 20);
       expect(earlyEndFare(agreed: 0, plannedKm: 10, drivenKm: 2), 0);
+      // A whole-fare region rounds up, as it booked the fare, but never past it.
+      const whole = RegionPricing(wholeFare: true);
+      expect(earlyEndFare(agreed: 20, plannedKm: 7, drivenKm: 2, pricing: whole), 6);
+      expect(earlyEndFare(agreed: 19.5, plannedKm: 10, drivenKm: 9.9, pricing: whole), 19.5);
     });
   });
 

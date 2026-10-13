@@ -80,7 +80,7 @@ class _RidePaymentOverlayState extends ConsumerState<RidePaymentOverlay> {
   Future<void> _pay(RidePayMethod method) async {
     setState(() => _stage = _Stage.paying);
     try {
-      await ref.read(rideRepositoryProvider).payRide(_r.id, method);
+      await ref.read(rideRepositoryProvider).payRide(_r.id, method, expected: _r.cashDue);
       if (!mounted) return;
       _refreshWallet();
       setState(() => _paidHere = true);

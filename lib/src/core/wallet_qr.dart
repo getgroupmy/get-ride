@@ -5,8 +5,8 @@
 /// `?amt=12.50` for a fixed amount; the payload is the same for receiving
 /// money and GET.coin. Scanning one sends GET.coin to that account through
 /// the transfer handshake, so the person shown on the code is the one who is
-/// paid. Any other code (a merchant's) is a QR payment out of GET.wallet
-/// through `wallet_pay`, which debits the payer only.
+/// paid. Any other code is refused: `wallet_pay` only debits the payer, so
+/// "paying" a code nobody on GET receives would take the money to no one.
 library;
 
 import 'server_timeout.dart';
@@ -38,34 +38,37 @@ class GetAccountQr extends ScannedQr {
   final double? amount;
 }
 
-/// Anything else: paid as a QR payment, its text kept as the payment note.
-class MerchantQr extends ScannedQr {
-  const MerchantQr(this.text);
+/// Anything that isn't a GET account's code. Nothing is paid to it.
+class UnsupportedQr extends ScannedQr {
+  const UnsupportedQr(this.text, {this.damagedGetCode = false});
   final String text;
 
-  /// Short form for the pay page and the ledger note.
-  String get label => text.length > 42 ? '${text.substring(0, 42)}…' : text;
+  /// A `getpay://` code whose account id doesn't read: cut off, mistyped
+  /// or made by hand.
+  final bool damagedGetCode;
+
+  /// What the person scanning is told.
+  String get message => damagedGetCode
+      ? "This GET code can't be read. Ask for a new one."
+      : "This isn't a GET payment code. Scan a GET.wallet QR to pay.";
 }
 
 /// Reads a scanned code, or null for an empty one.
 ScannedQr? parseWalletQr(String raw) {
   final text = raw.trim();
   if (text.isEmpty) return null;
-  if (text.toLowerCase().startsWith(walletQrScheme)) {
-    final rest = text.substring(walletQrScheme.length);
-    final q = rest.indexOf('?');
-    final id = (q < 0 ? rest : rest.substring(0, q)).trim().toLowerCase();
-    if (_uuid.hasMatch(id)) {
-      double? amount;
-      if (q >= 0) {
-        final amt = Uri.splitQueryString(rest.substring(q + 1))['amt'];
-        final v = amt == null ? null : double.tryParse(amt);
-        if (v != null && v.isFinite && v > 0) amount = (v * 100).roundToDouble() / 100;
-      }
-      return GetAccountQr(id, amount: amount);
-    }
+  if (!text.toLowerCase().startsWith(walletQrScheme)) return UnsupportedQr(text);
+  final rest = text.substring(walletQrScheme.length);
+  final q = rest.indexOf('?');
+  final id = (q < 0 ? rest : rest.substring(0, q)).trim().toLowerCase();
+  if (!_uuid.hasMatch(id)) return UnsupportedQr(text, damagedGetCode: true);
+  double? amount;
+  if (q >= 0) {
+    final amt = Uri.splitQueryString(rest.substring(q + 1))['amt'];
+    final v = amt == null ? null : double.tryParse(amt);
+    if (v != null && v.isFinite && v > 0) amount = (v * 100).roundToDouble() / 100;
   }
-  return MerchantQr(text);
+  return GetAccountQr(id, amount: amount);
 }
 
 /// The display-only account number under a receive code: "2600" and 16
@@ -100,6 +103,10 @@ typedef CoinSplit = ({double coinsUsed, double coinValue, double walletShare});
 
 double _round2(double v) => (v * 100).roundToDouble() / 100;
 
+/// Up to the next hundredth, as the server rounds coins spent (0174). The
+/// small allowance keeps float noise (330.00000000000006) from adding a cent.
+double coinsUp(double v) => (v * 100 - 1e-6).ceilToDouble() / 100;
+
 CoinSplit computeCoinSplit(double amount, double coinBalance, double coinsPerCurrency) {
   if (!(amount > 0) || !(coinBalance > 0) || !(coinsPerCurrency > 0)) {
     return (coinsUsed: 0, coinValue: 0, walletShare: amount > 0 ? _round2(amount) : 0);
@@ -107,7 +114,7 @@ CoinSplit computeCoinSplit(double amount, double coinBalance, double coinsPerCur
   final maxCoinValue = (coinBalance / coinsPerCurrency * 100).floorToDouble() / 100;
   final coinValue = maxCoinValue < amount ? maxCoinValue : _round2(amount);
   return (
-    coinsUsed: _round2(coinValue * coinsPerCurrency),
+    coinsUsed: coinsUp(coinValue * coinsPerCurrency),
     coinValue: coinValue,
     walletShare: _round2(amount - coinValue),
   );
@@ -167,9 +174,9 @@ String walletQrShareText({required bool coin, required String userId, String? na
 
 /// The steps the Scan & Pay help sheet walks through.
 const scanPayHowToSteps = [
-  'Point the camera at a GET.ride or merchant QR code, with the whole code inside the frame.',
+  "Point the camera at the other person's GET.ride QR code, with the whole code inside the frame.",
   'Too dark to read? Turn on the flashlight with the torch button.',
   "No camera, or the code won't read? Paste the code's text into the box under the camera.",
-  'A GET.ride code opens Send GET.coin to that person. A merchant code opens the pay page.',
-  'Enter the amount, choose whether to use GET.coin, and check the confirmation before you pay.',
+  'Their code opens Send GET.coin to that person. Codes from outside GET.ride are not paid.',
+  'Enter the amount and check the confirmation before you send.',
 ];
