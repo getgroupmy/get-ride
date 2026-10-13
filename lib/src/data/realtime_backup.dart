@@ -13,10 +13,33 @@ const realtimeBackupInterval = Duration(seconds: 5);
 /// with two phones online was thousands of API requests an hour.
 const realtimeBackupHealthyInterval = Duration(seconds: 30);
 
+/// While the channel stays down, the reads that keep to [every] before the
+/// wait starts doubling: a channel still opening costs nothing extra, one
+/// that stays down (a struggling database, no realtime at all) stops being
+/// read every few seconds by every screen on every phone -- which is what
+/// turned a slow database into an outage.
+const realtimeBackupSteadyDownReads = 3;
+
+/// The longest wait between reads while the channel stays down; a slower
+/// [RealtimeBackup.every] is allowed up to four times itself.
+const realtimeBackupMaxDownInterval = Duration(minutes: 2);
+
 /// The interval a backup re-reads at: [every] while the channel is down,
 /// and the slower of [every] and [healthy] while it is open. Pure.
 Duration realtimeBackupPeriod({required Duration every, required Duration healthy, required bool connected}) =>
     connected && healthy > every ? healthy : every;
+
+/// The wait before the next read while the channel is down, after
+/// [downReads] reads since it went down: [every] for the first
+/// [realtimeBackupSteadyDownReads], then doubling, capped at
+/// [realtimeBackupMaxDownInterval] (or four times [every], if longer). Pure.
+Duration realtimeBackupDownDelay({required Duration every, required int downReads}) {
+  final cap = every * 4 > realtimeBackupMaxDownInterval ? every * 4 : realtimeBackupMaxDownInterval;
+  final doublings = downReads - realtimeBackupSteadyDownReads + 1;
+  if (doublings <= 0) return every;
+  final grown = every * (1 << (doublings > 16 ? 16 : doublings));
+  return grown > cap ? cap : grown;
+}
 
 /// The backup behind every realtime subscription in the app.
 ///
@@ -26,9 +49,11 @@ Duration realtimeBackupPeriod({required Duration every, required Duration health
 /// never arrives at all. So whatever follows rows live also reads them
 /// again itself: when the channel opens ([onStatus]), when the app comes
 /// back to the foreground, and on a timer -- every [every] while the
-/// channel is down, every [healthy] while it is open. A missed update then
-/// shows late instead of never, without polling the API while realtime
-/// is doing the job.
+/// channel is down (backing off when it stays down, see
+/// [realtimeBackupDownDelay]), every [healthy] while it is open. A missed
+/// update then shows late instead of never, without polling the API while
+/// realtime is doing the job. A channel that keeps dropping and reopening
+/// reads at most once per [every] for it.
 class RealtimeBackup {
   /// [onOpen] false skips the read when the channel first opens (the caller
   /// has just read everything anyway); a reopened channel still reads.
@@ -60,13 +85,26 @@ class RealtimeBackup {
   bool _skipOpen;
   bool _connected = false;
 
-  /// The interval the timer runs at now.
-  Duration get period => realtimeBackupPeriod(every: every, healthy: healthy, connected: _connected);
+  /// Timer reads since the channel was last open.
+  int _downReads = 0;
+
+  /// Running from a status-triggered read until [every] after it: a channel
+  /// flapping open and shut meanwhile does not read again on each flap.
+  Timer? _cooldown;
+
+  /// The wait before the timer's next read.
+  Duration get period => _connected
+      ? realtimeBackupPeriod(every: every, healthy: healthy, connected: true)
+      : realtimeBackupDownDelay(every: every, downReads: _downReads);
 
   void _schedule() {
     _timer?.cancel();
     if (_disposed) return;
-    _timer = Timer.periodic(period, (_) => run());
+    _timer = Timer(period, () {
+      if (!_connected) _downReads++;
+      run();
+      _schedule();
+    });
   }
 
   /// Reads again now, unless a read is already under way.
@@ -74,6 +112,13 @@ class RealtimeBackup {
     if (_busy || _disposed) return;
     _busy = true;
     Future.sync(_refresh).catchError((Object _) {}).whenComplete(() => _busy = false);
+  }
+
+  /// [run] for a status change, unless one did less than [every] ago.
+  void _runThrottled() {
+    if (_cooldown != null) return;
+    _cooldown = Timer(every, () => _cooldown = null);
+    run();
   }
 
   /// Pass to `channel.subscribe(...)`: reads once more as the channel opens,
@@ -84,22 +129,24 @@ class RealtimeBackup {
     final connected = status == RealtimeSubscribeStatus.subscribed;
     final changed = connected != _connected;
     _connected = connected;
+    if (connected) _downReads = 0;
     if (changed) _schedule();
     if (!connected) {
       // Whatever the channel would have delivered is now the timer's job.
-      if (changed) run();
+      if (changed) _runThrottled();
       return;
     }
     if (_skipOpen) {
       _skipOpen = false;
       return;
     }
-    run();
+    _runThrottled();
   }
 
   void dispose() {
     _disposed = true;
     _timer?.cancel();
+    _cooldown?.cancel();
     _lifecycle?.dispose();
   }
 }
