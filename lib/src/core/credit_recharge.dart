@@ -3,6 +3,8 @@
 /// under a row lock; these checks only stop a request that cannot succeed.
 library;
 
+import 'server_timeout.dart';
+
 /// Parses a typed amount: digits with at most two decimals, else null.
 double? parseRechargeAmount(String text) {
   final s = text.trim().replaceAll(',', '');
@@ -20,6 +22,8 @@ String? rechargeCreditProblem(double? amount, double walletBalance) {
 
 /// What to tell the partner when the RPC refuses.
 String rechargeCreditErrorMessage(Object error) {
+  final slow = serverTimeoutText(error);
+  if (slow != null) return slow;
   final s = error.toString().toLowerCase();
   if (s.contains('insufficient_balance')) return 'Not enough balance in GET.wallet.';
   if (s.contains('invalid_amount')) return 'Enter an amount greater than 0.';
