@@ -127,16 +127,50 @@ class AuthRepository {
     }
   }
 
+  /// Signs in with the PIN through the pin-login function (migration 0172):
+  /// the server checks the PIN, with its lockout, and hands back a session.
+  /// Only where the function isn't deployed does the older route run.
   Future<PinSignInResult> signInWithPin(String phone, String pin) async {
+    final outcome = await _pinLogin(phone, pin);
+    switch (outcome) {
+      case PinLoginSignedIn(:final refreshToken):
+        await _db.auth.setSession(refreshToken);
+        return const PinSignInOk();
+      case PinLoginWrongPin():
+        return const PinSignInError('Incorrect PIN. Please try again.');
+      case PinLoginRefused(:final message):
+        return PinSignInError(message, locked: true);
+      case PinLoginNeedsOtp():
+        return const PinSignInNeedsOtp();
+      case PinLoginUnavailable():
+        return _legacySignInWithPin(phone, pin);
+    }
+  }
+
+  Future<PinLoginOutcome> _pinLogin(String phone, String pin) async {
+    try {
+      final res = await _db.functions.invoke('pin-login', body: {'phone': normalizeE164(phone), 'pin': pin});
+      return pinLoginOutcome(res.status, res.data);
+    } on FunctionException catch (e) {
+      return pinLoginOutcome(e.status, e.details);
+    } catch (_) {
+      return const PinLoginUnavailable();
+    }
+  }
+
+  /// Sign-in for a backend without pin-login: the PIN-derived password,
+  /// then the server's PIN check. An account already moved to a random
+  /// password lands on the check, and from there on the SMS code.
+  Future<PinSignInResult> _legacySignInWithPin(String phone, String pin) async {
     try {
       await _db.auth.signInWithPassword(phone: phone, password: derivePinPassword(pin));
+      // In by the old password: retire it now that it has been used.
+      await retireDerivedPassword();
       return const PinSignInOk();
     } on AuthException catch (e) {
       if (!RegExp('invalid login credentials', caseSensitive: false).hasMatch(e.message)) {
         return PinSignInError(e.message);
       }
-      // Wrong PIN, or right PIN with a drifted Auth password? Ask the
-      // rate-limited server check, which compares against the bcrypt hash.
       try {
         final id = await _db.rpc('verify_pin_for_login', params: {'p_phone': phone, 'p_pin': pin});
         if (id != null) return const PinSignInNeedsOtp();
@@ -197,7 +231,7 @@ class AuthRepository {
       }
       rethrow;
     }
-    await syncPinPassword(pin);
+    await retireDerivedPassword();
   }
 
   /// Whether the signed-in account has a sign-in PIN (Settings offers
@@ -214,34 +248,26 @@ class AuthRepository {
     return phone.isEmpty ? null : normalizeE164(phone);
   }
 
-  /// Changes the signed-in account's PIN from Settings. The PIN itself is
-  /// saved first; the derived sign-in password is then synced, once more
-  /// after [retryAfter] if that fails (Expo `registerUser`). False when the
-  /// password still lags: the PIN has changed, and the next PIN sign-in
-  /// confirms the phone by SMS once to catch the password up.
+  /// Changes the signed-in account's PIN from Settings: the PIN is saved,
+  /// then the old PIN-derived Auth password is retired. PIN sign-in goes
+  /// through pin-login, which needs no password kept in step with the PIN,
+  /// so this is always true now; the result stays for the screen's sake.
+  /// [retryAfter] is no longer used.
   Future<bool> changePin(String pin, {Duration retryAfter = const Duration(milliseconds: 800)}) async {
     await _db.rpc('set_login_pin', params: {'p_pin': pin, 'p_device_id': await deviceIdentifier()});
-    for (var attempt = 0; attempt < 2; attempt++) {
-      try {
-        await syncPinPassword(pin);
-        return true;
-      } catch (_) {
-        if (attempt == 0) await Future<void>.delayed(retryAfter);
-      }
-    }
-    return false;
+    await retireDerivedPassword();
+    return true;
   }
 
-  Future<void> syncPinPassword(String pin) async {
+  /// Writes a random password over the account's Auth password, so the old
+  /// PIN-derived one (`derivePinPassword`) stops working. Called whenever a
+  /// PIN is set or confirmed by SMS; PIN sign-in no longer needs a password
+  /// the phone knows (pin-login sets its own). Best effort: the next sign-in
+  /// through pin-login replaces it anyway.
+  Future<void> retireDerivedPassword() async {
     try {
-      await _db.auth.updateUser(UserAttributes(password: derivePinPassword(pin)));
-    } on AuthException catch (e) {
-      // 422 same_password → already in sync.
-      if (!RegExp(r'same.?password|different.*password', caseSensitive: false)
-          .hasMatch(e.message)) {
-        rethrow;
-      }
-    }
+      await _db.auth.updateUser(UserAttributes(password: throwawayPassword()));
+    } catch (_) {}
   }
 
   /// The id the server's duplicate-account guard counts accounts by. The

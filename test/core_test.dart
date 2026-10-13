@@ -16,6 +16,37 @@ void main() {
       expect(composePhone('+65', '9123 4567'), '+6591234567');
     });
 
+    test('pin-login answers: a session, wrong PIN, lockouts, SMS, or the older route', () {
+      expect(
+        pinLoginOutcome(200, {
+          'session': {'access_token': 'a', 'refresh_token': 'r'},
+        }),
+        isA<PinLoginSignedIn>().having((o) => o.refreshToken, 'refreshToken', 'r'),
+      );
+      expect(pinLoginOutcome(200, {'session': {}}), isA<PinLoginUnavailable>());
+      expect(pinLoginOutcome(401, {'error': 'wrong_pin'}), isA<PinLoginWrongPin>());
+      expect(pinLoginOutcome(409, {'error': 'needs_otp'}), isA<PinLoginNeedsOtp>());
+      expect(
+        pinLoginOutcome(423, {'error': 'locked', 'retry_after': 840}),
+        isA<PinLoginRefused>().having((o) => o.message, 'message', contains('14 minutes')),
+      );
+      expect(
+        pinLoginOutcome(429, {'error': 'rate_limited', 'retry_after': 30}),
+        isA<PinLoginRefused>().having((o) => o.message, 'message', contains('this network')),
+      );
+      // Not deployed, or not answering: the older sign-in decides.
+      for (final s in [404, 500, 503, 0]) {
+        expect(pinLoginOutcome(s, 'Not Found'), isA<PinLoginUnavailable>(), reason: '$s');
+      }
+    });
+
+    test('throwaway passwords are long, random and never PIN-derived', () {
+      final a = throwawayPassword(), b = throwawayPassword();
+      expect(a.length, 43);
+      expect(a, isNot(b));
+      expect(a, isNot(startsWith('teksi-pin')));
+    });
+
     test('derivePinPassword matches Expo derivePinPassword', () {
       expect(derivePinPassword('123456'), 'teksi-pin-v1-123456');
     });
