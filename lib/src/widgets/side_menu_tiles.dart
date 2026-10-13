@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/inbox.dart' show inboxBadgeText;
 import '../core/side_menu.dart';
+import '../data/notifications_repository.dart' show unreadNotificationsProvider;
 import 'side_menu_style.dart';
 
 /// Expo icon names (the admin's custom-item picker) as Material icons.
@@ -116,6 +119,9 @@ class SideMenuTile extends StatelessWidget {
     if (entry.custom || entry.overridden || !builtIn(context, entry.id)) showComingSoon(context);
   }
 
+  /// The built-in Notifications row carries its unread count.
+  bool get _counts => !entry.custom && !entry.comingSoon && entry.id == notificationsMenuItemId;
+
   @override
   Widget build(BuildContext context) {
     if (plain) {
@@ -126,6 +132,8 @@ class SideMenuTile extends StatelessWidget {
         color: color,
         trailing: entry.comingSoon
             ? Text('Soon', style: TextStyle(fontSize: 12, color: SideMenuColors.of(context).muted))
+            : _counts
+            ? const UnreadNotificationsBadge()
             : null,
         onTap: () => _tap(context),
       );
@@ -134,8 +142,41 @@ class SideMenuTile extends StatelessWidget {
       key: ValueKey('menu-${entry.id}'),
       leading: Icon(menuIcon(entry), color: color),
       title: Text(entry.label, style: color == null ? null : TextStyle(color: color)),
-      trailing: entry.comingSoon ? const Chip(label: Text('Soon')) : const Icon(Icons.chevron_right),
+      trailing: entry.comingSoon
+          ? const Chip(label: Text('Soon'))
+          : _counts
+          ? const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [UnreadNotificationsBadge(), Icon(Icons.chevron_right)],
+            )
+          : const Icon(Icons.chevron_right),
       onTap: () => _tap(context),
+    );
+  }
+}
+
+/// The built-in Notifications menu item's id (rider and driver menus).
+const notificationsMenuItemId = 'notifications';
+
+/// The unread count on the Notifications row; nothing when all are read.
+class UnreadNotificationsBadge extends ConsumerWidget {
+  const UnreadNotificationsBadge({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final unread = ref.watch(unreadNotificationsProvider);
+    if (unread == 0) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      key: const ValueKey('menu-notifications-badge'),
+      constraints: const BoxConstraints(minWidth: 22),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(color: cs.error, borderRadius: BorderRadius.circular(11)),
+      child: Text(
+        inboxBadgeText(unread),
+        textAlign: TextAlign.center,
+        style: TextStyle(color: cs.onError, fontSize: 12, fontWeight: FontWeight.w700),
+      ),
     );
   }
 }

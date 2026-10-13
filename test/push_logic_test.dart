@@ -104,4 +104,17 @@ void main() {
     expect(pushDeviceKey(null), isNull);
     expect(pushDeviceKey('  '), isNull);
   });
+
+  test('the mode follows driver and passenger screens; shared screens keep it', () {
+    expect(pushModeAt('/drive', null), 'partner');
+    expect(pushModeAt('/drive/trip/r1/chat', 'rider'), 'partner');
+    expect(pushModeAt('/meter', 'rider'), 'partner');
+    expect(pushModeAt('/', 'partner'), 'rider');
+    expect(pushModeAt('/ride/r1', 'partner'), 'rider');
+    expect(pushModeAt('/trips/r1', 'partner'), 'rider');
+    expect(pushModeAt('/wallet', 'partner'), 'partner');
+    expect(pushModeAt('/account/settings', 'rider'), 'rider');
+    expect(pushModeAt('/wallet', null), isNull);
+    expect(pushModeAt('/drivers', 'rider'), 'rider');
+  });
 }

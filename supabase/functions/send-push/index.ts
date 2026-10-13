@@ -26,6 +26,10 @@
 //
 // `excludeProfileIds` are never sent to (a ride request's own rider).
 //
+// Ride offers and partner broadcasts skip phones in passenger mode, user
+// broadcasts skip phones in driver mode (push_tokens.mode, migration 0166;
+// _shared/push.ts: notificationMode).
+//
 // "drivers" is accepted as a legacy alias for "partners".
 //
 // When `profileId` is set the notification goes only to that profile's
@@ -64,6 +68,10 @@ import {
   fcmOutcome,
   fcmSendUrl,
   parseServiceAccount,
+  inboxRows,
+  type InboxRow,
+  inMode,
+  notificationMode,
   pickRecipients,
   planDeliveries,
   profileIdList,
@@ -93,6 +101,30 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Unexpected error" }, 500);
   }
 });
+
+/**
+ * Stores the page rows (migration 0167), a few hundred at a time. Never
+ * stands in the way of the push: a database without the table, or any other
+ * failure, is logged and the send goes on.
+ */
+// deno-lint-ignore no-explicit-any
+async function keepForInbox(supabase: any, rows: InboxRow[]): Promise<void> {
+  for (let i = 0; i < rows.length; i += 500) {
+    const chunk = rows.slice(i, i + 500);
+    try {
+      const { error } = await supabase
+        .from("user_notifications")
+        .upsert(chunk, { onConflict: "profile_id,event_id", ignoreDuplicates: true });
+      if (error) {
+        console.log("[send-push] notifications page not written:", error.message);
+        return;
+      }
+    } catch (e) {
+      console.log("[send-push] notifications page not written:", String(e));
+      return;
+    }
+  }
+}
 
 function serviceRoleKey(): string | undefined {
   return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY");
@@ -165,14 +197,35 @@ async function dispatch(payload: SendBody): Promise<Response> {
         error: { message?: string } | null;
       }>;
     });
-  let { data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id, capabilities");
+  // `mode` arrived with 0166: without it every phone is told, as before.
+  let { data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id, capabilities, mode");
+  if (tokensErr && /mode/.test(tokensErr.message ?? "")) {
+    ({ data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id, capabilities"));
+  }
   if (tokensErr && /capabilities/.test(tokensErr.message ?? "")) {
     ({ data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id"));
   }
   if (tokensErr) {
     return json({ error: `Failed to load tokens: ${tokensErr.message}` }, 500);
   }
-  tokenRows = pickRecipients(tokenRows, only, exclude);
+  // Only the phones in the mode this notification belongs to (a driver
+  // browsing as a passenger is not sent ride offers, and the other way round).
+  const mode = notificationMode(audience, payload.data, profileId !== "");
+  const recipientRows = pickRecipients(tokenRows, only, exclude);
+  tokenRows = inMode(recipientRows, mode);
+
+  // Kept for the notifications page, for every recipient account -- also
+  // those whose phone is in the other mode, who see it when they switch.
+  await keepForInbox(
+    supabase,
+    inboxRows(
+      profileId ? [profileId] : recipientRows.flatMap((r) => (r.profile_id ? [r.profile_id] : [])),
+      title,
+      body,
+      payload.data,
+      mode,
+    ),
+  );
 
   // Each device's way of being told (push.ts: planDeliveries). A ride call
   // rings capable Android builds through a data message and iPhones through

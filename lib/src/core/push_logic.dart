@@ -199,3 +199,14 @@ String? pushDeviceKey(String? raw) {
   if (v.isEmpty) return null;
   return sha256.convert(utf8.encode('getride-push:$v')).toString();
 }
+
+/// The mode a phone in [location] is in, for the notifications that belong
+/// to one (migration 0166): driver screens and the taxi meter are 'partner',
+/// home and the passenger's rides 'rider', and the screens both share keep
+/// [previous]. Null until the app has been anywhere that says.
+String? pushModeAt(String location, String? previous) {
+  bool under(String root) => location == root || location.startsWith('$root/');
+  if (under('/drive') || under('/meter')) return 'partner';
+  if (location == '/' || under('/trips') || under('/ride')) return 'rider';
+  return previous;
+}
