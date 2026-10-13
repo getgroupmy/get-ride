@@ -96,6 +96,8 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000007a2');
 insert into public.ride_requests (rider_id, status) values ('00000000-0000-0000-0000-0000000007a2', 'open');
 
 -- 6. A passenger name needs a phone ------------------------------------------
+-- (as the table owner: a client can't insert a request that isn't open, 0174)
+reset role;
 do $$
 begin
   begin
@@ -107,6 +109,5 @@ begin
   raise exception 'FAILED: a passenger name without a phone was stored';
 end $$;
 
-reset role;
 select 'one_request_book_for_others: all passed';
 rollback;
