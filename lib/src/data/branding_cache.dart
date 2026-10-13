@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../admin/screens/meterapp/site_logic.dart' show brandingRowId, brandingTable;
 import '../core/app_branding.dart';
+import '../core/backend_network.dart';
 import 'geo_service.dart' show adminStartCenter;
 import 'realtime_backup.dart';
 
@@ -48,6 +49,18 @@ class BrandingCache {
       final f = await _imageFile();
       if (b.splashImageUrl != null && f != null && await f.exists()) bytes = await f.readAsBytes();
       return CachedBranding(b, bytes);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Only the cached Backend network settings (no image read), for the
+  /// background push handler; null when none is cached.
+  static Future<BackendNetwork?> loadNetwork() async {
+    try {
+      final raw = (await SharedPreferences.getInstance()).getString(_key);
+      if (raw == null) return null;
+      return BackendNetwork.fromJson((jsonDecode(raw) as Map)['network']);
     } catch (_) {
       return null;
     }

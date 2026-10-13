@@ -5,14 +5,6 @@ void main() {
   const direct = 'https://rqlavogkgywxspuxgiwk.supabase.co';
   const fallback = 'https://api.getride.my';
 
-  test('the project\'s own address unless it fails to resolve and the second does', () {
-    expect(chooseBackendUrl(direct, directResolves: true, fallbackResolves: true), direct);
-    expect(chooseBackendUrl(direct, directResolves: true, fallbackResolves: false), direct);
-    expect(chooseBackendUrl(direct, directResolves: false, fallbackResolves: true), fallback);
-    // Neither resolves (offline): stay put, the app's offline handling takes over.
-    expect(chooseBackendUrl(direct, directResolves: false, fallbackResolves: false), direct);
-  });
-
   test('stored file links follow the active address; others are left alone', () {
     const avatar = '$direct/storage/v1/object/public/avatars/u1.jpg?t=1';
     expect(onActiveBackend(avatar, direct, direct), avatar);
@@ -28,7 +20,20 @@ void main() {
     setActiveBackendUrl(fallback);
     expect(activeBackendUrl(direct), fallback);
     expect(onBackendFallback(direct), isTrue);
-    setActiveBackendUrl(direct);
+    setActiveBackendUrl(direct, pinnedIp: '104.18.1.1');
     expect(onBackendFallback(direct), isFalse);
+    expect(activeBackendPinnedIp, '104.18.1.1');
+    setActiveBackendUrl(direct);
+    expect(activeBackendPinnedIp, isNull);
+  });
+
+  test('Settings says which address and, when a resolver found it, which IP', () {
+    setActiveBackendUrl(direct);
+    expect(backendRouteText(direct), 'rqlavogkgywxspuxgiwk.supabase.co');
+    setActiveBackendUrl(fallback);
+    expect(backendRouteText(direct), 'rqlavogkgywxspuxgiwk.supabase.co via api.getride.my');
+    setActiveBackendUrl(direct, pinnedIp: '104.18.1.1');
+    expect(backendRouteText(direct), 'rqlavogkgywxspuxgiwk.supabase.co (104.18.1.1, DNS over HTTPS)');
+    setActiveBackendUrl(direct);
   });
 }

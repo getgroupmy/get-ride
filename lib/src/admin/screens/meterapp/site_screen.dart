@@ -17,6 +17,7 @@ import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
 import '../../widgets/admin_widgets.dart';
+import 'backend_network_card.dart';
 import 'branding_screens.dart';
 import 'pick_image.dart';
 import 'site_logic.dart';
@@ -462,6 +463,8 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                       child: const Text('Save splash, colours & start location'),
                     ),
                   ),
+                const SizedBox(height: 8),
+                BackendNetworkCard(stored: stored.network, canEdit: canEdit),
                 const SizedBox(height: 16),
                 _SiteValues(canEdit: canEdit),
                 const SizedBox(height: 40),
