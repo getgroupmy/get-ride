@@ -7,6 +7,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
+import '../config.dart';
+import '../core/backend_route.dart';
 import '../core/storage_links.dart';
 import 'storage_image.dart';
 
@@ -82,8 +84,10 @@ class NetImage extends StatelessWidget {
         errorBuilder: error,
       );
     }
+    // A stored file on the project's host loads through whichever address
+    // the app is on (core/backend_route.dart).
     return Image.network(
-      url,
+      onActiveBackend(url, AppConfig.supabaseUrl, activeBackendUrl(AppConfig.supabaseUrl)),
       width: width,
       height: height,
       fit: fit,

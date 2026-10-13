@@ -285,3 +285,47 @@ Deno.test("TARGET_HOST from the environment is where the request goes", async ()
   await handle(new Request("https://qr.getride.my/ref/t"), { TARGET_HOST: "get-ride.vercel.app" }, fetcher);
   assertEquals(calls[0].url, "https://get-ride.vercel.app/ref/t");
 });
+
+// ---------------------------------------------------------------------------
+// api.getride.my: the backend's second address
+
+Deno.test("api goes straight to the Supabase project, path and query kept", () => {
+  assertEquals(upstream("https://api.getride.my/rest/v1/profiles?select=id", config), {
+    target: "https://rqlavogkgywxspuxgiwk.supabase.co/rest/v1/profiles?select=id",
+    api: true,
+  });
+  assertEquals(upstream("https://api.getride.my/realtime/v1/websocket?vsn=1.0.0", config), {
+    target: "https://rqlavogkgywxspuxgiwk.supabase.co/realtime/v1/websocket?vsn=1.0.0",
+    api: true,
+  });
+});
+
+Deno.test("api can be renamed, repointed, or switched off with PASS_THROUGH", () => {
+  const moved = configFrom({ API_LABEL: "backend", API_TARGET: "abc.supabase.co" });
+  assertEquals(upstream("https://backend.getride.my/auth/v1/health", moved), {
+    target: "https://abc.supabase.co/auth/v1/health",
+    api: true,
+  });
+  // A bad value falls back rather than taking the worker down.
+  assertEquals(configFrom({ API_LABEL: "no good", API_TARGET: "not a host" }).apiTarget, "rqlavogkgywxspuxgiwk.supabase.co");
+  assertEquals(upstream("https://api.getride.my/x", configFrom({ PASS_THROUGH: "api" })), null);
+});
+
+Deno.test("the backend's answer is returned as it is, redirects and upgrades included", async () => {
+  const seen: Request[] = [];
+  const upstreamRedirect = new Response(null, {
+    status: 303,
+    headers: { location: "https://accounts.google.com/o/oauth2/auth?x=1" },
+  });
+  const res = await handle(
+    new Request("https://api.getride.my/auth/v1/authorize?provider=google", { headers: { apikey: "k" } }),
+    {},
+    (req) => {
+      seen.push(req);
+      return Promise.resolve(upstreamRedirect);
+    },
+  );
+  assertEquals(seen[0].url, "https://rqlavogkgywxspuxgiwk.supabase.co/auth/v1/authorize?provider=google");
+  assertEquals(seen[0].headers.get("apikey"), "k");
+  assertEquals(res, upstreamRedirect);
+});

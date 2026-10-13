@@ -6,7 +6,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'src/app.dart';
 import 'src/config.dart';
 import 'src/core/app_branding.dart';
+import 'src/core/backend_route.dart';
+import 'src/core/push_logic.dart' show supabaseSessionKey;
 import 'src/core/referral.dart';
+import 'src/data/backend_resolver.dart';
 import 'src/data/branding_cache.dart';
 import 'src/data/push_service.dart';
 import 'src/data/timeout_http_client.dart';
@@ -25,10 +28,20 @@ Future<void> main() async {
   // Every Supabase request (database, functions, storage, sign-in) goes
   // through a client that gives up on a server that does not answer, instead
   // of leaving the screen waiting on it (see core/server_timeout.dart).
+  //
+  // On a network that cannot look up the project's host, the backend's
+  // second address is used (core/backend_route.dart). The session is kept
+  // under the project's own key either way, so switching addresses never
+  // signs anyone out.
+  final backend = await pickBackendUrl(AppConfig.supabaseUrl);
+  setActiveBackendUrl(backend);
   await Supabase.initialize(
-    url: AppConfig.supabaseUrl,
+    url: backend,
     publishableKey: AppConfig.supabaseAnonKey,
     httpClient: TimeoutHttpClient(),
+    authOptions: FlutterAuthClientOptions(
+      localStorage: SharedPreferencesLocalStorage(persistSessionKey: supabaseSessionKey(AppConfig.supabaseUrl)),
+    ),
   );
   // Push notifications, on Android and iOS builds that carry a Firebase
   // project. A no-op everywhere else.

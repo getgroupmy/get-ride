@@ -31,3 +31,10 @@ TARGET_HOST = "www.getride.my"
 # are always passed through. Overridden at deploy time by the repository
 # variable SUBDOMAIN_PROXY_PASS_THROUGH, if set.
 PASS_THROUGH = ""
+
+# The backend's second address (see "api.getride.my" in worker.js): this
+# subdomain is passed straight through to the Supabase project, for phones
+# on networks that cannot look up *.supabase.co. Listing `api` in
+# PASS_THROUGH turns it off.
+API_LABEL = "api"
+API_TARGET = "rqlavogkgywxspuxgiwk.supabase.co"

@@ -54,6 +54,18 @@
  * grey, its traffic goes straight to wherever it points and skips this
  * worker entirely.
  *
+ * ## api.getride.my: the backend's second address
+ *
+ * One subdomain is different: `api` (`API_LABEL`) is a straight pass-
+ * through to the Supabase project (`API_TARGET`), REST, auth, storage,
+ * functions and the realtime websocket alike. Some networks fail to look
+ * up `*.supabase.co` (an iPhone on one carrier got "Failed host lookup",
+ * errno 8, while public DNS answered fine); the app checks at launch and,
+ * when the project's own host does not resolve but this one does, talks to
+ * the backend through here instead (`lib/src/core/backend_route.dart`).
+ * Responses come back as they are: no Location rewriting, since Supabase's
+ * redirects point at OAuth providers and the app, never at itself.
+ *
  * ## What it does not do
  *
  * It does not rewrite response bodies (the app's assets are relative and
@@ -83,6 +95,12 @@ export const ZONE = "getride.my";
  */
 export const DEFAULT_TARGET = "www.getride.my";
 
+/** The subdomain that carries the backend (see "api.getride.my" above). */
+export const DEFAULT_API_LABEL = "api";
+
+/** The Supabase project behind it. */
+export const DEFAULT_API_TARGET = "rqlavogkgywxspuxgiwk.supabase.co";
+
 /** Labels that are never proxied, whatever `PASS_THROUGH` says. */
 export const ALWAYS_PASS = ["www"];
 
@@ -95,13 +113,20 @@ const HOSTNAME =
  * default rather than taking the worker down.
  *
  * @param {Record<string, string | undefined> | undefined} env
- * @returns {{ target: string, passThrough: Set<string> }}
+ * @returns {{ target: string, passThrough: Set<string>, apiLabel: string, apiTarget: string }}
  */
 export function configFrom(env) {
-  const raw = String(env?.TARGET_HOST ?? "").trim().toLowerCase()
-    .replace(/\.$/, "");
-  const target = HOSTNAME.test(raw) ? raw : DEFAULT_TARGET;
-  return { target, passThrough: parsePassThrough(env?.PASS_THROUGH) };
+  const host = (v, fallback) => {
+    const raw = String(v ?? "").trim().toLowerCase().replace(/\.$/, "");
+    return HOSTNAME.test(raw) ? raw : fallback;
+  };
+  const label = String(env?.API_LABEL ?? "").trim().toLowerCase();
+  return {
+    target: host(env?.TARGET_HOST, DEFAULT_TARGET),
+    passThrough: parsePassThrough(env?.PASS_THROUGH),
+    apiLabel: /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label) ? label : DEFAULT_API_LABEL,
+    apiTarget: host(env?.API_TARGET, DEFAULT_API_TARGET),
+  };
 }
 
 /**
@@ -139,7 +164,7 @@ export function parsePassThrough(raw) {
  *
  * @param {string} rawUrl
  * @param {{ target: string, passThrough: Set<string> }} config
- * @returns {null | { target: string } | { redirect: string }}
+ * @returns {null | { target: string, api?: boolean } | { redirect: string }}
  */
 export function upstream(rawUrl, config = configFrom({})) {
   const url = new URL(rawUrl);
@@ -161,6 +186,9 @@ export function upstream(rawUrl, config = configFrom({})) {
   if (config.passThrough.has(label)) return null;
 
   const rest = `${url.pathname}${url.search}`;
+
+  // The backend's second address: straight to the Supabase project.
+  if (label === config.apiLabel) return { target: `https://${config.apiTarget}${rest}`, api: true };
 
   // A subdomain of a subdomain is nobody's, and Cloudflare's Universal
   // SSL certificate (`getride.my`, `*.getride.my`) does not cover it.
@@ -223,6 +251,10 @@ export async function handle(request, env, fetcher) {
   const response = await fetcher(new Request(decision.target, request), {
     redirect: "manual",
   });
+
+  // The backend answers as it is, a realtime websocket upgrade (101)
+  // included: its redirects are never onto the target.
+  if (decision.api) return response;
 
   const location = response.headers.get("location");
   if (!location) return response;
