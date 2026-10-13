@@ -3,6 +3,8 @@
 /// PIN in the Expo app must be able to sign in from Flutter and vice versa.
 library;
 
+import 'dart:math';
+
 /// Strips everything but digits and prefixes `+` (Expo `normalizeE164`).
 String normalizeE164(String input) {
   final digits = input.trim().replaceAll(RegExp(r'[^\d]'), '');
@@ -43,10 +45,75 @@ String capitaliseName(String name) => name
     .map((w) => w[0].toUpperCase() + w.substring(1))
     .join(' ');
 
-/// Deterministic Supabase Auth password derived from the sign-in PIN, so a
-/// PIN login can mint a real session via phone + password
-/// (Expo `derivePinPassword`).
+/// The Auth password builds before migration 0172 derived from the PIN
+/// (Expo `derivePinPassword`). Only the fallback sign-in, for a backend
+/// without the pin-login function, still sends it: a million of these per
+/// number is what someone guessing at Auth's password grant would try, so
+/// nothing sets it as a password any more ([throwawayPassword] replaces it).
 String derivePinPassword(String pin) => 'teksi-pin-v1-$pin';
+
+/// A random Auth password nobody keeps: written over the PIN-derived one
+/// whenever a PIN is set or confirmed, so it stops being guessable. PIN
+/// sign-in goes through the pin-login function, which sets its own.
+String throwawayPassword([Random? random]) {
+  final r = random ?? Random.secure();
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  return List.generate(43, (_) => alphabet[r.nextInt(alphabet.length)]).join();
+}
+
+/// What a pin-login answer means for the sign-in screen (function in
+/// supabase/functions/pin-login).
+sealed class PinLoginOutcome {
+  const PinLoginOutcome();
+}
+
+/// Signed in: the session to adopt.
+class PinLoginSignedIn extends PinLoginOutcome {
+  const PinLoginSignedIn(this.refreshToken);
+  final String refreshToken;
+}
+
+class PinLoginWrongPin extends PinLoginOutcome {
+  const PinLoginWrongPin();
+}
+
+/// Too many wrong PINs on the account, or tries from this network.
+class PinLoginRefused extends PinLoginOutcome {
+  const PinLoginRefused(this.message);
+  final String message;
+}
+
+/// The PIN is right but there is no phone login to give it: SMS code.
+class PinLoginNeedsOtp extends PinLoginOutcome {
+  const PinLoginNeedsOtp();
+}
+
+/// The function isn't there or didn't answer: the older sign-in decides.
+class PinLoginUnavailable extends PinLoginOutcome {
+  const PinLoginUnavailable();
+}
+
+/// Reads a pin-login answer ([status] and its JSON [body]). Pure.
+PinLoginOutcome pinLoginOutcome(int status, Object? body) {
+  final map = body is Map ? body : const {};
+  final wait = map['retry_after'] is num ? (map['retry_after'] as num).toInt() : null;
+  switch (status) {
+    case 200:
+      final session = map['session'];
+      final token = session is Map ? session['refresh_token'] : null;
+      return token is String && token.isNotEmpty ? PinLoginSignedIn(token) : const PinLoginUnavailable();
+    case 401:
+      return const PinLoginWrongPin();
+    case 409:
+      return const PinLoginNeedsOtp();
+    case 423:
+      return PinLoginRefused(pinLockMessage(wait ?? pinLockDefaultSeconds));
+    case 429:
+      return PinLoginRefused(rateLimitMessage(wait ?? 60));
+    default:
+      return const PinLoginUnavailable();
+  }
+}
 
 /// Sign-in PINs are exactly six digits.
 bool isValidPin(String pin) => RegExp(r'^\d{6}$').hasMatch(pin);

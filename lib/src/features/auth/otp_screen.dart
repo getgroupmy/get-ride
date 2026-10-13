@@ -66,7 +66,8 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       await auth.verifyOtp(widget.phone, _code.text);
       switch (next) {
         case OtpNext.resync:
-          await auth.syncPinPassword(widget.pin!);
+          // Confirmed by SMS: the PIN-derived password, if any, goes too.
+          await auth.retireDerivedPassword();
           if (mounted) context.go('/');
         case OtpNext.unlock:
           // Signed in past the PIN lock: the code proved the number, so the
