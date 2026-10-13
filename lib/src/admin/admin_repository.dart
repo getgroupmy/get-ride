@@ -264,8 +264,22 @@ class AdminRepository {
 
   // ---- Push ----------------------------------------------------------------
 
-  Future<Map<String, dynamic>> sendPush(String title, String body, String audience) async {
-    final res = await _db.functions.invoke('send-push', body: {'title': title, 'body': body, 'audience': audience});
+  /// Sends a broadcast, or with [dryRun] only counts who it would reach.
+  /// [area] (PushArea.toJson) narrows it to the phones last seen there.
+  Future<Map<String, dynamic>> sendPush(
+    String title,
+    String body,
+    String audience, {
+    Map<String, dynamic>? area,
+    bool dryRun = false,
+  }) async {
+    final res = await _db.functions.invoke('send-push', body: {
+      'title': title,
+      'body': body,
+      'audience': audience,
+      'area': ?area,
+      if (dryRun) 'dryRun': true,
+    });
     final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : <String, dynamic>{};
     if (data['error'] != null) throw Exception(data['error']);
     return data;

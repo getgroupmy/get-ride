@@ -58,7 +58,14 @@ class _Admin extends AdminRepository {
   Future<void> deleteSavedPush(String id) async => deleted.add(id);
 
   @override
-  Future<Map<String, dynamic>> sendPush(String title, String body, String audience) async {
+  Future<Map<String, dynamic>> sendPush(
+    String title,
+    String body,
+    String audience, {
+    Map<String, dynamic>? area,
+    bool dryRun = false,
+  }) async {
+    if (dryRun) return {'dryRun': true, 'recipients': 3, 'accounts': 2, 'unlocated': 0};
     sent.add([title, body, audience]);
     return {'sent': 3, 'recipients': 3, 'failed': 0};
   }
@@ -167,6 +174,7 @@ void main() {
         'title': 'New',
         'body': 'Body',
         'audience': 'partners',
+        'area': null,
         'extra': 1,
         'updatedAt': '2026-10-12T08:00:00.000Z',
       });

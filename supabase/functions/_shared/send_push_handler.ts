@@ -24,6 +24,10 @@ export interface SendBody {
   approvedOnly?: boolean;
   /** Profiles a broadcast skips (a ride request's own rider). */
   excludeProfileIds?: string[];
+  /** Only the phones last seen here (0168). */
+  area?: unknown;
+  /** Count who it would reach; send nothing. */
+  dryRun?: boolean;
   data?: Record<string, unknown>;
 }
 

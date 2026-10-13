@@ -399,3 +399,88 @@ export function inboxRows(
     .filter((id) => typeof id === "string" && id !== "")
     .map((profile_id) => ({ profile_id, title, body, data: kept, kind, mode, event_id: event }));
 }
+
+// ---- Who is in an area (Admin -> Push Notification, migration 0168) -------
+
+/**
+ * Where a broadcast goes: the people in a region (country, then optionally
+ * state, city, suburb), or within [radiusKm] of a point.
+ */
+export type PushArea =
+  | { kind: "region"; country: string; state?: string; city?: string; suburb?: string }
+  | { kind: "radius"; lat: number; lng: number; radiusKm: number };
+
+/** A phone's last known place (push_tokens, migration 0168). */
+export interface LocatedRow {
+  last_lat?: number | null;
+  last_lng?: number | null;
+  area_country?: string | null;
+  area_state?: string | null;
+  area_city?: string | null;
+  area_suburb?: string | null;
+  located_at?: string | null;
+}
+
+/** The push_tokens columns [inArea] reads. */
+export const LOCATED_COLUMNS = "last_lat, last_lng, area_country, area_state, area_city, area_suburb, located_at";
+
+/** A place older than this is not where the phone is any more. */
+export const AREA_MAX_AGE_DAYS = 30;
+
+/** The largest radius an area broadcast may use. */
+export const AREA_MAX_RADIUS_KM = 500;
+
+const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/**
+ * The area in a request body, or null when there is none or it is not
+ * usable (no country; a radius out of range or off the globe).
+ */
+export function parseArea(raw: unknown): PushArea | null {
+  if (!raw || typeof raw !== "object") return null;
+  const a = raw as Record<string, unknown>;
+  const lat = num(a.lat), lng = num(a.lng), radius = num(a.radiusKm);
+  if (lat !== null && lng !== null && radius !== null) {
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180 || radius <= 0 || radius > AREA_MAX_RADIUS_KM) return null;
+    return { kind: "radius", lat, lng, radiusKm: radius };
+  }
+  const country = text(a.country);
+  if (!country) return null;
+  const area: PushArea = { kind: "region", country };
+  for (const k of ["state", "city", "suburb"] as const) {
+    const v = text(a[k]);
+    if (v) area[k] = v;
+  }
+  return area;
+}
+
+/** Great-circle distance in km. Pure. */
+export function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const r = (d: number) => (d * Math.PI) / 180;
+  const dLat = r(lat2 - lat1), dLng = r(lng2 - lng1);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(lat1)) * Math.cos(r(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+const same = (a: unknown, b: string) => text(a).toLowerCase() === b.trim().toLowerCase();
+
+/**
+ * Whether the phone in [row] is in [area]: its place is known, no older than
+ * [AREA_MAX_AGE_DAYS], and inside the radius or carrying every name the
+ * region names (case and surrounding space ignored, as the app matches
+ * region names).
+ */
+export function inArea(row: LocatedRow, area: PushArea, now: Date): boolean {
+  const at = row.located_at ? Date.parse(row.located_at) : NaN;
+  if (!Number.isFinite(at) || now.getTime() - at > AREA_MAX_AGE_DAYS * 86_400_000) return false;
+  if (area.kind === "radius") {
+    const lat = num(row.last_lat), lng = num(row.last_lng);
+    return lat !== null && lng !== null && distanceKm(lat, lng, area.lat, area.lng) <= area.radiusKm;
+  }
+  if (!same(row.area_country, area.country)) return false;
+  if (area.state && !same(row.area_state, area.state)) return false;
+  if (area.city && !same(row.area_city, area.city)) return false;
+  if (area.suburb && !same(row.area_suburb, area.suburb)) return false;
+  return true;
+}

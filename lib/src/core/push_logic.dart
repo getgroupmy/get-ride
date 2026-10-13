@@ -18,6 +18,7 @@ import 'package:crypto/crypto.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:latlong2/latlong.dart';
 
 /// The Firebase client settings for one build, as passed with --dart-define.
 class FirebaseEnv {
@@ -209,4 +210,24 @@ String? pushModeAt(String location, String? previous) {
   if (under('/drive') || under('/meter')) return 'partner';
   if (location == '/' || under('/trips') || under('/ride')) return 'rider';
   return previous;
+}
+
+/// How often a phone re-reports where it is for area broadcasts, at most.
+const pushLocationEvery = Duration(minutes: 30);
+
+/// How far a phone moves before it re-reports sooner than that.
+const pushLocationMoveMeters = 1000.0;
+
+/// Whether to tell the server where the phone is now: never told yet, last
+/// told [pushLocationEvery] ago, or moved [pushLocationMoveMeters] since.
+/// Pure.
+bool shouldReportPushLocation({
+  required LatLng point,
+  required DateTime now,
+  LatLng? lastPoint,
+  DateTime? lastAt,
+}) {
+  if (lastPoint == null || lastAt == null) return true;
+  if (now.difference(lastAt) >= pushLocationEvery) return true;
+  return const Distance().as(LengthUnit.Meter, lastPoint, point) >= pushLocationMoveMeters;
 }

@@ -230,6 +230,53 @@ bool? biddingByBoundary(List<BiddingRegion> regions, LatLng pickup) {
   return best?.enabled;
 }
 
+/// The most specific region at [point]: one whose mapped boundary contains
+/// it, else one matching [area]'s names (suburbs only by boundary, as the
+/// geocoder cannot be trusted at that level) -- the region the bidding and
+/// pricing rules would use there. Null when none matches. Pure.
+BiddingRegion? regionAt(List<BiddingRegion> regions, LatLng point, {AreaInfo? area}) {
+  BiddingRegion? best;
+  for (final r in regions) {
+    if (r.rings.any((ring) => ring.length >= 3 && _inRing(point, ring)) &&
+        (best == null || r.specificity > best.specificity)) {
+      best = r;
+    }
+  }
+  if (best != null) return best;
+  final country = _n(area?.country);
+  if (country.isEmpty) return null;
+  for (final r in regions) {
+    if (_n(r.country) != country || r.suburb.isNotEmpty) continue;
+    if (r.state.isNotEmpty && _n(r.state) != _n(area?.state)) continue;
+    if (r.city.isNotEmpty && _n(r.city) != _n(area?.city)) continue;
+    if (best == null || r.specificity > best.specificity) best = r;
+  }
+  return best;
+}
+
+/// The place a phone reports for area broadcasts (push_set_location,
+/// migration 0168): the names of the region it is in (spelt as the admin
+/// spelt them, so a broadcast to that region finds it), the geocoder's for
+/// any level the region leaves open. Pure.
+({String? country, String? state, String? city, String? suburb}) pushPlaceAt(
+  List<BiddingRegion> regions,
+  LatLng point,
+  AreaInfo? area,
+) {
+  final r = regionAt(regions, point, area: area);
+  String? pick(String? fromRegion, String? fromGeocoder) {
+    final v = (fromRegion ?? '').trim().isNotEmpty ? fromRegion!.trim() : (fromGeocoder ?? '').trim();
+    return v.isEmpty ? null : v;
+  }
+
+  return (
+    country: pick(r?.country, area?.country),
+    state: pick(r?.state, area?.state),
+    city: pick(r?.city, area?.city),
+    suburb: pick(r?.suburb, area?.suburb),
+  );
+}
+
 /// Whether riders may bid at [pickup]. The most specific region whose
 /// boundary contains the point decides; failing that, the most specific
 /// region matching [area]'s names (suburb rules are skipped, as the geocoder

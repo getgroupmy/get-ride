@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -198,6 +199,39 @@ class PushService {
     }
   }
 
+  LatLng? _locatedAt;
+  DateTime? _locatedWhen;
+
+  /// Whether [point] is worth reporting now (shouldReportPushLocation).
+  bool wantsLocation(LatLng point, DateTime now) =>
+      shouldReportPushLocation(point: point, now: now, lastPoint: _locatedAt, lastAt: _locatedWhen);
+
+  /// Tells the server where this phone is, for area broadcasts
+  /// (`push_set_location`, migration 0168). Quiet on failure: a database
+  /// without it simply cannot send by area.
+  Future<void> reportLocation(
+    LatLng point,
+    ({String? country, String? state, String? city, String? suburb}) place,
+  ) async {
+    final tokens = [?_registeredToken, ?_registeredVoip];
+    if (tokens.isEmpty || _db.auth.currentUser == null) return;
+    try {
+      await _db.rpc('push_set_location', params: {
+        'p_tokens': tokens,
+        'p_lat': point.latitude,
+        'p_lng': point.longitude,
+        'p_country': place.country,
+        'p_state': place.state,
+        'p_city': place.city,
+        'p_suburb': place.suburb,
+      });
+      _locatedAt = point;
+      _locatedWhen = DateTime.now();
+    } catch (e) {
+      debugPrint('[push] location not stored: $e');
+    }
+  }
+
   /// Tells the server this phone has the push, so it isn't sent again
   /// (`ack_notification`, migration 0144). Quiet on failure.
   Future<void> _ack(Map<String, dynamic> data, String state) async {
@@ -346,6 +380,8 @@ class PushService {
     _registeredFor = null;
     _registeredVoip = null;
     _modeSent = null;
+    _locatedAt = null;
+    _locatedWhen = null;
     for (final t in [token, voip]) {
       if (t == null) continue;
       try {

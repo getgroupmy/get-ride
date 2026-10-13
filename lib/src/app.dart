@@ -17,11 +17,13 @@ import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/push_logic.dart';
+import 'core/ride_bidding.dart' show BiddingRegion, pushPlaceAt;
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
 import 'data/branding_cache.dart';
 import 'data/live_tables.dart';
 import 'data/messaging_repository.dart';
+import 'data/geo_service.dart' show AreaInfo, knownPosition;
 import 'data/notifications_repository.dart';
 import 'data/push_service.dart';
 import 'data/session_tracker.dart';
@@ -449,6 +451,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     _startSessionTracking();
     _startAlwaysOn();
     _startMessagingPresence();
+    _startPushLocation();
     unawaited(_connectionPopup());
     final push = PushService.instance;
     if (push == null) return;
@@ -520,8 +523,40 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         unawaited(tracker.resumed());
         unawaited(_alwaysOn?.reload());
         unawaited(_branding?.resync());
+        unawaited(_reportPushLocation());
       },
     );
+  }
+
+  Timer? _pushLocationTimer;
+
+  /// Where this phone is, for Admin -> Push Notification's area broadcasts
+  /// (migration 0168): reported on start, on resume and every half hour
+  /// while open, only when it has moved or the last report is old
+  /// (shouldReportPushLocation), and never by asking for permission.
+  void _startPushLocation() {
+    if (PushService.instance == null) return;
+    Future<void>.delayed(const Duration(seconds: 8), _reportPushLocation);
+    _pushLocationTimer = Timer.periodic(pushLocationEvery, (_) => unawaited(_reportPushLocation()));
+  }
+
+  Future<void> _reportPushLocation() async {
+    final push = PushService.instance;
+    if (push == null || !mounted || ref.read(currentUserIdProvider) == null) return;
+    final point = await knownPosition();
+    if (point == null || !mounted || !push.wantsLocation(point, DateTime.now())) return;
+    List<BiddingRegion> regions;
+    try {
+      regions = await ref.read(rideRepositoryProvider).biddingRegions();
+    } catch (_) {
+      regions = const [];
+    }
+    if (!mounted) return;
+    AreaInfo? area;
+    try {
+      area = await ref.read(geoServiceProvider).reverseArea(point);
+    } catch (_) {}
+    await push.reportLocation(point, pushPlaceAt(regions, point, area));
   }
 
   /// An admin's install is listed under Admin → SMS / WhatsApp so it can be
@@ -587,6 +622,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     if (_routeListener != null) ref.read(routerProvider).routerDelegate.removeListener(_routeListener!);
     unawaited(_alwaysOn?.dispose());
     _lifecycle?.dispose();
+    _pushLocationTimer?.cancel();
     _tracker?.dispose();
     _presence?.stop();
     _branding?.latest.removeListener(_brandingChanged);

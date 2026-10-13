@@ -1,13 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/notification_delivery.dart';
+import '../../core/ride_bidding.dart' show BiddingRegion;
+import '../../features/ride/map_place_picker.dart' show pickPlaceOnMap;
+import '../../providers.dart' show rideRepositoryProvider;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
+import '../push_area.dart';
 import '../saved_push.dart';
 import '../widgets/admin_widgets.dart';
+import 'push_area_picker.dart';
 import '../../data/live_tables.dart';
 
 /// Trip pushes delivered over the last day (migration 0144), re-read live.
@@ -27,6 +34,11 @@ final savedPushesProvider = FutureProvider.autoDispose((ref) {
   return ref.watch(adminRepositoryProvider).savedPushes();
 });
 
+/// The admin's Regions, for sending by region.
+final pushRegionsProvider = FutureProvider.autoDispose<List<BiddingRegion>>(
+  (ref) => ref.watch(rideRepositoryProvider).biddingRegions(),
+);
+
 class AdminPushScreen extends ConsumerStatefulWidget {
   const AdminPushScreen({super.key});
 
@@ -38,14 +50,70 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
   final _title = TextEditingController();
   final _body = TextEditingController();
   String _audience = 'all';
+  PushArea _area = const PushArea.everywhere();
   bool _sending = false;
   bool _saving = false;
+
+  /// "Reaches N people…" for the current audience and area, from a dry run.
+  String? _reach;
+  bool _reachLoading = false;
+  Timer? _reachDebounce;
+  int _reachSeq = 0;
 
   /// The saved notification being edited in the compose card, if any.
   SavedPush? _editing;
 
   @override
+  void initState() {
+    super.initState();
+    _checkReach();
+  }
+
+  /// Re-counts who the compose card would reach, a moment after the last
+  /// change; an answer for an older choice is dropped.
+  void _checkReach() {
+    _reachDebounce?.cancel();
+    if (!_area.complete) {
+      setState(() {
+        _reach = _area.kind == PushAreaKind.radius ? 'Pick a point on the map.' : 'Choose a country.';
+        _reachLoading = false;
+      });
+      return;
+    }
+    setState(() => _reachLoading = true);
+    final seq = ++_reachSeq;
+    final audience = _audience, area = _area;
+    _reachDebounce = Timer(const Duration(milliseconds: 500), () async {
+      String text;
+      try {
+        final r = await ref
+            .read(adminRepositoryProvider)
+            .sendPush('preview', 'preview', audience, area: area.toJson(), dryRun: true);
+        text = pushReachText(r, area);
+      } catch (e) {
+        text = "Couldn't count the reach: $e";
+      }
+      if (!mounted || seq != _reachSeq) return;
+      setState(() {
+        _reach = text;
+        _reachLoading = false;
+      });
+    });
+  }
+
+  void _setAudience(String v) {
+    setState(() => _audience = v);
+    _checkReach();
+  }
+
+  void _setArea(PushArea a) {
+    setState(() => _area = a);
+    _checkReach();
+  }
+
+  @override
   void dispose() {
+    _reachDebounce?.cancel();
     _title.dispose();
     _body.dispose();
     super.dispose();
@@ -57,7 +125,9 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
     _title.clear();
     _body.clear();
     _audience = 'all';
+    _area = const PushArea.everywhere();
     _editing = null;
+    _checkReach();
   }
 
   /// Stores the compose card as a saved notification (a new one, or the one
@@ -68,6 +138,7 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
       title: _title.text,
       body: _body.text,
       audience: _audience,
+      area: _area,
       now: DateTime.now(),
     );
     final ok = await runAdminAction(
@@ -95,10 +166,10 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
     if (ok) showInfo(context, editing ? 'Saved notification updated' : 'Notification saved');
   }
 
-  Future<void> _dispatch(String title, String body, String audience) async {
-    final r = await ref.read(adminRepositoryProvider).sendPush(title, body, audience);
+  Future<void> _dispatch(String title, String body, String audience, PushArea area) async {
+    final r = await ref.read(adminRepositoryProvider).sendPush(title, body, audience, area: area.toJson());
     if (!mounted) return;
-    showInfo(context, pushResultText(r, audience));
+    showInfo(context, pushResultText(r, audience, area));
     ref.invalidate(pushHistoryProvider);
   }
 
@@ -108,8 +179,13 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
       showInfo(context, problem);
       return;
     }
+    if (!_area.complete) {
+      showInfo(context, _area.kind == PushAreaKind.radius ? 'Pick a point on the map.' : 'Choose a country.');
+      return;
+    }
+    final where = _area.label.isEmpty ? '' : ' ${_area.label}';
     if (!await confirm(context, 'Send notification?',
-        'This goes to ${_who[_audience]} immediately and cannot be recalled.',
+        'This goes to ${_who[_audience]}$where immediately and cannot be recalled.',
         ok: 'Send')) {
       return;
     }
@@ -117,7 +193,7 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
     try {
       // Sending an edited saved notification keeps the edit (Expo did too).
       if (_editing != null && !await _persist()) return;
-      await _dispatch(_title.text.trim(), _body.text.trim(), _audience);
+      await _dispatch(_title.text.trim(), _body.text.trim(), _audience, _area);
       if (mounted) setState(_resetCompose);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -126,12 +202,16 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
     }
   }
 
-  void _edit(SavedPush p) => setState(() {
-        _editing = p;
-        _title.text = p.title;
-        _body.text = p.body;
-        _audience = p.audience;
-      });
+  void _edit(SavedPush p) {
+    setState(() {
+      _editing = p;
+      _title.text = p.title;
+      _body.text = p.body;
+      _audience = p.audience;
+      _area = p.area;
+    });
+    _checkReach();
+  }
 
   Future<void> _resend(SavedPush p) async {
     if (!p.sendable) {
@@ -139,12 +219,13 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
       return;
     }
     if (!await confirm(context, 'Send notification?',
-        'Send "${p.title}" to ${_who[p.audience]}? It goes out immediately and cannot be recalled.',
+        'Send "${p.title}" to ${_who[p.audience]}${p.area.label.isEmpty ? '' : ' ${p.area.label}'}? '
+        'It goes out immediately and cannot be recalled.',
         ok: 'Send')) {
       return;
     }
     try {
-      await _dispatch(p.title, p.body, p.audience);
+      await _dispatch(p.title, p.body, p.audience, p.area);
     } catch (e) {
       if (mounted) showError(context, e);
     }
@@ -199,7 +280,28 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
                         ButtonSegment(value: 'partners', label: Text('Partners')),
                       ],
                       selected: {_audience},
-                      onSelectionChanged: (v) => setState(() => _audience = v.first),
+                      onSelectionChanged: (v) => _setAudience(v.first),
+                    ),
+                    const SizedBox(height: 12),
+                    PushAreaPicker(
+                      area: _area,
+                      regions: ref.watch(pushRegionsProvider).value ?? const [],
+                      onChanged: _setArea,
+                      pickPoint: (start) async => (await pickPlaceOnMap(context, start: start))?.point,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      key: const ValueKey('push-reach'),
+                      children: [
+                        Icon(Icons.people_outline, size: 18, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _reachLoading ? 'Counting who this reaches…' : (_reach ?? ''),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -252,6 +354,7 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
                           selected: _editing?.id == p.id,
                           title: Text(p.title.isEmpty ? '(no title)' : p.title),
                           subtitle: Text('${p.body}\n${pushAudienceLabel(p.audience)}'
+                              '${p.area.label.isEmpty ? '' : ' ${p.area.label}'}'
                               '${p.updatedAt == null ? '' : ' · ${dateText(p.updatedAt)}'}'),
                           isThreeLine: true,
                           trailing: canEdit
@@ -293,7 +396,8 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
                         ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text('${r['title']}'),
-                          subtitle: Text('${r['body']}\n${dateText(r['created_at'])} · ${r['audience']}'),
+                          subtitle: Text('${r['body']}\n${dateText(r['created_at'])} · ${r['audience']}'
+                              '${PushArea.fromJson(r['target']).label.isEmpty ? '' : ' ${PushArea.fromJson(r['target']).label}'}'),
                           isThreeLine: true,
                           trailing: Text('${r['sent'] ?? 0}/${r['recipients'] ?? 0}'),
                         ),
