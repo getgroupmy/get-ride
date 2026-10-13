@@ -69,11 +69,7 @@ class SettingsScreen extends ConsumerWidget {
                 title: const Text('Backend'),
                 // The second address when this network cannot look up the
                 // project's own (core/backend_route.dart).
-                subtitle: Text(
-                  onBackendFallback(AppConfig.supabaseUrl)
-                      ? '${Uri.parse(AppConfig.supabaseUrl).host} via ${Uri.parse(activeBackendUrl(AppConfig.supabaseUrl)).host}'
-                      : Uri.parse(AppConfig.supabaseUrl).host,
-                ),
+                subtitle: Text(backendRouteText(AppConfig.supabaseUrl)),
               ),
             ),
           ]),

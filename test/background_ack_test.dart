@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/config.dart';
 import 'package:get_ride/src/core/push_logic.dart';
+import 'package:get_ride/src/core/backend_network.dart';
 import 'package:get_ride/src/data/background_ack.dart';
 import 'package:get_ride/src/data/reliability_repository.dart' show backgroundAckPrefsKey;
 import 'package:http/http.dart' as http;
@@ -45,7 +46,7 @@ void main() {
 
     test('a push with an event is acknowledged as delivered, signed in as the person', () async {
       SharedPreferences.setMockInitialValues({key: session(DateTime.now().add(const Duration(hours: 1)))});
-      await ackPushInBackground({'type': 'ride_message', 'event_id': 'msg:m1'}, client: client, backendUrl: (d) async => d);
+      await ackPushInBackground({'type': 'ride_message', 'event_id': 'msg:m1'}, client: client, backend: (d) async => BackendChoice(d));
       expect(sent, hasLength(1));
       expect(sent.single.url.path, endsWith('/rest/v1/rpc/ack_notification'));
       expect(sent.single.headers['Authorization'], 'Bearer tok');
@@ -54,11 +55,11 @@ void main() {
 
     test('nothing is sent without an event, a session, or with an expired one', () async {
       SharedPreferences.setMockInitialValues({key: session(DateTime.now().add(const Duration(hours: 1)))});
-      await ackPushInBackground({'type': 'ride_message'}, client: client, backendUrl: (d) async => d);
+      await ackPushInBackground({'type': 'ride_message'}, client: client, backend: (d) async => BackendChoice(d));
       SharedPreferences.setMockInitialValues({});
-      await ackPushInBackground({'event_id': 'msg:m1'}, client: client, backendUrl: (d) async => d);
+      await ackPushInBackground({'event_id': 'msg:m1'}, client: client, backend: (d) async => BackendChoice(d));
       SharedPreferences.setMockInitialValues({key: session(DateTime.now().subtract(const Duration(minutes: 5)))});
-      await ackPushInBackground({'event_id': 'msg:m1'}, client: client, backendUrl: (d) async => d);
+      await ackPushInBackground({'event_id': 'msg:m1'}, client: client, backend: (d) async => BackendChoice(d));
       expect(sent, isEmpty);
     });
 
@@ -67,7 +68,7 @@ void main() {
         key: session(DateTime.now().add(const Duration(hours: 1))),
         backgroundAckPrefsKey: false,
       });
-      await ackPushInBackground({'event_id': 'msg:m1'}, client: client, backendUrl: (d) async => d);
+      await ackPushInBackground({'event_id': 'msg:m1'}, client: client, backend: (d) async => BackendChoice(d));
       expect(sent, isEmpty);
     });
 

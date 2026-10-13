@@ -11,6 +11,8 @@ import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart' show TargetPlatform, mapEquals;
 
+import 'backend_network.dart';
+
 /// The colours an admin may set for each theme (Admin → App Settings →
 /// Theme Colors), each an override of what the app draws by default.
 const themeColorKeys = ['accent', 'primary', 'background', 'text', 'textSecondary', 'border', 'error'];
@@ -58,6 +60,7 @@ class AppBranding {
     this.darkColors = const {},
     this.startLat,
     this.startLng,
+    this.network = BackendNetwork.none,
   });
 
   /// The admin's splash picture, or null where none was uploaded.
@@ -77,6 +80,10 @@ class AppBranding {
 
   /// Where maps open before the user's position is known; null is Kuala Lumpur.
   final double? startLat, startLng;
+
+  /// Extra backend addresses and DNS-over-HTTPS resolvers (column `network`,
+  /// migration 0171), used from the next launch; see core/backend_network.dart.
+  final BackendNetwork network;
 
   /// The `app_branding` row; a blank or non-web URL counts as none, a bad
   /// colour or position as unset. Columns a database lacks read as unset.
@@ -104,6 +111,7 @@ class AppBranding {
       darkColors: _palette(theme is Map ? theme['dark'] : null),
       startLat: lat,
       startLng: lng,
+      network: BackendNetwork.fromJson(row?['network']),
     );
   }
 
@@ -116,6 +124,7 @@ class AppBranding {
     'theme': {'light': lightColors, 'dark': darkColors},
     'start_lat': startLat,
     'start_lng': startLng,
+    'network': network.toJson(),
   };
 
   /// The colour overrides for one theme.
@@ -132,7 +141,8 @@ class AppBranding {
       mapEquals(other.lightColors, lightColors) &&
       mapEquals(other.darkColors, darkColors) &&
       other.startLat == startLat &&
-      other.startLng == startLng;
+      other.startLng == startLng &&
+      other.network == network;
 
   @override
   int get hashCode => Object.hash(
@@ -145,6 +155,7 @@ class AppBranding {
     Object.hashAllUnordered(darkColors.entries.map((e) => '${e.key}=${e.value}')),
     startLat,
     startLng,
+    network,
   );
 }
 

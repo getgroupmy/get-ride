@@ -1,13 +1,32 @@
+import '../core/backend_network.dart';
 import '../core/backend_route.dart';
 import 'backend_lookup.dart';
 
-/// The backend address to launch against: [direct] unless its host does
-/// not resolve here and the second address does (chooseBackendUrl). The
-/// second lookup only happens when the first fails, so a normal launch
-/// costs one lookup the HTTP client would have made anyway.
-Future<String> pickBackendUrl(String direct) async {
-  final host = Uri.tryParse(direct)?.host ?? '';
-  if (host.isEmpty || await hostResolves(host, backendLookupTimeout)) return direct;
-  final fallback = await hostResolves(backendFallbackHost, backendLookupTimeout);
-  return chooseBackendUrl(direct, directResolves: false, fallbackResolves: fallback);
+/// How to reach the backend this launch (see core/backend_network.dart):
+/// the first of the project's own address, the admin's addresses and the
+/// built-in second one that the phone's DNS resolves; failing every one,
+/// the first a DNS-over-HTTPS resolver finds an address for. Lookups stop
+/// at the first that works, so a normal launch costs one lookup the HTTP
+/// client would have made anyway; the resolvers are only asked when the
+/// phone's own DNS has failed for every address.
+Future<BackendChoice> pickBackend(String direct, BackendNetwork network) async {
+  final candidates = backendCandidates(direct, network);
+  String? resolved;
+  for (final c in candidates) {
+    final host = Uri.tryParse(c)?.host ?? '';
+    if (host.isNotEmpty && await hostResolves(host, backendLookupTimeout)) {
+      resolved = c;
+      break;
+    }
+  }
+  if (resolved != null) return BackendChoice(resolved);
+  final dohIps = <String, List<String>>{};
+  for (final c in candidates) {
+    final ips = await dohLookup(Uri.parse(c).host, network.resolvers, backendLookupTimeout);
+    if (ips.isNotEmpty) {
+      dohIps[c] = ips;
+      break;
+    }
+  }
+  return chooseBackend(candidates, resolves: (_) => false, dohIps: dohIps);
 }

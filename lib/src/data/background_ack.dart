@@ -13,16 +13,19 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
+import '../core/backend_network.dart';
 import '../core/push_logic.dart';
+import 'backend_lookup.dart' show pinnedHttpClient;
 import 'backend_resolver.dart';
+import 'branding_cache.dart' show BrandingCache;
 import 'reliability_repository.dart' show backgroundAckPrefsKey;
 
-/// [backendUrl] picks the address to call (pickBackendUrl: the project's
-/// own, or the second address on a network that cannot look it up).
+/// [backend] picks how to reach the backend, as the app does at launch
+/// (pickBackend with the cached Backend network settings).
 Future<void> ackPushInBackground(
   Map<String, dynamic> data, {
   http.Client? client,
-  Future<String> Function(String direct) backendUrl = pickBackendUrl,
+  Future<BackendChoice> Function(String direct) backend = _pickCached,
 }) async {
   final id = pushEventId(data);
   if (id == null) return;
@@ -34,8 +37,10 @@ Future<void> ackPushInBackground(
     if (prefs.getBool(backgroundAckPrefsKey) == false) return;
     final token = storedAccessToken(prefs.getString(supabaseSessionKey(AppConfig.supabaseUrl)), DateTime.now());
     if (token == null) return;
-    final base = (await backendUrl(AppConfig.supabaseUrl)).trim().replaceFirst(RegExp(r'/$'), '');
-    final c = client ?? http.Client();
+    final choice = await backend(AppConfig.supabaseUrl);
+    final base = choice.url.trim().replaceFirst(RegExp(r'/$'), '');
+    final pinned = choice.pinnedIp;
+    final c = client ?? (pinned == null ? http.Client() : pinnedHttpClient(choice.host, pinned));
     try {
       await c
           .post(
@@ -55,3 +60,6 @@ Future<void> ackPushInBackground(
     // Best effort: the outbox resends once and the app acknowledges on open.
   }
 }
+
+Future<BackendChoice> _pickCached(String direct) async =>
+    pickBackend(direct, await BrandingCache.loadNetwork() ?? BackendNetwork.none);

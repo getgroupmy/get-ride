@@ -6,7 +6,9 @@
 /// backend has a second address, `api.getride.my`, which the Cloudflare
 /// worker passes straight through to the project (cloudflare/subdomain-
 /// proxy). At launch the app looks both up and uses the second only when
-/// the first does not resolve and the second does.
+/// the first does not resolve and the second does. Admin → App Settings →
+/// Backend network adds addresses and DNS-over-HTTPS resolvers to that
+/// (core/backend_network.dart).
 library;
 
 /// The backend's second address.
@@ -21,16 +23,19 @@ String? _active;
 
 String activeBackendUrl(String direct) => _active ?? direct;
 
-void setActiveBackendUrl(String url) => _active = url;
+/// The IP address the app connects to when a DNS-over-HTTPS resolver had
+/// to find it (the phone's own DNS could not); null otherwise.
+String? _pinnedIp;
 
-/// Whether the app is on the second address.
-bool onBackendFallback(String direct) => _active != null && _active != direct;
+String? get activeBackendPinnedIp => _pinnedIp;
 
-/// The address to use, given whether each host resolved. Pure.
-String chooseBackendUrl(String direct, {required bool directResolves, required bool fallbackResolves}) {
-  if (directResolves || !fallbackResolves) return direct;
-  return 'https://$backendFallbackHost';
+void setActiveBackendUrl(String url, {String? pinnedIp}) {
+  _active = url;
+  _pinnedIp = pinnedIp;
 }
+
+/// Whether the app is on another address than the project's own.
+bool onBackendFallback(String direct) => _active != null && _active != direct;
 
 /// [url] moved onto [active] when it points at the project's own host
 /// ([direct]): a stored file link (avatar, document photo, chat image)
@@ -41,4 +46,15 @@ String onActiveBackend(String url, String direct, String active) {
   final from = Uri.tryParse(direct), to = Uri.tryParse(active), u = Uri.tryParse(url);
   if (from == null || to == null || u == null || u.host != from.host) return url;
   return u.replace(scheme: to.scheme, host: to.host, port: to.hasPort ? to.port : null).toString();
+}
+
+/// How Settings → Backend describes the connection: the project's host,
+/// "via" the address used when it is another, and the resolver-found IP
+/// when the phone's own DNS could not look it up.
+String backendRouteText(String direct) {
+  final own = Uri.parse(direct).host;
+  final active = Uri.parse(activeBackendUrl(direct)).host;
+  final via = active == own ? own : '$own via $active';
+  final ip = activeBackendPinnedIp;
+  return ip == null ? via : '$via ($ip, DNS over HTTPS)';
 }
