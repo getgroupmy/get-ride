@@ -192,8 +192,13 @@ Stream<Map<String, dynamic>> watchCallRows(
       if (!controller.isClosed && row.isNotEmpty) controller.add(row);
     }
 
-    // A call rings or hangs up within seconds: read it again often.
-    backup = RealtimeBackup(() async => (await initial()).forEach(emit), every: const Duration(seconds: 3));
+    // A call rings or hangs up within seconds: read it again often while
+    // realtime is down, and still fairly often while it is up.
+    backup = RealtimeBackup(
+      () async => (await initial()).forEach(emit),
+      every: const Duration(seconds: 3),
+      healthy: const Duration(seconds: 15),
+    );
 
     channel = db
         .channel('${name}_${DateTime.now().microsecondsSinceEpoch}')

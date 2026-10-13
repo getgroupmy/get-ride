@@ -95,6 +95,11 @@ final driverPositionStreamProvider = Provider<Stream<LatLng> Function()>((ref) =
 /// The clock the request alert's countdown reads (overridden in tests).
 final requestAlertClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
+/// How long going online (or starting the meter) waits on each of its checks
+/// -- the device's access, the documents, the vehicle -- before treating it
+/// as unanswered, which lets the driver through as a failed read already did.
+const goOnlineCheckTimeout = Duration(seconds: 8);
+
 class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool _online = false;
   late final DriverOnline _onlineState;
@@ -277,7 +282,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   }
 
   Future<void> _toggle(bool v) async {
-    if (v && await ref.read(deviceBlockedProvider.future)) {
+    // Each check below lets the driver through when it cannot be answered;
+    // [goOnlineCheckTimeout] makes a check that hangs (a slow API) count as
+    // one that could not be answered, instead of a switch that spins on.
+    if (v && await ref.read(deviceBlockedProvider.future).timeout(goOnlineCheckTimeout, onTimeout: () => false)) {
       if (mounted) showInfo(context, '$serviceNotAvailable. This device cannot go online.');
       return;
     }
@@ -307,7 +315,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Future<bool> _documentsCleared(Partner partner, {required bool teksi}) async {
     List<DocIssue> blocking;
     try {
-      blocking = blockingDocIssues(await ref.read(partnerDocCheckProvider)(partner.raw, teksi: teksi));
+      blocking = blockingDocIssues(
+        await ref.read(partnerDocCheckProvider)(partner.raw, teksi: teksi).timeout(goOnlineCheckTimeout),
+      );
     } catch (_) {
       return true;
     }
@@ -386,14 +396,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     List<AssignableVehicle> vehicles;
     bool required;
     try {
-      final entries = await ref.read(partnerTypeEntriesProvider.future);
+      final entries = await ref.read(partnerTypeEntriesProvider.future).timeout(goOnlineCheckTimeout);
       final modes = [
         for (final m in partnerModeOptions(parseStringList(partner.raw['partner_types']), entries))
           if (m.isTeksi == teksi) m.name,
       ];
       required = (modes.isEmpty ? [teksi ? 'teksi' : 'ehailing'] : modes).any((m) => vehicleRequiredFor(m, entries));
       if (!required) return true;
-      vehicles = await ref.read(assignableVehiclesProvider.future);
+      vehicles = await ref.read(assignableVehiclesProvider.future).timeout(goOnlineCheckTimeout);
     } catch (_) {
       return true;
     }

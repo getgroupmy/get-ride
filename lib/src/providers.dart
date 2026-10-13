@@ -19,6 +19,9 @@ final rideRepositoryProvider = Provider((ref) {
   final repo = RideRepository(ref.watch(supabaseProvider));
   // Admin → Reliability, applied live.
   ref.listen(reliabilityProvider, (_, s) => repo.useOfflineCopy = s.rideCache, fireImmediately: true);
+  // An admin's change to a region drops the kept regions on every screen,
+  // so they can be kept for minutes rather than re-read every few seconds.
+  ref.listen(liveTablesProvider.select((r) => liveStamp(r, liveRegionTables)), (_, _) => repo.forgetRegions());
   return repo;
 });
 final accountRepositoryProvider = Provider((ref) => AccountRepository(ref.watch(supabaseProvider)));
