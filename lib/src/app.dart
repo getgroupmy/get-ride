@@ -547,7 +547,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     if (point == null || !mounted || !push.wantsLocation(point, DateTime.now())) return;
     List<BiddingRegion> regions;
     try {
-      regions = await ref.read(rideRepositoryProvider).biddingRegions();
+      regions = await ref.read(rideRepositoryProvider).biddingRegions(at: point);
     } catch (_) {
       regions = const [];
     }

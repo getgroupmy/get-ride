@@ -41,6 +41,7 @@ class BiddingRegion {
     this.currency,
     this.currencySymbol,
     this.blocked = false,
+    this.boundaryAt,
   });
 
   final String country;
@@ -49,8 +50,22 @@ class BiddingRegion {
   final String suburb;
   final bool enabled;
 
-  /// Mapped boundary polygons, empty when the region has none.
+  /// Mapped boundary polygons, empty when the region has none -- or when
+  /// the server tested the boundary instead ([boundaryAt]).
   final List<List<LatLng>> rings;
+
+  /// The server's answer for a region read by point (`regions_at`): whether
+  /// its mapped boundary holds the point the list was read for. Null when
+  /// it has no boundary, or the list came with [rings] instead. A list read
+  /// for one point is only ever asked about that point.
+  final bool? boundaryAt;
+
+  /// Whether it has a mapped boundary, either way it came.
+  bool get hasBoundary => rings.isNotEmpty || boundaryAt != null;
+
+  /// Whether its mapped boundary holds [p]; null when it has none.
+  bool? covers(LatLng p) =>
+      rings.isNotEmpty ? rings.any((ring) => ring.length >= 3 && _inRing(p, ring)) : boundaryAt;
 
   /// How fares are priced here, when this region sets it (see
   /// [RegionPricing.fromValues]); null leaves it to the parent region.
@@ -90,7 +105,7 @@ class BiddingRegion {
 
   /// From a settings entry's `values`; null without a country. A missing
   /// flag means enabled, as in Expo.
-  static BiddingRegion? fromValues(Map<String, dynamic> v) {
+  static BiddingRegion? fromValues(Map<String, dynamic> v, {bool? boundaryAt}) {
     String s(Object? x) => x is String ? x.trim() : '';
     final country = s(v['country']);
     if (country.isEmpty) return null;
@@ -108,6 +123,7 @@ class BiddingRegion {
       currency: RegExp(r'^[A-Za-z]{3}$').hasMatch(s(v['currencyName'])) ? s(v['currencyName']).toUpperCase() : null,
       currencySymbol: s(v['currencySymbol']).isEmpty ? null : s(v['currencySymbol']),
       blocked: v['blocked'] == true,
+      boundaryAt: boundaryAt,
     );
   }
 
@@ -136,6 +152,27 @@ class BiddingRegion {
 }
 
 /// The region tables, broadest first, with the columns [BiddingRegion.fromRegionRow] reads.
+/// The cache key of a region list read for [p]: ~11 m cells, so a pickup
+/// nudged by a few metres reuses the answer for the spot it moved from.
+String regionLookupKey(LatLng p) => '${p.latitude.toStringAsFixed(4)},${p.longitude.toStringAsFixed(4)}';
+
+/// A row of `regions_at` (migration 0169): a region with its settings and,
+/// instead of its boundary, whether the boundary holds the point asked
+/// about (`inside`; null without a boundary or a point).
+BiddingRegion? regionFromLookupRow(Map<String, dynamic> row) {
+  String col(String k) => '${row[k] ?? ''}'.trim();
+  final values = row['values'] is Map ? Map<String, dynamic>.from(row['values'] as Map) : <String, dynamic>{};
+  values.remove('boundary');
+  final inside = row['inside'];
+  return BiddingRegion.fromValues({
+    ...values,
+    'country': col('country'),
+    'state': col('state'),
+    'city': col('city'),
+    'suburb': col('suburb'),
+  }, boundaryAt: inside is bool ? inside : null);
+}
+
 const regionTableSelects = {
   'countries': 'name, values, geofence',
   'states': 'country, name, values, geofence',
@@ -222,7 +259,7 @@ String _n(String? v) => (v ?? '').trim().toLowerCase();
 bool? biddingByBoundary(List<BiddingRegion> regions, LatLng pickup) {
   BiddingRegion? best;
   for (final r in regions) {
-    if (r.rings.any((ring) => ring.length >= 3 && _inRing(pickup, ring)) &&
+    if (r.covers(pickup) == true &&
         (best == null || r.specificity > best.specificity)) {
       best = r;
     }
@@ -237,7 +274,7 @@ bool? biddingByBoundary(List<BiddingRegion> regions, LatLng pickup) {
 BiddingRegion? regionAt(List<BiddingRegion> regions, LatLng point, {AreaInfo? area}) {
   BiddingRegion? best;
   for (final r in regions) {
-    if (r.rings.any((ring) => ring.length >= 3 && _inRing(point, ring)) &&
+    if (r.covers(point) == true &&
         (best == null || r.specificity > best.specificity)) {
       best = r;
     }
@@ -312,7 +349,7 @@ T? _settingAt<T extends Object>(
   if (pickup != null) {
     BiddingRegion? best;
     for (final r in set) {
-      if (r.rings.any((ring) => ring.length >= 3 && _inRing(pickup, ring)) &&
+      if (r.covers(pickup) == true &&
           (best == null || r.specificity > best.specificity)) {
         best = r;
       }
@@ -359,9 +396,7 @@ List<BiddingRegion> regionsAround(List<BiddingRegion> regions, LatLng? pickup, {
 
   final out = [
     for (final r in regions)
-      if (r.rings.isNotEmpty
-          ? pickup != null && r.rings.any((ring) => ring.length >= 3 && _inRing(pickup, ring))
-          : byNames(r))
+      if (r.hasBoundary ? pickup != null && r.covers(pickup) == true : byNames(r))
         r,
   ]..sort((a, b) => b.specificity.compareTo(a.specificity));
   return out;
@@ -469,7 +504,7 @@ class ServiceUnavailableError implements Exception {
   // Whether [r] holds the point: its boundary decides, else its name; null
   // when neither can tell.
   bool? holds(BiddingRegion r, int level) {
-    if (r.rings.isNotEmpty) return r.rings.any((ring) => ring.length >= 3 && _inRing(point, ring));
+    if (r.hasBoundary) return r.covers(point) == true;
     return comparablePlaceName(names[level]) ? placeNameMatches(own(r, level), names[level]) : null;
   }
 
