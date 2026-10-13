@@ -360,3 +360,42 @@ export function inMode<T extends { mode?: string | null }>(rows: T[], mode: AppM
   if (mode === null) return rows;
   return rows.filter((r) => r.mode !== (mode === "partner" ? "rider" : "partner"));
 }
+
+// ---- The notifications page (user_notifications, migration 0167) ---------
+
+/**
+ * Not kept on the page: a ringing call, a ride offer and a chat message
+ * each have a screen of their own and are stale within minutes.
+ */
+const NOT_KEPT = new Set(["ride_call", "ride_request", "ride_request_fare_raised", "ride_message"]);
+
+export interface InboxRow {
+  profile_id: string;
+  title: string;
+  body: string;
+  data: Record<string, unknown>;
+  kind: string | null;
+  mode: AppMode | null;
+  event_id: string | null;
+}
+
+/**
+ * The page rows for one send: one per recipient account, or none for the
+ * kinds that are not kept. The retry counter of an outbox event is left
+ * out, so a retry stores the same row (and the event id keeps it once).
+ */
+export function inboxRows(
+  profileIds: Iterable<string>,
+  title: string,
+  body: string,
+  data: Record<string, unknown> | undefined | null,
+  mode: AppMode | null,
+): InboxRow[] {
+  const kind = typeof data?.type === "string" ? data.type : null;
+  if (kind !== null && NOT_KEPT.has(kind)) return [];
+  const { attempt: _attempt, ...kept } = data ?? {};
+  const event = typeof kept.event_id === "string" && kept.event_id.trim() !== "" ? kept.event_id.trim() : null;
+  return Array.from(new Set(profileIds))
+    .filter((id) => typeof id === "string" && id !== "")
+    .map((profile_id) => ({ profile_id, title, body, data: kept, kind, mode, event_id: event }));
+}

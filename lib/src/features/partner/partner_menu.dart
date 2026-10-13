@@ -47,6 +47,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     vehicleInfoMenuItemId: '/meter/vehicle',
     myRideCodeMenuItemId: '/drive/my-ride',
     'documents': '/drive/onboarding',
+    'notifications': '/account/notifications',
     'support': '/account/support',
     'help-assistant': '/account/help',
     'settings': '/account/settings',

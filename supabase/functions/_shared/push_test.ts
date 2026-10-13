@@ -15,6 +15,7 @@ import {
   fcmSendUrl,
   isExpoToken,
   parseServiceAccount,
+  inboxRows,
   inMode,
   notificationMode,
   pickRecipients,
@@ -244,4 +245,26 @@ Deno.test("mode: phones in the other mode are skipped, silent ones are not", () 
   assertEquals(inMode(rows, "partner").map((r) => r.token), ["d", "old", "older"]);
   assertEquals(inMode(rows, "rider").map((r) => r.token), ["p", "old", "older"]);
   assertEquals(inMode(rows, null).length, 4);
+});
+
+Deno.test("page rows: one per account, not for calls, offers or chat", () => {
+  const rows = inboxRows(["a", "b", "a", ""], "Ride confirmed", "Pick up at X.", {
+    type: "ride_status",
+    request_id: "r1",
+    event_id: "r1:accepted:r",
+    attempt: 3,
+  }, null);
+  assertEquals(rows.map((r) => r.profile_id), ["a", "b"]);
+  assertEquals(rows[0].data, { type: "ride_status", request_id: "r1", event_id: "r1:accepted:r" });
+  assertEquals(rows[0].event_id, "r1:accepted:r");
+  assertEquals(rows[0].kind, "ride_status");
+
+  for (const type of ["ride_call", "ride_request", "ride_request_fare_raised", "ride_message"]) {
+    assertEquals(inboxRows(["a"], "t", "b", { type }, null), []);
+  }
+
+  const broadcast = inboxRows(["a"], "Promo", "Hello", { audience: "users" }, "rider");
+  assertEquals(broadcast[0].mode, "rider");
+  assertEquals(broadcast[0].kind, null);
+  assertEquals(broadcast[0].event_id, null);
 });

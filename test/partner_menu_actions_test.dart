@@ -10,7 +10,7 @@ import 'package:go_router/go_router.dart';
 void main() {
   const pages = [
     '/ev', '/drive', '/wallet', '/trips', '/drive/vehicles', '/meter/vehicle', '/drive/my-ride', '/drive/onboarding',
-    '/account/support', '/account/help', '/account/settings', '/account/my-qr',
+    '/account/support', '/account/help', '/account/settings', '/account/my-qr', '/account/notifications',
   ];
 
   Future<(String, bool?)> tap(WidgetTester tester, String id) async {
@@ -48,6 +48,7 @@ void main() {
     vehicleInfoMenuItemId: '/meter/vehicle',
     myRideCodeMenuItemId: '/drive/my-ride',
     'documents': '/drive/onboarding',
+    'notifications': '/account/notifications',
     'support': '/account/support',
     'help-assistant': '/account/help',
     'settings': '/account/settings',
@@ -61,7 +62,7 @@ void main() {
     });
   }
 
-  for (final id in ['earnings', 'notifications']) {
+  for (final id in ['earnings']) {
     testWidgets('$id has no page here: "coming soon"', (tester) async {
       final (at, handled) = await tap(tester, id);
       expect(handled, isFalse);
@@ -77,7 +78,7 @@ void main() {
 
   test('every default driver item is covered', () {
     expect(
-      {...expected.keys, 'earnings', 'notifications', 'sign-out'},
+      {...expected.keys, 'earnings', 'sign-out'},
       {for (final d in defaultPartnerMenuItems) d.$1},
     );
   });

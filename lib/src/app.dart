@@ -22,6 +22,7 @@ import 'data/app_display_repository.dart';
 import 'data/branding_cache.dart';
 import 'data/live_tables.dart';
 import 'data/messaging_repository.dart';
+import 'data/notifications_repository.dart';
 import 'data/push_service.dart';
 import 'data/session_tracker.dart';
 import 'features/install/app_install_screen.dart';
@@ -70,6 +71,7 @@ import 'features/shell/app_shell.dart';
 import 'features/shell/brand_splash.dart';
 import 'features/shell/not_found_screen.dart';
 import 'features/shell/app_side_menu.dart';
+import 'features/notifications/notifications_screen.dart';
 import 'features/shell/update_gate.dart';
 import 'features/shell/web_build_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
@@ -280,6 +282,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                     builder: (_, _) => const AccountScreen(),
                     routes: [
                       GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
+                      GoRoute(path: 'notifications', builder: (_, _) => const NotificationsScreen()),
                       GoRoute(path: 'referral', builder: (_, _) => const ReferralScreen()),
                       GoRoute(
                         path: 'my-ride',
@@ -569,6 +572,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       // passenger mode (pushModeAt, migration 0166).
       pushMode = pushModeAt(path, pushMode);
       PushService.instance?.reportMode(pushMode);
+      ref.read(appModeProvider.notifier).set(pushMode);
     }
     _routeListener = onRoute;
     router.routerDelegate.addListener(onRoute);
