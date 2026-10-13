@@ -120,7 +120,8 @@ void main() {
     expect(flutterRouteFor('/admin-settings-display'), '/admin');
     expect(flutterRouteFor('/account/guide'), '/account/guide');
     // Expo paths with a hyphenated Flutter twin, or a page under another name.
-    expect(flutterRouteFor('/auth-diagnostics'), '/diagnostics');
+    // Diagnostics stays off normal navigation (reached from the connection popup).
+    expect(flutterRouteFor('/auth-diagnostics'), isNull);
     expect(flutterRouteFor('/support-call'), '/account/support');
     expect(flutterRouteFor('/wallet-history'), '/wallet/history');
     expect(flutterRouteFor('/wallet-scan'), '/wallet/scan');

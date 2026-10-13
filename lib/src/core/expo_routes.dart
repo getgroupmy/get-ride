@@ -36,7 +36,6 @@ const _expoToFlutter = <String, String>{
   '/support-chat': '/account/support',
   '/support-call': '/account/support',
   '/notifications': '/account/notifications',
-  '/auth-diagnostics': '/diagnostics',
   '/teksi-ev': '/ev',
   '/wallet': '/wallet',
   '/wallet-trade': '/wallet/trade',
