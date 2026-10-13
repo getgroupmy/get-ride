@@ -1,23 +1,60 @@
 // Driver menu → Earnings: today's, this week's or this month's completed
 // trips, what passengers paid, the commission and what the driver kept, then
 // the same per day. Totals are worked out in core/driver_earnings.dart.
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/driver_earnings.dart';
 import '../../core/format.dart';
 import '../../data/models.dart';
+import '../../platform/web_download.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/image_share.dart' show shareOriginOf;
 import '../../widgets/side_menu_host.dart';
+import 'earnings_chart.dart';
 
-/// The driver's completed trips since the start of the month: every period
-/// the page offers is a slice of it, so switching period reads nothing new.
+/// The driver's completed trips far enough back for the month and the
+/// weekly chart: every period and the chart are slices of it, so switching
+/// period reads nothing new.
 final driverMonthTripsProvider = FutureProvider.autoDispose<List<RideRequest>>((ref) {
-  final since = earningsPeriodStart(EarningsPeriod.month, DateTime.now());
-  return ref.watch(rideRepositoryProvider).completedAsDriver(since);
+  return ref.watch(rideRepositoryProvider).completedAsDriver(earningsHistoryStart(DateTime.now()));
 });
+
+/// Hands the earnings CSV to the system share sheet (Save to Files, email,
+/// Drive…); the website downloads it. Where neither works it goes on the
+/// clipboard. Answers how it went. Overridden in tests.
+final earningsCsvSharerProvider = Provider<Future<CsvShareOutcome> Function(String csv, String fileName, Rect? origin)>(
+  (ref) => (csv, fileName, origin) async {
+    final bytes = Uint8List.fromList(utf8.encode(csv));
+    if (kIsWeb) {
+      return webDownload(bytes, fileName: fileName, mimeType: 'text/csv')
+          ? CsvShareOutcome.downloaded
+          : CsvShareOutcome.failed;
+    }
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile.fromData(bytes, mimeType: 'text/csv', name: fileName)],
+          fileNameOverrides: [fileName],
+          sharePositionOrigin: origin,
+        ),
+      );
+      return CsvShareOutcome.shared;
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: csv));
+      return CsvShareOutcome.copied;
+    }
+  },
+);
+
+enum CsvShareOutcome { shared, downloaded, copied, failed }
 
 class EarningsScreen extends ConsumerStatefulWidget {
   const EarningsScreen({super.key});
@@ -33,7 +70,20 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
   Widget build(BuildContext context) {
     final uid = ref.watch(currentUserIdProvider);
     return Scaffold(
-      appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Earnings')),
+      appBar: AppBar(
+        leading: sideMenuLeading(context),
+        title: const Text('Earnings'),
+        actions: [
+          Builder(
+            builder: (button) => IconButton(
+              key: const ValueKey('earnings-export'),
+              tooltip: 'Export ${_period.label.toLowerCase()} as CSV',
+              icon: const Icon(Icons.file_download_outlined),
+              onPressed: ref.watch(driverMonthTripsProvider).hasValue ? () => _export(button) : null,
+            ),
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(driverMonthTripsProvider.future),
         child: AsyncView(
@@ -62,6 +112,10 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
                       ),
                       const SizedBox(height: 12),
                       _TotalsCard(totals: s.totals, money: money),
+                      WeeklyEarningsChart(
+                        weeks: weeklyEarnings(rides, driverId: uid ?? '', now: DateTime.now()),
+                        money: money,
+                      ),
                       if (s.days.isEmpty)
                         const EmptyState(
                           icon: Icons.payments_outlined,
@@ -100,6 +154,32 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
         ),
       ),
     );
+  }
+
+  /// The selected period's trips as a CSV, through the share sheet.
+  Future<void> _export(BuildContext button) async {
+    final rides = ref.read(driverMonthTripsProvider).value ?? const <RideRequest>[];
+    final uid = ref.read(currentUserIdProvider) ?? '';
+    final now = DateTime.now();
+    final csv = earningsCsv(rides, driverId: uid, period: _period, now: now);
+    final messenger = ScaffoldMessenger.of(context);
+    // Only the header line: nothing to hand an accountant.
+    if (csv.split('\r\n').where((l) => l.isNotEmpty).length <= 1) {
+      messenger.showSnackBar(SnackBar(content: Text('No completed trips ${_period.label.toLowerCase()} to export.')));
+      return;
+    }
+    final outcome = await ref.read(earningsCsvSharerProvider)(
+      csv,
+      earningsCsvFileName(_period, now),
+      shareOriginOf(button),
+    );
+    final note = switch (outcome) {
+      CsvShareOutcome.shared => null,
+      CsvShareOutcome.downloaded => 'Downloaded.',
+      CsvShareOutcome.copied => 'Couldn\'t open sharing; the CSV is on your clipboard.',
+      CsvShareOutcome.failed => 'Couldn\'t export the CSV.',
+    };
+    if (note != null) messenger.showSnackBar(SnackBar(content: Text(note)));
   }
 
   static String _trips(int n) => n == 1 ? '1 trip' : '$n trips';
