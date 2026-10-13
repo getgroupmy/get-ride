@@ -181,11 +181,12 @@ class SideMenuPanel extends ConsumerWidget {
   final Key? modeKey;
   final VoidCallback? onMode;
 
-  /// The profile header's usual tap: the profile editor.
+  /// The profile header's usual tap: the profile page (Expo `/profile`),
+  /// which has Edit for the editor.
   static void editProfile(BuildContext context) {
     final router = GoRouter.of(context);
     SideMenuHost.of(context)?.close();
-    router.go('/account/edit');
+    router.go('/account/profile');
   }
 
   @override

@@ -13,7 +13,7 @@ const _expoToFlutter = <String, String>{
   '/offer-fare': '/',
   '/ride-detail': '/trips',
   '/ride-tracking': '/trips',
-  '/profile': '/account',
+  '/profile': '/account/profile',
   '/edit-profile': '/account/edit',
   '/profile-photo': '/account/edit',
   '/name-entry': '/account/edit',
