@@ -119,7 +119,16 @@ void main() {
     expect(flutterRouteFor('/wallet?mode=partner'), '/wallet');
     expect(flutterRouteFor('/admin-settings-display'), '/admin');
     expect(flutterRouteFor('/account/guide'), '/account/guide');
+    // Expo paths with a hyphenated Flutter twin, or a page under another name.
+    // Diagnostics stays off normal navigation (reached from the connection popup).
     expect(flutterRouteFor('/auth-diagnostics'), isNull);
+    expect(flutterRouteFor('/support-call'), '/account/support');
+    expect(flutterRouteFor('/wallet-history'), '/wallet/history');
+    expect(flutterRouteFor('/wallet-scan'), '/wallet/scan');
+    expect(flutterRouteFor('/wallet-receive'), '/wallet/receive');
+    expect(flutterRouteFor('/wallet-coin-qr'), '/wallet/receive?coin=1');
+    expect(flutterRouteFor('/earnings'), '/drive/earnings');
+    expect(flutterRouteFor('/phone-auth'), isNull);
     expect(flutterRouteFor('https://x'), isNull);
     expect(flutterRouteFor('//x'), isNull);
   });

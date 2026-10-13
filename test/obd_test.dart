@@ -181,6 +181,26 @@ void main() {
       await client.stop();
     });
 
+    test('a scan holding the sweep still notices a reader that went away', () async {
+      final elm = FakeElm();
+      var lost = 0;
+      final client = ObdClient(
+        elm,
+        pollInterval: const Duration(hours: 1),
+        commandTimeout: const Duration(milliseconds: 20),
+        onLinkLost: () => lost++,
+      );
+      await client.start();
+      await pumpEventQueue();
+      elm.silent = true;
+      client.setPollingPaused(true, ignoreFailures: false);
+      for (var i = 0; i < 3; i++) {
+        await expectLater(client.request('0902'), throwsA(isA<TimeoutException>()));
+      }
+      expect(lost, 1, reason: 'three misses mid-scan are a lost reader, not a busy radio');
+      await client.stop();
+    });
+
     test('commands are answered one at a time, in order', () async {
       final elm = FakeElm();
       final client = ObdClient(elm, pollInterval: const Duration(hours: 1));

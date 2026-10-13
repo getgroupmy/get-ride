@@ -11,6 +11,7 @@ void main() {
   const pages = [
     '/ev', '/drive', '/wallet', '/trips', '/drive/vehicles', '/meter/vehicle', '/drive/my-ride', '/drive/onboarding',
     '/account/support', '/account/help', '/account/settings', '/account/my-qr', '/account/notifications',
+    '/drive/earnings',
   ];
 
   Future<(String, bool?)> tap(WidgetTester tester, String id) async {
@@ -42,6 +43,7 @@ void main() {
     'teksi-ev': '/ev',
     'dashboard': '/drive',
     'wallet': '/wallet',
+    'earnings': '/drive/earnings',
     myQrMenuItemId: '/account/my-qr',
     'trip-history': '/trips',
     'vehicle': '/drive/vehicles',
@@ -62,13 +64,11 @@ void main() {
     });
   }
 
-  for (final id in ['earnings']) {
-    testWidgets('$id has no page here: "coming soon"', (tester) async {
-      final (at, handled) = await tap(tester, id);
-      expect(handled, isFalse);
-      expect(at, '/start');
-    });
-  }
+  testWidgets('an id with no page here: "coming soon"', (tester) async {
+    final (at, handled) = await tap(tester, 'custom-123');
+    expect(handled, isFalse);
+    expect(at, '/start');
+  });
 
   testWidgets('sign-out asks first', (tester) async {
     final (_, handled) = await tap(tester, 'sign-out');
@@ -78,7 +78,7 @@ void main() {
 
   test('every default driver item is covered', () {
     expect(
-      {...expected.keys, 'earnings', 'sign-out'},
+      {...expected.keys, 'sign-out'},
       {for (final d in defaultPartnerMenuItems) d.$1},
     );
   });

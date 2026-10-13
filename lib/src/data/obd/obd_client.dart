@@ -50,6 +50,7 @@ class ObdClient {
   bool _stopped = false;
   bool _polling = false;
   bool _paused = false;
+  bool _ignoreFailures = false;
   bool _live = false;
   int _failures = 0;
   bool _linkLostReported = false;
@@ -102,7 +103,14 @@ class ObdClient {
   }
 
   /// Pauses the sweep, for a long one-off read that must not interleave.
-  void setPollingPaused(bool paused) => _paused = paused;
+  /// [ignoreFailures] (a print job holding the radio) stops missed replies
+  /// counting towards a lost link meanwhile; the vehicle scan leaves it off,
+  /// so a reader that drops mid-scan is still noticed after three misses
+  /// rather than each remaining read timing out in turn.
+  void setPollingPaused(bool paused, {bool ignoreFailures = true}) {
+    _paused = paused;
+    _ignoreFailures = paused && ignoreFailures;
+  }
 
   /// Sends one command through the queue and answers the raw reply.
   Future<String> request(String command) => _command(command);
@@ -129,9 +137,9 @@ class ObdClient {
   }
 
   void _noteFailure() {
-    // Held for a print job or the vehicle scan, a missed reply is the radio
-    // being busy, not the reader gone.
-    if (!_live || _stopped || _linkLostReported || _paused) return;
+    // Held for a print job, a missed reply is the radio being busy, not the
+    // reader gone.
+    if (!_live || _stopped || _linkLostReported || _ignoreFailures) return;
     _failures++;
     if (_failures >= linkLostFailures) {
       _linkLostReported = true;

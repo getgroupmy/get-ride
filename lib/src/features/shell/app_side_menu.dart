@@ -25,7 +25,7 @@ enum SideMenuMode { rider, partner }
 /// share (wallet, settings, support…) keep whichever mode led there.
 SideMenuMode sideMenuModeAt(String location, SideMenuMode previous) {
   bool under(String root) => location == root || location.startsWith('$root/');
-  if (under('/drive') || location == '/meter/vehicle') return SideMenuMode.partner;
+  if (under('/drive')) return SideMenuMode.partner;
   if (location == '/' || under('/trips') || under('/ride')) return SideMenuMode.rider;
   return previous;
 }
