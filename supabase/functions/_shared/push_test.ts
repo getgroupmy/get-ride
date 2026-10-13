@@ -15,9 +15,12 @@ import {
   fcmSendUrl,
   isExpoToken,
   parseServiceAccount,
+  distanceKm,
+  inArea,
   inboxRows,
   inMode,
   notificationMode,
+  parseArea,
   pickRecipients,
   planDeliveries,
   profileIdList,
@@ -267,4 +270,50 @@ Deno.test("page rows: one per account, not for calls, offers or chat", () => {
   assertEquals(broadcast[0].mode, "rider");
   assertEquals(broadcast[0].kind, null);
   assertEquals(broadcast[0].event_id, null);
+});
+
+Deno.test("area: a region needs a country; a radius must be on the globe and sane", () => {
+  assertEquals(parseArea(null), null);
+  assertEquals(parseArea({ state: "Selangor" }), null);
+  assertEquals(parseArea({ country: " Malaysia ", state: "Selangor", city: "" }), {
+    kind: "region",
+    country: "Malaysia",
+    state: "Selangor",
+  });
+  assertEquals(parseArea({ lat: 3.1, lng: 101.7, radiusKm: 5 }), { kind: "radius", lat: 3.1, lng: 101.7, radiusKm: 5 });
+  assertEquals(parseArea({ lat: 3.1, lng: 101.7, radiusKm: 0 }), null);
+  assertEquals(parseArea({ lat: 3.1, lng: 101.7, radiusKm: 900 }), null);
+  assertEquals(parseArea({ lat: 99, lng: 101.7, radiusKm: 5 }), null);
+});
+
+Deno.test("area: who is inside", () => {
+  const now = new Date("2026-10-13T08:00:00Z");
+  const klcc = {
+    last_lat: 3.1579,
+    last_lng: 101.7116,
+    area_country: "Malaysia",
+    area_state: "Kuala Lumpur",
+    area_city: "Kuala Lumpur",
+    area_suburb: null,
+    located_at: "2026-10-12T08:00:00Z",
+  };
+  const region = parseArea({ country: "malaysia", state: "KUALA LUMPUR " })!;
+  assertEquals(inArea(klcc, region, now), true);
+  assertEquals(inArea(klcc, parseArea({ country: "Malaysia", state: "Selangor" })!, now), false);
+  assertEquals(inArea(klcc, parseArea({ country: "Malaysia", suburb: "Bangsar" })!, now), false);
+
+  // ~5.6 km from KLCC to Mid Valley.
+  const midValley = parseArea({ lat: 3.1186, lng: 101.6774, radiusKm: 6 })!;
+  assertEquals(inArea(klcc, midValley, now), true);
+  assertEquals(inArea(klcc, { ...midValley, radiusKm: 5 } as typeof midValley, now), false);
+
+  // Unknown or stale places are left out.
+  assertEquals(inArea({ ...klcc, located_at: null }, region, now), false);
+  assertEquals(inArea({ ...klcc, located_at: "2026-08-01T00:00:00Z" }, region, now), false);
+  assertEquals(inArea({ ...klcc, last_lat: null }, midValley, now), false);
+});
+
+Deno.test("distance: a known pair", () => {
+  const km = distanceKm(3.1579, 101.7116, 3.1186, 101.6774);
+  assertEquals(km > 5.5 && km < 5.9, true);
 });

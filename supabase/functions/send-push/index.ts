@@ -13,7 +13,8 @@
 //     failed and Expo devices are still sent to.
 //
 // Request body: { title: string, body: string, audience?: "all" | "partners" | "active_partners" | "users",
-//                approvedOnly?: boolean, profileId?: string, excludeProfileIds?: string[], data?: object }
+//                approvedOnly?: boolean, profileId?: string, excludeProfileIds?: string[], data?: object,
+//                area?: object, dryRun?: boolean }
 //
 // Audience resolution:
 //   * all      — every registered token
@@ -25,6 +26,10 @@
 //                with `approvedOnly: true` (new ride requests)
 //
 // `excludeProfileIds` are never sent to (a ride request's own rider).
+//
+// `area` ({ country, state?, city?, suburb? } or { lat, lng, radiusKm })
+// narrows a broadcast to the phones last seen there (push_tokens, 0168);
+// `dryRun: true` answers how many it would reach and sends nothing.
 //
 // Ride offers and partner broadcasts skip phones in passenger mode, user
 // broadcasts skip phones in driver mode (push_tokens.mode, migration 0166;
@@ -68,8 +73,12 @@ import {
   fcmOutcome,
   fcmSendUrl,
   parseServiceAccount,
+  inArea,
   inboxRows,
   type InboxRow,
+  LOCATED_COLUMNS,
+  type LocatedRow,
+  parseArea,
   inMode,
   notificationMode,
   pickRecipients,
@@ -154,6 +163,15 @@ async function dispatch(payload: SendBody): Promise<Response> {
   const profileId = (payload.profileId ?? "").trim();
   // Never these profiles: a ride request's own rider, who may be a partner too.
   const exclude = new Set(profileIdList(payload.excludeProfileIds));
+  // Only the phones in this place (Admin -> Push Notification, 0168); an
+  // area that is given but not usable is refused rather than ignored, so a
+  // typo never turns into a broadcast to everyone.
+  const area = parseArea(payload.area);
+  if (payload.area != null && area === null) {
+    return json({ error: "The area is not usable: pick a country, or a point and a radius up to 500 km." }, 400);
+  }
+  // Count who it would reach, send nothing (the admin's preview).
+  const dryRun = payload.dryRun === true;
 
   // Resolve the audience to a set of profile ids when scoping by role.
   // "all" and "users" both reach every registered device: every account is a
@@ -198,7 +216,12 @@ async function dispatch(payload: SendBody): Promise<Response> {
       }>;
     });
   // `mode` arrived with 0166: without it every phone is told, as before.
-  let { data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id, capabilities, mode");
+  // The place columns (0168) are read only for an area send, which needs them.
+  const base = "token, platform, profile_id, capabilities, mode";
+  let { data: tokenRows, error: tokensErr } = await loadTokens(area ? `${base}, ${LOCATED_COLUMNS}` : base);
+  if (area && tokensErr && /last_lat|area_|located_at/.test(tokensErr.message ?? "")) {
+    return json({ error: "Sending by location needs migration 0168 on the database." }, 400);
+  }
   if (tokensErr && /mode/.test(tokensErr.message ?? "")) {
     ({ data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id, capabilities"));
   }
@@ -211,8 +234,21 @@ async function dispatch(payload: SendBody): Promise<Response> {
   // Only the phones in the mode this notification belongs to (a driver
   // browsing as a passenger is not sent ride offers, and the other way round).
   const mode = notificationMode(audience, payload.data, profileId !== "");
-  const recipientRows = pickRecipients(tokenRows, only, exclude);
+  const audienceRows = pickRecipients(tokenRows, only, exclude);
+  const now = new Date();
+  const recipientRows = area ? audienceRows.filter((r) => inArea(r as LocatedRow, area, now)) : audienceRows;
   tokenRows = inMode(recipientRows, mode);
+
+  if (dryRun) {
+    const reach = planDeliveries(tokenRows, payload.data?.type, false);
+    return json({
+      dryRun: true,
+      recipients: reach.length,
+      accounts: new Set(recipientRows.flatMap((r) => (r.profile_id ? [r.profile_id] : []))).size,
+      // Phones in the audience whose place is not known: an area send skips them.
+      unlocated: area ? audienceRows.filter((r) => !(r as LocatedRow).located_at).length : 0,
+    });
+  }
 
   // Kept for the notifications page, for every recipient account -- also
   // those whose phone is in the other mode, who see it when they switch.
@@ -239,16 +275,18 @@ async function dispatch(payload: SendBody): Promise<Response> {
   const recipients = deliveries.length;
 
   const loggedAudience = profileId ? "direct" : audience;
+  // The history records an area send's target (0168).
+  const logged = (row: Record<string, unknown>) => (area ? { ...row, target: area } : row);
 
   if (recipients === 0) {
-    await supabase.from("push_notifications").insert({
+    await supabase.from("push_notifications").insert(logged({
       title,
       body,
       audience: loggedAudience,
       recipients: 0,
       sent: 0,
       failed: 0,
-    });
+    }));
     return json({ recipients: 0, sent: 0, failed: 0, tickets: [] });
   }
 
@@ -420,14 +458,14 @@ async function dispatch(payload: SendBody): Promise<Response> {
     }
   }
 
-  await supabase.from("push_notifications").insert({
+  await supabase.from("push_notifications").insert(logged({
     title,
     body,
     audience: loggedAudience,
     recipients,
     sent,
     failed,
-  });
+  }));
 
   return json({ recipients, sent, failed, pruned, tickets });
 }

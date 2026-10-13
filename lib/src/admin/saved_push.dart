@@ -7,6 +7,7 @@
 library;
 
 import 'admin_settings_models.dart';
+import 'push_area.dart';
 
 const savedPushCategory = SettingsCategory(
   key: 'push-notification',
@@ -43,6 +44,7 @@ class SavedPush {
     required this.audience,
     this.updatedAt,
     this.values = const {},
+    this.area = const PushArea.everywhere(),
   });
 
   factory SavedPush.fromEntry(SettingEntry e) => SavedPush(
@@ -52,6 +54,7 @@ class SavedPush {
     body: '${e.values['body'] ?? ''}'.trim(),
     audience: normalizePushAudience(e.values['audience']),
     updatedAt: e.values['updatedAt'] == null ? null : '${e.values['updatedAt']}',
+    area: PushArea.fromJson(e.values['area']),
   );
 
   final String id;
@@ -59,6 +62,9 @@ class SavedPush {
   final String body;
   final String audience;
   final String? updatedAt;
+
+  /// Where it goes (migration 0168); everywhere for older rows.
+  final PushArea area;
 
   /// Everything stored on the row, kept when it is edited.
   final Map<String, dynamic> values;
@@ -82,10 +88,13 @@ String? validatePushDraft(String title, String body) {
 }
 
 /// What `send-push` reported, for the admin who pressed Send.
-String pushResultText(Map<String, dynamic> r, String audience) {
+String pushResultText(Map<String, dynamic> r, String audience, [PushArea area = const PushArea.everywhere()]) {
   final recipients = (r['recipients'] as num?)?.toInt() ?? 0;
   final failed = (r['failed'] as num?)?.toInt() ?? 0;
-  if (recipients == 0) return 'No registered devices match "${pushAudienceLabel(audience)}" yet.';
+  if (recipients == 0) {
+    final where = area.label.isEmpty ? '' : ' ${area.label}';
+    return 'No registered devices match "${pushAudienceLabel(audience)}"$where yet.';
+  }
   return 'Sent to ${r['sent'] ?? 0} of $recipients devices${failed != 0 ? ' ($failed failed)' : ''}.';
 }
 
@@ -97,10 +106,13 @@ Map<String, dynamic> savedPushValues({
   required String body,
   required String audience,
   required DateTime now,
+  PushArea area = const PushArea.everywhere(),
 }) => {
   ...?existing,
   'title': title.trim(),
   'body': body.trim(),
   'audience': normalizePushAudience(audience),
+  // Null clears an area an edit took away.
+  'area': area.toJson(),
   'updatedAt': now.toUtc().toIso8601String(),
 };

@@ -212,6 +212,27 @@ Future<LatLng?> currentPosition() async {
   }
 }
 
+/// Where the phone is, without ever asking for permission: null when
+/// location is off or not granted. The last known fix when there is one
+/// (cheap, no GPS wake-up), else a quick low-accuracy fix.
+Future<LatLng?> knownPosition() async {
+  try {
+    if (!await Geolocator.isLocationServiceEnabled()) return null;
+    final perm = await Geolocator.checkPermission();
+    if (perm != LocationPermission.always && perm != LocationPermission.whileInUse) return null;
+    if (!kIsWeb) {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) return LatLng(last.latitude, last.longitude);
+    }
+    final pos = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
+    ).timeout(const Duration(seconds: 8));
+    return LatLng(pos.latitude, pos.longitude);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Kuala Lumpur, where nothing else says where to open.
 const klCenter = LatLng(3.1390, 101.6869);
 
