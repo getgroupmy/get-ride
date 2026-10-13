@@ -146,7 +146,9 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           _ReaderCard(obd: obd, scanning: _scanning, progress: _progress, error: _scanError, report: report),
-          if (obd.linked || report != null) ...[
+          // Expo: the vehicle's cards appear once it has been read; before
+          // that the reader card says what is happening.
+          if (report != null) ...[
             const _Header('Odometer & fuel'),
             _FuelCard(
               report: report,
@@ -158,10 +160,17 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
                 if (mounted) setState(() => _fuelProfile = p);
               },
             ),
-            if (report != null) ..._reportSections(report),
+            ..._reportSections(report),
           ],
           const _Header('Write to vehicle'),
           _WritesCard(obd: obd, send: _send, onVehicleChanged: () => setState(() => _report = null), rescan: _scan),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+            child: Text(
+              genericWriteNote,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
         ],
       ),
     );
@@ -193,35 +202,43 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
             for (final v in r.identity) _Row(v.label, v.value),
             if (vin != null) ...[
               _Row('Manufacturer code', '${vin.wmi}${vin.region == null ? '' : ' · ${vin.region}'}'),
-              if (vin.modelYears.isNotEmpty) _Row('Model year', _modelYear(vin.modelYears)),
+              if (vin.modelYears.isNotEmpty) _Row('Model year', modelYearText(vin.modelYears)),
               _Row('Plant · serial', '${vin.plantCode} · ${vin.serial}'),
             ],
           ],
         ),
       ),
-      _Header('Diagnostic trouble codes', trailing: codes.isEmpty ? null : '${codes.length}'),
+      const _Header('Diagnostic trouble codes'),
       Card(
+        key: const ValueKey('dtc-card'),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final m in dtcModes)
-              ListTile(
-                key: ValueKey('dtc-${m.key.name}'),
-                title: Text(m.label),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(m.hint),
-                    if (r.dtcs[m.key] == null)
-                      const Text('Could not be read.')
-                    else if (r.dtcs[m.key]!.isEmpty)
-                      const Text('None')
-                    else
-                      for (final c in r.dtcs[m.key]!)
-                        Text('$c — ${describeDtc(c)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                  ],
-                ),
+            ListTile(
+              leading: Icon(
+                codes.isEmpty ? Icons.verified_outlined : Icons.warning_amber_rounded,
+                color: codes.isEmpty ? Colors.green : Colors.amber.shade700,
               ),
+              title: Text(dtcSummary(codes.length), style: Theme.of(context).textTheme.titleMedium),
+            ),
+            // A store the vehicle did not answer for is left out, as in Expo.
+            for (final m in dtcModes)
+              if (r.dtcs[m.key] case final list?)
+                ListTile(
+                  key: ValueKey('dtc-${m.key.name}'),
+                  title: Text(list.isEmpty ? m.label : '${m.label} (${list.length})'),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(m.hint),
+                      if (list.isEmpty)
+                        const Text('None')
+                      else
+                        for (final c in list)
+                          Text('$c — ${describeDtc(c)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
           ],
         ),
       ),
@@ -261,16 +278,7 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
-      const _Header('Reader'),
-      Card(child: Column(children: [for (final a in r.adapter) _Row(a.label, a.value)])),
     ];
-  }
-
-  /// The newest candidate that is not in the future (Expo's rule).
-  static String _modelYear(List<int> years) {
-    final now = DateTime.now().year;
-    final ok = years.where((y) => y <= now + 1).toList();
-    return '${ok.isEmpty ? years.first : ok.last}';
   }
 }
 
@@ -547,6 +555,7 @@ class _ReaderCard extends StatelessWidget {
               Text(error!, style: TextStyle(color: t.colorScheme.error)),
             ],
             if (report != null && !scanning) ...[
+              for (final a in report!.adapter) _Row(a.label, a.value),
               const SizedBox(height: 4),
               Text(
                 'Read ${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(report!.finishedAt)).format(context)}',
@@ -604,7 +613,15 @@ class _WritesCardState extends ConsumerState<_WritesCard> {
                   enabled: avail.allowed,
                   leading: Icon(_icon(a.id), color: a.destructive && avail.allowed ? Colors.red : null),
                   title: Text(a.label),
-                  subtitle: Text(avail.reason ?? a.description),
+                  // What the write does, and why it cannot run now (Expo shows both).
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(a.description),
+                      if (avail.reason case final reason?)
+                        Text(reason, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    ],
+                  ),
                   trailing: Chip(label: Text(a.target == WriteTarget.vehicle ? 'ECU' : 'Reader')),
                   onTap: avail.allowed ? () => _open(a) : null,
                 );
@@ -844,3 +861,20 @@ String readerStatusTitle(ObdSessionState obd) {
     ObdPhase.idle => 'Not connected',
   };
 }
+
+/// The trouble-code card's headline.
+@visibleForTesting
+String dtcSummary(int codes) => codes == 0 ? 'No fault codes' : '$codes code${codes == 1 ? '' : 's'} reported';
+
+/// The model year a VIN gives: its year letter repeats every 30 years, so
+/// two candidates are both named rather than one guessed (Expo).
+@visibleForTesting
+String modelYearText(List<int> years) => years.length > 1
+    ? '${years.join(' or ')} (the VIN year code repeats every 30 years)'
+    : '${years.first}';
+
+/// Under the writes (Expo's footnote).
+const genericWriteNote =
+    'Generic OBD-II defines exactly one write every vehicle must accept — clearing diagnostic information. '
+    'Anything a workshop tool appears to reprogram beyond that is manufacturer-specific and outside what this '
+    'reader can safely be asked to do.';

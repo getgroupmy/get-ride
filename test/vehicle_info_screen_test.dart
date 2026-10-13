@@ -124,6 +124,14 @@ void main() {
     await container.read(obdSessionProvider.notifier).disconnect();
   });
 
+  test('trouble-code headline and model years read as Expo shows them', () {
+    expect(dtcSummary(0), 'No fault codes');
+    expect(dtcSummary(1), '1 code reported');
+    expect(dtcSummary(3), '3 codes reported');
+    expect(modelYearText([2013]), '2013');
+    expect(modelYearText([1983, 2013]), '1983 or 2013 (the VIN year code repeats every 30 years)');
+  });
+
   test('the reader card names what the link is doing', () {
     expect(readerStatusTitle(const ObdSessionState()), 'Not connected');
     expect(
@@ -147,6 +155,9 @@ void main() {
     expect(find.textContaining('1HGCM82633A004352'), findsWidgets);
     expect(find.textContaining('P0133'), findsOneWidget);
     expect(find.text('Check-engine light'), findsOneWidget);
+    expect(find.text('1 code reported'), findsOneWidget);
+    expect(find.byKey(const ValueKey('dtc-stored')), findsOneWidget);
+    expect(find.text(genericWriteNote), findsOneWidget);
 
     await tester.scrollUntilVisible(find.text('Clear trouble codes'), 300);
     await tester.tap(find.text('Clear trouble codes'));
