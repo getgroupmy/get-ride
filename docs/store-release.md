@@ -374,6 +374,19 @@ After the next push to `main` (web deploy), check:
   files, `adb shell pm verify-app-links --re-verify com.taxxee.teksi`.
 * Scan a My QR code with the camera: it should offer to open GET.ride.
 
+## Flutter version
+
+Every workflow that installs Flutter (`flutter.yml`, `android-release.yml`,
+`ios-release.yml`, `deploy-web.yml`, `gateway.yml`) pins it with
+`flutter-version: 3.47.7` instead of taking whatever `stable` is that day.
+Five plugins (`firebase_core`, `flutter_callkit_incoming`,
+`flutter_native_contact_picker`, `flutter_tts`, `flutter_webrtc`) still apply
+the Kotlin Gradle Plugin, which Flutter warns a future release will refuse to
+build; all five were on their latest versions when this was written. To move
+Flutter on: change all seven `flutter-version` lines in one PR, and merge it
+only when the Flutter workflow (Android build included) is green. Upgrade the
+plugins first once their authors ship versions without the old plugin.
+
 ## When something goes wrong
 
 Every run writes a summary on its Actions page, saying what was uploaded

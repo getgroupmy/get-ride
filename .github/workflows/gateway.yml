@@ -20,10 +20,11 @@ jobs:
       run:
         working-directory: gateway
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.47.7
           cache: true
       - run: flutter pub get
       - run: flutter analyze
@@ -38,14 +39,15 @@ jobs:
       run:
         working-directory: gateway
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.47.7
           cache: true
       - run: flutter pub get
 
@@ -90,7 +92,7 @@ jobs:
           echo "file=gateway/$out" >> "$GITHUB_OUTPUT"
           echo "name=$out" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: getride-gateway-apk
           path: ${{ steps.apk.outputs.file }}

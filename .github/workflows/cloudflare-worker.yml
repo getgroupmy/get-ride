@@ -83,7 +83,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: denoland/setup-deno@v2
         with:
@@ -97,7 +97,7 @@ jobs:
           deno check cloudflare/subdomain-proxy/route_test.ts scripts/ci/cloudflare_wildcard.ts
           deno test cloudflare/subdomain-proxy/route_test.ts scripts/ci/cloudflare_wildcard_test.ts
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.creds.outputs.ready == 'true'
         with:
           node-version: "22"

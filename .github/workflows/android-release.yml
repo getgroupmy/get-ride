@@ -62,7 +62,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Is this set up yet
         id: creds
@@ -109,7 +109,7 @@ jobs:
           fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         if: steps.creds.outputs.ready == 'true'
         with:
           distribution: temurin
@@ -119,6 +119,7 @@ jobs:
         if: steps.creds.outputs.ready == 'true'
         with:
           channel: stable
+          flutter-version: 3.47.7
           cache: true
 
       - uses: denoland/setup-deno@v2
@@ -253,7 +254,7 @@ jobs:
 
       - name: Keep the bundle for download
         if: steps.creds.outputs.ready == 'true' && inputs.upload != true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: app-release-${{ steps.build.outputs.code }}
           path: build/app/outputs/bundle/release/app-release.aab

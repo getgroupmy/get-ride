@@ -13,7 +13,7 @@ jobs:
     # Skips cleanly until the CLAUDE_API_KEY repository secret is added.
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
