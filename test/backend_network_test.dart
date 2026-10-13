@@ -42,6 +42,75 @@ void main() {
     });
   });
 
+  group('fallback order', () {
+    const extra = ['https://api2.getride.my'];
+
+    test('tried in the admin\'s order; a level switched off is not tried', () {
+      expect(
+        backendCandidates(
+          direct,
+          const BackendNetwork(
+            backends: extra,
+            order: [BackendRouteLevel.builtin, BackendRouteLevel.extra, BackendRouteLevel.device],
+          ),
+        ),
+        ['https://api.getride.my', 'https://api2.getride.my', direct],
+      );
+      expect(
+        backendCandidates(
+          direct,
+          const BackendNetwork(backends: extra, order: [BackendRouteLevel.extra, BackendRouteLevel.builtin]),
+        ),
+        ['https://api2.getride.my', 'https://api.getride.my'],
+      );
+    });
+
+    test('nothing to try still leaves the project\'s own address', () {
+      expect(
+        backendCandidates(direct, const BackendNetwork(order: [BackendRouteLevel.extra])),
+        [direct],
+      );
+    });
+
+    test('stored as keys, only when not the default; junk falls back to the default', () {
+      const n = BackendNetwork(order: [BackendRouteLevel.builtin, BackendRouteLevel.device]);
+      expect(n.toJson(), {
+        'order': ['builtin', 'device'],
+      });
+      expect(BackendNetwork.fromJson(n.toJson()), n);
+      expect(BackendNetwork.none.toJson(), isEmpty);
+      expect(parseBackendRouteOrder(null), defaultBackendRouteOrder);
+      expect(parseBackendRouteOrder(['nope', 7]), defaultBackendRouteOrder);
+      expect(parseBackendRouteOrder(['extra', 'extra', 'device']), [
+        BackendRouteLevel.extra,
+        BackendRouteLevel.device,
+      ]);
+    });
+
+    test('admin rows: on first in order, off after; moved and read back', () {
+      final rows = backendRouteRows([BackendRouteLevel.builtin]);
+      expect([for (final r in rows) (r.level, r.on)], [
+        (BackendRouteLevel.builtin, true),
+        (BackendRouteLevel.device, false),
+        (BackendRouteLevel.extra, false),
+      ]);
+      final moved = moveBackendRouteRow(rows, 1, -1);
+      expect(moved.first.level, BackendRouteLevel.device);
+      expect(moveBackendRouteRow(rows, 0, -1), same(rows));
+      final on = [for (final r in moved) (level: r.level, on: true)];
+      expect(backendRouteOrderOf(on), [BackendRouteLevel.device, BackendRouteLevel.builtin, BackendRouteLevel.extra]);
+    });
+
+    test('validation: something must be on, and an extra-only order needs an address', () {
+      expect(validateBackendNetwork('', '', direct, order: const []), contains('at least one'));
+      expect(validateBackendNetwork('', '', direct, order: const [BackendRouteLevel.extra]), contains('none are listed'));
+      expect(validateBackendNetwork('api2.getride.my', '', direct, order: const [BackendRouteLevel.extra]), isNull);
+      expect(backendNetworkPatch('', '', order: const [BackendRouteLevel.builtin]), {
+        'order': ['builtin'],
+      });
+    });
+  });
+
   group('DNS over HTTPS', () {
     test('query adds the name and type to the resolver', () {
       expect(

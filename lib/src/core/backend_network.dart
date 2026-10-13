@@ -31,9 +31,43 @@ const defaultDohResolvers = ['https://1.1.1.1/dns-query', 'https://8.8.8.8/resol
 /// How many entries each list keeps; a launch tries each in turn.
 const backendNetworkMaxEntries = 5;
 
+/// The routes a launch may try, which the admin switches on or off and puts
+/// in order (Admin → App Settings → Backend network → Fallback order).
+enum BackendRouteLevel {
+  /// The project's own address, looked up with the phone's DNS.
+  device('device', 'Project address (device DNS)'),
+
+  /// The admin's extra addresses ([BackendNetwork.backends]), in their order.
+  extra('extra', 'Extra addresses added by admin'),
+
+  /// The built-in second address, [backendFallbackHost].
+  builtin('builtin', backendFallbackHost);
+
+  const BackendRouteLevel(this.key, this.label);
+
+  /// How the level is stored in `app_branding.network.order`.
+  final String key;
+  final String label;
+
+  static BackendRouteLevel? fromKey(Object? key) {
+    for (final l in values) {
+      if (l.key == key) return l;
+    }
+    return null;
+  }
+}
+
+/// The order a launch tries the routes in when the admin has set none:
+/// every one, own address first.
+const defaultBackendRouteOrder = BackendRouteLevel.values;
+
 /// The admin's network settings, as read from `app_branding.network`.
 class BackendNetwork {
-  const BackendNetwork({this.backends = const [], this.dohResolvers = const []});
+  const BackendNetwork({
+    this.backends = const [],
+    this.dohResolvers = const [],
+    this.order = defaultBackendRouteOrder,
+  });
 
   static const none = BackendNetwork();
 
@@ -44,7 +78,11 @@ class BackendNetwork {
   /// DNS-over-HTTPS resolvers; empty means [defaultDohResolvers].
   final List<String> dohResolvers;
 
-  bool get isEmpty => backends.isEmpty && dohResolvers.isEmpty;
+  /// The routes switched on, in the order a launch tries them. A level left
+  /// out is not tried at all, by the phone's DNS or by a resolver.
+  final List<BackendRouteLevel> order;
+
+  bool get isEmpty => backends.isEmpty && dohResolvers.isEmpty && _same(order, defaultBackendRouteOrder);
 
   /// The resolvers to ask: the admin's, else the defaults.
   List<String> get resolvers => dohResolvers.isEmpty ? defaultDohResolvers : dohResolvers;
@@ -67,23 +105,41 @@ class BackendNetwork {
     return BackendNetwork(
       backends: list(raw['backends'], normalizeBackendUrl),
       dohResolvers: list(raw['doh'], normalizeDohUrl),
+      order: parseBackendRouteOrder(raw['order']),
     );
   }
 
   Map<String, dynamic> toJson() => {
     if (backends.isNotEmpty) 'backends': backends,
     if (dohResolvers.isNotEmpty) 'doh': dohResolvers,
+    if (!_same(order, defaultBackendRouteOrder)) 'order': [for (final l in order) l.key],
   };
 
   @override
   bool operator ==(Object other) =>
-      other is BackendNetwork && _same(other.backends, backends) && _same(other.dohResolvers, dohResolvers);
+      other is BackendNetwork &&
+      _same(other.backends, backends) &&
+      _same(other.dohResolvers, dohResolvers) &&
+      _same(other.order, order);
 
   @override
-  int get hashCode => Object.hash(Object.hashAll(backends), Object.hashAll(dohResolvers));
+  int get hashCode => Object.hash(Object.hashAll(backends), Object.hashAll(dohResolvers), Object.hashAll(order));
 }
 
-bool _same(List<String> a, List<String> b) {
+/// The stored order: known levels, each once, in the order given. Missing,
+/// unreadable or naming no level at all, it is the default -- a row cannot
+/// leave a launch with nothing to try. Pure.
+List<BackendRouteLevel> parseBackendRouteOrder(Object? raw) {
+  if (raw is! List) return defaultBackendRouteOrder;
+  final out = <BackendRouteLevel>[];
+  for (final e in raw) {
+    final l = BackendRouteLevel.fromKey(e);
+    if (l != null && !out.contains(l)) out.add(l);
+  }
+  return out.isEmpty ? defaultBackendRouteOrder : out;
+}
+
+bool _same<T>(List<T> a, List<T> b) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i++) {
     if (a[i] != b[i]) return false;
@@ -124,15 +180,25 @@ String? normalizeDohUrl(String raw) {
   return u.toString();
 }
 
-/// The addresses to try, in order: the project's own, the admin's (only
-/// those [isAllowedBackend] passes), then the built-in second address.
-/// Duplicates dropped. Pure.
+/// The addresses to try, in the admin's order ([BackendNetwork.order]):
+/// the project's own, the admin's (only those [isAllowedBackend] passes)
+/// and the built-in second address, each only where its level is on.
+/// Duplicates dropped. Never empty: with nothing switched on that yields an
+/// address, the project's own is tried, so a launch always has somewhere
+/// to go. Pure.
 List<String> backendCandidates(String direct, BackendNetwork network) {
-  final out = <String>[direct];
-  for (final b in [...network.backends, 'https://$backendFallbackHost']) {
-    if (isAllowedBackend(b, direct) && !out.contains(b)) out.add(b);
+  final out = <String>[];
+  for (final level in network.order) {
+    final urls = switch (level) {
+      BackendRouteLevel.device => [direct],
+      BackendRouteLevel.extra => network.backends,
+      BackendRouteLevel.builtin => ['https://$backendFallbackHost'],
+    };
+    for (final u in urls) {
+      if (isAllowedBackend(u, direct) && !out.contains(u)) out.add(u);
+    }
   }
-  return out;
+  return out.isEmpty ? [direct] : out;
 }
 
 /// The JSON-API query for [host]'s IPv4 addresses at [resolver]. Pure.
@@ -218,9 +284,14 @@ String networkListText(List<String> entries) => entries.join('\n');
   return (entries: out, bad: null);
 }
 
-/// The first problem with the admin's two lists, or null. [direct] is the
-/// project's own URL, for [isAllowedBackend]. Pure.
-String? validateBackendNetwork(String backendsText, String dohText, String direct) {
+/// The first problem with the admin's two lists and route order, or null.
+/// [direct] is the project's own URL, for [isAllowedBackend]. Pure.
+String? validateBackendNetwork(
+  String backendsText,
+  String dohText,
+  String direct, {
+  List<BackendRouteLevel> order = defaultBackendRouteOrder,
+}) {
   final b = parseNetworkList(backendsText, normalizeBackendUrl);
   if (b.bad != null) return 'Not a backend address: ${b.bad} (use https://host, nothing after it)';
   for (final url in b.entries) {
@@ -232,11 +303,50 @@ String? validateBackendNetwork(String backendsText, String dohText, String direc
   final d = parseNetworkList(dohText, normalizeDohUrl);
   if (d.bad != null) return 'Not a DNS-over-HTTPS address: ${d.bad} (use https://…, no query)';
   if (d.entries.length > backendNetworkMaxEntries) return 'At most $backendNetworkMaxEntries resolvers';
+  if (order.isEmpty) return 'Switch on at least one route for the app to try at launch';
+  if (order.length == 1 && order.single == BackendRouteLevel.extra && b.entries.isEmpty) {
+    return 'Only "${BackendRouteLevel.extra.label}" is on, but none are listed: add one or switch on another route';
+  }
   return null;
 }
 
-/// The `app_branding.network` value for the admin's two lists. Pure.
-Map<String, dynamic> backendNetworkPatch(String backendsText, String dohText) => BackendNetwork(
+/// The `app_branding.network` value for the admin's two lists and route
+/// order. Pure.
+Map<String, dynamic> backendNetworkPatch(
+  String backendsText,
+  String dohText, {
+  List<BackendRouteLevel> order = defaultBackendRouteOrder,
+}) => BackendNetwork(
   backends: parseNetworkList(backendsText, normalizeBackendUrl).entries,
   dohResolvers: parseNetworkList(dohText, normalizeDohUrl).entries,
+  order: order,
 ).toJson();
+
+/// One row of the admin's Fallback order list: a level and whether it is on.
+typedef BackendRouteRow = ({BackendRouteLevel level, bool on});
+
+/// The rows the admin edits for a stored [order]: the levels that are on,
+/// in order, then the ones that are off (in their default order). Pure.
+List<BackendRouteRow> backendRouteRows(List<BackendRouteLevel> order) => [
+  for (final l in order) (level: l, on: true),
+  for (final l in defaultBackendRouteOrder)
+    if (!order.contains(l)) (level: l, on: false),
+];
+
+/// The order saved from the admin's [rows]: the switched-on levels, top to
+/// bottom. Pure.
+List<BackendRouteLevel> backendRouteOrderOf(List<BackendRouteRow> rows) => [
+  for (final r in rows)
+    if (r.on) r.level,
+];
+
+/// [rows] with the row at [index] moved up ([by] -1) or down (+1); the same
+/// rows when that would leave the list. Pure.
+List<BackendRouteRow> moveBackendRouteRow(List<BackendRouteRow> rows, int index, int by) {
+  final to = index + by;
+  if (index < 0 || index >= rows.length || to < 0 || to >= rows.length) return rows;
+  final out = [...rows];
+  final r = out.removeAt(index);
+  out.insert(to, r);
+  return out;
+}

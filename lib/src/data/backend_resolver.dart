@@ -3,8 +3,9 @@ import '../core/backend_route.dart';
 import 'backend_lookup.dart';
 
 /// How to reach the backend this launch (see core/backend_network.dart):
-/// the first of the project's own address, the admin's addresses and the
-/// built-in second one that the phone's DNS resolves; failing every one,
+/// the first of the routes the admin switched on, in their order (the
+/// project's own address, the admin's addresses, the built-in second one),
+/// that the phone's DNS resolves; failing every one,
 /// the first a DNS-over-HTTPS resolver finds an address for. Lookups stop
 /// at the first that works, so a normal launch costs one lookup the HTTP
 /// client would have made anyway; the resolvers are only asked when the
