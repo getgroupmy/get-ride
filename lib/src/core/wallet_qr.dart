@@ -9,6 +9,8 @@
 /// through `wallet_pay`, which debits the payer only.
 library;
 
+import 'server_timeout.dart';
+
 const walletQrScheme = 'getpay://u/';
 
 /// How long a fixed-amount code is shown before it must be regenerated.
@@ -122,6 +124,8 @@ String? walletPayProblem({required double amount, required double walletBalance,
 
 /// The message for a failed `wallet_pay` call.
 String walletPayErrorMessage(Object error) {
+  final slow = serverTimeoutText(error);
+  if (slow != null) return slow;
   final s = error.toString().toLowerCase();
   if (s.contains('insufficient_balance')) return 'Not enough balance in GET.wallet.';
   if (s.contains('invalid_amount')) return 'Enter an amount between RM0.01 and RM100,000.';

@@ -5,6 +5,7 @@ library;
 import 'dart:math' as math;
 
 import '../admin/screens/commerce/get_coin.dart';
+import 'server_timeout.dart';
 
 enum CoinTradeDirection { buy, sell }
 
@@ -127,6 +128,8 @@ String? coinTradeProblem({
 
 /// The words for a `wallet_trade_coins` failure (Expo's mapping).
 String coinTradeErrorMessage(Object error) {
+  final slow = serverTimeoutText(error);
+  if (slow != null) return slow;
   final msg = '$error'.toLowerCase();
   if (msg.contains('insufficient_balance')) return 'Not enough balance in GET.wallet.';
   if (msg.contains('insufficient_coins')) return 'Not enough GET.coin to sell.';

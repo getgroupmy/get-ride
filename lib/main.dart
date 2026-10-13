@@ -9,6 +9,7 @@ import 'src/core/app_branding.dart';
 import 'src/core/referral.dart';
 import 'src/data/branding_cache.dart';
 import 'src/data/push_service.dart';
+import 'src/data/timeout_http_client.dart';
 
 Future<void> main() async {
   // Real paths (/rides) instead of hash URLs (/#/rides) on web, so links read
@@ -21,7 +22,14 @@ Future<void> main() async {
   // An invite link (getride.my/?ref=CODE) carries the friend's code; it is
   // offered on the set-PIN step of a new account.
   PendingReferral.code = referralCodeFromUri(Uri.base);
-  await Supabase.initialize(url: AppConfig.supabaseUrl, publishableKey: AppConfig.supabaseAnonKey);
+  // Every Supabase request (database, functions, storage, sign-in) goes
+  // through a client that gives up on a server that does not answer, instead
+  // of leaving the screen waiting on it (see core/server_timeout.dart).
+  await Supabase.initialize(
+    url: AppConfig.supabaseUrl,
+    publishableKey: AppConfig.supabaseAnonKey,
+    httpClient: TimeoutHttpClient(),
+  );
   // Push notifications, on Android and iOS builds that carry a Firebase
   // project. A no-op everywhere else.
   await PushService.start(Supabase.instance.client);

@@ -5,6 +5,8 @@
 /// Requests expire after 15 minutes (server-side `expires_at`).
 library;
 
+import 'server_timeout.dart';
+
 enum TransferStatus { pending, accepted, declined, cancelled, expired, failed }
 
 TransferStatus parseTransferStatus(Object? v) =>
@@ -90,6 +92,8 @@ String? coinSendProblem({
 
 /// The words for a `wallet_request_coin_transfer` failure.
 String coinSendErrorMessage(Object error) {
+  final slow = serverTimeoutText(error);
+  if (slow != null) return slow;
   final msg = '$error'.toLowerCase();
   if (msg.contains('insufficient_coins')) return 'Not enough GET.coin to send.';
   if (msg.contains('recipient_not_found')) return 'Recipient not found. Check the number and try again.';
