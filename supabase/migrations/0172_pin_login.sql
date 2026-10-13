@@ -96,7 +96,9 @@ begin
 end;
 $$;
 
-revoke all on function public.pin_check(text, text, text) from public, anon, authenticated;
+-- service_role too: default privileges hand it every new function, and
+-- pin_login_check (owner) is the only way in.
+revoke all on function public.pin_check(text, text, text) from public, anon, authenticated, service_role;
 
 create or replace function public.verify_pin_for_login(p_phone text, p_pin text)
 returns uuid
