@@ -42,6 +42,7 @@ class BiddingRegion {
     this.currencySymbol,
     this.blocked = false,
     this.boundaryAt,
+    this.boundaryArea,
   });
 
   final String country;
@@ -60,12 +61,31 @@ class BiddingRegion {
   /// for one point is only ever asked about that point.
   final bool? boundaryAt;
 
+  /// With [boundaryAt]: the area of its smallest outline holding that point
+  /// (square degrees, only compared with other regions'); see [holdingArea].
+  final double? boundaryArea;
+
   /// Whether it has a mapped boundary, either way it came.
   bool get hasBoundary => rings.isNotEmpty || boundaryAt != null;
 
   /// Whether its mapped boundary holds [p]; null when it has none.
   bool? covers(LatLng p) =>
       rings.isNotEmpty ? rings.any((ring) => ring.length >= 3 && _inRing(p, ring)) : boundaryAt;
+
+  /// The area of its smallest outline holding [p]; null when none does.
+  /// Outlines are saved without their holes, so a state still covers the
+  /// enclave inside it (Selangor's covers Kuala Lumpur); of two regions at
+  /// the same level holding a point, the smaller is the one it is in.
+  double? holdingArea(LatLng p) {
+    if (rings.isEmpty) return boundaryAt == true ? boundaryArea : null;
+    double? best;
+    for (final ring in rings) {
+      if (ring.length < 3 || !_inRing(p, ring)) continue;
+      final a = _ringArea(ring);
+      if (best == null || a < best) best = a;
+    }
+    return best;
+  }
 
   /// How fares are priced here, when this region sets it (see
   /// [RegionPricing.fromValues]); null leaves it to the parent region.
@@ -105,7 +125,7 @@ class BiddingRegion {
 
   /// From a settings entry's `values`; null without a country. A missing
   /// flag means enabled, as in Expo.
-  static BiddingRegion? fromValues(Map<String, dynamic> v, {bool? boundaryAt}) {
+  static BiddingRegion? fromValues(Map<String, dynamic> v, {bool? boundaryAt, double? boundaryArea}) {
     String s(Object? x) => x is String ? x.trim() : '';
     final country = s(v['country']);
     if (country.isEmpty) return null;
@@ -124,6 +144,7 @@ class BiddingRegion {
       currencySymbol: s(v['currencySymbol']).isEmpty ? null : s(v['currencySymbol']),
       blocked: v['blocked'] == true,
       boundaryAt: boundaryAt,
+      boundaryArea: boundaryArea,
     );
   }
 
@@ -164,13 +185,12 @@ BiddingRegion? regionFromLookupRow(Map<String, dynamic> row) {
   final values = row['values'] is Map ? Map<String, dynamic>.from(row['values'] as Map) : <String, dynamic>{};
   values.remove('boundary');
   final inside = row['inside'];
-  return BiddingRegion.fromValues({
-    ...values,
-    'country': col('country'),
-    'state': col('state'),
-    'city': col('city'),
-    'suburb': col('suburb'),
-  }, boundaryAt: inside is bool ? inside : null);
+  final area = row['area'];
+  return BiddingRegion.fromValues(
+    {...values, 'country': col('country'), 'state': col('state'), 'city': col('city'), 'suburb': col('suburb')},
+    boundaryAt: inside is bool ? inside : null,
+    boundaryArea: area is num ? area.toDouble() : null,
+  );
 }
 
 const regionTableSelects = {
@@ -252,6 +272,25 @@ bool _inRing(LatLng p, List<LatLng> ring) {
   return inside;
 }
 
+/// A ring's area in square degrees (shoelace); only compared with others.
+double _ringArea(List<LatLng> ring) {
+  var twice = 0.0;
+  for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    twice += (ring[j].longitude * ring[i].latitude) - (ring[i].longitude * ring[j].latitude);
+  }
+  return twice.abs() / 2;
+}
+
+/// Whether [r], whose mapped boundary holds [p], is a better match there
+/// than [best]: more specific, or as specific and smaller -- the enclave
+/// inside its neighbour's outline.
+bool _holdsBetter(BiddingRegion r, BiddingRegion? best, LatLng p) {
+  if (best == null || r.specificity > best.specificity) return true;
+  if (r.specificity < best.specificity) return false;
+  final mine = r.holdingArea(p), theirs = best.holdingArea(p);
+  return mine != null && (theirs == null || mine < theirs);
+}
+
 String _n(String? v) => (v ?? '').trim().toLowerCase();
 
 /// The bidding switch of the most specific region whose mapped boundary
@@ -259,10 +298,7 @@ String _n(String? v) => (v ?? '').trim().toLowerCase();
 bool? biddingByBoundary(List<BiddingRegion> regions, LatLng pickup) {
   BiddingRegion? best;
   for (final r in regions) {
-    if (r.covers(pickup) == true &&
-        (best == null || r.specificity > best.specificity)) {
-      best = r;
-    }
+    if (r.covers(pickup) == true && _holdsBetter(r, best, pickup)) best = r;
   }
   return best?.enabled;
 }
@@ -274,10 +310,7 @@ bool? biddingByBoundary(List<BiddingRegion> regions, LatLng pickup) {
 BiddingRegion? regionAt(List<BiddingRegion> regions, LatLng point, {AreaInfo? area}) {
   BiddingRegion? best;
   for (final r in regions) {
-    if (r.covers(point) == true &&
-        (best == null || r.specificity > best.specificity)) {
-      best = r;
-    }
+    if (r.covers(point) == true && _holdsBetter(r, best, point)) best = r;
   }
   if (best != null) return best;
   final country = _n(area?.country);
@@ -349,10 +382,7 @@ T? _settingAt<T extends Object>(
   if (pickup != null) {
     BiddingRegion? best;
     for (final r in set) {
-      if (r.covers(pickup) == true &&
-          (best == null || r.specificity > best.specificity)) {
-        best = r;
-      }
+      if (r.covers(pickup) == true && _holdsBetter(r, best, pickup)) best = r;
     }
     if (best != null) return pick(best);
   }
@@ -398,7 +428,12 @@ List<BiddingRegion> regionsAround(List<BiddingRegion> regions, LatLng? pickup, {
     for (final r in regions)
       if (r.hasBoundary ? pickup != null && r.covers(pickup) == true : byNames(r))
         r,
-  ]..sort((a, b) => b.specificity.compareTo(a.specificity));
+  ];
+  double size(BiddingRegion r) => (pickup == null ? null : r.holdingArea(pickup)) ?? double.infinity;
+  out.sort((a, b) {
+    final bySpec = b.specificity.compareTo(a.specificity);
+    return bySpec != 0 ? bySpec : size(a).compareTo(size(b));
+  });
   return out;
 }
 
@@ -524,9 +559,17 @@ class ServiceUnavailableError implements Exception {
     ];
     if (candidates.isEmpty) break;
     final verdicts = [for (final r in candidates) holds(r, level)];
-    final i = verdicts.indexOf(true);
-    if (i >= 0) {
-      chain.add(candidates[i]);
+    // Of those holding it, the smallest outline: the enclave over the
+    // neighbour that still covers it.
+    BiddingRegion? holder;
+    for (var k = 0; k < candidates.length; k++) {
+      if (verdicts[k] != true) continue;
+      final r = candidates[k];
+      final a = r.holdingArea(point), h = holder?.holdingArea(point);
+      if (holder == null || (a != null && (h == null || a < h))) holder = r;
+    }
+    if (holder != null) {
+      chain.add(holder);
       continue;
     }
     if (verdicts.contains(null)) break;
