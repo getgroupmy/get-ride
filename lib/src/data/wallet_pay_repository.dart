@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers.dart';
+import 'wallet_once.dart';
 
 /// What `wallet_pay` settled.
 class WalletPayResult {
@@ -34,10 +35,14 @@ class WalletPayRepository {
   Future<WalletPayResult> pay(double amount, {required String note, bool redeemCoins = false}) async {
     final uid = _db.auth.currentUser?.id;
     if (uid == null) throw StateError('not_authorized');
-    final data = await _db.rpc(
-      'wallet_pay',
-      params: {'p_user': uid, 'p_amount': amount, 'p_note': note, 'p_method': 'qr_scan', 'p_redeem_coins': redeemCoins},
-    );
+    // Once per payment, however often a timed-out tap is repeated (0164).
+    final data = await callWalletOnce(_db, 'wallet_pay', {
+      'p_user': uid,
+      'p_amount': amount,
+      'p_note': note,
+      'p_method': 'qr_scan',
+      'p_redeem_coins': redeemCoins,
+    });
     return WalletPayResult.fromRpc(data, amount: amount);
   }
 }
@@ -54,7 +59,7 @@ class CreditRechargeRepository {
   Future<void> recharge(double amount) async {
     final uid = _db.auth.currentUser?.id;
     if (uid == null) throw StateError('not_authorized');
-    await _db.rpc('wallet_recharge_credit', params: {'p_user': uid, 'p_amount': amount});
+    await callWalletOnce(_db, 'wallet_recharge_credit', {'p_user': uid, 'p_amount': amount});
   }
 }
 

@@ -5,6 +5,7 @@ import '../admin/screens/commerce/get_coin.dart';
 import '../core/coin_trade.dart';
 import '../providers.dart';
 import 'live_tables.dart';
+import 'wallet_once.dart';
 
 /// What the trade screen prices against: the two balances it moves between,
 /// the admin's GET.coin settings, the 30-day market signals and the server's
@@ -79,10 +80,12 @@ class CoinTradeRepository {
   /// only a fallback for the result figures); throws with the RPC's error
   /// string on refusal (map it with [coinTradeErrorMessage]).
   Future<CoinTradeResult> trade(CoinTradeDirection direction, double coins, double ratePerGC) async {
-    final data = await _db.rpc(
-      'wallet_trade_coins',
-      params: {'p_user': _uid, 'p_direction': direction.name, 'p_coins': coins, 'p_rate_per_gc': ratePerGC},
-    );
+    final data = await callWalletOnce(_db, 'wallet_trade_coins', {
+      'p_user': _uid,
+      'p_direction': direction.name,
+      'p_coins': coins,
+      'p_rate_per_gc': ratePerGC,
+    });
     return CoinTradeResult.fromRpc(
       data,
       coins: coins,
