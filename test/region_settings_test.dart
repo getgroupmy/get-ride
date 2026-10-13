@@ -118,11 +118,19 @@ void main() {
     expect(serviceBoxViews(settings)[1].route, isNotNull, reason: 'no region restriction');
   });
 
-  test('the rider app reads the regions from the tables the admin page saves to', () async {
+  test('without regions_at (before 0169) the rider app reads the tables the admin page saves to', () async {
     final asked = <String>[];
     final client = MockClient((req) async {
       final table = req.url.pathSegments.last;
       asked.add(table);
+      if (table == 'regions_at') {
+        return http.Response(
+          jsonEncode({'code': 'PGRST202', 'message': 'Could not find the function public.regions_at'}),
+          404,
+          headers: {'content-type': 'application/json'},
+          request: req,
+        );
+      }
       final rows = _tables[table] ?? const [];
       return http.Response(jsonEncode(rows), 200, headers: {'content-type': 'application/json'}, request: req);
     });
@@ -139,6 +147,54 @@ void main() {
     expect(asked.toSet(), containsAll(['countries', 'states', 'cities', 'suburbs']));
     // One read serves a pickup's three checks.
     expect(asked.where((t) => t == 'countries'), hasLength(1));
+  });
+
+  test('with regions_at the server tests the boundaries and no table is read whole', () async {
+    final asked = <String>[];
+    Map<String, dynamic>? params;
+    final client = MockClient((req) async {
+      final name = req.url.pathSegments.last;
+      asked.add(name);
+      if (name == 'regions_at') params = jsonDecode(req.body) as Map<String, dynamic>;
+      final rows = name == 'regions_at'
+          ? [
+              {
+                'region_table': 'countries',
+                'country': 'Malaysia',
+                'state': '',
+                'city': '',
+                'suburb': '',
+                'values': {'wholeFare': true, 'biddingEnabled': true},
+                'has_boundary': true,
+                'inside': true,
+              },
+              {
+                'region_table': 'states',
+                'country': 'Malaysia',
+                'state': 'Selangor',
+                'city': '',
+                'suburb': '',
+                'values': {'biddingEnabled': false},
+                'has_boundary': true,
+                'inside': true,
+              },
+            ]
+          : const [];
+      return http.Response(jsonEncode(rows), 200, headers: {'content-type': 'application/json'}, request: req);
+    });
+    final db = SupabaseClient(
+      'http://localhost',
+      'anon',
+      httpClient: client,
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+    );
+    final repo = RideRepository(db);
+    // The geocoder failing no longer loses the region: the boundary decides.
+    expect(await repo.biddingEnabledFor(point, () async => null), isFalse);
+    expect((await repo.pricingFor(point, () async => null)).wholeFare, isTrue);
+    expect(params, {'p_lat': point.latitude, 'p_lng': point.longitude});
+    expect(asked, isNot(contains('countries')));
+    expect(asked.where((t) => t == 'regions_at'), hasLength(1));
   });
 
   test('Meter Digital prices on its own rate cards, never on a region\'s pricing', () {

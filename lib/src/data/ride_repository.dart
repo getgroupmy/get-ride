@@ -338,33 +338,111 @@ class RideRepository {
 
   /// The admin's regions (Admin → Country / States / Cities, saved to the
   /// `countries` / `states` / `cities` / `suburbs` tables) with each one's
-  /// bidding switch, pricing and services. Old `country-states-cities`
-  /// settings entries are read too. A table that cannot be read is skipped;
-  /// empty when none can, and bidding then stays on. Kept for
-  /// [regionsCacheFor]: they carry every boundary (megabytes), and an
-  /// admin's change drops them at once anyway ([forgetRegions], wired to the
-  /// live region tables in `providers.dart`), so the expiry is only a
-  /// backstop for a change realtime missed.
-  Future<List<BiddingRegion>> biddingRegions() {
-    final cached = _regions;
-    if (cached != null && DateTime.now().difference(cached.at) < regionsCacheFor) return cached.list;
+  /// bidding switch, pricing and services, as seen from [at]. Old
+  /// `country-states-cities` settings entries are read too.
+  ///
+  /// The server tests the mapped boundaries against [at] (`regions_at`,
+  /// migration 0169), so only the answer comes down -- the boundaries are
+  /// megabytes, and reading them on every check timed out, which silently
+  /// lost the region's pricing (whole fares, tax) and bidding switch. A list
+  /// read for one point is only asked about that point; without [at] the
+  /// boundaries are left out (names only). Against a database without 0169
+  /// the tables are read whole, as before.
+  ///
+  /// Kept for [regionsCacheFor] per point; an admin's change drops them at
+  /// once ([forgetRegions], wired to the live region tables in
+  /// `providers.dart`). A read that failed is kept for [regionsRetryAfter]
+  /// rather than retried on the next check, so a struggling database is not
+  /// asked again every few seconds.
+  Future<List<BiddingRegion>> biddingRegions({LatLng? at}) {
+    final key = at == null ? 'names' : regionLookupKey(at);
+    final cached = _regions[key];
+    final now = DateTime.now();
+    if (cached != null && now.isBefore(cached.until)) return cached.list;
     var failed = false;
-    final list = _readRegions(() => failed = true);
-    final kept = (at: DateTime.now(), list: list);
-    _regions = kept;
-    // A table that could not be read is not kept for [regionsCacheFor]:
-    // the next check reads again.
+    final list = _lookupRegions(at, () => failed = true);
+    final kept = (until: now.add(regionsCacheFor), list: list);
+    if (_regions.length >= 16) _regions.remove(_regions.keys.first);
+    _regions[key] = kept;
     unawaited(list.then((_) {
-      if (failed && identical(_regions, kept)) _regions = null;
+      if (failed && identical(_regions[key], kept)) {
+        _regions[key] = (until: DateTime.now().add(regionsRetryAfter), list: list);
+      }
     }));
     return list;
   }
 
   /// Drops the kept regions, so the next check reads the admin's change.
-  void forgetRegions() => _regions = null;
+  void forgetRegions() {
+    _regions.clear();
+    _wholeRegions = null;
+  }
 
   static const regionsCacheFor = Duration(minutes: 10);
-  ({DateTime at, Future<List<BiddingRegion>> list})? _regions;
+  static const regionsRetryAfter = Duration(seconds: 45);
+  final Map<String, ({DateTime until, Future<List<BiddingRegion>> list})> _regions = {};
+
+  /// Whether `regions_at` exists; false after the database said it does
+  /// not (before migration 0169), so the whole tables are read instead.
+  bool _lookupAvailable = true;
+
+  /// The whole-table read (no 0169), shared by every point: its rings test
+  /// any point.
+  Future<List<BiddingRegion>>? _wholeRegions;
+
+  Future<List<BiddingRegion>> _lookupRegions(LatLng? at, void Function() onFailed) async {
+    if (_lookupAvailable) {
+      try {
+        final rows = await _db.rpc(
+          'regions_at',
+          params: {'p_lat': at?.latitude, 'p_lng': at?.longitude},
+        );
+        final regions = [
+          if (rows is List)
+            for (final r in rows)
+              if (r is Map) ?regionFromLookupRow(Map<String, dynamic>.from(r)),
+          ...await _legacyRegions(onFailed),
+        ];
+        setRegionCurrencySymbols(regionCurrencySymbols(regions));
+        return regions;
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST202' && e.code != '42883') {
+          onFailed();
+          return const [];
+        }
+        _lookupAvailable = false;
+      } catch (_) {
+        onFailed();
+        return const [];
+      }
+    }
+    var whole = _wholeRegions;
+    if (whole == null) {
+      var failed = false;
+      final read = whole = _readRegions(() => failed = true);
+      _wholeRegions = read;
+      final regions = await read;
+      if (failed) {
+        if (identical(_wholeRegions, read)) _wholeRegions = null;
+        onFailed();
+      }
+      return regions;
+    }
+    return whole;
+  }
+
+  Future<List<BiddingRegion>> _legacyRegions(void Function() onFailed) async {
+    try {
+      final rows = await _db.from('settings_entries').select('values').eq('category', 'country-states-cities');
+      return [
+        for (final r in rows)
+          if (r['values'] is Map) ?BiddingRegion.fromValues(Map<String, dynamic>.from(r['values'] as Map)),
+      ];
+    } catch (_) {
+      onFailed();
+      return const [];
+    }
+  }
 
   Future<List<BiddingRegion>> _readRegions(void Function() onFailed) async {
     Future<List<BiddingRegion>> table(String t, String select) async {
@@ -377,22 +455,9 @@ class RideRepository {
       }
     }
 
-    Future<List<BiddingRegion>> legacy() async {
-      try {
-        final rows = await _db.from('settings_entries').select('values').eq('category', 'country-states-cities');
-        return [
-          for (final r in rows)
-            if (r['values'] is Map) ?BiddingRegion.fromValues(Map<String, dynamic>.from(r['values'] as Map)),
-        ];
-      } catch (_) {
-        onFailed();
-        return const [];
-      }
-    }
-
     final parts = await Future.wait([
       for (final e in regionTableSelects.entries) table(e.key, e.value),
-      legacy(),
+      _legacyRegions(onFailed),
     ]);
     final regions = [for (final p in parts) ...p];
     // Amounts in a region's currency print with the symbol it gives it.
@@ -403,7 +468,7 @@ class RideRepository {
   /// The `service-settings` ids switched on for [pickup]'s region; null when
   /// no region restricts them.
   Future<Set<String>?> servicesFor(LatLng pickup, Future<AreaInfo?> Function() area) async {
-    final regions = await biddingRegions();
+    final regions = await biddingRegions(at: pickup);
     if (!regions.any((r) => r.services != null)) return null;
     AreaInfo? names;
     try {
@@ -417,7 +482,7 @@ class RideRepository {
   /// Whether GET.ride serves [point] (see [coverageGap]): null when it
   /// does, or when the regions can't be read.
   Future<({CoverageGap gap, BiddingRegion? region})?> coverageAt(LatLng point, Future<AreaInfo?> Function() area) async {
-    final regions = await biddingRegions();
+    final regions = await biddingRegions(at: point);
     if (regions.isEmpty) return null;
     AreaInfo? names;
     try {
@@ -427,7 +492,7 @@ class RideRepository {
   }
 
   Future<RegionRuleContext> ruleContextFor(LatLng pickup, Future<AreaInfo?> Function() area) async {
-    final regions = await biddingRegions();
+    final regions = await biddingRegions(at: pickup);
     if (regions.isEmpty) return RegionRuleContext.empty;
     AreaInfo? names;
     try {
@@ -439,7 +504,7 @@ class RideRepository {
   /// How fares are priced at [pickup] (whole amounts, tax): the region's
   /// own setting, found as the bidding switch is. None when unreadable.
   Future<RegionPricing> pricingFor(LatLng pickup, Future<AreaInfo?> Function() area) async {
-    final regions = await biddingRegions();
+    final regions = await biddingRegions(at: pickup);
     if (!regions.any((r) => r.pricing != null)) return RegionPricing.none;
     AreaInfo? names;
     try {
@@ -451,7 +516,7 @@ class RideRepository {
   /// Whether the rider may be bid on at [pickup] (Expo `useRegionBidding`).
   /// Names are only looked up when no mapped boundary decides.
   Future<bool> biddingEnabledFor(LatLng pickup, Future<AreaInfo?> Function() area) async {
-    final regions = await biddingRegions();
+    final regions = await biddingRegions(at: pickup);
     if (regions.isEmpty) return true;
     final byBoundary = biddingByBoundary(regions, pickup);
     if (byBoundary != null) return byBoundary;
