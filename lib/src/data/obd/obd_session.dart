@@ -248,7 +248,9 @@ class ObdSession extends Notifier<ObdSessionState> {
     }
   }
 
-  void _applyPause() => _client?.setPollingPaused(_scanPaused || _printHolds > 0);
+  /// Only a print job's hold forgives missed replies: a scan that keeps
+  /// timing out is a reader that has gone.
+  void _applyPause() => _client?.setPollingPaused(_scanPaused || _printHolds > 0, ignoreFailures: _printHolds > 0);
 
   Future<void> disconnect() async {
     _wanted = false;

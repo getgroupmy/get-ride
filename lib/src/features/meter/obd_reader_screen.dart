@@ -78,6 +78,9 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
 
   Future<void> _readOdometer() async {
     if (_readingOdometer) return;
+    // Covered (Vehicle information opened over this page): its scan wants the
+    // reader to itself, and nobody is looking at this reading.
+    if (ModalRoute.of(context)?.isCurrent == false) return;
     _readingOdometer = true;
     try {
       final km = await ref.read(readerOdometerProvider)();

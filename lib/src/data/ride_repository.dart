@@ -283,6 +283,22 @@ class RideRepository {
     return rows.map(RideRequest.new).toList();
   }
 
+  /// The trips this driver completed since [since], newest first, for the
+  /// Earnings page (core/driver_earnings.dart).
+  Future<List<RideRequest>> completedAsDriver(DateTime since, {int limit = 1000}) async {
+    final uid = _uid;
+    if (uid == null) return [];
+    final rows = await _db
+        .from(_table)
+        .select()
+        .eq('partner_id', uid)
+        .eq('status', 'completed')
+        .gte('completed_at', since.toUtc().toIso8601String())
+        .order('completed_at', ascending: false)
+        .limit(limit);
+    return rows.map(RideRequest.new).toList();
+  }
+
   Future<RideRequest?> fetch(String id) async {
     final row = await _db.from(_table).select().eq('id', id).maybeSingle();
     return row == null ? null : RideRequest(row);

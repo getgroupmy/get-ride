@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../config.dart';
 import '../../core/backend_route.dart';
+import '../../core/obd_adapters.dart';
+import '../../data/obd/obd_session.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../safety/voice_protection_card.dart';
@@ -62,6 +64,7 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => context.push('/account/settings/pin'),
               ),
             ),
+            const ObdReaderSettingsTile(),
             const RulesTermsCard(),
             Card(
               child: ListTile(
@@ -75,6 +78,37 @@ class SettingsScreen extends ConsumerWidget {
           ]),
         ),
       ]),
+    );
+  }
+}
+
+/// The reader the driver saved, for the Settings row.
+final savedObdAdapterProvider = FutureProvider.autoDispose<SavedObdAdapter?>(
+  (ref) => ref.watch(obdAdapterStoreProvider).current(),
+);
+
+/// Settings → OBD-II (CANBus) reader (Expo `settings.tsx`): for partners
+/// only, naming the saved reader and opening the reader page, which drivers
+/// could otherwise reach only from the meter.
+class ObdReaderSettingsTile extends ConsumerWidget {
+  const ObdReaderSettingsTile({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (ref.watch(partnerProvider).value == null) return const SizedBox.shrink();
+    final saved = ref.watch(savedObdAdapterProvider).value;
+    return Card(
+      child: ListTile(
+        key: const ValueKey('settings-obd-reader'),
+        leading: const Icon(Icons.settings_input_component_outlined),
+        title: const Text('OBD-II (CANBus) reader'),
+        subtitle: Text(saved == null ? 'None set up' : '${saved.name} · ${describeAdapter(saved)}'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          await context.push('/meter/reader');
+          ref.invalidate(savedObdAdapterProvider);
+        },
+      ),
     );
   }
 }

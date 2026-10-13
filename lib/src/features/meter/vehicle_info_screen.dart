@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -43,6 +44,9 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
     ref.read(vehicleFuelStoreProvider).load().then((p) {
       if (mounted) setState(() => _fuelProfile = p);
     }, onError: (Object _) {});
+    // Opening the page brings the selected reader up (Expo: useCanbus mounts
+    // with the screen), so it never waits on the meter having opened first.
+    if (!kIsWeb) Future.microtask(() => ref.read(obdSessionProvider.notifier).ensureConnected());
     // Read the vehicle as soon as the screen opens on a live link, and again
     // after a dropped link comes back.
     ref.listenManual(obdSessionProvider, (prev, next) {
@@ -131,7 +135,7 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
     final report = _report;
     return Scaffold(
       appBar: AppBar(
-        leading: sideMenuLeading(context),
+        leading: sideMenuLeading(context) ?? _homeButton(context),
         title: const Text('Vehicle information'),
         actions: [
           if (obd.linked)
@@ -160,6 +164,19 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
           _WritesCard(obd: obd, send: _send, onVehicleChanged: () => setState(() => _report = null), rescan: _scan),
         ],
       ),
+    );
+  }
+
+  /// Reached straight from a menu row or a link, there is nothing to pop
+  /// back to: the arrow goes to the driver home instead of being missing.
+  static Widget? _homeButton(BuildContext context) {
+    final router = GoRouter.maybeOf(context);
+    if (router == null || router.canPop()) return null;
+    return IconButton(
+      key: const ValueKey('vehicle-info-home'),
+      tooltip: 'Back',
+      icon: const BackButtonIcon(),
+      onPressed: () => context.go('/drive'),
     );
   }
 
@@ -475,6 +492,14 @@ class _ReaderCard extends StatelessWidget {
   final String? error;
   final VehicleScanReport? report;
 
+  bool get connecting => obd.phase == ObdPhase.connecting || obd.phase == ObdPhase.handshaking;
+
+  Color _dot(ThemeData t) => switch (obd.phase) {
+    ObdPhase.online => Colors.green,
+    ObdPhase.error => t.colorScheme.error,
+    _ => t.colorScheme.outline,
+  };
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -487,17 +512,22 @@ class _ReaderCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.circle, size: 12, color: obd.linked ? Colors.green : t.colorScheme.outline),
+                if (connecting)
+                  const SizedBox.square(dimension: 12, child: CircularProgressIndicator(strokeWidth: 2))
+                else
+                  Icon(Icons.circle, size: 12, color: _dot(t)),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    obd.linked ? 'Connected${obd.adapter == null ? '' : ' — ${obd.adapter!.name}'}' : 'Not connected',
-                    style: t.textTheme.titleMedium,
-                  ),
-                ),
+                Expanded(child: Text(readerStatusTitle(obd), style: t.textTheme.titleMedium)),
               ],
             ),
-            if (!obd.linked) ...[
+            if (obd.error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                obd.error!,
+                style: TextStyle(color: obd.phase == ObdPhase.error ? t.colorScheme.error : t.colorScheme.onSurfaceVariant),
+              ),
+            ],
+            if (!obd.linked && !connecting) ...[
               const SizedBox(height: 8),
               const Text(
                 'Plug the OBD-II reader in with the ignition on and connect it. This screen reads everything the '
@@ -799,4 +829,18 @@ class _Row extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// The reader card's headline for the link's phase: what it is doing while
+/// it connects, not "Not connected" over a link that is on its way up.
+@visibleForTesting
+String readerStatusTitle(ObdSessionState obd) {
+  final name = obd.adapter?.name;
+  return switch (obd.phase) {
+    ObdPhase.online => name == null ? 'Connected' : 'Connected — $name',
+    ObdPhase.connecting => name == null ? 'Connecting…' : 'Connecting to $name…',
+    ObdPhase.handshaking => 'Talking to the reader…',
+    ObdPhase.error => 'Could not connect',
+    ObdPhase.idle => 'Not connected',
+  };
 }

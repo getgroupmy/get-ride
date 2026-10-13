@@ -33,13 +33,14 @@ bool partnerMenuRowShows(String id, {required bool obdLinked, required bool hasM
 };
 
 /// Built-in driver items on this app's screens; false for one with no
-/// screen here ("coming soon"). Expo's Earnings, Trip history and
-/// Notifications said "coming soon"; Vehicle opens the vehicles this app
-/// does have. [close] shuts the menu the row is in first.
+/// screen here ("coming soon"). Expo's Earnings, Trip history, Vehicle and
+/// Notifications said "coming soon"; here each opens a page of its own.
+/// [close] shuts the menu the row is in first.
 bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required VoidCallback close}) {
   const routes = {
     'teksi-ev': '/ev',
     'wallet': '/wallet',
+    'earnings': '/drive/earnings',
     myQrMenuItemId: '/account/my-qr',
     'vehicle': '/drive/vehicles',
     // The trips page lists the driver's trips beside their rides.

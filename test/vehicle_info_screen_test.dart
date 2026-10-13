@@ -103,6 +103,38 @@ void main() {
     expect(find.text('Connect the OBD-II reader first.'), findsWidgets);
   });
 
+  testWidgets('opening it brings the saved reader up and reads the car, no meter needed', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await ObdAdapterStore().save([_adapter]);
+    final elm = _ScriptedElm();
+    tester.view.physicalSize = const Size(1200, 8000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final container = ProviderContainer(overrides: [obdTransportFactoryProvider.overrideWithValue((_) => elm)]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: VehicleInfoScreen()),
+      ),
+    );
+    await _settle(tester);
+    expect(find.text('Connected — Taxi dongle'), findsOneWidget);
+    expect(find.textContaining('1HGCM82633A004352'), findsWidgets);
+    await container.read(obdSessionProvider.notifier).disconnect();
+  });
+
+  test('the reader card names what the link is doing', () {
+    expect(readerStatusTitle(const ObdSessionState()), 'Not connected');
+    expect(
+      readerStatusTitle(const ObdSessionState(phase: ObdPhase.connecting, adapter: _adapter)),
+      'Connecting to Taxi dongle…',
+    );
+    expect(readerStatusTitle(const ObdSessionState(phase: ObdPhase.handshaking)), 'Talking to the reader…');
+    expect(readerStatusTitle(const ObdSessionState(phase: ObdPhase.error)), 'Could not connect');
+    expect(readerStatusTitle(const ObdSessionState(phase: ObdPhase.online, adapter: _adapter)), 'Connected — Taxi dongle');
+  });
+
   testWidgets('reads the vehicle on a live link and clears codes when parked', (tester) async {
     final elm = _ScriptedElm();
     final container = await _pump(tester, elm);
