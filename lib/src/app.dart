@@ -561,7 +561,15 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     );
     _alwaysOn = controller;
     final router = ref.read(routerProvider);
-    void onRoute() => unawaited(controller.navigated(router.routerDelegate.currentConfiguration.uri.path));
+    String? pushMode;
+    void onRoute() {
+      final path = router.routerDelegate.currentConfiguration.uri.path;
+      unawaited(controller.navigated(path));
+      // Ride offers reach a phone in driver mode, user broadcasts one in
+      // passenger mode (pushModeAt, migration 0166).
+      pushMode = pushModeAt(path, pushMode);
+      PushService.instance?.reportMode(pushMode);
+    }
     _routeListener = onRoute;
     router.routerDelegate.addListener(onRoute);
     unawaited(controller.reload().then((_) => onRoute()));

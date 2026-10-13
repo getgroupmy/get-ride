@@ -168,6 +168,36 @@ class PushService {
     });
   }
 
+  /// The mode the app is in ('rider' or 'partner'), as last reported.
+  String? _mode;
+
+  /// The mode the server last stored for this phone's tokens.
+  String? _modeSent;
+
+  /// The app moved into [mode]: the server is told, so notifications that
+  /// belong to the other mode (ride offers while browsing as a passenger)
+  /// skip this phone (`push_set_mode`, migration 0166). Quiet on failure: a
+  /// database without it sends everything, as before.
+  void reportMode(String? mode) {
+    if (mode == null || mode == _mode) return;
+    _mode = mode;
+    unawaited(_sendMode());
+  }
+
+  Future<void> _sendMode() async {
+    final mode = _mode;
+    final tokens = [?_registeredToken, ?_registeredVoip];
+    if (mode == null || tokens.isEmpty || _db.auth.currentUser == null) return;
+    final key = '$mode:${tokens.join(',')}';
+    if (_modeSent == key) return;
+    try {
+      await _db.rpc('push_set_mode', params: {'p_tokens': tokens, 'p_mode': mode});
+      _modeSent = key;
+    } catch (e) {
+      debugPrint('[push] mode not stored: $e');
+    }
+  }
+
   /// Tells the server this phone has the push, so it isn't sent again
   /// (`ack_notification`, migration 0144). Quiet on failure.
   Future<void> _ack(Map<String, dynamic> data, String state) async {
@@ -200,6 +230,7 @@ class PushService {
       _registeredToken = fcmToken;
       _registeredFor = key;
       unawaited(_registerVoip());
+      unawaited(_sendMode());
     } catch (e) {
       debugPrint('[push] registration failed: $e');
     } finally {
@@ -302,6 +333,7 @@ class PushService {
       if (token == null || token == _registeredVoip) return;
       await _registerDevice(token, voipPlatform);
       _registeredVoip = token;
+      unawaited(_sendMode());
     } catch (e) {
       debugPrint('[push] VoIP registration failed: $e');
     }
@@ -313,6 +345,7 @@ class PushService {
     _registeredToken = null;
     _registeredFor = null;
     _registeredVoip = null;
+    _modeSent = null;
     for (final t in [token, voip]) {
       if (t == null) continue;
       try {

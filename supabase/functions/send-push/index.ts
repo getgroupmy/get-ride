@@ -26,6 +26,10 @@
 //
 // `excludeProfileIds` are never sent to (a ride request's own rider).
 //
+// Ride offers and partner broadcasts skip phones in passenger mode, user
+// broadcasts skip phones in driver mode (push_tokens.mode, migration 0166;
+// _shared/push.ts: notificationMode).
+//
 // "drivers" is accepted as a legacy alias for "partners".
 //
 // When `profileId` is set the notification goes only to that profile's
@@ -64,6 +68,8 @@ import {
   fcmOutcome,
   fcmSendUrl,
   parseServiceAccount,
+  inMode,
+  notificationMode,
   pickRecipients,
   planDeliveries,
   profileIdList,
@@ -165,14 +171,23 @@ async function dispatch(payload: SendBody): Promise<Response> {
         error: { message?: string } | null;
       }>;
     });
-  let { data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id, capabilities");
+  // `mode` arrived with 0166: without it every phone is told, as before.
+  let { data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id, capabilities, mode");
+  if (tokensErr && /mode/.test(tokensErr.message ?? "")) {
+    ({ data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id, capabilities"));
+  }
   if (tokensErr && /capabilities/.test(tokensErr.message ?? "")) {
     ({ data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id"));
   }
   if (tokensErr) {
     return json({ error: `Failed to load tokens: ${tokensErr.message}` }, 500);
   }
-  tokenRows = pickRecipients(tokenRows, only, exclude);
+  // Only the phones in the mode this notification belongs to (a driver
+  // browsing as a passenger is not sent ride offers, and the other way round).
+  tokenRows = inMode(
+    pickRecipients(tokenRows, only, exclude),
+    notificationMode(audience, payload.data, profileId !== ""),
+  );
 
   // Each device's way of being told (push.ts: planDeliveries). A ride call
   // rings capable Android builds through a data message and iPhones through

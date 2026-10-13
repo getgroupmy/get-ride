@@ -15,6 +15,8 @@ import {
   fcmSendUrl,
   isExpoToken,
   parseServiceAccount,
+  inMode,
+  notificationMode,
   pickRecipients,
   planDeliveries,
   profileIdList,
@@ -218,4 +220,28 @@ Deno.test("a whole table is read past the row cap", async () => {
   const failed = await readAllPages<number>((from) =>
     Promise.resolve(from === 0 ? { data: [1], error: null } : { data: null, error: { message: "x" } }), 1);
   assertEquals(failed.error?.message, "x");
+});
+
+Deno.test("mode: ride offers are driver business, the account's own news is not", () => {
+  assertEquals(notificationMode("all", { type: "ride_request" }, true), "partner");
+  assertEquals(notificationMode("partners", { type: "ride_request_fare_raised" }, false), "partner");
+  assertEquals(notificationMode("all", { type: "ride_status" }, true), null);
+  assertEquals(notificationMode("all", { type: "wallet_transfer_request" }, true), null);
+  assertEquals(notificationMode("all", { type: "partner_status" }, true), null);
+  assertEquals(notificationMode("partners", { audience: "partners" }, false), "partner");
+  assertEquals(notificationMode("users", { audience: "users" }, false), "rider");
+  assertEquals(notificationMode("all", { audience: "all" }, false), null);
+  assertEquals(notificationMode("users", undefined, true), null);
+});
+
+Deno.test("mode: phones in the other mode are skipped, silent ones are not", () => {
+  const rows = [
+    { token: "d", mode: "partner" },
+    { token: "p", mode: "rider" },
+    { token: "old", mode: null },
+    { token: "older" },
+  ];
+  assertEquals(inMode(rows, "partner").map((r) => r.token), ["d", "old", "older"]);
+  assertEquals(inMode(rows, "rider").map((r) => r.token), ["p", "old", "older"]);
+  assertEquals(inMode(rows, null).length, 4);
 });
