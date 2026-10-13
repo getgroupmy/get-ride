@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/coin_transfer.dart';
 import '../providers.dart';
 import 'realtime_backup.dart';
+import 'wallet_once.dart';
 
 /// GET.coin transfers between accounts (Expo `transferRequestsStore`). The
 /// three writes are owner-scoped SECURITY DEFINER RPCs; the table itself is
@@ -25,16 +26,13 @@ class CoinTransferRepository {
   /// Step 1: ask the recipient to approve. Throws with the RPC error on
   /// refusal (map it with [coinSendErrorMessage]).
   Future<SentTransfer> request(TransferRecipient to, double coins, {String? note}) async {
-    final data = await _db.rpc(
-      'wallet_request_coin_transfer',
-      params: {
-        'p_from': _uid,
-        'p_coins': coins,
-        'p_to': to.userId,
-        'p_to_phone': to.phone,
-        'p_note': (note?.trim().isEmpty ?? true) ? null : note!.trim(),
-      },
-    );
+    final data = await callWalletOnce(_db, 'wallet_request_coin_transfer', {
+      'p_from': _uid,
+      'p_coins': coins,
+      'p_to': to.userId,
+      'p_to_phone': to.phone,
+      'p_note': (note?.trim().isEmpty ?? true) ? null : note!.trim(),
+    });
     return SentTransfer.fromRpc(data, coins: coins);
   }
 

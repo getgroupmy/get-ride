@@ -33,6 +33,13 @@ const unconfirmedMoneyRpcs = {
   'wallet_trade_coins',
   'wallet_transfer_coins',
   'wallet_request_coin_transfer',
+  // Their repeat-safe twins (0164): still unknown when they time out, but a
+  // retry of the same action reuses its request id and cannot pay twice.
+  'wallet_pay_once',
+  'wallet_recharge_credit_once',
+  'wallet_trade_coins_once',
+  'wallet_transfer_coins_once',
+  'wallet_request_coin_transfer_once',
 };
 
 /// The limit for one request, and whether a timeout leaves its outcome
