@@ -10,7 +10,12 @@ import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/net_image.dart';
 
-/// A stored picture: an http(s) or `data:` URL.
+/// Whether [uri] is a picture that loads over the network (and so shows a
+/// skeleton first). Pure.
+bool loadsOverNetwork(String? uri) => uri != null && uri.startsWith('http');
+
+/// A stored picture: an http(s) or `data:` URL. [onSettled] runs once the
+/// picture is painted or has fallen back to [fallback], after the frame.
 Widget uriImage(
   String? uri, {
   double? width,
@@ -18,7 +23,12 @@ Widget uriImage(
   BoxFit fit = BoxFit.contain,
   Alignment alignment = Alignment.center,
   Widget? fallback,
+  VoidCallback? onSettled,
 }) {
+  void settled() {
+    if (onSettled != null) WidgetsBinding.instance.addPostFrameCallback((_) => onSettled());
+  }
+
   final none = fallback ?? SizedBox(width: width, height: height);
   if (uri == null) return none;
   if (uri.startsWith('data:')) {
@@ -36,14 +46,21 @@ Widget uriImage(
     }
   }
   if (uri.startsWith('http')) {
+    final bone = boneUntilPainted(width: width, height: height);
     return Image.network(
       uri,
       width: width,
       height: height,
       fit: fit,
       alignment: alignment,
-      frameBuilder: boneUntilPainted(width: width, height: height),
-      errorBuilder: (_, _, _) => none,
+      frameBuilder: (context, child, frame, synchronous) {
+        if (synchronous || frame != null) settled();
+        return bone(context, child, frame, synchronous);
+      },
+      errorBuilder: (_, _, _) {
+        settled();
+        return none;
+      },
     );
   }
   return none;
@@ -85,13 +102,49 @@ class VehicleTypeBarSkeleton extends StatelessWidget {
 }
 
 /// The vehicle-type bar (Expo `rideTypes`): one card per bookable service,
-/// the selected one wider, with an "i" for its description.
-class VehicleTypeBar extends StatelessWidget {
+/// the selected one wider, with an "i" for its description. Nothing shows as
+/// chosen, and nothing can be chosen, while a card's picture is still a
+/// skeleton: the bar comes alive once every picture has painted or fallen
+/// back to the car icon (vehicleBarReady).
+class VehicleTypeBar extends StatefulWidget {
   const VehicleTypeBar({super.key, required this.services, required this.selected, required this.onSelect});
 
   final List<RideService> services;
   final RideService selected;
   final ValueChanged<RideService> onSelect;
+
+  /// The chosen box's fill and its "i" (inDrive's indigo and blue): indigo
+  /// with white text on a dark sheet, a light blue with dark text on a light one.
+  static const selectedFill = Color(0xFF2B2E8C);
+  static const selectedFillLight = Color(0xFFD8EEFB);
+  static const infoBlue = Color(0xFF5468FF);
+
+  static Color fillFor(Brightness b) => b == Brightness.dark ? selectedFill : selectedFillLight;
+
+  @override
+  State<VehicleTypeBar> createState() => _VehicleTypeBarState();
+}
+
+/// Whether every network picture among [images] has [settled] (painted or
+/// fallen back); pictures that do not load over the network never wait.
+/// Pure.
+bool vehicleBarReady(Iterable<String?> images, Set<String> settled) =>
+    images.every((u) => !loadsOverNetwork(u) || settled.contains(u));
+
+class _VehicleTypeBarState extends State<VehicleTypeBar> {
+  /// The pictures that have painted or fallen back.
+  final _settled = <String>{};
+
+  void _settle(String? uri) {
+    if (uri == null || !mounted || _settled.contains(uri)) return;
+    setState(() => _settled.add(uri));
+  }
+
+  List<RideService> get services => widget.services;
+  RideService get selected => widget.selected;
+
+  static const infoBlue = VehicleTypeBar.infoBlue;
+  static Color fillFor(Brightness b) => VehicleTypeBar.fillFor(b);
 
   void _info(BuildContext context, RideService s) => showModalBottomSheet<void>(
     context: context,
@@ -115,16 +168,9 @@ class VehicleTypeBar extends StatelessWidget {
     ),
   );
 
-  /// The chosen box's fill and its "i" (inDrive's indigo and blue): indigo
-  /// with white text on a dark sheet, a light blue with dark text on a light one.
-  static const selectedFill = Color(0xFF2B2E8C);
-  static const selectedFillLight = Color(0xFFD8EEFB);
-  static const infoBlue = Color(0xFF5468FF);
-
-  static Color fillFor(Brightness b) => b == Brightness.dark ? selectedFill : selectedFillLight;
-
   @override
   Widget build(BuildContext context) {
+    final ready = vehicleBarReady(services.map((s) => s.image), _settled);
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
     final dark = t.brightness == Brightness.dark;
@@ -138,7 +184,7 @@ class VehicleTypeBar extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 4),
         itemBuilder: (_, i) {
           final s = services[i];
-          final on = s.name == selected.name;
+          final on = ready && s.name == selected.name;
           final fg = on ? onFill : t.colorScheme.onSurface;
           final seats = on ? onFill : muted;
           // Unchosen boxes are the sheet itself; the chosen one is filled,
@@ -149,7 +195,7 @@ class VehicleTypeBar extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () => onSelect(s),
+              onTap: ready ? () => widget.onSelect(s) : null,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
                 child: IntrinsicWidth(
@@ -166,6 +212,7 @@ class VehicleTypeBar extends StatelessWidget {
                             height: 26,
                             alignment: Alignment.centerLeft,
                             fallback: Icon(Icons.directions_car, size: 24, color: fg),
+                            onSettled: () => _settle(s.image),
                           ),
                           if (on) ...[
                             const Spacer(),
