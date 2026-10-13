@@ -284,19 +284,27 @@ class RideRepository {
   }
 
   /// The trips this driver completed since [since], newest first, for the
-  /// Earnings page (core/driver_earnings.dart).
-  Future<List<RideRequest>> completedAsDriver(DateTime since, {int limit = 1000}) async {
+  /// Earnings page (core/driver_earnings.dart). Read a page at a time: the
+  /// API answers at most 1,000 rows a request, and a busy driver's eight
+  /// weeks can be more. [maxRows] stops a runaway read.
+  Future<List<RideRequest>> completedAsDriver(DateTime since, {int pageSize = 1000, int maxRows = 5000}) async {
     final uid = _uid;
     if (uid == null) return [];
-    final rows = await _db
-        .from(_table)
-        .select()
-        .eq('partner_id', uid)
-        .eq('status', 'completed')
-        .gte('completed_at', since.toUtc().toIso8601String())
-        .order('completed_at', ascending: false)
-        .limit(limit);
-    return rows.map(RideRequest.new).toList();
+    final out = <RideRequest>[];
+    while (out.length < maxRows) {
+      final rows = await _db
+          .from(_table)
+          .select()
+          .eq('partner_id', uid)
+          .eq('status', 'completed')
+          .gte('completed_at', since.toUtc().toIso8601String())
+          .order('completed_at', ascending: false)
+          .order('id')
+          .range(out.length, out.length + pageSize - 1);
+      out.addAll(rows.map(RideRequest.new));
+      if (rows.length < pageSize) break;
+    }
+    return out;
   }
 
   Future<RideRequest?> fetch(String id) async {

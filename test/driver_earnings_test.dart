@@ -89,4 +89,56 @@ void main() {
     expect(s.totals.net, 0);
     expect(s.days, isEmpty);
   });
+
+  group('weekly chart', () {
+    test('eight weeks, oldest first, Monday to Sunday, empty weeks kept', () {
+      final weeks = weeklyEarnings(rides, driverId: 'me', now: now);
+      expect(weeks, hasLength(8));
+      expect(weeks.last.start, DateTime(2026, 10, 12));
+      expect(weeks.first.start, DateTime(2026, 8, 24));
+      // This week: a, b (15th) and c (13th).
+      expect(weeks.last.totals.trips, 3);
+      expect(weeks.last.totals.net, 45 + 12.75);
+      // 2 Oct is in the week of 28 Sep; 30 Sep's trip (g) too.
+      expect(weeks[weeks.length - 3].start, DateTime(2026, 9, 28));
+      expect(weeks[weeks.length - 3].totals.trips, 2);
+      expect(weeks[weeks.length - 2].totals.trips, 0);
+    });
+
+    test('history reaches back for the month and the eight weeks', () {
+      expect(earningsHistoryStart(now), DateTime(2026, 8, 24));
+      // With a short chart late in the month, the month start is the earlier.
+      expect(earningsHistoryStart(DateTime(2026, 12, 31), weeks: 2), DateTime(2026, 12));
+    });
+  });
+
+  group('CSV export', () {
+    test('one row per trip of the period, oldest first, plain amounts', () {
+      final csv = earningsCsv(rides, driverId: 'me', period: EarningsPeriod.today, now: now);
+      final lines = csv.split('\r\n')..removeLast();
+      expect(lines.first, startsWith('Date,Time,Booking no.,From,To'));
+      expect(lines, hasLength(3));
+      expect(lines[1], startsWith('2026-10-15,09:00,GR-'));
+      expect(lines[1], endsWith(',8.0,20.00,3.00,17.00,MYR'));
+      expect(lines[2], endsWith(',12.5,32.50,4.50,28.00,MYR'));
+    });
+
+    test('nothing in the period: the header alone', () {
+      final csv = earningsCsv(const [], driverId: 'me', period: EarningsPeriod.month, now: now);
+      expect(csv.split('\r\n').where((l) => l.isNotEmpty), hasLength(1));
+    });
+
+    test('fields are quoted, and never run as a formula', () {
+      expect(csvField('Jalan Ampang, KL'), '"Jalan Ampang, KL"');
+      expect(csvField('say "hi"'), '"say ""hi"""');
+      expect(csvField('=HYPERLINK("x")'), '"\'=HYPERLINK(""x"")"');
+      expect(csvField('-12.50'), '-12.50');
+      expect(csvField('plain'), 'plain');
+    });
+
+    test('file names say which period', () {
+      expect(earningsCsvFileName(EarningsPeriod.week, now), 'earnings-this-week-2026-10-12.csv');
+      expect(earningsCsvFileName(EarningsPeriod.today, now), 'earnings-today-2026-10-15.csv');
+    });
+  });
 }
