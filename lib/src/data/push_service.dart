@@ -5,7 +5,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../core/call_ring.dart';
 import '../core/push_logic.dart';
@@ -137,9 +139,19 @@ class PushService {
     }).catchError((Object e) => debugPrint('[push] initial message: $e'));
 
     _messaging.onTokenRefresh.listen((token) {
-      // A rotated token replaces the stored one on the next registration.
+      // A rotated token replaces the stored one: the old row goes, so this
+      // phone is not sent everything twice (a database before 0165 has no
+      // device key to do it by).
+      final old = _registeredToken;
       _registeredFor = null;
-      unawaited(_register(token: token));
+      unawaited(() async {
+        await _register(token: token);
+        if (old != null && old != token && _registeredToken == token) {
+          try {
+            await _db.rpc('push_unregister_token', params: {'p_token': old});
+          } catch (_) {}
+        }
+      }());
     });
 
     _db.auth.onAuthStateChange.listen((change) {
@@ -216,20 +228,63 @@ class PushService {
   /// migration 0134 gets the old registration (and ordinary notifications).
   Future<void> _registerDevice(String token, String? platform) async {
     final caps = nativeCallRingerAvailable ? const [callUiCapability] : const <String>[];
+    final params = <String, dynamic>{
+      'p_token': token,
+      'p_platform': platform,
+      'p_device_name': null,
+      'p_capabilities': caps,
+    };
+    final key = await _deviceKey();
+    if (key != null) {
+      try {
+        // With the device key (0165): this phone's earlier token goes.
+        await _db.rpc('push_register_device', params: {...params, 'p_device_key': key});
+        return;
+      } on PostgrestException catch (e) {
+        // A database before 0165 has no such argument: the same call without.
+        if (!_missingRpc(e)) rethrow;
+      }
+    }
     try {
-      await _db.rpc('push_register_device', params: {
-        'p_token': token,
-        'p_platform': platform,
-        'p_device_name': null,
-        'p_capabilities': caps,
-      });
+      await _db.rpc('push_register_device', params: params);
     } on PostgrestException catch (e) {
       if (!_missingRpc(e) || platform == voipPlatform) rethrow;
-      await _db.rpc('push_register_token', params: {
+      await _registerLegacy(token, platform);
+    }
+  }
+
+  /// A database before 0134.
+  Future<void> _registerLegacy(String token, String? platform) => _db.rpc('push_register_token', params: {
         'p_token': token,
         'p_platform': platform,
         'p_device_name': null,
       });
+
+  String? _deviceKeyCache;
+
+  /// What identifies this phone to the push server (pushDeviceKey): on an
+  /// iPhone its APNs token, which a reinstall usually keeps, so the old
+  /// install's token is replaced; on Android an id made once per install
+  /// (an uninstalled app's token is already refused by FCM and pruned).
+  /// Never a hardware id, and never Android's Build.ID, which every phone
+  /// on the same OS build shares.
+  Future<String?> _deviceKey() async {
+    if (_deviceKeyCache != null) return _deviceKeyCache;
+    if (kIsWeb) return null;
+    try {
+      final String? raw;
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        raw = await _messaging.getAPNSToken();
+      } else if (defaultTargetPlatform == TargetPlatform.android) {
+        final prefs = await SharedPreferences.getInstance();
+        raw = prefs.getString(pushInstallIdKey) ?? const Uuid().v4();
+        await prefs.setString(pushInstallIdKey, raw);
+      } else {
+        raw = null;
+      }
+      return _deviceKeyCache = pushDeviceKey(raw);
+    } catch (_) {
+      return null;
     }
   }
 

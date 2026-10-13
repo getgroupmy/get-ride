@@ -74,10 +74,34 @@ void main() {
       expect(pushRouteFor({'type': 'wallet_transfer_response', 'status': 'accepted'}), '/wallet');
     });
 
+    test('approval decisions open the Drive tab or the vehicle', () {
+      expect(pushRouteFor({'type': 'partner_status', 'status': 'approved'}), '/drive');
+      expect(pushRouteFor({'type': 'document_status', 'document_id': 'd1'}), '/drive');
+      expect(pushRouteFor({'type': 'vehicle_status', 'vehicle_id': 'v 1'}), '/drive/vehicles/v%201');
+      expect(pushRouteFor({'type': 'vehicle_status'}), '/drive');
+    });
+
+    test('trip safety checks open the passenger trip; lost items the receipt', () {
+      expect(pushRouteFor({'type': 'trip_start_check', 'request_id': 'r1'}), '/ride/r1');
+      expect(pushRouteFor({'type': 'trip_separation', 'request_id': 'r1'}), '/ride/r1');
+      expect(pushRouteFor({'type': 'trip_separation'}), isNull);
+      expect(pushRouteFor({'type': 'lost_item', 'item_id': 'i', 'request_id': 'r1'}), '/trips/r1');
+    });
+
     test('anything else just opens the app', () {
       expect(pushRouteFor({'audience': 'all'}), isNull);
       expect(pushRouteFor({}), isNull);
       expect(pushRouteFor({'type': 'something_new'}), isNull);
     });
+  });
+
+  test('the device key is a stable hash, never the raw id', () {
+    final a = pushDeviceKey('abc');
+    expect(a, pushDeviceKey(' abc '));
+    expect(a, isNot(pushDeviceKey('abd')));
+    expect(a, isNot(contains('abc')));
+    expect(a!.length, 64);
+    expect(pushDeviceKey(null), isNull);
+    expect(pushDeviceKey('  '), isNull);
   });
 }

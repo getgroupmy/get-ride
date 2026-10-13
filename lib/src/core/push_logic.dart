@@ -14,6 +14,8 @@
 // side (sending) is the send-push edge function (supabase/functions/send-push).
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -116,6 +118,26 @@ String? pushRouteFor(Map<String, dynamic> data) {
     case 'ride_expired':
       // Nobody took the request (migration 0139): home, to book again.
       return '/';
+    case 'partner_status':
+    case 'document_status':
+      // An approval decision on the partner account or one of its documents
+      // (migration 0127): the Drive tab shows where onboarding stands.
+      return '/drive';
+    case 'vehicle_status':
+      final vehicle = data['vehicle_id'];
+      return vehicle is String && vehicle.isNotEmpty ? '/drive/vehicles/${Uri.encodeComponent(vehicle)}' : '/drive';
+    case 'trip_start_check':
+    case 'trip_separation':
+      // "Are you in the car?" (trip safety): the passenger's trip screen,
+      // where help is one tap away.
+      final id = data['request_id'];
+      if (id is! String || id.isEmpty) return null;
+      return '/ride/${Uri.encodeComponent(id)}';
+    case 'lost_item':
+      // A lost-item report or its answer: that trip's receipt.
+      final id = data['request_id'];
+      if (id is! String || id.isEmpty) return null;
+      return '/trips/${Uri.encodeComponent(id)}';
     case 'ride_status':
     case 'ride_cancel_request':
       // A trip changed state (migration 0144): driver assigned, arrived,
@@ -162,4 +184,18 @@ String? storedAccessToken(String? stored, DateTime now, {Duration margin = const
   if (token is! String || token.isEmpty || expires is! num) return null;
   final until = DateTime.fromMillisecondsSinceEpoch(expires.toInt() * 1000, isUtc: true);
   return until.difference(now.toUtc()) > margin ? token : null;
+}
+
+/// SharedPreferences key of the id an Android install makes for itself, the
+/// raw material of its push device key.
+const pushInstallIdKey = 'push_install_id_v1';
+
+/// What identifies this phone to the push server, so a reinstall or a
+/// rotated token replaces its old token instead of adding a second one
+/// (migration 0165): a hash of [raw] (the install's id, the iPhone's APNs
+/// token), never the value itself. Null when there is nothing to go on.
+String? pushDeviceKey(String? raw) {
+  final v = raw?.trim() ?? '';
+  if (v.isEmpty) return null;
+  return sha256.convert(utf8.encode('getride-push:$v')).toString();
 }
