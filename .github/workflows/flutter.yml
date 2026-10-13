@@ -9,10 +9,15 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Pinned, in every workflow: a new stable must not reach a release
+          # build unannounced (five plugins still apply the Kotlin Gradle
+          # plugin that future Flutter drops). Bump all seven together,
+          # through a PR, so CI tries it first. See docs/store-release.md.
+          flutter-version: 3.47.7
           cache: true
       - run: flutter pub get
       - run: flutter analyze
@@ -26,7 +31,7 @@ jobs:
     # (cloudflare-worker.yml), whose first real run is a production deploy.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -60,8 +65,8 @@ jobs:
           - { target: windows, os: windows-latest, cmd: "flutter build windows --release" }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         if: matrix.target == 'android'
         with:
           distribution: temurin
@@ -72,6 +77,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: 3.47.7
           cache: true
       - run: flutter pub get
       - run: ${{ matrix.cmd }}
