@@ -342,7 +342,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/drive/demo',
             builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
           ),
-          GoRoute(path: '/meter/vehicle', builder: (_, _) => const VehicleInfoScreen()),
           GoRoute(path: '/drive/permit', builder: (_, _) => const DriverPermitScreen()),
           GoRoute(path: '/drive/my-ride', builder: (_, _) => const MyRideCodeScreen()),
           GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
@@ -393,7 +392,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/meter',
         builder: (_, st) => MeterScreen(launch: st.extra is MeterLaunch ? st.extra! as MeterLaunch : null),
       ),
+      // The meter's own pages sit outside the side-menu shell: the meter
+      // pushes them from outside it, and pushing a shell page from there
+      // stacks a second copy of the shell over the one below -- a navigator
+      // key clash that left Vehicle information a black screen.
       GoRoute(path: '/meter/reader', builder: (_, _) => const ObdReaderScreen()),
+      GoRoute(path: '/meter/vehicle', builder: (_, _) => const VehicleInfoScreen()),
       GoRoute(path: '/meter/printer', builder: (_, _) => const PrinterScreen()),
       GoRoute(
         path: '/meter/destination',
