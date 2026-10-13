@@ -71,6 +71,7 @@ import 'features/shell/brand_splash.dart';
 import 'features/shell/not_found_screen.dart';
 import 'features/shell/app_side_menu.dart';
 import 'features/shell/update_gate.dart';
+import 'features/shell/web_build_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
 import 'features/support/help_assistant_screen.dart';
 import 'features/support/support_chat_screen.dart';
@@ -633,13 +634,16 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         cached: widget.branding,
         live: _branding?.latest,
         child: UpdateGate(
-          child: VoiceProtectionHost(
-            child: IncomingTransferListener(
-              child: IncomingCallListener(
-                child: RideCallListener(
-                  child: KeyboardDismissOnChange(
-                    listenable: router.routerDelegate,
-                    child: KeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+          child: WebBuildGate(
+            location: () => router.routerDelegate.currentConfiguration.uri.path,
+            child: VoiceProtectionHost(
+              child: IncomingTransferListener(
+                child: IncomingCallListener(
+                  child: RideCallListener(
+                    child: KeyboardDismissOnChange(
+                      listenable: router.routerDelegate,
+                      child: KeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+                    ),
                   ),
                 ),
               ),
