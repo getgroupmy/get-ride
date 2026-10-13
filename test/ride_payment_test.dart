@@ -45,8 +45,8 @@ class _FakeRides implements RideRepository {
   Future<double> claimRideReward(RideRequest r) async => 0;
 
   @override
-  Future<void> payRide(String id, RidePayMethod method) async {
-    log.add('pay:${method.db}');
+  Future<void> payRide(String id, RidePayMethod method, {double? expected}) async {
+    log.add('pay:${method.db}${expected == null ? '' : '@$expected'}');
     if (payError != null) throw payError!;
   }
 
@@ -82,6 +82,9 @@ void main() {
     test('coins are priced to the hundredth as the server charges', () {
       expect(coinsForAmount(118.2, 10), 1182);
       expect(coinsForAmount(2.345, 3), 7.04);
+      // Rounded up, never down: RM1 at 0.333 GC a ringgit takes 0.34 GC.
+      expect(coinsForAmount(1, 0.333), 0.34);
+      expect(coinsForAmount(1.1, 3), 3.3);
     });
 
     test('wallet and coin are usable only when they cover the whole amount', () {
@@ -128,6 +131,8 @@ void main() {
         'Not enough balance to pay this ride.',
       );
       expect(ridePaymentFailure(Exception('boom')), 'The payment didn\'t go through. Please try again.');
+      expect(ridePaymentFailure(Exception('amount_changed')), contains('has changed'));
+      expect(ridePaymentFailure(TimeoutException('slow')), contains("won't charge you twice"));
       expect(ridePaidSummary(RidePayMethod.cash, 'RM25.00'), 'RM25.00 paid in cash');
       expect(bookedWithCash('Cash'), isTrue);
       expect(bookedWithCash('Get Pay'), isFalse);
@@ -224,7 +229,7 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('payment-option-get_wallet')));
       await settle(tester);
-      expect(rides.log, ['pay:get_wallet']);
+      expect(rides.log, ['pay:get_wallet@25.0'], reason: 'the amount shown goes with the payment');
       expect(find.byKey(const ValueKey('payment-done')), findsOneWidget);
 
       rows.add(ride({'payment_status': 'paid', 'paid_method': 'get_wallet', 'paid_amount': 25, 'toll_charges': 5}));

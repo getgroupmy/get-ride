@@ -702,9 +702,23 @@ class RideRepository {
   /// server works out what is left to pay, takes it from the rider's
   /// GET.wallet or GET.coin and credits the driver, once. Throws when it is
   /// refused (`insufficient_balance` and the like; see ridePaymentFailure).
-  Future<void> payRide(String id, RidePayMethod method) async {
+  ///
+  /// [expected] is the amount the passenger was shown: the server takes the
+  /// money only if that is still what is left to pay (`amount_changed`
+  /// otherwise, migration 0174). A database without 0174 is paid as before.
+  Future<void> payRide(String id, RidePayMethod method, {double? expected}) async {
     if (method == RidePayMethod.cash) return payRideCash(id);
-    await _db.rpc('ride_pay', params: {'p_ride': id, 'p_method': method.db});
+    final params = {'p_ride': id, 'p_method': method.db};
+    if (expected == null) {
+      await _db.rpc('ride_pay', params: params);
+      return;
+    }
+    try {
+      await _db.rpc('ride_pay', params: {...params, 'p_expected': double.parse(expected.toStringAsFixed(2))});
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow;
+      await _db.rpc('ride_pay', params: params);
+    }
   }
 
   /// "Paid in cash": the ride waits for the driver to confirm it.

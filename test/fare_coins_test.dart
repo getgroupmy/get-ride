@@ -94,6 +94,18 @@ void main() {
       expect(await store.chosen('r1'), isFalse, reason: 'settled, so not asked again');
     });
 
+    test('a ride already paid, or paid in cash, gets no coins and drops the choice', () async {
+      for (final status in ['paid', 'cash_pending']) {
+        final store = FareCoinChoiceStore();
+        await store.choose('r1');
+        final rides = _FakeRides();
+        final r = RideRequest({...ride('completed').raw, 'payment_status': status});
+        expect(await redeemChosenFareCoins(rides, store, r), isNull, reason: status);
+        expect(rides.calls, isEmpty, reason: status);
+        expect(await store.chosen('r1'), isFalse, reason: status);
+      }
+    });
+
     test('a failed call keeps the choice for the next visit', () async {
       final store = FareCoinChoiceStore();
       await store.choose('r1');

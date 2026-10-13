@@ -462,7 +462,15 @@ class _TransferWaitingDialogState extends State<TransferWaitingDialog> {
     final r = await widget.repo.fetch(widget.sent.requestId).catchError((Object _) => null);
     if (!mounted || _outcome != null) return;
     if (r != null && r.status != TransferStatus.pending) return _update(r);
-    setState(() => _outcome = '${widget.recipientHint ?? 'The recipient'} did not answer in time. No coins were sent.');
+    final who = widget.recipientHint ?? 'The recipient';
+    // Only a request the server still shows pending is known to have sent
+    // nothing; one that couldn't be read may have been accepted at the end.
+    setState(
+      () => _outcome = r == null
+          ? "Couldn't check whether ${who == 'The recipient' ? 'the recipient' : who} answered. "
+                'Look in your wallet history before sending again.'
+          : '$who did not answer in time. No coins were sent.',
+    );
   }
 
   Future<void> _cancel() async {

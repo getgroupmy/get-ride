@@ -13,7 +13,6 @@ import '../../core/format.dart';
 import '../../core/my_qr.dart' show parsePersonalQr;
 import '../../core/wallet_qr.dart';
 import '../../data/coin_trade_repository.dart';
-import '../../data/wallet_pay_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/image_share.dart';
@@ -326,8 +325,8 @@ Future<void> showScanPayHelp(BuildContext context) => showModalBottomSheet<void>
 );
 
 /// Scan & Pay (Expo `wallet-scan.tsx`). A GET account's code opens the
-/// GET.coin send flow addressed to that account; any other code is paid out
-/// of GET.wallet through `wallet_pay`, optionally part-paid with GET.coin.
+/// GET.coin send flow addressed to that account. Any other code is refused
+/// with the reason: nobody on GET would receive a payment to it.
 class ScanPayScreen extends ConsumerStatefulWidget {
   const ScanPayScreen({super.key});
 
@@ -342,7 +341,6 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
   );
   final _manual = TextEditingController();
   var _handled = false;
-  MerchantQr? _merchant;
 
   @override
   void dispose() {
@@ -385,9 +383,13 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
         if (!mounted) return;
         final q = {'to': userId, if (amount != null) 'amt': amount.toStringAsFixed(2)};
         context.pushReplacement(Uri(path: '/wallet/trade', queryParameters: q).toString());
-      case MerchantQr():
-        await _scanner.stop();
-        if (mounted) setState(() => _merchant = qr);
+      case UnsupportedQr(:final message):
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(key: const ValueKey('scan-unsupported'), content: Text(message)));
+        // Scanning goes on; the same code isn't read again straight away.
+        await Future<void>.delayed(const Duration(seconds: 2));
+        _handled = false;
     }
   }
 
@@ -399,20 +401,8 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
     }
   }
 
-  Future<void> _scanAgain() async {
-    setState(() => _merchant = null);
-    _manual.clear();
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    _handled = false;
-    await _scanner.start();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final merchant = _merchant;
-    if (merchant != null) {
-      return MerchantPayView(qr: merchant, onScanAgain: _scanAgain);
-    }
     final t = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
@@ -493,7 +483,7 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Point the camera at a GET.ride or merchant QR code.',
+                  'Point the camera at a GET.ride QR code.',
                   textAlign: TextAlign.center,
                   style: t.textTheme.bodyMedium,
                 ),
@@ -532,198 +522,6 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// The pay page for a merchant code: amount, optional GET.coin, confirm,
-/// receipt.
-class MerchantPayView extends ConsumerStatefulWidget {
-  const MerchantPayView({super.key, required this.qr, required this.onScanAgain});
-
-  final MerchantQr qr;
-  final VoidCallback onScanAgain;
-
-  @override
-  ConsumerState<MerchantPayView> createState() => _MerchantPayViewState();
-}
-
-class _MerchantPayViewState extends ConsumerState<MerchantPayView> {
-  final _amount = TextEditingController();
-  var _useCoins = false;
-  var _busy = false;
-  String? _error;
-  WalletPayResult? _paid;
-  double _paidAmount = 0;
-
-  @override
-  void dispose() {
-    _amount.dispose();
-    super.dispose();
-  }
-
-  double get _value => ((double.tryParse(_amount.text.trim()) ?? 0) * 100).roundToDouble() / 100;
-
-  Future<void> _pay(CoinSplit? split) async {
-    final amount = _value;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: Text('Pay ${formatMoney(amount)}?'),
-        content: Text(
-          [
-            'To ${widget.qr.label}',
-            if (split != null && split.coinsUsed > 0)
-              '${formatCoins(split.coinsUsed)} from GET.coin, ${formatMoney(split.walletShare)} from GET.wallet.'
-            else
-              'From GET.wallet.',
-          ].join('\n'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(88, 40)),
-            onPressed: () => Navigator.pop(c, true),
-            child: const Text('Pay'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final r = await ref
-          .read(walletPayRepositoryProvider)
-          .pay(amount, note: 'QR payment — ${widget.qr.label}', redeemCoins: split != null && split.coinsUsed > 0);
-      if (!mounted) return;
-      HapticFeedback.heavyImpact();
-      setState(() {
-        _paid = r;
-        _paidAmount = amount;
-      });
-      ref.invalidate(walletBalancesProvider);
-      ref.invalidate(walletTxProvider);
-      ref.invalidate(coinTradeQuoteProvider);
-    } catch (e) {
-      if (mounted) setState(() => _error = walletPayErrorMessage(e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final paid = _paid;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(paid == null ? 'Pay' : 'Payment successful'),
-        leading: paid == null ? BackButton(onPressed: _busy ? null : widget.onScanAgain) : null,
-        automaticallyImplyLeading: false,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ResponsiveCenter(
-            maxWidth: 480,
-            child: paid == null
-                ? AsyncView(
-                    value: ref.watch(coinTradeQuoteProvider),
-                    onRetry: () => ref.invalidate(coinTradeQuoteProvider),
-                    data: _form,
-                  )
-                : _receipt(paid),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _form(CoinTradeQuote q) {
-    final t = Theme.of(context);
-    final rate = q.settings.coinsPerCurrency;
-    final canCoins = q.coinBalance > 0 && rate > 0;
-    final amount = _value;
-    final split = canCoins && _useCoins ? computeCoinSplit(amount, q.coinBalance, rate) : null;
-    final problem = walletPayProblem(amount: amount, walletBalance: q.walletBalance, split: split);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.storefront_outlined),
-            title: const Text('Paying'),
-            subtitle: Text(widget.qr.label),
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          key: const ValueKey('pay-amount'),
-          controller: _amount,
-          enabled: !_busy,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-          decoration: InputDecoration(
-            labelText: 'Amount',
-            prefixText: 'RM ',
-            helperText: 'GET.wallet ${formatMoney(q.walletBalance)}',
-            errorText: amount > 0 ? problem : null,
-          ),
-          style: t.textTheme.headlineSmall,
-          onChanged: (_) => setState(() => _error = null),
-        ),
-        if (canCoins) ...[
-          const SizedBox(height: 8),
-          SwitchListTile(
-            key: const ValueKey('pay-coins'),
-            contentPadding: EdgeInsets.zero,
-            value: _useCoins,
-            onChanged: _busy ? null : (v) => setState(() => _useCoins = v),
-            title: const Text('Use GET.coin'),
-            subtitle: Text(
-              split != null && amount > 0
-                  ? '${formatCoins(split.coinsUsed)} covers ${formatMoney(split.coinValue)}; '
-                        '${formatMoney(split.walletShare)} from GET.wallet'
-                  : 'You have ${formatCoins(q.coinBalance)}',
-            ),
-          ),
-        ],
-        if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: TextStyle(color: t.colorScheme.error))],
-        const SizedBox(height: 16),
-        BusyButton.filled(
-          key: const ValueKey('pay-confirm'),
-          onPressed: _busy || problem != null ? null : () => _pay(split),
-          child: Text(amount > 0 ? 'Pay ${formatMoney(amount)}' : 'Pay'),
-        ),
-      ],
-    );
-  }
-
-  Widget _receipt(WalletPayResult r) {
-    final t = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SizedBox(height: 24),
-        const Icon(Icons.check_circle, color: Colors.green, size: 72),
-        const SizedBox(height: 12),
-        Text('Payment Successful', textAlign: TextAlign.center, style: t.textTheme.titleLarge),
-        const SizedBox(height: 8),
-        Text(formatMoney(_paidAmount), textAlign: TextAlign.center, style: t.textTheme.headlineMedium),
-        Text(widget.qr.label, textAlign: TextAlign.center, style: t.textTheme.bodySmall),
-        if (r.coinsUsed > 0) ...[
-          const SizedBox(height: 8),
-          Text(
-            '${formatCoins(r.coinsUsed)} (${formatMoney(r.coinValue)}) paid with GET.coin',
-            textAlign: TextAlign.center,
-          ),
-        ],
-        const SizedBox(height: 24),
-        FilledButton(onPressed: () => context.pop(), child: const Text('Done')),
-      ],
     );
   }
 }

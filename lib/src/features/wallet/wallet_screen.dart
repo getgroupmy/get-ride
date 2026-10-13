@@ -18,9 +18,12 @@ final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>((
   return ref.watch(accountRepositoryProvider).walletBalances();
 });
 
-final walletTxProvider = FutureProvider.autoDispose<List<WalletTransaction>>(
-  (ref) => ref.watch(accountRepositoryProvider).walletTransactions(),
-);
+// Every transaction moves a balance (trg_wallet_tx_apply), so a change to
+// the account's wallets is also when the history has a new line.
+final walletTxProvider = FutureProvider.autoDispose<List<WalletTransaction>>((ref) {
+  ref.watchLive('wallets');
+  return ref.watch(accountRepositoryProvider).walletTransactions();
+});
 
 /// GET.wallet / GET.coin / credit balances and history. Money only moves
 /// through the server-side wallet RPCs (GET.coin trades: `CoinTradeScreen`).

@@ -30,11 +30,14 @@ void main() {
       }
     });
 
-    test('anything else is a merchant code, a broken GET code included', () {
-      expect(parseWalletQr('getpay://u/guest'), isA<MerchantQr>());
-      final m = parseWalletQr('00020101021126580014A000000615000101068900360216${'9' * 20}') as MerchantQr;
-      expect(m.label.length, 43);
-      expect(m.label.endsWith('…'), isTrue);
+    test('anything else is refused, never paid', () {
+      final broken = parseWalletQr('getpay://u/guest') as UnsupportedQr;
+      expect(broken.damagedGetCode, isTrue);
+      expect(broken.message, contains("can't be read"));
+      final other = parseWalletQr('00020101021126580014A000000615000101068900360216${'9' * 20}') as UnsupportedQr;
+      expect(other.damagedGetCode, isFalse);
+      expect(other.message, contains("isn't a GET payment code"));
+      expect(parseWalletQr('https://example.com/pay'), isA<UnsupportedQr>());
       expect(parseWalletQr('   '), isNull);
     });
   });
@@ -66,6 +69,13 @@ void main() {
       expect(s.coinValue, 0.01);
       expect(s.coinsUsed, 1);
       expect(s.walletShare, 9.99);
+    });
+
+    test('coins spent round up to the hundredth, as the server takes them', () {
+      // RM1 at 0.333 GC a ringgit is 0.333 GC: 0.34 is taken, never 0.33.
+      expect(computeCoinSplit(1, 10, 0.333).coinsUsed, 0.34);
+      // Float noise never adds a cent.
+      expect(coinsUp(1.1 * 3), 3.3);
     });
 
     test('no coins or no rate leaves it all to GET.wallet', () {

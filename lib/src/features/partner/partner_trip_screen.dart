@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/active_location.dart';
 import '../../core/early_end.dart';
+import '../../core/region_pricing.dart';
 import '../../core/format.dart';
 import '../../core/navigation_app.dart';
 import '../../core/trip_charges.dart';
@@ -430,7 +431,12 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     setState(() => _busy = false);
     final driven = routed ?? (_metres > 0 ? _metres / 1000 : null);
     final agreed = r.effectiveFare ?? 0;
-    final fare = earlyEndFare(agreed: agreed, plannedKm: planned, drivenKm: driven);
+    final fare = earlyEndFare(
+      agreed: agreed,
+      plannedKm: planned,
+      drivenKm: driven,
+      pricing: RegionPricing.fromRide(r.raw),
+    );
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
