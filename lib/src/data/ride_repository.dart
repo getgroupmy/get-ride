@@ -341,28 +341,38 @@ class RideRepository {
   /// bidding switch, pricing and services. Old `country-states-cities`
   /// settings entries are read too. A table that cannot be read is skipped;
   /// empty when none can, and bidding then stays on. Kept for
-  /// [regionsCacheFor] so one pickup's checks share a read, while an admin's
-  /// change is picked up on the next check after that.
+  /// [regionsCacheFor]: they carry every boundary (megabytes), and an
+  /// admin's change drops them at once anyway ([forgetRegions], wired to the
+  /// live region tables in `providers.dart`), so the expiry is only a
+  /// backstop for a change realtime missed.
   Future<List<BiddingRegion>> biddingRegions() {
     final cached = _regions;
     if (cached != null && DateTime.now().difference(cached.at) < regionsCacheFor) return cached.list;
-    final list = _readRegions();
-    _regions = (at: DateTime.now(), list: list);
+    var failed = false;
+    final list = _readRegions(() => failed = true);
+    final kept = (at: DateTime.now(), list: list);
+    _regions = kept;
+    // A table that could not be read is not kept for [regionsCacheFor]:
+    // the next check reads again.
+    unawaited(list.then((_) {
+      if (failed && identical(_regions, kept)) _regions = null;
+    }));
     return list;
   }
 
   /// Drops the kept regions, so the next check reads the admin's change.
   void forgetRegions() => _regions = null;
 
-  static const regionsCacheFor = Duration(seconds: 20);
+  static const regionsCacheFor = Duration(minutes: 10);
   ({DateTime at, Future<List<BiddingRegion>> list})? _regions;
 
-  Future<List<BiddingRegion>> _readRegions() async {
+  Future<List<BiddingRegion>> _readRegions(void Function() onFailed) async {
     Future<List<BiddingRegion>> table(String t, String select) async {
       try {
         final rows = await _db.from(t).select(select);
         return [for (final r in rows) ?BiddingRegion.fromRegionRow(t, Map<String, dynamic>.from(r))];
       } catch (_) {
+        onFailed();
         return const [];
       }
     }
@@ -375,6 +385,7 @@ class RideRepository {
             if (r['values'] is Map) ?BiddingRegion.fromValues(Map<String, dynamic>.from(r['values'] as Map)),
         ];
       } catch (_) {
+        onFailed();
         return const [];
       }
     }

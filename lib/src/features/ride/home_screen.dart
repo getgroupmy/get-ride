@@ -113,7 +113,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// What the booking sheet offers: the admin Vehicle Services catalogue,
   /// or the built-in list while it loads or when it cannot be read.
-  List<RideService> get _catalogue => ref.read(rideServicesProvider).value ?? rideServices;
+  List<RideService> get _catalogue => _knownCatalogue ?? rideServices;
+
+  /// The current catalogue, else the one this device last showed (drawn at
+  /// once while the current one is read); null when there is neither yet.
+  List<RideService>? get _knownCatalogue =>
+      ref.read(rideServicesProvider).value ?? ref.read(cachedRideServicesProvider).value;
 
   /// The services offered at the pickup now: the region's scheduled rules
   /// and Services switches may take some away. Never empty — where nothing
@@ -1062,9 +1067,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     void whereTo() => serviceOn ? _choose(_PinTarget.drop) : comingSoon(serviceComingSoonMessage);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (sections.vehicleBar) ...[
-        // Until the catalogue lands, a skeleton: the built-in names and car
-        // icons would read as the real services and then change.
-        if (ref.watch(rideServicesProvider).hasValue)
+        // Until a catalogue is known -- this read's, or the one this device
+        // showed last time -- a skeleton: the built-in names and car icons
+        // would read as the real services and then change.
+        if (ref.watch(rideServicesProvider).hasValue || ref.watch(cachedRideServicesProvider).value != null)
           VehicleTypeBar(
             services: _services,
             selected: _service,
@@ -1399,6 +1405,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ]);
 
     ref.watch(rideServicesProvider); // rebuild when the catalogue arrives
+    ref.watch(cachedRideServicesProvider); // or the device's copy, first
     ref.watch(serviceBoxNamesProvider); // and the Service types its rules name
     ref.watch(paymentChoicesProvider); // and when Admin → Payment Type changes
     ref.watch(coinTradeQuoteProvider); // and when the GET.coin balance does
