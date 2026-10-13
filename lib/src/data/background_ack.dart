@@ -14,9 +14,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 import '../core/push_logic.dart';
+import 'backend_resolver.dart';
 import 'reliability_repository.dart' show backgroundAckPrefsKey;
 
-Future<void> ackPushInBackground(Map<String, dynamic> data, {http.Client? client}) async {
+/// [backendUrl] picks the address to call (pickBackendUrl: the project's
+/// own, or the second address on a network that cannot look it up).
+Future<void> ackPushInBackground(
+  Map<String, dynamic> data, {
+  http.Client? client,
+  Future<String> Function(String direct) backendUrl = pickBackendUrl,
+}) async {
   final id = pushEventId(data);
   if (id == null) return;
   try {
@@ -27,7 +34,7 @@ Future<void> ackPushInBackground(Map<String, dynamic> data, {http.Client? client
     if (prefs.getBool(backgroundAckPrefsKey) == false) return;
     final token = storedAccessToken(prefs.getString(supabaseSessionKey(AppConfig.supabaseUrl)), DateTime.now());
     if (token == null) return;
-    final base = AppConfig.supabaseUrl.trim().replaceFirst(RegExp(r'/$'), '');
+    final base = (await backendUrl(AppConfig.supabaseUrl)).trim().replaceFirst(RegExp(r'/$'), '');
     final c = client ?? http.Client();
     try {
       await c

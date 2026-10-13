@@ -45,7 +45,7 @@ void main() {
 
     test('a push with an event is acknowledged as delivered, signed in as the person', () async {
       SharedPreferences.setMockInitialValues({key: session(DateTime.now().add(const Duration(hours: 1)))});
-      await ackPushInBackground({'type': 'ride_message', 'event_id': 'msg:m1'}, client: client);
+      await ackPushInBackground({'type': 'ride_message', 'event_id': 'msg:m1'}, client: client, backendUrl: (d) async => d);
       expect(sent, hasLength(1));
       expect(sent.single.url.path, endsWith('/rest/v1/rpc/ack_notification'));
       expect(sent.single.headers['Authorization'], 'Bearer tok');
@@ -54,11 +54,11 @@ void main() {
 
     test('nothing is sent without an event, a session, or with an expired one', () async {
       SharedPreferences.setMockInitialValues({key: session(DateTime.now().add(const Duration(hours: 1)))});
-      await ackPushInBackground({'type': 'ride_message'}, client: client);
+      await ackPushInBackground({'type': 'ride_message'}, client: client, backendUrl: (d) async => d);
       SharedPreferences.setMockInitialValues({});
-      await ackPushInBackground({'event_id': 'msg:m1'}, client: client);
+      await ackPushInBackground({'event_id': 'msg:m1'}, client: client, backendUrl: (d) async => d);
       SharedPreferences.setMockInitialValues({key: session(DateTime.now().subtract(const Duration(minutes: 5)))});
-      await ackPushInBackground({'event_id': 'msg:m1'}, client: client);
+      await ackPushInBackground({'event_id': 'msg:m1'}, client: client, backendUrl: (d) async => d);
       expect(sent, isEmpty);
     });
 
@@ -67,7 +67,7 @@ void main() {
         key: session(DateTime.now().add(const Duration(hours: 1))),
         backgroundAckPrefsKey: false,
       });
-      await ackPushInBackground({'event_id': 'msg:m1'}, client: client);
+      await ackPushInBackground({'event_id': 'msg:m1'}, client: client, backendUrl: (d) async => d);
       expect(sent, isEmpty);
     });
 

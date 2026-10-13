@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../config.dart';
+import '../../core/backend_route.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../safety/voice_protection_card.dart';
@@ -66,7 +67,13 @@ class SettingsScreen extends ConsumerWidget {
               child: ListTile(
                 leading: const Icon(Icons.storage_outlined),
                 title: const Text('Backend'),
-                subtitle: Text(Uri.parse(AppConfig.supabaseUrl).host),
+                // The second address when this network cannot look up the
+                // project's own (core/backend_route.dart).
+                subtitle: Text(
+                  onBackendFallback(AppConfig.supabaseUrl)
+                      ? '${Uri.parse(AppConfig.supabaseUrl).host} via ${Uri.parse(activeBackendUrl(AppConfig.supabaseUrl)).host}'
+                      : Uri.parse(AppConfig.supabaseUrl).host,
+                ),
               ),
             ),
           ]),
