@@ -259,3 +259,65 @@ export function fcmCallMessage(
     },
   };
 }
+
+// ---- Who a broadcast reaches ----------------------------------------------
+
+/**
+ * A broadcast's audience. `partners` is every partner account (Admin → Push
+ * Notification); `active_partners` only the approved ones, the drivers a new
+ * ride request can actually be taken by. "drivers" is the legacy name for
+ * `partners`; anything unknown is everyone.
+ */
+export type Audience = "all" | "users" | "partners" | "active_partners";
+
+export function resolveAudience(raw: unknown): Audience {
+  const v = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (v === "partners" || v === "drivers") return "partners";
+  if (v === "active_partners") return "active_partners";
+  if (v === "users") return "users";
+  return "all";
+}
+
+/** The profile ids in [raw] (`excludeProfileIds`), cleaned. */
+export function profileIdList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return Array.from(new Set(raw.filter((v): v is string => typeof v === "string" && v.trim() !== "").map((v) => v.trim())));
+}
+
+/**
+ * The device rows a send goes to: those of [only] when it is set (a
+ * targeted send or a partner audience), never those of [exclude] (the rider
+ * a ride request is about, who may be a partner too).
+ */
+export function pickRecipients<T extends { profile_id?: string | null }>(
+  rows: T[],
+  only: Set<string> | null,
+  exclude: Set<string>,
+): T[] {
+  return rows.filter((r) => {
+    const id = r.profile_id ?? null;
+    if (id !== null && exclude.has(id)) return false;
+    return only === null || (id !== null && only.has(id));
+  });
+}
+
+/** Rows per request when reading a whole table (PostgREST caps a read at 1000). */
+export const READ_PAGE = 1000;
+
+/**
+ * Every row [page] has to give, a page at a time: without this a read stops
+ * at the API's row cap and a broadcast silently misses everyone past it.
+ */
+export async function readAllPages<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message?: string } | null }>,
+  size = READ_PAGE,
+): Promise<{ data: T[]; error: { message?: string } | null }> {
+  const out: T[] = [];
+  for (let from = 0; ; from += size) {
+    const { data, error } = await page(from, from + size - 1);
+    if (error) return { data: out, error };
+    const rows = data ?? [];
+    out.push(...rows);
+    if (rows.length < size) return { data: out, error: null };
+  }
+}

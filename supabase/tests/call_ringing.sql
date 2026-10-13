@@ -33,8 +33,8 @@ begin
   end if;
   if has_function_privilege('authenticated', 'public.notify_ride_call_end_push()', 'execute')
      or has_function_privilege('anon', 'public.notify_ride_call_end_push()', 'execute')
-     or has_function_privilege('anon', 'public.push_register_device(text, text, text, text[])', 'execute')
-     or not has_function_privilege('authenticated', 'public.push_register_device(text, text, text, text[])', 'execute') then
+     or has_function_privilege('anon', 'public.push_register_device(text, text, text, text[], text)', 'execute')
+     or not has_function_privilege('authenticated', 'public.push_register_device(text, text, text, text[], text)', 'execute') then
     raise exception 'FAILED: grants on the 0134 functions';
   end if;
 end

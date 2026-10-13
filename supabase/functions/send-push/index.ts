@@ -12,7 +12,8 @@
 //     project's service account JSON); without it FCM devices are counted as
 //     failed and Expo devices are still sent to.
 //
-// Request body: { title: string, body: string, audience?: "all" | "partners" | "users", profileId?: string, data?: object }
+// Request body: { title: string, body: string, audience?: "all" | "partners" | "active_partners" | "users",
+//                approvedOnly?: boolean, profileId?: string, excludeProfileIds?: string[], data?: object }
 //
 // Audience resolution:
 //   * all      — every registered token
@@ -20,6 +21,10 @@
 //                account, whether or not it also has a partner account
 //   * partners — tokens whose profile is in `partners` (auth_user_id),
 //                whether or not the same account is also used as a user
+//   * active_partners — the same, approved partners only; also `partners`
+//                with `approvedOnly: true` (new ride requests)
+//
+// `excludeProfileIds` are never sent to (a ride request's own rider).
 //
 // "drivers" is accepted as a legacy alias for "partners".
 //
@@ -59,7 +64,11 @@ import {
   fcmOutcome,
   fcmSendUrl,
   parseServiceAccount,
+  pickRecipients,
   planDeliveries,
+  profileIdList,
+  readAllPages,
+  resolveAudience,
 } from "../_shared/push.ts";
 import { livePushAuthDeps } from "../_shared/push_auth.ts";
 import { handleSendPush, json, type SendBody } from "../_shared/send_push_handler.ts";
@@ -89,20 +98,14 @@ function serviceRoleKey(): string | undefined {
   return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY");
 }
 
-type Audience = "all" | "partners" | "users";
-
 async function dispatch(payload: SendBody): Promise<Response> {
   const title = (payload.title ?? "").trim();
   const body = (payload.body ?? "").trim();
-  const rawAudience = (payload.audience ?? "all").toLowerCase();
-  // "drivers" is the legacy key for the partner audience.
-  const audience = (
-    rawAudience === "drivers" || rawAudience === "partners"
-      ? "partners"
-      : rawAudience === "users"
-        ? "users"
-        : "all"
-  ) as Audience;
+  const audience = resolveAudience(payload.audience);
+  // Approved partners only (new ride requests). A flag rather than only an
+  // audience name, so a database that sends it to an older send-push still
+  // reaches the partners rather than everyone.
+  const approvedOnly = audience === "active_partners" || (audience === "partners" && payload.approvedOnly === true);
 
   if (!title || !body) {
     return json({ error: "title and body are required" }, 400);
@@ -117,43 +120,51 @@ async function dispatch(payload: SendBody): Promise<Response> {
   const supabase = createClient(supabaseUrl, serviceKey);
 
   const profileId = (payload.profileId ?? "").trim();
+  // Never these profiles: a ride request's own rider, who may be a partner too.
+  const exclude = new Set(profileIdList(payload.excludeProfileIds));
 
   // Resolve the audience to a set of profile ids when scoping by role.
   // "all" and "users" both reach every registered device: every account is a
-  // user account, whether or not it also has a partner account. Only the
-  // "partners" audience narrows to profiles that hold a `partners` row.
-  let profileFilter: string[] | null = null;
+  // user account, whether or not it also has a partner account. "partners"
+  // narrows to profiles that hold a `partners` row, "active_partners" to the
+  // approved ones. Read in pages: one read stops at the API's row cap.
+  let only: Set<string> | null = null;
   if (profileId) {
-    profileFilter = [profileId];
-  } else if (audience === "partners") {
-    const { data: partners, error: partnersErr } = await supabase
-      .from("partners")
-      .select("auth_user_id")
-      .not("auth_user_id", "is", null);
+    only = new Set([profileId]);
+  } else if (audience === "partners" || audience === "active_partners") {
+    const { data: partners, error: partnersErr } = await readAllPages<{ auth_user_id: string | null }>(
+      (from, to) => {
+        let q = supabase.from("partners").select("auth_user_id").not("auth_user_id", "is", null);
+        if (approvedOnly) q = q.eq("status", "approved");
+        return q.order("auth_user_id").range(from, to) as unknown as PromiseLike<{
+          data: { auth_user_id: string | null }[] | null;
+          error: { message?: string } | null;
+        }>;
+      },
+    );
     if (partnersErr) {
       return json({ error: `Failed to load partners: ${partnersErr.message}` }, 500);
     }
-    const partnerIds = Array.from(
-      new Set(
-        (partners ?? [])
-          .map((p: { auth_user_id: string | null }) => p.auth_user_id)
-          .filter((v: string | null): v is string => !!v)
-      )
-    );
-
-    profileFilter = partnerIds;
-    if (profileFilter.length === 0) {
+    only = new Set(partners.map((p) => p.auth_user_id).filter((v): v is string => !!v));
+    if (only.size === 0) {
       return json({ recipients: 0, sent: 0, failed: 0, tickets: [] });
     }
   }
 
+  // The device rows, a page at a time. A single profile is read by id; a
+  // partner audience is read whole and filtered here, since thousands of ids
+  // in an `in (...)` filter would not fit in a request URL.
   // `capabilities` arrived with migration 0134; a database without it is
   // read without it, and every device gets an ordinary notification.
-  const loadTokens = (columns: string) => {
-    let query = supabase.from("push_tokens").select(columns);
-    if (profileFilter) query = query.in("profile_id", profileFilter);
-    return query;
-  };
+  const loadTokens = (columns: string) =>
+    readAllPages<DeviceRow>((from, to) => {
+      let query = supabase.from("push_tokens").select(columns);
+      if (profileId) query = query.eq("profile_id", profileId);
+      return query.order("token").range(from, to) as unknown as PromiseLike<{
+        data: DeviceRow[] | null;
+        error: { message?: string } | null;
+      }>;
+    });
   let { data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id, capabilities");
   if (tokensErr && /capabilities/.test(tokensErr.message ?? "")) {
     ({ data: tokenRows, error: tokensErr } = await loadTokens("token, platform, profile_id"));
@@ -161,13 +172,14 @@ async function dispatch(payload: SendBody): Promise<Response> {
   if (tokensErr) {
     return json({ error: `Failed to load tokens: ${tokensErr.message}` }, 500);
   }
+  tokenRows = pickRecipients(tokenRows, only, exclude);
 
   // Each device's way of being told (push.ts: planDeliveries). A ride call
   // rings capable Android builds through a data message and iPhones through
   // a VoIP push once the APNs key is configured.
   const apnsKey = parseApnsKey((name) => Deno.env.get(name));
   const kind = payload.data?.type;
-  const deliveries = planDeliveries((tokenRows ?? []) as unknown as DeviceRow[], kind, apnsKey !== null);
+  const deliveries = planDeliveries(tokenRows, kind, apnsKey !== null);
   const tokens = deliveries.flatMap((d) => (d.via === "expo" ? [d.token] : []));
   const fcmDeliveries = deliveries.flatMap((d) => (d.via === "fcm" ? [d] : []));
   const voipTokens = deliveries.flatMap((d) => (d.via === "voip" ? [d.token] : []));

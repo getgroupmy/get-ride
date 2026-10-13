@@ -15,7 +15,11 @@ import {
   fcmSendUrl,
   isExpoToken,
   parseServiceAccount,
+  pickRecipients,
   planDeliveries,
+  profileIdList,
+  readAllPages,
+  resolveAudience,
   splitTokens,
 } from "./push.ts";
 
@@ -177,4 +181,41 @@ Deno.test("the Android call push is data only, urgent and short-lived", () => {
   });
   assertEquals(message.android, { priority: "HIGH", ttl: "45s" });
   assertEquals(fcmCallMessage("tok", "Missed call", "b", { type: "ride_call_end" }).message.android.ttl, "120s");
+});
+
+Deno.test("audiences: legacy names, approved partners, everyone by default", () => {
+  assertEquals(resolveAudience("drivers"), "partners");
+  assertEquals(resolveAudience(" Partners "), "partners");
+  assertEquals(resolveAudience("active_partners"), "active_partners");
+  assertEquals(resolveAudience("users"), "users");
+  assertEquals(resolveAudience(undefined), "all");
+  assertEquals(resolveAudience("nonsense"), "all");
+});
+
+Deno.test("recipients: the rider is never told about their own request", () => {
+  const rows = [
+    { token: "a", profile_id: "rider" },
+    { token: "b", profile_id: "driver" },
+    { token: "c", profile_id: null },
+  ];
+  const exclude = new Set(profileIdList(["rider", "", 7]));
+  assertEquals(pickRecipients(rows, null, exclude).map((r) => r.token), ["b", "c"]);
+  assertEquals(pickRecipients(rows, new Set(["rider", "driver"]), exclude).map((r) => r.token), ["b"]);
+  assertEquals(pickRecipients(rows, new Set(["driver"]), new Set()).map((r) => r.token), ["b"]);
+});
+
+Deno.test("a whole table is read past the row cap", async () => {
+  const table = Array.from({ length: 2500 }, (_, i) => i);
+  const calls: [number, number][] = [];
+  const { data, error } = await readAllPages<number>((from, to) => {
+    calls.push([from, to]);
+    return Promise.resolve({ data: table.slice(from, to + 1), error: null });
+  });
+  assertEquals(error, null);
+  assertEquals(data.length, 2500);
+  assertEquals(calls, [[0, 999], [1000, 1999], [2000, 2999]]);
+
+  const failed = await readAllPages<number>((from) =>
+    Promise.resolve(from === 0 ? { data: [1], error: null } : { data: null, error: { message: "x" } }), 1);
+  assertEquals(failed.error?.message, "x");
 });
