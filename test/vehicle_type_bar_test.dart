@@ -48,4 +48,50 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('For large groups'), findsOneWidget);
   });
+
+  test('the bar waits only for pictures that load over the network', () {
+    expect(vehicleBarReady(['', null, 'data:image/png;base64,AA=='], {}), isTrue);
+    expect(vehicleBarReady(['https://cdn.example/car.png'], {}), isFalse);
+    expect(vehicleBarReady(['https://cdn.example/car.png'], {'https://cdn.example/car.png'}), isTrue);
+  });
+
+  testWidgets('nothing is chosen, or choosable, while a picture is a skeleton', (tester) async {
+    const services = [
+      RideService('Ride', '', 1, 4, image: 'https://cdn.example/ride.png'),
+      RideService('Comfort', '', 1, 4, image: 'https://cdn.example/comfort.png'),
+    ];
+    var chosen = services[0];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (_, set) => VehicleTypeBar(
+              services: services,
+              selected: chosen,
+              onSelect: (s) => set(() => chosen = s),
+            ),
+          ),
+        ),
+      ),
+    );
+    Material box(String name) => tester.widget<Material>(find.byKey(ValueKey('vehicle-type-$name')));
+
+    // Still skeletons: no box filled, no "i", and a tap does nothing.
+    expect(box('Ride').color, Colors.transparent);
+    expect(find.byKey(const ValueKey('vehicle-info-Ride')), findsNothing);
+    await tester.tap(find.text('Comfort'));
+    await tester.pump();
+    expect(chosen.name, 'Ride');
+
+    // The test binding answers every HTTP request with a 400: the car icons
+    // take the pictures' place, and the bar comes alive.
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await tester.pump();
+    await tester.pump();
+    expect(box('Ride').color, VehicleTypeBar.selectedFillLight);
+    expect(find.byKey(const ValueKey('vehicle-info-Ride')), findsOneWidget);
+    await tester.tap(find.text('Comfort'));
+    await tester.pump();
+    expect(chosen.name, 'Comfort');
+  });
 }

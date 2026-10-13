@@ -18,21 +18,24 @@ class ImageBone extends StatelessWidget {
   final bool circle;
   final double radius;
 
+  Widget _bone(double w, double h) => Skeletonizer.zone(
+    key: const ValueKey('image-bone'),
+    child: circle ? Bone.circle(size: math.min(w, h)) : Bone(width: w, height: h, borderRadius: BorderRadius.circular(radius)),
+  );
+
   @override
   Widget build(BuildContext context) => SkeletonizerConfig(
     data: SkeletonizerConfigData(brightness: Theme.of(context).brightness),
-    child: LayoutBuilder(
-      builder: (context, c) {
-        double side(double? want, double max) => want ?? (max.isFinite ? max : 24);
-        final w = side(width, c.maxWidth), h = side(height, c.maxHeight);
-        return Skeletonizer.zone(
-          key: const ValueKey('image-bone'),
-          child: circle
-              ? Bone.circle(size: math.min(w, h))
-              : Bone(width: w, height: h, borderRadius: BorderRadius.circular(radius)),
-        );
-      },
-    ),
+    // A size the caller gave needs no LayoutBuilder, which would break an
+    // intrinsic layout around it (the vehicle bar's IntrinsicWidth).
+    child: width != null && height != null
+        ? _bone(width!, height!)
+        : LayoutBuilder(
+            builder: (context, c) {
+              double side(double? want, double max) => want ?? (max.isFinite ? max : 24);
+              return _bone(side(width, c.maxWidth), side(height, c.maxHeight));
+            },
+          ),
   );
 }
 
