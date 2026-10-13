@@ -78,7 +78,7 @@ The user's 6-digit sign-in PIN is stored as a bcrypt hash in `profiles.pin_hash`
 
 **Pre-login rate limits (migration `0137`).** Anyone can call two checks before signing in, so both are now limited per network address:
 
-- `profile_phone_lookup`, which says whether a number has an account, answers at most 60 times in 10 minutes from one address. Without a limit, it lists who uses the app one number at a time.
+- `profile_phone_lookup`, which says whether a number has an account, answers at most 20 times in 10 minutes and 100 times a day from one address (migration `0173`; it was 60 per 10 minutes). Without a limit, it lists who uses the app one number at a time. Real use is a few lookups per address a day, so the caps leave room for a carrier address shared by many phones.
 - `verify_pin_for_login` answers at most 30 times in 10 minutes from one address, so one caller cannot run the 5-wrong-PIN lock against many accounts.
 
 Over a limit, both raise `RATE_LIMITED:<seconds>`, which the Flutter app parses with `parseRateLimitSeconds`. The address comes from the gateway's headers (`request_client_ip`: Cloudflare's `cf-connecting-ip`, then the first `x-forwarded-for` entry). A request without one, such as SQL or the service role, is not limited. The limits are well above one person's needs because mobile carriers put many phones behind one address. The tries are kept in `auth_rate_hits`, which no client can read.

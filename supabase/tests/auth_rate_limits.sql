@@ -73,11 +73,11 @@ begin
 end
 $$;
 
--- The phone lookup answers 60 times in 10 minutes from one address.
+-- The phone lookup answers 20 times in 10 minutes from one address (0173).
 set local role anon;
 do $$
 begin
-  for i in 1..60 loop
+  for i in 1..20 loop
     perform * from public.profile_phone_lookup('+60100000137');
   end loop;
 end
@@ -87,7 +87,7 @@ do $$
 begin
   begin
     perform * from public.profile_phone_lookup('+60100000137');
-    raise exception 'FAILED: the 61st lookup should be refused';
+    raise exception 'FAILED: the 21st lookup should be refused';
   exception when others then
     if sqlerrm not like 'RATE_LIMITED:%' then
       raise;
