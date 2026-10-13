@@ -72,3 +72,25 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: ${{ matrix.cmd }}
+      # Play makes every foreground service type be declared and justified.
+      # GET.ride calls are voice only, so the camera type a call plugin brings
+      # is removed in AndroidManifest.xml; this keeps it from coming back.
+      - name: No camera foreground service in the APK
+        if: matrix.target == 'android'
+        run: |
+          aapt2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          manifest=$("$aapt2" dump xmltree --file AndroidManifest.xml build/app/outputs/flutter-apk/app-release.apk)
+          if grep -q 'FOREGROUND_SERVICE_CAMERA' <<<"$manifest"; then
+            echo "::error::The APK asks for FOREGROUND_SERVICE_CAMERA again."
+            exit 1
+          fi
+          # The call service's foregroundServiceType, in whichever base aapt2
+          # prints it; camera is the 0x40 bit (phoneCall 0x4, microphone 0x80).
+          type=$(grep -A12 'CallkitNotificationService' <<<"$manifest" \
+            | grep -m1 'foregroundServiceType' | grep -oE '(0x[0-9a-fA-F]+|[0-9]+)$' || true)
+          echo "call service foregroundServiceType: ${type:-not found}"
+          if [ -z "$type" ] || (( type & 0x40 )); then
+            echo "::error::The call service declares a camera foreground service type (or none was found)."
+            exit 1
+          fi
+          grep -o 'android.permission.FOREGROUND_SERVICE[A-Z_]*' <<<"$manifest" | sort -u

@@ -144,11 +144,21 @@ way Play's own words are quoted after the explanation.
 
 Refused at the commit with "You must let us know whether your app uses
 any Foreground Service permissions" (or another "let us know" / App
-content item) is not an account problem: the app declares
-`FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_LOCATION` (the driver's live
-location), and Play wants each one explained once under Play Console →
-Policy → App content → Foreground service permissions. Save that and
-re-run; nothing in the workflow changes.
+content item) is not an account problem: Play wants each foreground
+service type the app declares explained once under Play Console → Policy →
+App content → Foreground service permissions. Save that and re-run;
+nothing in the workflow changes. The types, and what to say:
+
+| Type | From | Use |
+| --- | --- | --- |
+| `FOREGROUND_SERVICE_LOCATION` | the app (geolocator) | the driver's live position to the rider on the way to pickup and during the trip, screen off included |
+| `FOREGROUND_SERVICE_PHONE_CALL` | flutter_callkit_incoming | an incoming in-app voice call (rider, driver, support) rings with the app in the background |
+| `FOREGROUND_SERVICE_MICROPHONE` | flutter_callkit_incoming | the audio of an ongoing in-app voice call keeps running in the background |
+
+The call plugin also asks for `FOREGROUND_SERVICE_CAMERA` (for video
+calls). Every GET.ride call is voice only, so `AndroidManifest.xml`
+removes it, and the Flutter workflow's Android build fails if it ever
+comes back.
 
 If the Play listing has **never** had a release, Play will not take the
 first bundle through the API. Run *Android release* from the Actions tab
