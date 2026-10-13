@@ -178,6 +178,19 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       expect(find.text('You are online'), findsOneWidget);
     });
+
+    testWidgets('a check that never answers lets the partner online after the timeout', (tester) async {
+      // A slow API: the document read hangs. The switch used to spin on it
+      // for as long as the request did.
+      await pump(tester, (partner, {required teksi}) => Completer<List<DocIssue>>().future);
+      await tester.tap(find.text('You are offline'));
+      await tester.pump();
+      await tester.pump(goOnlineCheckTimeout - const Duration(seconds: 1));
+      expect(find.text('You are offline'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('You are online'), findsOneWidget);
+    });
   });
 }
 
