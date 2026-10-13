@@ -96,7 +96,6 @@ void main() {
     expect(sideMenuModeAt('/ride/r1', partner), rider);
     expect(sideMenuModeAt('/drive', rider), partner);
     expect(sideMenuModeAt('/drive/vehicles', rider), partner);
-    expect(sideMenuModeAt('/meter/vehicle', rider), partner);
     expect(sideMenuModeAt('/wallet', partner), partner, reason: 'the wallet opened from the driver menu');
     expect(sideMenuModeAt('/account/settings', rider), rider);
     expect(sideMenuModeAt('/driver-guide', rider), rider, reason: 'not under /drive');

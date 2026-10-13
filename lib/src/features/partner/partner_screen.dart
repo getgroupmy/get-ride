@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +22,7 @@ import '../../data/destination_store.dart';
 import '../../data/device_access.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
+import '../../data/obd/obd_session.dart';
 import '../../data/my_ride_repository.dart' show favouriteRiderIdsProvider, serviceDispatchConfigsProvider;
 import '../../data/partner_doc_check.dart';
 import '../../providers.dart';
@@ -238,6 +240,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     _online = _restoredOnline = ref.read(driverOnlineProvider);
     _resume();
     _locate();
+    // A saved OBD-II reader comes up with the driver home, as Expo's did on
+    // the Teksi screen, so the menu's Vehicle information row (shown only on
+    // a live link) appears without opening the meter first. No-op without one.
+    if (!kIsWeb) {
+      unawaited(
+        Future.microtask(() => ref.read(obdSessionProvider.notifier).ensureConnected()).catchError((Object _) {}),
+      );
+    }
     // Live: the map follows the driver as they move.
     _fixes = ref.read(driverPositionStreamProvider)().listen((p) {
       if (mounted) setState(() => _me = p);
