@@ -576,9 +576,9 @@ Already signed in? Go to Settings → Change sign-in PIN and choose Forgot PIN? 
    'admin', 'Admin', 'Push notifications', '/admin/push', 690),
   ('68656c70-0000-4000-8000-000000000070', 'How do I delete my account?',
    array['Close my account', 'Remove my data', 'Padam akaun']::text[],
-   'There is no delete button in the app. Ask in Help & support chat and our team will close your account. Settle any GET.wallet balance and finish any ride first, and partners should hand back any shared vehicle.',
+   'Settings → Delete account. Confirm with your PIN or an SMS code. You can''t delete during a ride; upcoming scheduled rides are cancelled free. Your rides, receipts and any balance are kept on record and frozen, and your number is free to sign up again as a new account. If you come back, ask support to link your old history to the new account.',
    array['delete', 'close', 'remove', 'account', 'data', 'padam', 'tutup', 'akaun']::text[],
-   'all', 'Account & security', 'Chat with support', '/account/support', 700)
+   'all', 'Account & security', 'Delete account', '/account/settings/delete', 700)
 on conflict (id) do nothing;
 -- END help_articles seed
 

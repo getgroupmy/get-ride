@@ -735,9 +735,11 @@ begin
 end$$;
 
 -- ---- Help article -------------------------------------------------------------------------------
+-- 0130 seeds the new text on a fresh database; this updates one already
+-- seeded, leaving an article an admin has edited alone.
 update public.help_articles
-   set answer = 'Settings → Account → Delete account. Confirm with your PIN or an SMS code. You can''t delete '
-             || 'during a ride; upcoming scheduled rides are cancelled free. Your rides, receipts and any '
-             || 'balance are kept on record and frozen, and your number is free to sign up again as a new '
-             || 'account. If you come back, ask support to link your old history to the new account.'
- where id = '68656c70-0000-4000-8000-000000000070';
+   set answer = 'Settings → Delete account. Confirm with your PIN or an SMS code. You can''t delete during a ride; upcoming scheduled rides are cancelled free. Your rides, receipts and any balance are kept on record and frozen, and your number is free to sign up again as a new account. If you come back, ask support to link your old history to the new account.',
+       action_label = 'Delete account',
+       action_route = '/account/settings/delete'
+ where id = '68656c70-0000-4000-8000-000000000070'
+   and answer = 'There is no delete button in the app. Ask in Help & support chat and our team will close your account. Settle any GET.wallet balance and finish any ride first, and partners should hand back any shared vehicle.';

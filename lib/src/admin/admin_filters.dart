@@ -49,6 +49,7 @@ const userFilters = {
   'blocked': 'Blocked',
   'rejected': 'Rejected',
   'deleted': 'Deleted',
+  'final-delete': 'Due for final deletion',
   'old-app': 'App before 1.4.6',
 };
 

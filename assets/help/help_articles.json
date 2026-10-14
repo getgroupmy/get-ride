@@ -1746,7 +1746,7 @@
       "Remove my data",
       "Padam akaun"
     ],
-    "answer": "There is no delete button in the app. Ask in Help & support chat and our team will close your account. Settle any GET.wallet balance and finish any ride first, and partners should hand back any shared vehicle.",
+    "answer": "Settings → Delete account. Confirm with your PIN or an SMS code. You can't delete during a ride; upcoming scheduled rides are cancelled free. Your rides, receipts and any balance are kept on record and frozen, and your number is free to sign up again as a new account. If you come back, ask support to link your old history to the new account.",
     "keywords": [
       "delete",
       "close",
@@ -1759,8 +1759,8 @@
     ],
     "audience": "all",
     "category": "Account & security",
-    "action_label": "Chat with support",
-    "action_route": "/account/support",
+    "action_label": "Delete account",
+    "action_route": "/account/settings/delete",
     "sort": 700
   }
 ]
