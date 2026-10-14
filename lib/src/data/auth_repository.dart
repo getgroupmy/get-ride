@@ -156,8 +156,9 @@ class AuthRepository {
         await guard.claim();
         offerPasskeyAfterSignIn = true;
         return const PinSignInOk();
-      case PinLoginWrongPin():
-        return const PinSignInError('Incorrect PIN. Please try again.');
+      case PinLoginWrongPin(:final attemptsLeft):
+        final policy = attemptsLeft == null ? PinPolicy.standard : await pinPolicy();
+        return PinSignInError(wrongPinMessage(attemptsLeft, policy), locked: attemptsLeft == 0);
       case PinLoginRefused(:final message):
         return PinSignInError(message, locked: true);
       case PinLoginNeedsOtp():
@@ -176,6 +177,27 @@ class AuthRepository {
     } catch (_) {
       return const PinLoginUnavailable();
     }
+  }
+
+  /// The admin's PIN policy (0192); the standard one when it can't be read.
+  Future<PinPolicy> pinPolicy() async {
+    try {
+      return PinPolicy.fromJson(await _db.rpc('pin_policy'));
+    } catch (_) {
+      return PinPolicy.standard;
+    }
+  }
+
+  /// Every account needs a PIN (0192): when the signed-in account has none,
+  /// the router keeps it on "Set your PIN". Only ever raises the flag (a
+  /// forgot-PIN code sets it for an account that has one); fails open, so
+  /// an older database or no signal never traps anyone.
+  Future<void> syncPinRequirement() async {
+    if (_db.auth.currentSession == null) return;
+    try {
+      final state = await _db.rpc('my_sign_in_state');
+      if (state is Map && state['pinSet'] == false && state['pinRequired'] != false) pinSetupPending = true;
+    } catch (_) {}
   }
 
   /// Checks [pin] against the signed-in account's current PIN before it may

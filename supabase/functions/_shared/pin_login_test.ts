@@ -62,6 +62,24 @@ Deno.test("a wrong PIN or an unknown number: the same answer, nothing changed", 
   }
 });
 
+Deno.test("a wrong PIN says how many tries are left, for an account with a PIN", async () => {
+  const { deps } = fakes({
+    attemptsLeft: (phone) => Promise.resolve(phone === "+60123456789" ? 2 : null),
+  });
+  assertEquals(await handlePinLogin({ phone: "+60123456789", pin: "111111" }, "1.2.3.4", deps), {
+    status: 401,
+    body: { error: "wrong_pin", attempts_left: 2 },
+  });
+  assertEquals(await handlePinLogin({ phone: "+60199999999", pin: "111111" }, "1.2.3.4", deps), {
+    status: 401,
+    body: { error: "wrong_pin" },
+  });
+  const failing = fakes({ attemptsLeft: () => Promise.reject(new Error("down")) });
+  assertEquals((await handlePinLogin({ phone: "+60123456789", pin: "111111" }, "1.2.3.4", failing.deps)).body, {
+    error: "wrong_pin",
+  });
+});
+
 Deno.test("the database's lockout and rate limit pass through with their wait", async () => {
   const locked = fakes({ check: () => Promise.reject(new Error("PIN_LOCKED:840")) });
   assertEquals(await handlePinLogin({ phone: "+60123456789", pin: "246810" }, "x", locked.deps), {

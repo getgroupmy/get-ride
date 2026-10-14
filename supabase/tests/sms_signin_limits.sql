@@ -61,7 +61,8 @@ select pg_temp.ask('+60123456789');
 update public.sms_log set created_at = created_at - interval '2 minutes';
 select pg_temp.check((select count(*) = 3 from public.sms_log where phone = '+60123456789' and status = 'queued'),
   'three codes in the hour');
-select pg_temp.check((select pg_temp.ask('+60123456789') #>> '{error,message}') like 'Too many codes%', 'the fourth is refused');
+select pg_temp.check((select pg_temp.ask('+60123456789') #>> '{error,message}') like 'Too many SMS codes for this number. Try again in % minutes.',
+  'the fourth is refused, saying when to try again');
 
 -- 5. Country prefix, blocked number, switched off ------------------------------------------
 select pg_temp.check(pg_temp.ask('+6591234567') #>> '{error,http_code}' = '403', 'a number outside +60 is refused');
