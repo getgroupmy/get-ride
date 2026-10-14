@@ -195,8 +195,38 @@ String composeSignInPhone(String dialCode, String local) {
   return d.isEmpty || l.isEmpty ? '' : '+$d$l';
 }
 
-/// The GET.ride app's PIN-derived password (`derivePinPassword`), so this
-/// app signs in to the same account with the same PIN.
-String pinPassword(String pin) => 'teksi-pin-v1-$pin';
+/// What the pin-login function's answer means here (supabase/functions/
+/// pin-login, the GET.ride app's PIN sign-in since 1.4.5): the refresh token
+/// to adopt, or the sentence to show. PIN-derived passwords were retired
+/// (migration 0175), so this is the only way in with a PIN. Pure.
+({String? refreshToken, String? error}) pinLoginResult(int status, Object? body) {
+  final map = body is Map ? body : const {};
+  final wait = map['retry_after'] is num ? (map['retry_after'] as num).toInt() : null;
+  String minutes(int s) {
+    final m = (s / 60).ceil().clamp(1, 1 << 30);
+    return '$m minute${m == 1 ? '' : 's'}';
+  }
+
+  switch (status) {
+    case 200:
+      final session = map['session'];
+      final token = session is Map ? session['refresh_token'] : null;
+      if (token is String && token.isNotEmpty) return (refreshToken: token, error: null);
+      return (refreshToken: null, error: 'Sign-in did not answer properly. Please try again.');
+    case 401:
+      return (refreshToken: null, error: 'Wrong phone number or PIN.');
+    case 409:
+      return (
+        refreshToken: null,
+        error: 'This account needs its PIN set again. Sign in to the GET.ride app with an SMS code, then try here.',
+      );
+    case 423:
+      return (refreshToken: null, error: 'Too many wrong PINs. Try again in ${minutes(wait ?? 900)}.');
+    case 429:
+      return (refreshToken: null, error: 'Too many tries from this network. Try again in ${minutes(wait ?? 60)}.');
+    default:
+      return (refreshToken: null, error: "Couldn't reach sign-in. Check this phone's connection and try again.");
+  }
+}
 
 bool isValidPin(String pin) => RegExp(r'^\d{6}$').hasMatch(pin);

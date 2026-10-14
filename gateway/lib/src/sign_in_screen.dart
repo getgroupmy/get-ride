@@ -5,10 +5,28 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core.dart';
 
-class SignInScreen extends StatefulWidget {
-  const SignInScreen({super.key, required this.auth});
+/// Signs in with [phone] and [pin]; null when signed in, else what to show.
+typedef PinSignIn = Future<String?> Function(String phone, String pin);
 
-  final GoTrueClient auth;
+/// Through the pin-login function, as the GET.ride app does: the server
+/// checks the PIN (with its lockout) and hands back a session.
+PinSignIn supabasePinSignIn(SupabaseClient db) => (phone, pin) async {
+  ({String? refreshToken, String? error}) r;
+  try {
+    final res = await db.functions.invoke('pin-login', body: {'phone': phone, 'pin': pin});
+    r = pinLoginResult(res.status, res.data);
+  } on FunctionException catch (e) {
+    r = pinLoginResult(e.status, e.details);
+  }
+  if (r.refreshToken == null) return r.error;
+  await db.auth.setSession(r.refreshToken!);
+  return null;
+};
+
+class SignInScreen extends StatefulWidget {
+  const SignInScreen({super.key, required this.signIn});
+
+  final PinSignIn signIn;
 
   @override
   State<SignInScreen> createState() => _SignInScreenState();
@@ -39,14 +57,8 @@ class _SignInScreenState extends State<SignInScreen> {
       _error = null;
     });
     try {
-      await widget.auth.signInWithPassword(phone: _composed, password: pinPassword(_pin.text));
-    } on AuthException catch (e) {
-      setState(
-        () => _error = RegExp('invalid login credentials', caseSensitive: false).hasMatch(e.message)
-            ? 'Wrong phone number or PIN. If you set your PIN on another phone, sign in to the GET.ride app '
-                  'once first, then try again here.'
-            : e.message,
-      );
+      final error = await widget.signIn(_composed, _pin.text);
+      if (error != null && mounted) setState(() => _error = error);
     } catch (e) {
       setState(() => _error = describeError(e));
     } finally {
