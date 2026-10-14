@@ -11,14 +11,16 @@ begin;
 
 insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000183a1'),  -- runs the gateway phone (an admin)
-  ('00000000-0000-0000-0000-0000000183a2')   -- a sub-admin with one read-only page
+  ('00000000-0000-0000-0000-0000000183a2'),  -- a sub-admin with one read-only page
+  ('00000000-0000-0000-0000-0000000183a3')   -- a full admin (0187)
 on conflict do nothing;
 insert into public.profiles (id) select id from auth.users
  where id::text like '00000000-0000-0000-0000-0000000183a%'
 on conflict do nothing;
 insert into public.admin_access (profile_id, page, access_level) values
   ('00000000-0000-0000-0000-0000000183a1', 'admin-settings-messaging', 'edit'),
-  ('00000000-0000-0000-0000-0000000183a2', 'admin-help', 'read')
+  ('00000000-0000-0000-0000-0000000183a2', 'admin-help', 'read'),
+  ('00000000-0000-0000-0000-0000000183a3', '*', 'edit')
 on conflict do nothing;
 
 create or replace function pg_temp.as_user(p uuid) returns void language plpgsql as $$
@@ -55,7 +57,7 @@ insert into public.sms_outbox (channel, to_phone, body) values ('otp', '+6012345
 insert into public.sms_outbox (channel, to_phone, body, created_at)
 values ('otp', '+60123450184', 'Your GET.ride code is 999999.', now() - interval '20 minutes');
 
--- 1. Admins see the job, not the code ------------------------------------------------------
+-- 1. Sub-admins see the job, not the code ------------------------------------------------------
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000183a2');
 do $$
@@ -67,10 +69,24 @@ begin
     raise exception 'FAILED: an admin read a sign-in code';
   end if;
 end $$;
-select pg_temp.refused($q$select * from public.sms_otp_secret$q$, 'an admin reading the codes table');
+do $$
+begin
+  if exists (select 1 from public.sms_otp_secret) then
+    raise exception 'FAILED: a sub-admin read the codes table';
+  end if;
+end $$;
 select pg_temp.refused(
   $q$insert into public.sms_outbox (channel, to_phone, body) values ('otp', '+60123456789', 'Your code is 1')$q$,
   'an admin queuing a sign-in code by hand');
+
+-- 1b. A full admin reads the code (0187) -------------------------------------------------
+select pg_temp.as_user('00000000-0000-0000-0000-0000000183a3');
+do $$
+begin
+  if not exists (select 1 from public.sms_otp_secret where body = 'Your GET.ride code is 246813.') then
+    raise exception 'FAILED: a full admin can''t read the code';
+  end if;
+end $$;
 
 -- 2. The gateway gets the real text; the stale code is failed --------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000183a1');
@@ -92,6 +108,21 @@ begin
   end if;
   if (select body from public.sms_outbox where to_phone = '+60123450183') <> 'Your GET.ride code is ••••••.' then
     raise exception 'FAILED: the queue row was not masked';
+  end if;
+end $$;
+
+-- 3. The admin's validity decides when a waiting code is dropped (0188) ----------------------
+update public.sms_settings set code_valid_minutes = 2 where id = 1;
+insert into public.sms_outbox (channel, to_phone, body, created_at)
+values ('otp', '+60123450185', 'Your GET.ride code is 111111.', now() - interval '3 minutes');
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000183a1');
+select count(*) from public.gateway_claim_sms((select id from ids where name = 'gateway'));
+reset role;
+do $$
+begin
+  if (select status from public.sms_outbox where to_phone = '+60123450185') is distinct from 'failed' then
+    raise exception 'FAILED: a code older than the admin''s 2 minutes was not dropped';
   end if;
 end $$;
 

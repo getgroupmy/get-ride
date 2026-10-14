@@ -8,6 +8,7 @@ class SmsLimits {
     this.perPhonePerDay = 10,
     this.minResendSeconds = 60,
     this.globalPerHour = 500,
+    this.codeValidMinutes = 5,
     this.allowedPrefixes = const ['+60'],
     this.blockedNumbers = const [],
     this.messageTemplate = defaultSmsTemplate,
@@ -19,6 +20,11 @@ class SmsLimits {
   final int perPhonePerDay;
   final int minResendSeconds;
   final int globalPerHour;
+
+  /// How long a sign-in code is good for (migration 0188). A code the gateway
+  /// hasn't sent by then is dropped, not sent late. Keep it equal to Supabase
+  /// → Authentication → Phone → SMS OTP Expiry, which is what checks it.
+  final int codeValidMinutes;
 
   /// Country prefixes codes may go to (`+60`); empty allows every country.
   final List<String> allowedPrefixes;
@@ -37,6 +43,7 @@ class SmsLimits {
       perPhonePerDay: n('per_phone_per_day', 10),
       minResendSeconds: n('min_resend_seconds', 60),
       globalPerHour: n('global_per_hour', 500),
+      codeValidMinutes: n('code_valid_minutes', 5),
       allowedPrefixes: l('allowed_prefixes'),
       blockedNumbers: l('blocked_numbers'),
       messageTemplate: (r['message_template'] as String?) ?? defaultSmsTemplate,
@@ -50,6 +57,7 @@ class SmsLimits {
     'per_phone_per_day': perPhonePerDay,
     'min_resend_seconds': minResendSeconds,
     'global_per_hour': globalPerHour,
+    'code_valid_minutes': codeValidMinutes,
     'allowed_prefixes': allowedPrefixes,
     'blocked_numbers': blockedNumbers,
     'message_template': messageTemplate,
@@ -61,6 +69,7 @@ class SmsLimits {
     int? perPhonePerDay,
     int? minResendSeconds,
     int? globalPerHour,
+    int? codeValidMinutes,
     List<String>? allowedPrefixes,
     List<String>? blockedNumbers,
     String? messageTemplate,
@@ -70,6 +79,7 @@ class SmsLimits {
     perPhonePerDay: perPhonePerDay ?? this.perPhonePerDay,
     minResendSeconds: minResendSeconds ?? this.minResendSeconds,
     globalPerHour: globalPerHour ?? this.globalPerHour,
+    codeValidMinutes: codeValidMinutes ?? this.codeValidMinutes,
     allowedPrefixes: allowedPrefixes ?? this.allowedPrefixes,
     blockedNumbers: blockedNumbers ?? this.blockedNumbers,
     messageTemplate: messageTemplate ?? this.messageTemplate,
@@ -86,6 +96,7 @@ String? smsLimitsProblem(SmsLimits s) {
   if (s.perPhonePerDay < s.perPhonePerHour) return 'The daily limit can’t be lower than the hourly one.';
   if (s.minResendSeconds < 15 || s.minResendSeconds > 600) return 'Time between codes must be 15–600 seconds.';
   if (s.globalPerHour < 1 || s.globalPerHour > 100000) return 'The hourly total must be 1–100,000.';
+  if (s.codeValidMinutes < 1 || s.codeValidMinutes > 60) return 'A code must be valid for 1–60 minutes.';
   for (final p in s.allowedPrefixes) {
     if (!RegExp(r'^\+\d{1,4}$').hasMatch(p)) return 'A country prefix looks like +60 ($p doesn’t).';
   }
