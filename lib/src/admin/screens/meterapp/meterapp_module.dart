@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../config.dart';
 import '../../admin_registry.dart';
 import 'always_on_screen.dart';
 import 'app_release_screen.dart';
@@ -21,7 +22,7 @@ final meterappRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/app-icon', redirect: (_, _) => '/admin/m/site'),
   GoRoute(path: '/admin/m/splash', redirect: (_, _) => '/admin/m/site'),
   GoRoute(path: '/admin/m/always-on', builder: (_, _) => const AdminAlwaysOnScreen()),
-  GoRoute(path: '/admin/m/app-release', builder: (_, _) => const AdminAppReleaseScreen()),
+  if (!AppConfig.storeBuild) GoRoute(path: '/admin/m/app-release', builder: (_, _) => const AdminAppReleaseScreen()),
 ];
 
 const meterappEntries = <AdminScreenEntry>[
@@ -67,14 +68,15 @@ const meterappEntries = <AdminScreenEntry>[
     pages: ['admin-settings-always-on'],
     icon: Icons.wb_sunny_outlined,
   ),
-  AdminScreenEntry(
-    section: 'Meter & app',
-    title: 'App Release',
-    subtitle: 'Build & upload to the App Store and Google Play',
-    path: '/admin/m/app-release',
-    pages: [appReleasePage],
-    icon: Icons.rocket_launch_outlined,
-  ),
+  if (!AppConfig.storeBuild)
+    AdminScreenEntry(
+      section: 'Meter & app',
+      title: 'App Release',
+      subtitle: 'Build & upload to the App Store and Google Play',
+      path: '/admin/m/app-release',
+      pages: [appReleasePage],
+      icon: Icons.rocket_launch_outlined,
+    ),
 ];
 
 /// `settings_entries` categories these screens own (kept out of the raw

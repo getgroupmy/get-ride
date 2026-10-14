@@ -414,10 +414,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           path: '/${k.pathSegment}/:token',
           builder: (_, st) => QrLinkScreen(kind: k.pathSegment, token: st.pathParameters['token']!),
         ),
-      GoRoute(
-        path: '/install/:platform',
-        builder: (_, st) => AppInstallScreen(platform: st.pathParameters['platform']!),
-      ),
+      // Never in an App Store build: it installs builds over itms-services.
+      if (!AppConfig.storeBuild)
+        GoRoute(
+          path: '/install/:platform',
+          builder: (_, st) => AppInstallScreen(platform: st.pathParameters['platform']!),
+        ),
       GoRoute(
         path: '/meter',
         builder: (_, st) => MeterScreen(launch: st.extra is MeterLaunch ? st.extra! as MeterLaunch : null),
