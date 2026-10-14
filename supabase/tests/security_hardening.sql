@@ -123,7 +123,8 @@ select pg_temp.check(not exists (
    where n.nspname = 'public' and c.relkind = 'r' and c.relreplident = 'f'),
   'no table is REPLICA IDENTITY FULL');
 
--- 5. documents_ok is the admin's -----------------------------------------------------------
+-- 5. documents_ok is the admin's once the application is reviewed (0181 lets the
+--    applicant set it, to submit, while it still waits) ------------------------------------
 do $$
 begin
   if exists (select 1 from information_schema.columns
@@ -131,8 +132,8 @@ begin
     perform set_config('test.partner_docs', 'yes', true);
   end if;
 end $$;
-insert into public.partners (auth_user_id, name, phone) values
-  ('00000000-0000-0000-0000-0000000147a1', 'Rider', '+60100000147');
+insert into public.partners (auth_user_id, name, phone, status) values
+  ('00000000-0000-0000-0000-0000000147a1', 'Rider', '+60100000147', 'approved');
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000147a1');
 do $$
