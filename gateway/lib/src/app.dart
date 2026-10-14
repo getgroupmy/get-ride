@@ -15,7 +15,7 @@ import 'sms_platform.dart';
 
 /// Kept with `version:` in pubspec.yaml (a test checks); the admin page
 /// shows it beside the device.
-const gatewayVersion = '1.1.0';
+const gatewayVersion = '1.1.1';
 
 ThemeData gatewayTheme(Brightness b) => ThemeData(
   useMaterial3: true,
@@ -104,7 +104,7 @@ class _GatewayAppState extends State<GatewayApp> {
 
   Widget _home() {
     final session = _session;
-    if (session == null) return SignInScreen(auth: widget.db.auth);
+    if (session == null) return SignInScreen(signIn: supabasePinSignIn(widget.db));
     return FutureBuilder<bool>(
       future: _admin,
       builder: (context, snap) {
