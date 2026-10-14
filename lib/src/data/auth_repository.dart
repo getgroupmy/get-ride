@@ -129,7 +129,8 @@ class AuthRepository {
 
   /// Signs in with the PIN through the pin-login function (migration 0172):
   /// the server checks the PIN, with its lockout, and hands back a session.
-  /// Only where the function isn't deployed does the older route run.
+  /// There is no other route: the PIN-derived Auth password is gone (0175),
+  /// so when the function can't be reached the SMS code is the way in.
   Future<PinSignInResult> signInWithPin(String phone, String pin) async {
     final outcome = await _pinLogin(phone, pin);
     switch (outcome) {
@@ -143,7 +144,7 @@ class AuthRepository {
       case PinLoginNeedsOtp():
         return const PinSignInNeedsOtp();
       case PinLoginUnavailable():
-        return _legacySignInWithPin(phone, pin);
+        return const PinSignInError("Couldn't reach sign-in. Check your connection, or sign in with an SMS code.");
     }
   }
 
@@ -155,33 +156,6 @@ class AuthRepository {
       return pinLoginOutcome(e.status, e.details);
     } catch (_) {
       return const PinLoginUnavailable();
-    }
-  }
-
-  /// Sign-in for a backend without pin-login: the PIN-derived password,
-  /// then the server's PIN check. An account already moved to a random
-  /// password lands on the check, and from there on the SMS code.
-  Future<PinSignInResult> _legacySignInWithPin(String phone, String pin) async {
-    try {
-      await _db.auth.signInWithPassword(phone: phone, password: derivePinPassword(pin));
-      // In by the old password: retire it now that it has been used.
-      await retireDerivedPassword();
-      return const PinSignInOk();
-    } on AuthException catch (e) {
-      if (!RegExp('invalid login credentials', caseSensitive: false).hasMatch(e.message)) {
-        return PinSignInError(e.message);
-      }
-      try {
-        final id = await _db.rpc('verify_pin_for_login', params: {'p_phone': phone, 'p_pin': pin});
-        if (id != null) return const PinSignInNeedsOtp();
-        return const PinSignInError('Incorrect PIN. Please try again.');
-      } on PostgrestException catch (pe) {
-        final lock = parsePinLockSeconds(pe.message);
-        if (lock != null) return PinSignInError(pinLockMessage(lock), locked: true);
-        final wait = parseRateLimitSeconds(pe.message);
-        if (wait != null) return PinSignInError(rateLimitMessage(wait), locked: true);
-        return const PinSignInError('Incorrect PIN. Please try again.');
-      }
     }
   }
 
@@ -259,8 +233,8 @@ class AuthRepository {
     return true;
   }
 
-  /// Writes a random password over the account's Auth password, so the old
-  /// PIN-derived one (`derivePinPassword`) stops working. Called whenever a
+  /// Writes a random password over the account's Auth password, so no
+  /// PIN-derived one (`teksi-pin-v1-<pin>`, builds before 1.4.5) works. Called whenever a
   /// PIN is set or confirmed by SMS; PIN sign-in no longer needs a password
   /// the phone knows (pin-login sets its own). Best effort: the next sign-in
   /// through pin-login replaces it anyway.
