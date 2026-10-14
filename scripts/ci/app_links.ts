@@ -121,8 +121,8 @@ export function appleAppSiteAssociation(
   if (!isTeamId(teamId)) throw new Error(`not a team id: ${teamId}`);
   return {
     // Passkeys: the app may use credentials saved for this domain (the
-    // relying party getride.my; Runner.entitlements asks for
-    // webcredentials:getride.my).
+    // relying party www.getride.my; Runner.entitlements asks for
+    // webcredentials:www.getride.my).
     webcredentials: { apps: [`${teamId}.${appId}`] },
     applinks: {
       apps: [],

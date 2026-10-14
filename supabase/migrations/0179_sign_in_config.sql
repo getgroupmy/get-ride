@@ -6,7 +6,7 @@
 --   * passkeyWeb / passkeyAndroid / passkeyIos: draw "Sign in with a
 --     passkey" (and offer to save one) on that surface. Off until each is
 --     set up: passkeys on for the project in the Supabase dashboard
---     (Authentication → Configuration → Passkeys, relying party getride.my)
+--     (Authentication → Configuration → Passkeys, relying party www.getride.my)
 --     for all three; on Android also assetlinks.json naming the app and
 --     its signing keys, on iOS the Associated Domains entitlement and
 --     apple-app-site-association. A button drawn before that fails for

@@ -83,7 +83,7 @@ class _SignInSecurityCardState extends ConsumerState<SignInSecurityCard> {
                 const SizedBox(height: 2),
                 Text(
                   'Passkeys let people sign in with their face or fingerprint. Turn each surface on only once it is '
-                  'set up: passkeys on in the Supabase dashboard (relying party getride.my) for all three, plus the '
+                  'set up: passkeys on in the Supabase dashboard (relying party www.getride.my) for all three, plus the '
                   'app association files for Android and iOS. A button shown before that fails for everyone.',
                   style: t.textTheme.bodySmall?.copyWith(color: muted),
                 ),
@@ -91,7 +91,7 @@ class _SignInSecurityCardState extends ConsumerState<SignInSecurityCard> {
                 toggle(
                   'passkey-web',
                   'Passkeys on the website',
-                  'Sign in with a passkey on getride.my.',
+                  'Sign in with a passkey on www.getride.my.',
                   c.passkeyWeb,
                   (v) => c.copyWith(passkeyWeb: v),
                 ),
@@ -105,7 +105,7 @@ class _SignInSecurityCardState extends ConsumerState<SignInSecurityCard> {
                 toggle(
                   'passkey-ios',
                   'Passkeys in the iOS app',
-                  'Needs the webcredentials association for getride.my.',
+                  'Needs the webcredentials association for www.getride.my.',
                   c.passkeyIos,
                   (v) => c.copyWith(passkeyIos: v),
                 ),
