@@ -229,6 +229,7 @@ class _ChannelCard extends StatelessWidget {
     MessagingChannel.marketing => Icons.campaign_outlined,
     MessagingChannel.supportCall => Icons.call_outlined,
     MessagingChannel.supportMessage => Icons.chat_outlined,
+    MessagingChannel.opsAlert => Icons.sos_outlined,
   };
 
   @override

@@ -571,7 +571,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             ),
             if (r.status.isOngoing && r.status != RideStatus.open)
               Positioned.fill(
-                child: RideSosFab(onPressed: () => showRideSos(context, ref, plate: r.partnerPlate)),
+                child: RideSosFab(onPressed: () => showRideSos(context, ref, plate: r.partnerPlate, rideId: r.id)),
               ),
           ]);
           final panel = _panel(r);

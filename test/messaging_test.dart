@@ -46,7 +46,7 @@ class _FakeRepo extends MessagingRepository {
 
 void main() {
   group('routes', () {
-    test('every channel has an inbound and an outbound row, stored or default', () {
+    test('every channel has its rows, stored or default (ops alert: outbound only)', () {
       final stored = MessagingRoute(
         channel: MessagingChannel.otp,
         direction: MessagingDirection.outbound,
@@ -54,7 +54,7 @@ void main() {
         whatsappNumber: '+60123456789',
       );
       final table = messagingRouteTable([stored]);
-      expect(table, hasLength(8));
+      expect(table, hasLength(9));
       expect(
         table.where((r) => r.channel == MessagingChannel.otp && r.direction == MessagingDirection.outbound).single,
         same(stored),
@@ -163,7 +163,7 @@ void main() {
 
     for (final c in MessagingChannel.values) {
       expect(find.byKey(ValueKey('messaging-channel-${c.id}')), findsOneWidget);
-      for (final d in MessagingDirection.values) {
+      for (final d in c.directions) {
         expect(find.byKey(ValueKey('messaging-route-${c.id}-${d.id}')), findsOneWidget);
       }
     }

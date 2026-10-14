@@ -10,7 +10,8 @@ enum MessagingChannel {
   otp('otp', 'OTP', 'Sign-in codes'),
   marketing('marketing', 'Marketing blast', 'Promotions sent to many users'),
   supportCall('support_call', 'Support call', 'In-app VoIP calls with support'),
-  supportMessage('support_message', 'Support message', 'Text conversations with support');
+  supportMessage('support_message', 'Support message', 'Text conversations with support'),
+  opsAlert('ops_alert', 'Ops alert', 'SOS alerts texted to the safety team (migration 0193)');
 
   const MessagingChannel(this.id, this.label, this.description);
   final String id;
@@ -22,6 +23,10 @@ enum MessagingChannel {
   /// The transports this channel can use.
   List<MessagingTransport> get transports =>
       isCall ? const [MessagingTransport.voip] : const [MessagingTransport.sms, MessagingTransport.whatsapp];
+
+  /// The directions this channel has: an ops alert only goes out.
+  List<MessagingDirection> get directions =>
+      this == MessagingChannel.opsAlert ? const [MessagingDirection.outbound] : MessagingDirection.values;
 
   static MessagingChannel? fromId(Object? id) => values.where((c) => c.id == id).firstOrNull;
 }
@@ -226,7 +231,7 @@ String? messagingRouteProblem(MessagingRoute r, List<MessagingDevice> devices) {
 /// Every channel and direction, with the stored route or its default.
 List<MessagingRoute> messagingRouteTable(List<MessagingRoute> stored) => [
   for (final c in MessagingChannel.values)
-    for (final d in MessagingDirection.values)
+    for (final d in c.directions)
       stored.where((r) => r.channel == c && r.direction == d).firstOrNull ?? MessagingRoute.unset(c, d),
 ];
 
