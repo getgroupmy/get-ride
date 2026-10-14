@@ -36,6 +36,8 @@ import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
 import 'package:get_ride/src/features/auth/phone_screen.dart';
+import 'package:get_ride/src/features/auth/passkey_sign_in_button.dart';
+import 'package:get_ride/src/features/auth/welcome_screen.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/features/my_qr/direct_booking.dart';
 import 'package:get_ride/src/features/my_qr/my_qr_screen.dart';
@@ -917,6 +919,7 @@ void main() {
           supabaseProvider.overrideWithValue(db),
           deviceBlockedProvider.overrideWith((ref) async => false),
           appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
+          passkeyOfferedHereProvider.overrideWith((ref) async => false),
           currentUserIdProvider.overrideWithValue(null),
           partnerProvider.overrideWith((ref) async => null),
           profileProvider.overrideWith((ref) async => null),
@@ -949,7 +952,7 @@ void main() {
         r.go(link);
         await _settle(tester);
         expect(find.byType(QrLinkScreen), findsOneWidget);
-        expect(find.byType(PhoneScreen), findsNothing);
+        expect(find.byType(WelcomeScreen), findsNothing);
         expect(find.text('WXYZ5678'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
@@ -971,7 +974,7 @@ void main() {
       expect(find.byType(QrLinkScreen), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('qr-sign-in')));
       await _settle(tester);
-      expect(find.byType(PhoneScreen), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsOneWidget);
       expect(PendingQrLink.take(), '/q/now/$_tokNow');
     });
 
@@ -979,7 +982,7 @@ void main() {
       final r = await realRouter(tester, _FakeQr());
       r.go('/now');
       await _settle(tester);
-      expect(find.byType(PhoneScreen), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsOneWidget);
     });
   });
 
@@ -1283,6 +1286,7 @@ Future<ProviderContainer> _home(WidgetTester tester, _Rides rides) async {
       recentPlacesProvider.overrideWith((ref) async => const [_eco, _klcc]),
       displaySettingsBlobProvider.overrideWith((ref) async => const <String, dynamic>{}),
       appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
+          passkeyOfferedHereProvider.overrideWith((ref) async => false),
       deviceBlockedProvider.overrideWith((ref) async => false),
       profileProvider.overrideWith((ref) async => null),
       fareTariffsProvider.overrideWith((ref) async => const []),

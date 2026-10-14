@@ -12,7 +12,9 @@ import 'package:get_ride/src/data/session_guard.dart';
 import 'package:get_ride/src/features/auth/passkey/passkey.dart' as pk;
 import 'package:get_ride/src/features/auth/passkey_sign_in_button.dart';
 import 'package:get_ride/src/features/auth/phone_screen.dart';
+import 'package:get_ride/src/features/auth/welcome_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:go_router/go_router.dart';
 
 class _Auth implements AuthRepository {
   int passkeySignIns = 0;
@@ -90,7 +92,7 @@ void main() {
     });
   });
 
-  group('sign-in screen', () {
+  group('welcome page', () {
     Future<_Auth> pump(WidgetTester tester, {required bool offered, Brightness b = Brightness.light}) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(500, 1100);
@@ -104,9 +106,18 @@ void main() {
             appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
             passkeyOfferedHereProvider.overrideWith((ref) async => offered),
           ],
-          child: MaterialApp(
+          child: MaterialApp.router(
             theme: ThemeData(brightness: b),
-            home: const PhoneScreen(),
+            routerConfig: GoRouter(
+              initialLocation: '/login',
+              routes: [
+                GoRoute(
+                  path: '/login',
+                  builder: (_, _) => const WelcomeScreen(),
+                  routes: [GoRoute(path: 'phone', builder: (_, _) => const PhoneScreen())],
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -116,18 +127,17 @@ void main() {
 
     tearDown(() => signedOutElsewhere.value = false);
 
-    testWidgets('no passkey button until the admin turns it on for this surface', (tester) async {
+    testWidgets('passkeys off: only Continue with phone', (tester) async {
       await pump(tester, offered: false);
       expect(find.byKey(const ValueKey('passkey-sign-in')), findsNothing);
-      expect(find.byKey(const ValueKey('dial-country')), findsOneWidget, reason: 'straight to the number');
-      expect(find.byKey(const ValueKey('sign-in-back')), findsNothing);
+      expect(find.text('Continue with phone'), findsOneWidget);
+      expect(find.byKey(const ValueKey('welcome-terms')), findsOneWidget);
     });
 
     for (final b in Brightness.values) {
-      testWidgets('the passkey button signs in; closing the prompt says nothing (${b.name})', (tester) async {
+      testWidgets('continue with passkey signs in; closing the prompt says nothing (${b.name})', (tester) async {
         final auth = await pump(tester, offered: true, b: b);
         expect(find.text('Continue with passkey'), findsOneWidget);
-        expect(find.byKey(const ValueKey('dial-country')), findsNothing, reason: 'the number is a second step');
         await tester.tap(find.byKey(const ValueKey('passkey-sign-in')));
         await tester.pumpAndSettle();
         expect(auth.passkeySignIns, 1);
@@ -140,15 +150,20 @@ void main() {
         expect(find.text('There is no passkey saved on this device.'), findsOneWidget);
       });
 
-      testWidgets('continue with phone opens the number, and back returns (${b.name})', (tester) async {
+      testWidgets('continue with phone opens the number page, and back returns (${b.name})', (tester) async {
         await pump(tester, offered: true, b: b);
         await tester.tap(find.byKey(const ValueKey('continue-with-phone')));
         await tester.pumpAndSettle();
+        expect(find.text('Join us via phone number'), findsOneWidget);
         expect(find.byKey(const ValueKey('dial-country')), findsOneWidget);
-        expect(find.byKey(const ValueKey('passkey-sign-in')), findsNothing);
+        await tester.enterText(find.byKey(const ValueKey('phone-number')), '123');
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('phone-clear')));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('phone-clear')), findsNothing);
         await tester.tap(find.byKey(const ValueKey('sign-in-back')));
         await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey('passkey-sign-in')), findsOneWidget);
+        expect(find.byKey(const ValueKey('welcome')), findsOneWidget);
       });
 
       testWidgets('a device signed out by a newer sign-in says why (${b.name})', (tester) async {

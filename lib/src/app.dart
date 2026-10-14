@@ -39,6 +39,7 @@ import 'features/meter/obd_reader_screen.dart';
 import 'features/meter/printer_screen.dart';
 import 'features/meter/vehicle_info_screen.dart';
 import 'features/auth/phone_screen.dart';
+import 'features/auth/welcome_screen.dart';
 import 'features/auth/pin_screen.dart';
 import 'features/auth/registration_closed_screen.dart';
 import 'features/auth/signup_photo_screen.dart';
@@ -208,8 +209,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/login',
-        builder: (_, _) => const PhoneScreen(),
+        // After the splash: continue with a passkey or with the phone.
+        builder: (_, _) => const WelcomeScreen(),
         routes: [
+          GoRoute(path: 'phone', builder: (_, _) => const PhoneScreen()),
           GoRoute(
             path: 'otp',
             builder: (_, s) => OtpScreen(

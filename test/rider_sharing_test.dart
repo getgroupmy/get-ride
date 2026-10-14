@@ -22,6 +22,8 @@ import 'package:get_ride/src/data/device_access.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/referral_repository.dart';
 import 'package:get_ride/src/features/auth/phone_screen.dart';
+import 'package:get_ride/src/features/auth/passkey_sign_in_button.dart';
+import 'package:get_ride/src/features/auth/welcome_screen.dart';
 import 'package:get_ride/src/features/profile/emergency_contacts_screen.dart';
 import 'package:get_ride/src/features/profile/referral_screen.dart';
 import 'package:get_ride/src/features/shell/not_found_screen.dart';
@@ -481,6 +483,7 @@ void main() {
           supabaseProvider.overrideWithValue(db),
           deviceBlockedProvider.overrideWith((ref) async => false),
           appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
+          passkeyOfferedHereProvider.overrideWith((ref) async => false),
         ],
       );
       addTearDown(container.dispose);
@@ -493,7 +496,7 @@ void main() {
       );
       r.go('/no/such/page');
       await tester.pumpAndSettle();
-      expect(find.byType(PhoneScreen), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsOneWidget);
       expect(find.byType(NotFoundScreen), findsNothing);
     });
   });

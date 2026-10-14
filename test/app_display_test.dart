@@ -6,7 +6,9 @@ import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/auth_repository.dart';
 import 'package:get_ride/src/data/device_access.dart';
+import 'package:get_ride/src/features/auth/passkey_sign_in_button.dart';
 import 'package:get_ride/src/features/auth/phone_screen.dart';
+import 'package:get_ride/src/features/auth/welcome_screen.dart';
 import 'package:get_ride/src/features/auth/registration_closed_screen.dart';
 import 'package:get_ride/src/providers.dart';
 
@@ -105,7 +107,7 @@ void main() {
     await tester.pumpAndSettle();
     if (!submit) return auth;
     await tester.enterText(find.byType(TextField), '123456789');
-    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Next'));
     await tester.pumpAndSettle();
     return auth;
   }
@@ -121,12 +123,21 @@ void main() {
     expect(find.byType(PhoneScreen), findsOneWidget);
   });
 
-  testWidgets('the logo follows its switch', (tester) async {
-    await pumpPhone(tester, hasProfile: true, open: true, submit: false);
-    expect(find.byKey(const ValueKey('sign-in-logo')), findsOneWidget);
-    await tester.pumpWidget(const SizedBox());
-    await pumpPhone(tester, hasProfile: true, open: true, logo: false, submit: false);
-    expect(find.byKey(const ValueKey('sign-in-logo')), findsNothing);
+  testWidgets('the logo on the welcome page follows its switch', (tester) async {
+    for (final logo in [true, false]) {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appDisplayProvider.overrideWith((ref) async => AppDisplay(showSignInLogo: logo)),
+            passkeyOfferedHereProvider.overrideWith((ref) async => false),
+          ],
+          child: const MaterialApp(home: WelcomeScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('sign-in-logo')), logo ? findsOneWidget : findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    }
   });
 
   testWidgets('an existing account still gets its code while registration is closed', (tester) async {
