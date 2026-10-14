@@ -199,7 +199,29 @@ class AdminRepository {
   Future<List<Map<String, dynamic>>> rides({List<String>? statuses, int limit = 200}) async {
     var q = _db.from('ride_requests').select();
     if (statuses != null && statuses.isNotEmpty) q = q.inFilter('status', statuses);
-    return List<Map<String, dynamic>>.from(await q.order('created_at', ascending: false).limit(limit));
+    final rows = List<Map<String, dynamic>>.from(await q.order('created_at', ascending: false).limit(limit));
+    // While a request is open its passenger details wait aside (0195).
+    final open = [
+      for (final r in rows)
+        if (r['status'] == 'open') r['id'],
+    ];
+    if (open.isEmpty) return rows;
+    try {
+      final aside = {
+        for (final p in await _db.from('ride_request_private').select().inFilter('request_id', open))
+          p['request_id']: p,
+      };
+      return [
+        for (final r in rows)
+          {
+            ...r,
+            for (final e in (aside[r['id']] ?? const {}).entries)
+              if (e.value != null && e.key != 'request_id' && e.key != 'updated_at') e.key: e.value,
+          },
+      ];
+    } catch (_) {
+      return rows;
+    }
   }
 
   Future<void> adminCancelRide(String id, String reason) => _updateOne('ride_requests', id, {

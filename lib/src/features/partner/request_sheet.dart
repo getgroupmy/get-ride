@@ -335,7 +335,24 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
       child: Column(children: [
         NetAvatar(url: photo is String ? photo : null, radius: 24, fallback: const Icon(Icons.person_outline)),
         const SizedBox(height: 4),
-        Text(r.passengerName, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.labelSmall),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (r.isForOthers)
+              Tooltip(
+                message: 'Booked for someone else',
+                child: Icon(Icons.group_outlined, key: const ValueKey('request-for-others'), size: 12, color: muted),
+              ),
+            Flexible(
+              child: Text(
+                r.firstNameForDrivers,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t.textTheme.labelSmall,
+              ),
+            ),
+          ],
+        ),
         if (r.riderRating != null)
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(Icons.star, size: 12, color: Color(0xFFF5A623)),
@@ -438,7 +455,6 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                         '${r.passengers} pax',
                         if ((r.luggage ?? 0) > 0) '${r.luggage} ${r.luggage == 1 ? 'bag' : 'bags'}',
                         if (r.stops.isNotEmpty) '${r.stops.length} stop${r.stops.length == 1 ? '' : 's'}',
-                        if (r.isForOthers) 'Booked by ${r.riderName ?? 'another rider'}',
                         if (widget.towardDestination) 'Toward your destination',
                       ].join(' · '),
                       style: t.textTheme.bodySmall?.copyWith(color: muted),
