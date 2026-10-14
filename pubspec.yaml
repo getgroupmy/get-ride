@@ -151,13 +151,18 @@ flutter:
   # see https://flutter.dev/to/font-from-package
 
 flutter_launcher_icons:
+  # The GET.ride wordmark on a transparent background: white behind it in
+  # light mode, black in dark mode. Run `dart run flutter_launcher_icons`,
+  # then `python3 scripts/app_icons.py`, which makes the iOS icon (light,
+  # dark and tinted), Android's dark-mode background and the two favicons.
   image_path: assets/branding/icon.png
   android: true
-  ios: true
-  remove_alpha_ios: true
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: assets/branding/icon.png
+  ios: false
   web:
     generate: true
-    background_color: "#000000"
+    background_color: "#ffffff"
     theme_color: "#2DABE2"
   windows:
     generate: true
