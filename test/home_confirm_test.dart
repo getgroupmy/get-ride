@@ -54,7 +54,8 @@ class _Rides implements RideRepository {
   dynamic noSuchMethod(Invocation i) {
     if (i.memberName == #createRequest) {
       created = i.namedArguments;
-      return Future.value(RideRequest({'id': 'r9', 'rider_id': 'me', 'status': 'open', 'fare': 10}));
+      final ride = RideRequest({'id': 'r9', 'rider_id': 'me', 'status': 'open', 'fare': 10});
+      return Future<Booked>.value((now: ride, later: null));
     }
     return super.noSuchMethod(i);
   }

@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../data/scheduled_ride_repository.dart';
 import '../../data/active_location.dart';
 import '../../core/destination_mode.dart';
 import '../../core/driver_request_radius.dart';
@@ -814,6 +815,16 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     tooltip: 'Meter Digital',
                     icon: Icons.speed,
                     onPressed: () => _openMeter(partner.value!),
+                  ),
+                if (partner.value != null &&
+                    partnerCanDrive(partner.value!) &&
+                    (ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false))
+                  _floatingButton(
+                    tooltip: 'Scheduled rides',
+                    icon: Icons.event_outlined,
+                    onPressed: () {
+                      context.push('/drive/scheduled');
+                    },
                   ),
                 if (partner.value != null)
                   _floatingButton(

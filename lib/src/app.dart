@@ -34,6 +34,7 @@ import 'features/auth/otp_screen.dart';
 import 'features/ev/ev_order_screen.dart';
 import 'features/meter/hail_destination_screen.dart';
 import 'features/meter/meter_screen.dart';
+import 'features/ride/scheduled_rides_screen.dart';
 import 'features/ride/shared_ride_screen.dart';
 import 'features/meter/obd_reader_screen.dart';
 import 'features/meter/printer_screen.dart';
@@ -44,6 +45,7 @@ import 'features/auth/pin_screen.dart';
 import 'features/auth/registration_closed_screen.dart';
 import 'features/auth/signup_photo_screen.dart';
 import 'features/auth/set_pin_screen.dart';
+import 'features/partner/scheduled_jobs_screen.dart';
 import 'features/partner/demo_jobs.dart';
 import 'features/partner/my_ride_code_screen.dart';
 import 'features/partner/earnings_screen.dart';
@@ -251,6 +253,8 @@ final routerProvider = Provider<GoRouter>((ref) {
                     path: '/trips',
                     builder: (_, _) => const TripsScreen(),
                     routes: [
+                      // Before ':id', which would take "scheduled" for a ride.
+                      GoRoute(path: 'scheduled', builder: (_, _) => const ScheduledRidesScreen()),
                       GoRoute(
                         path: ':id',
                         builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!),
@@ -354,6 +358,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '/drive/permit', builder: (_, _) => const DriverPermitScreen()),
           GoRoute(path: '/drive/my-ride', builder: (_, _) => const MyRideCodeScreen()),
+          GoRoute(path: '/drive/scheduled', builder: (_, _) => const ScheduledJobsScreen()),
           GoRoute(path: '/drive/earnings', builder: (_, _) => const EarningsScreen()),
           GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
           GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
