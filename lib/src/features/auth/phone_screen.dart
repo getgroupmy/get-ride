@@ -30,6 +30,10 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   DialCountry _country = dialCountryFor(AppConfig.defaultDialCode);
   bool _busy = false;
 
+  /// With passkeys offered, the screen opens on the two choices (as inDrive
+  /// does) and the number is a second step; without them, straight to it.
+  bool _withPhone = false;
+
   @override
   void dispose() {
     _number.dispose();
@@ -138,6 +142,93 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final passkeys = ref.watch(passkeyOfferedHereProvider).value == true;
+    if (passkeys && !_withPhone) return _choices(context);
+    return _numberEntry(context, canGoBack: passkeys);
+  }
+
+  List<Widget> _terms(ThemeData t) => [
+    Text(
+      'By continuing you agree to the GET.ride Terms of Service and Privacy Policy.',
+      textAlign: TextAlign.center,
+      style: t.textTheme.bodySmall,
+    ),
+    Wrap(alignment: WrapAlignment.center, children: [
+      TextButton(
+        key: const ValueKey('phone-terms'),
+        onPressed: () => openInApp(context, AppConfig.termsUrl, title: 'Terms of Service'),
+        child: const Text('Terms of Service'),
+      ),
+      TextButton(
+        key: const ValueKey('phone-privacy'),
+        onPressed: () => openInApp(context, AppConfig.privacyUrl, title: 'Privacy Policy'),
+        child: const Text('Privacy Policy'),
+      ),
+    ]),
+  ];
+
+  /// The first screen where passkeys are offered: continue with a passkey,
+  /// or with the phone number.
+  Widget _choices(BuildContext context) {
+    final t = Theme.of(context);
+    final showLogo = ref.watch(appDisplayProvider).value?.showSignInLogo ?? true;
+    return Scaffold(
+      key: const ValueKey('sign-in-choices'),
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, box) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: box.maxHeight),
+              child: IntrinsicHeight(
+                child: ResponsiveCenter(
+                  maxWidth: 440,
+                  padding: const EdgeInsets.all(24),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        key: const ValueKey('phone-diagnostics'),
+                        tooltip: 'Connection diagnostics',
+                        icon: const Icon(Icons.medical_services_outlined),
+                        onPressed: () => context.push('/diagnostics'),
+                      ),
+                    ),
+                    const Spacer(),
+                    if (showLogo) ...[
+                      const Center(key: ValueKey('sign-in-logo'), child: BrandMark(size: 48)),
+                      const SizedBox(height: 12),
+                    ],
+                    Text('Your ride, your way.', textAlign: TextAlign.center, style: t.textTheme.titleMedium),
+                    const Spacer(),
+                    const SignedOutElsewhereNote(),
+                    const PasskeySignInButton(),
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      key: const ValueKey('continue-with-phone'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        textStyle: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      onPressed: () {
+                        signedOutElsewhere.value = false;
+                        setState(() => _withPhone = true);
+                      },
+                      child: const Text('Continue with phone'),
+                    ),
+                    const SizedBox(height: 16),
+                    ..._terms(t),
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _numberEntry(BuildContext context, {required bool canGoBack}) {
     final t = Theme.of(context);
     final blocked = ref.watch(deviceBlockedProvider).value ?? false;
     final showLogo = ref.watch(appDisplayProvider).value?.showSignInLogo ?? true;
@@ -148,15 +239,22 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
             maxWidth: 440,
             padding: const EdgeInsets.all(24),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: IconButton(
+              Row(children: [
+                if (canGoBack)
+                  IconButton(
+                    key: const ValueKey('sign-in-back'),
+                    tooltip: 'Back',
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () => setState(() => _withPhone = false),
+                  ),
+                const Spacer(),
+                IconButton(
                   key: const ValueKey('phone-diagnostics'),
                   tooltip: 'Connection diagnostics',
                   icon: const Icon(Icons.medical_services_outlined),
                   onPressed: () => context.push('/diagnostics'),
                 ),
-              ),
+              ]),
               if (showLogo) ...[
                 const Center(key: ValueKey('sign-in-logo'), child: BrandMark(size: 40)),
                 const SizedBox(height: 8),
@@ -164,7 +262,6 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
               Text('Your ride, your way.', textAlign: TextAlign.center, style: t.textTheme.bodyLarge),
               const SizedBox(height: 32),
               const SignedOutElsewhereNote(),
-              const PasskeySignInButton(),
               const SizedBox(height: 16),
               Text('Enter your mobile number', style: t.textTheme.titleLarge),
               const SizedBox(height: 4),
@@ -201,23 +298,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                     : const Text('Continue'),
               ),
               const SizedBox(height: 16),
-              Text(
-                'By continuing you agree to the GET.ride Terms of Service and Privacy Policy.',
-                textAlign: TextAlign.center,
-                style: t.textTheme.bodySmall,
-              ),
-              Wrap(alignment: WrapAlignment.center, children: [
-                TextButton(
-                  key: const ValueKey('phone-terms'),
-                  onPressed: () => openInApp(context, AppConfig.termsUrl, title: 'Terms of Service'),
-                  child: const Text('Terms of Service'),
-                ),
-                TextButton(
-                  key: const ValueKey('phone-privacy'),
-                  onPressed: () => openInApp(context, AppConfig.privacyUrl, title: 'Privacy Policy'),
-                  child: const Text('Privacy Policy'),
-                ),
-              ]),
+              ..._terms(t),
             ]),
           ),
         ),

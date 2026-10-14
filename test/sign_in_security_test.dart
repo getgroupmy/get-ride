@@ -119,12 +119,15 @@ void main() {
     testWidgets('no passkey button until the admin turns it on for this surface', (tester) async {
       await pump(tester, offered: false);
       expect(find.byKey(const ValueKey('passkey-sign-in')), findsNothing);
+      expect(find.byKey(const ValueKey('dial-country')), findsOneWidget, reason: 'straight to the number');
+      expect(find.byKey(const ValueKey('sign-in-back')), findsNothing);
     });
 
     for (final b in Brightness.values) {
       testWidgets('the passkey button signs in; closing the prompt says nothing (${b.name})', (tester) async {
         final auth = await pump(tester, offered: true, b: b);
-        expect(find.text('Sign in with a passkey'), findsOneWidget);
+        expect(find.text('Continue with passkey'), findsOneWidget);
+        expect(find.byKey(const ValueKey('dial-country')), findsNothing, reason: 'the number is a second step');
         await tester.tap(find.byKey(const ValueKey('passkey-sign-in')));
         await tester.pumpAndSettle();
         expect(auth.passkeySignIns, 1);
@@ -135,6 +138,17 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
         expect(find.text('There is no passkey saved on this device.'), findsOneWidget);
+      });
+
+      testWidgets('continue with phone opens the number, and back returns (${b.name})', (tester) async {
+        await pump(tester, offered: true, b: b);
+        await tester.tap(find.byKey(const ValueKey('continue-with-phone')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('dial-country')), findsOneWidget);
+        expect(find.byKey(const ValueKey('passkey-sign-in')), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('sign-in-back')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('passkey-sign-in')), findsOneWidget);
       });
 
       testWidgets('a device signed out by a newer sign-in says why (${b.name})', (tester) async {

@@ -25,6 +25,8 @@ final passkeyOfferedHereProvider = FutureProvider<bool>((ref) async {
   }
 });
 
+/// "Continue with passkey", the first choice on the sign-in screen (as
+/// inDrive does) wherever passkeys are offered; nothing elsewhere.
 class PasskeySignInButton extends ConsumerStatefulWidget {
   const PasskeySignInButton({super.key});
 
@@ -55,17 +57,24 @@ class _PasskeySignInButtonState extends ConsumerState<PasskeySignInButton> {
   @override
   Widget build(BuildContext context) {
     if (ref.watch(passkeyOfferedHereProvider).value != true) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
-      child: OutlinedButton.icon(
-        key: const ValueKey('passkey-sign-in'),
-        style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-        onPressed: _busy ? null : _signIn,
-        icon: _busy
-            ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.fingerprint),
-        label: const Text('Sign in with a passkey'),
+    final t = Theme.of(context);
+    return FilledButton.icon(
+      key: const ValueKey('passkey-sign-in'),
+      style: FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(56),
+        backgroundColor: t.colorScheme.inverseSurface,
+        foregroundColor: t.colorScheme.onInverseSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
       ),
+      onPressed: _busy ? null : _signIn,
+      icon: _busy
+          ? SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2, color: t.colorScheme.onInverseSurface),
+            )
+          : const Icon(Icons.how_to_reg_outlined),
+      label: const Text('Continue with passkey'),
     );
   }
 }
