@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../data/ride_cancel_config.dart';
 import '../../data/active_location.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare_coins.dart';
@@ -24,6 +25,7 @@ import '../../config.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/net_image.dart';
 import '../../widgets/ble_handshake_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
@@ -768,7 +770,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               child: Column(
                 children: [
                   ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.person)),
+                    leading: NetAvatar(
+                      key: const ValueKey('driver-photo'),
+                      url: r.partnerPhoto,
+                      fallback: const Icon(Icons.person),
+                    ),
                     title: Text(r.partnerName ?? 'Your driver'),
                     subtitle: Text([r.partnerVehicle, r.partnerPlate].whereType<String>().join(' · ')),
                     trailing: r.partnerRating == null
@@ -825,13 +831,15 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 subtitle: const Text('You can book another ride from the map.'),
               ),
             ),
-          if (riderCancelAsk && r.status.isOngoing)
-            const Card(
-              child: ListTile(
-                leading: Icon(Icons.hourglass_top),
-                title: Text('Cancellation requested'),
-                subtitle: Text('Waiting for the driver to confirm.'),
+          if ((riderCancelAsk || r.cancelRequestOutcome == 'expired') && r.status.isOngoing)
+            _CancelWaitCard(
+              ride: r,
+              onAskAgain: () =>
+                  _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: r.cancelReason, by: 'rider')),
+              onSupport: () => context.push(
+                r.cancelTicketId == null ? '/account/support' : '/account/support/${r.cancelTicketId}',
               ),
+              onSos: () => _sos(r),
             ),
           Card(
             child: Column(
@@ -1086,6 +1094,121 @@ class _CancelReasonDialogState extends State<_CancelReasonDialog> {
           child: Text(status == RideStatus.onTrip ? 'Request cancellation' : 'Cancel ride'),
         ),
       ],
+    );
+  }
+}
+
+/// The rider's cancellation request: how long it still waits for the
+/// driver, then, when the driver didn't answer (migration 0191), what the
+/// rider can do. The ride itself carries on.
+class _CancelWaitCard extends ConsumerStatefulWidget {
+  const _CancelWaitCard({required this.ride, required this.onAskAgain, required this.onSupport, required this.onSos});
+
+  final RideRequest ride;
+  final Future<void> Function() onAskAgain;
+  final VoidCallback onSupport;
+  final VoidCallback onSos;
+
+  @override
+  ConsumerState<_CancelWaitCard> createState() => _CancelWaitCardState();
+}
+
+class _CancelWaitCardState extends ConsumerState<_CancelWaitCard> {
+  Timer? _timer;
+
+  /// "Keep riding" hides the options until the rider asks again.
+  DateTime? _dismissedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.ride;
+    final t = Theme.of(context);
+    final c = ref.watch(cancelRequestConfigProvider).value ?? CancelRequestConfig.standard;
+    final now = DateTime.now();
+    final unanswered = riderCancelUnanswered(r, now, c);
+    if (!unanswered) {
+      final left = riderCancelWaitLeft(r, now, c);
+      if (left == null) return const SizedBox.shrink();
+      return Card(
+        key: const ValueKey('cancel-waiting'),
+        child: ListTile(
+          leading: const Icon(Icons.hourglass_top),
+          title: const Text('Cancellation requested'),
+          subtitle: Text('Waiting for the driver to confirm · ${cancelWaitText(left)}'),
+        ),
+      );
+    }
+    final dismissed = _dismissedAt;
+    if (dismissed != null && (r.cancelRequestedAt == null || r.cancelRequestedAt!.isBefore(dismissed))) {
+      return const SizedBox.shrink();
+    }
+    return Card(
+      key: const ValueKey('cancel-unanswered'),
+      color: t.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              "Your driver didn't respond",
+              style: t.textTheme.titleMedium?.copyWith(
+                color: t.colorScheme.onTertiaryContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'The ride carries on. You can ask again, contact support, or use SOS if you feel unsafe.',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onTertiaryContainer),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                BusyButton.filled(
+                  key: const ValueKey('cancel-ask-again'),
+                  onPressed: widget.onAskAgain,
+                  child: const Text('Ask again'),
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('cancel-support'),
+                  icon: const Icon(Icons.support_agent),
+                  label: const Text('Support'),
+                  onPressed: widget.onSupport,
+                ),
+                OutlinedButton.icon(
+                  key: const ValueKey('cancel-sos'),
+                  style: OutlinedButton.styleFrom(foregroundColor: t.colorScheme.error),
+                  icon: const Icon(Icons.sos),
+                  label: const Text('SOS'),
+                  onPressed: widget.onSos,
+                ),
+                TextButton(
+                  key: const ValueKey('cancel-keep-riding'),
+                  onPressed: () => setState(() => _dismissedAt = DateTime.now()),
+                  child: const Text('Keep riding'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
