@@ -62,6 +62,7 @@ import '../../core/my_ride.dart' show FavouriteDriver, myRideMaxTargets;
 import '../my_ride/my_ride_parts.dart';
 import '../my_qr/direct_booking.dart';
 import '../../core/my_qr.dart' show QrBookingError;
+import '../../core/early_end.dart' show serviceTypeIds;
 import '../my_ride/my_ride_settings.dart';
 
 enum _PinTarget { none, pickup, drop }
@@ -190,15 +191,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   RegionRuleContext _rules = RegionRuleContext.empty;
 
   /// The Service Settings ids of [s]'s Service types (its names).
-  Set<String> _typesOf(RideService s) {
-    if (s.serviceTypes.isEmpty) return const {};
-    final names = ref.read(serviceBoxNamesProvider).value ?? const <String, String>{};
-    final wanted = {for (final n in s.serviceTypes) n.trim().toLowerCase()};
-    return {
-      for (final e in names.entries)
-        if (wanted.contains(e.value.trim().toLowerCase())) e.key,
-    };
-  }
+  Set<String> _typesOf(RideService s) =>
+      s.serviceTypes.isEmpty ? const {} : serviceTypeIds(s, ref.read(serviceBoxNamesProvider).value ?? const {});
 
   /// The Service Settings types offered at the pickup now, for the home
   /// service boxes: the region's Services switches, and its scheduled

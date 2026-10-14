@@ -4,10 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/early_end.dart';
+import 'package:get_ride/src/core/fare.dart';
+import 'package:get_ride/src/core/fare_tariff.dart';
 import 'package:get_ride/src/core/region_pricing.dart';
 import 'package:get_ride/src/core/trip_charges.dart';
 import 'package:get_ride/src/core/trip_checkpoint.dart';
 import 'package:get_ride/src/core/trip_progress.dart';
+import 'package:get_ride/src/data/app_display_repository.dart';
+import 'package:get_ride/src/data/fare_tariff_repository.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
@@ -142,10 +146,39 @@ void main() {
       expect(earlyEndFare(agreed: 20, plannedKm: null, drivenKm: 2), 20);
       expect(earlyEndFare(agreed: 20, plannedKm: 10, drivenKm: null), 20);
       expect(earlyEndFare(agreed: 0, plannedKm: 10, drivenKm: 2), 0);
+      // The floor is the tariff the ride was priced on, not the built-in one.
+      expect(earlyEndFare(agreed: 50, plannedKm: 20, drivenKm: 0.5, floor: 10), 10);
+      expect(earlyEndFare(agreed: 8, plannedKm: 20, drivenKm: 0.5, floor: 10), 8, reason: 'never above the agreed fare');
       // A whole-fare region rounds up, as it booked the fare, but never past it.
       const whole = RegionPricing(wholeFare: true);
       expect(earlyEndFare(agreed: 20, plannedKm: 7, drivenKm: 2, pricing: whole), 6);
       expect(earlyEndFare(agreed: 19.5, plannedKm: 10, drivenKm: 9.9, pricing: whole), 19.5);
+    });
+  });
+
+  group('early-end floor', () {
+    const kl = FareTariff(level: 'city', country: 'Malaysia', state: 'Kuala Lumpur', city: 'Kuala Lumpur',
+        baseFare: 5, perKm: 1.2, minimumFare: 6, bookingFee: 1);
+    const master = FareTariff(level: 'master', baseFare: 3, perKm: 1);
+    final ride = {'country': 'Malaysia', 'state': 'Kuala Lumpur', 'city': 'Kuala Lumpur'};
+
+    test('the pickup area picks the card', () {
+      expect(rideTariffCard([master, kl], ride), kl);
+      expect(rideTariffCard([master, kl], {'country': 'Malaysia', 'city': 'Ipoh'}), master);
+      expect(rideTariffCard(const [], ride), isNull);
+    });
+
+    test("the floor is a trip of no distance on that card: base or minimum, plus booking fee", () {
+      expect(earlyEndFloor(kl), 7); // max(6 minimum, 5 base) + 1 booking fee
+      expect(earlyEndFloor(master, multiplier: 2), 6);
+      // No card: the built-in TEKSI flag fall, times the service's multiplier.
+      expect(earlyEndFloor(null), calculateFare(0, 0));
+      expect(earlyEndFloor(null, multiplier: 1.5), calculateFare(0, 0, multiplier: 1.5));
+    });
+
+    test('service types are matched by name', () {
+      const s = RideService('GET Car', '', 1.1, 4, id: 'v1', serviceTypes: ['Car']);
+      expect(serviceTypeIds(s, {'t1': 'car', 't2': 'Bike'}), {'t1'});
     });
   });
 
@@ -194,6 +227,10 @@ void main() {
             tripFixProvider.overrideWithValue(() async => null),
             geoServiceProvider.overrideWithValue(geo),
             currentUserIdProvider.overrideWithValue(null),
+            // No tariff cards: the early-end floor is the built-in flag fall.
+            fareTariffsProvider.overrideWith((ref) async => const []),
+            rideServicesProvider.overrideWith((ref) async => const []),
+            serviceBoxNamesProvider.overrideWith((ref) async => const {}),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
