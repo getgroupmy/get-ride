@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/account_deletion.dart';
 import '../../core/partner_status.dart';
+import '../../data/account_deletion_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../account_app_version.dart';
@@ -14,6 +16,7 @@ import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
+import 'people/account_deletion_section.dart';
 import 'people/people_data.dart';
 import 'people/vehicle_screens.dart' show confirmVehicleApprovable;
 import 'security/sign_in_security_card.dart';
@@ -354,6 +357,7 @@ class AdminUsersScreen extends ConsumerWidget {
           'Joined': dateText(u['joined_at']),
         }),
         ActiveDeviceSection(userId: '${u['id']}', canEdit: canEdit),
+        AccountDeletionSection(user: u, canEdit: canEdit),
         if ((u['id_image'] as String?)?.startsWith('http') == true)
           TextButton.icon(
             icon: const Icon(Icons.badge_outlined),
@@ -378,21 +382,22 @@ class AdminUsersScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(moduleAccessProvider('users')) == AccessLevel.edit;
+    final keepDays = ref.watch(accountRetentionDaysProvider).value ?? 365;
     return _RecordList(
         title: 'Users',
         module: 'users',
         watch: (r) => r.watch(adminUsersProvider),
         filters: userFilters,
         initialFilter: initialFilter,
-        matches: userMatches,
-        searchColumns: const ['name', 'phone', 'email', 'display_id', 'ic', 'app_version'],
+        matches: (u, f) => f == 'final-delete' ? dueForFinalDeletion(u, keepDays, DateTime.now()) : userMatches(u, f),
+        searchColumns: const ['name', 'phone', 'deleted_phone', 'email', 'display_id', 'ic', 'app_version'],
         onOpen: (u) => _open(context, ref, u),
         tile: (u) => _RecordCard(
           id: '${u['id']}',
           leading: _avatar(u['avatar_url'] ?? u['profile_image']),
           title: (u['name'] as String?)?.isNotEmpty == true ? u['name'] as String : '(no name)',
           subtitle: [
-            u['phone'],
+            u['phone'] ?? u['deleted_phone'],
             u['display_id'],
             if (accountAppVersionShort(u) case final v?) 'app $v',
           ].whereType<String>().join(' · '),

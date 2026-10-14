@@ -70,6 +70,15 @@ class SettingsScreen extends ConsumerWidget {
             const RulesTermsCard(),
             Card(
               child: ListTile(
+                key: const ValueKey('delete-account'),
+                leading: Icon(Icons.person_remove_outlined, color: Theme.of(context).colorScheme.error),
+                title: Text('Delete account', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => context.push('/account/settings/delete'),
+              ),
+            ),
+            Card(
+              child: ListTile(
                 leading: const Icon(Icons.storage_outlined),
                 title: const Text('Backend'),
                 // The second address when this network cannot look up the

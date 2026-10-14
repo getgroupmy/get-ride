@@ -75,6 +75,7 @@ import 'features/ride/trips_screen.dart';
 import 'features/settings/change_phone_screen.dart';
 import 'features/settings/auth_diagnostics_screen.dart';
 import 'features/settings/change_pin_screen.dart';
+import 'features/settings/delete_account_screen.dart';
 import 'features/settings/passkeys_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
@@ -328,6 +329,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                           GoRoute(path: 'phone', builder: (_, _) => const ChangePhoneScreen()),
                           GoRoute(path: 'pin', builder: (_, _) => const ChangePinScreen()),
                           GoRoute(path: 'passkeys', builder: (_, _) => const PasskeysScreen()),
+                          GoRoute(path: 'delete', builder: (_, _) => const DeleteAccountScreen()),
                         ],
                       ),
                       GoRoute(
