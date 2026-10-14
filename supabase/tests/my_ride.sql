@@ -224,8 +224,15 @@ select pg_temp.check((select note = 'gate B' from public.ride_requests where id 
 reset role;
 select set_config('request.jwt.claims', '{"role": "anon"}', true), set_config('request.jwt.claim.sub', '', true);
 set local role anon;
-select pg_temp.check(not exists (select 1 from public.ride_requests where id = '00000000-0000-0000-0000-0000000160e1'),
-                     'signed out, nobody sees it');
+-- Signed out, nobody sees it (since 0182 the table refuses them outright).
+do $$
+begin
+  if exists (select 1 from public.ride_requests where id = '00000000-0000-0000-0000-0000000160e1') then
+    raise exception 'FAILED: signed out, nobody sees it';
+  end if;
+exception when insufficient_privilege then
+  null;
+end $$;
 reset role;
 set local role authenticated;
 

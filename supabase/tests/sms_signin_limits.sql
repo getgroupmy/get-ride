@@ -40,10 +40,12 @@ values ('otp', 'outbound', 'sms', true, array['00000000-0000-0000-0000-000000014
 
 -- 2. Allowed: queued on the otp channel with the code in the template --------------
 select pg_temp.check(pg_temp.ask('+60 12-345 6789', '654321') = '{}'::jsonb, 'an allowed code is accepted');
-select pg_temp.check((select to_phone = '+60123456789' and channel = 'otp' and status = 'queued'
-                             and body = 'Your GET.ride code is 654321. Do not share it.'
-                        from public.sms_outbox order by created_at desc limit 1),
-  'the code is queued for the gateway, number normalised');
+select pg_temp.check((select o.to_phone = '+60123456789' and o.channel = 'otp' and o.status = 'queued'
+                             and o.body = 'Your GET.ride code is ••••••. Do not share it.'
+                             and s.body = 'Your GET.ride code is 654321. Do not share it.'
+                        from public.sms_outbox o join public.sms_otp_secret s on s.outbox_id = o.id
+                       order by o.created_at desc limit 1),
+  'the code is queued for the gateway (kept apart, masked in the queue), number normalised');
 select pg_temp.check((select status = 'queued' and outbox_id is not null from public.sms_log order by id desc limit 1),
   'and logged as queued');
 
