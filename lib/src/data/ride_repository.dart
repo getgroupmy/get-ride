@@ -31,7 +31,12 @@ import 'geo_service.dart';
 import 'models.dart';
 import 'realtime_backup.dart';
 import 'ride_cache.dart';
+import 'scheduled_ride_repository.dart';
 import '../core/ride_cache.dart';
+import '../core/scheduled_rides.dart' show ScheduledRide;
+
+/// What "Find a driver" made: a ride now, or a booking for later.
+typedef Booked = ({RideRequest? now, ScheduledRide? later});
 
 /// Ride booking + dispatch over `public.ride_requests`, mirroring the Expo
 /// app's `utils/rideRequestsStore.ts`. Partners are identified by their auth
@@ -50,7 +55,10 @@ class RideRepository {
 
   String? get _uid => _db.auth.currentUser?.id;
 
-  Future<RideRequest> createRequest({
+  /// Books a ride now, or with [scheduleAt] for later (migration 0189): the
+  /// same row goes to `schedule_ride`, which keeps it until its release.
+  Future<Booked> createRequest({
+    DateTime? scheduleAt,
     required String service,
     required String pickupName,
     required String pickupAddress,
@@ -146,6 +154,14 @@ class RideRepository {
       'target_driver_ids',
       'my_ride_max_km',
     };
+    if (scheduleAt != null) {
+      // Favourites and a scanned driver are for a ride now; the server
+      // drops them from a booking anyway.
+      for (final k in ['target_driver_ids', 'my_ride_max_km', 'direct_qr_token', 'auto_accept_fare']) {
+        row.remove(k);
+      }
+      return (now: null, later: await ScheduledRideRepository(_db).schedule(row, scheduleAt));
+    }
     Map<String, dynamic> data;
     for (var attempt = 0;; attempt++) {
       try {
@@ -179,7 +195,7 @@ class RideRepository {
     }
     // Online partners are pushed by the database (the ride_requests insert
     // trigger); send-push no longer takes a rider's call.
-    return RideRequest(data);
+    return (now: RideRequest(data), later: null);
   }
 
   /// The caller's public IP as the `ip-lookup` edge function sees it, or null.

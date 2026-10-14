@@ -1079,6 +1079,7 @@ class ConfirmFooter extends StatelessWidget {
     this.coinSubtitle,
     this.useCoins = false,
     this.onUseCoins,
+    this.schedule,
     this.whoRiding,
     this.myRide,
     this.onOptions,
@@ -1107,6 +1108,10 @@ class ConfirmFooter extends StatelessWidget {
   final String? coinSubtitle;
   final bool useCoins;
   final ValueChanged<bool>? onUseCoins;
+
+  /// "Schedule for later" (0189), above who's riding; none while scheduled
+  /// rides are off.
+  final Widget? schedule;
 
   /// A row under the GET.coin one: who's riding (a toggle for someone else).
   final Widget? whoRiding;
@@ -1168,6 +1173,7 @@ class ConfirmFooter extends StatelessWidget {
                     ),
                   ],
                 ),
+              ?schedule,
               ?whoRiding,
               ?myRide,
               if (autoAcceptLabel != null)

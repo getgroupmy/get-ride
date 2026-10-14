@@ -16,6 +16,7 @@ import '../../core/commission.dart' show Geo;
 import '../../core/driver_eta.dart';
 import '../../core/fare.dart';
 import '../../core/fare_info.dart' show fareRateLines;
+import '../../core/scheduled_rides.dart';
 import '../../core/search_timer.dart';
 import '../../core/fare_tariff.dart';
 import '../../core/fare_coins.dart';
@@ -32,6 +33,7 @@ import '../../widgets/side_menu_host.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../../widgets/toll_booths.dart';
 import '../../core/route_estimate.dart';
+import '../../data/scheduled_ride_repository.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/coin_trade_repository.dart';
 import '../../data/device_access.dart';
@@ -48,6 +50,7 @@ import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
+import 'scheduled_rides_screen.dart';
 import 'auto_accept.dart';
 import 'book_for_sheet.dart';
 import 'confirm_parts.dart';
@@ -225,6 +228,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// "Who's riding?": the rider, or someone else (name and phone).
   bool _forOther = false;
+
+  /// A pickup time for a scheduled ride (0189); null books now.
+  DateTime? _scheduleAt;
   final _otherName = TextEditingController();
   final _otherPhone = TextEditingController();
 
@@ -885,7 +891,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       // The rules at the moment of booking decide: a service whose hours
       // have just ended is not booked, and its bidding and charges are now's.
-      if (!_availableNow(_service, rules)) {
+      final scheduleAt = _scheduleAt;
+      if (scheduleAt != null) {
+        final c = await ref.read(scheduledRidesConfigProvider.future);
+        final problem = !c.enabled
+            ? 'Scheduled rides are not available.'
+            : pickupTimeProblem(scheduleAt, DateTime.now(), c);
+        if (problem != null) {
+          if (mounted) showInfo(context, problem);
+          return;
+        }
+      } else if (!_availableNow(_service, rules)) {
         if (mounted) showInfo(context, '${_service.name} is not available here right now.');
         return;
       }
@@ -901,7 +917,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         gender: profile?.raw['gender'] as String?,
         riderPhoto: profile?.avatarUrl,
       );
-      final req = await rides.createRequest(
+      final booked = await rides.createRequest(
+            scheduleAt: scheduleAt,
             service: _service.name,
             pickupName: a.name,
             pickupAddress: a.address,
@@ -932,8 +949,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             timezone: rules.timezone,
             targetDriverIds: myRideTargets,
             myRideMaxKm: myRideTargets.isEmpty ? null : myRideSettings.maxKm,
-            directQrToken: direct?.token,
+            directQrToken: scheduleAt == null ? direct?.token : null,
           );
+      final later = booked.later;
+      if (later != null) {
+        ref.invalidate(myScheduledRidesProvider);
+        ref.invalidate(owedFeesProvider);
+        if (!mounted) return;
+        setState(() => _scheduleAt = null);
+        _leaveConfirm();
+        await showNotice(
+          context,
+          title: 'Ride scheduled',
+          message:
+              'Pickup ${pickupLabel(later.pickupAt)}'
+              '${later.bookedForName == null ? '' : ' for ${later.bookedForName}'}. '
+              "We'll find your driver before then and let you know.",
+        );
+        if (mounted) context.push('/trips/scheduled');
+        return;
+      }
+      final req = booked.now!;
       if (direct != null) {
         ref.read(directBookingNamesProvider.notifier).remember(req.id, direct.driverName);
         ref.read(directBookingProvider.notifier).clear();
@@ -1011,7 +1047,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// "Find a driver". One ride of the rider's own at a time (Expo's alert);
   /// rides for others are not held back by it.
   Future<void> _find() async {
-    if (!_forOther && _ongoing != null) {
+    if (!_forOther && _scheduleAt == null && _ongoing != null) {
       final open = await showDialog<bool>(
         context: context,
         builder: (c) => AlertDialog(
@@ -1090,6 +1126,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           title: const Text('Where to?'),
           onTap: whereTo,
         ),
+      const UpcomingRideCard(),
       if (recent.isNotEmpty) ...[
         const SizedBox(height: 4),
         HomeRecentPlaces(
@@ -1417,6 +1454,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final myRideTargets = _myRideTargets(myRideFavs, myRideSettings);
     final myRideOn = myRideTargets.isNotEmpty;
     final direct = ref.watch(directBookingProvider);
+    final scheduleConfig = ref.watch(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
     final footer = confirming && _route != null
         ? ConfirmFooter(
             onOptions: () => showRideOptionsSheet(
@@ -1438,7 +1476,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             autoAcceptLabel: _biddingFor(_service) ? 'Auto-accept offer of ${_fareMoney(_fareFor(_service))}' : null,
             autoAccept: _autoAccept,
             onAutoAccept: (v) => setState(() => _autoAccept = v),
-            label: _forOther
+            label: _scheduleAt != null
+                ? (_forOther ? 'Schedule for ${otherName.isEmpty ? 'someone else' : otherName}' : 'Schedule ride')
+                : _forOther
                 ? 'Find a driver for ${otherName.isEmpty ? 'someone else' : otherName}'
                 : direct != null
                 ? 'Book ${direct.driverName}'
@@ -1461,6 +1501,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
             useCoins: _useCoins,
             onUseCoins: (v) => setState(() => _useCoins = v),
+            schedule: scheduleConfig.enabled && direct == null
+                ? ScheduleRow(
+                    at: _scheduleAt,
+                    config: scheduleConfig,
+                    fare: _fareFor(_service),
+                    money: (v) => formatMoney(v, _currency),
+                    owed: ref.watch(owedFeesProvider).value ?? 0,
+                    onChanged: (at) => setState(() => _scheduleAt = at),
+                  )
+                : null,
             whoRiding: _WhoRiding(
               forOther: _forOther,
               name: _otherName,

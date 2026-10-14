@@ -59,6 +59,9 @@ const liveSettingTables = <String>[
   'sms_fallback_settings',
   // Lost item reports and the driver's answers (0154; parties only).
   'ride_lost_items',
+  // Scheduled rides (0189): the rider's bookings and a driver's accepted
+  // ones, as their state moves (row-level security keeps them to those).
+  'scheduled_rides',
 ];
 
 /// The signed-in account's own rows that an admin decides on (approving,

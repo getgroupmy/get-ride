@@ -32,7 +32,9 @@ begin
     -- SMS fallback for trips (migration 0150).
     'sms_fallback_settings',
     -- Lost item reports (migration 0154).
-    'ride_lost_items'
+    'ride_lost_items',
+    -- Scheduled rides (migration 0189).
+    'scheduled_rides'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables
