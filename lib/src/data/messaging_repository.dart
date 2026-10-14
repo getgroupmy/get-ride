@@ -61,9 +61,30 @@ class MessagingRepository {
   Future<void> queueSms({required MessagingChannel channel, required String to, required String body}) =>
       _db.from('sms_outbox').insert({'channel': channel.id, 'to_phone': to, 'body': body});
 
-  Future<List<Map<String, dynamic>>> recentOutbox({int limit = 20}) async => List<Map<String, dynamic>>.from(
-    await _db.from('sms_outbox').select().order('created_at', ascending: false).limit(limit),
-  );
+  /// The newest queued SMS. A sign-in code's text is masked on the queue row
+  /// (migration 0183); a full admin gets the real text back from
+  /// sms_otp_secret (0187), a sub-admin gets nothing and keeps the mask.
+  Future<List<Map<String, dynamic>>> recentOutbox({int limit = 20}) async {
+    final rows = List<Map<String, dynamic>>.from(
+      await _db.from('sms_outbox').select().order('created_at', ascending: false).limit(limit),
+    );
+    final otpIds = [
+      for (final r in rows)
+        if (r['channel'] == 'otp') '${r['id']}',
+    ];
+    if (otpIds.isEmpty) return rows;
+    try {
+      final secrets = {
+        for (final s in await _db.from('sms_otp_secret').select('outbox_id, body').inFilter('outbox_id', otpIds))
+          '${s['outbox_id']}': s['body'],
+      };
+      return [
+        for (final r in rows) secrets.containsKey('${r['id']}') ? {...r, 'body': secrets['${r['id']}']} : r,
+      ];
+    } catch (_) {
+      return rows;
+    }
+  }
 
   Future<List<Map<String, dynamic>>> recentInbox({int limit = 20}) async => List<Map<String, dynamic>>.from(
     await _db.from('sms_inbox').select().order('created_at', ascending: false).limit(limit),
