@@ -35,7 +35,6 @@ import 'package:get_ride/src/data/referral_repository.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
-import 'package:get_ride/src/features/auth/phone_screen.dart';
 import 'package:get_ride/src/features/auth/passkey_sign_in_button.dart';
 import 'package:get_ride/src/features/auth/welcome_screen.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
