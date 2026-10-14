@@ -10,6 +10,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/active_location.dart';
 import '../../core/early_end.dart';
+import '../../core/fare.dart' show RideService;
+import '../../data/app_display_repository.dart' show rideServicesProvider, serviceBoxNamesProvider;
+import '../../data/fare_tariff_repository.dart' show fareTariffsProvider;
 import '../../core/region_pricing.dart';
 import '../../core/format.dart';
 import '../../core/navigation_app.dart';
@@ -410,6 +413,35 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     });
   }
 
+  /// The flag fall of the tariff [r] was priced on (Admin → Fare tariffs for
+  /// its pickup and service), the least an early end may charge. The
+  /// built-in TEKSI one when the cards or the catalogue can't be read.
+  Future<double> _earlyEndFloor(RideRequest r) async {
+    Future<T?> read<T>(Future<T> f) async {
+      try {
+        return await f.timeout(const Duration(seconds: 5));
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final (cards, services, names) =
+        await (
+          read(ref.read(fareTariffsProvider.future)),
+          read(ref.read(rideServicesProvider.future)),
+          read(ref.read(serviceBoxNamesProvider.future)),
+        ).wait;
+    final name = '${r.raw['service'] ?? ''}'.trim().toLowerCase();
+    final service = (services ?? const <RideService>[]).where((s) => s.name.trim().toLowerCase() == name).firstOrNull;
+    final card = rideTariffCard(
+      cards ?? const [],
+      r.raw,
+      vehicleServiceId: service?.id,
+      serviceTypes: service == null ? const {} : serviceTypeIds(service, names ?? const {}),
+    );
+    return earlyEndFloor(card, multiplier: service?.multiplier ?? 1);
+  }
+
   /// Works out the early-end fare and asks the driver to confirm it; null
   /// keeps driving. The distance covered is the road route from the pickup
   /// to here (as Expo measured it), else what this screen counted.
@@ -436,7 +468,9 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       plannedKm: planned,
       drivenKm: driven,
       pricing: RegionPricing.fromRide(r.raw),
+      floor: await _earlyEndFloor(r),
     );
+    if (!mounted) return null;
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
