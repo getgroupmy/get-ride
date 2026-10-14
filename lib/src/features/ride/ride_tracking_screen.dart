@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/active_location.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
@@ -22,7 +21,6 @@ import '../../core/search_stage.dart';
 import '../../core/ride_payment.dart';
 import '../../core/search_timer.dart';
 import '../../config.dart';
-import '../../core/sos.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
@@ -45,8 +43,7 @@ import 'shared_ride_screen.dart' show shareRide;
 import '../../widgets/offline_ride_banner.dart';
 import '../../widgets/ride_rating_card.dart';
 import '../../widgets/ride_stop_tiles.dart';
-import '../profile/emergency_contacts_screen.dart';
-import '../safety/safety_screen.dart';
+import '../safety/ride_sos.dart';
 import '../wallet/wallet_screen.dart';
 import '../../core/demo_mode.dart';
 import 'auto_accept.dart';
@@ -550,43 +547,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   /// Emergency options during a ride: call the emergency number (Expo's
   /// SOS button dialled 999) or alert emergency contacts with the location,
   /// driver and car.
-  Future<void> _sos(RideRequest r) async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (c) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(
-            key: const ValueKey('sos-call'),
-            leading: const Icon(Icons.call),
-            title: const Text('Call $emergencyNumber'),
-            subtitle: const Text('Police, ambulance and fire'),
-            onTap: () => Navigator.pop(c, 'call'),
-          ),
-          ListTile(
-            key: const ValueKey('sos-contacts'),
-            leading: const Icon(Icons.sms_outlined),
-            title: const Text('Alert my emergency contacts'),
-            subtitle: const Text('SMS with your location, driver and car'),
-            onTap: () => Navigator.pop(c, 'contacts'),
-          ),
-        ]),
-      ),
-    );
-    if (!mounted || choice == null) return;
-    if (choice == 'call') {
-      await launchUrl(Uri(scheme: 'tel', path: emergencyNumber));
-      return;
-    }
-    List<EmergencyContact> contacts;
-    try {
-      contacts = await ref.read(emergencyContactsProvider.future);
-    } catch (_) {
-      contacts = const [];
-    }
-    if (!mounted) return;
-    await sendSos(context, contacts,
-        driver: r.hasDriver ? r.partnerName : null, plate: r.hasDriver ? r.partnerPlate : null);
-  }
+  Future<void> _sos(RideRequest r) => showRideSos(
+    context,
+    ref,
+    driver: r.hasDriver ? r.partnerName : null,
+    plate: r.hasDriver ? r.partnerPlate : null,
+  );
 
   /// A demo offer taken (Admin → Demo → mock driver offers): the real
   /// request is withdrawn, so no real driver turns up, and the demo trip
@@ -900,20 +866,6 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (r.status == RideStatus.onTrip) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
           if (r.status == RideStatus.completed) RideRatingCard(ride: r),
           if (r.status == RideStatus.completed) LostItemCard(ride: r),
-          if (r.status.isOngoing && r.status != RideStatus.open)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: BusyButton.filled(
-                key: const ValueKey('ride-sos'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: t.colorScheme.error,
-                  foregroundColor: t.colorScheme.onError,
-                ),
-                icon: const Icon(Icons.sos),
-                onPressed: () => _sos(r),
-                child: const Text('SOS · Emergency'),
-              ),
-            ),
           // On the trip itself the X only asks: the driver approves it.
           if (r.status.isOngoing && !riderCancelAsk)
             BusyButton.outlined(
@@ -1009,6 +961,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     ]);
   }
 
+  /// Once a driver has the ride and until it ends.
+  bool _sosOn(RideRequest r) => r.status.isOngoing && r.status != RideStatus.open;
+
   /// The payment popup has been up on this screen.
   bool _paymentShown = false;
 
@@ -1021,6 +976,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           Expanded(
             child: Stack(children: [
               Positioned.fill(child: widget.map),
+              if (_sosOn(r)) Positioned.fill(child: RideSosFab(onPressed: () => _sos(r))),
               Positioned(
                 top: 16,
                 right: 16,
@@ -1036,7 +992,17 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     // the top of the map rather than sitting in the sheet.
     // inDrive's: offers dim the whole screen under "Choose a driver".
     return Stack(children: [
-      Positioned.fill(child: MapSheetLayout(map: widget.map, sheet: content)),
+      // SOS floats on the map for the whole ride (not in the sheet).
+      Positioned.fill(
+        child: MapSheetLayout(
+          // Always the same Stack, so the map isn't rebuilt when SOS appears.
+          map: Stack(children: [
+            Positioned.fill(child: widget.map),
+            if (_sosOn(r)) Positioned.fill(child: RideSosFab(onPressed: () => _sos(r))),
+          ]),
+          sheet: content,
+        ),
+      ),
       if (r.status == RideStatus.open)
         Positioned.fill(
           child: ChooseDriverOverlay(offers: _offerViews(), onCancel: _busy ? null : _cancelSearch),

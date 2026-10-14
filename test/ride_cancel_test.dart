@@ -172,6 +172,18 @@ void main() {
       expect(rides.cancels, [('on_trip', 'driver_not_moving')]);
     });
 
+    testWidgets('the passenger\'s SOS floats on the map, not in the sheet', (tester) async {
+      final (_, rows, _) = await pump(tester);
+      rows.add(ride('on_trip'));
+      await settle(tester);
+      expect(find.byKey(const ValueKey('ride-sos')), findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsWidgets);
+      expect(find.text('SOS · Emergency'), findsNothing, reason: 'no SOS button in the sheet any more');
+      await tester.tap(find.byKey(const ValueKey('ride-sos')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('sos-call')), findsOneWidget);
+    });
+
     testWidgets('Other needs the rider\'s own words', (tester) async {
       final (rides, rows, _) = await pump(tester);
       rows.add(ride('accepted'));

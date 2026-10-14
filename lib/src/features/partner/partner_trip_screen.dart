@@ -41,6 +41,7 @@ import '../ride/ride_chat_screen.dart' show RideChatBadge;
 import '../../widgets/ble_handshake_badge.dart';
 import '../../widgets/offline_ride_banner.dart';
 import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
+import '../safety/ride_sos.dart';
 import '../safety/voice_protection_controller.dart';
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
@@ -557,7 +558,22 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         value: ride,
         onRetry: () => ref.invalidate(rideStreamProvider(widget.requestId)),
         data: (r) {
-          final map = LiveRideMap(ride: r, partner: true, driverAt: _me, driverHeading: _heading, now: ref.read(tripClockProvider));
+          // SOS floats on the map for the whole trip, as for the passenger.
+          final map = Stack(children: [
+            Positioned.fill(
+              child: LiveRideMap(
+                ride: r,
+                partner: true,
+                driverAt: _me,
+                driverHeading: _heading,
+                now: ref.read(tripClockProvider),
+              ),
+            ),
+            if (r.status.isOngoing && r.status != RideStatus.open)
+              Positioned.fill(
+                child: RideSosFab(onPressed: () => showRideSos(context, ref, plate: r.partnerPlate)),
+              ),
+          ]);
           final panel = _panel(r);
           final Widget body = MediaQuery.sizeOf(context).width >= 900
               ? Row(children: [

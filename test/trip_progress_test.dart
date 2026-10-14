@@ -258,6 +258,23 @@ void main() {
       expect(find.byKey(const ValueKey('trip-meter')), findsNothing);
     });
 
+    testWidgets('the driver has a floating SOS on the map during the ride, and the call option', (tester) async {
+      await pump(tester);
+      rows.add(ride('accepted'));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('ride-sos')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('ride-sos')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('sos-call')), findsOneWidget);
+      expect(find.byKey(const ValueKey('sos-contacts')), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+      rows.add(ride('completed'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('ride-sos')), findsNothing);
+    });
+
     testWidgets('on the trip: the drop-off route, a running clock and the distance driven', (tester) async {
       await pump(tester);
       rows.add(ride('arrived'));
