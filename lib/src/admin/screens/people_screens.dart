@@ -16,6 +16,7 @@ import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
 import 'people/people_data.dart';
 import 'people/vehicle_screens.dart' show confirmVehicleApprovable;
+import 'security/sign_in_security_card.dart';
 import '../../data/live_tables.dart';
 
 final adminUsersProvider = FutureProvider.autoDispose((ref) {
@@ -352,6 +353,7 @@ class AdminUsersScreen extends ConsumerWidget {
           'App': accountAppVersion(u),
           'Joined': dateText(u['joined_at']),
         }),
+        ActiveDeviceSection(userId: '${u['id']}', canEdit: canEdit),
         if ((u['id_image'] as String?)?.startsWith('http') == true)
           TextButton.icon(
             icon: const Icon(Icons.badge_outlined),

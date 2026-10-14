@@ -10,11 +10,12 @@ import '../../core/dial_countries.dart';
 import '../../core/phone_input.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/device_access.dart';
+import '../../data/session_guard.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/dial_country_picker.dart';
-import '../../widgets/in_app_page.dart';
+import 'passkey_sign_in_button.dart';
 
 class PhoneScreen extends ConsumerStatefulWidget {
   const PhoneScreen({super.key});
@@ -35,6 +36,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   }
 
   Future<void> _continue() async {
+    signedOutElsewhere.value = false;
     final blocked = await ref.read(deviceBlockedProvider.future);
     if (!mounted) return;
     if (blocked) {
@@ -137,85 +139,166 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final blocked = ref.watch(deviceBlockedProvider).value ?? false;
-    final showLogo = ref.watch(appDisplayProvider).value?.showSignInLogo ?? true;
+    final muted = t.colorScheme.onSurfaceVariant;
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: ResponsiveCenter(
-            maxWidth: 440,
-            padding: const EdgeInsets.all(24),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Align(
-                alignment: Alignment.centerRight,
-                child: IconButton(
-                  key: const ValueKey('phone-diagnostics'),
-                  tooltip: 'Connection diagnostics',
-                  icon: const Icon(Icons.medical_services_outlined),
-                  onPressed: () => context.push('/diagnostics'),
+        child: ResponsiveCenter(
+          maxWidth: 480,
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              if (Navigator.of(context).canPop())
+                IconButton.outlined(
+                  key: const ValueKey('sign-in-back'),
+                  tooltip: 'Back',
+                  style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).maybePop(),
                 ),
+              const Spacer(),
+              IconButton(
+                key: const ValueKey('phone-diagnostics'),
+                tooltip: 'Connection diagnostics',
+                icon: Icon(Icons.medical_services_outlined, color: muted),
+                onPressed: () => context.push('/diagnostics'),
               ),
-              if (showLogo) ...[
-                const Center(key: ValueKey('sign-in-logo'), child: BrandMark(size: 40)),
-                const SizedBox(height: 8),
-              ],
-              Text('Your ride, your way.', textAlign: TextAlign.center, style: t.textTheme.bodyLarge),
-              const SizedBox(height: 48),
-              Text('Enter your mobile number', style: t.textTheme.titleLarge),
-              const SizedBox(height: 4),
-              Text('We\'ll sign you in, or create your account.', style: t.textTheme.bodyMedium),
-              const SizedBox(height: 20),
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                DialCountryButton(key: const ValueKey('dial-country'), country: _country, onPressed: _pickCountry),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _number,
-                    autofocus: true,
-                    keyboardType: TextInputType.phone,
-                    autofillHints: const [AutofillHints.telephoneNumberNational],
-                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s-]')), const NoTrunkZeroFormatter()],
-                    decoration: const InputDecoration(hintText: '12 345 6789'),
-                    onSubmitted: (_) => _continue(),
+            ]),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  const SizedBox(height: 12),
+                  Text(
+                    'Join us via phone number',
+                    style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                   ),
-                ),
-              ]),
-              const SizedBox(height: 24),
-              if (blocked) ...[
-                Card(
-                  key: const ValueKey('device-blocked'),
-                  color: t.colorScheme.errorContainer,
-                  child: const ListTile(leading: Icon(Icons.gpp_bad_outlined), title: Text(serviceNotAvailable)),
-                ),
-                const SizedBox(height: 12),
-              ],
-              BusyButton.filled(
-                onPressed: _busy || blocked ? null : _continue,
-                child: _busy
-                    ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Continue'),
+                  const SizedBox(height: 8),
+                  Text('Sign in or create your account with your mobile number', style: t.textTheme.bodyLarge),
+                  const SizedBox(height: 28),
+                  const SignedOutElsewhereNote(),
+                  _PhoneField(
+                    country: _country,
+                    controller: _number,
+                    onPickCountry: _pickCountry,
+                    onSubmitted: _continue,
+                  ),
+                  if (blocked) ...[
+                    const SizedBox(height: 16),
+                    Card(
+                      key: const ValueKey('device-blocked'),
+                      color: t.colorScheme.errorContainer,
+                      child: const ListTile(leading: Icon(Icons.gpp_bad_outlined), title: Text(serviceNotAvailable)),
+                    ),
+                  ],
+                ]),
               ),
-              const SizedBox(height: 16),
-              Text(
-                'By continuing you agree to the GET.ride Terms of Service and Privacy Policy.',
-                textAlign: TextAlign.center,
-                style: t.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            BusyButton.filled(
+              key: const ValueKey('phone-next'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(58),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                textStyle: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
-              Wrap(alignment: WrapAlignment.center, children: [
-                TextButton(
-                  key: const ValueKey('phone-terms'),
-                  onPressed: () => openInApp(context, AppConfig.termsUrl, title: 'Terms of Service'),
-                  child: const Text('Terms of Service'),
-                ),
-                TextButton(
-                  key: const ValueKey('phone-privacy'),
-                  onPressed: () => openInApp(context, AppConfig.privacyUrl, title: 'Privacy Policy'),
-                  child: const Text('Privacy Policy'),
-                ),
-              ]),
+              onPressed: _busy || blocked ? null : _continue,
+              child: _busy
+                  ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Next'),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// The number in one rounded box, as inDrive: flag and dial code (tap to
+/// change the country), the number, and a clear button.
+class _PhoneField extends StatefulWidget {
+  const _PhoneField({
+    required this.country,
+    required this.controller,
+    required this.onPickCountry,
+    required this.onSubmitted,
+  });
+
+  final DialCountry country;
+  final TextEditingController controller;
+  final VoidCallback onPickCountry;
+  final VoidCallback onSubmitted;
+
+  @override
+  State<_PhoneField> createState() => _PhoneFieldState();
+}
+
+class _PhoneFieldState extends State<_PhoneField> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.only(left: 6, right: 4),
+      decoration: BoxDecoration(
+        color: t.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: t.colorScheme.onSurface, width: 2),
+      ),
+      child: Row(children: [
+        InkWell(
+          key: const ValueKey('dial-country'),
+          borderRadius: BorderRadius.circular(10),
+          onTap: widget.onPickCountry,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(widget.country.flag, style: const TextStyle(fontSize: 24)),
+              const Icon(Icons.arrow_drop_down),
             ]),
           ),
         ),
-      ),
+        Text(widget.country.dialCode, style: t.textTheme.titleLarge),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            key: const ValueKey('phone-number'),
+            controller: widget.controller,
+            autofocus: true,
+            keyboardType: TextInputType.phone,
+            autofillHints: const [AutofillHints.telephoneNumberNational],
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s-]')), const NoTrunkZeroFormatter()],
+            style: t.textTheme.titleLarge,
+            decoration: const InputDecoration(
+              hintText: '12 345 6789',
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              filled: false,
+              isDense: true,
+            ),
+            onSubmitted: (_) => widget.onSubmitted(),
+          ),
+        ),
+        if (widget.controller.text.isNotEmpty)
+          IconButton(
+            key: const ValueKey('phone-clear'),
+            tooltip: 'Clear',
+            icon: Icon(Icons.cancel, color: t.colorScheme.onSurfaceVariant),
+            onPressed: widget.controller.clear,
+          ),
+      ]),
     );
   }
 }

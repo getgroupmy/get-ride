@@ -11,6 +11,7 @@ import '../../widgets/common.dart';
 import '../safety/voice_protection_card.dart';
 import 'change_pin_screen.dart';
 import 'navigation_app_card.dart';
+import 'passkeys_screen.dart';
 import 'rules_terms_card.dart';
 import '../../widgets/side_menu_host.dart';
 
@@ -64,6 +65,7 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => context.push('/account/settings/pin'),
               ),
             ),
+            const PasskeysTile(),
             const ObdReaderSettingsTile(),
             const RulesTermsCard(),
             Card(

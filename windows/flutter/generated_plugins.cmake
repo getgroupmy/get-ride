@@ -10,6 +10,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_tts
   flutter_webrtc
   geolocator_windows
+  passkeys_windows
   printing
   record_windows
   share_plus

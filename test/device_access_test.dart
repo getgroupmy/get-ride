@@ -36,7 +36,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('device-blocked')), findsOneWidget);
-    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Continue'));
+    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Next'));
     expect(button.onPressed, isNull);
   });
 
@@ -50,7 +50,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('device-blocked')), findsNothing);
-    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Continue'));
+    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Next'));
     expect(button.onPressed, isNotNull);
   });
 

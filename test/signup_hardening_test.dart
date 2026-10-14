@@ -130,7 +130,7 @@ void main() {
 
   Future<void> submit(WidgetTester tester, String number) async {
     await tester.enterText(find.byType(TextField), number);
-    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Next'));
     await settle(tester);
   }
 
@@ -148,7 +148,7 @@ void main() {
       expect(auth.otps, isEmpty);
       expect(find.byType(PhoneScreen), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Next'));
       await settle(tester);
       await tester.tap(find.byKey(const ValueKey('signup-send-code')));
       await settle(tester);
