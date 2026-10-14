@@ -205,6 +205,18 @@ class RideRequest {
   DateTime? get cancelRequestedAt => _t(raw['cancel_requested_at']);
   String? get cancelRequestedBy => raw['cancel_requested_by'] as String?;
 
+  /// What became of the last cancellation request when it ended without the
+  /// ride ending (migration 0191): 'declined' or 'expired' (nobody answered).
+  String? get cancelRequestOutcome => raw['cancel_request_outcome'] as String?;
+
+  /// Who had asked: 'rider' or 'partner'.
+  String? get cancelRequestOutcomeBy => raw['cancel_request_outcome_by'] as String?;
+
+  DateTime? get cancelRequestOutcomeAt => _t(raw['cancel_request_outcome_at']);
+
+  /// The support ticket opened for it, when there is one.
+  String? get cancelTicketId => raw['cancel_ticket_id'] as String?;
+
   /// Trip safety signals (migration 0154): why the start was flagged, when,
   /// when the phones were found apart mid-trip, and when the passenger said
   /// they were OK.

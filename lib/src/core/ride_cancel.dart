@@ -90,7 +90,73 @@ String? cancelReasonLabel(String? stored) {
 /// declined: it was there, now it is gone, and the ride carries on.
 bool riderCancelDeclined(RideRequest? before, RideRequest after) {
   if (before == null || before.cancelRequestedAt == null || before.cancelRequestedBy != 'rider') return false;
-  return after.cancelRequestedAt == null && after.status.isOngoing && after.status != RideStatus.open;
+  // A request that lapsed unanswered (0191) is not a decline.
+  return after.cancelRequestedAt == null &&
+      after.status.isOngoing &&
+      after.status != RideStatus.open &&
+      after.cancelRequestOutcome != 'expired';
+}
+
+/// How long a cancellation request waits for an answer (Admin → App
+/// Settings → Trip cancellation, migration 0191), and whether one that is
+/// declined or not answered opens a support ticket.
+class CancelRequestConfig {
+  const CancelRequestConfig({this.timeout = const Duration(minutes: 2), this.openTicket = true});
+
+  final Duration timeout;
+  final bool openTicket;
+
+  static const standard = CancelRequestConfig();
+
+  factory CancelRequestConfig.fromJson(Object? json) {
+    if (json is! Map) return standard;
+    final secs = json['timeoutSeconds'];
+    return CancelRequestConfig(
+      timeout: Duration(seconds: secs is num ? secs.round().clamp(30, 1800) : 120),
+      openTicket: json['openTicket'] != false,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'timeoutSeconds': timeout.inSeconds, 'openTicket': openTicket};
+
+  @override
+  bool operator ==(Object other) =>
+      other is CancelRequestConfig && other.timeout == timeout && other.openTicket == openTicket;
+
+  @override
+  int get hashCode => Object.hash(timeout, openTicket);
+}
+
+/// How long the rider's pending request still waits; null when there is none.
+Duration? riderCancelWaitLeft(RideRequest r, DateTime now, CancelRequestConfig c) {
+  final at = r.cancelRequestedAt;
+  if (at == null || r.cancelRequestedBy != 'rider' || !r.status.isOngoing) return null;
+  final left = at.add(c.timeout).difference(now);
+  return left.isNegative ? Duration.zero : left;
+}
+
+/// The rider asked to cancel and the driver didn't answer in time: the
+/// server lapsed it, or the time is up and the server's job is still to
+/// run. The ride carries on; the rider can ask again, contact support or
+/// use SOS.
+bool riderCancelUnanswered(RideRequest r, DateTime now, CancelRequestConfig c) {
+  if (!r.status.isOngoing || r.status == RideStatus.open) return false;
+  final left = riderCancelWaitLeft(r, now, c);
+  if (left != null) return left == Duration.zero;
+  final at = r.cancelRequestOutcomeAt;
+  return r.cancelRequestedAt == null &&
+      r.cancelRequestOutcome == 'expired' &&
+      r.cancelRequestOutcomeBy == 'rider' &&
+      (at == null || now.difference(at) < unansweredShownFor);
+}
+
+/// How long the options stay up after a request lapsed.
+const unansweredShownFor = Duration(minutes: 10);
+
+/// "1:05" for what is left of the wait.
+String cancelWaitText(Duration left) {
+  final s = left.inSeconds;
+  return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
 }
 
 /// The rider shares their live position once a driver is on the way, until

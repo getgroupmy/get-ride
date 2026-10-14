@@ -23,7 +23,8 @@ RideRequest ride(String status, {String? askedBy, String? reason}) => RideReques
   'currency': 'MYR',
   'pickup_name': 'KLCC',
   'drop_name': 'KL Sentral',
-  'cancel_requested_at': askedBy == null ? null : '2026-10-06T08:00:00Z',
+  // Just asked: an older request has lapsed by now (migration 0191).
+  'cancel_requested_at': askedBy == null ? null : DateTime.now().toUtc().toIso8601String(),
   'cancel_requested_by': askedBy,
   'cancel_reason': reason,
 });
