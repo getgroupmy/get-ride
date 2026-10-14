@@ -26,7 +26,7 @@ class HomeScreen extends StatefulWidget {
   final SmsPlatform platform;
   final GatewayPermissions permissions;
 
-  /// The signed-in admin, as the app bar shows it.
+  /// Who this gateway is, as the status card shows it.
   final String account;
   final Future<void> Function() onSignOut;
 
@@ -124,15 +124,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('Sign out?'),
+        title: const Text('Unpair this phone?'),
         content: Text(
-          online
-              ? 'The gateway will go offline. SMS routed to this phone wait in the queue until it is back.'
-              : 'You can sign in again at any time.',
+          '${online ? 'The gateway will go offline. SMS routed to this phone wait in the queue until it is back. ' : ''}'
+          'To run it again, pair it with a new code from Admin → SMS / WhatsApp.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Sign out')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Unpair')),
         ],
       ),
     );
@@ -151,8 +150,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         actions: [
           IconButton(
             key: const ValueKey('sign-out'),
-            tooltip: 'Sign out',
-            icon: const Icon(Icons.logout),
+            tooltip: 'Unpair',
+            icon: const Icon(Icons.link_off),
             onPressed: _signOut,
           ),
         ],
@@ -339,10 +338,7 @@ class _StatusCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              'Signed in as $account',
-              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
-            ),
+            Text(account, style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
           ],
         ),
       ),
