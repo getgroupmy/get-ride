@@ -77,13 +77,14 @@ class _LimitsFormState extends ConsumerState<_LimitsForm> {
   late final _day = TextEditingController(text: '${widget.limits.perPhonePerDay}');
   late final _resend = TextEditingController(text: '${widget.limits.minResendSeconds}');
   late final _global = TextEditingController(text: '${widget.limits.globalPerHour}');
+  late final _valid = TextEditingController(text: '${widget.limits.codeValidMinutes}');
   late final _prefixes = TextEditingController(text: widget.limits.allowedPrefixes.join(', '));
   late final _blocked = TextEditingController(text: widget.limits.blockedNumbers.join(', '));
   late final _template = TextEditingController(text: widget.limits.messageTemplate);
 
   @override
   void dispose() {
-    for (final c in [_hour, _day, _resend, _global, _prefixes, _blocked, _template]) {
+    for (final c in [_hour, _day, _resend, _global, _valid, _prefixes, _blocked, _template]) {
       c.dispose();
     }
     super.dispose();
@@ -95,6 +96,7 @@ class _LimitsFormState extends ConsumerState<_LimitsForm> {
     perPhonePerDay: int.tryParse(_day.text.trim()) ?? 0,
     minResendSeconds: int.tryParse(_resend.text.trim()) ?? 0,
     globalPerHour: int.tryParse(_global.text.trim()) ?? 0,
+    codeValidMinutes: int.tryParse(_valid.text.trim()) ?? 0,
     allowedPrefixes: parsePhoneList(_prefixes.text),
     blockedNumbers: parsePhoneList(_blocked.text),
     messageTemplate: _template.text.trim(),
@@ -159,6 +161,7 @@ class _LimitsFormState extends ConsumerState<_LimitsForm> {
             _number('day', _day, 'Codes per number per day', '1–50'),
             _number('resend', _resend, 'Seconds between codes', '15–600'),
             _number('global', _global, 'Total codes per hour', 'All numbers together'),
+            _number('valid', _valid, 'Code valid for (minutes)', '1–60 · same as Supabase SMS OTP Expiry'),
           ],
         ),
         const SizedBox(height: 12),

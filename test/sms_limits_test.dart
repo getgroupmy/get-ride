@@ -20,6 +20,7 @@ void main() {
     expect(s.enabled, isFalse);
     expect(s.perPhonePerHour, 5);
     expect(s.perPhonePerDay, 10);
+    expect(s.codeValidMinutes, 5, reason: 'a row without the 0188 column reads as 5 minutes');
     expect(s.allowedPrefixes, ['+60', '+65']);
     expect(s.blockedNumbers, isEmpty);
     expect(s.messageTemplate, defaultSmsTemplate);
@@ -38,6 +39,9 @@ void main() {
     expect(smsLimitsProblem(s.copyWith(perPhonePerHour: 5, perPhonePerDay: 4)), contains('daily limit'));
     expect(smsLimitsProblem(s.copyWith(minResendSeconds: 10)), contains('Time between'));
     expect(smsLimitsProblem(s.copyWith(globalPerHour: 0)), contains('hourly total'));
+    expect(smsLimitsProblem(s.copyWith(codeValidMinutes: 0)), contains('valid for'));
+    expect(smsLimitsProblem(s.copyWith(codeValidMinutes: 61)), contains('valid for'));
+    expect(SmsLimits.fromRow({'code_valid_minutes': 3}).toPatch()['code_valid_minutes'], 3);
     expect(smsLimitsProblem(s.copyWith(allowedPrefixes: ['60'])), contains('country prefix'));
     expect(smsLimitsProblem(s.copyWith(blockedNumbers: ['0123456789'])), contains('blocked number'));
     expect(smsLimitsProblem(s.copyWith(messageTemplate: 'No code')), contains('{code}'));

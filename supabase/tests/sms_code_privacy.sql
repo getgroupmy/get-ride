@@ -111,5 +111,20 @@ begin
   end if;
 end $$;
 
+-- 3. The admin's validity decides when a waiting code is dropped (0188) ----------------------
+update public.sms_settings set code_valid_minutes = 2 where id = 1;
+insert into public.sms_outbox (channel, to_phone, body, created_at)
+values ('otp', '+60123450185', 'Your GET.ride code is 111111.', now() - interval '3 minutes');
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000183a1');
+select count(*) from public.gateway_claim_sms((select id from ids where name = 'gateway'));
+reset role;
+do $$
+begin
+  if (select status from public.sms_outbox where to_phone = '+60123450185') is distinct from 'failed' then
+    raise exception 'FAILED: a code older than the admin''s 2 minutes was not dropped';
+  end if;
+end $$;
+
 select 'sms_code_privacy: all passed';
 rollback;
