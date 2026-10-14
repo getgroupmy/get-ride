@@ -37,6 +37,10 @@ abstract class SmsPlatform {
 
   /// Asks Android to let the gateway run unrestricted.
   Future<void> requestBatteryExemption();
+
+  /// Calls [resume] whenever the service is restarted without the gateway
+  /// asking (by Android, after a restart, or by the watchdog).
+  void onResume(Future<void> Function() resume);
 }
 
 class MethodChannelSmsPlatform implements SmsPlatform {
@@ -103,4 +107,11 @@ class MethodChannelSmsPlatform implements SmsPlatform {
 
   @override
   Future<void> requestBatteryExemption() => _methods.invokeMethod('requestBatteryExemption');
+
+  @override
+  void onResume(Future<void> Function() resume) {
+    _methods.setMethodCallHandler((call) async {
+      if (call.method == 'resume') await resume();
+    });
+  }
 }

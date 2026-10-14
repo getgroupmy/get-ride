@@ -235,3 +235,29 @@ String? normalizeSmsNumber(String raw) {
   final t = raw.replaceAll(RegExp(r'[\s()-]'), '');
   return RegExp(r'^\+?[0-9]{6,20}$').hasMatch(t) ? t : null;
 }
+
+/// SMS that can't go out (or come in) because no phone carrying them is
+/// online: the channels affected, whether sign-in codes are among them, and
+/// when the last of their phones was seen (null: never).
+typedef GatewayOutage = ({List<MessagingChannel> channels, bool signIn, DateTime? since});
+
+/// The outage on enabled SMS routes, or null when every one has a phone
+/// online (or none is set up).
+GatewayOutage? gatewayOutage(List<MessagingRoute> routes, List<MessagingDevice> devices, DateTime now) {
+  final channels = <MessagingChannel>[];
+  var signIn = false;
+  DateTime? since;
+  for (final r in routes) {
+    if (!r.enabled || r.transport != MessagingTransport.sms) continue;
+    final carriers = devices.where((d) => r.deviceIds.contains(d.id)).toList();
+    if (carriers.any((d) => d.onlineAt(now))) continue;
+    if (!channels.contains(r.channel)) channels.add(r.channel);
+    if (r.channel == MessagingChannel.otp && r.direction == MessagingDirection.outbound) signIn = true;
+    for (final d in carriers) {
+      final seen = d.lastSeenAt;
+      if (seen != null && (since == null || seen.isAfter(since))) since = seen;
+    }
+  }
+  if (channels.isEmpty) return null;
+  return (channels: channels, signIn: signIn, since: since);
+}

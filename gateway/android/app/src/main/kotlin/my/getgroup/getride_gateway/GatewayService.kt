@@ -21,6 +21,11 @@ import androidx.core.content.ContextCompat
  * The ongoing "GET.ride Gateway" notification. While it is up Android keeps
  * the app (and the gateway loop in it) running with the screen off, and a
  * partial wake lock keeps the loop's timers firing.
+ *
+ * Sticky: if Android ends the app it restarts the service, which starts the
+ * gateway's engine again without the screen ([GatewayRuntime]); the Dart
+ * side turns the gateway back on, or stops the service when it was turned
+ * off or signed out.
  */
 class GatewayService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
@@ -39,17 +44,31 @@ class GatewayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Online"
+        // Restarted by Android (no intent) or by the watchdog rather than by
+        // the gateway itself.
+        val revived = intent == null || intent.getBooleanExtra(EXTRA_REVIVE, false)
+        val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Starting…"
+        // Within seconds of a foreground start, even one about to stop.
         ServiceCompat.startForeground(
             this,
             NOTIFICATION_ID,
             notification(this, text),
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0,
         )
+        if (revived && !GatewayWatchdog.wantOnline(this)) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         running = true
-        // Not sticky: restarted without the app, the service would say
-        // "online" while nothing is sending.
-        return START_NOT_STICKY
+        GatewayWatchdog.schedule(this)
+        if (revived) GatewayRuntime.resume(applicationContext)
+        return START_STICKY
+    }
+
+    /** Swiped away from recent apps: some phones end the whole app, so check back shortly. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (running) GatewayWatchdog.soon(this)
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
@@ -63,6 +82,7 @@ class GatewayService : Service() {
         private const val CHANNEL = "gateway_status"
         private const val NOTIFICATION_ID = 1201
         private const val EXTRA_TEXT = "text"
+        private const val EXTRA_REVIVE = "revive"
 
         @Volatile
         var running = false
@@ -83,6 +103,14 @@ class GatewayService : Service() {
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, GatewayService::class.java).putExtra(EXTRA_TEXT, text),
+            )
+        }
+
+        /** Starts the service to bring the gateway back (see [GatewayWatchdog]). */
+        fun revive(context: Context) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, GatewayService::class.java).putExtra(EXTRA_REVIVE, true),
             )
         }
 

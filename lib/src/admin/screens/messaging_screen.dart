@@ -6,6 +6,8 @@
 // SMS go out through a phone running the GET.ride Gateway app (its SIM);
 // WhatsApp through the Business Cloud API number; a support call is the
 // in-app VoIP call, and its devices are the ones that ring or call.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -76,6 +78,7 @@ class AdminMessagingScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    _OutageBanner(routes: messagingRouteTable(routeList), devices: deviceList),
                     Card(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -129,6 +132,71 @@ class AdminMessagingScreen extends ConsumerWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Gateway offline since …" while an enabled SMS route has no phone online.
+/// Re-checked every 30 s, so it appears while the page is open; the server
+/// also pushes it to the admins (migration 0178).
+class _OutageBanner extends ConsumerStatefulWidget {
+  const _OutageBanner({required this.routes, required this.devices});
+
+  final List<MessagingRoute> routes;
+  final List<MessagingDevice> devices;
+
+  @override
+  ConsumerState<_OutageBanner> createState() => _OutageBannerState();
+}
+
+class _OutageBannerState extends ConsumerState<_OutageBanner> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = ref.watch(messagingClockProvider)();
+    final outage = gatewayOutage(widget.routes, widget.devices, now);
+    if (outage == null) return const SizedBox.shrink();
+    final t = Theme.of(context);
+    final fg = t.colorScheme.onErrorContainer;
+    final since = outage.since;
+    final title = since == null
+        ? 'Gateway offline: its phone has never checked in'
+        : 'Gateway offline since ${DateFormat('d MMM, h:mm a').format(since.toLocal())}';
+    final what = outage.channels.map((c) => c.label).join(', ');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Card(
+        key: const ValueKey('messaging-outage'),
+        color: t.colorScheme.errorContainer,
+        child: ListTile(
+          leading: Icon(Icons.portable_wifi_off, color: fg),
+          title: Text(
+            title,
+            style: TextStyle(color: fg, fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            '${outage.signIn ? 'Sign-in codes can\'t be sent, so people can\'t sign in by SMS. ' : ''}'
+            'Not going out: $what. Check the phone has power and signal, open the GET.ride Gateway app '
+            'and turn it on; set its battery use to Unrestricted so it keeps running.',
+            style: TextStyle(color: fg),
           ),
         ),
       ),

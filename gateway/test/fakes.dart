@@ -100,6 +100,11 @@ class FakeSms implements SmsPlatform {
 
   @override
   Future<void> requestBatteryExemption() async => optimized = false;
+
+  Future<void> Function()? resume;
+
+  @override
+  void onResume(Future<void> Function() resume) => this.resume = resume;
 }
 
 class FakePermissions implements GatewayPermissions {
