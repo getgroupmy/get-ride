@@ -223,6 +223,8 @@ select pg_temp.refused($q$select public.admin_final_delete_account('00000000-000
 select pg_temp.check(not exists (select 1 from public.accounts_due_final_deletion()), 'nothing is due yet');
 reset role;
 update public.profiles set deleted_at = now() - interval '400 days' where id = '00000000-0000-0000-0000-0000000194a1';
+insert into public.safety_incidents (reporter_id, reporter_role, reporter_name, reporter_phone, lat, lng, track_until)
+values ('00000000-0000-0000-0000-0000000194a1', 'rider', 'Person a1', '+60100000194', 3.1, 101.6, now());
 select pg_temp.check(public.account_deletion_remind() = 1, 'the users admin is reminded');
 select pg_temp.check(public.account_deletion_remind() = 1
                      and (select count(*) from public.notification_outbox
@@ -243,6 +245,9 @@ reset role;
 select pg_temp.check((select name = 'Deleted user' and ic is null and pin_hash is null and deleted_phone is null
                              and final_deleted_at is not null
                         from public.profiles where id = '00000000-0000-0000-0000-0000000194a1'), 'personal data wiped');
+select pg_temp.check((select reporter_name = 'Deleted user' and reporter_phone is null and lat is null
+                        from public.safety_incidents where reporter_id = '00000000-0000-0000-0000-0000000194a1'),
+  'the SOS record is anonymised');
 select pg_temp.check(not exists (select 1 from public.emergency_contacts
                                   where profile_id = '00000000-0000-0000-0000-0000000194a1'), 'contacts removed');
 select pg_temp.check(exists (select 1 from public.wallet_transactions

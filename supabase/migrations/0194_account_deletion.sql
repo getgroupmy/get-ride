@@ -647,6 +647,11 @@ begin
 
     update public.ride_requests set rider_name = 'Deleted user', rider_phone = null where rider_id = p_profile;
     update public.ride_requests set partner_name = 'Deleted partner', partner_phone = null where partner_id = p_profile;
+    update public.safety_incidents set reporter_name = 'Deleted user', reporter_phone = null, lat = null, lng = null
+     where reporter_id = p_profile;
+    update public.safety_incidents set partner_name = 'Deleted partner' where partner_id = p_profile;
+    delete from public.safety_incident_locations
+     where incident_id in (select id from public.safety_incidents where reporter_id = p_profile);
 
     delete from public.emergency_contacts where profile_id = p_profile;
     delete from public.saved_places where user_id = p_profile;
