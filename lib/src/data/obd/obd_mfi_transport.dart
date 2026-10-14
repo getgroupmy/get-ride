@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -8,12 +7,14 @@ import '../../core/obd.dart';
 import '../../core/obd_mfi.dart';
 import 'obd_transport.dart';
 
-/// The native side lives in ios/Runner/AppDelegate.swift (`MfiObdPlugin`).
+/// The native side was removed from the iOS app (App Review 2.1.0: the
+/// External Accessory protocol needs MFi authorisation GET.ride doesn't
+/// hold). Bluetooth LE and Wi-Fi readers carry on.
 const mfiMethods = MethodChannel('get_ride/mfi');
 const mfiEvents = EventChannel('get_ride/mfi/data');
 
-/// MFi readers are an iPhone/iPad feature (Apple External Accessory).
-bool get mfiSupported => debugMfiSupported ?? (!kIsWeb && Platform.isIOS);
+/// No build offers MFi readers any more; a reader saved before says so.
+bool get mfiSupported => debugMfiSupported ?? false;
 
 /// Overrides [mfiSupported] in tests, which never run on iOS.
 @visibleForTesting
@@ -47,7 +48,11 @@ class MfiObdTransport implements ObdTransport {
 
   @override
   Future<String> connect() async {
-    if (!mfiSupported) throw UnsupportedError('Bluetooth MFi readers work on an iPhone or iPad only.');
+    if (!mfiSupported) {
+      throw UnsupportedError(
+        'Bluetooth MFi readers are no longer supported. Add a Bluetooth LE or Wi-Fi reader in Settings → OBD-II reader.',
+      );
+    }
     await disconnect();
     final accessory = pickMfiAccessory(await listMfiAccessories(), preferred: key);
     if (accessory == null) {
