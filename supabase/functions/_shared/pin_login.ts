@@ -21,7 +21,7 @@ export interface PinLoginRequest {
 /** What the function answers, by `error` (absent on success). */
 export type PinLoginError =
   | "bad_request" // not a phone and a six-digit PIN
-  | "wrong_pin" // no account with this number and PIN (never says which)
+  | "wrong_pin" // no account with this number and PIN; attempts_left when the account has a PIN (0192)
   | "locked" // too many wrong PINs on this account; retry_after seconds
   | "rate_limited" // too many checks from this address; retry_after seconds
   | "needs_otp" // the PIN is right but there is no Auth login to give it
@@ -46,6 +46,10 @@ export interface PinLoginDeps {
   /** Signs in; null when Auth rejects the credentials. */
   signIn(phone: string, password: string): Promise<PinLoginSession | null>;
   randomPassword(): string;
+  /** pin_attempts_left (0192): tries left before the lock, or null for a
+   * number with no account or no PIN, so nothing is said about it. Optional:
+   * without it a wrong PIN says only that. */
+  attemptsLeft?(phone: string): Promise<number | null>;
 }
 
 export const PIN_PATTERN = /^\d{6}$/;
@@ -114,7 +118,15 @@ export async function handlePinLogin(body: unknown, ip: string, deps: PinLoginDe
     if (refusal) return { status: refusal.error === "locked" ? 423 : 429, body: { ...refusal } };
     return { status: 503, body: { error: "unavailable" } };
   }
-  if (!userId) return { status: 401, body: { error: "wrong_pin" } };
+  if (!userId) {
+    let left: number | null = null;
+    try {
+      left = deps.attemptsLeft ? await deps.attemptsLeft(req.phone) : null;
+    } catch {
+      left = null;
+    }
+    return { status: 401, body: left === null ? { error: "wrong_pin" } : { error: "wrong_pin", attempts_left: left } };
+  }
 
   try {
     const phone = await deps.authPhone(userId);
