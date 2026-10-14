@@ -77,7 +77,7 @@ select pg_temp.refused(
 -- 4. Once the own ride is under way it still counts; once done it doesn't ---
 reset role;
 update public.ride_requests set status = 'on_trip'
- where rider_id = '00000000-0000-0000-0000-0000000007a1' and status = 'open' and booked_for_phone is null
+ where rider_id = '00000000-0000-0000-0000-0000000007a1' and status = 'open' and not booked_for_other
    and created_at > now() - interval '7 minutes';
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000007a1');

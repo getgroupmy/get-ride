@@ -1242,10 +1242,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(r.passengerName, style: t.textTheme.titleSmall),
-                if (r.isForOthers)
-                  Text('Booked by ${r.riderName ?? 'another rider'}',
-                      key: ValueKey('booked-by-${r.id}'), style: t.textTheme.bodySmall),
+                Row(
+                  children: [
+                    Flexible(child: Text(r.firstNameForDrivers, style: t.textTheme.titleSmall)),
+                    if (r.isForOthers)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 4),
+                        child: Tooltip(
+                          message: 'Booked for someone else',
+                          child: Icon(Icons.group_outlined, key: ValueKey('for-others-${r.id}'), size: 16),
+                        ),
+                      ),
+                  ],
+                ),
                 Text(
                   [
                     if (r.riderRating != null) '★ ${r.riderRating!.toStringAsFixed(1)}',

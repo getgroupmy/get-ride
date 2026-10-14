@@ -195,7 +195,37 @@ class RideRepository {
     }
     // Online partners are pushed by the database (the ride_requests insert
     // trigger); send-push no longer takes a rider's call.
-    return (now: RideRequest(data), later: null);
+    return (now: RideRequest(await _readAside(data)), later: null);
+  }
+
+  /// The rider's own open requests: while one is open the passenger's
+  /// details wait in `ride_request_private`, which only the rider reads
+  /// (migration 0195). Kept per request for this session.
+  final Map<String, Map<String, dynamic>> _aside = {};
+
+  Map<String, dynamic> _withAside(Map<String, dynamic> row) {
+    final aside = _aside['${row['id']}'];
+    if (aside == null || aside.isEmpty || row['status'] != 'open') return row;
+    return {
+      ...row,
+      for (final e in aside.entries)
+        if (e.value != null && e.key != 'request_id' && e.key != 'updated_at') e.key: e.value,
+    };
+  }
+
+  Future<Map<String, dynamic>> _readAside(Map<String, dynamic> row) async {
+    final uid = _uid;
+    if (uid == null || row['status'] != 'open' || row['rider_id'] != uid) return row;
+    final id = '${row['id']}';
+    if (!_aside.containsKey(id)) {
+      try {
+        _aside[id] = await _db.from('ride_request_private').select().eq('request_id', id).maybeSingle() ?? const {};
+      } catch (_) {
+        // A database before 0195 keeps everything on the row.
+        _aside[id] = const {};
+      }
+    }
+    return _withAside(row);
   }
 
   /// The caller's public IP as the `ip-lookup` edge function sees it, or null.
@@ -241,10 +271,11 @@ class RideRepository {
           .inFilter('status', riderOngoingStatuses)
           .order('created_at', ascending: false)
           .limit(20);
-      for (final row in rows) {
+      final merged = await Future.wait(rows.map(_readAside));
+      for (final row in merged) {
         unawaited(_cache.save(row));
       }
-      return rows.map(RideRequest.new).toList();
+      return merged.map(RideRequest.new).toList();
     } on PostgrestException {
       rethrow;
     } catch (_) {
@@ -325,7 +356,7 @@ class RideRepository {
 
   Future<RideRequest?> fetch(String id) async {
     final row = await _db.from(_table).select().eq('id', id).maybeSingle();
-    return row == null ? null : RideRequest(row);
+    return row == null ? null : RideRequest(await _readAside(row));
   }
 
   Future<List<RideRequest>> openRequests({int limit = 30}) async {
@@ -1066,7 +1097,7 @@ class RideRepository {
             table: _table,
             filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'id', value: id),
             callback: (p) {
-              if (p.newRecord.isNotEmpty) emit(RideRequest(p.newRecord));
+              if (p.newRecord.isNotEmpty) emit(RideRequest(_withAside(p.newRecord)));
             },
           )
           .subscribe(backup!.onStatus);

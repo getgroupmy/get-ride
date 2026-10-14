@@ -74,11 +74,19 @@ class RideRequest {
   /// (migration 0107); null on the rider's own rides.
   String? get bookedForName => _text(raw['booked_for_name']);
   String? get bookedForPhone => _text(raw['booked_for_phone']);
-  bool get isForOthers => bookedForPhone != null;
+  /// While a request is open the passenger's details are kept from drivers
+  /// (migration 0195): only `booked_for_other` says it's for someone else.
+  bool get isForOthers => bookedForPhone != null || raw['booked_for_other'] == true;
 
   /// The person who will be in the car, and their number.
   String get passengerName => bookedForName ?? riderName ?? 'Passenger';
   String? get passengerPhone => bookedForPhone ?? riderPhone;
+
+  /// What a driver deciding on an open request sees: the rider's first name.
+  String get firstNameForDrivers {
+    final first = (riderName ?? '').trim().split(RegExp(r'\s+')).first;
+    return first.isEmpty ? 'Passenger' : first;
+  }
 
   /// A driver has the ride: the rider accepted them (or their offer) and the
   /// row moved past `open`. A bid on an open request also puts the bidder's
