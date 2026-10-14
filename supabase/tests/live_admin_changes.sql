@@ -26,7 +26,7 @@ begin
     -- Admin pages (liveAdminTables, migration 0136).
     'vehicle_user_assignment', 'ride_requests', 'support_tickets', 'push_notifications',
     'ev_orders', 'help_articles', 'help_questions', 'fare_ai_responses', 'fare_ai_key_states',
-    'user_sessions',
+    'user_sessions', 'safety_incidents',
     -- Sign-in SMS limits (migration 0149).
     'sms_settings', 'sms_log',
     -- SMS fallback for trips (migration 0150).

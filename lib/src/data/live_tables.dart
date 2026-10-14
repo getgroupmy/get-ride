@@ -197,6 +197,8 @@ const liveAdminTables = <String>[
   'fare_ai_responses',
   'fare_ai_key_states',
   'user_sessions',
+  // SOS alerts (0193): the red banner on every admin screen.
+  'safety_incidents',
 ];
 
 /// Rides and sessions change every few seconds while trips run; an admin

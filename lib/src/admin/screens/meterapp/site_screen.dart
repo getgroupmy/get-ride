@@ -17,6 +17,7 @@ import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
 import '../../widgets/admin_widgets.dart';
+import '../safety/sos_ops_card.dart';
 import '../security/pin_policy_card.dart';
 import '../security/sign_in_security_card.dart';
 import '../scheduled_rides_card.dart';
@@ -474,6 +475,8 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                 SignInSecurityCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 PinPolicyCard(canEdit: canEdit),
+                const SizedBox(height: 8),
+                SosOpsCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 ScheduledRidesCard(canEdit: canEdit),
                 const SizedBox(height: 8),

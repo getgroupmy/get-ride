@@ -11,6 +11,7 @@ import '../widgets/side_menu_style.dart';
 import 'admin_access.dart';
 import 'admin_providers.dart';
 import 'admin_registry.dart';
+import 'screens/safety/safety_incidents_screen.dart' show SosAdminBanner;
 
 class _NavItem {
   const _NavItem(this.module, this.icon);
@@ -107,7 +108,16 @@ class AdminShell extends ConsumerWidget {
               ),
             ),
             body: Builder(
-              builder: (ctx) => AdminDrawerScope(openDrawer: () => Scaffold.of(ctx).openDrawer(), child: child),
+              builder: (ctx) => AdminDrawerScope(
+                openDrawer: () => Scaffold.of(ctx).openDrawer(),
+                // An SOS waiting (0193): red across every admin screen.
+                child: Column(
+                  children: [
+                    const SosAdminBanner(),
+                    Expanded(child: child),
+                  ],
+                ),
+              ),
             ),
           );
         }
@@ -139,7 +149,14 @@ class AdminShell extends ConsumerWidget {
               ],
             ),
             const VerticalDivider(width: 1),
-            Expanded(child: child),
+            Expanded(
+              child: Column(
+                children: [
+                  const SosAdminBanner(),
+                  Expanded(child: child),
+                ],
+              ),
+            ),
           ]),
         );
       },

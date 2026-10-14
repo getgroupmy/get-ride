@@ -554,6 +554,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     ref,
     driver: r.hasDriver ? r.partnerName : null,
     plate: r.hasDriver ? r.partnerPlate : null,
+    rideId: r.id.startsWith('demo') ? null : r.id,
   );
 
   /// A demo offer taken (Admin → Demo → mock driver offers): the real
