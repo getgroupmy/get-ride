@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/partner_status.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../account_app_version.dart';
 import '../admin_access.dart';
 import '../admin_filters.dart';
 import '../admin_providers.dart';
@@ -348,6 +349,7 @@ class AdminUsersScreen extends ConsumerWidget {
           'Referral code': u['referral_code'],
           'Total rides': u['total_rides'],
           'Devices': u['device_count'],
+          'App': accountAppVersion(u),
           'Joined': dateText(u['joined_at']),
         }),
         if ((u['id_image'] as String?)?.startsWith('http') == true)
@@ -381,13 +383,17 @@ class AdminUsersScreen extends ConsumerWidget {
         filters: userFilters,
         initialFilter: initialFilter,
         matches: userMatches,
-        searchColumns: const ['name', 'phone', 'email', 'display_id', 'ic'],
+        searchColumns: const ['name', 'phone', 'email', 'display_id', 'ic', 'app_version'],
         onOpen: (u) => _open(context, ref, u),
         tile: (u) => _RecordCard(
           id: '${u['id']}',
           leading: _avatar(u['avatar_url'] ?? u['profile_image']),
           title: (u['name'] as String?)?.isNotEmpty == true ? u['name'] as String : '(no name)',
-          subtitle: [u['phone'], u['display_id']].whereType<String>().join(' · '),
+          subtitle: [
+            u['phone'],
+            u['display_id'],
+            if (accountAppVersionShort(u) case final v?) 'app $v',
+          ].whereType<String>().join(' · '),
           status: userStatus(u),
           phone: u['phone'],
           canEdit: canEdit,

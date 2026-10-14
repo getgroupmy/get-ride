@@ -19,6 +19,8 @@ String userStatus(Map<String, dynamic> row) {
 bool userMatches(Map<String, dynamic> row, String filter) => switch (filter) {
       'all' => true,
       'unapproved-docs' => row['id_verified'] == 'Failed',
+      // No version recorded: hasn't opened the app on 1.4.6 or later (0176).
+      'old-app' => '${row['app_version'] ?? ''}'.trim().isEmpty,
       _ => userStatus(row) == filter,
     };
 
@@ -47,6 +49,7 @@ const userFilters = {
   'blocked': 'Blocked',
   'rejected': 'Rejected',
   'deleted': 'Deleted',
+  'old-app': 'App before 1.4.6',
 };
 
 const partnerFilters = {
