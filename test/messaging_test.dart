@@ -27,14 +27,15 @@ MessagingDevice _device(String id, {String kind = 'gateway', List<String> caps =
     );
 
 class _FakeRepo extends MessagingRepository {
-  _FakeRepo(this._devices) : super(_db);
+  _FakeRepo(this._devices, [this._routes = const []]) : super(_db);
   final List<MessagingDevice> _devices;
+  final List<MessagingRoute> _routes;
   final saved = <MessagingRoute>[];
 
   @override
   Future<List<MessagingDevice>> devices() async => _devices;
   @override
-  Future<List<MessagingRoute>> routes() async => const [];
+  Future<List<MessagingRoute>> routes() async => _routes;
   @override
   Future<void> saveRoute(MessagingRoute r) async => saved.add(r);
   @override
@@ -189,5 +190,77 @@ void main() {
     // Let the success note and any realtime retry run out.
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(minutes: 1));
+  });
+
+  group('gateway outage', () {
+    final otp = MessagingRoute(
+      channel: MessagingChannel.otp,
+      direction: MessagingDirection.outbound,
+      transport: MessagingTransport.sms,
+      deviceIds: const ['g1', 'g2'],
+    );
+    final inbound = MessagingRoute(
+      channel: MessagingChannel.supportMessage,
+      direction: MessagingDirection.inbound,
+      transport: MessagingTransport.sms,
+      deviceIds: const ['g1'],
+    );
+
+    test('none while one of a route\'s phones is online', () {
+      final devices = [_device('g1', ago: const Duration(hours: 2)), _device('g2', ago: const Duration(minutes: 1))];
+      expect(gatewayOutage([otp, inbound], devices, _now)?.channels, [MessagingChannel.supportMessage]);
+      expect(gatewayOutage([otp], devices, _now), isNull);
+    });
+
+    test('since the last phone was seen; sign-in flagged for outbound OTP', () {
+      final devices = [_device('g1', ago: const Duration(hours: 2)), _device('g2', ago: const Duration(days: 2))];
+      final o = gatewayOutage([otp, inbound], devices, _now)!;
+      expect(o.channels, [MessagingChannel.otp, MessagingChannel.supportMessage]);
+      expect(o.signIn, isTrue);
+      expect(o.since, _now.subtract(const Duration(hours: 2)));
+      expect(gatewayOutage([inbound], devices, _now)!.signIn, isFalse);
+    });
+
+    test('switched-off and WhatsApp routes are not watched; a never-seen phone has no since', () {
+      expect(gatewayOutage([otp.copyWith(enabled: false)], const [], _now), isNull);
+      final wa = MessagingRoute(
+        channel: MessagingChannel.marketing,
+        direction: MessagingDirection.outbound,
+        transport: MessagingTransport.whatsapp,
+        whatsappNumber: '+60123456789',
+      );
+      expect(gatewayOutage([wa], const [], _now), isNull);
+      final o = gatewayOutage([otp], [_device('g1')], _now)!;
+      expect(o.since, isNull);
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('the page says the gateway is offline (${b.name})', (tester) async {
+        tester.view.physicalSize = const Size(900, 4000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final repo = _FakeRepo([_device('g1', ago: const Duration(hours: 2))], [otp]);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              supabaseProvider.overrideWithValue(_db),
+              adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+              messagingRepositoryProvider.overrideWithValue(repo),
+              messagingClockProvider.overrideWithValue(() => _now),
+            ],
+            child: MaterialApp(
+              theme: ThemeData(brightness: b),
+              home: const AdminMessagingScreen(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('messaging-outage')), findsOneWidget);
+        expect(find.textContaining('Gateway offline since'), findsOneWidget);
+        expect(find.textContaining('Sign-in codes can\'t be sent'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(minutes: 1));
+      });
+    }
   });
 }

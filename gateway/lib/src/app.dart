@@ -15,7 +15,7 @@ import 'sms_platform.dart';
 
 /// Kept with `version:` in pubspec.yaml (a test checks); the admin page
 /// shows it beside the device.
-const gatewayVersion = '1.0.0';
+const gatewayVersion = '1.1.0';
 
 ThemeData gatewayTheme(Brightness b) => ThemeData(
   useMaterial3: true,
@@ -23,12 +23,16 @@ ThemeData gatewayTheme(Brightness b) => ThemeData(
 );
 
 class GatewayApp extends StatefulWidget {
-  const GatewayApp({super.key, required this.db, required this.settings, this.platform, this.permissions});
+  const GatewayApp({super.key, required this.db, required this.settings, this.platform, this.permissions, this.engine});
 
   final SupabaseClient db;
   final GatewaySettings settings;
   final SmsPlatform? platform;
   final GatewayPermissions? permissions;
+
+  /// The process's gateway (main.dart), which outlives this screen; made
+  /// here when not given (tests).
+  final GatewayEngine? engine;
 
   @override
   State<GatewayApp> createState() => _GatewayAppState();
@@ -37,12 +41,14 @@ class GatewayApp extends StatefulWidget {
 class _GatewayAppState extends State<GatewayApp> {
   late final SmsPlatform _platform = widget.platform ?? MethodChannelSmsPlatform();
   late final GatewayPermissions _permissions = widget.permissions ?? PluginGatewayPermissions();
-  late final GatewayEngine _engine = GatewayEngine(
-    backend: SupabaseGatewayBackend(widget.db),
-    platform: _platform,
-    config: widget.settings.config,
-    appVersion: gatewayVersion,
-  );
+  late final GatewayEngine _engine =
+      widget.engine ??
+      GatewayEngine(
+        backend: SupabaseGatewayBackend(widget.db),
+        platform: _platform,
+        config: widget.settings.config,
+        appVersion: gatewayVersion,
+      );
   StreamSubscription<AuthState>? _authSub;
   Session? _session;
 
@@ -74,7 +80,7 @@ class _GatewayAppState extends State<GatewayApp> {
   @override
   void dispose() {
     unawaited(_authSub?.cancel());
-    _engine.dispose();
+    if (widget.engine == null) _engine.dispose();
     super.dispose();
   }
 

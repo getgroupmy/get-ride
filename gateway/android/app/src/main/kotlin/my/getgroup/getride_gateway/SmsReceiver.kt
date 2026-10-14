@@ -20,5 +20,7 @@ class SmsReceiver : BroadcastReceiver() {
             if (m.timestampMillis > 0) at = m.timestampMillis
         }
         for ((from, body) in bySender) InboxStore.add(context, from, body.toString(), at)
+        // The gateway was left on but is not running: bring it back to hand these over.
+        GatewayWatchdog.revive(context)
     }
 }

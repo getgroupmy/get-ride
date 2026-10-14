@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'src/app.dart';
+import 'src/backend.dart';
+import 'src/engine.dart';
+import 'src/keeper.dart';
+import 'src/permissions.dart';
 import 'src/settings.dart';
+import 'src/sms_platform.dart';
 
 /// The GET.ride Supabase project (the same as the GET.ride app). The anon
 /// key is public and RLS-restricted; override both with --dart-define.
@@ -12,8 +17,29 @@ const _supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY', defaultValu
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(url: _supabaseUrl, publishableKey: _supabaseAnonKey);
+  final db = Supabase.instance.client;
   final settings = await GatewaySettings.load();
-  runApp(GatewayApp(db: Supabase.instance.client, settings: settings));
+  final platform = MethodChannelSmsPlatform();
+  final permissions = PluginGatewayPermissions();
+  // Made here, not by the screen: Android may run this with no screen at all
+  // (the service brings the gateway back after a restart or the app being
+  // ended), and the gateway runs on after the screen is closed.
+  final engine = GatewayEngine(
+    backend: SupabaseGatewayBackend(db),
+    platform: platform,
+    config: settings.config,
+    appVersion: gatewayVersion,
+  );
+  final keeper = GatewayKeeper(
+    engine: engine,
+    settings: settings,
+    platform: platform,
+    permissions: permissions,
+    signedIn: () => db.auth.currentSession != null,
+  );
+  platform.onResume(keeper.resume);
+  runApp(GatewayApp(db: db, settings: settings, platform: platform, permissions: permissions, engine: engine));
+  await keeper.resume();
 }
 
 /// The project's public anon key (as in the GET.ride app's AppConfig).
