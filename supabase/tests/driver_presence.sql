@@ -12,15 +12,18 @@ insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000145a1'),  -- driver near KLCC
   ('00000000-0000-0000-0000-0000000145a2'),  -- driver in Johor (far)
   ('00000000-0000-0000-0000-0000000145a3'),  -- driver near KLCC, offline
+  ('00000000-0000-0000-0000-0000000145a4'),  -- applicant near KLCC, not approved
   ('00000000-0000-0000-0000-0000000145b1')   -- a passenger
 on conflict do nothing;
 insert into public.profiles (id) select id from auth.users
  where id::text like '00000000-0000-0000-0000-0000000145%'
 on conflict do nothing;
-insert into public.partners (auth_user_id, name, phone) values
-  ('00000000-0000-0000-0000-0000000145a1', 'Near', '+60100000001'),
-  ('00000000-0000-0000-0000-0000000145a2', 'Far', '+60100000002'),
-  ('00000000-0000-0000-0000-0000000145a3', 'Off', '+60100000003');
+-- Approved drivers (since 0186 nobody else is online), and one applicant.
+insert into public.partners (auth_user_id, name, phone, status) values
+  ('00000000-0000-0000-0000-0000000145a1', 'Near', '+60100000001', 'approved'),
+  ('00000000-0000-0000-0000-0000000145a2', 'Far', '+60100000002', 'approved'),
+  ('00000000-0000-0000-0000-0000000145a3', 'Off', '+60100000003', 'approved'),
+  ('00000000-0000-0000-0000-0000000145a4', 'Applicant', '+60100000004', 'unapproved');
 
 create or replace function pg_temp.as_user(p uuid) returns void language plpgsql as $$
 begin
@@ -46,6 +49,10 @@ select public.set_driver_presence(true, 1.4927, 103.7414);
 select pg_temp.as_user('00000000-0000-0000-0000-0000000145a3');
 select public.set_driver_presence(true, 3.1500, 101.7100);
 select public.set_driver_presence(false);
+-- An applicant going online is recorded offline (0186).
+select pg_temp.as_user('00000000-0000-0000-0000-0000000145a4');
+select public.set_driver_presence(true, 3.1580, 101.7117);
+select pg_temp.check((select not online from public.driver_presence), 'an unapproved driver is not online');
 -- A passenger has no presence.
 select pg_temp.as_user('00000000-0000-0000-0000-0000000145b1');
 select public.set_driver_presence(true, 3.1579, 101.7116);
@@ -54,7 +61,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000145a1');
 select pg_temp.check((select count(*) = 1 from public.driver_presence), 'a driver sees only their own row');
 reset role;
 
-select pg_temp.check((select count(*) = 3 from public.driver_presence), 'three drivers, no passenger');
+select pg_temp.check((select count(*) = 4 from public.driver_presence), 'four drivers, no passenger');
 select pg_temp.check((select lat = 3.15 and not online from public.driver_presence
                        where profile_id = '00000000-0000-0000-0000-0000000145a3'),
   'going offline keeps the last position');

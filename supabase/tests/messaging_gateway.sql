@@ -79,6 +79,10 @@ begin
   if coalesce(array_length(jobs, 1), 0) <> 1 or jobs[1].channel <> 'otp' or jobs[1].status <> 'sending' then
     raise exception 'FAILED: claimed %', jobs;
   end if;
+  -- The gateway gets the real text (0183); the queue row only a masked copy.
+  if jobs[1].body <> 'Your code is 1234' then
+    raise exception 'FAILED: the gateway got %', jobs[1].body;
+  end if;
   perform public.gateway_report_sms(dev, jobs[1].id, true);
   if (public.gateway_receive_sms(dev, '+60199999999', 'Hello support')).channel is distinct from 'support_message' then
     raise exception 'FAILED: an inbound SMS was not filed under its channel';
@@ -108,10 +112,12 @@ select pg_temp.refused(
 reset role;
 do $$
 begin
-  if (select status from public.sms_outbox where body = 'Your code is 1234') <> 'sent' then
+  if (select o.status from public.sms_outbox o join public.sms_otp_secret s on s.outbox_id = o.id
+       where s.body = 'Your code is 1234') is distinct from 'sent' then
     raise exception 'FAILED: the OTP job is not sent';
   end if;
-  if (select status from public.sms_outbox where body = 'Your code is 5678') <> 'queued' then
+  if (select o.status from public.sms_outbox o join public.sms_otp_secret s on s.outbox_id = o.id
+       where s.body = 'Your code is 5678') is distinct from 'queued' then
     raise exception 'FAILED: a former admin''s gateway took a job';
   end if;
   if (select status from public.sms_outbox where channel = 'marketing') <> 'queued' then
