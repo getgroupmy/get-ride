@@ -174,6 +174,16 @@ class RiderMenu extends ConsumerWidget {
               builtIn: (context, id) => _builtIn(context, ref, id),
             ),
           ),
+      // Also in Settings; here too so it's never hard to find (App Review 5.1.1(v)).
+      Card(
+        child: ListTile(
+          key: const ValueKey('account-delete'),
+          leading: Icon(Icons.person_remove_outlined, color: t.colorScheme.error),
+          title: Text('Delete account', style: TextStyle(color: t.colorScheme.error)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => go('/account/settings/delete'),
+        ),
+      ),
     ]);
   }
 }

@@ -37,6 +37,12 @@ class AppConfig {
   /// The Terms of Service, beside the Privacy Notice on the same site.
   static const termsUrl = String.fromEnvironment('TERMS_URL', defaultValue: 'https://getride.my/terms-of-service');
 
+  /// An App Store / TestFlight build (`--dart-define=STORE_BUILD=true` in
+  /// ios-release.yml): leaves out what Apple doesn't allow in a store binary,
+  /// the internal App Release screen and the install page with its
+  /// itms-services links (App Review 2.5.2).
+  static const storeBuild = bool.fromEnvironment('STORE_BUILD');
+
   /// The version compiled in, used only until the platform's own is read
   /// (core/installed_app.dart). Kept in step with `pubspec.yaml` by a test.
   static const appVersion = '1.4.8';
