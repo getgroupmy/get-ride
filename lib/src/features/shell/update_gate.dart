@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_version.dart';
 import '../../data/app_version_repository.dart';
+import '../partner/driver_online.dart';
 import '../../core/installed_app.dart';
 
 /// Opens the store; the store app is a different app, so this leaves ours.
@@ -82,6 +83,14 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
   Widget build(BuildContext context) {
     final v = ref.watch(appUpdateProvider).value ?? const UpdateVerdict.none();
     if (v.kind == UpdateKind.required) {
+      // Nothing may be done on this build, taking rides included: a driver
+      // who was on the Drive switch goes offline, so requests stop being
+      // sent to a phone that can't open them.
+      if (ref.read(driverOnlineProvider)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) ref.read(driverOnlineProvider.notifier).set(false);
+        });
+      }
       return UpdateRequiredView(verdict: v, onUpdate: () => _update(v), failed: _failed);
     }
     final showCard = v.kind == UpdateKind.optional && _prefsRead && !_hidden && _dismissed != v.latest;

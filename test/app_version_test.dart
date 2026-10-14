@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/config.dart';
 import 'package:get_ride/src/core/app_version.dart';
 import 'package:get_ride/src/data/app_version_repository.dart';
+import 'package:get_ride/src/features/partner/driver_online.dart';
 import 'package:get_ride/src/features/shell/update_gate.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -167,6 +168,25 @@ void main() {
       await tester.pump();
       expect(opened, 'https://store.example/app');
     });
+
+    for (final (kind, offline) in [(UpdateKind.required, true), (UpdateKind.optional, false)]) {
+      testWidgets('a driver on the Drive switch ${offline ? 'goes offline' : 'stays online'} for a ${kind.name} update',
+          (tester) async {
+        final container = ProviderContainer(
+          overrides: [appUpdateProvider.overrideWith((_) async => UpdateVerdict(kind, latest: '2.0.0'))],
+        );
+        addTearDown(container.dispose);
+        container.read(driverOnlineProvider.notifier).set(true);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const MaterialApp(home: UpdateGate(child: Scaffold(body: Text('the app')))),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(container.read(driverOnlineProvider), !offline);
+      });
+    }
 
     testWidgets('a required update without a link says where to go', (tester) async {
       await pump(tester, const UpdateVerdict(UpdateKind.required, latest: '2.0.0'));
