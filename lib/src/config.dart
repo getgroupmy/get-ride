@@ -45,5 +45,5 @@ class AppConfig {
 
   /// The version compiled in, used only until the platform's own is read
   /// (core/installed_app.dart). Kept in step with `pubspec.yaml` by a test.
-  static const appVersion = '1.4.8';
+  static const appVersion = '1.4.9';
 }
