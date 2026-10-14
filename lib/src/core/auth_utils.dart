@@ -45,13 +45,6 @@ String capitaliseName(String name) => name
     .map((w) => w[0].toUpperCase() + w.substring(1))
     .join(' ');
 
-/// The Auth password builds before migration 0172 derived from the PIN
-/// (Expo `derivePinPassword`). Only the fallback sign-in, for a backend
-/// without the pin-login function, still sends it: a million of these per
-/// number is what someone guessing at Auth's password grant would try, so
-/// nothing sets it as a password any more ([throwawayPassword] replaces it).
-String derivePinPassword(String pin) => 'teksi-pin-v1-$pin';
-
 /// A random Auth password nobody keeps: written over the PIN-derived one
 /// whenever a PIN is set or confirmed, so it stops being guessable. PIN
 /// sign-in goes through the pin-login function, which sets its own.

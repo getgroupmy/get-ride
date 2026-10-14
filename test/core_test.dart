@@ -47,10 +47,6 @@ void main() {
       expect(a, isNot(startsWith('teksi-pin')));
     });
 
-    test('derivePinPassword matches Expo derivePinPassword', () {
-      expect(derivePinPassword('123456'), 'teksi-pin-v1-123456');
-    });
-
     test('isValidPin requires exactly six digits', () {
       expect(isValidPin('123456'), isTrue);
       expect(isValidPin('12345'), isFalse);
