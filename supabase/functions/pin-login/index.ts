@@ -11,7 +11,8 @@
 // Request:  POST { phone: "+60123456789", pin: "123456" }   (no session)
 // Response: 200 { session: { access_token, refresh_token, expires_in, ... } }
 //           400 { error: "bad_request" }
-//           401 { error: "wrong_pin" }        (also for an unknown number)
+//           401 { error: "wrong_pin", attempts_left? } (also for an unknown number; the
+//               tries left only for an account with a PIN, 0192)
 //           409 { error: "needs_otp" }        (sign in by SMS code instead)
 //           423 { error: "locked", retry_after }
 //           429 { error: "rate_limited", retry_after }
@@ -85,6 +86,11 @@ Deno.serve(async (req) => {
         expires_at: s.expires_at,
         token_type: s.token_type,
       };
+    },
+    async attemptsLeft(phone) {
+      const { data, error } = await admin.rpc("pin_attempts_left", { p_phone: phone });
+      if (error) return null;
+      return typeof data === "number" ? data : null;
     },
     randomPassword,
   });

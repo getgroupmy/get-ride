@@ -60,7 +60,22 @@ class CodeField extends StatelessWidget {
 }
 
 /// Human-readable message for an exception from Supabase or elsewhere.
-String errorText(Object e) => switch (e) {
+/// No network: the same words wherever it happens.
+const noConnectionMessage = 'No connection. Check your internet and try again.';
+
+bool _isNoConnection(Object e) {
+  final s = '$e';
+  return s.contains('SocketException') ||
+      s.contains('Failed host lookup') ||
+      s.contains('ClientException') ||
+      s.contains('AuthRetryableFetchException') ||
+      s.contains('Connection refused') ||
+      s.contains('Network is unreachable');
+}
+
+String errorText(Object e) => _isNoConnection(e) ? noConnectionMessage : _errorText(e);
+
+String _errorText(Object e) => switch (e) {
       AuthException(:final message) => message,
       PostgrestException(:final message) => message,
       StateError(:final message) => message,

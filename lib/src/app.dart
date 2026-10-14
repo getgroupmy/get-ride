@@ -155,8 +155,13 @@ ThemeData appTheme(Brightness b, {Map<String, String> colors = const {}}) {
 
 /// Re-runs router redirects whenever the auth session changes.
 class _AuthListenable extends ChangeNotifier {
-  _AuthListenable(Stream<AuthState> stream) {
-    _sub = stream.listen((_) => notifyListeners());
+  _AuthListenable(Stream<AuthState> stream, {Future<void> Function(AuthState)? onChange}) {
+    _sub = stream.listen((s) {
+      notifyListeners();
+      // Then again once the server has said what the account still needs
+      // (a PIN, 0192), so the redirect can act on it.
+      onChange?.call(s).then((_) => notifyListeners(), onError: (_) {});
+    });
   }
   late final StreamSubscription<AuthState> _sub;
 
@@ -169,7 +174,14 @@ class _AuthListenable extends ChangeNotifier {
 
 final routerProvider = Provider<GoRouter>((ref) {
   final db = ref.watch(supabaseProvider);
-  final refresh = _AuthListenable(db.auth.onAuthStateChange);
+  final refresh = _AuthListenable(
+    db.auth.onAuthStateChange,
+    onChange: (s) async {
+      if (s.session != null && (s.event == AuthChangeEvent.initialSession || s.event == AuthChangeEvent.signedIn)) {
+        await ref.read(authRepositoryProvider).syncPinRequirement();
+      }
+    },
+  );
   ref.onDispose(refresh.dispose);
 
   return GoRouter(
