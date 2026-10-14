@@ -1,0 +1,31 @@
+name: passkeys_web
+description: >
+  A no-op stand-in for Corbado's passkeys_web, so that adding the
+  passkeys plugin for Android and iOS does not enrol a web
+  implementation this app does not want and cannot load.
+version: 2.9.2
+publish_to: none
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+  flutter: ">=3.32.0"
+
+flutter:
+  plugin:
+    # The same endorsement the real package makes. Without this,
+    # `passkeys` still resolves its `default_package: passkeys_web` and
+    # Flutter reads the plugin class out of THIS pubspec -- which is
+    # the whole point, and which is why the name and this block have to
+    # match rather than merely resemble.
+    implements: passkeys
+    platforms:
+      web:
+        pluginClass: PasskeysWeb
+        fileName: passkeys_web.dart
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  passkeys_platform_interface: ^2.8.0

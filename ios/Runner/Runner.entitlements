@@ -7,5 +7,14 @@
 	     Push Notifications enabled (see docs/store-release.md). -->
 	<key>aps-environment</key>
 	<string>development</string>
+	<!-- Passkeys saved for getride.my (the relying party set in Supabase →
+	     Authentication → Passkeys). The domain side is the webcredentials
+	     entry in apple-app-site-association (scripts/ci/app_links.ts). The
+	     App ID needs Associated Domains, and the App Store profile must be
+	     made after it was turned on, or signing fails. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:getride.my</string>
+	</array>
 </dict>
 </plist>

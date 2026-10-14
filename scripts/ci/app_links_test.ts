@@ -10,6 +10,7 @@
 import { assert, assertEquals, assertStringIncludes, assertThrows } from "jsr:@std/assert@1.0.19";
 
 import {
+  apkKeyHashOrigin,
   APP_ID,
   appleAppSiteAssociation,
   assetLinks,
@@ -100,8 +101,9 @@ Deno.test("dedupe keeps the first of each", () => {
   assertEquals(dedupe([FP, FP2], [FP]), [FP, FP2]);
 });
 
-Deno.test("apple-app-site-association claims the three code paths only", () => {
+Deno.test("apple-app-site-association claims the three code paths and passkeys for the app", () => {
   assertEquals(appleAppSiteAssociation("ABCDE12345"), {
+    webcredentials: { apps: ["ABCDE12345.com.taxxee.teksi"] },
     applinks: {
       apps: [],
       details: [
@@ -119,14 +121,14 @@ Deno.test("apple-app-site-association claims the three code paths only", () => {
 Deno.test("assetlinks.json is the handle_all_urls statement for the app", () => {
   assertEquals(assetLinks([FP, FP2]), [
     {
-      relation: ["delegate_permission/common.handle_all_urls"],
+      relation: ["delegate_permission/common.handle_all_urls", "delegate_permission/common.get_login_creds"],
       target: { namespace: "android_app", package_name: APP_ID, sha256_cert_fingerprints: [FP, FP2] },
     },
   ]);
   assertThrows(() => assetLinks([]));
 });
 
-Deno.test("everything there: both files, and no notice about the Play key", () => {
+Deno.test("everything there: both files, the passkey origins, and no notice about the Play key", () => {
   const p = plan({ profilePlist: PROFILE, keytoolOutput: KEYTOOL, sha256Var: `${FP2},${HEX}` });
   assertEquals(Object.keys(p.files).sort(), ["apple-app-site-association", "assetlinks.json"]);
   assertEquals(
@@ -134,7 +136,8 @@ Deno.test("everything there: both files, and no notice about the Play key", () =
     [FP, FP2],
     "upload key first, then the variable's, without the repeat",
   );
-  assertEquals(p.notices, []);
+  assertEquals(p.notices.length, 1);
+  assertStringIncludes(p.notices[0], `${apkKeyHashOrigin(FP)},${apkKeyHashOrigin(FP2)}`);
   assertEquals(p.warnings, []);
 });
 
@@ -160,6 +163,17 @@ Deno.test("the upload key alone reminds about the Play App Signing key", () => {
   const p = plan({ keytoolOutput: KEYTOOL });
   assert("assetlinks.json" in p.files);
   assertStringIncludes(p.notices.join(" "), "ANDROID_APP_LINK_SHA256");
+});
+
+Deno.test("a passkey origin is the certificate's SHA-256, base64url, unpadded", () => {
+  const origin = apkKeyHashOrigin(FP);
+  assert(origin.startsWith("android:apk-key-hash:"));
+  const b64 = origin.slice("android:apk-key-hash:".length);
+  assertEquals(b64.length, 43);
+  assert(!/[+/=]/.test(b64));
+  const back = atob(b64.replace(/-/g, "+").replace(/_/g, "/") + "=");
+  const hex = [...back].map((c) => c.charCodeAt(0).toString(16).padStart(2, "0").toUpperCase()).join(":");
+  assertEquals(hex, FP);
 });
 
 Deno.test("the Play key alone is enough", () => {

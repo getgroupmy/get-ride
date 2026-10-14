@@ -27,6 +27,7 @@ import 'data/messaging_repository.dart';
 import 'data/geo_service.dart' show AreaInfo, knownPosition;
 import 'data/notifications_repository.dart';
 import 'data/push_service.dart';
+import 'data/session_guard.dart';
 import 'data/session_tracker.dart';
 import 'features/install/app_install_screen.dart';
 import 'features/auth/otp_screen.dart';
@@ -71,6 +72,7 @@ import 'features/ride/trips_screen.dart';
 import 'features/settings/change_phone_screen.dart';
 import 'features/settings/auth_diagnostics_screen.dart';
 import 'features/settings/change_pin_screen.dart';
+import 'features/settings/passkeys_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/shell/brand_splash.dart';
@@ -306,6 +308,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                         routes: [
                           GoRoute(path: 'phone', builder: (_, _) => const ChangePhoneScreen()),
                           GoRoute(path: 'pin', builder: (_, _) => const ChangePinScreen()),
+                          GoRoute(path: 'passkeys', builder: (_, _) => const PasskeysScreen()),
                         ],
                       ),
                       GoRoute(
@@ -528,10 +531,28 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       unawaited(tracker.userChanged(id, phone: db.auth.currentUser?.phone));
       // The installed version on the account, at launch and every sign-in.
       if (id != null) unawaited(recordAppVersion(db));
+      // One device per account (0180): settle on one at launch without
+      // taking the account back from a newer sign-in, and sign out here
+      // the moment another device signs in.
+      final guard = ref.read(authRepositoryProvider).guard;
+      if (id != null) {
+        unawaited(guard.claim(onlyIfUnclaimed: true));
+        guard.watch(id);
+        if (AuthRepository.offerPasskeyAfterSignIn) {
+          AuthRepository.offerPasskeyAfterSignIn = false;
+          unawaited(_offerPasskey(id));
+        }
+      } else {
+        guard.unwatch();
+      }
     }, fireImmediately: true);
+    _sessionCheckTimer = Timer.periodic(sessionCheckEvery, (_) {
+      unawaited(ref.read(authRepositoryProvider).guard.check());
+    });
     _lifecycle = AppLifecycleListener(
       onResume: () {
         unawaited(tracker.resumed());
+        unawaited(ref.read(authRepositoryProvider).guard.check());
         unawaited(_alwaysOn?.reload());
         unawaited(_branding?.resync());
         unawaited(_reportPushLocation());
@@ -540,6 +561,21 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   }
 
   Timer? _pushLocationTimer;
+  Timer? _sessionCheckTimer;
+
+  /// Once settled after a sign-in with number and PIN, offers to save a
+  /// passkey (Settings → Passkeys) where they are offered.
+  Future<void> _offerPasskey(String userId) async {
+    await Future<void>.delayed(const Duration(seconds: 3));
+    for (var i = 0; i < 20 && mounted; i++) {
+      final ctx = ref.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted && ref.read(currentUserIdProvider) == userId) {
+        await offerPasskeyOnce(ctx, ref, userId);
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+  }
 
   /// Where this phone is, for Admin -> Push Notification's area broadcasts
   /// (migration 0168): reported on start, on resume and every half hour
@@ -634,6 +670,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     unawaited(_alwaysOn?.dispose());
     _lifecycle?.dispose();
     _pushLocationTimer?.cancel();
+    _sessionCheckTimer?.cancel();
     _tracker?.dispose();
     _presence?.stop();
     _branding?.latest.removeListener(_brandingChanged);

@@ -10,11 +10,13 @@ import '../../core/dial_countries.dart';
 import '../../core/phone_input.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/device_access.dart';
+import '../../data/session_guard.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/dial_country_picker.dart';
 import '../../widgets/in_app_page.dart';
+import 'passkey_sign_in_button.dart';
 
 class PhoneScreen extends ConsumerStatefulWidget {
   const PhoneScreen({super.key});
@@ -35,6 +37,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   }
 
   Future<void> _continue() async {
+    signedOutElsewhere.value = false;
     final blocked = await ref.read(deviceBlockedProvider.future);
     if (!mounted) return;
     if (blocked) {
@@ -159,7 +162,10 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                 const SizedBox(height: 8),
               ],
               Text('Your ride, your way.', textAlign: TextAlign.center, style: t.textTheme.bodyLarge),
-              const SizedBox(height: 48),
+              const SizedBox(height: 32),
+              const SignedOutElsewhereNote(),
+              const PasskeySignInButton(),
+              const SizedBox(height: 16),
               Text('Enter your mobile number', style: t.textTheme.titleLarge),
               const SizedBox(height: 4),
               Text('We\'ll sign you in, or create your account.', style: t.textTheme.bodyMedium),

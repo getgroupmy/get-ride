@@ -6,6 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/auth_utils.dart';
+import '../features/auth/passkey/passkey.dart' as pk;
+import 'session_guard.dart';
 
 /// What the server knows about a phone number (`profile_phone_lookup`).
 class PhoneLookup {
@@ -62,11 +64,24 @@ class AuthRepository {
   AuthRepository(this._db);
   final SupabaseClient _db;
 
+  /// One device per account (migration 0180): every sign-in below claims
+  /// the account for this device.
+  late final SessionGuard guard = SessionGuard(
+    _db,
+    deviceId: deviceIdentifier,
+    label: thisDeviceLabel(),
+    platform: thisDevicePlatform(),
+  );
+
   static const _deviceIdKey = 'get_ride_device_id';
 
   /// Set while an OTP sign-in still has to choose a PIN, so the router keeps
   /// the new session on the set-PIN screen instead of entering the app.
   static bool pinSetupPending = false;
+
+  /// Set by a sign-in with number and PIN or SMS code, so the app offers
+  /// once to save a passkey for next time.
+  static bool offerPasskeyAfterSignIn = false;
 
   User? get currentUser => _db.auth.currentUser;
   Stream<AuthState> get authChanges => _db.auth.onAuthStateChange;
@@ -125,6 +140,8 @@ class AuthRepository {
     if (res.session == null) {
       throw const AuthException('Verification failed — no session returned.');
     }
+    await guard.claim();
+    offerPasskeyAfterSignIn = true;
   }
 
   /// Signs in with the PIN through the pin-login function (migration 0172):
@@ -136,6 +153,8 @@ class AuthRepository {
     switch (outcome) {
       case PinLoginSignedIn(:final refreshToken):
         await _db.auth.setSession(refreshToken);
+        await guard.claim();
+        offerPasskeyAfterSignIn = true;
         return const PinSignInOk();
       case PinLoginWrongPin():
         return const PinSignInError('Incorrect PIN. Please try again.');
@@ -276,6 +295,26 @@ class AuthRepository {
     }
     return _cachedHardwareId;
   }
+
+  /// Signs in with a passkey saved on this device (or a phone nearby): no
+  /// number, PIN or SMS. GoTrue checks it and starts the session.
+  Future<pk.PasskeyResult> signInWithPasskey() async {
+    final result = await pk.signInWithPasskey(_db.auth);
+    if (result.outcome == pk.PasskeyOutcome.signedIn) await guard.claim();
+    return result;
+  }
+
+  /// Saves a passkey for the signed-in account on this device.
+  Future<pk.PasskeyResult> savePasskey() => pk.enrolPasskey(_db.auth);
+
+  /// The signed-in account's passkeys, newest first.
+  // ignore: experimental_member_use
+  Future<List<Passkey>> passkeys() async => (await _db.auth.passkey.list())
+    ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+  /// Removes one: a passkey on a lost phone is a key somebody else holds.
+  // ignore: experimental_member_use
+  Future<void> removePasskey(String id) => _db.auth.passkey.delete(passkeyId: id);
 
   Future<void> signOut() => _db.auth.signOut();
 }

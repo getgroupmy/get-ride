@@ -120,6 +120,10 @@ export function appleAppSiteAssociation(
 ): Record<string, unknown> {
   if (!isTeamId(teamId)) throw new Error(`not a team id: ${teamId}`);
   return {
+    // Passkeys: the app may use credentials saved for this domain (the
+    // relying party getride.my; Runner.entitlements asks for
+    // webcredentials:getride.my).
+    webcredentials: { apps: [`${teamId}.${appId}`] },
     applinks: {
       apps: [],
       details: [
@@ -142,7 +146,9 @@ export function assetLinks(
   if (fingerprints.length === 0) throw new Error("no fingerprints");
   return [
     {
-      relation: ["delegate_permission/common.handle_all_urls"],
+      // handle_all_urls opens My QR links in the app; get_login_creds lets
+      // it use passkeys saved for this domain (Credential Manager).
+      relation: ["delegate_permission/common.handle_all_urls", "delegate_permission/common.get_login_creds"],
       target: {
         namespace: "android_app",
         package_name: appId,
@@ -150,6 +156,20 @@ export function assetLinks(
       },
     },
   ];
+}
+
+/**
+ * The origin an Android app signs passkey requests with, for Supabase →
+ * Authentication → Passkeys → Relying Party Origins: the signing
+ * certificate's SHA-256, base64url without padding.
+ */
+export function apkKeyHashOrigin(fingerprint: string): string {
+  const hex = fingerprint.replace(/:/g, "");
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return "android:apk-key-hash:" + btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /** What to write, and what to say about what was not. */
@@ -204,6 +224,10 @@ export function plan(inputs: Inputs): Plan {
   const fingerprints = dedupe(fromKeystore, listed.fingerprints);
   if (fingerprints.length) {
     files["assetlinks.json"] = JSON.stringify(assetLinks(fingerprints));
+    notices.push(
+      "Passkey origins for Supabase -> Authentication -> Passkeys -> Relying Party Origins: " +
+        fingerprints.map(apkKeyHashOrigin).join(","),
+    );
   } else {
     notices.push(
       "No signing fingerprint (no ANDROID_KEYSTORE_BASE64 secret, no ANDROID_APP_LINK_SHA256 variable): " +

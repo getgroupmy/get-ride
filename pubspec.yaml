@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.4.7+1
+version: 1.4.8+1
 
 environment:
   sdk: ^3.13.5
@@ -63,6 +63,12 @@ dependencies:
   webview_flutter: ^4.14.1
   flutter_native_contact_picker: ^0.0.12
   web: ^1.1.1
+  # Passkey sign-in on Android and iOS (Credential Manager and
+  # ASAuthorization); the web app uses the browser's own WebAuthn
+  # (features/auth/passkey/passkey_web.dart). See dependency_overrides
+  # below before touching this: the plugin's web half must never load.
+  passkeys: ^2.21.1
+  passkeys_platform_interface: ^2.8.0
   flutter_webrtc: ^1.6.2+hotfix.3
   share_plus: ^13.3.1
   skeletonizer: ^3.0.0
@@ -93,6 +99,17 @@ dev_dependencies:
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
+# `passkeys` federates a web implementation, `passkeys_web`, and Flutter
+# enrols every federated web half into the web bundle whether the app
+# uses it or not. The real one calls a JS global (Corbado's bundle.js)
+# while plugins register, before runApp, so without this override every
+# page of the web app is blank. This points it at a local no-op; the web
+# app does passkeys through the browser's WebAuthn instead
+# (passkey_web.dart). Learned the hard way in iAkauntan.
+dependency_overrides:
+  passkeys_web:
+    path: packages/passkeys_web
+
 flutter:
   assets:
     - assets/branding/icon.png
