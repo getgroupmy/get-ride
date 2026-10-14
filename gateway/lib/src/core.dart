@@ -138,8 +138,8 @@ String? gatewayRefusal(Object error) {
   if (s.contains('NOT_A_GATEWAY')) {
     return 'The server does not know this phone as a gateway. Turn the gateway off and on again.';
   }
-  if (s.contains('NOT_SIGNED_IN') || s.contains('JWT expired') || s.contains('invalid JWT')) {
-    return 'You were signed out. Sign in again.';
+  if (s.contains('GATEWAY_KEY_INVALID')) {
+    return 'This phone is no longer paired. Unpair it, then pair it again from Admin → SMS / WhatsApp.';
   }
   return null;
 }
@@ -185,48 +185,21 @@ class GatewayStats {
   int received = 0;
 }
 
-/// Sign-in phone number from a dial code and a local number, dropping a
-/// trunk `0` (`+60` + `012 345 6789` → `+60123456789`), as the GET.ride app
-/// signs in.
-String composeSignInPhone(String dialCode, String local) {
-  var l = local.replaceAll(RegExp(r'\D'), '');
-  if (l.startsWith('0')) l = l.substring(1);
-  final d = dialCode.replaceAll(RegExp(r'\D'), '');
-  return d.isEmpty || l.isEmpty ? '' : '+$d$l';
-}
+/// A pairing code as typed: letters and digits only, in capitals
+/// (`abcd-2345` → `ABCD2345`). Pure.
+String normalizePairCode(String typed) => typed.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
 
-/// What the pin-login function's answer means here (supabase/functions/
-/// pin-login, the GET.ride app's PIN sign-in since 1.4.5): the refresh token
-/// to adopt, or the sentence to show. PIN-derived passwords were retired
-/// (migration 0175), so this is the only way in with a PIN. Pure.
-({String? refreshToken, String? error}) pinLoginResult(int status, Object? body) {
+/// Whether [typed] is a whole pairing code (8 characters, Admin → SMS /
+/// WhatsApp → Pair a gateway phone).
+bool isPairCode(String typed) => normalizePairCode(typed).length == 8;
+
+/// What `gateway_pair` (migration 0190) answered: the device key to keep,
+/// or the sentence to show. Pure.
+({String? key, String? error}) pairResult(Object? body) {
   final map = body is Map ? body : const {};
-  final wait = map['retry_after'] is num ? (map['retry_after'] as num).toInt() : null;
-  String minutes(int s) {
-    final m = (s / 60).ceil().clamp(1, 1 << 30);
-    return '$m minute${m == 1 ? '' : 's'}';
-  }
-
-  switch (status) {
-    case 200:
-      final session = map['session'];
-      final token = session is Map ? session['refresh_token'] : null;
-      if (token is String && token.isNotEmpty) return (refreshToken: token, error: null);
-      return (refreshToken: null, error: 'Sign-in did not answer properly. Please try again.');
-    case 401:
-      return (refreshToken: null, error: 'Wrong phone number or PIN.');
-    case 409:
-      return (
-        refreshToken: null,
-        error: 'This account needs its PIN set again. Sign in to the GET.ride app with an SMS code, then try here.',
-      );
-    case 423:
-      return (refreshToken: null, error: 'Too many wrong PINs. Try again in ${minutes(wait ?? 900)}.');
-    case 429:
-      return (refreshToken: null, error: 'Too many tries from this network. Try again in ${minutes(wait ?? 60)}.');
-    default:
-      return (refreshToken: null, error: "Couldn't reach sign-in. Check this phone's connection and try again.");
-  }
+  final key = map['key'];
+  if (key is String && key.length >= 32) return (key: key, error: null);
+  final hint = map['hint'];
+  if (hint is String && hint.trim().isNotEmpty) return (key: null, error: hint.trim());
+  return (key: null, error: 'Pairing did not answer properly. Please try again.');
 }
-
-bool isValidPin(String pin) => RegExp(r'^\d{6}$').hasMatch(pin);

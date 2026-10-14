@@ -14,8 +14,10 @@ linked from Admin → SMS / WhatsApp).
 ## Setting up a gateway phone
 
 1. Install the APK (allow "install unknown apps" for the browser once).
-2. Sign in with a GET.ride **admin** account: the same phone number and PIN
-   as the GET.ride app.
+2. Pair it: a full admin opens Admin → SMS / WhatsApp → **Pair a gateway
+   phone** in the GET.ride app and types the code shown into the gateway
+   (once; the code lasts 10 minutes). The phone keeps a device key of its own
+   and never needs a sign-in; removing it from Devices disconnects it.
 3. Allow SMS, SIM cards and notifications; allow unrestricted battery use, or
    Android pauses the gateway while the screen is off.
 4. On a dual-SIM phone pick the sending SIM; type the SIM's number and a

@@ -38,21 +38,18 @@ void main() {
     expect(describeError(Exception('SocketException: Failed host lookup')), 'No connection to the server.');
   });
 
-  test('sign-in matches the GET.ride app: trunk zero dropped, pin-login answers read', () {
-    expect(composeSignInPhone('+60', '012-345 6789'), '+60123456789');
-    expect(composeSignInPhone('+60', ''), '');
-    final ok = pinLoginResult(200, {
-      'session': {'refresh_token': 'r1'},
-    });
-    expect(ok.refreshToken, 'r1');
-    expect(pinLoginResult(401, {'error': 'wrong_pin'}).error, 'Wrong phone number or PIN.');
-    expect(pinLoginResult(423, {'retry_after': 120}).error, contains('2 minutes'));
-    expect(pinLoginResult(429, {'retry_after': 30}).error, contains('1 minute'));
-    expect(pinLoginResult(409, null).error, contains('SMS code'));
-    expect(pinLoginResult(500, null).error, contains("Couldn't reach"));
-    expect(pinLoginResult(200, {}).refreshToken, isNull);
-    expect(isValidPin('12345'), isFalse);
-    expect(isValidPin('123456'), isTrue);
+  test('pairing codes are read as typed, and the pairing answer gives the key or why not', () {
+    expect(normalizePairCode('abcd-2345 '), 'ABCD2345');
+    expect(isPairCode('ABCD-2345'), isTrue);
+    expect(isPairCode('ABCD-234'), isFalse);
+    final key = 'k' * 64;
+    expect(pairResult({'key': key, 'device': 'd1'}).key, key);
+    expect(
+      pairResult({'error': 'GATEWAY_PAIR_CODE', 'hint': 'That code is wrong or has expired.'}).error,
+      'That code is wrong or has expired.',
+    );
+    expect(pairResult(null).error, contains('Please try again'));
+    expect(gatewayRefusal(Exception('GATEWAY_KEY_INVALID')), contains('no longer paired'));
   });
 
   test('incoming SMS and SIMs read off the platform maps', () {

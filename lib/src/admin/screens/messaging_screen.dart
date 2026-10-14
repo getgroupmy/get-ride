@@ -16,6 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/messaging.dart';
 import '../../data/live_tables.dart';
 import '../../data/messaging_repository.dart';
+import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
@@ -95,15 +96,26 @@ class AdminMessagingScreen extends ConsumerWidget {
                           ),
                           Padding(
                             padding: const EdgeInsets.fromLTRB(56, 0, 16, 12),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: OutlinedButton.icon(
-                                key: const ValueKey('messaging-gateway-download'),
-                                icon: const Icon(Icons.download_outlined),
-                                label: const Text('Download the Gateway app (Android)'),
-                                onPressed: () =>
-                                    launchUrl(Uri.parse(gatewayApkUrl), mode: LaunchMode.externalApplication),
-                              ),
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                OutlinedButton.icon(
+                                  key: const ValueKey('messaging-gateway-download'),
+                                  icon: const Icon(Icons.download_outlined),
+                                  label: const Text('Download the Gateway app (Android)'),
+                                  onPressed: () =>
+                                      launchUrl(Uri.parse(gatewayApkUrl), mode: LaunchMode.externalApplication),
+                                ),
+                                // A gateway sends sign-in codes, so only a full admin pairs one (0190).
+                                if (ref.watch(adminAccessProvider).value?.isFullAdmin ?? false)
+                                  FilledButton.tonalIcon(
+                                    key: const ValueKey('messaging-gateway-pair'),
+                                    icon: const Icon(Icons.link),
+                                    label: const Text('Pair a gateway phone'),
+                                    onPressed: () => showGatewayPairingCode(context, ref),
+                                  ),
+                              ],
                             ),
                           ),
                         ],
@@ -366,7 +378,7 @@ class _RouteEditorState extends ConsumerState<_RouteEditor> {
               Text(
                 r.transport == MessagingTransport.sms
                     ? 'No gateway phone yet. Install the GET.ride Gateway app on an Android phone with a SIM '
-                          'and sign in with an admin account; it then appears here.'
+                          'and pair it with "Pair a gateway phone" above; it then appears here.'
                     : 'No device yet. A device appears here once an admin signs in to the app on it.',
                 style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
               )
@@ -662,4 +674,65 @@ class _QueueCardState extends ConsumerState<_QueueCard> {
       ),
     );
   }
+}
+
+/// "Pair a gateway phone" (migration 0190): a code good for 10 minutes, to
+/// type into the Gateway app once. The phone then runs without a sign-in
+/// until it is removed from Devices.
+Future<void> showGatewayPairingCode(BuildContext context, WidgetRef ref) async {
+  final label = TextEditingController();
+  final name = await showDialog<String>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Pair a gateway phone'),
+      content: TextField(
+        key: const ValueKey('gateway-pair-label'),
+        controller: label,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Name (optional)', hintText: 'e.g. Office gateway (Maxis)'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(c, label.text), child: const Text('Get code')),
+      ],
+    ),
+  );
+  label.dispose();
+  if (name == null || !context.mounted) return;
+  Map<String, dynamic>? answer;
+  final ok = await runAdminAction(context, () async {
+    final r = await ref.read(supabaseProvider).rpc('admin_gateway_pairing_code', params: {'p_label': name});
+    answer = Map<String, dynamic>.from(r as Map);
+  });
+  final code = answer?['code'] as String?;
+  if (!ok || code == null || !context.mounted) return;
+  final expires = DateTime.tryParse('${answer?['expires_at']}')?.toLocal();
+  await showDialog<void>(
+    context: context,
+    builder: (c) {
+      final t = Theme.of(c);
+      return AlertDialog(
+        title: const Text('Pairing code'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SelectableText(
+              code,
+              key: const ValueKey('gateway-pair-code'),
+              style: t.textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 4),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'On the gateway phone, open the GET.ride Gateway app and type this code. '
+              '${expires == null ? 'It works once, for 10 minutes.' : 'It works once, until ${DateFormat('HH:mm').format(expires)}.'} '
+              'The phone then stays connected without signing in; remove it from Devices to disconnect it.',
+              style: t.textTheme.bodySmall,
+            ),
+          ],
+        ),
+        actions: [FilledButton(onPressed: () => Navigator.pop(c), child: const Text('Done'))],
+      );
+    },
+  );
+  ref.invalidate(_devicesProvider);
 }

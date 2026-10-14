@@ -16,6 +16,7 @@ class GatewaySettings {
   static const _simNumberKey = 'gateway.sim_number';
   static const _subscriptionKey = 'gateway.subscription_id';
   static const _onlineKey = 'gateway.online';
+  static const _pairKey = 'gateway.key';
 
   /// This install's id, made once; the server keys the device row on it.
   String get deviceId {
@@ -38,6 +39,13 @@ class GatewaySettings {
   /// The SIM that sends; null is the phone's default SMS SIM.
   int? get subscriptionId => _prefs.getInt(_subscriptionKey);
   set subscriptionId(int? v) => v == null ? _prefs.remove(_subscriptionKey) : _prefs.setInt(_subscriptionKey, v);
+
+  /// The device key from pairing (migration 0190): the gateway's only
+  /// credential, kept until the phone is unpaired. Null: not paired.
+  String? get gatewayKey => _clean(_prefs.getString(_pairKey));
+  set gatewayKey(String? v) => _set(_pairKey, v);
+
+  bool get paired => gatewayKey != null;
 
   /// Whether the gateway was left on, so opening the app turns it back on.
   bool get wantOnline => _prefs.getBool(_onlineKey) ?? false;

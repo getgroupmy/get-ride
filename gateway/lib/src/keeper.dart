@@ -21,8 +21,8 @@ class GatewayKeeper {
   final SmsPlatform platform;
   final GatewayPermissions permissions;
 
-  /// Whether an account is signed in on this phone. The engine itself stops,
-  /// saying why, if the server refuses the account.
+  /// Whether this phone is paired (has its device key). The engine itself
+  /// stops, saying why, if the server no longer knows the key.
   final bool Function() signedIn;
 
   /// Starts the gateway if it was left on and can run; otherwise takes down

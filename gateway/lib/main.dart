@@ -25,7 +25,7 @@ Future<void> main() async {
   // (the service brings the gateway back after a restart or the app being
   // ended), and the gateway runs on after the screen is closed.
   final engine = GatewayEngine(
-    backend: SupabaseGatewayBackend(db),
+    backend: SupabaseGatewayBackend(db, key: () => settings.gatewayKey),
     platform: platform,
     config: settings.config,
     appVersion: gatewayVersion,
@@ -35,7 +35,7 @@ Future<void> main() async {
     settings: settings,
     platform: platform,
     permissions: permissions,
-    signedIn: () => db.auth.currentSession != null,
+    signedIn: () => settings.paired,
   );
   platform.onResume(keeper.resume);
   runApp(GatewayApp(db: db, settings: settings, platform: platform, permissions: permissions, engine: engine));
