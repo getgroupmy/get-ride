@@ -63,7 +63,13 @@ class IpInfo {
 
 /// The device and app, as far as the platform tells (no native plugin).
 class DeviceSnapshot {
-  const DeviceSnapshot({required this.osName, this.osVersion, required this.deviceType, this.appVersion});
+  const DeviceSnapshot({
+    required this.osName,
+    this.osVersion,
+    required this.deviceType,
+    this.appVersion,
+    this.appBuild,
+  });
 
   /// `android`, `ios`, `web`, `macos`, `windows` or `linux`.
   final String osName;
@@ -72,6 +78,9 @@ class DeviceSnapshot {
   /// `phone` / `desktop` / `browser`, from the platform.
   final String deviceType;
   final String? appVersion;
+
+  /// The build number (`+1` in pubspec), when the platform gives one.
+  final String? appBuild;
 }
 
 /// The `user_sessions` row for one event.
@@ -93,6 +102,7 @@ Map<String, dynamic> sessionRow({
   'os_version': device.osVersion,
   'device_type': device.deviceType,
   'app_version': device.appVersion,
+  'app_build_version': ?device.appBuild,
   'app_id': 'com.taxxee.teksi',
   'public_ip': ip?.publicIp,
   'isp_provider': ip?.ispProvider,

@@ -8,6 +8,7 @@ import '../../core/auth_diagnostics.dart';
 import '../../core/auth_utils.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../core/installed_app.dart';
 
 /// Hidden screen for "I can't sign in" (Expo `/auth-diagnostics`), reached
 /// from the "Not Connected to server" popup. Works signed out.
@@ -86,7 +87,7 @@ class _AuthDiagnosticsScreenState extends State<AuthDiagnosticsScreen> {
   Future<void> _copy() async {
     final report = diagnosticsReport(
       [..._steps, ?_sms],
-      appVersion: AppConfig.appVersion,
+      appVersion: InstalledApp.version,
       platform: kIsWeb ? 'web' : defaultTargetPlatform.name,
     );
     await Clipboard.setData(ClipboardData(text: report));

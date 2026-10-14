@@ -37,6 +37,7 @@ class AppConfig {
   /// The Terms of Service, beside the Privacy Notice on the same site.
   static const termsUrl = String.fromEnvironment('TERMS_URL', defaultValue: 'https://getride.my/terms-of-service');
 
-  /// Shown on the licences page (keep in step with `pubspec.yaml`).
-  static const appVersion = '1.4.3';
+  /// The version compiled in, used only until the platform's own is read
+  /// (core/installed_app.dart). Kept in step with `pubspec.yaml` by a test.
+  static const appVersion = '1.4.6';
 }

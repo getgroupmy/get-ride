@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../config.dart';
 import '../../widgets/in_app_page.dart';
+import '../../core/installed_app.dart';
 
 typedef LinkOpener = Future<void> Function(BuildContext context, String url, {String? title});
 
@@ -45,7 +46,7 @@ class RulesTermsCard extends StatelessWidget {
             onTap: () => showLicensePage(
               context: context,
               applicationName: 'GET.ride',
-              applicationVersion: AppConfig.appVersion,
+              applicationVersion: InstalledApp.version,
             ),
           ),
         ],
