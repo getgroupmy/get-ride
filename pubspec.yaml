@@ -151,13 +151,19 @@ flutter:
   # see https://flutter.dev/to/font-from-package
 
 flutter_launcher_icons:
+  # The GET.ride wordmark on a transparent background. App Store icons may
+  # not be transparent, so iOS gets it on white; Android's adaptive icon
+  # puts it on white inside the launcher's mask; the web keeps it clear.
   image_path: assets/branding/icon.png
   android: true
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: assets/branding/icon.png
   ios: true
   remove_alpha_ios: true
+  background_color_ios: "#ffffff"
   web:
     generate: true
-    background_color: "#000000"
+    background_color: "#ffffff"
     theme_color: "#2DABE2"
   windows:
     generate: true

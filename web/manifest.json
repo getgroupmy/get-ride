@@ -3,9 +3,9 @@
     "short_name": "GET.ride",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#000000",
+    "background_color": "#ffffff",
     "theme_color": "#2DABE2",
-    "description": "GET.ride \u2014 book a ride, drive and manage your wallet.",
+    "description": "GET.ride — book a ride, drive and manage your wallet.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
