@@ -67,7 +67,11 @@ class PinLoginSignedIn extends PinLoginOutcome {
 }
 
 class PinLoginWrongPin extends PinLoginOutcome {
-  const PinLoginWrongPin();
+  const PinLoginWrongPin({this.attemptsLeft});
+
+  /// Tries left before the PIN locks (pin-login since 0192); null when the
+  /// server doesn't say (an unknown number, or an older function).
+  final int? attemptsLeft;
 }
 
 /// Too many wrong PINs on the account, or tries from this network.
@@ -96,16 +100,63 @@ PinLoginOutcome pinLoginOutcome(int status, Object? body) {
       final token = session is Map ? session['refresh_token'] : null;
       return token is String && token.isNotEmpty ? PinLoginSignedIn(token) : const PinLoginUnavailable();
     case 401:
-      return const PinLoginWrongPin();
+      final left = map['attempts_left'];
+      return PinLoginWrongPin(attemptsLeft: left is num ? left.toInt() : null);
     case 409:
       return const PinLoginNeedsOtp();
     case 423:
-      return PinLoginRefused(pinLockMessage(wait ?? pinLockDefaultSeconds));
+      return PinLoginRefused(signInLockMessage(wait ?? pinLockDefaultSeconds));
     case 429:
       return PinLoginRefused(rateLimitMessage(wait ?? 60));
     default:
       return const PinLoginUnavailable();
   }
+}
+
+/// The admin's PIN policy (Admin → App Settings → PIN sign-in, migration
+/// 0192): wrong PINs before the lock, and how long it lasts.
+class PinPolicy {
+  const PinPolicy({this.maxAttempts = 5, this.lockMinutes = 15});
+
+  final int maxAttempts;
+  final int lockMinutes;
+
+  static const standard = PinPolicy();
+
+  factory PinPolicy.fromJson(Object? json) {
+    if (json is! Map) return standard;
+    int n(String k, int d, int lo, int hi) {
+      final v = json[k];
+      return (v is num ? v.round() : d).clamp(lo, hi);
+    }
+
+    return PinPolicy(maxAttempts: n('maxAttempts', 5, 3, 10), lockMinutes: n('lockMinutes', 15, 1, 1440));
+  }
+
+  Map<String, dynamic> toJson() => {'maxAttempts': maxAttempts, 'lockMinutes': lockMinutes};
+
+  @override
+  bool operator ==(Object other) =>
+      other is PinPolicy && other.maxAttempts == maxAttempts && other.lockMinutes == lockMinutes;
+
+  @override
+  int get hashCode => Object.hash(maxAttempts, lockMinutes);
+}
+
+/// What a wrong PIN says. From the second wrong try it counts down the
+/// tries left; at none, the PIN is locked and an SMS code is the way in.
+String wrongPinMessage(int? attemptsLeft, PinPolicy policy) {
+  if (attemptsLeft == null) return 'Incorrect PIN. Please try again.';
+  if (attemptsLeft <= 0) return 'Too many wrong PINs. Your PIN is locked for now, so sign in with an SMS code.';
+  final wrong = policy.maxAttempts - attemptsLeft;
+  if (wrong < 2) return 'Incorrect PIN. Please try again.';
+  return 'Wrong PIN. $attemptsLeft ${attemptsLeft == 1 ? 'try' : 'tries'} left.';
+}
+
+/// The PIN is locked at sign-in: for how long, and the way in meanwhile.
+String signInLockMessage(int seconds) {
+  final mins = (seconds / 60).ceil().clamp(1, 1 << 30);
+  return 'PIN locked for $mins minute${mins == 1 ? '' : 's'}, or sign in with an SMS code.';
 }
 
 /// Sign-in PINs are exactly six digits.

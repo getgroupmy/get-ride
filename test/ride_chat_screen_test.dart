@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/widgets/common.dart' show noConnectionMessage;
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/ride_chat.dart';
 import 'package:get_ride/src/core/reliability_settings.dart';
@@ -297,7 +298,7 @@ Finder waiting() => find.byWidgetPredicate((w) => w is Icon && w.semanticLabel =
     await tester.tap(find.byKey(const ValueKey("quick-I've arrived")));
     await tester.pump();
     expect(waiting(), findsNothing, reason: 'nothing is kept on the phone');
-    expect(find.textContaining('SocketException'), findsOneWidget);
+    expect(find.text(noConnectionMessage), findsOneWidget, reason: 'said plainly, not as the raw exception');
     repo.offline = false;
     await tester.tap(find.byKey(const ValueKey("quick-I've arrived")));
     await tester.pump();
