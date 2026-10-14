@@ -6,8 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
-import '../config.dart';
 import '../core/session_telemetry.dart';
+import '../core/installed_app.dart';
 
 /// Where session telemetry goes. [SupabaseSessionSink] in the app, a fake in
 /// tests.
@@ -97,8 +97,11 @@ class GeolocatorTelemetryLocation implements TelemetryLocation {
 }
 
 /// This device and app, from the platform alone.
-DeviceSnapshot currentDevice({String appVersion = AppConfig.appVersion}) {
-  if (kIsWeb) return DeviceSnapshot(osName: 'web', deviceType: 'browser', appVersion: appVersion);
+DeviceSnapshot currentDevice({String? appVersion}) {
+  appVersion ??= InstalledApp.version;
+  if (kIsWeb) {
+    return DeviceSnapshot(osName: 'web', deviceType: 'browser', appVersion: appVersion, appBuild: InstalledApp.build);
+  }
   final os = defaultTargetPlatform.name.toLowerCase();
   final mobile = defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS;
   String? version;
@@ -110,6 +113,7 @@ DeviceSnapshot currentDevice({String appVersion = AppConfig.appVersion}) {
     osVersion: version,
     deviceType: mobile ? 'phone' : 'desktop',
     appVersion: appVersion,
+    appBuild: InstalledApp.build,
   );
 }
 

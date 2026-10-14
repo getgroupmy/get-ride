@@ -6,9 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../config.dart';
 import '../../core/app_version.dart';
 import '../../data/app_version_repository.dart';
+import '../../core/installed_app.dart';
 
 /// Opens the store; the store app is a different app, so this leaves ours.
 typedef StoreOpener = Future<bool> Function(String url);
@@ -142,7 +142,7 @@ class _UpdateCard extends StatelessWidget {
             Text(
               onUpdate == null
                   ? 'Version ${verdict.latest} is out. Update from your app store.'
-                  : 'Version ${verdict.latest} is out (you have ${AppConfig.appVersion}).',
+                  : 'Version ${verdict.latest} is out (you have ${InstalledApp.version}).',
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -194,7 +194,7 @@ class UpdateRequiredView extends StatelessWidget {
                   Text('Update required', style: text.headlineSmall, textAlign: TextAlign.center),
                   const SizedBox(height: 12),
                   Text(
-                    'This version of GET.ride (${AppConfig.appVersion}) is no longer supported. '
+                    'This version of GET.ride (${InstalledApp.version}) is no longer supported. '
                     'Please update to version ${verdict.latest} to keep using the app.',
                     textAlign: TextAlign.center,
                   ),

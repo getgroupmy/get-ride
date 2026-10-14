@@ -12,6 +12,7 @@ import 'src/core/push_logic.dart' show supabaseSessionKey;
 import 'src/core/referral.dart';
 import 'src/data/backend_lookup.dart' show pinnedHttpClient;
 import 'src/data/backend_resolver.dart';
+import 'src/core/installed_app.dart';
 import 'src/data/branding_cache.dart';
 import 'src/data/push_service.dart';
 import 'src/data/timeout_http_client.dart';
@@ -21,6 +22,8 @@ Future<void> main() async {
   // cleanly and Vercel Analytics can tell screens apart. No-op elsewhere.
   usePathUrlStrategy();
   WidgetsFlutterBinding.ensureInitialized();
+  // The installed version, for the update gate and the launch record.
+  await InstalledApp.load();
   // The splash is held for what is LEFT of five seconds from here, not five
   // seconds from the first frame, so a slow start is not made slower still.
   markSplashStart();

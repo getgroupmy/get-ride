@@ -18,6 +18,7 @@ import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/push_logic.dart';
 import 'core/ride_bidding.dart' show BiddingRegion, pushPlaceAt;
+import 'data/app_version_repository.dart' show recordAppVersion;
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
 import 'data/branding_cache.dart';
@@ -525,6 +526,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     unawaited(tracker.launched());
     ref.listenManual<String?>(currentUserIdProvider, (_, id) {
       unawaited(tracker.userChanged(id, phone: db.auth.currentUser?.phone));
+      // The installed version on the account, at launch and every sign-in.
+      if (id != null) unawaited(recordAppVersion(db));
     }, fireImmediately: true);
     _lifecycle = AppLifecycleListener(
       onResume: () {
