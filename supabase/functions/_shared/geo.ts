@@ -98,6 +98,28 @@ export function resolveKey(apiProviders: unknown, ref: string | undefined): stri
   return key?.value?.trim() ?? null;
 }
 
+/**
+ * The function's own secret for a key slot, used only when Admin → API Keys
+ * has none for it: the Google keys kept as GitHub Actions secrets, copied to
+ * the function by .github/workflows/sync-map-keys.yml. Routes use the Maps
+ * key unless a Directions key is set.
+ */
+export const FALLBACK_SECRETS: Record<string, string[]> = {
+  google_tiles: ["GOOGLE_MAP_API_KEY"],
+  google_places: ["GOOGLE_PLACES_API_KEY"],
+  google_geocoding: ["GOOGLE_GEOCODING_API_KEY"],
+  google_routes: ["GOOGLE_DIRECTIONS_API_KEY", "GOOGLE_MAP_API_KEY"],
+};
+
+/** The first fallback secret set for [slot], else null. */
+export function fallbackKey(slot: string, env: (name: string) => string | undefined): string | null {
+  for (const name of FALLBACK_SECRETS[slot] ?? []) {
+    const v = env(name)?.trim();
+    if (v) return v;
+  }
+  return null;
+}
+
 // ---- Tiles -----------------------------------------------------------------------------------
 
 export interface TileSource {

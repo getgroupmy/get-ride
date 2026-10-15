@@ -12,12 +12,17 @@
 // provider for the admin page, and limited per caller address. See
 // _shared/geo_handler.ts for the requests and answers.
 //
+// Google keys left empty in Admin → API Keys fall back to the function's own
+// secrets (GOOGLE_MAP_API_KEY, GOOGLE_PLACES_API_KEY, GOOGLE_GEOCODING_API_KEY,
+// GOOGLE_DIRECTIONS_API_KEY), synced from GitHub by sync-map-keys.yml.
+//
 // Deploy (the gateway checks for the project's key or a session):
 //   supabase functions deploy geo
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import countries from "npm:world-countries@5.1.0";
 
+import { fallbackKey } from "../_shared/geo.ts";
 import { googleSessionBody, handleGeo, parseGoogleSession } from "../_shared/geo_handler.ts";
 import { clientIp } from "../_shared/pin_login.ts";
 
@@ -111,6 +116,7 @@ Deno.serve(async (req) => {
         return s.session;
       },
       iso3: (cc) => iso3By.get(cc.toLowerCase()) ?? null,
+      fallbackKey: (slot) => fallbackKey(slot, (name) => Deno.env.get(name)),
     });
     return new Response(JSON.stringify(answer.body), {
       status: answer.status,

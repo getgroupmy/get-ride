@@ -10,6 +10,7 @@ import {
   cacheSeconds,
   decodeFlexiblePolyline,
   decodePolyline,
+  fallbackKey,
   parseReverse,
   parseRoute,
   parseSearch,
@@ -310,4 +311,43 @@ Deno.test("lookups: a provider down, a missing key, the rate limit, bad input", 
 
   const limited = deps({ take: () => Promise.resolve(false) }).d;
   assertEquals((await handleGeo(q("action=search&provider=here&role=partner&device=web&q=klcc"), "ip", limited)).status, 429);
+});
+
+Deno.test("fallback: the function's own Google secrets when Admin → API Keys has none", async () => {
+  const env: Record<string, string> = { GOOGLE_MAP_API_KEY: " GMAP ", GOOGLE_PLACES_API_KEY: "GPLACES-ENV" };
+  const get = (n: string) => env[n];
+  assertEquals(fallbackKey("google_tiles", get), "GMAP");
+  assertEquals(fallbackKey("google_routes", get), "GMAP", "routes use the Maps key without a Directions key");
+  assertEquals(fallbackKey("google_routes", (n) => ({ ...env, GOOGLE_DIRECTIONS_API_KEY: "GDIR" })[n]), "GDIR");
+  assertEquals(fallbackKey("google_geocoding", get), null);
+  assertEquals(fallbackKey("here", get), null, "only Google has fallbacks");
+
+  // Admin → API Keys still wins: its Places key is used, not the secret.
+  const asked: string[] = [];
+  const { d } = deps({
+    fallbackKey: (slot) => fallbackKey(slot, get),
+    call: (req) => {
+      asked.push(req.url + JSON.stringify(req.headers ?? {}));
+      return Promise.resolve({ places: [] });
+    },
+  });
+  await handleGeo(q("action=search&provider=google&role=rider&device=android&q=klcc"), "ip", d);
+  assert(asked[0].includes("GPLACES") && !asked[0].includes("GPLACES-ENV"));
+
+  // With Admin → API Keys empty, the secret is used.
+  asked.length = 0;
+  const { d: d2 } = deps({
+    settings: () => Promise.resolve({ config, apiProviders: [] }),
+    fallbackKey: (slot) => fallbackKey(slot, get),
+    call: (req) => {
+      asked.push(req.url + JSON.stringify(req.headers ?? {}));
+      return Promise.resolve({ places: [] });
+    },
+  });
+  assertEquals((await handleGeo(q("action=search&provider=google&role=rider&device=android&q=klcc"), "ip", d2)).status, 200);
+  assert(asked[0].includes("GPLACES-ENV"));
+
+  // Neither: Google isn't available.
+  const { d: d3 } = deps({ settings: () => Promise.resolve({ config, apiProviders: [] }) });
+  assert((await handleGeo(q("action=search&provider=google&role=rider&device=android&q=klcc"), "ip", d3)).status !== 200);
 });
