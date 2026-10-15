@@ -84,7 +84,7 @@ import 'features/shell/brand_splash.dart';
 import 'features/shell/not_found_screen.dart';
 import 'features/shell/app_side_menu.dart';
 import 'features/notifications/notifications_screen.dart';
-import 'features/shell/location_service_gate.dart';
+import 'features/shell/permission_gate.dart';
 import 'features/shell/update_gate.dart';
 import 'features/shell/web_build_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
@@ -809,7 +809,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         cached: widget.branding,
         live: _branding?.latest,
         child: UpdateGate(
-          child: LocationServiceGate(
+          child: PermissionGate(
+            location: () => router.routerDelegate.currentConfiguration.uri.path,
+            listenable: router.routerDelegate,
             child: WebBuildGate(
               location: () => router.routerDelegate.currentConfiguration.uri.path,
               child: VoiceProtectionHost(

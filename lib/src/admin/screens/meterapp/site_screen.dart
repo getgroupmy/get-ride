@@ -21,6 +21,7 @@ import '../safety/sos_ops_card.dart';
 import '../security/pin_policy_card.dart';
 import '../security/sign_in_security_card.dart';
 import '../scheduled_rides_card.dart';
+import '../permission_rules_card.dart';
 import '../ride_privacy_card.dart';
 import '../trip_cancellation_card.dart';
 import 'app_updates_card.dart';
@@ -484,6 +485,8 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                 TripCancellationCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 RidePrivacyCard(canEdit: canEdit),
+                const SizedBox(height: 8),
+                PermissionRulesCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 BackendNetworkCard(stored: stored.network, canEdit: canEdit),
                 const SizedBox(height: 16),
