@@ -3,10 +3,12 @@
 // ----------------------------------------------------------------------------
 // PIN sign-in through the server (migration 0172). The phone sends its number
 // and PIN; the database checks the PIN (hash, per-address rate limit, five
-// wrong PINs lock the account for fifteen minutes); on a match the account's
-// Auth password is replaced with a fresh random one, this function signs in
-// with it and returns the session. Nothing derived from the PIN is a password
-// any more, so Auth's password grant is no use to someone guessing PINs.
+// wrong PINs lock the account for fifteen minutes); on a match this function
+// signs in with the account's server password (derived from a key only it
+// holds, see _shared/pin_login.ts) and returns the session. The password stays
+// the same between sign-ins, so the account's other devices stay signed in.
+// Nothing derived from the PIN is a password, so Auth's password grant is no
+// use to someone guessing PINs.
 //
 // Request:  POST { phone: "+60123456789", pin: "123456" }   (no session)
 // Response: 200 { session: { access_token, refresh_token, expires_in, ... } }
@@ -22,7 +24,7 @@
 //   supabase functions deploy pin-login --no-verify-jwt
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { clientIp, handlePinLogin, randomPassword } from "../_shared/pin_login.ts";
+import { accountPassword, clientIp, handlePinLogin } from "../_shared/pin_login.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,6 +42,10 @@ function json(payload: unknown, status = 200): Response {
 const url = Deno.env.get("SUPABASE_URL") ?? "";
 const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+// The key account passwords are derived with: PIN_LOGIN_SECRET when set,
+// else the service key (as secret, and already this function's). Changing it
+// means each account's next PIN sign-in sets its password again once.
+const passwordKey = Deno.env.get("PIN_LOGIN_SECRET") || serviceKey;
 const noSession = { auth: { persistSession: false, autoRefreshToken: false } };
 
 Deno.serve(async (req) => {
@@ -92,7 +98,7 @@ Deno.serve(async (req) => {
       if (error) return null;
       return typeof data === "number" ? data : null;
     },
-    randomPassword,
+    accountPassword: (userId) => accountPassword(passwordKey, userId),
   });
   return json(result.body, result.status);
 });

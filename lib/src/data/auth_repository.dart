@@ -279,11 +279,24 @@ class AuthRepository {
   /// PIN is set or confirmed by SMS; PIN sign-in no longer needs a password
   /// the phone knows (pin-login sets its own). Best effort: the next sign-in
   /// through pin-login replaces it anyway.
+  ///
+  /// Once per account on this phone: Auth signs an account out everywhere
+  /// else whenever its password changes, and no build since 1.4.5 writes a
+  /// PIN-derived one again, so doing it every time only signed out the
+  /// account's other devices.
   Future<void> retireDerivedPassword() async {
+    final userId = _db.auth.currentUser?.id;
+    if (userId == null) return;
+    final key = '$_retiredPasswordKey$userId';
     try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(key) ?? false) return;
       await _db.auth.updateUser(UserAttributes(password: throwawayPassword()));
+      await prefs.setBool(key, true);
     } catch (_) {}
   }
+
+  static const _retiredPasswordKey = 'get_ride_derived_password_retired:';
 
   /// The id the server's duplicate-account guard counts accounts by. The
   /// phone's own id where it has one (Android ID, iOS identifier for vendor,

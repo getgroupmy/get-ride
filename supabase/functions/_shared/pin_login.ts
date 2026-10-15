@@ -3,11 +3,17 @@
  *
  * The PIN is checked by the database (`pin_login_check`: bcrypt hash, a
  * per-address rate limit on the address the phone called from, five wrong
- * PINs lock the account for fifteen minutes). On a match the account's Auth
- * password is replaced with a fresh random one, the function signs in with
- * it and hands the session back. The password is never stored or sent to
- * the phone, so nothing a guesser could try at Auth's password grant is
- * derived from the PIN any more.
+ * PINs lock the account for fifteen minutes). On a match the function signs
+ * in with the account's server password and hands the session back. That
+ * password is derived from a server-only key and the account id
+ * ([accountPassword]): never stored, never sent to the phone, and nothing a
+ * guesser could try at Auth's password grant.
+ *
+ * It stays the same from one sign-in to the next on purpose. Auth signs an
+ * account out everywhere whenever its password changes, so a password set
+ * afresh on every sign-in (as before) signed out the account's other phones
+ * and browsers each time. Now it is set only when signing in with it fails:
+ * the first PIN sign-in after this change, or after an SMS sign-in replaced it.
  *
  * Kept free of the Supabase client so the rules are tested with stand-ins.
  */
@@ -45,7 +51,8 @@ export interface PinLoginDeps {
   setPassword(userId: string, password: string): Promise<void>;
   /** Signs in; null when Auth rejects the credentials. */
   signIn(phone: string, password: string): Promise<PinLoginSession | null>;
-  randomPassword(): string;
+  /** The account's server password ([accountPassword]). */
+  accountPassword(userId: string): Promise<string>;
   /** pin_attempts_left (0192): tries left before the lock, or null for a
    * number with no account or no PIN, so nothing is said about it. Optional:
    * without it a wrong PIN says only that. */
@@ -90,10 +97,19 @@ export function refusalOf(message: string): { error: PinLoginError; retry_after:
   return null;
 }
 
-/** 32 random bytes, base64url: the throwaway Auth password. */
-export function randomPassword(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+/**
+ * The account's Auth password: HMAC-SHA256 of its id under [key] (a secret
+ * only this function holds), base64url. The same for every sign-in, and
+ * unguessable without the key.
+ */
+export async function accountPassword(key: string, userId: string): Promise<string> {
+  if (!key) throw new Error("pin-login has no key to derive passwords with");
+  const enc = new TextEncoder();
+  const hmac = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, [
+    "sign",
+  ]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", hmac, enc.encode(`getride-pin-login:v2:${userId}`)));
+  return btoa(String.fromCharCode(...mac)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 export interface PinLoginResult {
@@ -102,9 +118,9 @@ export interface PinLoginResult {
 }
 
 /**
- * The whole sign-in. Two sign-ins for one account at the same moment can
- * each replace the other's password between setting and using it, so a
- * rejected sign-in is tried once more with a new password.
+ * The whole sign-in. The password is only set when signing in with it is
+ * refused, so other devices stay signed in; two sign-ins at the same moment
+ * set the same password, so neither undoes the other.
  */
 export async function handlePinLogin(body: unknown, ip: string, deps: PinLoginDeps): Promise<PinLoginResult> {
   const req = parsePinLoginRequest(body);
@@ -132,12 +148,14 @@ export async function handlePinLogin(body: unknown, ip: string, deps: PinLoginDe
     const phone = await deps.authPhone(userId);
     // A profile with a PIN but no phone login in Auth: the SMS code makes one.
     if (!phone) return { status: 409, body: { error: "needs_otp" } };
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const password = deps.randomPassword();
-      await deps.setPassword(userId, password);
-      const session = await deps.signIn(phone, password);
-      if (session) return { status: 200, body: { session } };
-    }
+    const password = await deps.accountPassword(userId);
+    const session = await deps.signIn(phone, password);
+    if (session) return { status: 200, body: { session } };
+    // Not set yet (or replaced since): set once, which signs the account out
+    // elsewhere this one time, and sign in.
+    await deps.setPassword(userId, password);
+    const fresh = await deps.signIn(phone, password);
+    if (fresh) return { status: 200, body: { session: fresh } };
     return { status: 503, body: { error: "unavailable" } };
   } catch {
     return { status: 503, body: { error: "unavailable" } };
