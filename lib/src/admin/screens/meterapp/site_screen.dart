@@ -24,6 +24,7 @@ import '../scheduled_rides_card.dart';
 import '../permission_rules_card.dart';
 import '../ride_privacy_card.dart';
 import '../trip_cancellation_card.dart';
+import 'app_icon_card.dart';
 import 'app_updates_card.dart';
 import 'backend_network_card.dart';
 import 'branding_screens.dart';
@@ -473,6 +474,8 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                   ),
                 const SizedBox(height: 8),
                 AppUpdatesCard(canEdit: canEdit),
+                const SizedBox(height: 8),
+                AppIconCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 SignInSecurityCard(canEdit: canEdit),
                 const SizedBox(height: 8),

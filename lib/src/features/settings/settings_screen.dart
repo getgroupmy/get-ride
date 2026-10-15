@@ -11,6 +11,7 @@ import '../../data/permission_rules.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../safety/voice_protection_card.dart';
+import 'app_icon_screen.dart';
 import 'change_pin_screen.dart';
 import 'navigation_app_card.dart';
 import 'passkeys_screen.dart';
@@ -48,6 +49,7 @@ class SettingsScreen extends ConsumerWidget {
                 ]),
               ),
             ),
+            const AppIconTile(),
             // Admin → App Settings → Permissions can hide it (0196).
             if (ref.watch(permissionRulesProvider).value?.showPermissionsCard ?? true) const PermissionsCard(),
             const VoiceProtectionCard(),
