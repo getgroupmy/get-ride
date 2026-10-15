@@ -158,7 +158,7 @@ const allAppRoutes = <String>[
   '/admin-settings-insurance-types', '/admin-settings-insurance-durations',
   '/admin-settings-insurance-premium', '/admin-settings-ev-vehicle-details',
   '/admin-settings-ev-vehicle-inventory', '/admin-settings-ev-finance-options',
-  '/admin-settings-ev-order-fee', '/admin-settings-ev-delivery-advisors',
+  '/admin-settings-ev-order-fee', '/admin-settings-ev-delivery-advisors', '/admin-settings-ev-profiles',
 ];
 const _routeAcronyms = {'api', 'ev', 'pin', 'otp', 'ui', 'teksi', 'id'};
 const _routeLabelOverrides = {

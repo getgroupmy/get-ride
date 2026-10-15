@@ -17,13 +17,18 @@ import '../../data/obd/obd_mfi_transport.dart';
 import '../../data/obd/obd_session.dart';
 import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
+import 'ev_capture_sheet.dart';
+import 'ev_status_panel.dart';
 
 /// The MFi accessories paired with this iPhone. Overridden in tests.
 final mfiAccessoriesProvider = Provider<Future<List<MfiAccessory>> Function()>((_) => listMfiAccessories);
 
 /// Reads the odometer off the live reader (mode 01 PID A6), retrying as the
 /// meter does; null when the car does not answer. Overridden in tests.
-final readerOdometerProvider = Provider<Future<double?> Function()>((ref) => () {
+final readerOdometerProvider = Provider<Future<double?> Function()>((ref) => () async {
+  // An electric car read through its EV profile: the profile's odometer.
+  final ev = ref.read(obdSessionProvider).ev?.odometerKm;
+  if (ev != null) return ev;
   final session = ref.read(obdSessionProvider.notifier);
   return readOdometerKm((command) async => await session.request(command) ?? (throw StateError('offline')));
 });
@@ -388,17 +393,36 @@ class _StatusCard extends StatelessWidget {
               Text(session.error!, style: TextStyle(color: scheme.error)),
               Text(obdRetryHint(session.adapter?.transport)),
             ],
-            if (session.linked && session.vehicleSilent) ...[
+            if (session.linked && session.vehicleSilent && session.evProfile == null) ...[
               const SizedBox(height: 8),
               const Text(obdVehicleSilentMessage, key: ValueKey('obd-vehicle-silent')),
             ],
+            if (session.linked &&
+                (session.evProfile != null || session.evSearching || session.evCandidates.isNotEmpty)) ...[
+              const SizedBox(height: 12),
+              EvStatusPanel(obd: session),
+            ],
             if (session.linked) ...[
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                key: const ValueKey('open-vehicle-info'),
-                icon: const Icon(Icons.directions_car_outlined),
-                label: const Text('Vehicle information'),
-                onPressed: () => context.push('/meter/vehicle'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    key: const ValueKey('open-vehicle-info'),
+                    icon: const Icon(Icons.directions_car_outlined),
+                    label: const Text('Vehicle information'),
+                    onPressed: () => context.push('/meter/vehicle'),
+                  ),
+                  // An electric car the app can't read yet: what it answers
+                  // goes to support, who add its profile.
+                  OutlinedButton.icon(
+                    key: const ValueKey('record-for-support'),
+                    icon: const Icon(Icons.fiber_manual_record_outlined),
+                    label: const Text('Record for support'),
+                    onPressed: () => showEvCaptureSheet(context),
+                  ),
+                ],
               ),
             ],
             if (session.linked && (odometerKm != null || odometerAbsent)) ...[

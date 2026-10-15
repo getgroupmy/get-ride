@@ -14,6 +14,7 @@ import '../../data/obd/obd_session.dart';
 import '../../data/vehicle_fuel_store.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/side_menu_host.dart';
+import 'ev_status_panel.dart';
 
 /// Everything the linked OBD-II reader can tell about the vehicle it is
 /// plugged into (Expo `app/vehicle-information.tsx`): identity (VIN,
@@ -535,9 +536,13 @@ class _ReaderCard extends StatelessWidget {
                 style: TextStyle(color: obd.phase == ObdPhase.error ? t.colorScheme.error : t.colorScheme.onSurfaceVariant),
               ),
             ],
-            if (obd.linked && obd.vehicleSilent) ...[
+            if (obd.linked && obd.vehicleSilent && obd.evProfile == null) ...[
               const SizedBox(height: 8),
               const Text(obdVehicleSilentMessage, key: ValueKey('obd-vehicle-silent')),
+            ],
+            if (obd.linked && (obd.evProfile != null || obd.evSearching || obd.evCandidates.isNotEmpty)) ...[
+              const SizedBox(height: 12),
+              EvStatusPanel(obd: obd),
             ],
             if (!obd.linked && !connecting) ...[
               const SizedBox(height: 8),
