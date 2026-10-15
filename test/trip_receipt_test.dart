@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/trip_receipt.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ride/trip_receipt_screen.dart';
+import 'package:get_ride/src/widgets/pdf_actions.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -94,7 +96,81 @@ void main() {
     expect(find.text('GR-A1B2C3D4'), findsWidgets);
     expect(find.text('Ali'), findsOneWidget);
     expect(find.byKey(const ValueKey('receipt-print')), findsOneWidget);
+    // One PDF button, which asks whether to share or download.
+    expect(find.text('Share PDF'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('receipt-pdf')));
+    // The button spins while the sheet is open, so it never settles.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('pdf-actions')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pdf-share')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pdf-download')), findsOneWidget);
+    // Dismissed: nothing is built or sent.
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('pdf-actions')), findsNothing);
   });
+
+  testWidgets('the booking ID at the top copies on a tap; no Copy button', (tester) async {
+    tester.view.physicalSize = const Size(1000, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String?;
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentUserIdProvider.overrideWithValue(_rider),
+          tripProvider.overrideWith((ref, id) async => trip()),
+        ],
+        child: MaterialApp(
+          theme: ThemeData.dark(),
+          home: const TripReceiptScreen(requestId: 'x'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Copy'), findsNothing);
+    expect(find.byKey(const ValueKey('receipt-print')), findsOneWidget);
+    expect(find.byKey(const ValueKey('receipt-pdf')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('receipt-copy-booking-id')));
+    await tester.pump();
+    expect(copied, 'GR-A1B2C3D4');
+    expect(find.text('Booking ID copied'), findsOneWidget);
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('the share-or-download sheet answers the choice (${dark ? 'dark' : 'light'})', (tester) async {
+      PdfAction? picked;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: dark ? ThemeData.dark() : ThemeData.light(),
+          home: Builder(
+            builder: (c) => TextButton(
+              onPressed: () async => picked = await askPdfAction(c, title: 'Receipt GR-1'),
+              child: const Text('PDF'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('PDF'));
+      await tester.pumpAndSettle();
+      expect(find.text('Receipt GR-1'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('pdf-download')));
+      await tester.pumpAndSettle();
+      expect(picked, PdfAction.download);
+      await tester.tap(find.text('PDF'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('pdf-share')));
+      await tester.pumpAndSettle();
+      expect(picked, PdfAction.share);
+    });
+  }
 
   test("the driver's copy shows the commission and what they keep", () {
     final charged = TripReceipt.fromRide(

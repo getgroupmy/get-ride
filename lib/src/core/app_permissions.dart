@@ -50,39 +50,123 @@ String permStateLabel(AppPermission p, PermState s) => switch (s) {
   PermState.unknown => 'Unknown',
 };
 
-/// Why a driver can't go online yet: location or notifications not set up.
-/// Null when they can.
-enum OnlineBlock {
-  serviceOff('Turn on Location', 'Location is switched off on this phone. Turn it on to go online.'),
-  locationNotAsked(
-    'Allow location',
-    'GET.ride needs your location to go online, so riders nearby can find you. Allow it, then choose '
-        '"Change to Always Allow" when your phone asks.',
-  ),
-  locationOff(
-    'Allow location in Settings',
-    'Location is off for GET.ride. In Settings, set Location to "Always" to go online.',
-  ),
+/// Which checks one audience is held to (Admin → App Settings →
+/// Permissions, migration 0196): each enforced, or bypassed.
+class PermissionChecks {
+  const PermissionChecks({
+    this.locationService = true,
+    this.location = true,
+    this.locationAlways = false,
+    this.notifications = true,
+  });
+
+  /// The phone's Location switched on.
+  final bool locationService;
+
+  /// GET.ride allowed to use it.
+  final bool location;
+
+  /// Allowed "Always" (iPhone; partners).
+  final bool locationAlways;
+
+  /// GET.ride allowed to send notifications.
+  final bool notifications;
+
+  static bool _on(Object? v, bool fallback) => switch (v) {
+    bool b => b,
+    String s => !const {'false', 'f', '0', 'off', 'no'}.contains(s.trim().toLowerCase()),
+    _ => fallback,
+  };
+
+  factory PermissionChecks.fromJson(Object? json, PermissionChecks fallback) {
+    final m = json is Map ? json : const {};
+    return PermissionChecks(
+      locationService: _on(m['locationService'], fallback.locationService),
+      location: _on(m['location'], fallback.location),
+      locationAlways: _on(m['locationAlways'], fallback.locationAlways),
+      notifications: _on(m['notifications'], fallback.notifications),
+    );
+  }
+
+  Map<String, bool> toJson({bool always = false}) => {
+    'locationService': locationService,
+    'location': location,
+    if (always) 'locationAlways': locationAlways,
+    'notifications': notifications,
+  };
+
+  PermissionChecks copyWith({bool? locationService, bool? location, bool? locationAlways, bool? notifications}) =>
+      PermissionChecks(
+        locationService: locationService ?? this.locationService,
+        location: location ?? this.location,
+        locationAlways: locationAlways ?? this.locationAlways,
+        notifications: notifications ?? this.notifications,
+      );
+
+  bool get any => locationService || location || locationAlways || notifications;
+}
+
+/// The admin's permission rules: riders before the home map, partners
+/// before going online, and whether Settings shows the Permissions card.
+/// Everything enforced and the card shown when they can't be read.
+class PermissionRules {
+  const PermissionRules({
+    this.user = const PermissionChecks(),
+    this.partner = const PermissionChecks(locationAlways: true),
+    this.showPermissionsCard = true,
+  });
+
+  final PermissionChecks user;
+  final PermissionChecks partner;
+  final bool showPermissionsCard;
+
+  static const defaults = PermissionRules();
+
+  factory PermissionRules.fromJson(Object? json) {
+    if (json is! Map) return defaults;
+    return PermissionRules(
+      user: PermissionChecks.fromJson(json['user'], defaults.user),
+      partner: PermissionChecks.fromJson(json['partner'], defaults.partner),
+      showPermissionsCard: PermissionChecks._on(json['showPermissionsCard'], true),
+    );
+  }
+
+  Map<String, Object> toJson() => {
+    'user': user.toJson(),
+    'partner': partner.toJson(always: true),
+    'showPermissionsCard': showPermissionsCard,
+  };
+}
+
+/// What must change before going on: one entry for each check that holds
+/// someone up.
+enum PermissionBlock {
+  serviceOff('Turn on Location', 'Location is switched off on this phone.'),
+  locationNotAsked('Allow location', 'GET.ride needs your location to find your pickup and the drivers near you.'),
+  locationOff('Allow location in Settings', 'Location is off for GET.ride. Turn it on in Settings.'),
   notAlways(
     'Set location to Always',
-    'To go online, GET.ride needs your location all the time, so riders keep finding you and trips stay '
-        'on track while you use other apps or the screen is off. Set Location to "Always".',
+    'GET.ride needs your location all the time while you are online, so riders keep finding you and trips stay on '
+        'track while you use other apps or the screen is off.',
   ),
   notificationsNotAsked(
     'Allow notifications',
-    'To go online, allow notifications so you hear new ride requests and calls when GET.ride is not on screen.',
+    'So you hear ride requests, calls and trip updates when GET.ride is not on screen.',
   ),
   notificationsOff(
     'Turn on notifications',
-    "Notifications are off for GET.ride, so you wouldn't hear new ride requests or calls. Turn them on in "
-        'Settings to go online.',
+    "Notifications are off for GET.ride, so you wouldn't hear ride requests, calls or trip updates. Turn them on in "
+        'Settings.',
   );
 
-  const OnlineBlock(this.title, this.message);
+  const PermissionBlock(this.title, this.message);
   final String title;
   final String message;
 
   bool get isLocation => index <= notAlways.index;
+
+  /// Only the phone's Settings can fix it (the app can't ask again).
+  bool get needsSettings => this == serviceOff || this == locationOff || this == notificationsOff;
 
   /// Where in the phone's Settings it is changed, when that is the way.
   String? get settingsPath => switch (this) {
@@ -92,30 +176,38 @@ enum OnlineBlock {
   };
 }
 
-/// What a driver needs to go online: location switched on and, on an
-/// iPhone, allowed "Always" (Android keeps an online driver's location
-/// through its foreground service, which needs only "While using the app"),
-/// then notifications allowed. Anything a phone can't say
-/// ([PermState.unknown]) is let through, like the other go-online checks.
-OnlineBlock? onlineBlock({
+/// Everything holding someone up under [checks], location first. Anything a
+/// phone can't say ([PermState.unknown]) is let through, and nothing is
+/// asked of the web. "Always" is an iPhone setting: Android keeps an online
+/// driver's location through its foreground service, which needs only
+/// "While using the app". Pure.
+List<PermissionBlock> permissionBlocks({
+  required PermissionChecks checks,
   required bool serviceOn,
   required PermState location,
   required PermState notifications,
   required TargetPlatform platform,
   bool web = false,
 }) {
-  if (web) return null;
-  if (!serviceOn) return OnlineBlock.serviceOff;
-  final loc = switch (location) {
-    PermState.granted || PermState.unknown => null,
-    PermState.limited => platform == TargetPlatform.iOS ? OnlineBlock.notAlways : null,
-    PermState.notAsked => OnlineBlock.locationNotAsked,
-    PermState.denied => OnlineBlock.locationOff,
-  };
-  if (loc != null) return loc;
-  return switch (notifications) {
-    PermState.notAsked => OnlineBlock.notificationsNotAsked,
-    PermState.denied => OnlineBlock.notificationsOff,
-    _ => null,
-  };
+  if (web) return const [];
+  final out = <PermissionBlock>[];
+  if (checks.locationService && !serviceOn) out.add(PermissionBlock.serviceOff);
+  final always = checks.locationAlways && platform == TargetPlatform.iOS;
+  if (checks.location || always) {
+    switch (location) {
+      case PermState.notAsked:
+        out.add(PermissionBlock.locationNotAsked);
+      case PermState.denied:
+        out.add(PermissionBlock.locationOff);
+      case PermState.limited when always:
+        out.add(PermissionBlock.notAlways);
+      default:
+        break;
+    }
+  }
+  if (checks.notifications) {
+    if (notifications == PermState.notAsked) out.add(PermissionBlock.notificationsNotAsked);
+    if (notifications == PermState.denied) out.add(PermissionBlock.notificationsOff);
+  }
+  return out;
 }

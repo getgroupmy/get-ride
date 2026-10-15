@@ -1,5 +1,6 @@
-// Before a driver goes online: location switched on and, on an iPhone,
-// allowed "Always", and notifications allowed (onlineBlock). Otherwise a
+// Before a driver goes online: what Admin → App Settings → Permissions holds
+// partners to (by default location switched on, allowed, "Always" on an
+// iPhone, and notifications allowed; each can be bypassed). Otherwise a
 // dialog says what to change and takes them there; they stay offline until
 // it's done.
 import 'dart:async';
@@ -10,48 +11,46 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_permissions.dart';
 import '../../data/permission_probe.dart';
+import '../../data/permission_rules.dart';
+import '../permissions/permission_actions.dart';
 
 /// How long a trip to Settings may take before going online is given up.
 const onlineSettingsWait = Duration(minutes: 2);
 
+/// What holds a partner up now under [checks].
+Future<List<PermissionBlock>> currentPermissionBlocks(PermissionProbe probe, PermissionChecks checks) async {
+  if (!checks.any) return const [];
+  final (on, location) = await probe.location();
+  final notifications = checks.notifications ? await probe.notifications() : PermState.unknown;
+  return permissionBlocks(
+    checks: checks,
+    serviceOn: on,
+    location: location,
+    notifications: notifications,
+    platform: defaultTargetPlatform,
+    web: kIsWeb,
+  );
+}
+
 /// True when the driver may go online; shows the way to fix it when not.
 Future<bool> ensureOnlineReady(BuildContext context, WidgetRef ref) async {
   final probe = ref.read(permissionProbeProvider);
-  Future<OnlineBlock?> check() async {
-    final (on, location) = await probe.location();
-    final notifications = await probe.notifications();
-    return onlineBlock(
-      serviceOn: on,
-      location: location,
-      notifications: notifications,
-      platform: defaultTargetPlatform,
-      web: kIsWeb,
-    );
+  PermissionRules rules;
+  try {
+    rules = await ref.read(permissionRulesProvider.future).timeout(const Duration(seconds: 8));
+  } catch (_) {
+    rules = PermissionRules.defaults;
   }
-
-  for (var round = 0; round < 4; round++) {
-    final block = await check();
-    if (block == null) return true;
+  for (var round = 0; round < 6; round++) {
+    final blocks = await currentPermissionBlocks(probe, rules.partner);
+    if (blocks.isEmpty) return true;
+    final block = blocks.first;
     if (!context.mounted) return false;
     final go = await showDialog<bool>(
       context: context,
       builder: (c) => OnlineBlockDialog(block: block),
     );
     if (go != true) return false;
-    // Asking may settle it here (iOS offers Always once; Android asks for
-    // notifications until refused twice); otherwise it's the phone's Settings.
-    if (block != OnlineBlock.serviceOff && block != OnlineBlock.locationOff) {
-      if (block.isLocation) {
-        await probe.requestLocation();
-      } else {
-        await probe.request(AppPermission.notifications);
-      }
-      final after = await check();
-      if (after == null) return true;
-      if (after != block || block == OnlineBlock.locationNotAsked || block == OnlineBlock.notificationsNotAsked) {
-        continue;
-      }
-    }
     final back = Completer<void>();
     final lifecycle = AppLifecycleListener(
       onResume: () {
@@ -59,11 +58,15 @@ Future<bool> ensureOnlineReady(BuildContext context, WidgetRef ref) async {
       },
     );
     try {
-      final opened = block == OnlineBlock.serviceOff
-          ? await probe.openLocationSettings()
-          : await probe.openAppSettings();
-      if (!opened) return false;
-      await back.future.timeout(onlineSettingsWait);
+      switch (await resolvePermissionBlock(probe, block)) {
+        case PermissionFix.failed:
+          return false;
+        case PermissionFix.settings:
+          // Back from Settings: check again.
+          await back.future.timeout(onlineSettingsWait);
+        case PermissionFix.asked:
+          break;
+      }
     } on TimeoutException {
       return false;
     } finally {
@@ -77,31 +80,21 @@ Future<bool> ensureOnlineReady(BuildContext context, WidgetRef ref) async {
 /// takes them there.
 class OnlineBlockDialog extends StatelessWidget {
   const OnlineBlockDialog({super.key, required this.block});
-  final OnlineBlock block;
+  final PermissionBlock block;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final action = switch (block) {
-      OnlineBlock.serviceOff => 'Open Location settings',
-      OnlineBlock.locationNotAsked => 'Allow location',
-      OnlineBlock.notAlways => 'Allow Always',
-      OnlineBlock.notificationsNotAsked => 'Allow notifications',
-      OnlineBlock.locationOff || OnlineBlock.notificationsOff => 'Open Settings',
-    };
     final path = block.settingsPath;
     return AlertDialog(
       key: const ValueKey('online-block'),
-      icon: Icon(
-        block.isLocation ? Icons.location_on_outlined : Icons.notifications_active_outlined,
-        color: t.colorScheme.primary,
-      ),
+      icon: Icon(permissionBlockIcon(block), color: t.colorScheme.primary),
       title: Text(block.title),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(block.message),
+          Text('To go online: ${block.message}'),
           if (path != null) ...[
             const SizedBox(height: 12),
             Text(path, style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
@@ -118,7 +111,7 @@ class OnlineBlockDialog extends StatelessWidget {
         FilledButton(
           key: const ValueKey('online-block-fix'),
           onPressed: () => Navigator.pop(context, true),
-          child: Text(action),
+          child: Text(permissionBlockAction(block)),
         ),
       ],
     );

@@ -16,6 +16,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/pdf_actions.dart';
 import '../../widgets/ride_map.dart';
 import '../../widgets/ride_rating_card.dart';
 import '../../widgets/trip_safety.dart';
@@ -70,6 +71,65 @@ class TripReceiptScreen extends ConsumerWidget {
   }
 }
 
+/// The booking number at the top of the receipt; a tap copies it.
+class _BookingIdRow extends StatelessWidget {
+  const _BookingIdRow({required this.bookingNo});
+  final String bookingNo;
+
+  Future<void> _copy(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: bookingNo));
+    if (!context.mounted) return;
+    // The snack bar is the inverse of the page in light and dark alike.
+    final tick = Theme.of(context).colorScheme.onInverseSurface;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: tick),
+              const SizedBox(width: 12),
+              const Text('Booking ID copied'),
+            ],
+          ),
+        ),
+      );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return InkWell(
+      key: const ValueKey('receipt-booking-id'),
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => _copy(context),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 4, 0, 8),
+        child: Row(
+          children: [
+            Text('Booking ID', style: t.textTheme.titleSmall),
+            const Spacer(),
+            Flexible(
+              child: Text(
+                bookingNo,
+                style: t.textTheme.bodyMedium,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('receipt-copy-booking-id'),
+              tooltip: 'Copy booking ID',
+              icon: const Icon(Icons.copy_outlined, size: 20),
+              onPressed: () => _copy(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ReceiptBody extends StatelessWidget {
   const _ReceiptBody({required this.receipt, this.route = const [], this.extra});
   final TripReceipt receipt;
@@ -93,6 +153,7 @@ class _ReceiptBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              _BookingIdRow(bookingNo: rc.bookingNo),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -111,7 +172,6 @@ class _ReceiptBody extends StatelessWidget {
                         key: const ValueKey('receipt-total'),
                         style: t.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
                       ),
-                      Text(rc.bookingNo, style: t.textTheme.bodySmall),
                     ],
                   ),
                 ),
@@ -196,23 +256,17 @@ class _ReceiptBody extends StatelessWidget {
                     ),
                     child: const Text('Print'),
                   ),
+                  // Share or download, asked on tap.
                   BusyButton.outlined(
-                    key: const ValueKey('receipt-share'),
-                    icon: const Icon(Icons.ios_share),
-                    onPressed: () async =>
-                        Printing.sharePdf(bytes: await buildTripReceiptPdf(rc), filename: '${rc.bookingNo}.pdf'),
-                    child: const Text('Share PDF'),
-                  ),
-                  BusyButton.outlined(
-                    key: const ValueKey('receipt-copy'),
-                    icon: const Icon(Icons.copy),
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: rc.text));
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Receipt copied')));
-                      }
-                    },
-                    child: const Text('Copy'),
+                    key: const ValueKey('receipt-pdf'),
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    onPressed: () => sharePdfOrDownload(
+                      context,
+                      filename: '${rc.bookingNo}.pdf',
+                      title: 'Receipt ${rc.bookingNo}',
+                      build: () => buildTripReceiptPdf(rc),
+                    ),
+                    child: const Text('PDF'),
                   ),
                 ],
               ),

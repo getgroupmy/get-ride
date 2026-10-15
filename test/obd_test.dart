@@ -156,6 +156,76 @@ void main() {
       expect(isStaleResetReply('OBDII v1.5\r>'), isFalse);
     });
 
+    test('a reader still searching for the vehicle is given time, not reported lost', () async {
+      final elm = FakeElm(speed: 50)..searching = const Duration(milliseconds: 60);
+      var lost = 0;
+      final readings = <Telemetry>[];
+      final client = ObdClient(
+        elm,
+        pollInterval: const Duration(hours: 1),
+        commandTimeout: const Duration(milliseconds: 20),
+        searchTimeout: const Duration(milliseconds: 500),
+        onLinkLost: () => lost++,
+        onTelemetry: (t, _) => readings.add(t),
+      );
+      await client.start();
+      // Every vehicle question takes three times the command timeout.
+      await Future<void>.delayed(const Duration(seconds: 3));
+      expect(lost, 0);
+      expect(readings.single['speed'], 50);
+      await client.stop();
+    });
+
+    test('an electric car: connected and silent, asked lightly, never "reconnecting"', () async {
+      final elm = FakeElm()
+        ..electric = true
+        ..searching = const Duration(milliseconds: 30);
+      var lost = 0;
+      final silent = <bool>[];
+      var now = 0;
+      final client = ObdClient(
+        elm,
+        pollInterval: const Duration(milliseconds: 10),
+        commandTimeout: const Duration(milliseconds: 20),
+        searchTimeout: const Duration(milliseconds: 500),
+        silentProbeInterval: const Duration(seconds: 10),
+        onLinkLost: () => lost++,
+        onVehicleSilent: silent.add,
+        now: () => now,
+      );
+      await client.start();
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+      expect(lost, 0);
+      expect(silent, [true]);
+      expect(client.vehicleSilent, isTrue);
+      // "UNABLE TO CONNECT" ends the sweep at its first question; then quiet.
+      final asked = elm.written.where((c) => !c.startsWith('AT') && c.isNotEmpty).length;
+      expect(asked, 1);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(elm.written.where((c) => !c.startsWith('AT') && c.isNotEmpty).length, asked);
+
+      // Ten seconds on, one probe; the car now answers and the sweep resumes.
+      elm
+        ..electric = false
+        ..searching = null;
+      now += 10000;
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(elm.written, contains(obdProbeCommand));
+      expect(silent, [true, false]);
+      expect(lost, 0);
+      await client.stop();
+    });
+
+    test('replies that mean the car, not the reader, is quiet', () {
+      expect(isVehicleSilentReply('SEARCHING...\rUNABLE TO CONNECT\r\r>'), isTrue);
+      expect(isVehicleSilentReply('NO DATA\r\r>'), isTrue);
+      expect(isVehicleSilentReply('BUS INIT: ...ERROR\r>'), isTrue);
+      expect(isVehicleSilentReply('CAN ERROR\r>'), isTrue);
+      expect(isVehicleSilentReply('41 0D 32\r\r>'), isFalse);
+      expect(isNoProtocolReply('SEARCHING...\rUNABLE TO CONNECT\r>'), isTrue);
+      expect(isNoProtocolReply('NO DATA\r>'), isFalse);
+    });
+
     test('a reply missed while the sweep is held does not count towards a lost link', () async {
       final elm = FakeElm();
       var lost = 0;

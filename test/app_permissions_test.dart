@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/app_permissions.dart';
 import 'package:get_ride/src/data/permission_probe.dart';
+import 'package:get_ride/src/data/permission_rules.dart';
 import 'package:get_ride/src/features/partner/online_gate.dart';
 import 'package:get_ride/src/features/settings/permissions_card.dart';
 
@@ -79,42 +80,80 @@ void main() {
       expect(permStateLabel(AppPermission.location, PermState.limited), 'While using the app');
     });
 
-    test('going online needs location on, Always on an iPhone, and notifications', () {
-      OnlineBlock? block(
+    test('what holds someone up, by the rules', () {
+      const partner = PermissionChecks(locationAlways: true);
+      List<PermissionBlock> blocks(
         PermState s, {
+        PermissionChecks checks = partner,
         PermState n = PermState.granted,
         bool on = true,
         TargetPlatform p = TargetPlatform.iOS,
         bool web = false,
-      }) => onlineBlock(serviceOn: on, location: s, notifications: n, platform: p, web: web);
-      expect(block(PermState.granted), isNull);
-      expect(block(PermState.limited), OnlineBlock.notAlways);
-      expect(block(PermState.granted, on: false), OnlineBlock.serviceOff);
-      expect(block(PermState.notAsked), OnlineBlock.locationNotAsked);
-      expect(block(PermState.denied), OnlineBlock.locationOff);
-      expect(block(PermState.unknown), isNull);
-      // Location first, then notifications.
-      expect(block(PermState.limited, n: PermState.denied), OnlineBlock.notAlways);
-      expect(block(PermState.granted, n: PermState.denied), OnlineBlock.notificationsOff);
-      expect(block(PermState.granted, n: PermState.notAsked), OnlineBlock.notificationsNotAsked);
-      expect(block(PermState.granted, n: PermState.unknown), isNull);
+      }) => permissionBlocks(checks: checks, serviceOn: on, location: s, notifications: n, platform: p, web: web);
+      expect(blocks(PermState.granted), isEmpty);
+      expect(blocks(PermState.limited), [PermissionBlock.notAlways]);
+      expect(blocks(PermState.granted, on: false), [PermissionBlock.serviceOff]);
+      expect(blocks(PermState.notAsked), [PermissionBlock.locationNotAsked]);
+      expect(blocks(PermState.denied), [PermissionBlock.locationOff]);
+      expect(blocks(PermState.unknown), isEmpty);
+      // Everything outstanding, location first.
+      expect(blocks(PermState.limited, n: PermState.denied, on: false), [
+        PermissionBlock.serviceOff,
+        PermissionBlock.notAlways,
+        PermissionBlock.notificationsOff,
+      ]);
+      expect(blocks(PermState.granted, n: PermState.notAsked), [PermissionBlock.notificationsNotAsked]);
+      expect(blocks(PermState.granted, n: PermState.unknown), isEmpty);
       // Android's foreground service keeps an online driver's location.
-      expect(block(PermState.limited, p: TargetPlatform.android), isNull);
-      expect(block(PermState.limited, p: TargetPlatform.android, n: PermState.denied), OnlineBlock.notificationsOff);
-      expect(block(PermState.denied, web: true), isNull);
-      expect(OnlineBlock.notificationsOff.settingsPath, contains('Notifications'));
-      expect(OnlineBlock.notAlways.isLocation, isTrue);
-      expect(OnlineBlock.notificationsOff.isLocation, isFalse);
+      expect(blocks(PermState.limited, p: TargetPlatform.android), isEmpty);
+      expect(blocks(PermState.denied, web: true), isEmpty);
+      // A rider is never asked for Always.
+      expect(blocks(PermState.limited, checks: const PermissionChecks()), isEmpty);
+      // Bypassed checks hold nobody up.
+      const none = PermissionChecks(locationService: false, location: false, notifications: false);
+      expect(blocks(PermState.denied, checks: none, on: false, n: PermState.denied), isEmpty);
+      expect(none.any, isFalse);
+      expect(blocks(PermState.limited, checks: none.copyWith(locationAlways: true)), [PermissionBlock.notAlways]);
+      expect(PermissionBlock.notificationsOff.settingsPath, contains('Notifications'));
+      expect(PermissionBlock.notAlways.isLocation, isTrue);
+      expect(PermissionBlock.notificationsOff.isLocation, isFalse);
+    });
+
+    test("the admin's rules read as the server sends them, everything enforced otherwise", () {
+      expect(PermissionRules.fromJson(null).user.notifications, isTrue);
+      expect(PermissionRules.fromJson(null).partner.locationAlways, isTrue);
+      expect(PermissionRules.fromJson(null).user.locationAlways, isFalse);
+      final r = PermissionRules.fromJson({
+        'user': {'notifications': false, 'location': 'off'},
+        'partner': {'locationAlways': false},
+        'showPermissionsCard': false,
+      });
+      expect(r.user.notifications, isFalse);
+      expect(r.user.location, isFalse);
+      expect(r.user.locationService, isTrue);
+      expect(r.partner.locationAlways, isFalse);
+      expect(r.partner.notifications, isTrue);
+      expect(r.showPermissionsCard, isFalse);
+      expect(PermissionRules.fromJson(r.toJson()).toJson(), r.toJson());
+      expect(r.toJson()['user'], isNot(contains('locationAlways')));
     });
   });
 
   group('go-online gate', () {
-    Future<bool?> run(WidgetTester tester, FakeProbe probe, {bool tapFix = true}) async {
+    Future<bool?> run(
+      WidgetTester tester,
+      FakeProbe probe, {
+      bool tapFix = true,
+      PermissionRules rules = PermissionRules.defaults,
+    }) async {
       bool? result;
       debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [permissionProbeProvider.overrideWithValue(probe)],
+          overrides: [
+            permissionProbeProvider.overrideWithValue(probe),
+            permissionRulesProvider.overrideWith((_) async => rules),
+          ],
           child: MaterialApp(
             theme: ThemeData.dark(),
             home: Consumer(
@@ -144,6 +183,13 @@ void main() {
       final probe = FakeProbe(afterAsk: PermState.granted);
       expect(await run(tester, probe), isTrue);
       expect(probe.settingsOpened, 0);
+    });
+
+    testWidgets('every partner check bypassed by the admin: straight through', (tester) async {
+      const off = PermissionChecks(locationService: false, location: false, notifications: false);
+      final probe = FakeProbe(service: false, loc: PermState.denied, notif: PermState.denied);
+      expect(await run(tester, probe, rules: const PermissionRules(partner: off)), isTrue);
+      expect(find.byKey(const ValueKey('online-block')), findsNothing);
     });
 
     testWidgets('Not now keeps them offline', (tester) async {

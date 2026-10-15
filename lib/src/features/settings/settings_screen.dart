@@ -6,6 +6,7 @@ import '../../config.dart';
 import '../../core/backend_route.dart';
 import '../../core/obd_adapters.dart';
 import '../../data/obd/obd_session.dart';
+import '../../data/permission_rules.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../safety/voice_protection_card.dart';
@@ -45,7 +46,8 @@ class SettingsScreen extends ConsumerWidget {
                 ]),
               ),
             ),
-            const PermissionsCard(),
+            // Admin → App Settings → Permissions can hide it (0196).
+            if (ref.watch(permissionRulesProvider).value?.showPermissionsCard ?? true) const PermissionsCard(),
             const VoiceProtectionCard(),
             const NavigationAppCard(),
             Card(

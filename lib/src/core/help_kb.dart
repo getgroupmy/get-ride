@@ -371,7 +371,7 @@ const helpKnowledgeBase = <HelpArticle>[
     id: '68656c70-0000-4000-8000-000000000031',
     title: 'Where are my past trips and receipts?',
     questionVariants: ['Trip history', 'Get a receipt', 'Download invoice', 'Resit perjalanan'],
-    answer: 'Open Trips. Every ride you booked or drove is listed; tap a finished one for its receipt, with the booking number, route, times, driver and car, payment mode, the fare and any tolls or other charges. Print it, Share PDF or Copy it as text.',
+    answer: 'Open Trips for the rides you booked; as a driver, open Trip history in the driver menu for the trips you drove. Tap a finished one for its receipt, with the booking number, route, times, driver and car, payment mode, the fare and any tolls or other charges. Print it, or tap PDF to share or download it. Tap the booking ID at the top to copy it.',
     keywords: ['trips', 'history', 'receipt', 'invoice', 'past', 'pdf', 'resit', 'sejarah', 'perjalanan'],
     audience: 'all',
     category: 'Trips',

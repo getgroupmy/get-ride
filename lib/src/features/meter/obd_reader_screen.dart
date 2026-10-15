@@ -388,6 +388,10 @@ class _StatusCard extends StatelessWidget {
               Text(session.error!, style: TextStyle(color: scheme.error)),
               Text(obdRetryHint(session.adapter?.transport)),
             ],
+            if (session.linked && session.vehicleSilent) ...[
+              const SizedBox(height: 8),
+              const Text(obdVehicleSilentMessage, key: ValueKey('obd-vehicle-silent')),
+            ],
             if (session.linked) ...[
               const SizedBox(height: 8),
               OutlinedButton.icon(

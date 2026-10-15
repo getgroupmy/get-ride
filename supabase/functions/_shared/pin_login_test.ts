@@ -11,7 +11,7 @@ import {
   parsePinLoginRequest,
   type PinLoginDeps,
   type PinLoginSession,
-  randomPassword,
+  accountPassword,
   refusalOf,
 } from "./pin_login.ts";
 
@@ -22,7 +22,6 @@ const SESSION: PinLoginSession = { access_token: "at", refresh_token: "rt", expi
 function fakes(over: Partial<PinLoginDeps> = {}) {
   const log: string[] = [];
   let authPassword = "teksi-pin-v1-246810";
-  let n = 0;
   const deps: PinLoginDeps = {
     check: (phone, pin, ip) => {
       log.push(`check ${phone} ${ip}`);
@@ -38,19 +37,30 @@ function fakes(over: Partial<PinLoginDeps> = {}) {
       log.push("sign-in");
       return Promise.resolve(pw === authPassword ? SESSION : null);
     },
-    randomPassword: () => `random-${++n}`,
+    accountPassword: (id) => Promise.resolve(`server-${id}`),
     ...over,
   };
   return { deps, log, password: () => authPassword };
 }
 
-Deno.test("the right PIN: a fresh password, a session, and no PIN-derived password left", async () => {
+Deno.test("the first PIN sign-in sets the server password once, replacing any PIN-derived one", async () => {
   const f = fakes();
   const r = await handlePinLogin({ phone: "+60123456789", pin: "246810" }, "198.51.100.7", f.deps);
   assertEquals(r.status, 200);
   assertEquals(r.body, { session: SESSION });
-  assertEquals(f.log, ["check +60123456789 198.51.100.7", "set", "sign-in"]);
-  assertEquals(f.password(), "random-1");
+  assertEquals(f.log, ["check +60123456789 198.51.100.7", "sign-in", "set", "sign-in"]);
+  assertEquals(f.password(), `server-${UID}`);
+});
+
+Deno.test("later PIN sign-ins leave the password alone, so other devices stay signed in", async () => {
+  const f = fakes();
+  await handlePinLogin({ phone: "+60123456789", pin: "246810" }, "x", f.deps);
+  f.log.length = 0;
+  for (let i = 0; i < 3; i++) {
+    const r = await handlePinLogin({ phone: "+60123456789", pin: "246810" }, "x", f.deps);
+    assertEquals(r.status, 200);
+  }
+  assertEquals(f.log.includes("set"), false);
 });
 
 Deno.test("a wrong PIN or an unknown number: the same answer, nothing changed", async () => {
@@ -104,20 +114,20 @@ Deno.test("no Auth login behind the profile: sign in by SMS instead", async () =
   assertEquals(f.log.includes("set"), false);
 });
 
-Deno.test("a sign-in that lost a race for the password is tried once more", async () => {
-  let first = true;
+Deno.test("replaced since (an SMS sign-in): set again once; refused even then: unavailable", async () => {
   const f = fakes();
-  const signIn = f.deps.signIn;
-  f.deps.signIn = (phone, pw) => {
-    if (first) {
-      first = false;
-      return Promise.resolve(null); // another sign-in replaced it meanwhile
-    }
-    return signIn(phone, pw);
-  };
+  await handlePinLogin({ phone: "+60123456789", pin: "246810" }, "x", f.deps);
+  await f.deps.setPassword(UID, "throwaway-from-the-app");
+  f.log.length = 0;
   const r = await handlePinLogin({ phone: "+60123456789", pin: "246810" }, "x", f.deps);
   assertEquals(r.status, 200);
-  assertEquals(f.log.filter((l) => l === "set").length, 2);
+  assertEquals(f.log.filter((l) => l === "set").length, 1);
+
+  const g = fakes({ signIn: () => Promise.resolve(null) });
+  assertEquals(await handlePinLogin({ phone: "+60123456789", pin: "246810" }, "x", g.deps), {
+    status: 503,
+    body: { error: "unavailable" },
+  });
 });
 
 Deno.test("requests: a phone and exactly six digits", () => {
@@ -148,8 +158,21 @@ Deno.test("refusals and passwords", () => {
   assertEquals(refusalOf("PIN_LOCKED:12"), { error: "locked", retry_after: 12 });
   assertEquals(refusalOf("RATE_LIMITED:5"), { error: "rate_limited", retry_after: 5 });
   assertEquals(refusalOf("other"), null);
-  const a = randomPassword(), b = randomPassword();
+});
+
+Deno.test("the server password: the same for an account, different between accounts and keys", async () => {
+  const a = await accountPassword("key-1", UID);
+  assertEquals(await accountPassword("key-1", UID), a);
+  assertNotEquals(await accountPassword("key-1", "00000000-0000-0000-0000-000000000002"), a);
+  assertNotEquals(await accountPassword("key-2", UID), a);
   assert(a.length >= 40);
-  assertNotEquals(a, b);
+  assert(/^[A-Za-z0-9_-]+$/.test(a));
   assert(!/teksi-pin/.test(a));
+  let threw = false;
+  try {
+    await accountPassword("", UID);
+  } catch {
+    threw = true;
+  }
+  assert(threw);
 });

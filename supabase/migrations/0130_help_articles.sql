@@ -381,7 +381,7 @@ Already signed in? Go to Settings → Change sign-in PIN and choose Forgot PIN? 
    'all', 'Safety', 'Open Safety', '/account/safety', 300),
   ('68656c70-0000-4000-8000-000000000031', 'Where are my past trips and receipts?',
    array['Trip history', 'Get a receipt', 'Download invoice', 'Resit perjalanan']::text[],
-   'Open Trips. Every ride you booked or drove is listed; tap a finished one for its receipt, with the booking number, route, times, driver and car, payment mode, the fare and any tolls or other charges. Print it, Share PDF or Copy it as text.',
+   'Open Trips for the rides you booked; as a driver, open Trip history in the driver menu for the trips you drove. Tap a finished one for its receipt, with the booking number, route, times, driver and car, payment mode, the fare and any tolls or other charges. Print it, or tap PDF to share or download it. Tap the booking ID at the top to copy it.',
    array['trips', 'history', 'receipt', 'invoice', 'past', 'pdf', 'resit', 'sejarah', 'perjalanan']::text[],
    'all', 'Trips', 'Open Trips', '/trips', 310),
   ('68656c70-0000-4000-8000-000000000032', 'Why was I charged tolls?',

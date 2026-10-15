@@ -50,6 +50,7 @@ import 'features/partner/scheduled_jobs_screen.dart';
 import 'features/partner/demo_jobs.dart';
 import 'features/partner/my_ride_code_screen.dart';
 import 'features/partner/earnings_screen.dart';
+import 'features/partner/partner_trip_history_screen.dart';
 import 'features/partner/partner_onboarding_screen.dart';
 import 'features/partner/driver_permit_screen.dart';
 import 'features/partner/partner_screen.dart';
@@ -84,7 +85,7 @@ import 'features/shell/brand_splash.dart';
 import 'features/shell/not_found_screen.dart';
 import 'features/shell/app_side_menu.dart';
 import 'features/notifications/notifications_screen.dart';
-import 'features/shell/location_service_gate.dart';
+import 'features/shell/permission_gate.dart';
 import 'features/shell/update_gate.dart';
 import 'features/shell/web_build_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
@@ -377,6 +378,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/drive/my-ride', builder: (_, _) => const MyRideCodeScreen()),
           GoRoute(path: '/drive/scheduled', builder: (_, _) => const ScheduledJobsScreen()),
           GoRoute(path: '/drive/earnings', builder: (_, _) => const EarningsScreen()),
+          GoRoute(
+            path: '/drive/history',
+            builder: (_, _) => const PartnerTripHistoryScreen(),
+            routes: [
+              GoRoute(
+                path: ':id',
+                builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!),
+              ),
+            ],
+          ),
           GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
           GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
           GoRoute(
@@ -809,7 +820,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         cached: widget.branding,
         live: _branding?.latest,
         child: UpdateGate(
-          child: LocationServiceGate(
+          child: PermissionGate(
+            location: () => router.routerDelegate.currentConfiguration.uri.path,
+            listenable: router.routerDelegate,
             child: WebBuildGate(
               location: () => router.routerDelegate.currentConfiguration.uri.path,
               child: VoiceProtectionHost(

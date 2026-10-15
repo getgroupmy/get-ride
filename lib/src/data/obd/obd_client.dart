@@ -11,14 +11,23 @@ import 'obd_transport.dart';
 /// and [request]'s — goes through one queue. Three failed commands in a row
 /// on a live link report it lost, so a dongle that was unplugged or walked
 /// out of Wi-Fi range is noticed even though the socket never says so.
+///
+/// A reader that answers but finds no vehicle ("SEARCHING…" then "UNABLE TO
+/// CONNECT", most electric cars) is not a lost link: a command it is still
+/// working on gets [searchTimeout], and a vehicle that answers nothing is
+/// reported through [onVehicleSilent] and asked only [obdProbeCommand] every
+/// [silentProbeInterval] until it does.
 class ObdClient {
   ObdClient(
     this._transport, {
     this.onTelemetry,
     this.onProtocol,
     this.onLinkLost,
+    this.onVehicleSilent,
     this.pollInterval = const Duration(seconds: 1),
     this.commandTimeout = const Duration(seconds: 4),
+    this.searchTimeout = const Duration(seconds: 20),
+    this.silentProbeInterval = const Duration(seconds: 10),
     this.wakeTimeout = const Duration(milliseconds: 1500),
     this.resetTimeout = const Duration(seconds: 5),
     this.linkLostFailures = 3,
@@ -29,8 +38,19 @@ class ObdClient {
   final void Function(Telemetry telemetry, int at)? onTelemetry;
   final void Function(String name, int? bitrateKbps)? onProtocol;
   final void Function()? onLinkLost;
+
+  /// The vehicle stopped (true) or started (false) answering standard
+  /// OBD-II while the reader itself kept answering.
+  final void Function(bool silent)? onVehicleSilent;
   final Duration pollInterval;
   final Duration commandTimeout;
+
+  /// How long a command the reader is visibly working on may take in all
+  /// (a protocol search on a clone can run past ten seconds).
+  final Duration searchTimeout;
+
+  /// How often a silent vehicle is asked again.
+  final Duration silentProbeInterval;
 
   /// How long the wake-up carriage return is waited on.
   final Duration wakeTimeout;
@@ -54,6 +74,18 @@ class ObdClient {
   bool _live = false;
   int _failures = 0;
   bool _linkLostReported = false;
+  bool _vehicleSilent = false;
+  int _nextProbeAt = 0;
+
+  /// Whether the vehicle is answering nothing standard (see [onVehicleSilent]).
+  bool get vehicleSilent => _vehicleSilent;
+
+  void _setVehicleSilent(bool silent) {
+    if (silent == _vehicleSilent) return;
+    _vehicleSilent = silent;
+    if (silent) _nextProbeAt = _now() + silentProbeInterval.inMilliseconds;
+    onVehicleSilent?.call(silent);
+  }
 
   bool get active => !_stopped;
 
@@ -119,18 +151,45 @@ class ObdClient {
     if (_stopped || _paused || _polling) return;
     _polling = true;
     try {
+      // A silent vehicle: one light question now and then, not a sweep of
+      // questions that each make the reader search for a protocol again.
+      if (_vehicleSilent) {
+        if (_now() < _nextProbeAt) return;
+        _nextProbeAt = _now() + silentProbeInterval.inMilliseconds;
+        String reply;
+        try {
+          reply = await _command(obdProbeCommand);
+        } catch (_) {
+          return;
+        }
+        if (isVehicleSilentReply(reply) || !cleanElmResponse(reply).any((l) => l.contains('4100'))) return;
+        _setVehicleSilent(false);
+      }
       final telemetry = <String, double>{};
+      var silentReplies = 0;
       for (final entry in obdPids.entries) {
         // Held mid-sweep (a print job starting): stop between readings.
         if (_stopped || _paused) return;
         try {
-          final value = decodePid(await _command(entry.value.command), entry.value);
+          final reply = await _command(entry.value.command);
+          if (isNoProtocolReply(reply)) {
+            // Nothing on the port speaks standard OBD-II: no other PID can answer.
+            silentReplies++;
+            break;
+          }
+          if (isVehicleSilentReply(reply)) silentReplies++;
+          final value = decodePid(reply, entry.value);
           if (value != null) telemetry[entry.key] = value;
         } catch (_) {
           // One unanswered PID is not a lost link; the failure count is.
         }
       }
-      if (telemetry.isNotEmpty) onTelemetry?.call(telemetry, _now());
+      if (telemetry.isNotEmpty) {
+        _setVehicleSilent(false);
+        onTelemetry?.call(telemetry, _now());
+      } else if (silentReplies > 0) {
+        _setVehicleSilent(true);
+      }
     } finally {
       _polling = false;
     }
@@ -160,11 +219,28 @@ class ObdClient {
     _skip = skip;
     final waiter = Completer<String>();
     _waiter = waiter;
-    final timer = Timer(timeout ?? commandTimeout, () {
+    final first = timeout ?? commandTimeout;
+    void expire() {
       if (waiter.isCompleted) return;
       _waiter = null;
       _noteFailure();
       waiter.completeError(TimeoutException('"$cmd" timed out'));
+    }
+
+    late Timer timer;
+    timer = Timer(first, () {
+      if (waiter.isCompleted) return;
+      // The reader is answering ("SEARCHING..."): a vehicle slow to answer,
+      // or not there at all, not a lost link. It gets the rest of
+      // [searchTimeout] to finish.
+      // Commands to the reader itself (AT…) are never this slow.
+      final rest = searchTimeout - first;
+      final toVehicle = cmd.isNotEmpty && !cmd.toUpperCase().startsWith('AT');
+      if (toVehicle && _buffer.trim().isNotEmpty && rest > Duration.zero) {
+        timer = Timer(rest, expire);
+        return;
+      }
+      expire();
     });
     _transport.write(cmd).catchError((Object e) {
       if (waiter.isCompleted) return;
@@ -173,7 +249,7 @@ class ObdClient {
       _noteFailure();
       waiter.completeError(e);
     });
-    return waiter.future.whenComplete(timer.cancel);
+    return waiter.future.whenComplete(() => timer.cancel());
   }
 
   void _ingest(String chunk) {
