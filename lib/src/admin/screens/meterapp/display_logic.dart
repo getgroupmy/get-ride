@@ -139,7 +139,7 @@ const allAppRoutes = <String>[
   '/admin-vehicles-permit-verified', '/admin-vehicles-permit-non-verified', '/admin-vehicle-add',
   '/admin-vehicle-edit', '/admin-documents', '/admin-documents-users', '/admin-documents-partners',
   '/admin-documents-vehicles', '/admin-settings', '/admin-settings-display', '/admin-settings-mock',
-  '/admin-settings-site', '/admin-settings-splash', '/admin-settings-app-icon',
+  '/admin-settings-site', '/admin-settings-splash', '/admin-settings-app-icon', '/admin-settings-maps',
   '/admin-settings-app-version', '/admin-settings-social-links', '/admin-settings-sub-admin',
   '/admin-settings-supabase', '/admin-settings-page-list', '/admin-settings-service',
   '/admin-settings-assign-service', '/admin-settings-assign-service-page',

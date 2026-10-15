@@ -11,6 +11,7 @@ import 'data/live_tables.dart';
 import 'data/models.dart';
 import 'data/reliability_repository.dart';
 import 'data/ride_repository.dart';
+import 'data/map_profile_repository.dart' show geoProxyProvider;
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
 
@@ -25,7 +26,8 @@ final rideRepositoryProvider = Provider((ref) {
   return repo;
 });
 final accountRepositoryProvider = Provider((ref) => AccountRepository(ref.watch(supabaseProvider)));
-final geoServiceProvider = Provider((_) => GeoService());
+// Lookups through `geo` for the providers Admin → Settings → Maps puts first.
+final geoServiceProvider = Provider((ref) => GeoService(lookup: (p) => ref.read(geoProxyProvider).get(p)));
 
 /// Emits whenever the Supabase session changes.
 final authStateProvider = StreamProvider<AuthState>(

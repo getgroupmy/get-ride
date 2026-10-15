@@ -6,6 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../core/map_profile.dart';
+
 class Place {
   const Place({required this.name, required this.address, required this.point});
   final String name;
@@ -57,12 +59,26 @@ class RouteInfo {
   final List<LatLng> points;
 }
 
+/// One lookup through the `geo` function (Admin → Settings → Maps): its JSON
+/// answer, or null.
+typedef GeoLookup = Future<Map<String, dynamic>?> Function(Map<String, String> params);
+
 /// Geocoding (Nominatim) and routing (OSRM) over OpenStreetMap, so maps work
 /// identically on web, desktop and mobile without a platform API key.
 /// Swap the endpoints with --dart-define for self-hosted instances.
+///
+/// Admin → Settings → Maps (migration 0200) can put other providers first
+/// (Google, Mapbox, HERE, TomTom, LocationIQ, MapTiler) per rider or partner
+/// and kind of device: those are asked through the `geo` function
+/// ([lookup]), which holds their keys, in the profile's order until one
+/// answers.
 class GeoService {
-  GeoService({http.Client? client}) : _http = client ?? http.Client();
+  GeoService({http.Client? client, this.lookup, MapProfile Function()? profile})
+      : _http = client ?? http.Client(),
+        _profile = profile ?? (() => activeMapProfile);
   final http.Client _http;
+  final GeoLookup? lookup;
+  final MapProfile Function() _profile;
 
   static const _nominatim = String.fromEnvironment(
     'NOMINATIM_URL',
@@ -74,12 +90,60 @@ class GeoService {
   );
   static const _countryCodes = String.fromEnvironment('GEO_COUNTRIES', defaultValue: 'my');
 
+  String get _nominatimBase => _profile().nominatimUrl ?? _nominatim;
+  String get _osrmBase => _profile().osrmUrl ?? _osrm;
+
+  /// [providers] in order until one gives a non-null, non-empty answer. A
+  /// provider with a key needs [lookup]; one that fails is skipped. When
+  /// none answers, the first error is thrown again (as with Nominatim
+  /// alone), else null.
+  Future<T?> _first<T>(List<String> providers, Future<T?> Function(String provider) ask) async {
+    Object? error;
+    StackTrace? stack;
+    for (final provider in providers) {
+      if (!directGeoProviders.contains(provider) && lookup == null) continue;
+      try {
+        final r = await ask(provider);
+        if (r != null && (r is! List || r.isNotEmpty)) return r;
+      } catch (e, s) {
+        error ??= e;
+        stack ??= s;
+      }
+    }
+    if (error != null) Error.throwWithStackTrace(error, stack!);
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _ask(String action, String provider, Map<String, String> params) =>
+      lookup!({'action': action, 'provider': provider, 'countries': _countryCodes, 'lang': 'en', ...params});
+
   Map<String, String> get _headers => kIsWeb
       ? const {'Accept-Language': 'en'}
       : const {'User-Agent': 'GET.ride Flutter (getgroup.my)', 'Accept-Language': 'en'};
 
   Future<List<Place>> search(String query, {LatLng? near}) async {
     if (query.trim().length < 3) return [];
+    final found = await _first<List<Place>>(_profile().search, (provider) async {
+      if (provider == 'nominatim') return _nominatimSearch(query, near);
+      final body = await _ask('search', provider, {
+        'q': query,
+        if (near != null) 'lat': '${near.latitude}',
+        if (near != null) 'lng': '${near.longitude}',
+      });
+      return [
+        for (final p in (body?['places'] as List?) ?? const [])
+          if (p is Map && p['lat'] is num && p['lng'] is num)
+            Place(
+              name: '${p['name'] ?? ''}',
+              address: '${p['address'] ?? ''}',
+              point: LatLng((p['lat'] as num).toDouble(), (p['lng'] as num).toDouble()),
+            ),
+      ];
+    });
+    return found ?? [];
+  }
+
+  Future<List<Place>> _nominatimSearch(String query, LatLng? near) async {
     final params = {
       'q': query,
       'format': 'jsonv2',
@@ -90,7 +154,7 @@ class GeoService {
         'viewbox':
             '${near.longitude - 0.5},${near.latitude + 0.5},${near.longitude + 0.5},${near.latitude - 0.5}',
     };
-    final res = await _http.get(Uri.parse('$_nominatim/search').replace(queryParameters: params),
+    final res = await _http.get(Uri.parse('$_nominatimBase/search').replace(queryParameters: params),
         headers: _headers);
     if (res.statusCode != 200) return [];
     final list = jsonDecode(res.body) as List;
@@ -108,7 +172,36 @@ class GeoService {
 
   Future<Place> reverse(LatLng p) async {
     try {
-      final uri = Uri.parse('$_nominatim/reverse').replace(queryParameters: {
+      final found = await _first<Place>(_profile().reverse, (provider) async {
+        if (provider == 'nominatim') return _nominatimReverse(p);
+        final a = await _proxyArea(provider, p);
+        return a == null ? null : Place(name: a.label ?? a.address ?? '', address: a.address ?? '', point: p);
+      });
+      if (found != null) return found;
+    } catch (_) {}
+    final label = '${p.latitude.toStringAsFixed(5)}, ${p.longitude.toStringAsFixed(5)}';
+    return Place(name: 'Pinned location', address: label, point: p);
+  }
+
+  /// The area from a provider with a key, through `geo`; null when it has none.
+  Future<AreaInfo?> _proxyArea(String provider, LatLng p) async {
+    final body = await _ask('reverse', provider, {'lat': '${p.latitude}', 'lng': '${p.longitude}'});
+    final m = body?['place'];
+    if (m is! Map) return null;
+    String? s(Object? v) => '${v ?? ''}'.trim().isEmpty ? null : '$v'.trim();
+    return AreaInfo(
+      country: s(m['country']),
+      state: s(m['state']),
+      city: s(m['city']),
+      suburb: s(m['suburb']),
+      label: s(m['name']),
+      address: s(m['address']),
+    );
+  }
+
+  Future<Place?> _nominatimReverse(LatLng p) async {
+    try {
+      final uri = Uri.parse('$_nominatimBase/reverse').replace(queryParameters: {
         'lat': '${p.latitude}',
         'lon': '${p.longitude}',
         'format': 'jsonv2',
@@ -126,8 +219,7 @@ class GeoService {
         );
       }
     } catch (_) {}
-    final label = '${p.latitude.toStringAsFixed(5)}, ${p.longitude.toStringAsFixed(5)}';
-    return Place(name: 'Pinned location', address: label, point: p);
+    return null;
   }
 
   /// Structured geography for [p] (country, state, city, suburb), which the
@@ -135,7 +227,18 @@ class GeoService {
   /// Null when the geocoder cannot be reached.
   Future<AreaInfo?> reverseArea(LatLng p) async {
     try {
-      final uri = Uri.parse('$_nominatim/reverse').replace(queryParameters: {
+      return await _first<AreaInfo>(_profile().reverse, (provider) async {
+        if (provider == 'nominatim') return _nominatimArea(p);
+        return _proxyArea(provider, p);
+      });
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<AreaInfo?> _nominatimArea(LatLng p) async {
+    try {
+      final uri = Uri.parse('$_nominatimBase/reverse').replace(queryParameters: {
         'lat': '${p.latitude}',
         'lon': '${p.longitude}',
         'format': 'jsonv2',
@@ -158,8 +261,40 @@ class GeoService {
   Future<RouteInfo> route(LatLng from, LatLng to, {List<LatLng> via = const []}) async {
     final points = [from, ...via, to];
     try {
+      final found = await _first<RouteInfo>(_profile().routing, (provider) async {
+        if (provider == 'osrm') return _osrmRoute(points);
+        final body = await _ask('route', provider, {
+          'points': points.map((p) => '${p.latitude},${p.longitude}').join(';'),
+        });
+        final r = body?['route'];
+        if (r is! Map || r['distanceKm'] is! num || r['durationMin'] is! num) return null;
+        return RouteInfo(
+          distanceKm: (r['distanceKm'] as num).toDouble(),
+          durationMin: (r['durationMin'] as num).toDouble(),
+          points: [
+            for (final c in (r['points'] as List?) ?? const [])
+              if (c is List && c.length >= 2 && c[0] is num && c[1] is num)
+                LatLng((c[0] as num).toDouble(), (c[1] as num).toDouble()),
+          ],
+        );
+      });
+      if (found != null) return found;
+    } catch (_) {}
+    if (via.isEmpty) return straightLine(from, to);
+    // Leg by leg, so the estimate still goes through every stop.
+    var km = 0.0, min = 0.0;
+    for (var i = 0; i + 1 < points.length; i++) {
+      final leg = straightLine(points[i], points[i + 1]);
+      km += leg.distanceKm;
+      min += leg.durationMin;
+    }
+    return RouteInfo(distanceKm: km, durationMin: min, points: points);
+  }
+
+  Future<RouteInfo?> _osrmRoute(List<LatLng> points) async {
+    try {
       final uri = Uri.parse(
-        '$_osrm/route/v1/driving/${points.map((p) => '${p.longitude},${p.latitude}').join(';')}'
+        '$_osrmBase/route/v1/driving/${points.map((p) => '${p.longitude},${p.latitude}').join(';')}'
         '?overview=full&geometries=geojson',
       );
       final res = await _http.get(uri, headers: _headers);
@@ -179,15 +314,7 @@ class GeoService {
         }
       }
     } catch (_) {}
-    if (via.isEmpty) return straightLine(from, to);
-    // Leg by leg, so the estimate still goes through every stop.
-    var km = 0.0, min = 0.0;
-    for (var i = 0; i + 1 < points.length; i++) {
-      final leg = straightLine(points[i], points[i + 1]);
-      km += leg.distanceKm;
-      min += leg.durationMin;
-    }
-    return RouteInfo(distanceKm: km, durationMin: min, points: points);
+    return null;
   }
 
   static RouteInfo straightLine(LatLng from, LatLng to) {
