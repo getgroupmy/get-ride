@@ -359,6 +359,7 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
     'timezone': TextEditingController(text: f.timezone),
     'taxName': TextEditingController(text: f.taxName),
     'taxAmount': TextEditingController(text: f.taxAmount),
+    'handoverShare': TextEditingController(text: f.handoverShare),
   };
   String? _error;
   bool _filling = false;
@@ -429,7 +430,8 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
       ..dateFormat = t('dateFormat')
       ..timezone = t('timezone')
       ..taxName = t('taxName')
-      ..taxAmount = t('taxAmount');
+      ..taxAmount = t('taxAmount')
+      ..handoverShare = t('handoverShare');
   }
 
   void _submit() {
@@ -444,7 +446,8 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
                 taxKind: RegionTax.kindFrom(f.taxKind),
                 taxAmount: f.taxAmount,
               )
-            : null);
+            : null) ??
+        handoverShareProblem(f.handoverShare);
     if (err != null) {
       setState(() => _error = err);
       return;
@@ -629,6 +632,14 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
       ],
       const SizedBox(height: 20),
       RegionRulesSection(rules: f.rules, onChanged: (rules) => setState(() => f.rules = rules)),
+      gap,
+      // Trip handover (0199): the share passed back to the first driver.
+      _field(
+        'handoverShare',
+        'Handover share (%)',
+        hint: 'Blank: as the region above, or App Settings',
+        keyboard: const TextInputType.numberWithOptions(decimal: true),
+      ),
       gap,
       _pair(
         _field('lat', 'Latitude', keyboard: const TextInputType.numberWithOptions(decimal: true, signed: true)),

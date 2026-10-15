@@ -57,6 +57,7 @@ import '../../admin/screens/people/people_logic.dart' show parseStringList;
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/trip_safety.dart';
 import '../../widgets/net_image.dart';
+import 'trip_handover_panel.dart' show HandoverOffersCard;
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -700,6 +701,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         ),
                       ),
                     ),
+                    // A driver asking this partner to take over their trip (0199).
+                    const HandoverOffersCard(),
                     // The next scheduled ride the driver took, under the switch.
                     const PartnerUpcomingBookingCard(),
                     if (modes.length > 1 || modes.any((m) => m.isTeksi))

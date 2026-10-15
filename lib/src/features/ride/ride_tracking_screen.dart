@@ -51,6 +51,7 @@ import '../wallet/wallet_screen.dart';
 import '../../core/demo_mode.dart';
 import 'auto_accept.dart';
 import '../my_ride/my_ride_parts.dart' show MyRideSearchBanner;
+import 'rider_handover_card.dart';
 
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>(
   (ref, id) => ref.watch(rideRepositoryProvider).watch(id),
@@ -793,6 +794,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             ..._searchSheet(r),
           ] else ...[
           const SizedBox(height: 16),
+          // The driver asking to hand the trip over (0199), or the new one coming.
+          RiderHandoverCard(ride: r),
           if (r.hasDriver)
             Card(
               child: Column(
