@@ -51,51 +51,60 @@ class UpcomingRideCard extends ConsumerWidget {
 }
 
 /// Trips → Scheduled: the rider's bookings, upcoming first.
-class ScheduledRidesScreen extends ConsumerWidget {
+class ScheduledRidesScreen extends StatelessWidget {
   const ScheduledRidesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Scheduled rides')),
+    body: const ScheduledRidesList(),
+  );
+}
+
+/// The rider's bookings, upcoming first; its own page and the Trips tab.
+class ScheduledRidesList extends ConsumerWidget {
+  const ScheduledRidesList({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Scheduled rides')),
-      body: AsyncView(
-        value: ref.watch(myScheduledRidesProvider),
-        onRetry: () => ref.invalidate(myScheduledRidesProvider),
-        data: (all) {
-          final upcoming = [
-            for (final r in all)
-              if (r.upcoming) r,
-          ];
-          final past = [
-            for (final r in all.reversed)
-              if (!r.upcoming) r,
-          ];
-          if (all.isEmpty) {
-            return const EmptyState(
-              icon: Icons.event_outlined,
-              title: 'No scheduled rides',
-              message: 'On the booking screen, turn on "Schedule for later" to book a ride ahead.',
-            );
-          }
-          return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(myScheduledRidesProvider),
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (upcoming.isNotEmpty) ...[
-                  const _Heading('Upcoming'),
-                  for (final r in upcoming) _BookingCard(ride: r, config: config),
-                ],
-                if (past.isNotEmpty) ...[
-                  const _Heading('Past'),
-                  for (final r in past.take(30)) _BookingCard(ride: r, config: config),
-                ],
-              ],
-            ),
+    return AsyncView(
+      value: ref.watch(myScheduledRidesProvider),
+      onRetry: () => ref.invalidate(myScheduledRidesProvider),
+      data: (all) {
+        final upcoming = [
+          for (final r in all)
+            if (r.upcoming) r,
+        ];
+        final past = [
+          for (final r in all.reversed)
+            if (!r.upcoming) r,
+        ];
+        if (all.isEmpty) {
+          return const EmptyState(
+            key: ValueKey('scheduled-empty'),
+            icon: Icons.event_outlined,
+            title: 'No scheduled rides',
+            message: 'On the booking screen, tap Later to book a ride ahead.',
           );
-        },
-      ),
+        }
+        return RefreshIndicator(
+          onRefresh: () async => ref.invalidate(myScheduledRidesProvider),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              if (upcoming.isNotEmpty) ...[
+                const _Heading('Upcoming'),
+                for (final r in upcoming) _BookingCard(ride: r, config: config),
+              ],
+              if (past.isNotEmpty) ...[
+                const _Heading('Past'),
+                for (final r in past.take(30)) _BookingCard(ride: r, config: config),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

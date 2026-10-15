@@ -116,6 +116,10 @@ String? pushRouteFor(Map<String, dynamic> data) {
       final call = data['call_id'];
       if (call is! String || call.isEmpty) return null;
       return '/ride-call/${Uri.encodeComponent(call)}';
+    case 'scheduled_reminder':
+      // "Ride coming up" (migrations 0189 / 0197): the bookings, the
+      // driver's on their side.
+      return data['role'] == 'partner' ? '/drive/scheduled' : '/trips/scheduled';
     case 'ride_expired':
       // Nobody took the request (migration 0139): home, to book again.
       return '/';

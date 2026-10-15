@@ -26,6 +26,7 @@ void main() {
   const pages = [
     '/', '/ev', '/trips', '/wallet', '/account/safety', '/account/settings', '/account/guide', '/account/support', '/account/help',
     '/account/emergency', '/account/referral', '/account/my-ride', '/account/my-qr', '/account/notifications',
+    '/trips/scheduled',
   ];
 
   /// Taps [id]'s row as [settings] arrange the menu; the page on top after,
@@ -61,6 +62,7 @@ void main() {
       'teksi-ev': '/ev',
       'city': '/',
       'request-history': '/trips',
+      'scheduled-rides': '/trips/scheduled',
       myRideMenuItemId: '/account/my-ride',
       myQrMenuItemId: '/account/my-qr',
       'freight': '/',

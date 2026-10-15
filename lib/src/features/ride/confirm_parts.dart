@@ -2001,15 +2001,14 @@ class _NowLaterButtonState extends State<NowLaterButton> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final dark = t.brightness == Brightness.dark;
-    final track = dark ? t.colorScheme.surfaceContainer : const Color(0xFFF1F1F1);
-    final thumb = dark
-        ? Color.alphaBlend(t.colorScheme.onSurface.withValues(alpha: 0.16), t.colorScheme.surfaceContainerHighest)
-        : Colors.white;
+    // The confirm step's blue, as Find a driver was: the chosen side filled,
+    // the other on a tint of it.
+    final track = Color.alphaBlend(confirmAccent.withValues(alpha: dark ? 0.22 : 0.12), t.colorScheme.surface);
     final enabled = widget.onNow != null || widget.pickLater != null;
 
     Widget side(bool later, IconData icon, String label) {
       final on = _later == later;
-      final color = on ? t.colorScheme.onSurface : t.colorScheme.onSurfaceVariant;
+      final color = on ? Colors.white : (dark ? t.colorScheme.onSurface : const Color(0xFF1B7FAD));
       final action = later ? widget.pickLater : widget.onNow;
       return Semantics(
         button: true,
@@ -2059,11 +2058,11 @@ class _NowLaterButtonState extends State<NowLaterButton> {
                 heightFactor: 1,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: thumb,
+                    color: confirmAccent,
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: dark ? 0.3 : 0.08),
+                        color: confirmAccent.withValues(alpha: dark ? 0.3 : 0.25),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),

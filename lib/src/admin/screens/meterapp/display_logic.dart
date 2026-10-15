@@ -27,6 +27,10 @@ const helpAssistantMenuItemId = 'help-assistant';
 const myRideMenuItemId = 'my-ride';
 const myQrMenuItemId = 'my-qr';
 
+/// The scheduled rides (0189): the rider's bookings, the driver's taken
+/// ones; shown only while scheduled rides are on.
+const scheduledRidesMenuItemId = 'scheduled-rides';
+
 /// The driver's My Ride code (QR and the riders who added them); shown only
 /// where the database has My Ride (migration 0160).
 const myRideCodeMenuItemId = 'my-ride-code';
@@ -35,6 +39,7 @@ const defaultUserMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
   ('city', 'City'),
   ('request-history', 'Request history'),
+  (scheduledRidesMenuItemId, 'Scheduled Request'), // this app's own; the Expo menu skips it
   (myRideMenuItemId, 'My Ride'), // favourite drivers (0160); this app's own, the Expo menu skips it
   (myQrMenuItemId, 'My QR'), // personal QR codes (0161); this app's own, the Expo menu skips it
   ('freight', 'Freight'),
@@ -59,6 +64,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   ('wallet', 'Wallet'),
   (myQrMenuItemId, 'My QR'), // GET.Referral / GET.me / GET.now (0161); this app's own
   ('trip-history', 'Trip history'),
+  (scheduledRidesMenuItemId, 'Scheduled Request'), // this app's own; the Expo menu skips it
   ('vehicle', 'Vehicle'),
   (vehicleInfoMenuItemId, 'Vehicle information'),
   ('documents', 'Documents'),
