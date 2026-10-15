@@ -41,12 +41,12 @@ insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000201a1'),  -- partner A
   ('00000000-0000-0000-0000-0000000201b1'),  -- partner B
   ('00000000-0000-0000-0000-0000000201e1'),  -- admin with edit rights
-  ('00000000-0000-0000-0000-0000000201f1'),  -- admin who can only view
+  ('00000000-0000-0000-0000-0000000201f1'),  -- admin who can only read
   ('00000000-0000-0000-0000-0000000201c1')   -- a rider
 on conflict do nothing;
 insert into public.admin_access (profile_id, page, access_level) values
   ('00000000-0000-0000-0000-0000000201e1', 'admin-settings-partner-statements', 'edit'),
-  ('00000000-0000-0000-0000-0000000201f1', 'admin-settings-partner-statements', 'view');
+  ('00000000-0000-0000-0000-0000000201f1', 'admin-settings-partner-statements', 'read');
 insert into public.partners (auth_user_id, name, phone, status, display_id, ic, plate, joined_at) values
   ('00000000-0000-0000-0000-0000000201a1', 'Ahmad Bin Ali', '60120000201', 'approved', 'GR201A', '900101-14-5678',
    'WXY 201', '2026-01-01'),
