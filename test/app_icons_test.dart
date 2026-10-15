@@ -81,6 +81,8 @@ void main() {
       final locked = config.copyWith(allowUserChoice: false);
       expect(chosenAppIcon(locked, d(2026, 11, 8), userChoice: 'g_dot'), 'deepavali');
       expect(chosenAppIcon(config, d(2026, 11, 8), userChoice: 'gone'), 'deepavali');
+      final hidden = config.copyWith(showInSettings: false);
+      expect(chosenAppIcon(hidden, d(2026, 11, 8), userChoice: 'g_dot'), 'deepavali', reason: 'row hidden');
     });
 
     test("the admin's fixed icon when not automatic", () {
@@ -94,6 +96,7 @@ void main() {
     final c = AppIconConfig.standard.copyWith(
       automatic: false,
       fixedIcon: 'g_dot',
+      showInSettings: false,
       allowUserChoice: false,
       schedule: const [
         IconWindow(icon: 'harvest', kind: IconWindowKind.annual, start: '05-25', end: '06-02', regions: ['Sabah']),
@@ -104,6 +107,7 @@ void main() {
     expect(back.toJson(), c.toJson());
     expect(AppIconConfig.fromJson(null).schedule, defaultIconSchedule);
     expect(AppIconConfig.fromJson({'fixed_icon': 'nope'}).fixedIcon, standardAppIcon);
+    expect(AppIconConfig.fromJson(const {}).showInSettings, isTrue, reason: 'shown unless hidden');
   });
 
   test('every window of the standard schedule is valid', () {

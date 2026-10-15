@@ -1,7 +1,8 @@
 // Admin → App Settings → Home-screen icon (app_settings 'app_icon',
 // core/app_icons.dart): follow the schedule or fix one icon for everyone,
-// whether passengers and drivers may pick their own, and the schedule itself
-// (the first window covering a day wins). The icons are built into the app;
+// whether Settings shows the App icon row, whether passengers and drivers
+// may pick their own, and the schedule itself (the first window covering a
+// day wins). The icons are built into the app;
 // changes here reach every phone the next time the app is opened.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -115,12 +116,28 @@ class _AppIconCardState extends ConsumerState<AppIconCard> {
                     onChanged: edit ? (v) => _edit(c.copyWith(fixedIcon: v)) : null,
                   ),
                 SwitchListTile(
+                  key: const ValueKey('app-icon-show-in-settings'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Show "App icon" in Settings'),
+                  subtitle: Text(
+                    c.showInSettings
+                        ? 'Passengers and drivers see Settings → App icon.'
+                        : 'Hidden: everyone follows the icon set here, whatever they picked before.',
+                  ),
+                  value: c.showInSettings,
+                  onChanged: edit ? (v) => _edit(c.copyWith(showInSettings: v)) : null,
+                ),
+                SwitchListTile(
                   key: const ValueKey('app-icon-allow-choice'),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Let passengers and drivers choose'),
-                  subtitle: const Text('Settings → App icon. "Automatic" is the default there.'),
+                  subtitle: Text(
+                    c.showInSettings
+                        ? '"Automatic" is the default there; off, the page only shows the icons.'
+                        : 'Only with "App icon" shown in Settings.',
+                  ),
                   value: c.allowUserChoice,
-                  onChanged: edit ? (v) => _edit(c.copyWith(allowUserChoice: v)) : null,
+                  onChanged: edit && c.showInSettings ? (v) => _edit(c.copyWith(allowUserChoice: v)) : null,
                 ),
                 const SizedBox(height: 8),
                 Row(

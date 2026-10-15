@@ -97,12 +97,18 @@ void main() {
     expect(c.read(appIconChoiceProvider), automaticAppIcon);
   });
 
-  testWidgets('the Settings row only where icons can change', (tester) async {
+  testWidgets('the Settings row only where icons can change, and unless the admin hides it', (tester) async {
     await pump(tester, const Scaffold(body: AppIconTile()));
     expect(find.byKey(const ValueKey('settings-app-icon')), findsOneWidget);
     expect(find.text('Automatic'), findsOneWidget);
     await pump(tester, const Scaffold(body: AppIconTile()), platform: _FakePlatform(supportedHere: false));
     expect(find.byKey(const ValueKey('settings-app-icon')), findsNothing);
+    await pump(
+      tester,
+      const Scaffold(body: AppIconTile()),
+      config: AppIconConfig.standard.copyWith(showInSettings: false),
+    );
+    expect(find.byKey(const ValueKey('settings-app-icon')), findsNothing, reason: 'hidden by the admin');
   });
 
   test('the phone is only asked when the icon differs', () async {
@@ -135,6 +141,13 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('app-icon-auto')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('app-icon-fixed')), findsOneWidget);
+
+      SwitchListTile choice() => tester.widget(find.byKey(const ValueKey('app-icon-allow-choice')));
+      expect(choice().onChanged, isNotNull);
+      await tester.tap(find.byKey(const ValueKey('app-icon-show-in-settings')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Hidden: everyone follows'), findsOneWidget);
+      expect(choice().onChanged, isNull, reason: 'choosing needs the row shown');
 
       final before = defaultIconSchedule.length;
       expect(find.byKey(ValueKey('app-icon-window-${before - 1}')), findsOneWidget);

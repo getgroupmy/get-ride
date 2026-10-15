@@ -1,6 +1,7 @@
 // Settings → App icon: "Automatic" (the admin's seasons and sales) or any
 // icon, kept on the phone (data/app_icon_service.dart). Only on iPhone and
-// Android, and only when the admin lets passengers and drivers choose.
+// Android, only when the admin shows it, and locked when the admin doesn't
+// let passengers and drivers choose.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,8 +17,10 @@ class AppIconTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (!ref.watch(appIconPlatformProvider).supported) return const SizedBox.shrink();
     final config = ref.watch(appIconConfigProvider).value ?? AppIconConfig.standard;
+    // Admin → App Settings → Home-screen icon can hide the row.
+    if (!config.showInSettings) return const SizedBox.shrink();
     final choice = ref.watch(appIconChoiceProvider);
-    final mine = config.allowUserChoice && choice != automaticAppIcon ? appIconById(choice) : null;
+    final mine = config.userChoiceApplies && choice != automaticAppIcon ? appIconById(choice) : null;
     return Card(
       child: ListTile(
         key: const ValueKey('settings-app-icon'),
@@ -42,7 +45,7 @@ class AppIconScreen extends ConsumerWidget {
     final regions = ref.watch(appIconRegionsProvider).value ?? const <String>{};
     final now = DateTime.now();
     final automatic = config.automatic ? scheduledAppIcon(config, now, regions: regions) : config.fixedIcon;
-    final canChoose = config.allowUserChoice;
+    final canChoose = config.userChoiceApplies;
     final selected = canChoose ? choice : automaticAppIcon;
 
     void pick(String id) => ref.read(appIconChoiceProvider.notifier).set(id);

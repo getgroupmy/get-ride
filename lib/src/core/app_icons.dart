@@ -166,6 +166,7 @@ class AppIconConfig {
   const AppIconConfig({
     this.automatic = true,
     this.fixedIcon = standardAppIcon,
+    this.showInSettings = true,
     this.allowUserChoice = true,
     this.schedule = defaultIconSchedule,
   });
@@ -174,8 +175,15 @@ class AppIconConfig {
   final bool automatic;
   final String fixedIcon;
 
+  /// Whether Settings shows the App icon row at all. Hidden, a choice
+  /// made there before no longer counts.
+  final bool showInSettings;
+
   /// Whether passengers and drivers may pick their own in Settings.
   final bool allowUserChoice;
+
+  /// Whether a passenger's or driver's own pick counts.
+  bool get userChoiceApplies => showInSettings && allowUserChoice;
 
   /// In priority order: the first window covering today wins.
   final List<IconWindow> schedule;
@@ -189,6 +197,7 @@ class AppIconConfig {
     return AppIconConfig(
       automatic: v['automatic'] != false,
       fixedIcon: appIconById(fixed is String ? fixed : null)?.id ?? standardAppIcon,
+      showInSettings: v['show_in_settings'] != false,
       allowUserChoice: v['allow_user_choice'] != false,
       schedule: list is List ? [for (final w in list) ?IconWindow.fromJson(w)] : defaultIconSchedule,
     );
@@ -197,17 +206,24 @@ class AppIconConfig {
   Map<String, Object> toJson() => {
     'automatic': automatic,
     'fixed_icon': fixedIcon,
+    'show_in_settings': showInSettings,
     'allow_user_choice': allowUserChoice,
     'schedule': [for (final w in schedule) w.toJson()],
   };
 
-  AppIconConfig copyWith({bool? automatic, String? fixedIcon, bool? allowUserChoice, List<IconWindow>? schedule}) =>
-      AppIconConfig(
-        automatic: automatic ?? this.automatic,
-        fixedIcon: fixedIcon ?? this.fixedIcon,
-        allowUserChoice: allowUserChoice ?? this.allowUserChoice,
-        schedule: schedule ?? this.schedule,
-      );
+  AppIconConfig copyWith({
+    bool? automatic,
+    String? fixedIcon,
+    bool? showInSettings,
+    bool? allowUserChoice,
+    List<IconWindow>? schedule,
+  }) => AppIconConfig(
+    automatic: automatic ?? this.automatic,
+    fixedIcon: fixedIcon ?? this.fixedIcon,
+    showInSettings: showInSettings ?? this.showInSettings,
+    allowUserChoice: allowUserChoice ?? this.allowUserChoice,
+    schedule: schedule ?? this.schedule,
+  );
 }
 
 const appIconSettingKey = 'app_icon';
@@ -228,7 +244,7 @@ String chosenAppIcon(
   String userChoice = automaticAppIcon,
   Set<String> regions = const {},
 }) {
-  if (config.allowUserChoice && userChoice != automaticAppIcon && appIconById(userChoice) != null) {
+  if (config.userChoiceApplies && userChoice != automaticAppIcon && appIconById(userChoice) != null) {
     return userChoice;
   }
   if (!config.automatic) return config.fixedIcon;
