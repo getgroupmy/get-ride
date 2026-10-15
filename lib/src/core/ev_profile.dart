@@ -722,6 +722,33 @@ String formatEvValue(String key, double value, {String? unit}) {
   return key == 'charging' || u.isEmpty ? text : '$text $u';
 }
 
+/// Admin → EV profiles settings (app_settings `ev_settings`).
+class EvSettings {
+  const EvSettings({this.billingSpeed = true});
+
+  /// A verified profile's speed may be what the meter bills on.
+  final bool billingSpeed;
+
+  /// Cleaned as the server cleans it: anything but a boolean is the default.
+  static EvSettings fromJson(Object? json) {
+    final v = json is Map ? json['billingSpeed'] : null;
+    return EvSettings(billingSpeed: v is bool ? v : true);
+  }
+
+  Map<String, Object?> toJson() => {'billingSpeed': billingSpeed};
+
+  @override
+  bool operator ==(Object other) => other is EvSettings && other.billingSpeed == billingSpeed;
+
+  @override
+  int get hashCode => billingSpeed.hashCode;
+}
+
+/// The speed from [s] the meter may bill on: only a verified profile's, and
+/// only while the admin allows it; null otherwise.
+double? evBillingSpeed(EvProfile p, EvSnapshot s, EvSettings settings) =>
+    p.verified && settings.billingSpeed ? s.speedKmh : null;
+
 /// The values the driver looks for first, in this order.
 const evHeadlineKeys = ['soc', 'range_km', 'odometer_km'];
 

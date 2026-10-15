@@ -458,8 +458,16 @@ class ObdSession extends Notifier<ObdSessionState> {
         return;
       }
       _evMisses = 0;
-      // A verified profile's speed is the vehicle speed the meter bills on.
-      final speed = p.verified ? snap.speedKmh : null;
+      // A verified profile's speed is the vehicle speed the meter bills on,
+      // while Admin → EV profiles allows it (followed live).
+      EvSettings settings;
+      try {
+        settings = await ref.read(evSettingsProvider.future);
+      } catch (_) {
+        settings = const EvSettings();
+      }
+      if (_client != client || state.evProfile != p) return;
+      final speed = evBillingSpeed(p, snap, settings);
       state = state.copyWith(
         ev: () => snap,
         telemetry: speed == null ? null : {...state.telemetry, 'speed': speed},

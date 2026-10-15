@@ -23,7 +23,9 @@ import 'package:get_ride/src/features/meter/obd_reader_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeRepo implements EvProfileRepository {
-  _FakeRepo({this.profiles = const [], this.captures = const []});
+  _FakeRepo({this.profiles = const [], this.captures = const [], this.evSettings = const EvSettings()});
+  EvSettings evSettings;
+  final savedSettings = <EvSettings>[];
   List<EvProfile> profiles;
   List<EvCapture> captures;
   final saved = <EvProfile>[];
@@ -46,6 +48,15 @@ class _FakeRepo implements EvProfileRepository {
 
   @override
   Future<void> uploadCapture(EvCapture c) async => uploaded.add(c);
+
+  @override
+  Future<EvSettings> settings() async => evSettings;
+
+  @override
+  Future<EvSettings> saveSettings(EvSettings s) async {
+    savedSettings.add(s);
+    return evSettings = s;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -416,6 +427,70 @@ void main() {
       expect(json['vehicle'], 'Testmake Alpha 2024');
       expect((json['entries'] as List).length, 2);
     });
+  }
+
+  for (final dark in [false, true]) {
+    final mode = dark ? 'dark' : 'light';
+
+    testWidgets('billing on EV speed switched off: the car is read, its speed is not billed on ($mode)', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues(_savedPrefs());
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            obdTransportFactoryProvider.overrideWithValue((_) => _EvCar()),
+            evProfileRepositoryProvider.overrideWithValue(
+              _FakeRepo(profiles: [_alpha], evSettings: const EvSettings(billingSpeed: false)),
+            ),
+          ],
+          child: MaterialApp(theme: dark ? ThemeData.dark() : ThemeData.light(), home: const ObdReaderScreen()),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.byKey(const ValueKey('ev-snapshot')), findsOneWidget);
+      expect(find.text('42 km/h'), findsOneWidget, reason: 'on the EV values only');
+      expect(find.text('Vehicle speed'), findsNothing, reason: 'the admin has turned billing on EV speed off');
+      await tester.tap(find.text('Disconnect'));
+      await tester.pump(const Duration(milliseconds: 10));
+    });
+
+    for (final edit in [true, false]) {
+      testWidgets('Admin → EV profiles: the billing switch, ${edit ? 'saved' : 'read-only'} ($mode)', (tester) async {
+        final repo = _FakeRepo();
+        await tester.binding.setSurfaceSize(const Size(1000, 2000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              adminAccessProvider.overrideWith((_) async => AdminAccess([AdminGrant(page: '*', edit: edit)])),
+              evProfileRepositoryProvider.overrideWithValue(repo),
+            ],
+            child: MaterialApp(theme: dark ? ThemeData.dark() : ThemeData.light(), home: const AdminEvProfilesScreen()),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Use EV speed for meter billing (verified profiles only)'), findsOneWidget);
+        SwitchListTile tile() => tester.widget<SwitchListTile>(
+          find.descendant(of: find.byKey(const ValueKey('ev-billing-speed')), matching: find.byType(SwitchListTile)),
+        );
+        expect(tile().value, isTrue, reason: 'on by default');
+        if (!edit) {
+          expect(tile().onChanged, isNull);
+          expect(find.text('Changing this needs edit rights on EV profiles.'), findsOneWidget);
+          return;
+        }
+        await tester.tap(find.byKey(const ValueKey('ev-billing-speed')));
+        await tester.pumpAndSettle();
+        expect(repo.savedSettings, [const EvSettings(billingSpeed: false)]);
+        expect(tile().value, isFalse);
+        expect(find.text('Meter billing no longer uses EV speed.'), findsOneWidget);
+      });
+    }
   }
 
   test('the page is listed under Meter & app with its own page key', () {

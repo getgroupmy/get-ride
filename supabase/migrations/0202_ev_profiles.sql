@@ -20,6 +20,10 @@
 --
 -- The app reads the active profiles through ev_profiles_for_app(), keeps
 -- them on the device for use offline, and follows the table live.
+--
+-- app_settings 'ev_settings' {billingSpeed}: whether a verified profile's
+-- speed may be what the meter bills on (on by default; edit rights on
+-- Admin → EV profiles to change, through set_ev_settings()).
 -- ============================================================================
 
 -- ---- Validation -----------------------------------------------------------------------------
@@ -257,3 +261,54 @@ drop policy if exists "obd_captures admin delete" on public.obd_captures;
 create policy "obd_captures admin delete" on public.obd_captures
   for delete to authenticated
   using ((select public.caller_is_admin()));
+
+-- ---- Settings ---------------------------------------------------------------------------------
+-- app_settings 'ev_settings' = { billingSpeed: true }
+--   billingSpeed: a verified profile's speed is the vehicle speed the meter
+--   bills on. Off, EV profiles only show battery, range and odometer.
+insert into public.app_settings (key, value) values ('ev_settings', '{"billingSpeed": true}'::jsonb)
+on conflict (key) do nothing;
+
+create or replace function public.ev_settings_clean(p jsonb)
+returns jsonb
+language sql
+immutable
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'billingSpeed', case when jsonb_typeof(p->'billingSpeed') = 'boolean' then (p->>'billingSpeed')::boolean
+                         else true end);
+$$;
+
+-- Read by the app (the OBD-II session) and the admin page.
+create or replace function public.ev_settings()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.ev_settings_clean(coalesce((select value from public.app_settings where key = 'ev_settings'), '{}'));
+$$;
+revoke execute on function public.ev_settings() from public, anon;
+grant execute on function public.ev_settings() to authenticated;
+
+create or replace function public.set_ev_settings(p jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v jsonb := public.ev_settings_clean(p);
+begin
+  if auth.uid() is null or not public.admin_can_edit(auth.uid(), 'admin-settings-ev-profiles') then
+    raise exception 'Only an admin with edit rights can change EV settings.' using errcode = '42501';
+  end if;
+  insert into public.app_settings (key, value, updated_at) values ('ev_settings', v, now())
+  on conflict (key) do update set value = excluded.value, updated_at = now();
+  return v;
+end;
+$$;
+revoke execute on function public.set_ev_settings(jsonb) from public, anon;
+grant execute on function public.set_ev_settings(jsonb) to authenticated;

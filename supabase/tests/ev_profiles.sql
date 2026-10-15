@@ -3,7 +3,9 @@
 -- admin writes profiles; everyone signed in reads the active ones (directly
 -- and through ev_profiles_for_app()); profiles are validated on save; a
 -- driver uploads and reads only their own captures, an admin reads and
--- deletes all of them; a capture holds at most 2000 entries.
+-- deletes all of them; a capture holds at most 2000 entries. The EV
+-- settings (billing on a verified profile's speed) are on by default,
+-- cleaned, readable by anyone signed in and changed only with edit rights.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/ev_profiles.sql
 --
@@ -44,10 +46,12 @@ grant execute on function pg_temp.check(boolean, text), pg_temp.as_user(uuid), p
 insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000202a1'),  -- admin
   ('00000000-0000-0000-0000-0000000202b1'),  -- driver
-  ('00000000-0000-0000-0000-0000000202c1')   -- another driver
+  ('00000000-0000-0000-0000-0000000202c1'),  -- another driver
+  ('00000000-0000-0000-0000-0000000202d1')   -- admin who may only look
 on conflict do nothing;
 insert into public.admin_access (profile_id, page, access_level) values
-  ('00000000-0000-0000-0000-0000000202a1', 'admin-settings-ev-profiles', 'edit')
+  ('00000000-0000-0000-0000-0000000202a1', 'admin-settings-ev-profiles', 'edit'),
+  ('00000000-0000-0000-0000-0000000202d1', 'admin-settings-ev-profiles', 'read')
 on conflict do nothing;
 
 -- 1. Validation --------------------------------------------------------------------------------
@@ -126,10 +130,31 @@ select pg_temp.check(pg_temp.rows($q$delete from public.obd_captures where vehic
   'and deletes one');
 reset role;
 
--- 4. Anonymous callers ---------------------------------------------------------------------------
+-- 4. Settings: billing on EV speed ------------------------------------------------------------
+select pg_temp.check(public.ev_settings_clean('{}') = '{"billingSpeed": true}', 'on when unset');
+select pg_temp.check(public.ev_settings_clean('{"billingSpeed": "no", "other": 1}') = '{"billingSpeed": true}',
+  'anything but a boolean is the default, and unknown keys go');
+select pg_temp.check(public.ev_settings_clean('{"billingSpeed": false}') = '{"billingSpeed": false}', 'off kept');
+
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000202b1');
+select pg_temp.check(public.ev_settings()->'billingSpeed' = 'true', 'on by default, and a driver reads it');
+select pg_temp.refused($q$select public.set_ev_settings('{"billingSpeed": false}')$q$, 'a driver changing EV settings');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000202d1');
+select pg_temp.refused($q$select public.set_ev_settings('{"billingSpeed": false}')$q$,
+  'an admin with read-only access changing EV settings');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000202a1');
+select pg_temp.check(public.set_ev_settings('{"billingSpeed": false}') = '{"billingSpeed": false}',
+  'an admin with edit rights turns it off');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000202b1');
+select pg_temp.check(public.ev_settings()->'billingSpeed' = 'false', 'and every driver reads it off');
+reset role;
+
+-- 5. Anonymous callers ---------------------------------------------------------------------------
 set local role anon;
 select pg_temp.refused($q$select count(*) from public.ev_profiles$q$, 'an anonymous caller reading profiles');
 select pg_temp.refused($q$select public.ev_profiles_for_app()$q$, 'an anonymous caller asking for profiles');
+select pg_temp.refused($q$select public.ev_settings()$q$, 'an anonymous caller reading EV settings');
 reset role;
 
 select 'ev_profiles: all passed';

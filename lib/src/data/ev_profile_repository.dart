@@ -45,7 +45,37 @@ class EvProfileRepository {
     }
   }
 
+  static const settingsCacheKey = 'ev_settings_v1';
+
+  /// The EV settings; kept on the device. Offline, the ones kept last time,
+  /// else the defaults.
+  Future<EvSettings> settings() async {
+    try {
+      final res = await _db().rpc('ev_settings');
+      final s = EvSettings.fromJson(res is String ? jsonDecode(res) : res);
+      try {
+        final p = await SharedPreferences.getInstance();
+        await p.setString(settingsCacheKey, jsonEncode(s.toJson()));
+      } catch (_) {}
+      return s;
+    } catch (_) {
+      try {
+        final s = (await SharedPreferences.getInstance()).getString(settingsCacheKey);
+        return s == null ? const EvSettings() : EvSettings.fromJson(jsonDecode(s));
+      } catch (_) {
+        return const EvSettings();
+      }
+    }
+  }
+
   // ---- Admin ----------------------------------------------------------------------------
+
+  /// Saves the EV settings (edit rights on Admin → EV profiles only) and
+  /// answers them as stored.
+  Future<EvSettings> saveSettings(EvSettings s) async {
+    final res = await _db().rpc('set_ev_settings', params: {'p': s.toJson()});
+    return EvSettings.fromJson(res is String ? jsonDecode(res) : res);
+  }
 
   /// Every profile, active or not (an admin's row-level access).
   Future<List<EvProfile>> adminList() async {
@@ -94,6 +124,12 @@ final evProfileRepositoryProvider = Provider((ref) => EvProfileRepository(() => 
 final evProfilesProvider = FutureProvider<List<EvProfile>>((ref) {
   ref.watchLive('ev_profiles');
   return ref.watch(evProfileRepositoryProvider).forApp();
+});
+
+/// The EV settings, kept live (they are an app_settings row).
+final evSettingsProvider = FutureProvider<EvSettings>((ref) {
+  ref.watchLive('app_settings');
+  return ref.watch(evProfileRepositoryProvider).settings();
 });
 
 /// Which profile the driver chose when one car matched several, per reader

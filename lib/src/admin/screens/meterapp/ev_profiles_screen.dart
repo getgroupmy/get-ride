@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ev_profile.dart';
 import '../../../data/ev_profile_repository.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -105,10 +106,11 @@ class _ProfilesTab extends ConsumerWidget {
                       "Most electric cars don't answer standard OBD-II. A profile tells the app which ECU to ask, "
                       'what to ask and where each value is in the answer. Build it from a driver\'s capture '
                       '(OBD captures tab), test it on the car, then mark it verified. Only active profiles reach '
-                      "drivers' phones, and only a verified profile's speed is used for billing.",
+                      "drivers' phones, and only a verified profile's speed can be used for billing.",
                     ),
                   ),
                 ),
+                const _BillingSpeedCard(),
                 if (list.isEmpty)
                   const Card(
                     child: ListTile(
@@ -142,6 +144,42 @@ class _ProfilesTab extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Whether a verified profile's speed is what the meter bills on.
+class _BillingSpeedCard extends ConsumerWidget {
+  const _BillingSpeedCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = ref.watch(pageAccessProvider(evProfilesPage)) == AccessLevel.edit;
+    final settings = ref.watch(evSettingsProvider).value;
+    return Card(
+      child: BusySwitchListTile(
+        key: const ValueKey('ev-billing-speed'),
+        secondary: const Icon(Icons.speed),
+        title: const Text('Use EV speed for meter billing (verified profiles only)'),
+        subtitle: Text(
+          canEdit
+              ? 'On: Meter Digital bills on the speed a verified profile reads, as it does on an engine car. '
+                    'Off: EV profiles only show battery, range and odometer, and the meter uses GPS.'
+              : 'Changing this needs edit rights on EV profiles.',
+        ),
+        isThreeLine: true,
+        value: settings?.billingSpeed ?? true,
+        onChanged: !canEdit || settings == null
+            ? null
+            : (v) async {
+                await runAdminAction(
+                  context,
+                  () => ref.read(evProfileRepositoryProvider).saveSettings(EvSettings(billingSpeed: v)),
+                  success: v ? 'Meter billing uses EV speed again.' : 'Meter billing no longer uses EV speed.',
+                );
+                ref.invalidate(evSettingsProvider);
+              },
       ),
     );
   }

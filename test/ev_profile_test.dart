@@ -166,6 +166,18 @@ void main() {
   });
 
   group('models', () {
+    test('billing on EV speed: a verified profile, and only while the admin allows it', () {
+      const snap = EvSnapshot(values: {'speed_kmh': 42, 'soc': 80});
+      final verified = _profile.copyWith(verified: true);
+      expect(evBillingSpeed(verified, snap, const EvSettings()), 42);
+      expect(evBillingSpeed(_profile, snap, const EvSettings()), isNull, reason: 'not verified');
+      expect(evBillingSpeed(verified, snap, const EvSettings(billingSpeed: false)), isNull, reason: 'switched off');
+      expect(evBillingSpeed(verified, const EvSnapshot(values: {'soc': 80}), const EvSettings()), isNull);
+      expect(EvSettings.fromJson(null), const EvSettings());
+      expect(EvSettings.fromJson({'billingSpeed': 'no'}).billingSpeed, isTrue, reason: 'cleaned as the server does');
+      expect(EvSettings.fromJson({'billingSpeed': false}).toJson(), {'billingSpeed': false});
+    });
+
     test('a profile goes to JSON and back, cleaned', () {
       expect(EvProfile.fromJson(_profile.toJson())!.toJson(), _profile.toJson());
       final odd = EvProfile.fromJson({
