@@ -10,6 +10,7 @@ import '../maps/maps_screen.dart';
 import 'always_on_screen.dart';
 import 'app_release_screen.dart';
 import 'display_screen.dart';
+import 'ev_profiles_screen.dart';
 import 'meter_digital_screen.dart';
 import 'mock_screen.dart';
 import 'site_screen.dart';
@@ -25,6 +26,7 @@ final meterappRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/splash', redirect: (_, _) => '/admin/m/site'),
   GoRoute(path: '/admin/m/always-on', builder: (_, _) => const AdminAlwaysOnScreen()),
   GoRoute(path: '/admin/m/maps', builder: (_, _) => const AdminMapsScreen()),
+  GoRoute(path: '/admin/m/ev-profiles', builder: (_, _) => const AdminEvProfilesScreen()),
   if (!AppConfig.storeBuild) GoRoute(path: '/admin/m/app-release', builder: (_, _) => const AdminAppReleaseScreen()),
 ];
 
@@ -70,6 +72,14 @@ const meterappEntries = <AdminScreenEntry>[
     path: '/admin/m/maps',
     pages: [mapsPage],
     icon: Icons.map_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'Meter & app',
+    title: 'EV profiles',
+    subtitle: 'Battery, range & odometer for electric cars on the OBD-II reader; drivers\' captures',
+    path: '/admin/m/ev-profiles',
+    pages: [evProfilesPage],
+    icon: Icons.electric_car_outlined,
   ),
   AdminScreenEntry(
     section: 'Meter & app',

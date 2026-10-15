@@ -68,6 +68,8 @@ const liveSettingTables = <String>[
   'trip_handovers',
   // A handover offered to this partner, and when it closes.
   'trip_handover_candidates',
+  // EV profiles for the OBD-II reader (0202; the active ones, or all for an admin).
+  'ev_profiles',
 ];
 
 /// The signed-in account's own rows that an admin decides on (approving,

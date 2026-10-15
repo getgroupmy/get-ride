@@ -38,7 +38,9 @@ begin
     -- Handovers and passengers' choices of driver (migration 0198).
     'scheduled_ride_offers',
     -- Mid-trip handovers (migration 0199).
-    'trip_handovers', 'trip_handover_candidates'
+    'trip_handovers', 'trip_handover_candidates',
+    -- EV profiles for the OBD-II reader (migration 0202).
+    'ev_profiles'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

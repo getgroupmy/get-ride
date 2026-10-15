@@ -13,6 +13,7 @@ import '../../core/meter_console.dart';
 import '../../core/meter_trip.dart';
 import '../../core/vehicle_assignment.dart';
 import '../../core/escpos.dart';
+import '../../core/ev_profile.dart' show evSummary, formatEvValue;
 import '../../core/landscape_stage.dart';
 import '../../core/navigation_app.dart';
 import '../../core/obd.dart';
@@ -401,6 +402,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   /// adapter busy with the sweep, not a car without an odometer. A car that
   /// answers NO DATA does not publish one, and is not asked again.
   Future<double?> _readOdometer() async {
+    // An electric car read through its EV profile: the profile's odometer.
+    final ev = ref.read(obdSessionProvider).ev?.odometerKm;
+    if (ev != null) return ev;
     final session = ref.read(obdSessionProvider.notifier);
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
@@ -857,6 +861,28 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       titleSpacing: 0,
       title: _driverStrip(),
       actions: [
+        // An electric car read through its EV profile: the battery.
+        if (obd.ev?.soc != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    obd.ev!.charging == true ? Icons.battery_charging_full : Icons.battery_std,
+                    color: _lcd,
+                    size: 16,
+                  ),
+                  Text(
+                    formatEvValue('soc', obd.ev!.soc!),
+                    key: const ValueKey('meter-ev-battery'),
+                    style: const TextStyle(color: _lcd, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.only(right: 4),
           child: Center(
@@ -1064,6 +1090,15 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
             ),
             row(Icons.gps_fixed, 'GPS', gps, key: const ValueKey('meter-settings-gps')),
             row(Icons.settings_input_component, 'OBD-II', reader, key: const ValueKey('meter-settings-obd')),
+            if (obd.evProfile != null)
+              row(
+                Icons.battery_charging_full_outlined,
+                'EV',
+                obd.ev == null || obd.ev!.isEmpty
+                    ? 'Reading ${obd.evProfile!.title}…'
+                    : '${evSummary(obd.ev!)} · ${obd.evProfile!.title}',
+                key: const ValueKey('meter-settings-ev'),
+              ),
             row(Icons.directions_car_outlined, 'Vehicle', _vehicle == null ? 'Not selected' : _vehicle!.plate),
           ],
         ),
