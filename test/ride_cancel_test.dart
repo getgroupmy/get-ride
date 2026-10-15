@@ -416,5 +416,25 @@ void main() {
       await tester.pump();
       expect(rides.shared, [(3.3, 101.8)], reason: 'on the trip, for the safety check');
     });
+
+    testWidgets('the map button turns sharing off for this ride: nothing more goes to the driver', (tester) async {
+      final (rides, rows, gps) = await pump(tester);
+      rows.add(ride('accepted'));
+      await settle(tester);
+      gps.add(const LatLng(3.1, 101.6));
+      await tester.pump();
+      expect(rides.shared, [(3.1, 101.6)]);
+
+      await tester.tap(find.byKey(const ValueKey('location-share-button')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('location-share-turn-off')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('location-off-this-ride')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 6));
+      gps.add(const LatLng(3.2, 101.7));
+      await tester.pump();
+      expect(rides.shared, [(3.1, 101.6)], reason: 'stopped for this ride');
+    });
   });
 }

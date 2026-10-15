@@ -120,3 +120,19 @@ LatLng _nearestOnSegment(LatLng p, LatLng a, LatLng b) {
   final t = len == 0 ? 0.0 : (((px - ax) * dx + (py - ay) * dy) / len).clamp(0.0, 1.0);
   return LatLng(a.latitude + (b.latitude - a.latitude) * t, a.longitude + (b.longitude - a.longitude) * t);
 }
+
+/// The passenger's own "you are here" dot shows on their trip map while
+/// they wait: during the search and until the driver picks them up.
+bool showRiderDot(RideStatus status) =>
+    status == RideStatus.open || status == RideStatus.accepted || status == RideStatus.arrived;
+
+/// How far from the pickup the passenger may stand before a dashed line
+/// shows them the way to it.
+const walkToPickupMinMeters = 30.0;
+
+/// The dashed line from the passenger to the pickup point, or null when
+/// either is unknown or they are already at it.
+List<LatLng>? walkToPickupLine(LatLng? me, LatLng? pickup) {
+  if (me == null || pickup == null) return null;
+  return const Distance().as(LengthUnit.Meter, me, pickup) > walkToPickupMinMeters ? [me, pickup] : null;
+}

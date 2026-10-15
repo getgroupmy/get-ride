@@ -35,6 +35,7 @@ import '../../widgets/trip_safety.dart';
 import 'demo_ride.dart';
 import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
+import 'location_share_button.dart';
 import '../support/call/mic_gate.dart' show primeMicForCalls;
 import 'cancelled_countdown.dart';
 import 'ride_call_screen.dart' show RideCallButton;
@@ -115,7 +116,15 @@ class RideTrackingScreen extends ConsumerWidget {
         data: (r) {
           // The panel lays the screen out: a driver's offer flies in over
           // the map; on a wide (desktop) screen the panel sits beside it.
-          final panel = _RidePanel(ride: r, map: LiveRideMap(ride: r), wide: MediaQuery.sizeOf(context).width >= 900);
+          final panel = _RidePanel(
+            ride: r,
+            map: LiveRideMap(
+              ride: r,
+              riderPosition: ref.read(riderPositionStreamProvider),
+              topButton: LocationShareButton(ride: r),
+            ),
+            wide: MediaQuery.sizeOf(context).width >= 900,
+          );
           if (!r.fromCache) return panel;
           return Column(
             children: [
@@ -435,7 +444,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   void _syncLocationShare() {
     final r = widget.ride;
     final demo = r.id.startsWith('demo');
-    final shown = ref.read(showLocationToDriverProvider);
+    final shown = locationSharedFor(ref, r.id);
     final share = shareRiderLocation(r.status, showToDriver: shown) && !demo;
     // Turned off on the way to the pickup: the driver no longer sees the
     // last position shared either.
@@ -750,6 +759,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   Widget build(BuildContext context) {
     // Settings → Show location to your driver, switched mid-ride.
     ref.listen(showLocationToDriverProvider, (_, _) => _syncLocationShare());
+    ref.listen(rideLocationOffProvider, (_, _) => _syncLocationShare());
     final r = widget.ride;
     final t = Theme.of(context);
     final riderCancelAsk = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider';
