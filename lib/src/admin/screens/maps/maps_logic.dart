@@ -168,14 +168,26 @@ const mapKeySlots = [
   MapKeySlot('osrm', 'OSRM server (optional)', 'openstreetmap/osrm', providers: {}),
 ];
 
+/// Which Google API answers place search and routes (migration 0203): the
+/// newer Places API (New) and Routes API, the older Places API (Text Search)
+/// and Directions API, or the newer first and the older when it refuses.
+const mapGoogleApis = [
+  ('new_old', 'New, then Old if New refuses'),
+  ('new', 'New only (Places API New, Routes API)'),
+  ('old', 'Old only (Places API, Directions API)'),
+];
+
 /// The whole setting.
 @immutable
 class MapSettings {
-  const MapSettings({this.profiles = const {}, this.keys = const {}});
+  const MapSettings({this.profiles = const {}, this.keys = const {}, this.googleApi = 'new_old'});
 
   /// Keyed "rider.android" …; a missing one is [MapProfileSetting]'s default.
   final Map<String, MapProfileSetting> profiles;
   final Map<String, String> keys;
+
+  /// One of [mapGoogleApis].
+  final String googleApi;
 
   static String profileKey(String role, String device) => '$role.$device';
 
@@ -197,6 +209,7 @@ class MapSettings {
       keys: {
         for (final s in mapKeySlots) s.id: k[s.id] is String && '${k[s.id]}'.isNotEmpty ? '${k[s.id]}' : s.defaultRef,
       },
+      googleApi: mapGoogleApis.any((a) => a.$1 == m['googleApi']) ? '${m['googleApi']}' : 'new_old',
     );
   }
 
@@ -206,18 +219,26 @@ class MapSettings {
         for (final d in mapDevices) profileKey(r, d): profile(r, d).toJson(),
     },
     'keys': {for (final s in mapKeySlots) s.id: keyRef(s.id)},
+    'googleApi': googleApi,
   };
 
   MapSettings withProfile(String role, String device, MapProfileSetting p) =>
-      MapSettings(profiles: {...profiles, profileKey(role, device): p}, keys: keys);
+      MapSettings(profiles: {...profiles, profileKey(role, device): p}, keys: keys, googleApi: googleApi);
 
   /// [role]'s [device] profile copied to the other devices.
   MapSettings copiedToAllDevices(String role, String device) {
     final p = profile(role, device);
-    return MapSettings(profiles: {...profiles, for (final d in mapDevices) profileKey(role, d): p}, keys: keys);
+    return MapSettings(
+      profiles: {...profiles, for (final d in mapDevices) profileKey(role, d): p},
+      keys: keys,
+      googleApi: googleApi,
+    );
   }
 
-  MapSettings withKey(String slot, String ref) => MapSettings(profiles: profiles, keys: {...keys, slot: ref});
+  MapSettings withKey(String slot, String ref) =>
+      MapSettings(profiles: profiles, keys: {...keys, slot: ref}, googleApi: googleApi);
+
+  MapSettings withGoogleApi(String api) => MapSettings(profiles: profiles, keys: keys, googleApi: api);
 
   /// "Rider · Android, Partner · Web": the profiles Google's terms block.
   List<String> get googleConflicts => [
@@ -250,12 +271,16 @@ class MapSettings {
 
   @override
   bool operator ==(Object other) =>
-      other is MapSettings && mapEquals(other.profiles, profiles) && mapEquals(other.keys, keys);
+      other is MapSettings &&
+      mapEquals(other.profiles, profiles) &&
+      mapEquals(other.keys, keys) &&
+      other.googleApi == googleApi;
 
   @override
   int get hashCode => Object.hash(
     Object.hashAllUnordered(profiles.entries.map((e) => Object.hash(e.key, e.value))),
     Object.hashAllUnordered(keys.entries.map((e) => '${e.key}=${e.value}')),
+    googleApi,
   );
 }
 

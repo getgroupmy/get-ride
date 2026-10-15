@@ -494,6 +494,41 @@ class _KeysTab extends ConsumerWidget {
               onPressed: () => context.push('/admin/m/api-keys'),
             ),
           ),
+          Card(
+            key: const ValueKey('maps-google-api'),
+            margin: const EdgeInsets.only(top: 8),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Google place search and routes', style: t.textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Google has a new and an old API for each. Pick the one your key has turned on, or New with Old '
+                    'as the fallback. Address lookup has one version.',
+                    style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    // Keyed by the value so Discard shows the stored choice again.
+                    key: ValueKey('maps-google-api-${settings.googleApi}'),
+                    initialValue: settings.googleApi,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Google API', isDense: true),
+                    items: [
+                      for (final (id, label) in mapGoogleApis)
+                        DropdownMenuItem(
+                          value: id,
+                          child: Text(label, overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: canEdit ? (v) => v == null ? null : onChanged(settings.withGoogleApi(v)) : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
           for (final slot in mapKeySlots)
             _KeyRow(
               key: ValueKey('maps-key-${slot.id}'),
