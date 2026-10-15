@@ -115,7 +115,11 @@ class RideTrackingScreen extends ConsumerWidget {
         data: (r) {
           // The panel lays the screen out: a driver's offer flies in over
           // the map; on a wide (desktop) screen the panel sits beside it.
-          final panel = _RidePanel(ride: r, map: LiveRideMap(ride: r), wide: MediaQuery.sizeOf(context).width >= 900);
+          final panel = _RidePanel(
+            ride: r,
+            map: LiveRideMap(ride: r, riderPosition: ref.read(riderPositionStreamProvider)),
+            wide: MediaQuery.sizeOf(context).width >= 900,
+          );
           if (!r.fromCache) return panel;
           return Column(
             children: [

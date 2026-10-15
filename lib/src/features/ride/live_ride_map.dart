@@ -38,7 +38,12 @@ class LiveRideMap extends ConsumerStatefulWidget {
     this.driverAt,
     this.driverHeading,
     this.partner = false,
+    this.riderPosition,
   });
+
+  /// The passenger's own phone fix, for their "you are here" dot while they
+  /// wait ([showRiderDot]); null draws none (the driver's map).
+  final Stream<LatLng> Function()? riderPosition;
 
   final RideRequest ride;
 
@@ -91,10 +96,30 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   void initState() {
     super.initState();
     _maybeReroute();
+    _syncMe();
+  }
+
+  /// The passenger's own position on their map, and the subscription that
+  /// keeps it, only while they wait for pickup.
+  LatLng? _me;
+  StreamSubscription<LatLng>? _meSub;
+
+  void _syncMe() {
+    final want = widget.riderPosition != null && showRiderDot(widget.ride.status);
+    if (want && _meSub == null) {
+      _meSub = widget.riderPosition!().listen((p) {
+        if (mounted) setState(() => _me = p);
+      }, onError: (_) {});
+    } else if (!want && _meSub != null) {
+      _meSub!.cancel();
+      _meSub = null;
+      _me = null;
+    }
   }
 
   @override
   void dispose() {
+    _meSub?.cancel();
     _cam.dispose();
     _map.dispose();
     super.dispose();
@@ -104,6 +129,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   void didUpdateWidget(covariant LiveRideMap old) {
     super.didUpdateWidget(old);
     _maybeReroute();
+    _syncMe();
     // A fresh position after the hand has been off the map a while: follow
     // the car again, as if the recenter button had been pressed.
     final hand = _handAt;
@@ -257,6 +283,13 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     // Where the passenger is waiting, as their phone shares it (Settings →
     // Show location to your driver), for the driver on the way.
     final waiting = widget.partner ? riderLocationForDriver(r, _now) : null;
+    // The way from where the passenger is to the pickup, when they are not
+    // at it: on their own map from their phone, on the driver's from the
+    // position they share.
+    final walk = walkToPickupLine(
+      widget.partner ? (waiting == null ? null : LatLng(waiting.lat, waiting.lng)) : _me,
+      _ll(r.pickupLat, r.pickupLng),
+    );
     // The road still ahead of the car, and the time and distance it takes.
     final ahead = route == null || driver == null ? null : routeAhead(route.points, driver);
     final eta = route == null
@@ -289,8 +322,11 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
             _followCar();
             _focusPickup();
           },
+          // The passenger's own dot while they wait, and the way to the
+          // pickup when they are not at it.
+          me: _me,
           // inDrive's search: white rings pulse out of the pickup.
-          extraLayers: [if (_searching) radarPulseLayer(_pickup!)],
+          extraLayers: [if (_searching) radarPulseLayer(_pickup!), if (walk != null) walkToPickupLayer(walk)],
           extraMarkers: [if (waiting != null) passengerHereMarker(LatLng(waiting.lat, waiting.lng))],
         ),
         MapBottomInset.listen(
@@ -425,5 +461,20 @@ Marker passengerHereMarker(LatLng at) => Marker(
         ),
       );
     },
+  ),
+);
+
+/// The dashed line from the passenger to where they are picked up.
+Widget walkToPickupLayer(List<LatLng> line) => Builder(
+  builder: (context) => PolylineLayer(
+    key: const ValueKey('walk-to-pickup'),
+    polylines: [
+      Polyline(
+        points: line,
+        color: Theme.of(context).brightness == Brightness.dark ? Colors.lightBlueAccent : Colors.blue.shade700,
+        strokeWidth: 4,
+        pattern: StrokePattern.dashed(segments: const [10, 8]),
+      ),
+    ],
   ),
 );
