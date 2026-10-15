@@ -1079,7 +1079,9 @@ class ConfirmFooter extends StatelessWidget {
     this.coinSubtitle,
     this.useCoins = false,
     this.onUseCoins,
-    this.schedule,
+    this.pickLater,
+    this.onLater,
+    this.owedNote,
     this.whoRiding,
     this.myRide,
     this.onOptions,
@@ -1109,9 +1111,14 @@ class ConfirmFooter extends StatelessWidget {
   final bool useCoins;
   final ValueChanged<bool>? onUseCoins;
 
-  /// "Schedule for later" (0189), above who's riding; none while scheduled
-  /// rides are off.
-  final Widget? schedule;
+  /// "Later" (0189): the pickup time asked for ([pickLater]), then the
+  /// booking for it ([onLater]); with them the button splits into Now and
+  /// Later. Null while scheduled rides are off.
+  final Future<DateTime?> Function()? pickLater;
+  final Future<void> Function(DateTime at)? onLater;
+
+  /// Late-cancel fees from earlier bookings, added to this ride.
+  final String? owedNote;
 
   /// A row under the GET.coin one: who's riding (a toggle for someone else).
   final Widget? whoRiding;
@@ -1173,7 +1180,23 @@ class ConfirmFooter extends StatelessWidget {
                     ),
                   ],
                 ),
-              ?schedule,
+              if (owedNote != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    key: const ValueKey('owed-note'),
+                    children: [
+                      Icon(Icons.info_outline, size: 18, color: t.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          owedNote!,
+                          style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ?whoRiding,
               ?myRide,
               if (autoAcceptLabel != null)
@@ -1215,18 +1238,20 @@ class ConfirmFooter extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: BusyButton.filled(
-                      key: const ValueKey('book'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: confirmAccent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.all(16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                      ),
-                      onPressed: onFind,
-                      child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ),
+                    child: pickLater != null && onLater != null
+                        ? NowLaterButton(onNow: onFind, pickLater: onFind == null ? null : pickLater, onLater: onLater!)
+                        : BusyButton.filled(
+                            key: const ValueKey('book'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: confirmAccent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                            ),
+                            onPressed: onFind,
+                            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
                   ),
                   if (onOptions != null) ...[
                     const SizedBox(width: 4),
@@ -1927,3 +1952,135 @@ class FareInfoSheet extends StatelessWidget {
 
 Future<void> showFareInfo(BuildContext context, FareInfoSheet sheet) =>
     showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => sheet);
+
+/// The booking button when rides can be scheduled: Now books at once,
+/// Later asks for the pickup time first and books on Confirm. The side
+/// tapped wears the raised pill, and spins while its booking runs.
+class NowLaterButton extends StatefulWidget {
+  const NowLaterButton({super.key, required this.onNow, required this.pickLater, required this.onLater});
+
+  /// Null while the booking can't go.
+  final Future<void> Function()? onNow;
+  final Future<DateTime?> Function()? pickLater;
+  final Future<void> Function(DateTime at) onLater;
+
+  @override
+  State<NowLaterButton> createState() => _NowLaterButtonState();
+}
+
+class _NowLaterButtonState extends State<NowLaterButton> {
+  bool _later = false;
+  bool _busy = false;
+
+  Future<void> _run(bool later) async {
+    if (_busy || (later ? widget.pickLater : widget.onNow) == null) return;
+    setState(() {
+      _later = later;
+      _busy = !later;
+    });
+    try {
+      if (later) {
+        final at = await widget.pickLater!();
+        if (at == null || !mounted) return;
+        setState(() => _busy = true);
+        await widget.onLater(at);
+      } else {
+        await widget.onNow!();
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _later = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final dark = t.brightness == Brightness.dark;
+    final track = dark ? t.colorScheme.surfaceContainer : const Color(0xFFF1F1F1);
+    final thumb = dark
+        ? Color.alphaBlend(t.colorScheme.onSurface.withValues(alpha: 0.16), t.colorScheme.surfaceContainerHighest)
+        : Colors.white;
+    final enabled = widget.onNow != null || widget.pickLater != null;
+
+    Widget side(bool later, IconData icon, String label) {
+      final on = _later == later;
+      final color = on ? t.colorScheme.onSurface : t.colorScheme.onSurfaceVariant;
+      final action = later ? widget.pickLater : widget.onNow;
+      return Semantics(
+        button: true,
+        selected: on,
+        child: InkWell(
+          key: ValueKey(later ? 'book-later' : 'book-now'),
+          borderRadius: BorderRadius.circular(24),
+          onTap: action == null || _busy || _later ? null : () => _run(later),
+          child: Center(
+            child: _busy && on
+                ? BusySpinner(size: 22, color: color)
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, size: 24, color: color),
+                      const SizedBox(width: 6),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: on ? FontWeight.w700 : FontWeight.w600,
+                          color: color,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      );
+    }
+
+    return Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: Container(
+        key: const ValueKey('book-now-later'),
+        height: 56,
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(color: track, borderRadius: BorderRadius.circular(28)),
+        child: Stack(
+          children: [
+            AnimatedAlign(
+              alignment: _later ? Alignment.centerRight : Alignment.centerLeft,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: FractionallySizedBox(
+                widthFactor: 0.5,
+                heightFactor: 1,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: thumb,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: dark ? 0.3 : 0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(child: side(false, Icons.bolt, 'Now')),
+                Expanded(child: side(true, Icons.event, 'Later')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

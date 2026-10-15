@@ -1,6 +1,6 @@
-// Scheduled rides for the rider (migration 0189): the "When" row on the
-// confirm step, the pickup time picker, the upcoming card on Home and the
-// bookings page (Trips → Scheduled).
+// Scheduled rides for the rider (migration 0189): the upcoming card on Home
+// and the bookings page (Trips → Scheduled). The pickup time is picked on
+// the Choose date and time sheet (pickup_time_sheet.dart).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,109 +11,9 @@ import '../../core/scheduled_rides.dart';
 import '../../data/scheduled_ride_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
-import 'confirm_parts.dart' show ConfirmSwitch;
-import 'pickup_time_sheet.dart';
 
 /// "Tue 14 Oct, 18:30".
 String pickupLabel(DateTime at) => DateFormat('EEE d MMM, HH:mm').format(at);
-
-/// Asks for the pickup on the Choose date and time sheet; null when it is
-/// closed.
-Future<DateTime?> pickPickupTime(BuildContext context, ScheduledRidesConfig c, {DateTime? initial}) =>
-    showPickupTimeSheet(context, c, initial: initial);
-
-/// The confirm step's "When" row: now, or a pickup time with the
-/// scheduling fee and the free-cancellation window.
-class ScheduleRow extends StatelessWidget {
-  const ScheduleRow({
-    super.key,
-    required this.at,
-    required this.config,
-    required this.fare,
-    required this.money,
-    required this.onChanged,
-    this.owed = 0,
-  });
-
-  final DateTime? at;
-  final ScheduledRidesConfig config;
-  final double fare;
-  final String Function(double) money;
-  final ValueChanged<DateTime?> onChanged;
-
-  /// Late-cancel fees from earlier bookings, added to this ride.
-  final double owed;
-
-  Future<void> _pick(BuildContext context) async {
-    final picked = await pickPickupTime(context, config, initial: at);
-    if (picked != null) onChanged(picked);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final when = at;
-    final fee = schedulingFee(fare, config);
-    final lines = <String>[
-      if (when == null) 'Book now, or schedule up to ${config.maxDaysAhead} days ahead',
-      if (when != null) pickupLabel(when),
-      if (when != null && fee > 0) '+ ${money(fee)} scheduling fee',
-      if (when != null && config.lateCancelFee > 0)
-        'Free cancellation until ${DateFormat('HH:mm').format(freeCancelUntil(when, config))}',
-      if (owed > 0) '+ ${money(owed)} late fee from an earlier booking',
-    ];
-    return InkWell(
-      key: const ValueKey('schedule-row'),
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => _pick(context),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHighest, shape: BoxShape.circle),
-              child: Icon(Icons.event_outlined, size: 18, color: t.colorScheme.onSurface),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    when == null ? 'Schedule for later' : 'Scheduled pickup',
-                    style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    lines.join(' · '),
-                    key: const ValueKey('schedule-summary'),
-                    style: t.textTheme.bodySmall,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            if (when != null)
-              IconButton(
-                key: const ValueKey('schedule-edit'),
-                tooltip: 'Change pickup time',
-                visualDensity: VisualDensity.compact,
-                icon: Icon(Icons.edit_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
-                onPressed: () => _pick(context),
-              ),
-            ConfirmSwitch(
-              key: const ValueKey('schedule-switch'),
-              value: when != null,
-              onChanged: (v) => v ? _pick(context) : onChanged(null),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// Home: the soonest booking still to come; opens the bookings page.
 class UpcomingRideCard extends ConsumerWidget {

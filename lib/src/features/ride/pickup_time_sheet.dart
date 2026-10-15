@@ -13,18 +13,22 @@ Future<DateTime?> showPickupTimeSheet(
   BuildContext context,
   ScheduledRidesConfig config, {
   DateTime? initial,
+  String? note,
   DateTime Function() clock = DateTime.now,
 }) => showModalBottomSheet<DateTime>(
   context: context,
   isScrollControlled: true,
-  builder: (_) => PickupTimeSheet(config: config, initial: initial, clock: clock),
+  builder: (_) => PickupTimeSheet(config: config, initial: initial, note: note, clock: clock),
 );
 
 class PickupTimeSheet extends StatefulWidget {
-  const PickupTimeSheet({super.key, required this.config, this.initial, this.clock = DateTime.now});
+  const PickupTimeSheet({super.key, required this.config, this.initial, this.note, this.clock = DateTime.now});
 
   final ScheduledRidesConfig config;
   final DateTime? initial;
+
+  /// A line above the button: the scheduling fee on this ride.
+  final String? note;
   final DateTime Function() clock;
 
   @override
@@ -214,6 +218,15 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
               textAlign: TextAlign.center,
               style: _problem == null ? muted : t.textTheme.bodySmall?.copyWith(color: t.colorScheme.error),
             ),
+            if (widget.note != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                widget.note!,
+                key: const ValueKey('pickup-note'),
+                textAlign: TextAlign.center,
+                style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ],
             const SizedBox(height: 16),
             SizedBox(
               height: 56,

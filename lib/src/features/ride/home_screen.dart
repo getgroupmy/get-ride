@@ -50,6 +50,7 @@ import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
+import 'pickup_time_sheet.dart';
 import 'scheduled_rides_screen.dart';
 import 'auto_accept.dart';
 import 'book_for_sheet.dart';
@@ -1044,8 +1045,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() => _routeMoved = false);
   }
 
-  /// "Find a driver". One ride of the rider's own at a time (Expo's alert);
-  /// rides for others are not held back by it.
+  /// "Later": the pickup time from the Choose date and time sheet; null
+  /// (nothing booked) when it is closed.
+  Future<DateTime?> _pickLater(ScheduledRidesConfig c) {
+    final fee = schedulingFee(_fareFor(_service), c);
+    return showPickupTimeSheet(context, c, note: fee > 0 ? '+ ${formatMoney(fee, _currency)} scheduling fee' : null);
+  }
+
+  /// The booking for the time confirmed on that sheet.
+  Future<void> _bookLater(DateTime at) async {
+    if (!mounted) return;
+    setState(() => _scheduleAt = at);
+    try {
+      await _find();
+    } finally {
+      if (mounted && _scheduleAt != null) setState(() => _scheduleAt = null);
+    }
+  }
+
+  /// "Find a driver" (or Now). One ride of the rider's own at a time (Expo's
+  /// alert); rides for others are not held back by it.
   Future<void> _find() async {
     if (!_forOther && _scheduleAt == null && _ongoing != null) {
       final open = await showDialog<bool>(
@@ -1455,6 +1474,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final myRideOn = myRideTargets.isNotEmpty;
     final direct = ref.watch(directBookingProvider);
     final scheduleConfig = ref.watch(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
+    final owed = scheduleConfig.enabled ? ref.watch(owedFeesProvider).value ?? 0 : 0.0;
     final footer = confirming && _route != null
         ? ConfirmFooter(
             onOptions: () => showRideOptionsSheet(
@@ -1476,9 +1496,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             autoAcceptLabel: _biddingFor(_service) ? 'Auto-accept offer of ${_fareMoney(_fareFor(_service))}' : null,
             autoAccept: _autoAccept,
             onAutoAccept: (v) => setState(() => _autoAccept = v),
-            label: _scheduleAt != null
-                ? (_forOther ? 'Schedule for ${otherName.isEmpty ? 'someone else' : otherName}' : 'Schedule ride')
-                : _forOther
+            label: _forOther
                 ? 'Find a driver for ${otherName.isEmpty ? 'someone else' : otherName}'
                 : direct != null
                 ? 'Book ${direct.driverName}'
@@ -1501,16 +1519,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
             useCoins: _useCoins,
             onUseCoins: (v) => setState(() => _useCoins = v),
-            schedule: scheduleConfig.enabled && direct == null
-                ? ScheduleRow(
-                    at: _scheduleAt,
-                    config: scheduleConfig,
-                    fare: _fareFor(_service),
-                    money: (v) => formatMoney(v, _currency),
-                    owed: ref.watch(owedFeesProvider).value ?? 0,
-                    onChanged: (at) => setState(() => _scheduleAt = at),
-                  )
-                : null,
+            pickLater: scheduleConfig.enabled && direct == null ? () => _pickLater(scheduleConfig) : null,
+            onLater: _bookLater,
+            owedNote: owed > 0 ? '+ ${formatMoney(owed, _currency)} late fee from an earlier booking' : null,
             whoRiding: _WhoRiding(
               forOther: _forOther,
               name: _otherName,
