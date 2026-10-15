@@ -103,3 +103,29 @@ jobs:
             exit 1
           fi
           grep -o 'android.permission.FOREGROUND_SERVICE[A-Z_]*' <<<"$manifest" | sort -u
+      # The launcher entries are the AppIcon_ aliases only (one per home-screen
+      # icon): MainActivity's own, kept in src/main for the Flutter tool, is
+      # taken out by the build-type manifests, or the phone shows two icons.
+      - name: Launcher entries are the app icon aliases
+        if: matrix.target == 'android'
+        run: |
+          aapt2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          "$aapt2" dump xmltree --file AndroidManifest.xml build/app/outputs/flutter-apk/app-release.apk > manifest.txt
+          python3 - <<'EOF'
+          import re
+          launchers, name, depth = set(), None, None
+          for line in open("manifest.txt"):
+              indent = len(line) - len(line.lstrip())
+              if depth is not None and indent <= depth:
+                  name, depth = None, None
+              if re.search(r"E: (activity|activity-alias) ", line):
+                  name, depth = "", indent
+              elif depth is not None and name == "" and ":name(" in line:
+                  name = re.search(r'="([^"]+)"', line).group(1)
+              elif depth is not None and "android.intent.category.LAUNCHER" in line:
+                  launchers.add(name)
+          print("launcher entries:", sorted(launchers))
+          bad = [n for n in launchers if ".AppIcon_" not in n]
+          if bad or not any(n.endswith(".AppIcon_standard") for n in launchers):
+              raise SystemExit(f"::error::Launcher entries other than the AppIcon_ aliases: {bad}")
+          EOF

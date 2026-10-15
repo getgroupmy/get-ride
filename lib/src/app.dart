@@ -19,6 +19,7 @@ import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/push_logic.dart';
 import 'core/ride_bidding.dart' show BiddingRegion, pushPlaceAt;
+import 'data/app_icon_service.dart';
 import 'data/app_version_repository.dart' show recordAppVersion;
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
@@ -74,6 +75,7 @@ import 'features/ride/ride_chat_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
 import 'features/ride/trips_screen.dart';
+import 'features/settings/app_icon_screen.dart';
 import 'features/settings/change_phone_screen.dart';
 import 'features/settings/auth_diagnostics_screen.dart';
 import 'features/settings/change_pin_screen.dart';
@@ -336,6 +338,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                           GoRoute(path: 'passkeys', builder: (_, _) => const PasskeysScreen()),
                           GoRoute(path: 'delete', builder: (_, _) => const DeleteAccountScreen()),
                           GoRoute(path: 'show-location', builder: (_, _) => const ShowLocationScreen()),
+                          GoRoute(path: 'app-icon', builder: (_, _) => const AppIconScreen()),
                         ],
                       ),
                       GoRoute(
@@ -504,6 +507,10 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     _startAlwaysOn();
     _startMessagingPresence();
     _startPushLocation();
+    // The home-screen icon: the admin's season or the passenger's choice.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(ref.read(appIconSyncProvider).sync());
+    });
     unawaited(_connectionPopup());
     final push = PushService.instance;
     if (push == null) return;
@@ -602,6 +609,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         unawaited(_branding?.resync());
         unawaited(_reportPushLocation());
         unawaited(PushService.instance?.recheckPermission());
+        ref.invalidate(appIconRegionsProvider);
+        unawaited(ref.read(appIconSyncProvider).sync());
       },
     );
   }

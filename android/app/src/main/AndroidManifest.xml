@@ -51,6 +51,10 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- Only for the Flutter tool, which looks for an <activity> with
+                 this filter to start: every build takes it out again
+                 (src/debug, src/profile and src/release AndroidManifest.xml),
+                 so the launcher entry is the AppIcon_ alias below. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -83,6 +87,220 @@
                 <data android:scheme="getride" android:host="now"/>
             </intent-filter>
         </activity>
+        <!-- The home-screen icons (lib/src/core/app_icons.dart): one alias of
+             MainActivity per icon, exactly one enabled. The icon is switched by
+             enabling another (AppIconChannel.kt); a new icon needs its alias
+             here, its artwork (scripts/seasonal_icons.py) and its catalog entry.
+             Deep links stay on MainActivity, so they work under any icon. -->
+        <activity-alias
+            android:name=".AppIcon_standard"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_chinese_new_year"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_chinese_new_year"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_ramadan"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_ramadan"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_hari_raya"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_hari_raya"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_deepavali"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_deepavali"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_christmas"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_christmas"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_new_year"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_new_year"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_merdeka"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_merdeka"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_harvest"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_harvest"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_thaipusam"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_thaipusam"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_mid_autumn"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_mid_autumn"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_monsoon"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_monsoon"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_payday"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_payday"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_sale_9_9"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_sale_9_9"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_sale_10_10"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_sale_10_10"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_sale_11_11"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_sale_11_11"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_sale_12_12"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_sale_12_12"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_g_dot"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_g_dot"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".AppIcon_get_dot"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_alt_get_dot"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
         <!-- Push notifications land in the high-importance channel that
              MainActivity creates. -->
         <meta-data

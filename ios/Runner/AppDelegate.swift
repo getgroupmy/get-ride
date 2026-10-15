@@ -40,6 +40,9 @@ import flutter_callkit_incoming
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PermissionsPlugin") {
       PermissionsPlugin.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AppIconPlugin") {
+      AppIconPlugin.register(with: registrar)
+    }
   }
 
   // MARK: PushKit
@@ -136,6 +139,57 @@ final class MicStatusPlugin: NSObject, FlutterPlugin {
         AVAudioApplication.requestRecordPermission(completionHandler: done)
       } else {
         AVAudioSession.sharedInstance().requestRecordPermission(done)
+      }
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+}
+
+/// The home-screen icon (lib/src/core/app_icons.dart): `current` names it,
+/// `set` changes it. Each icon but the standard one is an AppIcon-<id> icon
+/// set (scripts/seasonal_icons.py), listed as the target's alternate icons.
+/// iOS says the icon changed in an alert of its own, and only changes it
+/// while the app is on screen.
+final class AppIconPlugin: NSObject, FlutterPlugin {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "get_ride/app_icon", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(AppIconPlugin(), channel: channel)
+  }
+
+  private static let prefix = "AppIcon-"
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let app = UIApplication.shared
+    switch call.method {
+    case "current":
+      result(app.alternateIconName.map { String($0.dropFirst(AppIconPlugin.prefix.count)) } ?? "standard")
+    case "set":
+      guard let id = (call.arguments as? [String: Any])?["id"] as? String else {
+        result(FlutterError(code: "bad_args", message: "No icon id", details: nil))
+        return
+      }
+      let name: String? = id == "standard" ? nil : AppIconPlugin.prefix + id
+      guard app.supportsAlternateIcons else {
+        result(FlutterError(code: "unsupported", message: "No alternate icons", details: nil))
+        return
+      }
+      if app.alternateIconName == name {
+        result(nil)
+        return
+      }
+      guard app.applicationState == .active else {
+        result(FlutterError(code: "not_active", message: "The app is not on screen", details: nil))
+        return
+      }
+      app.setAlternateIconName(name) { error in
+        DispatchQueue.main.async {
+          if let error = error {
+            result(FlutterError(code: "failed", message: error.localizedDescription, details: nil))
+          } else {
+            result(nil)
+          }
+        }
       }
     default:
       result(FlutterMethodNotImplemented)
