@@ -13,6 +13,7 @@ import 'package:latlong2/latlong.dart';
 import '../../data/geo_service.dart';
 import '../../providers.dart';
 import '../../widgets/map_recenter.dart';
+import '../../widgets/map_credit.dart';
 import '../../widgets/map_tiles.dart';
 import '../../widgets/map_type_button.dart';
 
@@ -146,10 +147,7 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
                       ),
                     ],
                   ),
-                const RichAttributionWidget(
-                  alignment: AttributionAlignment.bottomLeft,
-                  attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
-                ),
+                MapCreditLayer(satellite: ref.watch(mapSatelliteProvider)),
               ],
             ),
           ),

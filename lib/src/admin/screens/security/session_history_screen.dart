@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/loading_skeleton.dart';
+import '../../../widgets/map_credit.dart';
 import '../../../widgets/map_tiles.dart';
 import '../../../widgets/ride_map.dart';
 import '../../admin_access.dart';
@@ -736,10 +737,7 @@ class _HeatMap extends StatelessWidget {
                 borderColor: const Color(0x00000000),
               ),
           ]),
-          const RichAttributionWidget(
-            alignment: AttributionAlignment.bottomLeft,
-            attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
-          ),
+          const MapCreditLayer(),
         ],
       );
 }

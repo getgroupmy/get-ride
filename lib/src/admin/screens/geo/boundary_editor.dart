@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../data/geo_service.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/map_credit.dart';
 import '../../../widgets/map_tiles.dart';
 import '../../widgets/admin_widgets.dart';
 import 'geo_data.dart';
@@ -14,10 +15,7 @@ import 'geo_logic.dart';
 /// Base tiles shared by the geography map editors (same tiles as `RideMap`).
 List<Widget> osmBaseLayers(BuildContext context) => [baseTileLayer(context)];
 
-const _osmAttribution = RichAttributionWidget(
-  alignment: AttributionAlignment.bottomLeft,
-  attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
-);
+const _osmAttribution = MapCreditLayer();
 
 enum _DrawMode { off, draw, edit }
 
