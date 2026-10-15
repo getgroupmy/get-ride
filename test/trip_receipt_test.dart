@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/trip_receipt.dart';
@@ -109,6 +110,38 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.byKey(const ValueKey('pdf-actions')), findsNothing);
+  });
+
+  testWidgets('the booking ID at the top copies on a tap; no Copy button', (tester) async {
+    tester.view.physicalSize = const Size(1000, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String?;
+      return null;
+    });
+    addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentUserIdProvider.overrideWithValue(_rider),
+          tripProvider.overrideWith((ref, id) async => trip()),
+        ],
+        child: MaterialApp(
+          theme: ThemeData.dark(),
+          home: const TripReceiptScreen(requestId: 'x'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Copy'), findsNothing);
+    expect(find.byKey(const ValueKey('receipt-print')), findsOneWidget);
+    expect(find.byKey(const ValueKey('receipt-pdf')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('receipt-copy-booking-id')));
+    await tester.pump();
+    expect(copied, 'GR-A1B2C3D4');
+    expect(find.text('Booking ID copied'), findsOneWidget);
   });
 
   for (final dark in [false, true]) {
