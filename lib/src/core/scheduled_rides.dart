@@ -46,6 +46,12 @@ class ScheduledRidesConfig {
   /// Booking); false: a booking reaches drivers when it is released.
   final bool advance;
 
+  /// Whether drivers have anything to do with bookings ahead of time, so
+  /// their Scheduled Request menu item shows: only with advance booking.
+  /// Without it a booking simply arrives as a request when released (a
+  /// driver still holding one finds it from the card on Drive).
+  bool get driversBookAhead => enabled && advance;
+
   /// How long before pickup a booking goes out to drivers as a ride.
   final int releaseMinutes;
 

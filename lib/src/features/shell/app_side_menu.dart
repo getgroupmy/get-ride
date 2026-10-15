@@ -119,7 +119,7 @@ class PartnerSideMenu extends ConsumerWidget {
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final linked = ref.watch(obdSessionProvider).linked;
     final hasCode = ref.watch(myRideCodeProvider).value != null;
-    final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
+    final scheduled = ref.watch(scheduledRidesConfigProvider).value?.driversBookAhead ?? false;
     final mode = sideMenuModeButton(blob, 'partner');
     final profile = sideMenuProfile(blob, 'partner');
     return SideMenuPanel(

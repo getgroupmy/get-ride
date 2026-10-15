@@ -34,23 +34,40 @@ class ScheduledJobsScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text('Your scheduled rides', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
             AsyncView(
               value: mine,
               onRetry: () => ref.invalidate(acceptedScheduledRidesProvider),
-              data: (rides) => rides.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      child: Text(
-                        config.advance
-                            ? 'None yet. Take one from the list below.'
-                            : 'Scheduled rides come to you as ordinary requests when they are released, '
-                                  '${config.releaseMinutes} minutes before pickup.',
-                        style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
-                      ),
-                    )
-                  : Column(children: [for (final r in rides) _JobCard(ride: r, mine: true)]),
+              data: (rides) {
+                // Without advance booking there is nothing to take ahead:
+                // say how bookings arrive instead of an empty list.
+                if (rides.isEmpty && !config.advance) {
+                  return EmptyState(
+                    key: const ValueKey('scheduled-jobs-empty'),
+                    icon: Icons.event_outlined,
+                    title: 'No scheduled rides',
+                    message:
+                        'Rides passengers book ahead come to you as ordinary requests, '
+                        '${config.releaseMinutes} minutes before pickup.',
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Your scheduled rides', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    if (rides.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Text(
+                          'None yet. Take one from the list below.',
+                          style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                        ),
+                      )
+                    else
+                      for (final r in rides) _JobCard(ride: r, mine: true),
+                  ],
+                );
+              },
             ),
             if (config.advance) ...[
               const SizedBox(height: 16),
@@ -102,12 +119,13 @@ class PartnerUpcomingBookingCard extends ConsumerWidget {
       color: t.colorScheme.secondaryContainer,
       child: ListTile(
         leading: Icon(Icons.event_available, color: on),
+        // The count in the title: a long address is cut short and would hide it.
         title: Text(
-          'Scheduled ride · ${pickupLabel(next.pickupAt)}',
+          ['Scheduled ride', pickupLabel(next.pickupAt), if (more > 0) '+$more more'].join(' · '),
           style: TextStyle(color: on, fontWeight: FontWeight.w600),
         ),
         subtitle: Text(
-          [next.pickupAddress ?? 'Pickup', if (more > 0) '+$more more'].join(' · '),
+          next.pickupAddress ?? 'Pickup',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: on),
