@@ -114,6 +114,32 @@ bool isElmSearching(String raw) {
   return _transientTokens.any(upper.contains);
 }
 
+/// Whether [raw] is the reader saying the vehicle didn't answer: no
+/// protocol found ("UNABLE TO CONNECT"), nothing back ("NO DATA"), or a bus
+/// fault. The reader itself is fine; the link is not lost.
+bool isVehicleSilentReply(String raw) {
+  final flat = raw.toUpperCase().replaceAll(RegExp(r'\s+'), '');
+  return const ['UNABLETOCONNECT', 'NODATA', 'CANERROR', 'BUSERROR', 'FBERROR', 'DATAERROR'].any(flat.contains) ||
+      RegExp(r'BUSINIT.*ERROR').hasMatch(flat);
+}
+
+/// Whether [raw] says no protocol could be found at all: nothing on the
+/// port answers standard OBD-II (most electric cars), so asking for more
+/// standard values can't help.
+bool isNoProtocolReply(String raw) => raw.toUpperCase().replaceAll(RegExp(r'\s+'), '').contains('UNABLETOCONNECT');
+
+/// The question the reader asks a silent vehicle now and then, to notice
+/// when it starts answering (supported PIDs 01-20; every car with standard
+/// OBD-II answers it).
+const obdProbeCommand = '0100';
+
+/// What the app says when the reader is connected but the vehicle answers
+/// nothing standard.
+const obdVehicleSilentMessage =
+    "The reader is connected, but the vehicle isn't answering standard OBD-II. Most electric cars don't: they "
+    'keep battery, range and odometer in their own maker-specific data. On a car with an engine, switch the '
+    'ignition on (or the car to Ready) and it will start answering.';
+
 /// The data bytes of a mode-01 reply for [pid], or null when it did not
 /// answer. Tolerates echo, headers and multi-ECU replies by searching each
 /// line for `41` + PID.

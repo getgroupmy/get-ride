@@ -535,6 +535,10 @@ class _ReaderCard extends StatelessWidget {
                 style: TextStyle(color: obd.phase == ObdPhase.error ? t.colorScheme.error : t.colorScheme.onSurfaceVariant),
               ),
             ],
+            if (obd.linked && obd.vehicleSilent) ...[
+              const SizedBox(height: 8),
+              const Text(obdVehicleSilentMessage, key: ValueKey('obd-vehicle-silent')),
+            ],
             if (!obd.linked && !connecting) ...[
               const SizedBox(height: 8),
               const Text(

@@ -54,6 +54,33 @@ void main() {
     expect(elm.connected, isFalse);
   });
 
+  testWidgets('an electric car: connected, says the car is not answering, never "reconnecting"', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final elm = FakeElm()..electric = true;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [obdTransportFactoryProvider.overrideWithValue((_) => elm)],
+        child: const MaterialApp(home: ObdReaderScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add reader'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Wi-Fi reader'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save & connect'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.byKey(const ValueKey('obd-vehicle-silent')), findsOneWidget);
+    // A while later: still connected, still not "reconnecting".
+    await tester.pump(const Duration(seconds: 30));
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.byKey(const ValueKey('obd-reconnecting')), findsNothing);
+    await tester.tap(find.text('Disconnect'));
+    await tester.pump(const Duration(milliseconds: 10));
+  });
+
   testWidgets('a Bluetooth reader is found by scan, saved and connected', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final elm = FakeElm(speed: 48);

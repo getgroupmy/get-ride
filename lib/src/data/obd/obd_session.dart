@@ -73,6 +73,7 @@ class ObdSessionState {
     this.telemetry = const {},
     this.lastUpdate,
     this.error,
+    this.vehicleSilent = false,
   });
 
   final ObdPhase phase;
@@ -83,6 +84,10 @@ class ObdSessionState {
   final Telemetry telemetry;
   final int? lastUpdate;
   final String? error;
+
+  /// The reader is connected but the vehicle answers nothing standard
+  /// (most electric cars, or an engine car with the ignition off).
+  final bool vehicleSilent;
 
   bool get linked => phase == ObdPhase.online;
 
@@ -102,6 +107,7 @@ class ObdSessionState {
     Telemetry? telemetry,
     int? Function()? lastUpdate,
     String? Function()? error,
+    bool? vehicleSilent,
   }) =>
       ObdSessionState(
         phase: phase ?? this.phase,
@@ -112,6 +118,7 @@ class ObdSessionState {
         telemetry: telemetry ?? this.telemetry,
         lastUpdate: lastUpdate == null ? this.lastUpdate : lastUpdate(),
         error: error == null ? this.error : error(),
+        vehicleSilent: vehicleSilent ?? this.vehicleSilent,
       );
 }
 
@@ -181,6 +188,9 @@ class ObdSession extends Notifier<ObdSessionState> {
         },
         onProtocol: (name, kbps) => state = state.copyWith(protocol: () => name, bitrateKbps: () => kbps),
         onLinkLost: _linkLost,
+        onVehicleSilent: (silent) {
+          if (_client != null) state = state.copyWith(vehicleSilent: silent);
+        },
       );
       _client = client;
       await client.start();
@@ -203,6 +213,7 @@ class ObdSession extends Notifier<ObdSessionState> {
     state = state.copyWith(
       phase: ObdPhase.connecting,
       error: () => obdReconnectingMessage,
+      vehicleSilent: false,
       telemetry: const {},
       lastUpdate: () => null,
     );
