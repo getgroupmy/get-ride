@@ -64,6 +64,10 @@ const liveSettingTables = <String>[
   'scheduled_rides',
   // Handovers and passengers' choices of driver (0198; the parties only).
   'scheduled_ride_offers',
+  // Mid-trip handovers (0199; the drivers and passenger in each only).
+  'trip_handovers',
+  // A handover offered to this partner, and when it closes.
+  'trip_handover_candidates',
 ];
 
 /// The signed-in account's own rows that an admin decides on (approving,

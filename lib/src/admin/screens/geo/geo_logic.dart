@@ -543,6 +543,7 @@ class RegionForm {
     this.taxName = '',
     this.taxKind = 'percent',
     this.taxAmount = '',
+    this.handoverShare = '',
     List<RegionRule>? rules,
   })  : services = services ?? {},
         rules = rules ?? [];
@@ -561,6 +562,10 @@ class RegionForm {
   /// applies.
   bool pricingOverride, wholeFare, taxEnabled;
   String taxName, taxKind, taxAmount;
+
+  /// Of a trip's net earnings, to the driver who hands it over (migration
+  /// 0199); blank for the parent's, or the App Settings share.
+  String handoverShare;
 
   /// Scheduled rules for some services at some times (see
   /// core/region_rules.dart): they override the switches above while they hold.
@@ -601,6 +606,7 @@ class RegionForm {
       taxName: str('taxName'),
       taxKind: v['taxType'] == 'fixed' ? 'fixed' : 'percent',
       taxAmount: v['taxAmount'] is num ? '${v['taxAmount']}' : str('taxAmount'),
+      handoverShare: v['handoverSharePercent'] is num ? '${v['handoverSharePercent']}' : '',
       rules: parseRegionRules(v['rules']),
     );
   }
@@ -638,6 +644,7 @@ class RegionForm {
     values['taxType'] = tax ? taxKind : null;
     values['taxAmount'] = tax ? double.tryParse(taxAmount.trim()) : null;
     values['rules'] = encodeRegionRules(rules);
+    values['handoverSharePercent'] = double.tryParse(handoverShare.trim());
     return values;
   }
 }
@@ -1285,4 +1292,12 @@ List<ServiceVehicle> vehiclesInType(List<ServiceVehicle> all, String? typeName) 
     for (final v in all)
       if (v.types.any((t) => t.trim().toLowerCase() == want)) v,
   ];
+}
+
+/// Why a region's handover share can't be saved, or null (blank is fine).
+String? handoverShareProblem(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty) return null;
+  final v = double.tryParse(s);
+  return v == null || v < 0 || v > 100 ? 'The handover share is a percentage from 0 to 100.' : null;
 }

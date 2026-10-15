@@ -151,6 +151,16 @@ class RideRequest {
 
   /// When the driver ended the trip before the drop-off (migration 0104).
   DateTime? get endedEarlyAt => _t(raw['ended_early_at']);
+
+  /// Handed over mid-trip (migration 0199): where the new driver meets the
+  /// car, and whether the passenger is with them yet.
+  DateTime? get handedOverAt => _t(raw['handed_over_at']);
+  DateTime? get handoverBoardedAt => _t(raw['handover_boarded_at']);
+  double? get handoverMeetLat => _d(raw['handover_meet_lat']);
+  double? get handoverMeetLng => _d(raw['handover_meet_lng']);
+
+  /// The new driver is on their way to the car.
+  bool get handoverMeeting => handedOverAt != null && handoverBoardedAt == null;
   DateTime? get cancelledAt => _t(raw['cancelled_at']);
   String? get cancelReason => raw['cancel_reason'] as String?;
   double? get tollCharges => _d(raw['toll_charges']);

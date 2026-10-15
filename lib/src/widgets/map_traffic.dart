@@ -28,6 +28,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/map_profile_repository.dart' show mapProfileProvider;
 import 'map_tiles.dart' show appTileProvider, retryingTileClient;
 
 const _configuredTraffic = String.fromEnvironment('MAP_TILE_URL_TRAFFIC');
@@ -42,9 +43,14 @@ String? resolveTrafficTileUrl({String configured = _configuredTraffic}) {
   return url;
 }
 
-/// The configured traffic tile source (overridden in tests); null hides the
-/// traffic button.
-final trafficTileUrlProvider = Provider<String?>((_) => resolveTrafficTileUrl());
+/// The traffic tile source (overridden in tests): Admin → Settings → Maps'
+/// for this user and device (migration 0200), else the built-in one; null
+/// hides the traffic button.
+final trafficTileUrlProvider = Provider<String?>((ref) {
+  final set = ref.watch(mapProfileProvider).value?.traffic;
+  if (set != null) return set.off ? null : set.url;
+  return resolveTrafficTileUrl();
+});
 
 /// The backup traffic source, validated the same way; null when there is
 /// none, or when it is the same as the primary (nothing to fall back to).
@@ -56,9 +62,11 @@ String? resolveTrafficFallbackUrl({
   return url == primary ? null : url;
 }
 
-final trafficFallbackTileUrlProvider = Provider<String?>(
-  (ref) => resolveTrafficFallbackUrl(primary: ref.watch(trafficTileUrlProvider)),
-);
+final trafficFallbackTileUrlProvider = Provider<String?>((ref) {
+  final set = ref.watch(mapProfileProvider).value?.traffic;
+  if (set != null) return set.off ? null : set.fallback;
+  return resolveTrafficFallbackUrl(primary: ref.watch(trafficTileUrlProvider));
+});
 
 /// Whether the driver has traffic switched on, persisted per device.
 class MapTraffic extends Notifier<bool> {

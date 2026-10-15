@@ -142,6 +142,25 @@ String? pushRouteFor(Map<String, dynamic> data) {
       // The passenger's booking moved: a driver confirmed or changed, the
       // driver gave it up, or nobody was found.
       return '/trips/scheduled';
+    case 'trip_handover_paid':
+      // The share of a trip handed over, added to GET credit (0199).
+      return '/wallet';
+    case 'trip_handover_offer':
+    case 'trip_handover_taken':
+      // A partner asked to take over a trip, or told it went to another:
+      // the offers are on the Drive tab.
+      return '/drive';
+    case 'trip_handover_approval':
+    case 'trip_handover_accepted':
+    case 'trip_handover_declined':
+    case 'trip_handover_expired':
+    case 'trip_handover_withdrawn':
+      // A mid-trip handover moved on (0199): that trip's screen, the
+      // driver's or the passenger's.
+      final id = data['request_id'];
+      if (id is! String || id.isEmpty) return data['role'] == 'partner' ? '/drive' : null;
+      final ride = Uri.encodeComponent(id);
+      return data['role'] == 'partner' ? '/drive/trip/$ride' : '/ride/$ride';
     case 'ride_expired':
       // Nobody took the request (migration 0139): home, to book again.
       return '/';

@@ -109,6 +109,7 @@ import 'widgets/connection_status_dialog.dart';
 import 'widgets/keyboard_dismiss.dart';
 import 'widgets/notifications_off_banner.dart';
 import 'widgets/map_sheet_layout.dart' show appBottomSheetTheme;
+import 'data/map_profile_repository.dart' show mapProfileProvider;
 
 const brandAccent = Color(0xFF2DABE2);
 
@@ -510,6 +511,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     _startAlwaysOn();
     _startMessagingPresence();
     _startPushLocation();
+    // Admin → Settings → Maps: this user's and device's tiles and lookups.
+    ref.listenManual(mapProfileProvider, (_, _) {}, fireImmediately: true);
     // The home-screen icon: the admin's season or the passenger's choice.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(ref.read(appIconSyncProvider).sync());

@@ -28,6 +28,7 @@ import '../../data/models.dart';
 import '../../data/read_aloud.dart';
 import '../../data/reliability_repository.dart';
 import '../../data/ride_chat_repository.dart';
+import '../../data/trip_handover_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
@@ -43,6 +44,7 @@ import '../../widgets/offline_ride_banner.dart';
 import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
 import '../safety/ride_sos.dart';
 import '../safety/voice_protection_controller.dart';
+import 'trip_handover_panel.dart';
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
 
@@ -133,6 +135,13 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     _gps = ref.read(tripPositionStreamProvider)().listen(_onPosition, onError: (_) {});
     // VoiceProtection records the trip from the moment it starts (gated by the
     // driver's own switch inside the controller) and files it when it ends.
+    // Handed over to another partner: this driver's part of the trip ends.
+    ref.listenManual(rideHandoverProvider(widget.requestId), (_, next) {
+      if (!tripHandedAway(next)) return;
+      _tick?.cancel();
+      _tick = null;
+      unawaited(_voice.stopTrip());
+    });
     ref.listenManual(rideStreamProvider(widget.requestId), (_, next) {
       final r = next.value;
       if (r == null) return;
@@ -510,8 +519,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   Widget build(BuildContext context) {
     final ride = ref.watch(rideStreamProvider(widget.requestId));
     // While the trip is on there is no way back off this screen: the ride
-    // ends by completing it (or cancelling before pickup), not by leaving.
-    final onTrip = ride.value?.status.isOngoing ?? false;
+    // ends by completing it (or cancelling before pickup), not by leaving,
+    // or by handing it over (migration 0199).
+    final away = tripHandedAway(ref.watch(rideHandoverProvider(widget.requestId)));
+    final onTrip = (ride.value?.status.isOngoing ?? false) && !away;
     return PopScope(
       canPop: !onTrip,
       onPopInvokedWithResult: (didPop, _) {
@@ -596,12 +607,21 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
 
   Widget _panel(RideRequest r) {
     final t = Theme.of(context);
-    final target = r.status == RideStatus.onTrip ? _ll(r.dropLat, r.dropLng) : _ll(r.pickupLat, r.pickupLng);
+    final handover = ref.watch(rideHandoverProvider(r.id));
+    // Handed over: the ride is no longer this driver's to read or drive.
+    if (tripHandedAway(handover)) return HandedOverView(ride: r, handover: handover!, onDone: _leave);
+    final meeting = tripHandoverMeeting(r, handover);
+    final target = meeting
+        ? _ll(r.handoverMeetLat, r.handoverMeetLng)
+        : r.status == RideStatus.onTrip
+        ? _ll(r.dropLat, r.dropLng)
+        : _ll(r.pickupLat, r.pickupLng);
 
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text(switch (r.status) {
+          _ when meeting => 'Meet the car',
           RideStatus.accepted => 'Head to pickup',
           RideStatus.arrived => 'Waiting for passenger',
           RideStatus.onTrip => 'Drive to destination',
@@ -674,6 +694,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             label: const Text('Navigate'),
             onPressed: () => _navigate(target),
           ),
+        // Asking another partner to take over, or meeting the car (0199).
+        TripHandoverPanel(ride: r),
         const SizedBox(height: 8),
         // The phones find each other at the kerb (Phase D); the code still works.
         if (r.status == RideStatus.accepted || r.status == RideStatus.arrived)
@@ -686,7 +708,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           ),
         if (r.status == RideStatus.arrived)
           BusyButton.filled(onPressed: _busy ? null : () => _start(r), child: const Text('Start trip')),
-        if (r.status == RideStatus.onTrip)
+        if (r.status == RideStatus.onTrip && !meeting)
           BusyButton.filled(
             key: const ValueKey('trip-complete'),
             onPressed: _busy ? null : () => _complete(r),

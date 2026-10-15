@@ -21,6 +21,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';
 
+import '../core/map_profile.dart';
+
 const osmTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 const _configuredLight = String.fromEnvironment('MAP_TILE_URL');
@@ -60,6 +62,13 @@ TileSource resolveTileSource({
   return d.isNotEmpty ? TileSource(d, darken: false) : TileSource(lightUrl, darken: true);
 }
 
+/// The tiles Admin → Settings → Maps (migration 0200) set for this user and
+/// device, for the theme or satellite; null where it keeps the app's own.
+TileSource? profileTileSource(MapProfile profile, {required bool dark, bool satellite = false}) {
+  final spec = satellite ? profile.satellite : (dark ? profile.dark : profile.light);
+  return spec == null ? null : TileSource(spec.url, darken: spec.darken);
+}
+
 /// Whether a failed tile request is worth asking again: the server
 /// throttling (429) or failing (5xx). Anything else (a 404, a block page)
 /// would fail the same way again.
@@ -93,7 +102,10 @@ http.Client retryingTileClient() => RetryClient(
 
 /// The base tile layer for [context]'s theme, or satellite imagery.
 TileLayer baseTileLayer(BuildContext context, {bool satellite = false}) {
-  final source = resolveTileSource(dark: Theme.of(context).brightness == Brightness.dark, satellite: satellite);
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  final source =
+      profileTileSource(activeMapProfile, dark: dark, satellite: satellite) ??
+      resolveTileSource(dark: dark, satellite: satellite);
   return TileLayer(
     // A new layer, not the old one re-pointed, so the street tiles already
     // drawn are not kept under the imagery while it loads (or vice versa).
