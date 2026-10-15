@@ -11,6 +11,7 @@ import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/maps/maps_data.dart';
 import 'package:get_ride/src/admin/screens/maps/maps_logic.dart';
 import 'package:get_ride/src/admin/screens/maps/maps_screen.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/admin/screens/security/api_keys_logic.dart';
 import 'package:get_ride/src/core/map_profile.dart';
 import 'package:get_ride/src/data/geo_service.dart';
@@ -338,7 +339,7 @@ void main() {
           ),
           mapTestProbeProvider.overrideWithValue(probe),
         ],
-        child: MaterialApp(theme: dark ? ThemeData.dark() : ThemeData.light(), home: const AdminMapsScreen()),
+        child: MaterialApp(theme: appTheme(dark ? Brightness.dark : Brightness.light), home: const AdminMapsScreen()),
       ),
     );
     await tester.pumpAndSettle();

@@ -263,6 +263,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
           const Spacer(),
           if (!last)
             FilledButton(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
               onPressed: _busy || !_canProceed(c) ? null : () => setState(() => _step++),
               child: const Text('Continue'),
             ),
@@ -779,6 +780,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
             trailing: evFlag(v['cashBalanceConfirmed']) || evFlag(v['cashBalancePaid'])
                 ? const Icon(Icons.check_circle)
                 : BusyButton.filled(
+                    style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
                     onPressed: _busy ? null : () => _save({'cashBalanceConfirmed': true, 'balanceDueAmount': balance}),
                     child: const Text('Confirm'),
                   ),
@@ -830,6 +832,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
             ),
             const SizedBox(width: 8),
             BusyButton.filled(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
               onPressed: _busy
                   ? null
                   : () {
@@ -881,6 +884,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
         ),
         const SizedBox(width: 8),
         BusyButton.filled(
+          style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
           onPressed: _busy
               ? null
               : () {

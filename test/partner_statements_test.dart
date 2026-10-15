@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/commerce/partner_statements_screen.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/driver_earnings.dart' show EarningsPeriod;
 import 'package:get_ride/src/core/partner_statement.dart';
 import 'package:get_ride/src/data/partner_statement_repository.dart';
@@ -223,7 +224,7 @@ void main() {
                 opened.add((name, title));
               }),
             ],
-            child: MaterialApp(theme: dark ? ThemeData.dark() : ThemeData.light(), home: const StatementsScreen()),
+            child: MaterialApp(theme: appTheme(dark ? Brightness.dark : Brightness.light), home: const StatementsScreen()),
           ),
         );
         await tester.pumpAndSettle();
@@ -276,7 +277,7 @@ void main() {
             key: UniqueKey(),
             overrides: [partnerStatementRepositoryProvider.overrideWithValue(repo)],
             child: MaterialApp(
-              theme: dark ? ThemeData.dark() : ThemeData.light(),
+              theme: appTheme(dark ? Brightness.dark : Brightness.light),
               home: StatementVerifyScreen(token: token),
             ),
           ),
@@ -311,7 +312,7 @@ void main() {
               ),
             ],
             child: MaterialApp(
-              theme: dark ? ThemeData.dark() : ThemeData.light(),
+              theme: appTheme(dark ? Brightness.dark : Brightness.light),
               home: const AdminPartnerStatementsScreen(),
             ),
           ),

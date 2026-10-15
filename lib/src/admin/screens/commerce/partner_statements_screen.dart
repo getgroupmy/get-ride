@@ -10,7 +10,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/format.dart';
 import '../../../core/partner_statement.dart';
 import '../../../data/partner_statement_repository.dart';
-import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -44,12 +43,14 @@ class _AdminPartnerStatementsScreenState extends ConsumerState<AdminPartnerState
 
   /// Bumped when the draft is replaced wholesale, so the text fields re-read it.
   int _generation = 0;
+  bool _saving = false;
 
   bool get _canEdit => ref.watch(pageAccessProvider(statementsPage)) == AccessLevel.edit;
 
   Future<void> _save() async {
     final d = _draft;
     if (d == null) return;
+    setState(() => _saving = true);
     final ok = await runAdminAction(context, () async {
       final saved = await ref.read(partnerStatementRepositoryProvider).saveSettings(d);
       if (mounted) {
@@ -59,6 +60,7 @@ class _AdminPartnerStatementsScreenState extends ConsumerState<AdminPartnerState
         });
       }
     }, success: 'Statement settings saved');
+    if (mounted) setState(() => _saving = false);
     if (ok && mounted) ref.invalidate(statementSettingsProvider);
   }
 
@@ -76,17 +78,37 @@ class _AdminPartnerStatementsScreenState extends ConsumerState<AdminPartnerState
     final dirty = _draft != null && _draft != _stored;
     return DefaultTabController(
       length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Partner statements'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(key: ValueKey('statements-tab-settings'), text: 'Settings'),
-              Tab(key: ValueKey('statements-tab-incentives'), text: 'Incentives'),
-              Tab(key: ValueKey('statements-tab-adjustments'), text: 'Adjustments'),
-            ],
-          ),
+      child: AdminPage(
+        title: 'Partner statements',
+        page: statementsPage,
+        bottom: const TabBar(
+          tabs: [
+            Tab(key: ValueKey('statements-tab-settings'), text: 'Settings'),
+            Tab(key: ValueKey('statements-tab-incentives'), text: 'Incentives'),
+            Tab(key: ValueKey('statements-tab-adjustments'), text: 'Adjustments'),
+          ],
         ),
+        actions: [
+          if (dirty)
+            TextButton(
+              key: const ValueKey('statements-discard'),
+              onPressed: _saving
+                  ? null
+                  : () => setState(() {
+                      _draft = _stored;
+                      _generation++;
+                    }),
+              child: const Text('Discard'),
+            ),
+        ],
+        floatingActionButton: dirty
+            ? FloatingActionButton.extended(
+                key: const ValueKey('statements-save'),
+                onPressed: _saving ? null : _save,
+                icon: const Icon(Icons.save_outlined),
+                label: Text(_saving ? 'Saving…' : 'Save'),
+              )
+            : null,
         body: AsyncView(
           value: loaded,
           onRetry: () => ref.invalidate(statementSettingsProvider),
@@ -103,32 +125,6 @@ class _AdminPartnerStatementsScreenState extends ConsumerState<AdminPartnerState
             ],
           ),
         ),
-        bottomNavigationBar: !_canEdit || !dirty
-            ? null
-            : SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: Row(
-                    children: [
-                      TextButton(
-                        key: const ValueKey('statements-discard'),
-                        onPressed: () => setState(() {
-                          _draft = _stored;
-                          _generation++;
-                        }),
-                        child: const Text('Discard'),
-                      ),
-                      const Spacer(),
-                      BusyButton.filled(
-                        key: const ValueKey('statements-save'),
-                        icon: const Icon(Icons.save_outlined),
-                        onPressed: _save,
-                        child: const Text('Save settings'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
       ),
     );
   }
@@ -189,7 +185,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
       ),
     );
     return ListView(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.only(bottom: 96),
       children: [
         ResponsiveCenter(
           maxWidth: 760,

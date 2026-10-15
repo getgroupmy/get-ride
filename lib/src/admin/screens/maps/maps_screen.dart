@@ -10,7 +10,6 @@ import '../../../core/map_profile.dart';
 import '../../../data/geo_service.dart' show defaultCenter;
 import '../../../data/map_profile_repository.dart' show GeoProxy;
 import '../../../providers.dart';
-import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -49,6 +48,7 @@ class _AdminMapsScreenState extends ConsumerState<AdminMapsScreen> {
   MapSettings? _stored;
   MapSettings? _draft;
   String _role = 'rider';
+  bool _saving = false;
 
   bool get _canEdit => ref.watch(pageAccessProvider(mapsPage)) == AccessLevel.edit;
 
@@ -62,10 +62,12 @@ class _AdminMapsScreenState extends ConsumerState<AdminMapsScreen> {
       showInfo(context, 'Google search or address lookup needs Google map tiles: ${conflicts.join(', ')}.');
       return;
     }
+    setState(() => _saving = true);
     final ok = await runAdminAction(context, () async {
       final saved = await ref.read(mapsRepositoryProvider).save(d);
       if (mounted) setState(() => _stored = _draft = saved);
-    }, success: 'Map settings saved');
+    }, success: 'Map settings saved. Apps pick it up within a minute.');
+    if (mounted) setState(() => _saving = false);
     if (ok && mounted) ref.invalidate(adminMapSettingsProvider);
   }
 
@@ -81,17 +83,32 @@ class _AdminMapsScreenState extends ConsumerState<AdminMapsScreen> {
     final dirty = _draft != null && _draft != _stored;
     return DefaultTabController(
       length: 3,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Maps'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(key: ValueKey('maps-tab-devices'), text: 'Devices'),
-              Tab(key: ValueKey('maps-tab-keys'), text: 'Keys'),
-              Tab(key: ValueKey('maps-tab-usage'), text: 'Usage'),
-            ],
-          ),
+      child: AdminPage(
+        title: 'Maps',
+        page: mapsPage,
+        bottom: const TabBar(
+          tabs: [
+            Tab(key: ValueKey('maps-tab-devices'), text: 'Devices'),
+            Tab(key: ValueKey('maps-tab-keys'), text: 'Keys'),
+            Tab(key: ValueKey('maps-tab-usage'), text: 'Usage'),
+          ],
         ),
+        actions: [
+          if (dirty)
+            TextButton(
+              key: const ValueKey('maps-discard'),
+              onPressed: _saving ? null : () => setState(() => _draft = _stored),
+              child: const Text('Discard'),
+            ),
+        ],
+        floatingActionButton: dirty
+            ? FloatingActionButton.extended(
+                key: const ValueKey('maps-save'),
+                onPressed: _saving ? null : _save,
+                icon: const Icon(Icons.save_outlined),
+                label: Text(_saving ? 'Saving…' : 'Save'),
+              )
+            : null,
         body: AsyncView(
           value: loaded,
           onRetry: () => ref.invalidate(adminMapSettingsProvider),
@@ -109,29 +126,6 @@ class _AdminMapsScreenState extends ConsumerState<AdminMapsScreen> {
             ],
           ),
         ),
-        bottomNavigationBar: !_canEdit || !dirty
-            ? null
-            : SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: Row(
-                    children: [
-                      TextButton(
-                        key: const ValueKey('maps-discard'),
-                        onPressed: () => setState(() => _draft = _stored),
-                        child: const Text('Discard'),
-                      ),
-                      const Spacer(),
-                      BusyButton.filled(
-                        key: const ValueKey('maps-save'),
-                        icon: const Icon(Icons.save_outlined),
-                        onPressed: _save,
-                        child: const Text('Save maps'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
       ),
     );
   }
@@ -171,7 +165,7 @@ class _DevicesTab extends ConsumerWidget {
                 s.label,
           ];
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
       children: [
         Text(
           'Choose what riders and partners get on each kind of device. "Built in" keeps what the app was '
@@ -483,7 +477,7 @@ class _KeysTab extends ConsumerWidget {
       value: ref.watch(adminMapApiKeysProvider),
       onRetry: () => ref.invalidate(adminMapApiKeysProvider),
       data: (providers) => ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
         children: [
           Text(
             'Keys are kept in API Keys; here you pick which one each provider uses. Search, address and '
