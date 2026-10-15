@@ -1,0 +1,53 @@
+# Copies the Google Maps keys kept as GitHub Actions secrets to the `geo`
+# edge function's own secrets. They are its fallback: a Google key set in
+# Admin → API Keys is always used first (see supabase/functions/geo/index.ts).
+#
+# Needs one more repository secret: SUPABASE_ACCESS_TOKEN (a Supabase personal
+# access token, supabase.com → Account → Access Tokens). Runs by hand
+# (Actions → Sync map keys → Run workflow) and on the 1st of every month, so
+# a key rotated in GitHub reaches the function. Only keys that are set are
+# copied; no value is ever printed.
+name: Sync map keys
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 1 * *'
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: rqlavogkgywxspuxgiwk
+      GOOGLE_MAP_API_KEY: ${{ secrets.GOOGLE_MAP_API_KEY }}
+      GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+      GOOGLE_GEOCODING_API_KEY: ${{ secrets.GOOGLE_GEOCODING_API_KEY }}
+      GOOGLE_DIRECTIONS_API_KEY: ${{ secrets.GOOGLE_DIRECTIONS_API_KEY }}
+    steps:
+      - uses: supabase/setup-cli@v3
+      - name: Copy the keys that are set
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::Add the SUPABASE_ACCESS_TOKEN repository secret first."
+            exit 1
+          fi
+          env_file="$(mktemp)"
+          trap 'rm -f "$env_file"' EXIT
+          names=""
+          for name in GOOGLE_MAP_API_KEY GOOGLE_PLACES_API_KEY GOOGLE_GEOCODING_API_KEY GOOGLE_DIRECTIONS_API_KEY; do
+            value="${!name}"
+            if [ -n "$value" ]; then
+              printf '%s=%s\n' "$name" "$value" >> "$env_file"
+              names="$names $name"
+            fi
+          done
+          if [ -z "$names" ]; then
+            echo "::warning::None of the Google map keys is set in GitHub; nothing copied."
+            exit 0
+          fi
+          supabase secrets set --project-ref "$PROJECT_REF" --env-file "$env_file" > /dev/null
+          echo "Copied:$names"

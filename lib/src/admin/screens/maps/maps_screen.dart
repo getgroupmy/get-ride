@@ -202,7 +202,8 @@ class _DevicesTab extends ConsumerWidget {
             icon: Icons.key_off_outlined,
             text:
                 'No active key yet for ${missing.join(', ')}. Until there is one, those choices fall back '
-                'to the next provider (or what is built in).',
+                'to the next provider (or what is built in). Google uses the keys synced from GitHub '
+                '(Actions → Sync map keys) when it has none here.',
           ),
         for (final d in mapDevices)
           _DeviceCard(

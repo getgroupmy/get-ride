@@ -54,6 +54,8 @@ export interface GeoDeps {
   googleSession(slot: "light" | "dark" | "satellite", key: string, region: string): Promise<string | null>;
   /** ISO alpha-2 → alpha-3 ("my" → "MYS"), or null. */
   iso3(cc: string): string | null;
+  /** The function's own secret for a key slot, when Admin → API Keys has none. */
+  fallbackKey?(slot: string): string | null;
 }
 
 /** Proxied lookups per caller address per minute. */
@@ -87,7 +89,9 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   const { config, apiProviders } = await deps.settings();
   const profile = profileOf(config, role, device);
   const keys = ((config as { keys?: Record<string, string> } | null)?.keys) ?? {};
-  const key = (provider: string, use: "tiles" | Kind) => resolveKey(apiProviders, keys[keySlot(provider, use)]);
+  // Admin → API Keys first; the function's own secret (synced from GitHub) when that slot is empty.
+  const key = (provider: string, use: "tiles" | Kind) =>
+    resolveKey(apiProviders, keys[keySlot(provider, use)]) ?? deps.fallbackKey?.(keySlot(provider, use)) ?? null;
   const countries = (params.get("countries") ?? "my").toLowerCase().split(",").map((c) => c.trim())
     .filter((c) => /^[a-z]{2}$/.test(c)).slice(0, 5);
   const lang = /^[a-z]{2}(-[A-Za-z]{2})?$/.test(params.get("lang") ?? "") ? params.get("lang")! : "en";

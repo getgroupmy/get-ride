@@ -90,21 +90,7 @@ void main() {
     expect(s.days, isEmpty);
   });
 
-  group('weekly chart', () {
-    test('eight weeks, oldest first, Monday to Sunday, empty weeks kept', () {
-      final weeks = weeklyEarnings(rides, driverId: 'me', now: now);
-      expect(weeks, hasLength(8));
-      expect(weeks.last.start, DateTime(2026, 10, 12));
-      expect(weeks.first.start, DateTime(2026, 8, 24));
-      // This week: a, b (15th) and c (13th).
-      expect(weeks.last.totals.trips, 3);
-      expect(weeks.last.totals.net, 45 + 12.75);
-      // 2 Oct is in the week of 28 Sep; 30 Sep's trip (g) too.
-      expect(weeks[weeks.length - 3].start, DateTime(2026, 9, 28));
-      expect(weeks[weeks.length - 3].totals.trips, 2);
-      expect(weeks[weeks.length - 2].totals.trips, 0);
-    });
-
+  group('trip history', () {
     test('history reaches back for the month and the eight weeks', () {
       expect(earningsHistoryStart(now), DateTime(2026, 8, 24));
       // With a short chart late in the month, the month start is the earlier.

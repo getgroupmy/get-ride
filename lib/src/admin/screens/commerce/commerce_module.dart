@@ -1,4 +1,4 @@
-// Payments & commerce: payment types/gateways, GET.coin, EV catalogue and orders.
+// Payments & commerce: payment types/gateways, GET.coin, partner statements, EV catalogue and orders.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,12 +7,14 @@ import '../../admin_registry.dart';
 import 'ev_catalog_screens.dart';
 import 'ev_orders_screen.dart';
 import 'get_coin_screen.dart';
+import 'partner_statements_screen.dart';
 import 'payment_screens.dart';
 
 final commerceRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/payment-type', builder: (_, _) => const PaymentTypeScreen()),
   GoRoute(path: '/admin/m/payment-gateway', builder: (_, _) => const PaymentGatewayScreen()),
   GoRoute(path: '/admin/m/get-coin', builder: (_, _) => const GetCoinScreen()),
+  GoRoute(path: '/admin/m/partner-statements', builder: (_, _) => const AdminPartnerStatementsScreen()),
   GoRoute(path: '/admin/m/ev-order-fee', builder: (_, _) => const EvOrderFeeScreen()),
   GoRoute(path: '/admin/m/ev-finance-options', builder: (_, _) => const EvFinanceOptionsScreen()),
   GoRoute(path: '/admin/m/ev-vehicle-details', builder: (_, _) => const EvVehicleDetailsScreen()),
@@ -46,6 +48,14 @@ const commerceEntries = <AdminScreenEntry>[
     path: '/admin/m/get-coin',
     pages: ['admin-settings-get-coin'],
     icon: Icons.toll_outlined,
+  ),
+  AdminScreenEntry(
+    section: _s,
+    title: 'Partner statements',
+    subtitle: 'Earnings surcharges, week, bank line, incentives & adjustments',
+    path: '/admin/m/partner-statements',
+    pages: [statementsPage],
+    icon: Icons.description_outlined,
   ),
   AdminScreenEntry(
     section: _s,
