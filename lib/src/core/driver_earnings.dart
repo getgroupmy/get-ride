@@ -109,46 +109,12 @@ EarningsSummary summarizeEarnings(
 /// How many weeks the Earnings chart shows.
 const earningsChartWeeks = 8;
 
-/// One week of the chart: Monday's midnight and that week's totals.
-class EarningsWeek {
-  const EarningsWeek(this.start, this.totals);
-  final DateTime start;
-  final EarningsTotals totals;
-}
-
 /// Where the page's trip history must start for [now]: far enough back for
 /// both the month and the chart's [weeks] weeks.
 DateTime earningsHistoryStart(DateTime now, {int weeks = earningsChartWeeks}) {
   final month = earningsPeriodStart(EarningsPeriod.month, now);
   final firstWeek = earningsPeriodStart(EarningsPeriod.week, now).subtract(Duration(days: 7 * (weeks - 1)));
   return month.isBefore(firstWeek) ? month : firstWeek;
-}
-
-/// The last [weeks] weeks (Monday to Sunday, device time), oldest first,
-/// including weeks with no trips, totalled as [summarizeEarnings] totals.
-/// Pure.
-List<EarningsWeek> weeklyEarnings(
-  List<RideRequest> rides, {
-  required String driverId,
-  required DateTime now,
-  int weeks = earningsChartWeeks,
-}) {
-  final thisWeek = earningsPeriodStart(EarningsPeriod.week, now);
-  final starts = [
-    for (var i = weeks - 1; i >= 0; i--) DateTime(thisWeek.year, thisWeek.month, thisWeek.day - 7 * i),
-  ];
-  final totals = List<EarningsTotals>.filled(weeks, const EarningsTotals());
-  for (final r in rides) {
-    if (r.partnerId != driverId || r.status != RideStatus.completed) continue;
-    final at = (r.completedAt ?? r.createdAt)?.toLocal();
-    if (at == null || at.isBefore(starts.first) || at.isAfter(now)) continue;
-    var i = weeks - 1;
-    while (i > 0 && at.isBefore(starts[i])) {
-      i--;
-    }
-    totals[i] = totals[i].add(TripReceipt.fromRide(r, asDriver: true));
-  }
-  return [for (var i = 0; i < weeks; i++) EarningsWeek(starts[i], totals[i])];
 }
 
 /// The trips of [period] as CSV, one row per trip, oldest first: what a

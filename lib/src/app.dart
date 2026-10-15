@@ -51,6 +51,8 @@ import 'features/partner/scheduled_jobs_screen.dart';
 import 'features/partner/demo_jobs.dart';
 import 'features/partner/my_ride_code_screen.dart';
 import 'features/partner/earnings_screen.dart';
+import 'features/partner/statement_verify_screen.dart';
+import 'features/partner/statements_screen.dart';
 import 'features/partner/partner_trip_history_screen.dart';
 import 'features/partner/partner_onboarding_screen.dart';
 import 'features/partner/driver_permit_screen.dart';
@@ -213,6 +215,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loc == '/diagnostics') return null;
       // A shared ride is for whoever was sent the link, account or not.
       if (loc.startsWith('/share/')) return null;
+      // So is checking a statement's QR code: whoever was handed the statement.
+      if (loc.startsWith('/verify/')) return null;
       // So is installing a test build: the tester has no account yet.
       if (loc.startsWith('/install/')) return null;
       // A personal QR link (My QR) works signed out too: a referral code is
@@ -387,6 +391,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => ScheduledJobsScreen(initialTab: s.uri.queryParameters['tab'] == 'mine' ? 1 : 0),
           ),
           GoRoute(path: '/drive/earnings', builder: (_, _) => const EarningsScreen()),
+          GoRoute(path: '/drive/statements', builder: (_, _) => const StatementsScreen()),
           GoRoute(
             path: '/drive/history',
             builder: (_, _) => const PartnerTripHistoryScreen(),
@@ -425,6 +430,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/share/:token',
         builder: (_, st) => SharedRideScreen(token: st.pathParameters['token']!),
+      ),
+      GoRoute(
+        path: '/verify/:token',
+        builder: (_, st) => StatementVerifyScreen(token: st.pathParameters['token']!),
       ),
       GoRoute(
         path: '/q/:kind/:token',

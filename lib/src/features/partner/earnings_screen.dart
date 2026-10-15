@@ -1,6 +1,7 @@
-// Driver menu → Earnings: today's, this week's or this month's completed
-// trips, what passengers paid, the commission and what the driver kept, then
-// the same per day. Totals are worked out in core/driver_earnings.dart.
+// Driver menu → Earnings: today's, this week's or this month's earnings,
+// deductions and net, then the same per day and the last eight weeks. The
+// server works the totals out (migration 0201), the same calculation as the
+// partner statements; the CSV export lists the trips themselves.
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -12,7 +13,9 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/driver_earnings.dart';
 import '../../core/format.dart';
+import '../../core/partner_statement.dart';
 import '../../data/models.dart';
+import '../../data/partner_statement_repository.dart';
 import '../../platform/web_download.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -68,12 +71,20 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final uid = ref.watch(currentUserIdProvider);
+    final summary = ref.watch(earningsTotalsProvider(_period));
+    final weeks = ref.watch(earningsWeeksProvider);
+    String money(double v) => formatMoney(v);
     return Scaffold(
       appBar: AppBar(
         leading: sideMenuLeading(context),
         title: const Text('Earnings'),
         actions: [
+          IconButton(
+            key: const ValueKey('earnings-statements'),
+            tooltip: 'Statements',
+            icon: const Icon(Icons.description_outlined),
+            onPressed: () => context.push('/drive/statements'),
+          ),
           Builder(
             builder: (button) => IconButton(
               key: const ValueKey('earnings-export'),
@@ -85,72 +96,67 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () => ref.refresh(driverMonthTripsProvider.future),
+        onRefresh: () {
+          ref.invalidate(earningsWeeksProvider);
+          ref.invalidate(driverMonthTripsProvider);
+          return ref.refresh(earningsTotalsProvider(_period).future);
+        },
         child: AsyncView(
-          value: ref.watch(driverMonthTripsProvider),
-          onRetry: () => ref.invalidate(driverMonthTripsProvider),
-          data: (rides) {
-            final s = summarizeEarnings(rides, driverId: uid ?? '', period: _period, now: DateTime.now());
-            String money(double v) => formatMoney(v, s.currency);
-            return ListView(
-              padding: const EdgeInsets.only(bottom: 24),
-              children: [
-                ResponsiveCenter(
-                  maxWidth: 760,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 8),
-                      SegmentedButton<EarningsPeriod>(
-                        key: const ValueKey('earnings-period'),
-                        segments: [
-                          for (final p in EarningsPeriod.values) ButtonSegment(value: p, label: Text(p.label)),
-                        ],
-                        selected: {_period},
-                        showSelectedIcon: false,
-                        onSelectionChanged: (v) => setState(() => _period = v.first),
+          value: summary,
+          onRetry: () => ref.invalidate(earningsTotalsProvider(_period)),
+          data: (s) => ListView(
+            padding: const EdgeInsets.only(bottom: 24),
+            children: [
+              ResponsiveCenter(
+                maxWidth: 760,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 8),
+                    SegmentedButton<EarningsPeriod>(
+                      key: const ValueKey('earnings-period'),
+                      segments: [for (final p in EarningsPeriod.values) ButtonSegment(value: p, label: Text(p.label))],
+                      selected: {_period},
+                      showSelectedIcon: false,
+                      onSelectionChanged: (v) => setState(() => _period = v.first),
+                    ),
+                    const SizedBox(height: 12),
+                    EarningsTotalsCard(totals: s.totals, money: money),
+                    if (weeks.value case final w?) WeeklyEarningsChart(weeks: w, money: money),
+                    if (s.days.isEmpty)
+                      const EmptyState(
+                        icon: Icons.payments_outlined,
+                        title: 'No completed trips',
+                        message: 'Trips you complete in this period show up here.',
+                      )
+                    else ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
+                        child: Text('By day', style: Theme.of(context).textTheme.titleSmall),
                       ),
-                      const SizedBox(height: 12),
-                      _TotalsCard(totals: s.totals, money: money),
-                      WeeklyEarningsChart(
-                        weeks: weeklyEarnings(rides, driverId: uid ?? '', now: DateTime.now()),
-                        money: money,
-                      ),
-                      if (s.days.isEmpty)
-                        const EmptyState(
-                          icon: Icons.payments_outlined,
-                          title: 'No completed trips',
-                          message: 'Trips you complete in this period show up here.',
-                        )
-                      else ...[
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
-                          child: Text('By day', style: Theme.of(context).textTheme.titleSmall),
-                        ),
-                        for (final d in s.days)
-                          Card(
-                            child: ListTile(
-                              title: Text(_dayLabel(d.date)),
-                              subtitle: Text(
-                                '${_trips(d.totals.trips)} · ${_km(d.totals.distanceKm)}'
-                                '${d.totals.commission > 0 ? ' · commission ${money(d.totals.commission)}' : ''}',
-                              ),
-                              trailing: Text(money(d.totals.net), style: Theme.of(context).textTheme.titleMedium),
+                      for (final d in s.days)
+                        Card(
+                          child: ListTile(
+                            title: Text(_dayLabel(d.start)),
+                            subtitle: Text(
+                              '${_trips(d.totals.trips)} · ${_km(d.totals.distanceKm)}'
+                              '${d.totals.commission > 0 ? ' · commission ${money(d.totals.commission)}' : ''}',
                             ),
+                            trailing: Text(money(d.totals.net), style: Theme.of(context).textTheme.titleMedium),
                           ),
-                      ],
-                      const SizedBox(height: 8),
-                      TextButton.icon(
-                        onPressed: () => context.push('/trips'),
-                        icon: const Icon(Icons.receipt_long_outlined),
-                        label: const Text('Trip history and receipts'),
-                      ),
+                        ),
                     ],
-                  ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () => context.push('/trips'),
+                      icon: const Icon(Icons.receipt_long_outlined),
+                      label: const Text('Trip history and receipts'),
+                    ),
+                  ],
                 ),
-              ],
-            );
-          },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -187,8 +193,8 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
   static String _km(double km) => '${km.toStringAsFixed(km >= 100 ? 0 : 1)} km';
 
   static String _dayLabel(DateTime d) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = malaysiaDate(DateTime.now());
+    d = DateTime.utc(d.year, d.month, d.day);
     if (d == today) return 'Today';
     if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -197,27 +203,35 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
   }
 }
 
-class _TotalsCard extends StatelessWidget {
-  const _TotalsCard({required this.totals, required this.money});
+/// The period's earnings, deductions and net; taxes and tolls apart, as
+/// collected for others and not income. The same lines as a statement.
+class EarningsTotalsCard extends StatelessWidget {
+  const EarningsTotalsCard({super.key, required this.totals, required this.money});
 
-  final EarningsTotals totals;
+  final StatementTotals totals;
   final String Function(double) money;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
-    Widget row(String label, String value, {Key? key}) => Padding(
+    final s = totals;
+    Widget row(String label, String value, {Key? key, bool strong = false}) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
           Expanded(
-            child: Text(label, style: TextStyle(color: muted)),
+            child: Text(label, style: strong ? null : TextStyle(color: muted)),
           ),
-          Text(value, key: key),
+          Text(
+            value,
+            key: key,
+            style: strong ? const TextStyle(fontWeight: FontWeight.w600) : null,
+          ),
         ],
       ),
     );
+    String less(double v) => v > 0 ? '− ${money(v)}' : money(0);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -226,15 +240,42 @@ class _TotalsCard extends StatelessWidget {
           children: [
             Text('You earned', style: t.textTheme.labelLarge?.copyWith(color: muted)),
             Text(
-              money(totals.net),
+              money(s.net),
               key: const ValueKey('earnings-net'),
               style: t.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
-            row('Completed trips', '${totals.trips}', key: const ValueKey('earnings-trips')),
-            row('Passengers paid', money(totals.gross)),
-            row('Commission', totals.commission > 0 ? '− ${money(totals.commission)}' : money(0)),
-            row('Distance', '${totals.distanceKm.toStringAsFixed(1)} km'),
+            row('Completed trips', '${s.trips}', key: const ValueKey('earnings-trips')),
+            row('Fares', money(s.fares), key: const ValueKey('earnings-fares')),
+            if (s.surcharges != 0) row('Surcharges', money(s.surcharges)),
+            if (s.feesCollected != 0) row('Fees collected for GET.ride', money(s.feesCollected)),
+            if (s.incentives != 0) row('Incentives', money(s.incentives), key: const ValueKey('earnings-incentives')),
+            if (s.handoverIn != 0) row('Handover share received', money(s.handoverIn)),
+            row('Commission', less(s.commission)),
+            if (s.platformFees != 0) row('Platform fees', less(s.platformFees)),
+            if (s.handoverOut != 0) row('Handover share paid', less(s.handoverOut)),
+            if (s.adjustments != 0)
+              row('Adjustments', money(s.adjustments), key: const ValueKey('earnings-adjustments')),
+            if (s.passThrough != 0)
+              Theme(
+                data: t.copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  key: const ValueKey('earnings-pass-through'),
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(bottom: 4),
+                  title: Text('Collected for others ${money(s.passThrough)}', style: t.textTheme.bodyMedium),
+                  subtitle: Text('Taxes and tolls: not part of what you earned', style: TextStyle(color: muted)),
+                  children: [
+                    if (s.taxes != 0) row('Taxes', money(s.taxes), key: const ValueKey('earnings-taxes')),
+                    if (s.tolls != 0) row('Tolls', money(s.tolls)),
+                    if (s.otherCharges != 0) row('Other charges', money(s.otherCharges)),
+                    if (s.otherSurcharges != 0) row('Other surcharges', money(s.otherSurcharges)),
+                  ],
+                ),
+              ),
+            const Divider(height: 20),
+            row('Hours online', s.onlineHours.toStringAsFixed(1)),
+            row('Distance', '${s.distanceKm.toStringAsFixed(1)} km'),
           ],
         ),
       ),

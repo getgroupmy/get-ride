@@ -1,18 +1,19 @@
 // Earnings → "Last 8 weeks": what the driver kept each week, as bars. One
 // series, so one colour (the theme's primary, which light and dark each pick
 // for themselves) and no legend. Tap a bar to read its week; the newest is
-// read out to start with. Totals come from core/driver_earnings.dart.
+// read out to start with. Totals come from the server (my_earnings_series,
+// migration 0201), the same calculation as the statements.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../core/driver_earnings.dart';
+import '../../core/partner_statement.dart';
 
 class WeeklyEarningsChart extends StatefulWidget {
   const WeeklyEarningsChart({super.key, required this.weeks, required this.money});
 
   /// Oldest first.
-  final List<EarningsWeek> weeks;
+  final List<EarningsBucket> weeks;
   final String Function(double) money;
 
   @override
