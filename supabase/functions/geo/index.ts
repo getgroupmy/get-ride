@@ -61,8 +61,13 @@ async function call(req: { url: string; method?: string; headers?: Record<string
     body: req.body,
     signal: AbortSignal.timeout(8000),
   });
-  // The URL carries the key: only the host is ever reported.
-  if (!res.ok) throw new Error(`${res.status} from ${new URL(req.url).host}`);
+  // The URL carries the key: only the host and Google's reason codes are ever reported.
+  if (!res.ok) {
+    const err = (await res.json().catch(() => null))?.error;
+    const reasons = [err?.status, ...(err?.details ?? []).map((d: { reason?: string }) => d?.reason)]
+      .filter((r): r is string => typeof r === "string" && /^[A-Z_]+$/.test(r));
+    throw new Error(`${res.status} from ${new URL(req.url).host}${reasons.length ? ` (${reasons.join(", ")})` : ""}`);
+  }
   return await res.json();
 }
 
@@ -98,14 +103,21 @@ Deno.serve(async (req) => {
           .maybeSingle();
         // Reused until a day before it expires (sessions last about two weeks).
         if (data && Date.parse(data.expires_at) - Date.now() > 86_400_000) return data.session;
-        const s = parseGoogleSession(
-          await call({
+        let answer: unknown;
+        try {
+          answer = await call({
             url: `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(key)}`,
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(googleSessionBody(slot, region)),
-          }),
-        );
+          });
+        } catch (e) {
+          // Google refused (API off, key restricted, billing): say why in the function's logs.
+          console.error(`geo: Google ${slot} tile session refused:`, e instanceof Error ? e.message : "failed");
+          await db.rpc("geo_count", { p_provider: "google", p_kind: "tiles", p_ok: false, p_cached: false });
+          throw e;
+        }
+        const s = parseGoogleSession(answer);
         if (!s) return null;
         await db.from("map_tile_sessions").upsert({
           kind,
