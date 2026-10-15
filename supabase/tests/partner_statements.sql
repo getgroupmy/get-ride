@@ -70,7 +70,7 @@ select v.*, '00000000-0000-0000-0000-0000000201c1'::uuid from (values
      {"kind": "tax", "name": "SST", "charge": "percent", "value": 6},
      {"kind": "surcharge", "name": "Scheduling fee", "charge": "fixed", "value": 2, "platform": true}]'::jsonb,
    3::numeric, 3::numeric, 4::numeric, 'cash', pg_temp.myt('2026-09-08 10:00'), 'car'),
-  ('completed', '00000000-0000-0000-0000-0000000201a1', 30, 28, null, null, 4.2, null, 'card',
+  ('completed', '00000000-0000-0000-0000-0000000201a1', 30, 28, null, null, 4.2, null, 'get_wallet',
    pg_temp.myt('2026-09-12 23:30'), 'car'),
   ('completed', '00000000-0000-0000-0000-0000000201a1', 50, null, null, null, 7.5, null, 'cash',
    pg_temp.myt('2026-09-14 00:30'), 'car'),
