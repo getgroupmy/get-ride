@@ -39,7 +39,7 @@ class LocationShareButton extends ConsumerWidget {
     if (choice == LocationShareChoice.keep) {
       if (on) return;
       if (!ref.read(showLocationToDriverProvider)) await ref.read(showLocationToDriverProvider.notifier).set(true);
-      ref.read(rideLocationOffProvider.notifier).turnOn(ride.id);
+      await ref.read(rideLocationOffProvider.notifier).turnOn(ride.id);
       say('Your driver can see your location now.');
       return;
     }
@@ -47,7 +47,7 @@ class LocationShareButton extends ConsumerWidget {
     final scope = await showLocationOffScopeSheet(context);
     if (scope == null || !context.mounted) return;
     if (scope == LocationOffScope.thisRide) {
-      ref.read(rideLocationOffProvider.notifier).turnOff(ride.id);
+      await ref.read(rideLocationOffProvider.notifier).turnOff(ride.id);
       say('Your driver can no longer see your location on this ride.');
     } else {
       await ref.read(showLocationToDriverProvider.notifier).set(false);

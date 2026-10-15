@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ride/location_share_button.dart';
+import 'package:get_ride/src/providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 RideRequest _ride(String status) => RideRequest({'id': 'r1', 'status': status});
@@ -90,5 +91,46 @@ void main() {
     await tapKey(tester, 'location-share-turn-off'); // "Not now"
     expect(find.byKey(const ValueKey('location-share-off')), findsOneWidget);
     expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets('Only this ride is kept on the phone: closing and reopening the app keeps it off', (tester) async {
+    await pump(tester, 'accepted');
+    await tapKey(tester, 'location-share-button');
+    await tapKey(tester, 'location-share-turn-off');
+    await tapKey(tester, 'location-off-this-ride');
+    expect((await SharedPreferences.getInstance()).getStringList('ride_location_off'), ['r1']);
+
+    // A fresh start of the app: a new ProviderScope reading the phone's copy.
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(
+      ProviderScope(
+        key: UniqueKey(),
+        child: MaterialApp(
+          home: Scaffold(
+            body: Center(child: LocationShareButton(ride: _ride('accepted'))),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('location-share-off')), findsOneWidget);
+
+    await tapKey(tester, 'location-share-button');
+    await tapKey(tester, 'location-share-keep');
+    expect((await SharedPreferences.getInstance()).getStringList('ride_location_off'), isEmpty);
+  });
+
+  test('only the most recent rides are remembered', () async {
+    SharedPreferences.setMockInitialValues({});
+    final c = ProviderContainer();
+    addTearDown(c.dispose);
+    c.read(rideLocationOffProvider);
+    for (var i = 0; i < RideLocationOffNotifier.keep + 5; i++) {
+      await c.read(rideLocationOffProvider.notifier).turnOff('r$i');
+    }
+    final saved = (await SharedPreferences.getInstance()).getStringList('ride_location_off')!;
+    expect(saved, hasLength(RideLocationOffNotifier.keep));
+    expect(saved.first, 'r5');
+    expect(saved.last, 'r${RideLocationOffNotifier.keep + 4}');
   });
 }

@@ -127,14 +127,36 @@ final showLocationToDriverProvider = NotifierProvider<ShowLocationToDriverNotifi
 
 /// The rides the passenger turned location sharing off for, just those
 /// rides (the trip map's button, "Only this ride"); the setting above
-/// stays as it is. Kept while the app is open.
+/// stays as it is. Kept on the phone, so closing the app mid-ride keeps the
+/// choice; only the most recent [keep] rides are remembered.
 class RideLocationOffNotifier extends Notifier<Set<String>> {
+  static const _key = 'ride_location_off';
+  static const keep = 20;
+
   @override
-  Set<String> build() => const {};
+  Set<String> build() {
+    SharedPreferences.getInstance().then((p) {
+      final saved = p.getStringList(_key);
+      // Merged: a choice made before the phone's copy has loaded stays.
+      if (saved != null && saved.isNotEmpty) state = {...saved, ...state};
+    });
+    return const {};
+  }
 
-  void turnOff(String rideId) => state = {...state, rideId};
+  Future<void> turnOff(String rideId) => _save(
+    {...state}
+      ..remove(rideId)
+      ..add(rideId),
+  );
 
-  void turnOn(String rideId) => state = {...state}..remove(rideId);
+  Future<void> turnOn(String rideId) => _save({...state}..remove(rideId));
+
+  Future<void> _save(Set<String> rides) async {
+    final list = rides.toList();
+    state = list.skip(list.length > keep ? list.length - keep : 0).toSet();
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList(_key, state.toList());
+  }
 }
 
 final rideLocationOffProvider = NotifierProvider<RideLocationOffNotifier, Set<String>>(RideLocationOffNotifier.new);
