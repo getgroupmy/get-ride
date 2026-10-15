@@ -39,7 +39,12 @@ class LiveRideMap extends ConsumerStatefulWidget {
     this.driverHeading,
     this.partner = false,
     this.riderPosition,
+    this.topButton,
   });
+
+  /// A button over map type and recenter (the passenger's location
+  /// sharing); it sizes itself, nothing when it has nothing to show.
+  final Widget? topButton;
 
   /// The passenger's own phone fix, for their "you are here" dot while they
   /// wait ([showRiderDot]); null draws none (the driver's map).
@@ -335,6 +340,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
             right: 12 - recenterAt.$1,
             bottom: mapAttributionClearance + inset - recenterAt.$2,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
+              ?widget.topButton,
               // Map view above recenter on every map.
               const MapTypeButton(),
               const SizedBox(height: 8),

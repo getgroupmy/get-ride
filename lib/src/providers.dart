@@ -124,3 +124,25 @@ class ShowLocationToDriverNotifier extends Notifier<bool> {
 final showLocationToDriverProvider = NotifierProvider<ShowLocationToDriverNotifier, bool>(
   ShowLocationToDriverNotifier.new,
 );
+
+/// The rides the passenger turned location sharing off for, just those
+/// rides (the trip map's button, "Only this ride"); the setting above
+/// stays as it is. Kept while the app is open.
+class RideLocationOffNotifier extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => const {};
+
+  void turnOff(String rideId) => state = {...state, rideId};
+
+  void turnOn(String rideId) => state = {...state}..remove(rideId);
+}
+
+final rideLocationOffProvider = NotifierProvider<RideLocationOffNotifier, Set<String>>(RideLocationOffNotifier.new);
+
+/// Whether this ride shares the passenger's position with the driver now:
+/// the setting on, and not turned off for this ride.
+bool locationSharedFor(WidgetRef ref, String rideId, {bool watch = false}) {
+  final on = watch ? ref.watch(showLocationToDriverProvider) : ref.read(showLocationToDriverProvider);
+  final off = watch ? ref.watch(rideLocationOffProvider) : ref.read(rideLocationOffProvider);
+  return on && !off.contains(rideId);
+}
