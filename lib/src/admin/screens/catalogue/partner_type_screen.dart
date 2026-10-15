@@ -360,6 +360,7 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
                 : StoredImage(_icon, size: 56, fallback: Icons.add_photo_alternate_outlined),
             const SizedBox(width: 12),
             BusyButton.tonal(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
               onPressed: _uploading ? null : _pickIcon,
               icon: const Icon(Icons.upload),
               child: Text(_icon.isEmpty ? 'Upload' : 'Replace'),

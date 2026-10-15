@@ -11,6 +11,7 @@ import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/maps/maps_data.dart';
 import 'package:get_ride/src/admin/screens/maps/maps_logic.dart';
 import 'package:get_ride/src/admin/screens/maps/maps_screen.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/admin/screens/security/api_keys_logic.dart';
 import 'package:get_ride/src/core/map_profile.dart';
 import 'package:get_ride/src/data/geo_service.dart';
@@ -28,6 +29,10 @@ class _FakeRepo implements MapsRepository {
     saved.add(s);
     return s;
   }
+
+  @override
+  Future<Set<String>> fallbackSlots() async => fallbacks;
+  Set<String> fallbacks = const {};
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -312,8 +317,13 @@ void main() {
     });
   });
 
-  Future<(_FakeRepo, _FakeProbe)> pump(WidgetTester tester, {bool dark = false, bool edit = true}) async {
-    final repo = _FakeRepo();
+  Future<(_FakeRepo, _FakeProbe)> pump(
+    WidgetTester tester, {
+    bool dark = false,
+    bool edit = true,
+    Set<String> fallbacks = const {},
+  }) async {
+    final repo = _FakeRepo()..fallbacks = fallbacks;
     final probe = _FakeProbe();
     await tester.binding.setSurfaceSize(const Size(500, 5000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -329,7 +339,7 @@ void main() {
           ),
           mapTestProbeProvider.overrideWithValue(probe),
         ],
-        child: MaterialApp(theme: dark ? ThemeData.dark() : ThemeData.light(), home: const AdminMapsScreen()),
+        child: MaterialApp(theme: appTheme(dark ? Brightness.dark : Brightness.light), home: const AdminMapsScreen()),
       ),
     );
     await tester.pumpAndSettle();
@@ -392,6 +402,27 @@ void main() {
         expect(s.profile('partner', d).reverse, ['tomtom'], reason: 'copied to $d');
         expect(s.profile('rider', d).reverse, ['nominatim']);
       }
+    });
+
+    testWidgets('a Google key missing here and on the server is flagged ($mode)', (tester) async {
+      await pump(tester, dark: dark);
+      await choose(tester, 'maps-reverse-android-0', 'Google · key');
+      expect(find.byKey(const ValueKey('maps-missing-keys'), skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets('…and with it synced, no notice, and the Keys tab says where it comes from ($mode)', (tester) async {
+      await pump(tester, dark: dark, fallbacks: {'google_geocoding'});
+      await choose(tester, 'maps-reverse-android-0', 'Google · key');
+      expect(find.byKey(const ValueKey('maps-missing-keys'), skipOffstage: false), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('maps-tab-keys')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('maps-key-google_geocoding')),
+          matching: find.text('In use, key from GitHub'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('keys and usage ($mode)', (tester) async {

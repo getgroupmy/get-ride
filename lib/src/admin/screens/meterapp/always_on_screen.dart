@@ -273,7 +273,12 @@ class _AdminAlwaysOnScreenState extends ConsumerState<AdminAlwaysOnScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    FilledButton.icon(onPressed: _add, icon: const Icon(Icons.add), label: const Text('Add')),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                      onPressed: _add,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add'),
+                    ),
                   ]),
                   const SizedBox(height: 4),
                   Text('Enter the page name from its URL (the part after the slash). Adding a page turns it on.',

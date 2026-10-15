@@ -16,6 +16,7 @@ class AdminPage extends ConsumerWidget {
     required this.body,
     this.actions = const [],
     this.floatingActionButton,
+    this.bottom,
   });
 
   final String title;
@@ -26,6 +27,8 @@ class AdminPage extends ConsumerWidget {
   final Widget body;
   final List<Widget> actions;
   final Widget? floatingActionButton;
+  /// Under the title, e.g. a [TabBar] (wrap the page in a [DefaultTabController]).
+  final PreferredSizeWidget? bottom;
 
   Widget? _leading(BuildContext context) {
     if (Navigator.of(context).canPop()) return const BackButton();
@@ -43,6 +46,7 @@ class AdminPage extends ConsumerWidget {
         title: Text(title),
         actions: actions,
         leading: _leading(context),
+        bottom: bottom,
       ),
       floatingActionButton: level == AccessLevel.edit ? floatingActionButton : null,
       body: Column(children: [
