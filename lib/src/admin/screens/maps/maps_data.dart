@@ -1,5 +1,7 @@
 // Admin → Settings → Maps (migration 0200): reading and saving the setting,
 // usage per provider, and the keys Admin → API Keys holds.
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -64,6 +66,23 @@ class MapsRepository {
     }
   }
 
+  /// The key slots `geo` has a secret for (synced from GitHub), names only;
+  /// empty when it can't say.
+  Future<Set<String>> fallbackSlots() async {
+    try {
+      final res = await _db.functions.invoke(
+        'geo',
+        method: HttpMethod.get,
+        queryParameters: const {'action': 'fallbacks'},
+      );
+      final data = res.data is String ? jsonDecode(res.data as String) : res.data;
+      final slots = data is Map ? data['slots'] : null;
+      return slots is List ? {for (final s in slots) '$s'} : const {};
+    } catch (_) {
+      return const {};
+    }
+  }
+
   Future<List<MapUsageRow>> usage({int days = 30}) async => [
     for (final r in await _db.rpc('map_usage', params: {'p_days': days}) as List)
       MapUsageRow.fromRow(Map<String, dynamic>.from(r as Map)),
@@ -86,3 +105,8 @@ final adminMapApiKeysProvider = FutureProvider.autoDispose<List<ApiProviderDef>>
   ref.watchLive('app_settings');
   return ref.watch(securityRepositoryProvider).apiProviders();
 });
+
+/// Key slots with a GitHub-synced secret on `geo` (see sync-map-keys.yml).
+final adminMapFallbackSlotsProvider = FutureProvider.autoDispose<Set<String>>(
+  (ref) => ref.watch(mapsRepositoryProvider).fallbackSlots(),
+);

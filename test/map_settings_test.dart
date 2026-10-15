@@ -30,6 +30,10 @@ class _FakeRepo implements MapsRepository {
   }
 
   @override
+  Future<Set<String>> fallbackSlots() async => fallbacks;
+  Set<String> fallbacks = const {};
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -312,8 +316,13 @@ void main() {
     });
   });
 
-  Future<(_FakeRepo, _FakeProbe)> pump(WidgetTester tester, {bool dark = false, bool edit = true}) async {
-    final repo = _FakeRepo();
+  Future<(_FakeRepo, _FakeProbe)> pump(
+    WidgetTester tester, {
+    bool dark = false,
+    bool edit = true,
+    Set<String> fallbacks = const {},
+  }) async {
+    final repo = _FakeRepo()..fallbacks = fallbacks;
     final probe = _FakeProbe();
     await tester.binding.setSurfaceSize(const Size(500, 5000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -392,6 +401,27 @@ void main() {
         expect(s.profile('partner', d).reverse, ['tomtom'], reason: 'copied to $d');
         expect(s.profile('rider', d).reverse, ['nominatim']);
       }
+    });
+
+    testWidgets('a Google key missing here and on the server is flagged ($mode)', (tester) async {
+      await pump(tester, dark: dark);
+      await choose(tester, 'maps-reverse-android-0', 'Google · key');
+      expect(find.byKey(const ValueKey('maps-missing-keys'), skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets('…and with it synced, no notice, and the Keys tab says where it comes from ($mode)', (tester) async {
+      await pump(tester, dark: dark, fallbacks: {'google_geocoding'});
+      await choose(tester, 'maps-reverse-android-0', 'Google · key');
+      expect(find.byKey(const ValueKey('maps-missing-keys'), skipOffstage: false), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('maps-tab-keys')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('maps-key-google_geocoding')),
+          matching: find.text('In use, key from GitHub'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('keys and usage ($mode)', (tester) async {

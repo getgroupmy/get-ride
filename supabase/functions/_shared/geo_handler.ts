@@ -13,6 +13,9 @@
  *       → { place: { name, address, lat, lng, country, state, city, suburb } | null }
  *   GET ?action=route&provider=…&role=…&device=…&points=lat,lng;lat,lng[;…]
  *       → { route: { distanceKm, durationMin, points: [[lat, lng], …] } | null }
+ *   GET ?action=fallbacks
+ *       → { slots: ["google_tiles", …] }  the key slots with a secret synced from GitHub
+ *         (names only, never a key), so Admin → Settings → Maps doesn't call them missing.
  *
  * A provider is only asked for a role and device whose profile lists it.
  * 429 { error: "rate_limited" } past the per-address limit.
@@ -21,6 +24,7 @@ import {
   cacheKey,
   cacheSeconds,
   DIRECT,
+  FALLBACK_SECRETS,
   googleSessionBody,
   type HttpRequest,
   isDevice,
@@ -82,6 +86,9 @@ function directUrl(apiProviders: unknown, ref: string | undefined): string | nul
 
 export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDeps): Promise<GeoAnswer> {
   const action = params.get("action") ?? "";
+  if (action === "fallbacks") {
+    return { status: 200, body: { slots: Object.keys(FALLBACK_SECRETS).filter((s) => !!deps.fallbackKey?.(s)) } };
+  }
   const role = params.get("role") ?? "";
   const device = params.get("device") ?? "";
   if (!isRole(role) || !isDevice(device)) return bad("Give role (rider|partner) and device (android|ios|web|desktop).");

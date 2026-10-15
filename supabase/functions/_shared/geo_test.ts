@@ -347,6 +347,12 @@ Deno.test("fallback: the function's own Google secrets when Admin → API Keys h
   assertEquals((await handleGeo(q("action=search&provider=google&role=rider&device=android&q=klcc"), "ip", d2)).status, 200);
   assert(asked[0].includes("GPLACES-ENV"));
 
+  // The admin page asks which slots have one: names only.
+  const slots = await handleGeo(q("action=fallbacks"), "ip", d2);
+  assertEquals(slots.body, { slots: ["google_tiles", "google_places", "google_routes"] });
+  assert(!JSON.stringify(slots.body).includes("GMAP"));
+  assertEquals((await handleGeo(q("action=fallbacks"), "ip", deps().d)).body, { slots: [] });
+
   // Neither: Google isn't available.
   const { d: d3 } = deps({ settings: () => Promise.resolve({ config, apiProviders: [] }) });
   assert((await handleGeo(q("action=search&provider=google&role=rider&device=android&q=klcc"), "ip", d3)).status !== 200);
