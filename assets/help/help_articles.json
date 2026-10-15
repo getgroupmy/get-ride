@@ -780,7 +780,7 @@
       "Download invoice",
       "Resit perjalanan"
     ],
-    "answer": "Open Trips. Every ride you booked or drove is listed; tap a finished one for its receipt, with the booking number, route, times, driver and car, payment mode, the fare and any tolls or other charges. Print it, Share PDF or Copy it as text.",
+    "answer": "Open Trips for the rides you booked; as a driver, open Trip history in the driver menu for the trips you drove. Tap a finished one for its receipt, with the booking number, route, times, driver and car, payment mode, the fare and any tolls or other charges. Print it, tap PDF to share or download it, or Copy it as text.",
     "keywords": [
       "trips",
       "history",

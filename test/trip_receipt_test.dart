@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/trip_receipt.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ride/trip_receipt_screen.dart';
+import 'package:get_ride/src/widgets/pdf_actions.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -94,7 +95,49 @@ void main() {
     expect(find.text('GR-A1B2C3D4'), findsWidgets);
     expect(find.text('Ali'), findsOneWidget);
     expect(find.byKey(const ValueKey('receipt-print')), findsOneWidget);
+    // One PDF button, which asks whether to share or download.
+    expect(find.text('Share PDF'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('receipt-pdf')));
+    // The button spins while the sheet is open, so it never settles.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('pdf-actions')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pdf-share')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pdf-download')), findsOneWidget);
+    // Dismissed: nothing is built or sent.
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('pdf-actions')), findsNothing);
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('the share-or-download sheet answers the choice (${dark ? 'dark' : 'light'})', (tester) async {
+      PdfAction? picked;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: dark ? ThemeData.dark() : ThemeData.light(),
+          home: Builder(
+            builder: (c) => TextButton(
+              onPressed: () async => picked = await askPdfAction(c, title: 'Receipt GR-1'),
+              child: const Text('PDF'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('PDF'));
+      await tester.pumpAndSettle();
+      expect(find.text('Receipt GR-1'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('pdf-download')));
+      await tester.pumpAndSettle();
+      expect(picked, PdfAction.download);
+      await tester.tap(find.text('PDF'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('pdf-share')));
+      await tester.pumpAndSettle();
+      expect(picked, PdfAction.share);
+    });
+  }
 
   test("the driver's copy shows the commission and what they keep", () {
     final charged = TripReceipt.fromRide(

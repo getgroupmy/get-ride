@@ -16,6 +16,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/pdf_actions.dart';
 import '../../widgets/ride_map.dart';
 import '../../widgets/ride_rating_card.dart';
 import '../../widgets/trip_safety.dart';
@@ -196,12 +197,17 @@ class _ReceiptBody extends StatelessWidget {
                     ),
                     child: const Text('Print'),
                   ),
+                  // Share or download, asked on tap.
                   BusyButton.outlined(
-                    key: const ValueKey('receipt-share'),
-                    icon: const Icon(Icons.ios_share),
-                    onPressed: () async =>
-                        Printing.sharePdf(bytes: await buildTripReceiptPdf(rc), filename: '${rc.bookingNo}.pdf'),
-                    child: const Text('Share PDF'),
+                    key: const ValueKey('receipt-pdf'),
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    onPressed: () => sharePdfOrDownload(
+                      context,
+                      filename: '${rc.bookingNo}.pdf',
+                      title: 'Receipt ${rc.bookingNo}',
+                      build: () => buildTripReceiptPdf(rc),
+                    ),
+                    child: const Text('PDF'),
                   ),
                   BusyButton.outlined(
                     key: const ValueKey('receipt-copy'),
