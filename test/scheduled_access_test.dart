@@ -137,10 +137,29 @@ void main() {
           booking('a1', 1),
           booking('a2', 3),
         ], theme: dark ? ThemeData.dark() : ThemeData.light());
-        expect(find.textContaining('Scheduled ride · Fri 16 Oct, 09:30'), findsOneWidget);
-        expect(find.text('Pickup a1 · +1 more'), findsOneWidget);
+        expect(find.text('Scheduled ride · Fri 16 Oct, 09:30 · +1 more'), findsOneWidget);
+        expect(find.text('Pickup a1'), findsOneWidget);
       });
     }
+
+    testWidgets('a long pickup address does not hide how many more', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(360, 400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final long = ScheduledRide(
+        id: 'a1',
+        pickupAt: DateTime(2026, 10, 16, 9, 30),
+        status: ScheduledStatus.assigned,
+        pickupAddress: 'Mid Valley Megamall, Lingkaran Syed Putra, Mid Valley City, 59200 Kuala Lumpur',
+      );
+      await pump(tester, [long, booking('a2', 3), booking('a3', 5)]);
+      expect(find.text('Scheduled ride · Fri 16 Oct, 09:30 · +2 more'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('no count with a single booking', (tester) async {
+      await pump(tester, [booking('a1', 1)]);
+      expect(find.text('Scheduled ride · Fri 16 Oct, 09:30'), findsOneWidget);
+    });
 
     testWidgets('nothing when none is taken', (tester) async {
       await pump(tester, const []);

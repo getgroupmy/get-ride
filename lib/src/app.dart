@@ -381,7 +381,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '/drive/permit', builder: (_, _) => const DriverPermitScreen()),
           GoRoute(path: '/drive/my-ride', builder: (_, _) => const MyRideCodeScreen()),
-          GoRoute(path: '/drive/scheduled', builder: (_, _) => const ScheduledJobsScreen()),
+          GoRoute(
+            path: '/drive/scheduled',
+            builder: (_, s) => ScheduledJobsScreen(initialTab: s.uri.queryParameters['tab'] == 'mine' ? 1 : 0),
+          ),
           GoRoute(path: '/drive/earnings', builder: (_, _) => const EarningsScreen()),
           GoRoute(
             path: '/drive/history',

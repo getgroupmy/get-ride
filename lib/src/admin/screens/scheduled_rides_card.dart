@@ -86,6 +86,7 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
   late final _lateFee = TextEditingController(text: _plain(widget.stored.lateCancelFee));
   late final _release = TextEditingController(text: '${widget.stored.releaseMinutes}');
   late final _reminder = TextEditingController(text: '${widget.stored.reminderMinutes}');
+  late final _notice = TextEditingController(text: '${widget.stored.interestNoticeMinutes}');
 
   static String _plain(double v) => v == v.roundToDouble() ? '${v.round()}' : '$v';
 
@@ -98,6 +99,7 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
     _lateFee,
     _release,
     _reminder,
+    _notice,
   ];
 
   @override
@@ -120,6 +122,7 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       d(_lateFee),
       i(_release),
       i(_reminder),
+      i(_notice),
     ];
     if (values.contains(null)) return null;
     return ScheduledRidesConfig(
@@ -134,6 +137,7 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
       advance: _advance,
       releaseMinutes: i(_release)!,
       reminderMinutes: i(_reminder)!,
+      interestNoticeMinutes: i(_notice)!,
     );
   }
 
@@ -260,14 +264,28 @@ class _ConfigFormState extends ConsumerState<_ConfigForm> {
           onSelectionChanged: edit ? (v) => setState(() => _advance = v.first) : null,
         ),
         const SizedBox(height: 8),
-        _number('release', _release, 'Release (minutes before pickup)', '5–180'),
+        Wrap(
+          spacing: 16,
+          runSpacing: 8,
+          children: [
+            _number('release', _release, 'Release (minutes before pickup)', '5–180'),
+            _number(
+              'interest-notice',
+              _notice,
+              'Ready-to-accept notice (minutes before)',
+              'Interested drivers are told they can accept; 0: off',
+            ),
+          ],
+        ),
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
             _advance
                 ? 'Drivers see bookings ahead and take them. At release the ride goes to that driver; a booking '
                       'nobody took goes to every driver nearby.'
-                : 'Drivers first see a booking at release, as an ordinary request.',
+                : 'Drivers see every booking on Upcoming and mark the ones they want. At the ready-to-accept '
+                      'notice those drivers are told, and the first to accept gets it; a booking nobody took goes '
+                      'to every driver nearby at release.',
             style: t.textTheme.bodySmall,
           ),
         ),

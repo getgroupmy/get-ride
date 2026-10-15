@@ -578,3 +578,23 @@ class QrBookingError implements Exception {
     QrBookingFailure.notAvailable => "Booking a driver by QR isn't available yet. Please try again later.",
   };
 }
+
+/// The codes shown under a QR on My QR, to read out, type or paste: the
+/// QR's own code (what it carries, accepted wherever a scan is), and the
+/// short code people type for the same thing: the referral code under
+/// GET.Referral, the My Ride code under GET.me.
+List<({String id, String label, String value})> myQrCodeRows(
+  PersonalQr qr, {
+  String? referralCode,
+  String? myRideCode,
+}) {
+  final rows = <({String id, String label, String value})>[];
+  final ref = referralCode?.trim() ?? '';
+  final ride = myRideCode?.trim() ?? '';
+  if (qr.kind == QrKind.referral && ref.isNotEmpty) rows.add((id: 'referral', label: 'Referral code', value: ref));
+  if (qr.kind == QrKind.me && ride.isNotEmpty) {
+    rows.add((id: 'my-ride', label: 'My Ride code', value: formatMyRideCode(ride)));
+  }
+  rows.add((id: 'qr', label: '${qr.kind.label} code', value: qr.token));
+  return rows;
+}
