@@ -194,7 +194,8 @@ export type Delivery =
  *   * an Android build with the call screen gets ride calls and their end
  *     as a data message, so it rings (or stops ringing) itself;
  *   * an iPhone whose account has a VoIP token is not also sent the "is
- *     calling" notification while [voipReady]: CallKit is already ringing;
+ *     calling" notification while [voipReady]: CallKit is already ringing
+ *     (unless Apple refuses the VoIP push: see [voipFallbacks]);
  *   * everything else is an ordinary notification, as before.
  */
 export function planDeliveries(rows: DeviceRow[], kind: unknown, voipReady: boolean): Delivery[] {
@@ -235,6 +236,44 @@ export function planDeliveries(rows: DeviceRow[], kind: unknown, voipReady: bool
     out.push({ via: "fcm", token, style: "alert" });
   }
   return out;
+}
+
+/**
+ * The iPhones [planDeliveries] left to CallKit, so a VoIP push Apple refused
+ * (or one that could not be sent at all) still tells someone: for each
+ * account with a VoIP token, the tokens of its VoIP pushes and the iPhone
+ * tokens that were not sent the "is calling" notification.
+ */
+export interface VoipFallback {
+  voip: string[];
+  iphones: string[];
+}
+
+export function voipFallbacks(rows: DeviceRow[], kind: unknown, voipReady: boolean): VoipFallback[] {
+  if (kind !== RIDE_CALL || !voipReady) return [];
+  const byProfile = new Map<string, VoipFallback>();
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const token = typeof row?.token === "string" ? row.token.trim() : "";
+    if (!token || seen.has(token) || !row.profile_id) continue;
+    seen.add(token);
+    if (row.platform !== VOIP_PLATFORM && (row.platform !== "ios" || isExpoToken(token))) continue;
+    const entry = byProfile.get(row.profile_id) ?? { voip: [], iphones: [] };
+    (row.platform === VOIP_PLATFORM ? entry.voip : entry.iphones).push(token);
+    byProfile.set(row.profile_id, entry);
+  }
+  return [...byProfile.values()].filter((e) => e.voip.length > 0 && e.iphones.length > 0);
+}
+
+/**
+ * The "is calling" notifications owed once the VoIP pushes are done: every
+ * account none of whose VoIP tokens reached Apple ([rang]) is told on its
+ * iPhones the ordinary way, rather than not at all.
+ */
+export function fallbackAlerts(fallbacks: VoipFallback[], rang: Set<string>): Delivery[] {
+  return fallbacks
+    .filter((f) => !f.voip.some((t) => rang.has(t)))
+    .flatMap((f) => f.iphones.map((token): Delivery => ({ via: "fcm", token, style: "alert" })));
 }
 
 /**

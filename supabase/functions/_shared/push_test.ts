@@ -7,6 +7,7 @@ import { assertEquals } from "jsr:@std/assert@1.0.19";
 
 import {
   ANDROID_CHANNEL_ID,
+  fallbackAlerts,
   fcmCallMessage,
   fcmData,
   collapseIdFor,
@@ -27,6 +28,7 @@ import {
   readAllPages,
   resolveAudience,
   splitTokens,
+  voipFallbacks,
 } from "./push.ts";
 
 Deno.test("Expo tokens are told apart from FCM tokens", () => {
@@ -164,6 +166,32 @@ Deno.test("VoIP tokens get ride calls only, and only with the APNs key", () => {
     { via: "fcm", token: "other-iphone", style: "alert" },
   ]);
   assertEquals(planDeliveries(rows, "ride_request", true).some((d) => d.via === "voip"), false);
+});
+
+Deno.test("an iPhone whose VoIP push did not reach Apple is sent the notification instead", () => {
+  const rows = [
+    { token: "voip-p", platform: "ios_voip", profile_id: "p" },
+    { token: "iphone-p", platform: "ios", profile_id: "p", capabilities: ["call_ui"] },
+    { token: "voip-q", platform: "ios_voip", profile_id: "q" },
+    { token: "iphone-q", platform: "ios", profile_id: "q" },
+    { token: "android-q", platform: "android", profile_id: "q", capabilities: ["call_ui"] },
+    { token: "voip-only", platform: "ios_voip", profile_id: "r" },
+  ];
+  const fallbacks = voipFallbacks(rows, "ride_call", true);
+  assertEquals(fallbacks, [
+    { voip: ["voip-p"], iphones: ["iphone-p"] },
+    { voip: ["voip-q"], iphones: ["iphone-q"] },
+  ]);
+  // p's CallKit rang; q's VoIP push was refused, so q's iPhone is told the ordinary way.
+  assertEquals(fallbackAlerts(fallbacks, new Set(["voip-p"])), [{ via: "fcm", token: "iphone-q", style: "alert" }]);
+  // Nothing reached Apple (a bad key): every withheld iPhone is told.
+  assertEquals(fallbackAlerts(fallbacks, new Set()).map((d) => d.token), ["iphone-p", "iphone-q"]);
+  // Only ride calls with the key withhold anything.
+  assertEquals(voipFallbacks(rows, "ride_call", false), []);
+  assertEquals(voipFallbacks(rows, "ride_call_end", true), []);
+  // What is owed is exactly what planDeliveries withheld.
+  const planned = planDeliveries(rows, "ride_call", true).map((d) => d.token);
+  for (const f of fallbacks) for (const t of f.iphones) assertEquals(planned.includes(t), false);
 });
 
 Deno.test("devices are deduplicated and blanks dropped", () => {

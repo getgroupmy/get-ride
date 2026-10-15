@@ -242,14 +242,67 @@ class PushService {
     } catch (_) {}
   }
 
+  /// Whether the signed-in user has turned notifications off for the app
+  /// (refused, not just never asked): calls and new rides can't reach them
+  /// while it's closed, so the app says so (NotificationsOffBanner).
+  final notificationsOff = ValueNotifier<bool>(false);
+
+  /// Back from the background: notifications may have been switched on (or
+  /// off) in Settings meanwhile. Switched on, the phone is registered now.
+  Future<void> recheckPermission() async {
+    if (_db.auth.currentUser == null) return;
+    try {
+      final status = (await _messaging.getNotificationSettings()).authorizationStatus;
+      final off = status == AuthorizationStatus.denied || status == AuthorizationStatus.deniedPermanently;
+      final wasOff = notificationsOff.value;
+      notificationsOff.value = off;
+      if (wasOff && !off) unawaited(_register());
+      // The VoIP token doesn't need notifications, and may have come late.
+      unawaited(_registerVoip());
+    } catch (_) {}
+  }
+
+  /// At launch, once the splash is gone: the system's question about
+  /// notifications, if it can still be shown (never answered on an iPhone,
+  /// not allowed yet on Android), whether or not anyone is signed in.
+  bool _launchAsked = kIsWeb;
+
+  Future<void> askOnLaunch() async {
+    if (_launchAsked) return;
+    try {
+      final status = (await _messaging.getNotificationSettings()).authorizationStatus;
+      final ask = defaultTargetPlatform == TargetPlatform.iOS
+          ? status == AuthorizationStatus.notDetermined
+          : status != AuthorizationStatus.authorized && status != AuthorizationStatus.deniedPermanently;
+      if (ask) await _messaging.requestPermission();
+    } catch (e) {
+      debugPrint('[push] launch permission ask: $e');
+    }
+    _launchAsked = true;
+    if (_db.auth.currentUser != null) {
+      _registeredFor = null;
+      await _register();
+    }
+  }
+
   Future<void> _register({String? token}) async {
     final userId = _db.auth.currentUser?.id;
-    if (userId == null || _registering) return;
+    if (userId == null) return;
+    // A call rings CallKit through PushKit, which needs no notification
+    // permission: its token is stored whatever the answer below.
+    unawaited(_registerVoip());
+    if (_registering) return;
     _registering = true;
     try {
-      final settings = await _messaging.requestPermission();
+      // Until the launch ask (after the splash) the answer is only read, so
+      // no question appears over the splash.
+      final settings = _launchAsked ? await _messaging.requestPermission() : await _messaging.getNotificationSettings();
       final allowed = settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
+      if (_launchAsked) {
+        notificationsOff.value = settings.authorizationStatus == AuthorizationStatus.denied ||
+            settings.authorizationStatus == AuthorizationStatus.deniedPermanently;
+      }
       if (!allowed) {
         debugPrint('[push] notification permission not granted');
         return;
@@ -263,7 +316,6 @@ class PushService {
       await _registerDevice(fcmToken, pushPlatformName(defaultTargetPlatform));
       _registeredToken = fcmToken;
       _registeredFor = key;
-      unawaited(_registerVoip());
       unawaited(_sendMode());
     } catch (e) {
       debugPrint('[push] registration failed: $e');
@@ -357,19 +409,35 @@ class PushService {
   static bool _missingRpc(PostgrestException e) =>
       e.code == 'PGRST202' || e.code == '42883' || e.message.contains('push_register_device');
 
+  bool _registeringVoip = false;
+
   /// The iPhone's PushKit token, which rings a closed app's CallKit screen
   /// (send-push only sends it ride calls, and only with the APNs key).
+  /// iOS hands it over when it likes, often a moment after launch, so a
+  /// token not there yet (or a failed store) is tried again a few times.
   Future<void> _registerVoip() async {
     if (!nativeCallRingerAvailable || defaultTargetPlatform != TargetPlatform.iOS) return;
-    if (_db.auth.currentUser == null) return;
+    if (_registeringVoip) return;
+    _registeringVoip = true;
     try {
-      final token = await NativeCallRinger().voipToken();
-      if (token == null || token == _registeredVoip) return;
-      await _registerDevice(token, voipPlatform);
-      _registeredVoip = token;
-      unawaited(_sendMode());
-    } catch (e) {
-      debugPrint('[push] VoIP registration failed: $e');
+      for (var attempt = 0; attempt < voipRetryDelays.length + 1; attempt++) {
+        if (attempt > 0) await Future<void>.delayed(voipRetryDelays[attempt - 1]);
+        if (_db.auth.currentUser == null) return;
+        try {
+          final token = await NativeCallRinger().voipToken();
+          if (token == _registeredVoip && token != null) return;
+          if (token == null) continue;
+          await _registerDevice(token, voipPlatform);
+          _registeredVoip = token;
+          unawaited(_sendMode());
+          return;
+        } catch (e) {
+          debugPrint('[push] VoIP registration failed: $e');
+        }
+      }
+      debugPrint('[push] no VoIP token from iOS yet');
+    } finally {
+      _registeringVoip = false;
     }
   }
 
@@ -379,6 +447,7 @@ class PushService {
     _registeredToken = null;
     _registeredFor = null;
     _registeredVoip = null;
+    notificationsOff.value = false;
     _modeSent = null;
     _locatedAt = null;
     _locatedWhen = null;
