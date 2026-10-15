@@ -67,10 +67,25 @@ List<MenuEntry> resolveSideMenu(Map<String, dynamic> settings, String menu) {
     for (final e in natural)
       if (!hidden.contains(e.id)) e,
   ];
-  int rank(MenuEntry e) {
-    final i = order.indexOf(e.id);
-    return i < 0 ? order.length + natural.indexOf(e) : i;
+  // An item the saved order doesn't name (one added to the app after the
+  // admin arranged the menu) goes after the item it follows by default
+  // when the admin placed that one; otherwise at the end, as before.
+  final placed = [...order];
+  final next = <String, int>{};
+  for (var i = 0; i < natural.length; i++) {
+    final id = natural[i].id;
+    if (placed.contains(id)) continue;
+    final anchor = i == 0 ? null : natural[i - 1].id;
+    if (anchor == null || !order.contains(anchor)) {
+      placed.add(id);
+      continue;
+    }
+    final at = next[anchor] ?? placed.indexOf(anchor) + 1;
+    placed.insert(at, id);
+    next[anchor] = at + 1;
+    next.updateAll((k, v) => k != anchor && v >= at ? v + 1 : v);
   }
+  int rank(MenuEntry e) => placed.indexOf(e.id);
 
   visible.sort((a, b) => rank(a).compareTo(rank(b)));
   return visible;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../admin/admin_providers.dart' show adminAccessProvider;
 import '../../config.dart';
 import '../../core/backend_route.dart';
 import '../../core/obd_adapters.dart';
@@ -15,6 +16,7 @@ import 'navigation_app_card.dart';
 import 'passkeys_screen.dart';
 import 'permissions_card.dart';
 import 'rules_terms_card.dart';
+import 'show_location_screen.dart';
 import '../../widgets/side_menu_host.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -70,6 +72,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
             const PasskeysTile(),
+            const ShowLocationTile(),
             const ObdReaderSettingsTile(),
             const RulesTermsCard(),
             Card(
@@ -81,18 +84,30 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => context.push('/account/settings/delete'),
               ),
             ),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.storage_outlined),
-                title: const Text('Backend'),
-                // The second address when this network cannot look up the
-                // project's own (core/backend_route.dart).
-                subtitle: Text(backendRouteText(AppConfig.supabaseUrl)),
-              ),
-            ),
+            const BackendSettingsTile(),
           ]),
         ),
       ]),
+    );
+  }
+}
+
+/// Which server the app talks to; shown to admins only.
+class BackendSettingsTile extends ConsumerWidget {
+  const BackendSettingsTile({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!(ref.watch(adminAccessProvider).value?.isAdmin ?? false)) return const SizedBox.shrink();
+    return Card(
+      child: ListTile(
+        key: const ValueKey('settings-backend'),
+        leading: const Icon(Icons.storage_outlined),
+        title: const Text('Backend'),
+        // The second address when this network cannot look up the
+        // project's own (core/backend_route.dart).
+        subtitle: Text(backendRouteText(AppConfig.supabaseUrl)),
+      ),
     );
   }
 }

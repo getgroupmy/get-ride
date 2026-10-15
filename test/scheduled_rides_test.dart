@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/scheduled_rides.dart';
 import 'package:get_ride/src/data/scheduled_ride_repository.dart';
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmFooter;
+import 'package:get_ride/src/features/ride/pickup_time_sheet.dart';
 import 'package:get_ride/src/features/ride/scheduled_rides_screen.dart';
 
 const _config = ScheduledRidesConfig(
@@ -134,29 +136,71 @@ void main() {
       child: MaterialApp(home: child),
     );
 
-    testWidgets('the When row shows the fee and the free cancellation', (tester) async {
-      DateTime? changed = DateTime(2000);
-      final at = DateTime(2026, 10, 14, 18, 30);
+    testWidgets('Now books at once; Later books only after a time is confirmed', (tester) async {
+      final calls = <String>[];
+
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: ScheduleRow(
-              at: at,
-              config: _config,
-              fare: 20,
-              money: (v) => 'RM ${v.toStringAsFixed(2)}',
-              owed: 5,
-              onChanged: (v) => changed = v,
+            body: Builder(
+              builder: (context) => ConfirmFooter(
+                payment: 'cash',
+                onPayment: () {},
+                autoAccept: false,
+                onAutoAccept: (_) {},
+                label: 'Find a driver',
+                onFind: () async => calls.add('now'),
+                pickLater: () => showPickupTimeSheet(
+                  context,
+                  _config,
+                  note: '+ RM 4.00 scheduling fee',
+                  clock: () => DateTime(2026, 10, 15, 16, 52),
+                ),
+                onLater: (at) async => calls.add('later ${at.hour}:${at.minute}'),
+                owedNote: '+ RM 5.00 late fee from an earlier booking',
+              ),
             ),
           ),
         ),
       );
-      final summary = tester.widget<Text>(find.byKey(const ValueKey('schedule-summary'))).data!;
-      expect(summary, contains('RM 4.00 scheduling fee'));
-      expect(summary, contains('Free cancellation until 17:30'));
-      expect(summary, contains('RM 5.00 late fee'));
-      await tester.tap(find.byKey(const ValueKey('schedule-switch')));
-      expect(changed, isNull, reason: 'switching off books now');
+      expect(find.byKey(const ValueKey('book')), findsNothing, reason: 'split into Now and Later');
+      expect(find.text('+ RM 5.00 late fee from an earlier booking'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('book-now')));
+      await tester.pumpAndSettle();
+      expect(calls, ['now']);
+
+      await tester.tap(find.byKey(const ValueKey('book-later')));
+      await tester.pumpAndSettle();
+      expect(find.text('+ RM 4.00 scheduling fee'), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10)); // closed: nothing booked
+      await tester.pumpAndSettle();
+      expect(calls, ['now']);
+
+      await tester.tap(find.byKey(const ValueKey('book-later')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('pickup-confirm')));
+      await tester.pumpAndSettle();
+      expect(calls, ['now', 'later 17:30']);
+    });
+
+    testWidgets('without Later the one Find a driver button stays', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: Scaffold(
+            body: ConfirmFooter(
+              payment: 'cash',
+              onPayment: () {},
+              autoAccept: false,
+              onAutoAccept: (_) {},
+              label: 'Find a driver',
+              onFind: () async {},
+            ),
+          ),
+        ),
+      );
+      expect(find.byKey(const ValueKey('book')), findsOneWidget);
+      expect(find.byKey(const ValueKey('book-now-later')), findsNothing);
     });
 
     testWidgets('the bookings page lists upcoming before past, and warns of the late fee', (tester) async {

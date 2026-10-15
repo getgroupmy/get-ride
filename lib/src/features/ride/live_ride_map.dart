@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/live_eta.dart';
+import '../../core/ride_cancel.dart' show riderLocationForDriver;
 import '../../core/ride_confirm.dart' show tripRecenterOffset;
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
@@ -253,6 +254,9 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     final r = widget.ride;
     final route = _target == null ? null : _route;
     final driver = _driver;
+    // Where the passenger is waiting, as their phone shares it (Settings →
+    // Show location to your driver), for the driver on the way.
+    final waiting = widget.partner ? riderLocationForDriver(r, _now) : null;
     // The road still ahead of the car, and the time and distance it takes.
     final ahead = route == null || driver == null ? null : routeAhead(route.points, driver);
     final eta = route == null
@@ -287,6 +291,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
           },
           // inDrive's search: white rings pulse out of the pickup.
           extraLayers: [if (_searching) radarPulseLayer(_pickup!)],
+          extraMarkers: [if (waiting != null) passengerHereMarker(LatLng(waiting.lat, waiting.lng))],
         ),
         MapBottomInset.listen(
           context,
@@ -376,3 +381,49 @@ class _Cam {
     );
   }
 }
+
+/// The passenger's own position on the driver's map: a person in a ring of
+/// the theme's colour, with "Passenger" under it.
+Marker passengerHereMarker(LatLng at) => Marker(
+  point: at,
+  width: 96,
+  height: 76,
+  alignment: Alignment.topCenter,
+  child: Builder(
+    builder: (context) {
+      final t = Theme.of(context);
+      return Semantics(
+        label: 'Passenger is here',
+        child: Column(
+          key: const ValueKey('passenger-here'),
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: t.colorScheme.primaryContainer,
+                shape: BoxShape.circle,
+                border: Border.all(color: t.colorScheme.surface, width: 3),
+                boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
+              ),
+              child: Icon(Icons.person, size: 20, color: t.colorScheme.onPrimaryContainer),
+            ),
+            const SizedBox(height: 2),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(color: t.colorScheme.surface, borderRadius: BorderRadius.circular(6)),
+              child: Text(
+                'Passenger',
+                maxLines: 1,
+                overflow: TextOverflow.fade,
+                softWrap: false,
+                style: t.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  ),
+);

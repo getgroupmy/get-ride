@@ -4,10 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../admin/admin_providers.dart';
 import '../../core/referral.dart';
-import '../../admin/screens/meterapp/display_logic.dart' show inviteFriendsMenuItemId;
+import '../../admin/screens/meterapp/display_logic.dart' show inviteFriendsMenuItemId, scheduledRidesMenuItemId;
 import '../../core/side_menu.dart';
 import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../../data/app_display_repository.dart';
+import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
@@ -22,6 +23,7 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
     'teksi-ev': '/ev',
     'city': '/',
     'request-history': '/trips',
+    'scheduled-rides': '/trips/scheduled',
     'my-ride': '/account/my-ride',
     'my-qr': '/account/my-qr',
     'freight': '/',
@@ -51,6 +53,10 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
   openRoute(router, r);
   return true;
 }
+
+/// Whether a rider menu row shows now: Scheduled Request only while
+/// scheduled rides are on.
+bool riderMenuRowShows(String id, {bool scheduledRides = false}) => id != scheduledRidesMenuItemId || scheduledRides;
 
 /// Asks before signing out; true when the rider confirmed.
 Future<bool> confirmSignOut(BuildContext context) async {
@@ -104,7 +110,11 @@ class RiderMenu extends ConsumerWidget {
     final profile = ref.watch(profileProvider);
     final isAdmin = ref.watch(adminAccessProvider).value?.isAdmin ?? false;
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
-    final menu = resolveSideMenu(blob, 'user');
+    final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
+    final menu = [
+      for (final e in resolveSideMenu(blob, 'user'))
+        if (riderMenuRowShows(e.id, scheduledRides: scheduled)) e,
+    ];
     final mode = sideMenuModeButton(blob, 'user');
     void go(String route) {
       final router = GoRouter.of(context);

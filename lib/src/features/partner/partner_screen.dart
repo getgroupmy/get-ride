@@ -48,6 +48,7 @@ import 'partner_menu.dart';
 import 'partner_mode_picker.dart' show pendingPartnerModeProvider;
 import 'request_sheet.dart';
 import 'partner_status_panel.dart';
+import 'scheduled_jobs_screen.dart' show PartnerUpcomingBookingCard;
 import 'vehicle_picker.dart';
 import '../../core/partner_modes.dart';
 import '../../core/vehicle_assignment.dart';
@@ -699,6 +700,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         ),
                       ),
                     ),
+                    // The next scheduled ride the driver took, under the switch.
+                    const PartnerUpcomingBookingCard(),
                     if (modes.length > 1 || modes.any((m) => m.isTeksi))
                       Card(
                         key: const ValueKey('partner-modes'),

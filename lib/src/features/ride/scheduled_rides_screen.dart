@@ -1,6 +1,6 @@
-// Scheduled rides for the rider (migration 0189): the "When" row on the
-// confirm step, the pickup time picker, the upcoming card on Home and the
-// bookings page (Trips → Scheduled).
+// Scheduled rides for the rider (migration 0189): the upcoming card on Home
+// and the bookings page (Trips → Scheduled). The pickup time is picked on
+// the Choose date and time sheet (pickup_time_sheet.dart).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,133 +11,9 @@ import '../../core/scheduled_rides.dart';
 import '../../data/scheduled_ride_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
-import 'confirm_parts.dart' show ConfirmSwitch;
 
 /// "Tue 14 Oct, 18:30".
 String pickupLabel(DateTime at) => DateFormat('EEE d MMM, HH:mm').format(at);
-
-/// Asks for a pickup day, then the time; null when closed or out of range
-/// (the reason is shown).
-Future<DateTime?> pickPickupTime(BuildContext context, ScheduledRidesConfig c, {DateTime? initial}) async {
-  final now = DateTime.now();
-  final first = earliestPickup(now, c);
-  final last = latestPickup(now, c);
-  final start = initial != null && pickupTimeProblem(initial, now, c) == null ? initial : first;
-  final day = await showDatePicker(
-    context: context,
-    initialDate: DateTime(start.year, start.month, start.day),
-    firstDate: DateTime(first.year, first.month, first.day),
-    lastDate: DateTime(last.year, last.month, last.day),
-    helpText: 'Pickup day',
-  );
-  if (day == null || !context.mounted) return null;
-  final time = await showTimePicker(
-    context: context,
-    initialTime: TimeOfDay.fromDateTime(start),
-    helpText: 'Pickup time',
-  );
-  if (time == null || !context.mounted) return null;
-  final at = DateTime(day.year, day.month, day.day, time.hour, time.minute);
-  final problem = pickupTimeProblem(at, DateTime.now(), c);
-  if (problem != null) {
-    showInfo(context, problem);
-    return null;
-  }
-  return at;
-}
-
-/// The confirm step's "When" row: now, or a pickup time with the
-/// scheduling fee and the free-cancellation window.
-class ScheduleRow extends StatelessWidget {
-  const ScheduleRow({
-    super.key,
-    required this.at,
-    required this.config,
-    required this.fare,
-    required this.money,
-    required this.onChanged,
-    this.owed = 0,
-  });
-
-  final DateTime? at;
-  final ScheduledRidesConfig config;
-  final double fare;
-  final String Function(double) money;
-  final ValueChanged<DateTime?> onChanged;
-
-  /// Late-cancel fees from earlier bookings, added to this ride.
-  final double owed;
-
-  Future<void> _pick(BuildContext context) async {
-    final picked = await pickPickupTime(context, config, initial: at);
-    if (picked != null) onChanged(picked);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final when = at;
-    final fee = schedulingFee(fare, config);
-    final lines = <String>[
-      if (when == null) 'Book now, or schedule up to ${config.maxDaysAhead} days ahead',
-      if (when != null) pickupLabel(when),
-      if (when != null && fee > 0) '+ ${money(fee)} scheduling fee',
-      if (when != null && config.lateCancelFee > 0)
-        'Free cancellation until ${DateFormat('HH:mm').format(freeCancelUntil(when, config))}',
-      if (owed > 0) '+ ${money(owed)} late fee from an earlier booking',
-    ];
-    return InkWell(
-      key: const ValueKey('schedule-row'),
-      borderRadius: BorderRadius.circular(12),
-      onTap: () => _pick(context),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHighest, shape: BoxShape.circle),
-              child: Icon(Icons.event_outlined, size: 18, color: t.colorScheme.onSurface),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    when == null ? 'Schedule for later' : 'Scheduled pickup',
-                    style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    lines.join(' · '),
-                    key: const ValueKey('schedule-summary'),
-                    style: t.textTheme.bodySmall,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            if (when != null)
-              IconButton(
-                key: const ValueKey('schedule-edit'),
-                tooltip: 'Change pickup time',
-                visualDensity: VisualDensity.compact,
-                icon: Icon(Icons.edit_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
-                onPressed: () => _pick(context),
-              ),
-            ConfirmSwitch(
-              key: const ValueKey('schedule-switch'),
-              value: when != null,
-              onChanged: (v) => v ? _pick(context) : onChanged(null),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// Home: the soonest booking still to come; opens the bookings page.
 class UpcomingRideCard extends ConsumerWidget {
@@ -175,51 +51,60 @@ class UpcomingRideCard extends ConsumerWidget {
 }
 
 /// Trips → Scheduled: the rider's bookings, upcoming first.
-class ScheduledRidesScreen extends ConsumerWidget {
+class ScheduledRidesScreen extends StatelessWidget {
   const ScheduledRidesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Scheduled rides')),
+    body: const ScheduledRidesList(),
+  );
+}
+
+/// The rider's bookings, upcoming first; its own page and the Trips tab.
+class ScheduledRidesList extends ConsumerWidget {
+  const ScheduledRidesList({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final config = ref.watch(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Scheduled rides')),
-      body: AsyncView(
-        value: ref.watch(myScheduledRidesProvider),
-        onRetry: () => ref.invalidate(myScheduledRidesProvider),
-        data: (all) {
-          final upcoming = [
-            for (final r in all)
-              if (r.upcoming) r,
-          ];
-          final past = [
-            for (final r in all.reversed)
-              if (!r.upcoming) r,
-          ];
-          if (all.isEmpty) {
-            return const EmptyState(
-              icon: Icons.event_outlined,
-              title: 'No scheduled rides',
-              message: 'On the booking screen, turn on "Schedule for later" to book a ride ahead.',
-            );
-          }
-          return RefreshIndicator(
-            onRefresh: () async => ref.invalidate(myScheduledRidesProvider),
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (upcoming.isNotEmpty) ...[
-                  const _Heading('Upcoming'),
-                  for (final r in upcoming) _BookingCard(ride: r, config: config),
-                ],
-                if (past.isNotEmpty) ...[
-                  const _Heading('Past'),
-                  for (final r in past.take(30)) _BookingCard(ride: r, config: config),
-                ],
-              ],
-            ),
+    return AsyncView(
+      value: ref.watch(myScheduledRidesProvider),
+      onRetry: () => ref.invalidate(myScheduledRidesProvider),
+      data: (all) {
+        final upcoming = [
+          for (final r in all)
+            if (r.upcoming) r,
+        ];
+        final past = [
+          for (final r in all.reversed)
+            if (!r.upcoming) r,
+        ];
+        if (all.isEmpty) {
+          return const EmptyState(
+            key: ValueKey('scheduled-empty'),
+            icon: Icons.event_outlined,
+            title: 'No scheduled rides',
+            message: 'On the booking screen, tap Later to book a ride ahead.',
           );
-        },
-      ),
+        }
+        return RefreshIndicator(
+          onRefresh: () async => ref.invalidate(myScheduledRidesProvider),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              if (upcoming.isNotEmpty) ...[
+                const _Heading('Upcoming'),
+                for (final r in upcoming) _BookingCard(ride: r, config: config),
+              ],
+              if (past.isNotEmpty) ...[
+                const _Heading('Past'),
+                for (final r in past.take(30)) _BookingCard(ride: r, config: config),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

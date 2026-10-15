@@ -645,6 +645,33 @@ class _RenderSizeReporter extends RenderProxyBox {
   }
 }
 
+/// [child] only while a [MapSheetLayout]'s sheet is up: hidden with the
+/// sheet all the way down (where it would peek out under what shows there),
+/// in as it rises, as the sheet's body fades in under a peek. Always shown
+/// outside a [MapSheetLayout].
+class MapSheetUpOnly extends StatelessWidget {
+  const MapSheetUpOnly({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final layout = context.findAncestorStateOfType<_MapSheetLayoutState>();
+    if (layout == null) return child;
+    return ValueListenableBuilder<double>(
+      valueListenable: layout._extent,
+      builder: (_, extent, child) {
+        final shown = ((extent - layout.widget.min) / 0.04).clamp(0.0, 1.0);
+        return IgnorePointer(
+          ignoring: shown < 1,
+          child: Opacity(key: const ValueKey('map-sheet-up-only'), opacity: shown, child: child),
+        );
+      },
+      child: child,
+    );
+  }
+}
+
 /// Keeps [child] whole in view on a [MapSheetLayout]'s sheet while [active]
 /// (the confirm screen's chosen vehicle): scrolled above the pinned footer
 /// when it is chosen, and again whenever the sheet is let down all the way.

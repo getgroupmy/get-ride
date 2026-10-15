@@ -160,6 +160,24 @@ String cancelWaitText(Duration left) {
 }
 
 /// The rider shares their live position once a driver is on the way, until
-/// the ride ends (Expo publishes `user_live_*` the same way).
-bool shareRiderLocation(RideStatus status) =>
-    status == RideStatus.accepted || status == RideStatus.arrived || status == RideStatus.onTrip;
+/// the ride ends (Expo publishes `user_live_*` the same way). Before pickup
+/// only with Settings → Show location to your driver on ([showToDriver]);
+/// during the trip always, unseen by the driver, for the check that notices
+/// passenger and car apart (0154).
+bool shareRiderLocation(RideStatus status, {bool showToDriver = true}) => switch (status) {
+  RideStatus.accepted || RideStatus.arrived => showToDriver,
+  RideStatus.onTrip => true,
+  _ => false,
+};
+
+/// How old a shared position may be and still be drawn for the driver.
+const riderLocationFreshFor = Duration(minutes: 1);
+
+/// Where the passenger is waiting, for the driver on the way to them: only
+/// before pickup, only a recent position; null otherwise.
+({double lat, double lng})? riderLocationForDriver(RideRequest r, DateTime now) {
+  if (r.status != RideStatus.accepted && r.status != RideStatus.arrived) return null;
+  final lat = r.userLiveLat, lng = r.userLiveLng, at = r.userLiveAt;
+  if (lat == null || lng == null || at == null) return null;
+  return now.difference(at) <= riderLocationFreshFor ? (lat: lat, lng: lng) : null;
+}

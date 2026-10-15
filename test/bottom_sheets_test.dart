@@ -377,4 +377,42 @@ void main() {
     expect(tester.getTopLeft(handle).dy, closeTo(handleTop, 0.5), reason: 'it bounces back up');
     expect(tester.getTopLeft(find.byKey(const ValueKey('foot'))).dy, closeTo(footTop, 0.5));
   });
+
+  testWidgets('what is only for a raised sheet is hidden all the way down and shows as it rises', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme(Brightness.dark),
+        home: Scaffold(
+          body: MapSheetLayout(
+            min: 0.2,
+            initial: 0.2,
+            map: const SizedBox.expand(),
+            sheet: Column(
+              children: [
+                const SizedBox(height: 60, child: Text('SEARCH')),
+                MapSheetUpOnly(
+                  child: SizedBox(height: 300, child: Text('RECENT', key: UniqueKey())),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    double shown() => tester.widget<Opacity>(find.byKey(const ValueKey('map-sheet-up-only'))).opacity;
+    expect(shown(), 0, reason: 'all the way down');
+    await tester.drag(find.text('SEARCH'), const Offset(0, -200));
+    await tester.pumpAndSettle();
+    expect(shown(), 1, reason: 'raised');
+  });
+
+  testWidgets('outside a map sheet it is simply shown', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: MapSheetUpOnly(child: Text('RECENT'))));
+    expect(find.text('RECENT'), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-sheet-up-only')), findsNothing);
+  });
 }

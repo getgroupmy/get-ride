@@ -82,8 +82,10 @@ class _FareTrendArrowsState extends State<FareTrendArrows> with SingleTickerProv
                   // the bottom one, down from the top one.
                   lit: _lit == null ? null : (up ? 2 - _lit! : _lit!),
                   glow: _glow,
-                  // Dark on a light card; on a dark one, a glow of its own colour.
+                  // Dark on a light card; on a dark one, where a dark edge
+                  // can't be seen, it brightens and glows its own colour.
                   halo: dark ? color : Colors.black,
+                  bright: dark,
                 ),
               ),
             ),
@@ -118,7 +120,11 @@ class _ChevronsPainter extends CustomPainter {
     required this.lit,
     required this.glow,
     required this.halo,
+    this.bright = false,
   });
+
+  /// The lit chevron lights up rather than taking a dark edge (dark mode).
+  final bool bright;
 
   final bool up;
   final Color color;
@@ -150,7 +156,16 @@ class _ChevronsPainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.miter;
     for (var i = 0; i < 3; i++) {
       final path = chevron(i);
-      if (i == lit && glow > 0) {
+      if (i == lit && glow > 0 && bright) {
+        // A wide soft glow of its colour, the chevron itself near white.
+        canvas.drawPath(
+          path,
+          pen(halo.withValues(alpha: 0.9 * glow))
+            ..strokeWidth = stroke * 2.2
+            ..maskFilter = MaskFilter.blur(BlurStyle.normal, stroke * 0.8),
+        );
+        canvas.drawPath(path, pen(Color.lerp(color, Colors.white, 0.55 * glow)!));
+      } else if (i == lit && glow > 0) {
         // A tight dark halo round it, as a lit sign's edge.
         canvas.drawPath(
           path,
@@ -167,5 +182,10 @@ class _ChevronsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_ChevronsPainter old) =>
-      old.up != up || old.color != color || old.lit != lit || old.glow != glow || old.halo != halo;
+      old.up != up ||
+      old.color != color ||
+      old.lit != lit ||
+      old.glow != glow ||
+      old.halo != halo ||
+      old.bright != bright;
 }

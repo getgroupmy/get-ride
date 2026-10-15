@@ -986,6 +986,11 @@ class RideRepository {
       .update({'user_live_lat': lat, 'user_live_lng': lng, 'user_live_at': DateTime.now().toUtc().toIso8601String()})
       .eq('id', id);
 
+  /// Takes the passenger's shared position off the ride (Show location to
+  /// your driver turned off), so the driver no longer sees it.
+  Future<void> clearRiderLocation(String id) =>
+      _db.from(_table).update({'user_live_lat': null, 'user_live_lng': null, 'user_live_at': null}).eq('id', id);
+
   /// Completes the trip and charges the partner's commission through the
   /// shared `wallet_charge_ride_commission` RPC (idempotent per ride).
   ///

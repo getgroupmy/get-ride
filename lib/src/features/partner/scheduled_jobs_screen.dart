@@ -79,6 +79,46 @@ class ScheduledJobsScreen extends ConsumerWidget {
   }
 }
 
+/// Drive: the soonest scheduled ride this driver has taken and is still to
+/// be sent to them, with how many more; opens Scheduled rides. Nothing
+/// while scheduled rides are off or none is taken.
+class PartnerUpcomingBookingCard extends ConsumerWidget {
+  const PartnerUpcomingBookingCard({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!(ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false)) return const SizedBox.shrink();
+    final taken = [
+      for (final r in ref.watch(acceptedScheduledRidesProvider).value ?? const <ScheduledRide>[])
+        if (r.status == ScheduledStatus.assigned) r,
+    ];
+    if (taken.isEmpty) return const SizedBox.shrink();
+    final t = Theme.of(context);
+    final next = taken.first;
+    final more = taken.length - 1;
+    final on = t.colorScheme.onSecondaryContainer;
+    return Card(
+      key: const ValueKey('partner-upcoming-booking'),
+      color: t.colorScheme.secondaryContainer,
+      child: ListTile(
+        leading: Icon(Icons.event_available, color: on),
+        title: Text(
+          'Scheduled ride · ${pickupLabel(next.pickupAt)}',
+          style: TextStyle(color: on, fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          [next.pickupAddress ?? 'Pickup', if (more > 0) '+$more more'].join(' · '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: on),
+        ),
+        trailing: Icon(Icons.chevron_right, color: on),
+        onTap: () => context.push('/drive/scheduled'),
+      ),
+    );
+  }
+}
+
 class _JobCard extends ConsumerWidget {
   const _JobCard({required this.ride, required this.mine});
 

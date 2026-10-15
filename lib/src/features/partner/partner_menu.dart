@@ -3,11 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin/screens/meterapp/display_logic.dart'
-    show myQrMenuItemId, myRideCodeMenuItemId, vehicleInfoMenuItemId;
+    show myQrMenuItemId, myRideCodeMenuItemId, scheduledRidesMenuItemId, vehicleInfoMenuItemId;
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
 import '../../data/obd/obd_session.dart';
+import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
@@ -25,10 +26,17 @@ Future<void> showPartnerMenu(BuildContext context) => showModalBottomSheet<void>
 
 /// Whether a driver menu row shows now: Vehicle information only while an
 /// OBD-II reader is linked, My Ride code only where the driver has a code
-/// (none on a database without My Ride, or while it loads).
-bool partnerMenuRowShows(String id, {required bool obdLinked, required bool hasMyRideCode}) => switch (id) {
+/// (none on a database without My Ride, or while it loads), Scheduled
+/// Request only while scheduled rides are on.
+bool partnerMenuRowShows(
+  String id, {
+  required bool obdLinked,
+  required bool hasMyRideCode,
+  bool scheduledRides = false,
+}) => switch (id) {
   vehicleInfoMenuItemId => obdLinked,
   myRideCodeMenuItemId => hasMyRideCode,
+  scheduledRidesMenuItemId => scheduledRides,
   _ => true,
 };
 
@@ -45,6 +53,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     'vehicle': '/drive/vehicles',
     // The trips taken as a partner; the rides booked are on the user side.
     'trip-history': '/drive/history',
+    scheduledRidesMenuItemId: '/drive/scheduled',
     vehicleInfoMenuItemId: '/meter/vehicle',
     myRideCodeMenuItemId: '/drive/my-ride',
     'documents': '/drive/onboarding',
@@ -95,9 +104,10 @@ class PartnerMenuSheet extends ConsumerWidget {
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final linked = ref.watch(obdSessionProvider).linked;
     final hasCode = ref.watch(myRideCodeProvider).value != null;
+    final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
     final menu = [
       for (final e in resolveSideMenu(blob, 'partner'))
-        if (partnerMenuRowShows(e.id, obdLinked: linked, hasMyRideCode: hasCode)) e,
+        if (partnerMenuRowShows(e.id, obdLinked: linked, hasMyRideCode: hasCode, scheduledRides: scheduled)) e,
     ];
     final mode = sideMenuModeButton(blob, 'partner');
     final nav = GoRouter.of(context);

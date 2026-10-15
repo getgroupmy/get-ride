@@ -99,3 +99,28 @@ class NavigationAppNotifier extends Notifier<NavigationApp> {
 }
 
 final navigationAppProvider = NotifierProvider<NavigationAppNotifier, NavigationApp>(NavigationAppNotifier.new);
+
+/// Settings → Show location to your driver: whether the passenger's live
+/// position goes to the driver on the way to them. On unless turned off.
+class ShowLocationToDriverNotifier extends Notifier<bool> {
+  static const _key = 'show_location_to_driver';
+
+  @override
+  bool build() {
+    SharedPreferences.getInstance().then((p) {
+      final v = p.getBool(_key);
+      if (v != null) state = v;
+    });
+    return true;
+  }
+
+  Future<void> set(bool on) async {
+    state = on;
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(_key, on);
+  }
+}
+
+final showLocationToDriverProvider = NotifierProvider<ShowLocationToDriverNotifier, bool>(
+  ShowLocationToDriverNotifier.new,
+);
