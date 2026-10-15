@@ -94,8 +94,7 @@ class _AppIconCardState extends ConsumerState<AppIconCard> {
                 const SizedBox(height: 2),
                 Text(
                   'The icons below come with the app, each in light and dark. Phones switch the next time the app '
-                  'is opened (iPhone shows a short notice). Today: ${appIconById(today)!.name}'
-                  '${c.automatic ? ' (outside regional windows)' : ''}.',
+                  'is opened (iPhone shows a short notice). Today, for most users: ${appIconById(today)!.name}.',
                   style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                 ),
                 SwitchListTile(
