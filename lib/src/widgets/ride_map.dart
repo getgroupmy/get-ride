@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../data/geo_service.dart';
 import 'map_sheet_layout.dart';
+import 'map_credit.dart';
 import 'map_tiles.dart';
 import 'road_info_layers.dart';
 
@@ -450,10 +451,7 @@ class _RideMapState extends State<RideMap> {
                 child: Padding(
                   key: const ValueKey('map-credit'),
                   padding: EdgeInsets.only(bottom: inset),
-                  child: const RichAttributionWidget(
-                    alignment: AttributionAlignment.bottomLeft,
-                    attributions: [TextSourceAttribution('© OpenStreetMap contributors')],
-                  ),
+                  child: MapCreditLayer(satellite: widget.satellite),
                 ),
               ),
             ),

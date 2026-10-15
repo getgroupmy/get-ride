@@ -11,6 +11,7 @@ import '../../core/saved_places.dart';
 import '../../data/geo_service.dart';
 import '../../data/saved_places_repository.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_credit.dart';
 import '../../widgets/map_tiles.dart';
 import 'place_search.dart';
 
@@ -349,6 +350,7 @@ class _SpotPreview extends StatelessWidget {
             ),
           ],
         ),
+        const MapCreditLayer(),
       ],
     );
   }

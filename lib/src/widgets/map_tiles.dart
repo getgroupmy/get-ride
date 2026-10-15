@@ -34,9 +34,13 @@ const satelliteTileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/W
 
 /// Which tiles to load, and whether they need darkening on the device.
 class TileSource {
-  const TileSource(this.url, {required this.darken});
+  const TileSource(this.url, {required this.darken, this.attribution = ''});
   final String url;
   final bool darken;
+
+  /// The credit Admin → Settings → Maps sent with these tiles; empty for the
+  /// app's own (worked out from the URL, see core/map_credit.dart).
+  final String attribution;
 }
 
 /// Picks the tile source for the current theme from the configured URLs.
@@ -66,7 +70,7 @@ TileSource resolveTileSource({
 /// device, for the theme or satellite; null where it keeps the app's own.
 TileSource? profileTileSource(MapProfile profile, {required bool dark, bool satellite = false}) {
   final spec = satellite ? profile.satellite : (dark ? profile.dark : profile.light);
-  return spec == null ? null : TileSource(spec.url, darken: spec.darken);
+  return spec == null ? null : TileSource(spec.url, darken: spec.darken, attribution: spec.attribution);
 }
 
 /// Whether a failed tile request is worth asking again: the server
@@ -100,12 +104,17 @@ http.Client retryingTileClient() => RetryClient(
   delay: tileRetryDelay,
 );
 
+/// The tiles a map in [context] draws: Admin → Settings → Maps' for this
+/// user and device, else the app's own, for the theme or satellite.
+TileSource currentTileSource(BuildContext context, {bool satellite = false}) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return profileTileSource(activeMapProfile, dark: dark, satellite: satellite) ??
+      resolveTileSource(dark: dark, satellite: satellite);
+}
+
 /// The base tile layer for [context]'s theme, or satellite imagery.
 TileLayer baseTileLayer(BuildContext context, {bool satellite = false}) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
-  final source =
-      profileTileSource(activeMapProfile, dark: dark, satellite: satellite) ??
-      resolveTileSource(dark: dark, satellite: satellite);
+  final source = currentTileSource(context, satellite: satellite);
   return TileLayer(
     // A new layer, not the old one re-pointed, so the street tiles already
     // drawn are not kept under the imagery while it loads (or vice versa).
