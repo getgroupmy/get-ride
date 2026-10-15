@@ -1146,22 +1146,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onTap: whereTo,
         ),
       const UpcomingRideCard(),
+      // Under the search bar only with the sheet up: all the way down it
+      // would peek out below it.
       if (recent.isNotEmpty) ...[
         const SizedBox(height: 4),
-        HomeRecentPlaces(
-          places: recent,
-          onTap: (p) {
-            if (!serviceOn) return comingSoon(serviceComingSoonMessage);
-            setState(() => _drop = p);
-            _updateRoute();
-          },
+        MapSheetUpOnly(
+          child: HomeRecentPlaces(
+            places: recent,
+            onTap: (p) {
+              if (!serviceOn) return comingSoon(serviceComingSoonMessage);
+              setState(() => _drop = p);
+              _updateRoute();
+            },
+          ),
         ),
       ],
       if (boxes.isNotEmpty) ...[
         const SizedBox(height: 16),
-        ServiceBoxesGrid(
-          boxes: boxes,
-          onOpen: (b) => b.route == null ? comingSoon(serviceBoxComingSoon(b.title)) : openAppRoute(context, b.route!),
+        MapSheetUpOnly(
+          child: ServiceBoxesGrid(
+            boxes: boxes,
+            onOpen: (b) => b.route == null ? comingSoon(serviceBoxComingSoon(b.title)) : openAppRoute(context, b.route!),
+          ),
         ),
       ],
     ]);
