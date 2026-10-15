@@ -98,6 +98,37 @@ class ScheduledRideRepository {
   /// Lets go of a booking before it is released: it goes back to the pool.
   Future<void> release(String id) => _call(() => _db.rpc('scheduled_ride_driver_cancel', params: {'p_id': id}));
 
+  /// Every booking no driver has taken yet, soonest first, with this
+  /// driver's interest (migration 0198).
+  Future<List<UpcomingBooking>> upcoming() async => [
+    for (final r in await _db.rpc('scheduled_rides_upcoming') as List)
+      UpcomingBooking.fromRow(Map<String, dynamic>.from(r as Map)),
+  ];
+
+  Future<void> setInterest(String id, bool on) =>
+      _call(() => _db.rpc('scheduled_ride_set_interest', params: {'p_id': id, 'p_on': on}));
+
+  /// Offers the driver's booking to the driver with [code] (My Ride code or
+  /// GET.me QR); it stays theirs until that driver accepts.
+  Future<void> handOver(String id, String code) =>
+      _call(() => _db.rpc('scheduled_ride_transfer', params: {'p_id': id, 'p_code': code}));
+
+  /// The passenger asks the driver with [code] to take a booking.
+  Future<void> requestDriver(String id, String code) =>
+      _call(() => _db.rpc('scheduled_ride_request_driver', params: {'p_id': id, 'p_code': code}));
+
+  /// Requests waiting for an answer that the caller made or was sent.
+  Future<List<ScheduledOffer>> offers() async => [
+    for (final r in await _db.rpc('scheduled_ride_offers_open') as List)
+      ScheduledOffer.fromRow(Map<String, dynamic>.from(r as Map)),
+  ];
+
+  Future<void> answerOffer(String offerId, {required bool accept}) =>
+      _call(() => _db.rpc('scheduled_ride_offer_respond', params: {'p_offer': offerId, 'p_accept': accept}));
+
+  Future<void> withdrawOffer(String offerId) =>
+      _call(() => _db.rpc('scheduled_ride_offer_cancel', params: {'p_offer': offerId}));
+
   // ---- Admin ---------------------------------------------------------------------------------
 
   Future<List<ScheduledRide>> all({bool upcomingOnly = true}) async {
@@ -164,4 +195,26 @@ final acceptedScheduledRidesProvider = FutureProvider.autoDispose<List<Scheduled
   final uid = ref.watch(currentUserIdProvider);
   if (uid == null) return const [];
   return ref.watch(scheduledRideRepositoryProvider).accepted(uid);
+});
+
+/// Drivers: every booking still without a driver (Upcoming).
+final upcomingBookingsProvider = FutureProvider.autoDispose<List<UpcomingBooking>>((ref) async {
+  ref.watchLive('scheduled_rides');
+  ref.watchLive('scheduled_ride_offers');
+  final c = await ref.watch(scheduledRidesConfigProvider.future);
+  if (!c.enabled) return const [];
+  return ref.watch(scheduledRideRepositoryProvider).upcoming();
+});
+
+/// Requests waiting for an answer: handovers and passengers' choices sent
+/// to this driver, and the ones the signed-in account made.
+final scheduledOffersProvider = FutureProvider.autoDispose<List<ScheduledOffer>>((ref) async {
+  ref.watchLive('scheduled_ride_offers');
+  ref.watchLive('scheduled_rides');
+  if (ref.watch(currentUserIdProvider) == null) return const [];
+  try {
+    return await ref.watch(scheduledRideRepositoryProvider).offers();
+  } catch (_) {
+    return const [];
+  }
 });

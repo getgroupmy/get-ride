@@ -1,94 +1,459 @@
-// Scheduled rides for drivers (migration 0189): the rides the driver has
-// taken ahead of time and, when the admin uses advance booking, the ones
-// open to take. A ride the driver lets go of goes back to the pool, and
-// the passenger is told the platform is finding another driver.
+// Scheduled rides for drivers (migrations 0189, 0198), in two tabs:
+//
+//   Upcoming   every booking no driver has taken yet, from now on, by day.
+//              With advance booking the driver books one; without, they mark
+//              it "interested" and are told when they can accept it (the
+//              first to accept gets it).
+//   My rides   requests sent to them (a driver handing a ride over, a
+//              passenger choosing them) to accept or decline, and the rides
+//              they hold: hand one to another driver by code, or let it go
+//              back to the pool.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/format.dart';
 import '../../core/scheduled_rides.dart';
 import '../../data/scheduled_ride_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../ride/driver_code_sheet.dart';
 import '../ride/scheduled_rides_screen.dart' show pickupLabel;
 
 class ScheduledJobsScreen extends ConsumerWidget {
-  const ScheduledJobsScreen({super.key});
+  const ScheduledJobsScreen({super.key, this.initialTab = 0});
 
-  Future<void> _refresh(WidgetRef ref) async {
-    ref.invalidate(acceptedScheduledRidesProvider);
-    ref.invalidate(openScheduledRidesProvider);
+  /// 0: Upcoming, 1: My rides.
+  final int initialTab;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final incoming = [
+      for (final o in ref.watch(scheduledOffersProvider).value ?? const <ScheduledOffer>[])
+        if (o.incoming) o,
+    ];
+    return DefaultTabController(
+      length: 2,
+      initialIndex: initialTab.clamp(0, 1),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Scheduled rides'),
+          bottom: TabBar(
+            tabs: [
+              const Tab(key: ValueKey('scheduled-tab-upcoming'), text: 'Upcoming'),
+              Tab(
+                key: const ValueKey('scheduled-tab-mine'),
+                child: Badge(
+                  isLabelVisible: incoming.isNotEmpty,
+                  label: Text('${incoming.length}'),
+                  child: const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Text('My rides')),
+                ),
+              ),
+            ],
+          ),
+        ),
+        body: const TabBarView(children: [_UpcomingTab(), _MineTab()]),
+      ),
+    );
+  }
+}
+
+void _refresh(WidgetRef ref) {
+  ref.invalidate(upcomingBookingsProvider);
+  ref.invalidate(acceptedScheduledRidesProvider);
+  ref.invalidate(scheduledOffersProvider);
+}
+
+Future<void> _run(BuildContext context, WidgetRef ref, Future<void> Function() action, {String? done}) async {
+  try {
+    await action();
+    if (done != null && context.mounted) showInfo(context, done);
+  } catch (e) {
+    if (context.mounted) showError(context, e);
+  }
+  _refresh(ref);
+}
+
+// ---- Upcoming -------------------------------------------------------------------------------
+
+class _UpcomingTab extends ConsumerWidget {
+  const _UpcomingTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context);
+    final config = ref.watch(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
+    final now = DateTime.now();
+    return RefreshIndicator(
+      onRefresh: () async => _refresh(ref),
+      child: AsyncView(
+        value: ref.watch(upcomingBookingsProvider),
+        onRetry: () => ref.invalidate(upcomingBookingsProvider),
+        data: (all) => ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              'Every booking still without a driver, from now (${DateFormat('EEE d MMM, HH:mm').format(now)}).',
+              key: const ValueKey('scheduled-upcoming-now'),
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              config.advance
+                  ? 'Book one to make it yours. It is sent to you ${config.releaseMinutes} minutes before pickup.'
+                  : config.interestNoticeMinutes > 0
+                  ? "Mark the ones you'd like. ${_noticeLabel(config.interestNoticeMinutes)} before pickup you're "
+                        'told you can accept them: the first driver to accept gets it.'
+                  : 'Each one comes to drivers nearby as a request ${config.releaseMinutes} minutes before pickup.',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
+            if (all.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 32),
+                child: EmptyState(
+                  key: ValueKey('scheduled-upcoming-empty'),
+                  icon: Icons.event_busy_outlined,
+                  title: 'No bookings waiting for a driver',
+                ),
+              )
+            else
+              for (final (day, items) in groupByBookingDay(all, (b) => b.ride.pickupAt, now)) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+                  child: Text(day, style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+                for (final b in items) _UpcomingCard(booking: b, config: config),
+              ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _noticeLabel(int minutes) =>
+    minutes % 60 == 0 ? '${minutes ~/ 60} ${minutes == 60 ? 'hour' : 'hours'}' : '$minutes minutes';
+
+class _UpcomingCard extends ConsumerWidget {
+  const _UpcomingCard({required this.booking, required this.config});
+
+  final UpcomingBooking booking;
+  final ScheduledRidesConfig config;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ride = booking.ride;
+    final repo = ref.read(scheduledRideRepositoryProvider);
+    final from = booking.acceptFrom;
+    final note = config.advance || booking.canAccept
+        ? null
+        : !booking.interested
+        ? null
+        : from != null
+        ? "We'll tell you at ${pickupLabel(from)} when you can accept it."
+        : "You'll get it as a request when it is released.";
+    return _BookingCard(
+      cardKey: ValueKey('scheduled-upcoming-${ride.id}'),
+      ride: ride,
+      note: note,
+      highlight: booking.canAccept && !config.advance,
+      actions: [
+        if (booking.canAccept)
+          BusyButton.filled(
+            key: ValueKey('scheduled-job-accept-${ride.id}'),
+            onPressed: () => _run(
+              context,
+              ref,
+              () => repo.accept(ride.id),
+              done: 'Ride booked for ${pickupLabel(ride.pickupAt)}. The passenger is told.',
+            ),
+            child: Text(config.advance ? 'Book this ride' : 'Accept'),
+          ),
+        if (!config.advance)
+          booking.interested
+              ? BusyButton.tonal(
+                  key: ValueKey('scheduled-interest-off-${ride.id}'),
+                  onPressed: () => _run(context, ref, () => repo.setInterest(ride.id, false)),
+                  icon: const Icon(Icons.star),
+                  child: const Text('Interested'),
+                )
+              : BusyButton.outlined(
+                  key: ValueKey('scheduled-interest-on-${ride.id}'),
+                  onPressed: () => _run(
+                    context,
+                    ref,
+                    () => repo.setInterest(ride.id, true),
+                    done: config.interestNoticeMinutes > 0
+                        ? "Marked. We'll tell you when you can accept it."
+                        : 'Marked.',
+                  ),
+                  icon: const Icon(Icons.star_border),
+                  child: const Text("I'm interested"),
+                ),
+      ],
+    );
+  }
+}
+
+// ---- My rides -------------------------------------------------------------------------------
+
+class _MineTab extends ConsumerWidget {
+  const _MineTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context);
+    final config = ref.watch(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
+    final offers = ref.watch(scheduledOffersProvider).value ?? const <ScheduledOffer>[];
+    final incoming = [
+      for (final o in offers)
+        if (o.incoming) o,
+    ];
+    return RefreshIndicator(
+      onRefresh: () async => _refresh(ref),
+      child: AsyncView(
+        value: ref.watch(acceptedScheduledRidesProvider),
+        onRetry: () => ref.invalidate(acceptedScheduledRidesProvider),
+        data: (rides) => ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (incoming.isNotEmpty) ...[
+              Text('Requests for you', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              for (final o in incoming) _OfferCard(offer: o),
+              const SizedBox(height: 8),
+            ],
+            if (rides.isEmpty && incoming.isEmpty)
+              EmptyState(
+                key: const ValueKey('scheduled-jobs-empty'),
+                icon: Icons.event_outlined,
+                title: 'No scheduled rides yet',
+                message: config.advance
+                    ? 'Book one on Upcoming. It is sent to you ${config.releaseMinutes} minutes before pickup.'
+                    : "Mark bookings on Upcoming that you'd like, and accept one when you're told. "
+                          'Other drivers and passengers can also send you a ride here.',
+              )
+            else if (rides.isNotEmpty) ...[
+              Text('Your scheduled rides', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              for (final r in rides)
+                _JobCard(
+                  ride: r,
+                  handover: offers
+                      .where((o) => !o.incoming && o.kind == ScheduledOfferKind.transfer && o.ride.id == r.id)
+                      .firstOrNull,
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OfferCard extends ConsumerWidget {
+  const _OfferCard({required this.offer});
+
+  final ScheduledOffer offer;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final repo = ref.read(scheduledRideRepositoryProvider);
+    return _BookingCard(
+      cardKey: ValueKey('scheduled-offer-${offer.id}'),
+      ride: offer.ride,
+      heading: offer.incomingTitle,
+      note: 'Answer by ${pickupLabel(offer.expiresAt)}.',
+      highlight: true,
+      actions: [
+        BusyButton.filled(
+          key: ValueKey('scheduled-offer-accept-${offer.id}'),
+          onPressed: () => _run(
+            context,
+            ref,
+            () => repo.answerOffer(offer.id, accept: true),
+            done: 'Ride booked for ${pickupLabel(offer.ride.pickupAt)}. The passenger is told.',
+          ),
+          child: const Text('Accept'),
+        ),
+        BusyButton.outlined(
+          key: ValueKey('scheduled-offer-decline-${offer.id}'),
+          onPressed: () => _run(context, ref, () => repo.answerOffer(offer.id, accept: false), done: 'Declined.'),
+          child: const Text('Decline'),
+        ),
+      ],
+    );
+  }
+}
+
+class _JobCard extends ConsumerWidget {
+  const _JobCard({required this.ride, this.handover});
+
+  final ScheduledRide ride;
+
+  /// This driver's handover of it, waiting for the other driver.
+  final ScheduledOffer? handover;
+
+  Future<void> _handOver(BuildContext context, WidgetRef ref) async {
+    final code = await askDriverCode(
+      context,
+      title: 'Hand over this ride',
+      message:
+          "Enter the other driver's My Ride code or scan their GET.me QR. The ride stays yours until they "
+          'accept it; the passenger is told when they do.',
+      action: 'Send',
+    );
+    if (code == null || !context.mounted) return;
+    await _run(
+      context,
+      ref,
+      () => ref.read(scheduledRideRepositoryProvider).handOver(ride.id, code),
+      done: 'Sent. The ride is yours until they accept it.',
+    );
+  }
+
+  Future<void> _letGo(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text("Can't make it?"),
+        content: const Text(
+          'The ride goes back to other drivers and the passenger is told we are finding them another driver.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep ride')),
+          FilledButton(
+            key: const ValueKey('scheduled-job-release-confirm'),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Give up ride'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    await _run(context, ref, () => ref.read(scheduledRideRepositoryProvider).release(ride.id));
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final config = ref.watch(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
-    final mine = ref.watch(acceptedScheduledRidesProvider);
-    final open = ref.watch(openScheduledRidesProvider);
-    final t = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Scheduled rides')),
-      body: RefreshIndicator(
-        onRefresh: () => _refresh(ref),
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            AsyncView(
-              value: mine,
-              onRetry: () => ref.invalidate(acceptedScheduledRidesProvider),
-              data: (rides) {
-                // Without advance booking there is nothing to take ahead:
-                // say how bookings arrive instead of an empty list.
-                if (rides.isEmpty && !config.advance) {
-                  return EmptyState(
-                    key: const ValueKey('scheduled-jobs-empty'),
-                    icon: Icons.event_outlined,
-                    title: 'No scheduled rides',
-                    message:
-                        'Rides passengers book ahead come to you as ordinary requests, '
-                        '${config.releaseMinutes} minutes before pickup.',
-                  );
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('Your scheduled rides', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 8),
-                    if (rides.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text(
-                          'None yet. Take one from the list below.',
-                          style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
-                        ),
-                      )
-                    else
-                      for (final r in rides) _JobCard(ride: r, mine: true),
-                  ],
-                );
-              },
+    final rideId = ride.rideId;
+    final waiting = handover;
+    return _BookingCard(
+      cardKey: ValueKey('scheduled-job-${ride.id}'),
+      ride: ride,
+      note: waiting?.waitingLabel,
+      actions: [
+        if (ride.status == ScheduledStatus.released && rideId != null)
+          FilledButton.icon(
+            key: ValueKey('scheduled-job-open-${ride.id}'),
+            icon: const Icon(Icons.navigation_outlined),
+            label: const Text('Open trip'),
+            onPressed: () => context.push('/drive/trip/$rideId'),
+          ),
+        if (ride.status == ScheduledStatus.assigned) ...[
+          if (waiting != null)
+            BusyButton.outlined(
+              key: ValueKey('scheduled-job-withdraw-${ride.id}'),
+              onPressed: () => _run(
+                context,
+                ref,
+                () => ref.read(scheduledRideRepositoryProvider).withdrawOffer(waiting.id),
+                done: 'Handover withdrawn.',
+              ),
+              child: const Text('Withdraw handover'),
+            )
+          else
+            // Not a busy button: it would spin while the code sheet is open.
+            OutlinedButton.icon(
+              key: ValueKey('scheduled-job-handover-${ride.id}'),
+              onPressed: () => _handOver(context, ref),
+              icon: const Icon(Icons.swap_horiz),
+              label: const Text('Hand over'),
             ),
-            if (config.advance) ...[
-              const SizedBox(height: 16),
-              Text('Available to book', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 2),
-              Text(
-                'Take a ride ahead of time. It is sent to you ${config.releaseMinutes} minutes before pickup.',
-                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: 8),
-              AsyncView(
-                value: open,
-                onRetry: () => ref.invalidate(openScheduledRidesProvider),
-                data: (rides) => rides.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 24),
-                        child: EmptyState(icon: Icons.event_busy_outlined, title: 'No rides to book right now'),
-                      )
-                    : Column(children: [for (final r in rides) _JobCard(ride: r, mine: false)]),
-              ),
+          BusyButton.outlined(
+            key: ValueKey('scheduled-job-release-${ride.id}'),
+            onPressed: () => _letGo(context, ref),
+            child: const Text("Can't make it"),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// A booking: when, how much, how far, from and to, then its buttons.
+class _BookingCard extends StatelessWidget {
+  const _BookingCard({
+    required this.cardKey,
+    required this.ride,
+    required this.actions,
+    this.heading,
+    this.note,
+    this.highlight = false,
+  });
+
+  final Key cardKey;
+  final ScheduledRide ride;
+  final List<Widget> actions;
+  final String? heading;
+  final String? note;
+  final bool highlight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = t.colorScheme.onSurfaceVariant;
+    final km = ride.distanceKm;
+    return Card(
+      key: cardKey,
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: highlight
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: t.colorScheme.primary, width: 1.5),
+            )
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (heading != null) ...[
+              Text(heading!, style: t.textTheme.titleSmall?.copyWith(color: t.colorScheme.primary)),
+              const SizedBox(height: 6),
             ],
+            Row(
+              children: [
+                Icon(Icons.event, size: 18, color: t.colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    pickupLabel(ride.pickupAt),
+                    style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Text(formatMoney(ride.total, ride.currency ?? 'MYR'), style: t.textTheme.titleSmall),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              [ride.service ?? 'Ride', if (km != null) formatDistance(km)].join(' · '),
+              style: t.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+            const SizedBox(height: 4),
+            Text('From ${ride.pickupAddress ?? 'pickup'}', maxLines: 2, overflow: TextOverflow.ellipsis),
+            Text(
+              'To ${ride.dropAddress ?? 'destination'}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: t.textTheme.bodyMedium?.copyWith(color: muted),
+            ),
+            if (note != null) ...[
+              const SizedBox(height: 6),
+              Text(note!, style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
+            ],
+            if (actions.isNotEmpty) ...[const SizedBox(height: 8), Wrap(spacing: 8, runSpacing: 8, children: actions)],
           ],
         ),
       ),
@@ -132,126 +497,6 @@ class PartnerUpcomingBookingCard extends ConsumerWidget {
         ),
         trailing: Icon(Icons.chevron_right, color: on),
         onTap: () => context.push('/drive/scheduled'),
-      ),
-    );
-  }
-}
-
-class _JobCard extends ConsumerWidget {
-  const _JobCard({required this.ride, required this.mine});
-
-  final ScheduledRide ride;
-
-  /// One the driver has taken (else one open to take).
-  final bool mine;
-
-  Future<void> _accept(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref.read(scheduledRideRepositoryProvider).accept(ride.id);
-      if (context.mounted) showInfo(context, 'Ride booked for ${pickupLabel(ride.pickupAt)}. The passenger is told.');
-    } catch (e) {
-      if (context.mounted) showError(context, e);
-    }
-    ref.invalidate(acceptedScheduledRidesProvider);
-    ref.invalidate(openScheduledRidesProvider);
-  }
-
-  Future<void> _letGo(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text("Can't make it?"),
-        content: const Text(
-          'The ride goes back to other drivers and the passenger is told we are finding them another driver.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep ride')),
-          FilledButton(
-            key: const ValueKey('scheduled-job-release-confirm'),
-            onPressed: () => Navigator.pop(c, true),
-            child: const Text('Give up ride'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !context.mounted) return;
-    try {
-      await ref.read(scheduledRideRepositoryProvider).release(ride.id);
-    } catch (e) {
-      if (context.mounted) showError(context, e);
-    }
-    ref.invalidate(acceptedScheduledRidesProvider);
-    ref.invalidate(openScheduledRidesProvider);
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
-    final currency = ride.currency ?? 'MYR';
-    final rideId = ride.rideId;
-    final km = ride.distanceKm;
-    return Card(
-      key: ValueKey('scheduled-job-${ride.id}'),
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.event, size: 18, color: t.colorScheme.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    pickupLabel(ride.pickupAt),
-                    style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                  ),
-                ),
-                Text(formatMoney(ride.total, currency), style: t.textTheme.titleSmall),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              [ride.service ?? 'Ride', if (km != null) formatDistance(km)].join(' · '),
-              style: t.textTheme.bodySmall?.copyWith(color: muted),
-            ),
-            const SizedBox(height: 4),
-            Text('From ${ride.pickupAddress ?? 'pickup'}', maxLines: 2, overflow: TextOverflow.ellipsis),
-            Text(
-              'To ${ride.dropAddress ?? 'destination'}',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: t.textTheme.bodyMedium?.copyWith(color: muted),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: [
-                if (!mine)
-                  BusyButton.filled(
-                    key: ValueKey('scheduled-job-accept-${ride.id}'),
-                    onPressed: () => _accept(context, ref),
-                    child: const Text('Book this ride'),
-                  ),
-                if (mine && ride.status == ScheduledStatus.released && rideId != null)
-                  FilledButton.icon(
-                    key: ValueKey('scheduled-job-open-${ride.id}'),
-                    icon: const Icon(Icons.navigation_outlined),
-                    label: const Text('Open trip'),
-                    onPressed: () => context.push('/drive/trip/$rideId'),
-                  ),
-                if (mine && ride.status == ScheduledStatus.assigned)
-                  BusyButton.outlined(
-                    key: ValueKey('scheduled-job-release-${ride.id}'),
-                    onPressed: () => _letGo(context, ref),
-                    child: const Text("Can't make it"),
-                  ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -1,6 +1,8 @@
 // Scheduled rides for the rider (migration 0189): the upcoming card on Home
 // and the bookings page (Trips → Scheduled). The pickup time is picked on
-// the Choose date and time sheet (pickup_time_sheet.dart).
+// the Choose date and time sheet (pickup_time_sheet.dart). On a booking no
+// driver has taken yet the passenger can choose a driver by their code
+// (migration 0198).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +13,7 @@ import '../../core/scheduled_rides.dart';
 import '../../data/scheduled_ride_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import 'driver_code_sheet.dart';
 
 /// "Tue 14 Oct, 18:30".
 String pickupLabel(DateTime at) => DateFormat('EEE d MMM, HH:mm').format(at);
@@ -167,12 +170,46 @@ class _BookingCard extends ConsumerWidget {
     ref.invalidate(owedFeesProvider);
   }
 
+  /// The passenger asks a driver they know to take it (migration 0198).
+  Future<void> _chooseDriver(BuildContext context, WidgetRef ref) async {
+    final code = await askDriverCode(
+      context,
+      title: 'Choose a driver',
+      message:
+          "Enter your driver's My Ride code or scan their GET.me QR. They're asked to accept; until then "
+          'any driver can still take your ride.',
+      action: 'Ask driver',
+    );
+    if (code == null || !context.mounted) return;
+    try {
+      await ref.read(scheduledRideRepositoryProvider).requestDriver(ride.id, code);
+      if (context.mounted) showInfo(context, "Sent. We'll tell you when the driver answers.");
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+    ref.invalidate(scheduledOffersProvider);
+  }
+
+  Future<void> _withdraw(BuildContext context, WidgetRef ref, ScheduledOffer offer) async {
+    try {
+      await ref.read(scheduledRideRepositoryProvider).withdrawOffer(offer.id);
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+    ref.invalidate(scheduledOffersProvider);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
     final currency = ride.currency ?? 'MYR';
     final rideId = ride.rideId;
+    final asked = ride.status == ScheduledStatus.scheduled
+        ? (ref.watch(scheduledOffersProvider).value ?? const <ScheduledOffer>[])
+              .where((o) => !o.incoming && o.kind == ScheduledOfferKind.assign && o.ride.id == ride.id)
+              .firstOrNull
+        : null;
     return Card(
       key: ValueKey('scheduled-${ride.id}'),
       margin: const EdgeInsets.only(bottom: 10),
@@ -212,11 +249,35 @@ class _BookingCard extends ConsumerWidget {
                 'Includes ${formatMoney(ride.schedulingFee, currency)} scheduling fee',
                 style: t.textTheme.bodySmall?.copyWith(color: muted),
               ),
+            if (asked != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  asked.waitingLabel,
+                  key: ValueKey('scheduled-asked-${ride.id}'),
+                  style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary),
+                ),
+              ),
             if (ride.upcoming) ...[
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
+                runSpacing: 8,
                 children: [
+                  if (asked != null)
+                    BusyButton.outlined(
+                      key: ValueKey('scheduled-withdraw-${ride.id}'),
+                      onPressed: () => _withdraw(context, ref, asked),
+                      child: const Text('Withdraw request'),
+                    )
+                  else if (ride.status == ScheduledStatus.scheduled)
+                    // Not a busy button: it would spin while the code sheet is open.
+                    FilledButton.tonalIcon(
+                      key: ValueKey('scheduled-choose-driver-${ride.id}'),
+                      onPressed: () => _chooseDriver(context, ref),
+                      icon: const Icon(Icons.person_search_outlined),
+                      label: const Text('Choose a driver'),
+                    ),
                   if (ride.status == ScheduledStatus.released && rideId != null)
                     FilledButton.tonalIcon(
                       key: ValueKey('scheduled-track-${ride.id}'),

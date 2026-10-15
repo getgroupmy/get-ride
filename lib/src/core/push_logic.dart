@@ -120,6 +120,28 @@ String? pushRouteFor(Map<String, dynamic> data) {
       // "Ride coming up" (migrations 0189 / 0197): the bookings, the
       // driver's on their side.
       return data['role'] == 'partner' ? '/drive/scheduled' : '/trips/scheduled';
+    case 'scheduled_ready':
+    case 'scheduled_taken':
+      // A booking the driver marked (migration 0198): ready to accept, or
+      // taken by someone else. Upcoming.
+      return '/drive/scheduled';
+    case 'scheduled_cancelled':
+      // To a driver only: the passenger cancelled a ride they held, marked
+      // or were asked to take (0189 / 0198).
+      return '/drive/scheduled?tab=mine';
+    case 'scheduled_offer':
+    case 'scheduled_offer_accepted':
+    case 'scheduled_offer_declined':
+    case 'scheduled_offer_expired':
+      // A handover or a passenger's choice of driver (0198): its answer goes
+      // back to whoever asked, a driver or the passenger.
+      return data['role'] == 'partner' ? '/drive/scheduled?tab=mine' : '/trips/scheduled';
+    case 'scheduled_assigned':
+    case 'scheduled_reassigning':
+    case 'scheduled_expired':
+      // The passenger's booking moved: a driver confirmed or changed, the
+      // driver gave it up, or nobody was found.
+      return '/trips/scheduled';
     case 'ride_expired':
       // Nobody took the request (migration 0139): home, to book again.
       return '/';

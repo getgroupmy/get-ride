@@ -14,8 +14,7 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/scheduled_ride_repository.dart';
 import 'package:get_ride/src/data/trip_history_repository.dart';
 import 'package:get_ride/src/features/partner/partner_menu.dart' show partnerMenuRowShows;
-import 'package:get_ride/src/features/partner/scheduled_jobs_screen.dart'
-    show PartnerUpcomingBookingCard, ScheduledJobsScreen;
+import 'package:get_ride/src/features/partner/scheduled_jobs_screen.dart' show PartnerUpcomingBookingCard;
 import 'package:get_ride/src/features/profile/account_screen.dart' show riderMenuRowShows;
 import 'package:get_ride/src/features/ride/trips_screen.dart';
 
@@ -69,12 +68,6 @@ void main() {
         partnerMenuRowShows(scheduledRidesMenuItemId, obdLinked: false, hasMyRideCode: false, scheduledRides: true),
         isTrue,
       );
-    });
-
-    test("the driver's item only with advance booking", () {
-      expect(const ScheduledRidesConfig(enabled: true, advance: true).driversBookAhead, isTrue);
-      expect(_on.driversBookAhead, isFalse, reason: 'bookings arrive as requests: nothing to see ahead');
-      expect(const ScheduledRidesConfig(advance: true).driversBookAhead, isFalse, reason: 'scheduled rides off');
     });
   });
 
@@ -171,60 +164,6 @@ void main() {
     testWidgets('nothing when none is taken', (tester) async {
       await pump(tester, const []);
       expect(find.byKey(const ValueKey('partner-upcoming-booking')), findsNothing);
-    });
-  });
-
-  group("the driver's Scheduled rides page", () {
-    Future<void> pump(
-      WidgetTester tester,
-      ScheduledRidesConfig config,
-      List<ScheduledRide> mine, {
-      ThemeData? theme,
-    }) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            scheduledRidesConfigProvider.overrideWith((_) async => config),
-            acceptedScheduledRidesProvider.overrideWith((_) async => mine),
-            openScheduledRidesProvider.overrideWith((_) async => const <ScheduledRide>[]),
-          ],
-          child: MaterialApp(theme: theme, home: const ScheduledJobsScreen()),
-        ),
-      );
-      await tester.pumpAndSettle();
-    }
-
-    for (final dark in [false, true]) {
-      testWidgets('without advance booking: how bookings arrive (${dark ? 'dark' : 'light'})', (tester) async {
-        await pump(tester, _on, const [], theme: dark ? ThemeData.dark() : ThemeData.light());
-        expect(find.byKey(const ValueKey('scheduled-jobs-empty')), findsOneWidget);
-        expect(find.text('No scheduled rides'), findsOneWidget);
-        expect(find.textContaining('20 minutes before pickup'), findsOneWidget);
-        expect(find.text('Your scheduled rides'), findsNothing);
-        expect(find.text('Available to book'), findsNothing);
-      });
-    }
-
-    testWidgets('with advance booking: the lists', (tester) async {
-      await pump(tester, const ScheduledRidesConfig(enabled: true, advance: true), const []);
-      expect(find.byKey(const ValueKey('scheduled-jobs-empty')), findsNothing);
-      expect(find.text('Your scheduled rides'), findsOneWidget);
-      expect(find.text('None yet. Take one from the list below.'), findsOneWidget);
-      expect(find.text('Available to book'), findsOneWidget);
-    });
-
-    testWidgets('a ride still held after advance booking is turned off stays listed', (tester) async {
-      await pump(tester, _on, [
-        ScheduledRide(
-          id: 'a1',
-          pickupAt: DateTime(2026, 10, 16, 9, 30),
-          status: ScheduledStatus.assigned,
-          pickupAddress: 'Pickup a1',
-        ),
-      ]);
-      expect(find.byKey(const ValueKey('scheduled-jobs-empty')), findsNothing);
-      expect(find.text('Your scheduled rides'), findsOneWidget);
-      expect(find.textContaining('Pickup a1'), findsOneWidget);
     });
   });
 }

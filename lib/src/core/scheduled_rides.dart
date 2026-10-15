@@ -18,6 +18,7 @@ class ScheduledRidesConfig {
     this.advance = false,
     this.releaseMinutes = 20,
     this.reminderMinutes = 60,
+    this.interestNoticeMinutes = 60,
   });
 
   final bool enabled;
@@ -46,17 +47,15 @@ class ScheduledRidesConfig {
   /// Booking); false: a booking reaches drivers when it is released.
   final bool advance;
 
-  /// Whether drivers have anything to do with bookings ahead of time, so
-  /// their Scheduled Request menu item shows: only with advance booking.
-  /// Without it a booking simply arrives as a request when released (a
-  /// driver still holding one finds it from the card on Drive).
-  bool get driversBookAhead => enabled && advance;
-
   /// How long before pickup a booking goes out to drivers as a ride.
   final int releaseMinutes;
 
   /// The rider's reminder before pickup; 0 for none.
   final int reminderMinutes;
+
+  /// How long before pickup drivers interested in a booking are told it is
+  /// ready to accept (migration 0198); 0: never, so interest only shows.
+  final int interestNoticeMinutes;
 
   static const off = ScheduledRidesConfig();
 
@@ -80,6 +79,7 @@ class ScheduledRidesConfig {
       advance: json['mode'] == 'advance',
       releaseMinutes: i('releaseMinutes', 20),
       reminderMinutes: i('reminderMinutes', 60),
+      interestNoticeMinutes: i('interestNoticeMinutes', 60),
     );
   }
 
@@ -95,6 +95,7 @@ class ScheduledRidesConfig {
     'mode': advance ? 'advance' : 'release',
     'releaseMinutes': releaseMinutes,
     'reminderMinutes': reminderMinutes,
+    'interestNoticeMinutes': interestNoticeMinutes,
   };
 
   ScheduledRidesConfig copyWith({
@@ -109,6 +110,7 @@ class ScheduledRidesConfig {
     bool? advance,
     int? releaseMinutes,
     int? reminderMinutes,
+    int? interestNoticeMinutes,
   }) => ScheduledRidesConfig(
     enabled: enabled ?? this.enabled,
     minLeadMinutes: minLeadMinutes ?? this.minLeadMinutes,
@@ -121,6 +123,7 @@ class ScheduledRidesConfig {
     advance: advance ?? this.advance,
     releaseMinutes: releaseMinutes ?? this.releaseMinutes,
     reminderMinutes: reminderMinutes ?? this.reminderMinutes,
+    interestNoticeMinutes: interestNoticeMinutes ?? this.interestNoticeMinutes,
   );
 
   /// What is wrong with these settings, or null: the server's own limits.
@@ -133,6 +136,9 @@ class ScheduledRidesConfig {
     if (lateCancelFee < 0 || lateCancelFee > 1000) return 'The late cancellation fee must be 0–1000.';
     if (releaseMinutes < 5 || releaseMinutes > 180) return 'Release must be 5–180 minutes before pickup.';
     if (reminderMinutes < 0 || reminderMinutes > 1440) return 'The reminder must be 0–1440 minutes before pickup.';
+    if (interestNoticeMinutes < 0 || interestNoticeMinutes > 1440) {
+      return 'The ready-to-accept notice must be 0–1440 minutes before pickup.';
+    }
     return null;
   }
 
@@ -287,13 +293,120 @@ String scheduledStatusLabel(ScheduledRide r) => switch (r.status) {
 /// The server's refusal (SCHEDULED_* with a hint) as one sentence.
 String scheduleErrorMessage(String message, {String? hint}) {
   if (hint != null && hint.trim().isNotEmpty) return hint.trim();
-  if (message.contains('SCHEDULED_OFF')) return 'Scheduled rides are not available.';
+  // Not SCHEDULED_OFFER_GONE, which starts the same.
+  if (RegExp(r'SCHEDULED_OFF\b').hasMatch(message)) return 'Scheduled rides are not available.';
   if (message.contains('SCHEDULED_TIME')) return 'Pick another pickup time.';
   if (message.contains('SCHEDULED_LIMIT')) return 'You already have 5 upcoming rides.';
   if (message.contains('SCHEDULED_TAKEN')) return 'Another driver has taken this ride.';
   if (message.contains('SCHEDULED_CLASH')) return 'You already have a ride within an hour of this one.';
   if (message.contains('SCHEDULED_ON_TRIP')) return 'The trip has already started.';
   if (message.contains('SCHEDULED_CLOSED')) return 'This booking can no longer be cancelled.';
+  if (message.contains('SCHEDULED_NOT_ADVANCE')) return "Mark it as interested: you'll be told when you can accept it.";
+  if (message.contains('SCHEDULED_TOO_LATE')) return 'It is too close to pickup for that.';
+  if (message.contains('SCHEDULED_OFFER_GONE')) return 'This request is no longer open.';
+  if (message.contains('SCHEDULED_CODE_SELF')) return 'That is your own code.';
+  if (message.contains('SCHEDULED_CODE_WAIT')) return "Too many codes that didn't match. Try again later.";
+  if (message.contains('SCHEDULED_CODE')) return "Check the driver's My Ride code, or scan their GET.me QR.";
   if (message.contains('RIDE_FARE_INVALID')) return 'The fare could not be worked out. Please try again.';
   return message;
+}
+
+// ---- Upcoming bookings, interest and handovers (migration 0198) ----------------------------
+
+/// A booking no driver has yet, as a driver sees it on Upcoming: whether
+/// they marked it, and whether (and from when) they may accept it.
+@immutable
+class UpcomingBooking {
+  const UpcomingBooking({required this.ride, this.interested = false, this.canAccept = false, this.acceptFrom});
+
+  final ScheduledRide ride;
+  final bool interested;
+
+  /// Advance booking, or interested and told it is ready.
+  final bool canAccept;
+
+  /// When an interested driver is told it is ready; null with advance
+  /// booking (always open) or with the notice off.
+  final DateTime? acceptFrom;
+
+  factory UpcomingBooking.fromRow(Map<String, dynamic> r) => UpcomingBooking(
+    ride: ScheduledRide.fromRow({...r, 'status': 'scheduled'}),
+    interested: r['interested'] == true,
+    canAccept: r['can_accept'] == true,
+    acceptFrom: DateTime.tryParse('${r['accept_from'] ?? ''}')?.toLocal(),
+  );
+}
+
+/// A driver handing a booking over (transfer) or a passenger asking a
+/// driver (assign), still waiting for that driver's answer.
+enum ScheduledOfferKind { transfer, assign }
+
+@immutable
+class ScheduledOffer {
+  const ScheduledOffer({
+    required this.id,
+    required this.kind,
+    required this.incoming,
+    required this.expiresAt,
+    required this.ride,
+    this.otherName,
+  });
+
+  final String id;
+  final ScheduledOfferKind kind;
+
+  /// Sent to the signed-in driver (else made by them, or by the passenger).
+  final bool incoming;
+
+  /// The other side: the driver handing over, or the driver asked. Null for
+  /// the passenger, who isn't named.
+  final String? otherName;
+  final DateTime expiresAt;
+
+  /// The booking, as the driver asked needs it.
+  final ScheduledRide ride;
+
+  factory ScheduledOffer.fromRow(Map<String, dynamic> r) => ScheduledOffer(
+    id: '${r['id']}',
+    kind: r['kind'] == 'transfer' ? ScheduledOfferKind.transfer : ScheduledOfferKind.assign,
+    incoming: r['incoming'] == true,
+    otherName: (r['other_name'] as String?)?.trim().isEmpty ?? true ? null : (r['other_name'] as String).trim(),
+    expiresAt: DateTime.tryParse('${r['expires_at']}')?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0),
+    ride: ScheduledRide.fromRow({...r, 'id': r['scheduled_ride_id'], 'status': 'scheduled'}),
+  );
+
+  /// What the driver asked reads: who wants what.
+  String get incomingTitle => switch (kind) {
+    ScheduledOfferKind.transfer => '${otherName ?? 'A driver'} wants to hand this ride to you',
+    ScheduledOfferKind.assign => 'A passenger chose you for this ride',
+  };
+
+  /// What the one who asked reads while waiting.
+  String get waitingLabel => 'Waiting for ${otherName ?? 'the driver'} to accept';
+}
+
+/// "Today", "Tomorrow" or "Fri 16 Oct": the day headings on Upcoming.
+String bookingDayLabel(DateTime at, DateTime now) {
+  final day = DateTime(at.year, at.month, at.day);
+  final today = DateTime(now.year, now.month, now.day);
+  final diff = day.difference(today).inDays;
+  if (diff == 0) return 'Today';
+  if (diff == 1) return 'Tomorrow';
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return '${days[at.weekday - 1]} ${at.day} ${months[at.month - 1]}';
+}
+
+/// [items] in runs of the same day, keeping their order (soonest first).
+List<(String, List<T>)> groupByBookingDay<T>(List<T> items, DateTime Function(T) at, DateTime now) {
+  final out = <(String, List<T>)>[];
+  for (final item in items) {
+    final label = bookingDayLabel(at(item), now);
+    if (out.isEmpty || out.last.$1 != label) {
+      out.add((label, [item]));
+    } else {
+      out.last.$2.add(item);
+    }
+  }
+  return out;
 }

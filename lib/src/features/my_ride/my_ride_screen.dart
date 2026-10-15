@@ -2,10 +2,13 @@
 // driver is added by their My Ride code or its QR; the page lists them with
 // how to reach them, and its settings hold the distance limit and whether
 // a booking starts with My Ride on.
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/my_qr.dart';
@@ -443,6 +446,30 @@ final myRideScanViewProvider =
           ),
     );
 
+/// Where a QR saved on the phone comes from: the photo library or files.
+enum QrImageSource { photos, files }
+
+/// Picks an image of a QR and reads the code in it: null when nothing was
+/// picked or no QR was found. Overridden in tests (no picker or decoder).
+final qrFromImageProvider =
+    Provider<Future<String?> Function(QrImageSource source, MobileScannerController controller)>(
+      (ref) => (source, controller) async {
+        final String? path;
+        if (source == QrImageSource.photos) {
+          path = (await ImagePicker().pickImage(source: ImageSource.gallery))?.path;
+        } else {
+          path = (await FilePicker.pickFiles(type: FileType.image)).firstOrNull?.path;
+        }
+        if (path == null) return null;
+        final capture = await controller.analyzeImage(path, formats: const [BarcodeFormat.qrCode]);
+        for (final b in capture?.barcodes ?? const <Barcode>[]) {
+          final v = b.rawValue;
+          if (v != null && v.trim().isNotEmpty) return v;
+        }
+        return '';
+      },
+    );
+
 /// Scans a driver's My Ride QR; pops with the code (or what was pasted).
 /// A personal code (GET.me &co.) pops with its whole text, for the caller
 /// to open. [universal]: any GET code at all, popped as scanned (My QR's
@@ -506,6 +533,22 @@ class _MyRideScanScreenState extends ConsumerState<MyRideScanScreen> {
     }
   }
 
+  /// A QR saved on the phone (a screenshot, a photo, a file).
+  Future<void> _fromImage(QrImageSource source) async {
+    String? raw;
+    try {
+      raw = await ref.read(qrFromImageProvider)(source, _scanner);
+    } catch (_) {
+      raw = '';
+    }
+    if (!mounted || raw == null) return;
+    if (raw.isEmpty) {
+      setState(() => _error = 'No QR code found in that image. Try another, or paste the code below.');
+      return;
+    }
+    _seen(raw);
+  }
+
   Future<void> _paste() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text ?? '';
@@ -566,6 +609,29 @@ class _MyRideScanScreenState extends ConsumerState<MyRideScanScreen> {
                   textAlign: TextAlign.center,
                   style: t.textTheme.bodyMedium,
                 ),
+                // Picking a saved image needs a phone (no decoding on the web).
+                if (!kIsWeb) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        key: const ValueKey('my-ride-scan-photos'),
+                        icon: const Icon(Icons.photo_library_outlined),
+                        label: const Text('Photo library'),
+                        onPressed: () => _fromImage(QrImageSource.photos),
+                      ),
+                      OutlinedButton.icon(
+                        key: const ValueKey('my-ride-scan-files'),
+                        icon: const Icon(Icons.folder_open_outlined),
+                        label: const Text('Files'),
+                        onPressed: () => _fromImage(QrImageSource.files),
+                      ),
+                    ],
+                  ),
+                ],
                 if (_error != null) ...[
                   const SizedBox(height: 8),
                   Text(

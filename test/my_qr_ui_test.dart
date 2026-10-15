@@ -5,9 +5,9 @@
 // driver's "Booked you directly" label and order, the menus, and the
 // /q/<kind>/<token> landing — in light and dark, at 360 px and desktop.
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -608,6 +608,87 @@ void main() {
         });
       }
     }
+  });
+
+  group('the code under each QR', () {
+    for (final b in Brightness.values) {
+      testWidgets('the QR\'s own code, and the My Ride code under GET.me, to copy (${b.name})', (tester) async {
+        final qr = _FakeQr([_qr('r1', QrKind.referral, _tokRef), _qr('m1', QrKind.me, _tokMe)]);
+        final copied = <String>[];
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') copied.add((call.arguments as Map)['text'] as String);
+          return null;
+        });
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null),
+        );
+        await _app(
+          tester,
+          qr: qr,
+          partner: true,
+          brightness: b,
+          extra: [myRideCodeProvider.overrideWith((ref) async => 'ABCD2345')],
+        );
+        expect(find.byKey(const ValueKey('my-qr-code-text-referral-qr')), findsOneWidget);
+        expect(find.text(_tokRef), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('my-qr-tab-me')));
+        await _settle(tester);
+        expect(find.text('ABCD 2345'), findsOneWidget);
+        expect(find.text(_tokMe), findsOneWidget);
+        await tester.ensureVisible(find.byKey(const ValueKey('my-qr-copy-me-my-ride')));
+        await _settle(tester);
+        await tester.tap(find.byKey(const ValueKey('my-qr-copy-me-my-ride')));
+        await _settle(tester);
+        expect(find.text('My Ride code copied'), findsOneWidget);
+        expect(copied, ['ABCD2345'], reason: 'copied without the space');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    test('which codes each kind shows', () {
+      final ref = _qr('r1', QrKind.referral, _tokRef);
+      expect([for (final r in myQrCodeRows(ref, referralCode: 'ALI123')) r.value], ['ALI123', _tokRef]);
+      expect([for (final r in myQrCodeRows(ref)) r.label], ['GET.Referral code']);
+      final now = _qr('n1', QrKind.now, _tokNow);
+      expect([for (final r in myQrCodeRows(now, referralCode: 'ALI123', myRideCode: 'ABCD2345')) r.value], [_tokNow]);
+    });
+  });
+
+  group('scanning a saved image', () {
+    Future<void> open(WidgetTester tester, Future<String?> Function(QrImageSource, dynamic) read) async {
+      await _app(
+        tester,
+        qr: _FakeQr()..resolutions[_tokNow] = const QrActive(kind: QrKind.now, driver: _ali, online: true),
+        extra: [qrFromImageProvider.overrideWithValue((source, controller) => read(source, controller))],
+      );
+      await tester.tap(find.byKey(const ValueKey('my-qr-scan')));
+      await _settle(tester);
+    }
+
+    testWidgets('a QR in a photo opens like a scan', (tester) async {
+      final sources = <QrImageSource>[];
+      await open(tester, (source, _) async {
+        sources.add(source);
+        return qrPayload(QrKind.now, _tokNow);
+      });
+      await tester.tap(find.byKey(const ValueKey('my-ride-scan-photos')));
+      await _settle(tester, 12);
+      expect(sources, [QrImageSource.photos]);
+      expect(find.byKey(const ValueKey('qr-result-now')), findsOneWidget);
+    });
+
+    testWidgets('a file without a QR says so; nothing picked does nothing', (tester) async {
+      var answer = '';
+      await open(tester, (_, _) async => answer);
+      await tester.tap(find.byKey(const ValueKey('my-ride-scan-files')));
+      await _settle(tester);
+      expect(find.textContaining('No QR code found in that image'), findsOneWidget);
+      answer = 'x';
+      await open(tester, (_, _) async => null);
+      await tester.tap(find.byKey(const ValueKey('my-ride-scan-files')));
+      await _settle(tester);
+      expect(find.byKey(const ValueKey('my-ride-scan-error')), findsNothing);
+    });
   });
 
   group('the scanner', () {

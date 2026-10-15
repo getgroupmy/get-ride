@@ -6,12 +6,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/my_qr.dart';
 import '../../data/my_qr_repository.dart';
+import '../../data/my_ride_repository.dart' show myRideCodeProvider;
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/image_share.dart';
@@ -388,6 +390,14 @@ class _ActiveCode extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 12),
+            // The code itself, to read out, type or paste where scanning
+            // isn't possible.
+            ...myQrCodeRows(
+              qr,
+              referralCode: ref.watch(profileProvider).value?.referralCode,
+              myRideCode: kind == QrKind.me ? ref.watch(myRideCodeProvider).value : null,
+            ).map((r) => _CodeRow(keyName: '${kind.wire}-${r.id}', label: r.label, value: r.value)),
+            const SizedBox(height: 8),
             Text(
               qrStatusText(qr, now),
               key: ValueKey('my-qr-status-${kind.wire}'),
@@ -428,6 +438,51 @@ class _ActiveCode extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// One code under the QR: what it is, the code, and a copy button.
+class _CodeRow extends StatelessWidget {
+  const _CodeRow({required this.keyName, required this.label, required this.value});
+
+  final String keyName;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Padding(
+      key: ValueKey('my-qr-code-row-$keyName'),
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(label, style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+                SelectableText(
+                  value,
+                  key: ValueKey('my-qr-code-text-$keyName'),
+                  textAlign: TextAlign.center,
+                  style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.5),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            key: ValueKey('my-qr-copy-$keyName'),
+            tooltip: 'Copy',
+            icon: const Icon(Icons.copy),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: value.replaceAll(' ', '')));
+              if (context.mounted) showInfo(context, '$label copied');
+            },
+          ),
+        ],
       ),
     );
   }

@@ -104,7 +104,7 @@ class PartnerMenuSheet extends ConsumerWidget {
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final linked = ref.watch(obdSessionProvider).linked;
     final hasCode = ref.watch(myRideCodeProvider).value != null;
-    final scheduled = ref.watch(scheduledRidesConfigProvider).value?.driversBookAhead ?? false;
+    final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
     final menu = [
       for (final e in resolveSideMenu(blob, 'partner'))
         if (partnerMenuRowShows(e.id, obdLinked: linked, hasMyRideCode: hasCode, scheduledRides: scheduled)) e,
