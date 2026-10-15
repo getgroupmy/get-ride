@@ -7,13 +7,17 @@ import 'package:latlong2/latlong.dart';
 import 'package:get_ride/src/features/ride/live_ride_map.dart';
 
 void main() {
-  Future<void> pumpMap(WidgetTester tester, Map<String, dynamic> row) async {
+  Future<void> pumpMap(WidgetTester tester, Map<String, dynamic> row, {bool partner = false}) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(390, 800);
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
-        child: MaterialApp(home: Scaffold(body: LiveRideMap(ride: RideRequest(row)))),
+        child: MaterialApp(
+          home: Scaffold(
+            body: LiveRideMap(ride: RideRequest(row), partner: partner),
+          ),
+        ),
       ),
     );
     await tester.pump();
@@ -46,5 +50,22 @@ void main() {
       'partner_live_lng': 101.68,
     });
     expect(find.byKey(const ValueKey('radar-pulse')), findsNothing);
+  });
+
+  testWidgets("the driver on the way sees where the passenger is waiting; the passenger doesn't see themselves", (
+    tester,
+  ) async {
+    final row = {
+      'id': 'r1',
+      'status': 'accepted',
+      ...pickup,
+      'user_live_lat': 3.1392,
+      'user_live_lng': 101.6871,
+      'user_live_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    await pumpMap(tester, row, partner: true);
+    expect(find.byKey(const ValueKey('passenger-here')), findsOneWidget);
+    await pumpMap(tester, row);
+    expect(find.byKey(const ValueKey('passenger-here')), findsNothing);
   });
 }

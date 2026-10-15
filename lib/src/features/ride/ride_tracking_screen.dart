@@ -429,8 +429,23 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     if (mounted) context.go('/');
   }
 
+  /// Whether the position already shared was taken off the ride.
+  bool _cleared = false;
+
   void _syncLocationShare() {
-    final share = shareRiderLocation(widget.ride.status) && !widget.ride.id.startsWith('demo');
+    final r = widget.ride;
+    final demo = r.id.startsWith('demo');
+    final shown = ref.read(showLocationToDriverProvider);
+    final share = shareRiderLocation(r.status, showToDriver: shown) && !demo;
+    // Turned off on the way to the pickup: the driver no longer sees the
+    // last position shared either.
+    final hide = !shown && !demo && (r.status == RideStatus.accepted || r.status == RideStatus.arrived);
+    if (hide && r.userLiveAt != null && !_cleared) {
+      _cleared = true;
+      ref.read(rideRepositoryProvider).clearRiderLocation(r.id).catchError((_) {});
+    } else if (!hide) {
+      _cleared = false;
+    }
     if (share && _position == null) {
       _position = ref.read(riderPositionStreamProvider)().listen(_share, onError: (_) {});
     } else if (!share && _position != null) {
@@ -733,6 +748,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   @override
   Widget build(BuildContext context) {
+    // Settings → Show location to your driver, switched mid-ride.
+    ref.listen(showLocationToDriverProvider, (_, _) => _syncLocationShare());
     final r = widget.ride;
     final t = Theme.of(context);
     final riderCancelAsk = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider';

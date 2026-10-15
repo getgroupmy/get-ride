@@ -32,6 +32,7 @@ RideRequest ride(String status, {String? askedBy, String? reason}) => RideReques
 class _FakeRides implements RideRepository {
   final cancels = <(String, String?)>[];
   final shared = <(double, double)>[];
+  final cleared = <String>[];
   final answers = <String>[];
 
   @override
@@ -45,6 +46,9 @@ class _FakeRides implements RideRepository {
 
   @override
   Future<void> publishRiderLocation(String id, double lat, double lng) async => shared.add((lat, lng));
+
+  @override
+  Future<void> clearRiderLocation(String id) async => cleared.add(id);
 
   @override
   Future<double> claimRideReward(RideRequest r) async => 0;
@@ -118,11 +122,35 @@ void main() {
       expect(shareRiderLocation(RideStatus.onTrip), isTrue);
       expect(shareRiderLocation(RideStatus.completed), isFalse);
     });
+
+    test('with Show location to your driver off: not before pickup, still on the trip (safety check)', () {
+      expect(shareRiderLocation(RideStatus.accepted, showToDriver: false), isFalse);
+      expect(shareRiderLocation(RideStatus.arrived, showToDriver: false), isFalse);
+      expect(shareRiderLocation(RideStatus.onTrip, showToDriver: false), isTrue);
+    });
+
+    test('the driver sees the passenger only on the way to them, and only a recent position', () {
+      final now = DateTime.utc(2026, 10, 15, 9);
+      RideRequest at(String status, {Duration ago = const Duration(seconds: 20), bool located = true}) => RideRequest({
+        'id': 'r1',
+        'status': status,
+        if (located) ...{'user_live_lat': 3.15, 'user_live_lng': 101.71},
+        'user_live_at': now.subtract(ago).toIso8601String(),
+      });
+      expect(riderLocationForDriver(at('accepted'), now), (lat: 3.15, lng: 101.71));
+      expect(riderLocationForDriver(at('arrived'), now), isNotNull);
+      expect(riderLocationForDriver(at('on_trip'), now), isNull, reason: 'in the car: not drawn');
+      expect(riderLocationForDriver(at('accepted', ago: const Duration(minutes: 2)), now), isNull, reason: 'stale');
+      expect(riderLocationForDriver(at('accepted', located: false), now), isNull);
+    });
   });
 
   group('screen', () {
-    Future<(_FakeRides, StreamController<RideRequest>, StreamController<LatLng>)> pump(WidgetTester tester) async {
-      SharedPreferences.setMockInitialValues({});
+    Future<(_FakeRides, StreamController<RideRequest>, StreamController<LatLng>)> pump(
+      WidgetTester tester, {
+      Map<String, Object> prefs = const {},
+    }) async {
+      SharedPreferences.setMockInitialValues(prefs);
       tester.view.physicalSize = const Size(1200, 2400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -360,6 +388,33 @@ void main() {
       rows.add(ride('completed'));
       await settle(tester);
       expect(gps.hasListener, isFalse, reason: 'stops when the ride ends');
+    });
+
+    testWidgets('with Show location to your driver off, nothing goes before pickup and the last one is taken off', (
+      tester,
+    ) async {
+      final (rides, rows, gps) = await pump(tester, prefs: {'show_location_to_driver': false});
+      rows.add(ride('open'));
+      await settle(tester);
+      rows.add(
+        RideRequest({
+          ...ride('accepted').raw,
+          'user_live_lat': 3.1,
+          'user_live_lng': 101.6,
+          'user_live_at': DateTime.now().toUtc().toIso8601String(),
+        }),
+      );
+      await settle(tester);
+      gps.add(const LatLng(3.1, 101.6));
+      await tester.pump();
+      expect(rides.shared, isEmpty);
+      expect(rides.cleared, ['r1'], reason: 'the driver no longer sees the last one');
+
+      rows.add(ride('on_trip'));
+      await settle(tester);
+      gps.add(const LatLng(3.3, 101.8));
+      await tester.pump();
+      expect(rides.shared, [(3.3, 101.8)], reason: 'on the trip, for the safety check');
     });
   });
 }

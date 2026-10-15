@@ -16,6 +16,7 @@ import 'navigation_app_card.dart';
 import 'passkeys_screen.dart';
 import 'permissions_card.dart';
 import 'rules_terms_card.dart';
+import 'show_location_screen.dart';
 import '../../widgets/side_menu_host.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -71,6 +72,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
             const PasskeysTile(),
+            const ShowLocationTile(),
             const ObdReaderSettingsTile(),
             const RulesTermsCard(),
             Card(

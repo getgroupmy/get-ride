@@ -80,6 +80,7 @@ import 'features/settings/change_pin_screen.dart';
 import 'features/settings/delete_account_screen.dart';
 import 'features/settings/passkeys_screen.dart';
 import 'features/settings/settings_screen.dart';
+import 'features/settings/show_location_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/shell/brand_splash.dart';
 import 'features/shell/not_found_screen.dart';
@@ -334,6 +335,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                           GoRoute(path: 'pin', builder: (_, _) => const ChangePinScreen()),
                           GoRoute(path: 'passkeys', builder: (_, _) => const PasskeysScreen()),
                           GoRoute(path: 'delete', builder: (_, _) => const DeleteAccountScreen()),
+                          GoRoute(path: 'show-location', builder: (_, _) => const ShowLocationScreen()),
                         ],
                       ),
                       GoRoute(
