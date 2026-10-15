@@ -43,8 +43,8 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     'earnings': '/drive/earnings',
     myQrMenuItemId: '/account/my-qr',
     'vehicle': '/drive/vehicles',
-    // The trips page lists the driver's trips beside their rides.
-    'trip-history': '/trips',
+    // The trips taken as a partner; the rides booked are on the user side.
+    'trip-history': '/drive/history',
     vehicleInfoMenuItemId: '/meter/vehicle',
     myRideCodeMenuItemId: '/drive/my-ride',
     'documents': '/drive/onboarding',

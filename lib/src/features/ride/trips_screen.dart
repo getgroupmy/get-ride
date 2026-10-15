@@ -1,61 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../core/region_time.dart';
-import '../../data/models.dart';
-import '../../providers.dart';
-import '../../widgets/common.dart';
+import '../../core/trip_history.dart';
 import '../../widgets/side_menu_host.dart';
+import 'trip_history_view.dart';
 
-final tripsProvider = FutureProvider.autoDispose<List<RideRequest>>(
-  (ref) => ref.watch(rideRepositoryProvider).history(),
-);
-
-class TripsScreen extends ConsumerWidget {
+/// Trips, on the user side: the requests this person made as a rider. The
+/// trips they drove are on the partner side (Drive → Trip history).
+class TripsScreen extends StatelessWidget {
   const TripsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final uid = ref.watch(currentUserIdProvider);
-    return Scaffold(
-      appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Trips')),
-      body: RefreshIndicator(
-        onRefresh: () => ref.refresh(tripsProvider.future),
-        child: AsyncView(
-          value: ref.watch(tripsProvider),
-          onRetry: () => ref.invalidate(tripsProvider),
-          data: (trips) => trips.isEmpty
-              ? ListView(children: const [
-                  EmptyState(icon: Icons.receipt_long, title: 'No trips yet', message: 'Your rides will show up here.'),
-                ])
-              : ListView.builder(
-                  itemCount: trips.length,
-                  itemBuilder: (_, i) {
-                    final r = trips[i];
-                    final asDriver = r.partnerId == uid && r.riderId != uid;
-                    return ResponsiveCenter(
-                      maxWidth: 760,
-                      child: Card(
-                        child: ListTile(
-                          leading: Icon(asDriver ? Icons.drive_eta : Icons.local_taxi),
-                          title: Text('${r.pickupLabel} → ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text('${formatInZone(r.createdAt, r.timezone)} · ${r.status.label}'
-                              '${asDriver ? ' · as driver' : ''}'),
-                          trailing: Text(r.fareText(r.effectiveFare)),
-                          // A finished trip opens its receipt; one still under way, the live screen.
-                          onTap: () => context.push(
-                            r.status.isFinished
-                                ? '/trips/${r.id}'
-                                : (asDriver ? '/drive/trip/${r.id}' : '/ride/${r.id}'),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Trips')),
+    body: const TripHistoryView(role: TripHistoryRole.rider),
+  );
 }

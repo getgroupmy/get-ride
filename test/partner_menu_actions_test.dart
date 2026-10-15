@@ -11,7 +11,7 @@ void main() {
   const pages = [
     '/ev', '/drive', '/wallet', '/trips', '/drive/vehicles', '/meter/vehicle', '/drive/my-ride', '/drive/onboarding',
     '/account/support', '/account/help', '/account/settings', '/account/my-qr', '/account/notifications',
-    '/drive/earnings',
+    '/drive/earnings', '/drive/history',
   ];
 
   Future<(String, bool?)> tap(WidgetTester tester, String id) async {
@@ -45,7 +45,7 @@ void main() {
     'wallet': '/wallet',
     'earnings': '/drive/earnings',
     myQrMenuItemId: '/account/my-qr',
-    'trip-history': '/trips',
+    'trip-history': '/drive/history',
     'vehicle': '/drive/vehicles',
     vehicleInfoMenuItemId: '/meter/vehicle',
     myRideCodeMenuItemId: '/drive/my-ride',
