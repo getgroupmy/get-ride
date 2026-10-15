@@ -43,6 +43,7 @@ import 'driver_permit_screen.dart' show currentPlateProvider, driverPermitProvid
 import 'driver_wallet_pills.dart';
 import 'fare_offer.dart';
 import 'my_ride_badges.dart';
+import 'online_gate.dart';
 import 'partner_menu.dart';
 import 'partner_mode_picker.dart' show pendingPartnerModeProvider;
 import 'request_sheet.dart';
@@ -301,6 +302,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       return;
     }
     if (v) {
+      // Location on (Always on an iPhone) and notifications allowed, first.
+      if (!mounted || !await ensureOnlineReady(context, ref)) return;
+      if (!mounted) return;
       final partner = ref.read(partnerProvider).value;
       if (partner != null && !await _documentsCleared(partner, teksi: false)) return;
       if (!mounted) return;

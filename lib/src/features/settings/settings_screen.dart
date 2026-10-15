@@ -12,6 +12,7 @@ import '../safety/voice_protection_card.dart';
 import 'change_pin_screen.dart';
 import 'navigation_app_card.dart';
 import 'passkeys_screen.dart';
+import 'permissions_card.dart';
 import 'rules_terms_card.dart';
 import '../../widgets/side_menu_host.dart';
 
@@ -44,6 +45,7 @@ class SettingsScreen extends ConsumerWidget {
                 ]),
               ),
             ),
+            const PermissionsCard(),
             const VoiceProtectionCard(),
             const NavigationAppCard(),
             Card(

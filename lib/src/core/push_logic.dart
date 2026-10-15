@@ -231,3 +231,26 @@ bool shouldReportPushLocation({
   if (now.difference(lastAt) >= pushLocationEvery) return true;
   return const Distance().as(LengthUnit.Meter, lastPoint, point) >= pushLocationMoveMeters;
 }
+
+/// How long to wait before each further try at the iPhone's PushKit (VoIP)
+/// token, which iOS can hand over a while after launch.
+const voipRetryDelays = [
+  Duration(seconds: 2),
+  Duration(seconds: 5),
+  Duration(seconds: 10),
+  Duration(seconds: 30),
+  Duration(seconds: 60),
+];
+
+/// Whether to warn that notifications are off: only to someone signed in,
+/// on the rider's or driver's screens (not admin pages or sign-in), and not
+/// again in this launch once they said "Not now". Pure.
+bool shouldWarnNotificationsOff({
+  required bool off,
+  required bool signedIn,
+  required bool dismissed,
+  required String location,
+}) {
+  if (!off || !signedIn || dismissed) return false;
+  return pushModeAt(location, null) != null;
+}

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -83,6 +84,7 @@ import 'features/shell/brand_splash.dart';
 import 'features/shell/not_found_screen.dart';
 import 'features/shell/app_side_menu.dart';
 import 'features/notifications/notifications_screen.dart';
+import 'features/shell/location_service_gate.dart';
 import 'features/shell/update_gate.dart';
 import 'features/shell/web_build_gate.dart';
 import 'features/safety/voice_protection_controller.dart';
@@ -101,6 +103,7 @@ import 'platform/web_favicon.dart';
 import 'widgets/app_icon_changed.dart';
 import 'widgets/connection_status_dialog.dart';
 import 'widgets/keyboard_dismiss.dart';
+import 'widgets/notifications_off_banner.dart';
 import 'widgets/map_sheet_layout.dart' show appBottomSheetTheme;
 
 const brandAccent = Color(0xFF2DABE2);
@@ -493,6 +496,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     if (push == null) return;
     _subs.add(push.taps.listen(_open));
     _subs.add(push.foreground.listen(_showForeground));
+    _startNotificationsWarning(push);
+    // Notifications are asked for at launch, as soon as the splash is gone.
+    Future<void>.delayed(splashRemaining(DateTime.now()) + const Duration(milliseconds: 600), () {
+      if (mounted) unawaited(push.askOnLaunch());
+    });
     // The notification that launched the app, opened once the router exists.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final route = push.takePendingRoute();
@@ -580,9 +588,55 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         unawaited(_alwaysOn?.reload());
         unawaited(_branding?.resync());
         unawaited(_reportPushLocation());
+        unawaited(PushService.instance?.recheckPermission());
       },
     );
   }
+
+  bool _notificationsWarned = false;
+  bool _notificationsDismissed = false;
+
+  /// Notifications switched off for the app: calls and new rides can't reach
+  /// a closed app, so the rider's and driver's screens say so, with the way
+  /// to Settings. Gone once they are switched back on, or after "Not now"
+  /// until the next launch.
+  void _startNotificationsWarning(PushService push) {
+    final router = ref.read(routerProvider);
+    void sync() {
+      if (!mounted) return;
+      final warn = shouldWarnNotificationsOff(
+        off: push.notificationsOff.value,
+        signedIn: ref.read(currentUserIdProvider) != null,
+        dismissed: _notificationsDismissed,
+        location: router.routerDelegate.currentConfiguration.uri.path,
+      );
+      if (warn == _notificationsWarned) return;
+      _notificationsWarned = warn;
+      final messenger = _messenger.currentState;
+      if (!warn) {
+        messenger?.hideCurrentMaterialBanner();
+        return;
+      }
+      messenger?.showMaterialBanner(
+        notificationsOffBanner(
+          onSettings: () => unawaited(Geolocator.openAppSettings()),
+          onDismiss: () {
+            _notificationsDismissed = true;
+            sync();
+          },
+        ),
+      );
+    }
+
+    push.notificationsOff.addListener(sync);
+    router.routerDelegate.addListener(sync);
+    _notificationsSync = () {
+      push.notificationsOff.removeListener(sync);
+      router.routerDelegate.removeListener(sync);
+    };
+  }
+
+  VoidCallback? _notificationsSync;
 
   Timer? _pushLocationTimer;
   Timer? _sessionCheckTimer;
@@ -693,6 +747,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     if (_routeListener != null) ref.read(routerProvider).routerDelegate.removeListener(_routeListener!);
     unawaited(_alwaysOn?.dispose());
     _lifecycle?.dispose();
+    _notificationsSync?.call();
     _pushLocationTimer?.cancel();
     _sessionCheckTimer?.cancel();
     _tracker?.dispose();
@@ -754,15 +809,17 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         cached: widget.branding,
         live: _branding?.latest,
         child: UpdateGate(
-          child: WebBuildGate(
-            location: () => router.routerDelegate.currentConfiguration.uri.path,
-            child: VoiceProtectionHost(
-              child: IncomingTransferListener(
-                child: IncomingCallListener(
-                  child: RideCallListener(
-                    child: KeyboardDismissOnChange(
-                      listenable: router.routerDelegate,
-                      child: KeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+          child: LocationServiceGate(
+            child: WebBuildGate(
+              location: () => router.routerDelegate.currentConfiguration.uri.path,
+              child: VoiceProtectionHost(
+                child: IncomingTransferListener(
+                  child: IncomingCallListener(
+                    child: RideCallListener(
+                      child: KeyboardDismissOnChange(
+                        listenable: router.routerDelegate,
+                        child: KeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+                      ),
                     ),
                   ),
                 ),

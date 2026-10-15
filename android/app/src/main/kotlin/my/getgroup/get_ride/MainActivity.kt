@@ -1,11 +1,14 @@
 package my.getgroup.get_ride
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var classicPrinter: ClassicPrinterChannel? = null
@@ -14,6 +17,26 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         // Classic Bluetooth (SPP) receipt printers for Meter Digital.
         classicPrinter = ClassicPrinterChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        // Settings → Permissions (lib/src/data/permission_probe.dart): where
+        // the camera, microphone and Bluetooth stand, without asking.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "get_ride/permissions").setMethodCallHandler { call, result ->
+            if (call.method == "statuses") result.success(permissionStatuses()) else result.notImplemented()
+        }
+    }
+
+    private fun permissionStatuses(): Map<String, String> {
+        fun of(vararg names: String) =
+            if (names.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }) "granted" else "denied"
+        val bluetooth = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            of(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            "granted"
+        }
+        return mapOf(
+            "camera" to of(Manifest.permission.CAMERA),
+            "microphone" to of(Manifest.permission.RECORD_AUDIO),
+            "bluetooth" to bluetooth,
+        )
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {

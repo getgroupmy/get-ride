@@ -1,5 +1,7 @@
 import AVFoundation
 import CallKit
+import CoreBluetooth
+import CoreLocation
 import Flutter
 import PushKit
 import UIKit
@@ -35,6 +37,9 @@ import flutter_callkit_incoming
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MicStatusPlugin") {
       MicStatusPlugin.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PermissionsPlugin") {
+      PermissionsPlugin.register(with: registrar)
+    }
   }
 
   // MARK: PushKit
@@ -42,11 +47,10 @@ import flutter_callkit_incoming
   func pushRegistry(_ registry: PKPushRegistry, didUpdate credentials: PKPushCredentials, for type: PKPushType) {
     guard type == .voIP else { return }
     let token = credentials.token.map { String(format: "%02x", $0) }.joined()
-    if let plugin = SwiftFlutterCallkitIncomingPlugin.sharedInstance {
-      plugin.setDevicePushTokenVoIP(token)
-    } else {
-      UserDefaults.standard.set(token, forKey: Self.voipTokenKey)
-    }
+    // Kept where getDevicePushTokenVoIP reads it whether or not the plugin
+    // is up yet; the plugin also tells the app, which stores it at once.
+    UserDefaults.standard.set(token, forKey: Self.voipTokenKey)
+    SwiftFlutterCallkitIncomingPlugin.sharedInstance?.setDevicePushTokenVoIP(token)
   }
 
   func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
@@ -136,6 +140,99 @@ final class MicStatusPlugin: NSObject, FlutterPlugin {
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+}
+
+/// Where the app's permissions stand, for Settings → Permissions and the
+/// driver's go-online check (lib/src/data/permission_probe.dart):
+/// `statuses` answers camera, Bluetooth and location without asking, and
+/// `requestLocationAlways` asks iOS to change "While Using" to "Always"
+/// (which it shows at most once; after that only Settings can).
+final class PermissionsPlugin: NSObject, FlutterPlugin, CLLocationManagerDelegate {
+  private let location = CLLocationManager()
+  private var pending: FlutterResult?
+  private var asked = CLAuthorizationStatus.notDetermined
+  private var prompted = false
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "get_ride/permissions", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(PermissionsPlugin(), channel: channel)
+  }
+
+  private static func camera() -> String {
+    switch AVCaptureDevice.authorizationStatus(for: .video) {
+    case .authorized: return "granted"
+    case .denied, .restricted: return "denied"
+    case .notDetermined: return "undetermined"
+    @unknown default: return "unknown"
+    }
+  }
+
+  private static func bluetooth() -> String {
+    switch CBManager.authorization {
+    case .allowedAlways: return "granted"
+    case .denied, .restricted: return "denied"
+    case .notDetermined: return "undetermined"
+    @unknown default: return "unknown"
+    }
+  }
+
+  private func locationStatus() -> String {
+    switch location.authorizationStatus {
+    case .authorizedAlways: return "always"
+    case .authorizedWhenInUse: return "whileInUse"
+    case .denied, .restricted: return "denied"
+    case .notDetermined: return "undetermined"
+    @unknown default: return "unknown"
+    }
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "statuses":
+      result(["camera": Self.camera(), "bluetooth": Self.bluetooth(), "location": locationStatus()])
+    case "requestLocationAlways":
+      requestAlways(result)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  /// Answers once iOS has: the status changed, or the prompt was shown and
+  /// the app is back, or (no prompt at all) after a moment.
+  private func requestAlways(_ result: @escaping FlutterResult) {
+    if pending != nil {
+      result(locationStatus())
+      return
+    }
+    pending = result
+    asked = location.authorizationStatus
+    prompted = false
+    location.delegate = self
+    let center = NotificationCenter.default
+    center.addObserver(self, selector: #selector(resigned), name: UIApplication.willResignActiveNotification, object: nil)
+    center.addObserver(self, selector: #selector(returned), name: UIApplication.didBecomeActiveNotification, object: nil)
+    location.requestAlwaysAuthorization()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+      if self?.prompted == false { self?.finish() }
+    }
+  }
+
+  @objc private func resigned() { prompted = true }
+
+  @objc private func returned() {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.finish() }
+  }
+
+  func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    if pending != nil && manager.authorizationStatus != asked { finish() }
+  }
+
+  private func finish() {
+    guard let result = pending else { return }
+    pending = nil
+    NotificationCenter.default.removeObserver(self)
+    result(locationStatus())
   }
 }
 

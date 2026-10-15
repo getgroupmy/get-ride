@@ -83,6 +83,8 @@ import {
   notificationMode,
   pickRecipients,
   planDeliveries,
+  voipFallbacks,
+  fallbackAlerts,
   profileIdList,
   readAllPages,
   resolveAudience,
@@ -342,6 +344,60 @@ async function dispatch(payload: SendBody): Promise<Response> {
     }
   }
 
+  // ---- VoIP (iPhones, ride calls only) -------------------------------------
+  // First, so an account whose VoIP push did not reach Apple is sent the
+  // ordinary "is calling" notification with the FCM ones below.
+  const rang = new Set<string>();
+  if (apnsKey && voipTokens.length > 0) {
+    let jwt: string | null = null;
+    try {
+      jwt = await apnsJwt(apnsKey, Date.now() / 1000);
+    } catch (e) {
+      failed += voipTokens.length;
+      tickets.push({ status: "error", service: "apns", message: String(e instanceof Error ? e.message : e) });
+    }
+    if (jwt) {
+      const voip = voipPayload(payload.data ?? {}, title);
+      const post = async (host: string, token: string) => {
+        const { url, init } = apnsRequest(host, apnsKey, jwt!, token, voip);
+        const res = await fetch(url, init);
+        const reason = res.ok ? null : ((await res.json().catch(() => null))?.reason ?? null);
+        return apnsOutcome(res.status, reason);
+      };
+      await Promise.all(
+        voipTokens.map(async (token) => {
+          try {
+            // A token is production's or development's, and nothing records
+            // which: BadDeviceToken from one is a try at the other.
+            let outcome = await post(APNS_PRODUCTION, token);
+            if (outcome === "wrong_environment") {
+              outcome = await post(APNS_DEVELOPMENT, token);
+              if (outcome === "wrong_environment") outcome = "unregistered";
+            }
+            if (outcome === "sent") {
+              sent += 1;
+              rang.add(token);
+              tickets.push({ status: "ok", service: "apns" });
+            } else {
+              failed += 1;
+              if (outcome === "unregistered") deadTokens.add(token);
+              tickets.push({ status: "error", service: "apns", outcome });
+            }
+          } catch (e) {
+            failed += 1;
+            tickets.push({ status: "error", service: "apns", message: String(e) });
+          }
+        })
+      );
+    }
+  }
+
+  const fallbacks = fallbackAlerts(voipFallbacks(tokenRows, kind, apnsKey !== null), rang);
+  for (const d of fallbacks) {
+    if (d.via === "fcm") fcmDeliveries.push(d);
+  }
+  if (fallbacks.length > 0) tickets.push({ status: "fallback", service: "apns", count: fallbacks.length });
+
   // ---- FCM (the Flutter app) ----------------------------------------------
   if (fcmDeliveries.length > 0) {
     const account = parseServiceAccount(Deno.env.get("FCM_SERVICE_ACCOUNT"));
@@ -397,50 +453,6 @@ async function dispatch(payload: SendBody): Promise<Response> {
       for (let i = 0; i < fcmDeliveries.length; i += FCM_CONCURRENCY) {
         await Promise.all(fcmDeliveries.slice(i, i + FCM_CONCURRENCY).map(sendOne));
       }
-    }
-  }
-
-  // ---- VoIP (iPhones, ride calls only) -------------------------------------
-  if (apnsKey && voipTokens.length > 0) {
-    let jwt: string | null = null;
-    try {
-      jwt = await apnsJwt(apnsKey, Date.now() / 1000);
-    } catch (e) {
-      failed += voipTokens.length;
-      tickets.push({ status: "error", service: "apns", message: String(e instanceof Error ? e.message : e) });
-    }
-    if (jwt) {
-      const voip = voipPayload(payload.data ?? {}, title);
-      const post = async (host: string, token: string) => {
-        const { url, init } = apnsRequest(host, apnsKey, jwt!, token, voip);
-        const res = await fetch(url, init);
-        const reason = res.ok ? null : ((await res.json().catch(() => null))?.reason ?? null);
-        return apnsOutcome(res.status, reason);
-      };
-      await Promise.all(
-        voipTokens.map(async (token) => {
-          try {
-            // A token is production's or development's, and nothing records
-            // which: BadDeviceToken from one is a try at the other.
-            let outcome = await post(APNS_PRODUCTION, token);
-            if (outcome === "wrong_environment") {
-              outcome = await post(APNS_DEVELOPMENT, token);
-              if (outcome === "wrong_environment") outcome = "unregistered";
-            }
-            if (outcome === "sent") {
-              sent += 1;
-              tickets.push({ status: "ok", service: "apns" });
-            } else {
-              failed += 1;
-              if (outcome === "unregistered") deadTokens.add(token);
-              tickets.push({ status: "error", service: "apns", outcome });
-            }
-          } catch (e) {
-            failed += 1;
-            tickets.push({ status: "error", service: "apns", message: String(e) });
-          }
-        })
-      );
     }
   }
 
