@@ -342,6 +342,41 @@ export function searchRequest(provider: string, p: SearchParams, key: string): H
   return null;
 }
 
+/**
+ * Google's older APIs, asked when the newer one refuses (a key or project
+ * with only the older API on): Places API Text Search for place search,
+ * Directions API for routes. Their answers are read by parseSearch and
+ * parseRoute like the newer ones'.
+ */
+export function googleLegacySearchRequest(p: SearchParams, key: string): HttpRequest {
+  return {
+    url: `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${enc(p.q)}&language=${enc(p.lang)}` +
+      (p.countries.length === 1 ? `&region=${p.countries[0]}` : "") +
+      (near(p) ? `&location=${p.lat},${p.lng}&radius=50000` : "") + `&key=${enc(key)}`,
+  };
+}
+
+export function googleDirectionsRequest(points: [number, number][], key: string): HttpRequest | null {
+  if (points.length < 2) return null;
+  const at = ([la, ln]: [number, number]) => `${la},${ln}`;
+  const via = points.slice(1, -1);
+  return {
+    url: `https://maps.googleapis.com/maps/api/directions/json?origin=${at(points[0])}` +
+      `&destination=${at(points[points.length - 1])}` +
+      (via.length ? `&waypoints=${enc(via.map((p) => `via:${at(p)}`).join("|"))}` : "") +
+      `&mode=driving&departure_time=now&key=${enc(key)}`,
+  };
+}
+
+/**
+ * The older Google APIs answer 200 with a `status` when they refuse
+ * (REQUEST_DENIED, OVER_QUERY_LIMIT, …): that status, else null.
+ */
+export function googleLegacyRefusal(body: unknown): string | null {
+  const status = (body as { status?: unknown } | null)?.status;
+  return typeof status === "string" && status !== "OK" && status !== "ZERO_RESULTS" ? status : null;
+}
+
 function place(name: string, address: string, lat: unknown, lng: unknown): Place | null {
   const la = num(lat), ln = num(lng);
   if (la == null || ln == null) return null;
@@ -358,6 +393,10 @@ export function parseSearch(provider: string, body: J): Place[] {
   const out: (Place | null)[] = [];
   switch (provider) {
     case "google":
+      // The older Text Search answers with `results`.
+      for (const r of Array.isArray(body?.results) ? body.results : []) {
+        out.push(place(str(r?.name), str(r?.formatted_address), r?.geometry?.location?.lat, r?.geometry?.location?.lng));
+      }
       for (const p of body?.places ?? []) {
         out.push(place(str(p?.displayName?.text), str(p?.formattedAddress), p?.location?.latitude, p?.location?.longitude));
       }
@@ -573,6 +612,16 @@ export function parseRoute(provider: string, body: J): Route | null {
   switch (provider) {
     case "google": {
       const r = body?.routes?.[0];
+      // The older Directions API answers in legs.
+      if (Array.isArray(r?.legs)) {
+        let m = 0, s = 0;
+        for (const leg of r.legs) {
+          m += num(leg?.distance?.value) ?? 0;
+          s += num(leg?.duration_in_traffic?.value) ?? num(leg?.duration?.value) ?? 0;
+        }
+        if (!r.legs.length) return null;
+        return { distanceKm: m / 1000, durationMin: s / 60, points: decodePolyline(str(r?.overview_polyline?.points)) };
+      }
       const m = num(r?.distanceMeters);
       const s = num(String(r?.duration ?? "").replace(/s$/, ""));
       if (m == null || s == null) return null;

@@ -108,6 +108,11 @@ void main() {
       expect(s.profile('partner', 'web'), const MapProfileSetting());
       expect(s.keyRef('google_places'), 'google/places');
       expect(MapSettings.fromJson(s.toJson()), s);
+      expect(s.googleApi, 'new_old', reason: 'Google: new first, old when it refuses');
+      expect(MapSettings.fromJson({'googleApi': 'old'}).googleApi, 'old');
+      expect(MapSettings.fromJson({'googleApi': 'bogus'}).googleApi, 'new_old');
+      expect(s.withGoogleApi('new') == s, isFalse, reason: 'a change to save');
+      expect(s.withGoogleApi('new').withKey('here', 'here/api').googleApi, 'new', reason: 'kept through other edits');
       final odd = MapSettings.fromJson({
         'profiles': {
           'rider.ios': {
@@ -423,6 +428,21 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('Google API: New then Old by default, Old only saved ($mode)', (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      await tester.tap(find.byKey(const ValueKey('maps-tab-keys')));
+      await tester.pumpAndSettle();
+      expect(find.text('New, then Old if New refuses'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('maps-google-api-new_old')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Old only (Places API, Directions API)').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.googleApi, 'old');
+      expect(repo.saved.single.toJson()['googleApi'], 'old');
     });
 
     testWidgets('keys and usage ($mode)', (tester) async {

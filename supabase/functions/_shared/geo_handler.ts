@@ -13,6 +13,8 @@
  *       → { place: { name, address, lat, lng, country, state, city, suburb } | null }
  *   GET ?action=route&provider=…&role=…&device=…&points=lat,lng;lat,lng[;…]
  *       → { route: { distanceKm, durationMin, points: [[lat, lng], …] } | null }
+ *   Google's place search and routes use the newer API, the older one, or the newer then the
+ *   older when it refuses, as map_config.googleApi says ("new" | "old" | "new_old").
  *   GET ?action=fallbacks
  *       → { slots: ["google_tiles", …] }  the key slots with a secret synced from GitHub
  *         (names only, never a key), so Admin → Settings → Maps doesn't call them missing.
@@ -25,6 +27,9 @@ import {
   cacheSeconds,
   DIRECT,
   FALLBACK_SECRETS,
+  googleDirectionsRequest,
+  googleLegacyRefusal,
+  googleLegacySearchRequest,
   googleSessionBody,
   type HttpRequest,
   isDevice,
@@ -76,6 +81,12 @@ function coord(v: string | null, max: number): number | null {
   if (v == null || v.trim() === "") return null;
   const n = Number(v);
   return Number.isFinite(n) && Math.abs(n) <= max ? n : null;
+}
+
+/** Which Google API answers place search and routes: "new", "old" or "new_old" (the default). */
+export function googleApiOf(config: unknown): "new" | "old" | "new_old" {
+  const v = (config as { googleApi?: unknown } | null)?.googleApi;
+  return v === "new" || v === "old" ? v : "new_old";
 }
 
 /** The base URL an Admin → API Keys entry gives a self-hosted Nominatim or OSRM, else null. */
@@ -152,21 +163,26 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   if (!k) return bad("No key for that provider.", 503);
   if (!(await deps.take(`ip:${ip}`, RATE_LIMIT))) return bad("rate_limited", 429);
 
+  // Google: the newer API, the older one, or the newer first and the older
+  // when it refuses (Admin → Settings → Maps, migration 0203).
   let req: HttpRequest | null = null;
+  let older: HttpRequest | null = null;
   let ck = "";
   let parse: (body: unknown) => unknown;
   if (kind === "search") {
     const q = (params.get("q") ?? "").trim().slice(0, 120);
     if (q.length < 3) return { status: 200, body: { places: [] } };
     const lat = coord(params.get("lat"), 90) ?? undefined, lng = coord(params.get("lng"), 180) ?? undefined;
-    req = searchRequest(provider, {
+    const sp = {
       q,
       lat,
       lng,
       countries,
       countries3: countries.map((c) => deps.iso3(c)).filter((c): c is string => !!c),
       lang,
-    }, k);
+    };
+    req = searchRequest(provider, sp, k);
+    if (provider === "google") older = googleLegacySearchRequest(sp, k);
     // Near the same ~1 km, the same answer.
     ck = cacheKey(provider, kind, [q, lat == null ? "" : lat.toFixed(2), lng == null ? "" : lng.toFixed(2), countries.join(","), lang]);
     parse = (b) => ({ places: parseSearch(provider, b) });
@@ -184,9 +200,13 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     });
     if (points.length < 2 || points.some((p) => p == null)) return bad("Give points=lat,lng;lat,lng.");
     req = routeRequest(provider, points as [number, number][], k);
+    if (provider === "google") older = googleDirectionsRequest(points as [number, number][], k);
     ck = cacheKey(provider, kind, (points as [number, number][]).flat());
     parse = (b) => ({ route: parseRoute(provider, b) });
   }
+  const googleApi = googleApiOf(config);
+  if (older && googleApi === "old") [req, older] = [older, null];
+  if (googleApi === "new") older = null;
   if (!req) return bad("That provider can't do this.", 400);
 
   const ttl = cacheSeconds(provider, kind);
@@ -197,8 +217,21 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       return { status: 200, body: hit };
     }
   }
+  const ask = async (r: HttpRequest) => {
+    const body = await deps.call(r);
+    const refused = googleLegacyRefusal(body);
+    if (refused) throw new Error(refused);
+    return body;
+  };
   try {
-    const answer = parse(await deps.call(req)) as Record<string, unknown>;
+    let body: unknown;
+    try {
+      body = await ask(req);
+    } catch (e) {
+      if (!older) throw e;
+      body = await ask(older);
+    }
+    const answer = parse(body) as Record<string, unknown>;
     const empty = answer.places ? (answer.places as unknown[]).length === 0 : Object.values(answer)[0] == null;
     await deps.count(provider, kind, !empty, false).catch(() => {});
     if (ttl > 0 && !empty) await deps.cachePut(ck, answer, ttl).catch(() => {});

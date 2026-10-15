@@ -11,6 +11,9 @@ import {
   decodeFlexiblePolyline,
   decodePolyline,
   fallbackKey,
+  googleDirectionsRequest,
+  googleLegacyRefusal,
+  googleLegacySearchRequest,
   parseReverse,
   parseRoute,
   parseSearch,
@@ -22,7 +25,7 @@ import {
   tileSource,
   trafficTileUrl,
 } from "./geo.ts";
-import { type GeoDeps, handleGeo, parseGoogleSession } from "./geo_handler.ts";
+import { type GeoDeps, googleApiOf, handleGeo, parseGoogleSession } from "./geo_handler.ts";
 
 const apiProviders = [
   {
@@ -186,6 +189,38 @@ Deno.test("routes: requests with stops, and answers in km and minutes", () => {
   assertEquals(parseRoute("here", { routes: [] }), null);
 });
 
+Deno.test("Google's older APIs: Text Search and Directions, and their refusals", () => {
+  const ts = googleLegacySearchRequest(sp, "GK");
+  assertStringIncludes(ts.url, "maps.googleapis.com/maps/api/place/textsearch/json?query=klcc");
+  assertStringIncludes(ts.url, "&region=my&location=3.15,101.71&radius=50000&key=GK");
+  assertEquals(
+    parseSearch("google", {
+      status: "OK",
+      results: [{ name: "KLCC", formatted_address: "Jalan Ampang, KL", geometry: { location: { lat: 3.15, lng: 101.71 } } }],
+    }),
+    [{ name: "KLCC", address: "Jalan Ampang, KL", lat: 3.15, lng: 101.71 }],
+  );
+  const pts: [number, number][] = [[3.1, 101.6], [3.12, 101.65], [3.15, 101.71]];
+  const dr = googleDirectionsRequest(pts, "K")!;
+  assertStringIncludes(dr.url, "directions/json?origin=3.1,101.6&destination=3.15,101.71");
+  assertStringIncludes(dr.url, "&waypoints=via%3A3.12%2C101.65");
+  assertEquals(googleDirectionsRequest([[3.1, 101.6]], "K"), null);
+  const r = parseRoute("google", {
+    status: "OK",
+    routes: [{
+      legs: [
+        { distance: { value: 7000 }, duration: { value: 600 }, duration_in_traffic: { value: 720 } },
+        { distance: { value: 5000 }, duration: { value: 180 } },
+      ],
+      overview_polyline: { points: "_p~iF~ps|U_ulLnnqC_mqNvxq`@" },
+    }],
+  })!;
+  assertEquals([r.distanceKm, r.durationMin, r.points.length], [12, 15, 3], "traffic time when Google gives it");
+  assertEquals(googleLegacyRefusal({ status: "REQUEST_DENIED" }), "REQUEST_DENIED");
+  assertEquals(googleLegacyRefusal({ status: "ZERO_RESULTS" }), null);
+  assertEquals(googleLegacyRefusal({ places: [] }), null, "the newer APIs have no status");
+});
+
 Deno.test("polylines: Google's and HERE's", () => {
   assertEquals(decodePolyline("_p~iF~ps|U_ulLnnqC_mqNvxq`@"), [[38.5, -120.2], [40.7, -120.95], [43.252, -126.453]]);
   // HERE's documented example.
@@ -311,6 +346,56 @@ Deno.test("lookups: a provider down, a missing key, the rate limit, bad input", 
 
   const limited = deps({ take: () => Promise.resolve(false) }).d;
   assertEquals((await handleGeo(q("action=search&provider=here&role=partner&device=web&q=klcc"), "ip", limited)).status, 429);
+});
+
+Deno.test("Google API choice: newer then older (default), newer only, older only", async () => {
+  const older = { status: "OK", results: [{ name: "Old KLCC", formatted_address: "KL", geometry: { location: { lat: 3, lng: 101 } } }] };
+  const run = async (googleApi: string | undefined, newer: "ok" | "refuses", oldStatus = "OK") => {
+    const asked: string[] = [];
+    const { d } = deps({
+      settings: () => Promise.resolve({ config: { ...config, ...(googleApi ? { googleApi } : {}) }, apiProviders }),
+      call: (req) => {
+        asked.push(new URL(req.url).host);
+        if (req.url.includes("places.googleapis")) {
+          return newer === "ok"
+            ? Promise.resolve({ places: [{ displayName: { text: "New KLCC" }, formattedAddress: "KL", location: { latitude: 3, longitude: 101 } }] })
+            : Promise.reject(new Error("403 from places.googleapis.com (PERMISSION_DENIED)"));
+        }
+        return Promise.resolve({ ...older, status: oldStatus });
+      },
+    });
+    const a = await handleGeo(q("action=search&provider=google&role=rider&device=android&q=klcc"), "ip", d);
+    // deno-lint-ignore no-explicit-any
+    return { status: a.status, name: (a.body as any).places?.[0]?.name, asked };
+  };
+  assertEquals(await run(undefined, "ok"), { status: 200, name: "New KLCC", asked: ["places.googleapis.com"] });
+  assertEquals(await run(undefined, "refuses"), {
+    status: 200,
+    name: "Old KLCC",
+    asked: ["places.googleapis.com", "maps.googleapis.com"],
+  });
+  assertEquals((await run("new", "refuses")).status, 502, "newer only: no older try");
+  assertEquals((await run("new", "refuses")).asked, ["places.googleapis.com"]);
+  assertEquals(await run("old", "ok"), { status: 200, name: "Old KLCC", asked: ["maps.googleapis.com"] });
+  assertEquals((await run("old", "ok", "REQUEST_DENIED")).status, 502, "an older API's refusal is a failure, not an empty answer");
+  assertEquals(googleApiOf({ googleApi: "bogus" }), "new_old");
+
+  // Routes the same way.
+  const { d } = deps({
+    settings: () =>
+      Promise.resolve({
+        config: { ...config, profiles: { "rider.android": { ...config.profiles["rider.android"], routing: ["google"] } } },
+        apiProviders,
+      }),
+    fallbackKey: () => "GMAP",
+    call: (req) =>
+      req.url.includes("routes.googleapis")
+        ? Promise.reject(new Error("403 from routes.googleapis.com"))
+        : Promise.resolve({ status: "OK", routes: [{ legs: [{ distance: { value: 1000 }, duration: { value: 60 } }], overview_polyline: { points: "" } }] }),
+  });
+  const rt = await handleGeo(q("action=route&provider=google&role=rider&device=android&points=3.1,101.6;3.2,101.7"), "ip", d);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((rt.body as any).route.distanceKm, 1, "the older Directions API answered");
 });
 
 Deno.test("fallback: the function's own Google secrets when Admin → API Keys has none", async () => {
