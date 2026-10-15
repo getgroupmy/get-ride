@@ -12,39 +12,15 @@ import '../../data/scheduled_ride_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import 'confirm_parts.dart' show ConfirmSwitch;
+import 'pickup_time_sheet.dart';
 
 /// "Tue 14 Oct, 18:30".
 String pickupLabel(DateTime at) => DateFormat('EEE d MMM, HH:mm').format(at);
 
-/// Asks for a pickup day, then the time; null when closed or out of range
-/// (the reason is shown).
-Future<DateTime?> pickPickupTime(BuildContext context, ScheduledRidesConfig c, {DateTime? initial}) async {
-  final now = DateTime.now();
-  final first = earliestPickup(now, c);
-  final last = latestPickup(now, c);
-  final start = initial != null && pickupTimeProblem(initial, now, c) == null ? initial : first;
-  final day = await showDatePicker(
-    context: context,
-    initialDate: DateTime(start.year, start.month, start.day),
-    firstDate: DateTime(first.year, first.month, first.day),
-    lastDate: DateTime(last.year, last.month, last.day),
-    helpText: 'Pickup day',
-  );
-  if (day == null || !context.mounted) return null;
-  final time = await showTimePicker(
-    context: context,
-    initialTime: TimeOfDay.fromDateTime(start),
-    helpText: 'Pickup time',
-  );
-  if (time == null || !context.mounted) return null;
-  final at = DateTime(day.year, day.month, day.day, time.hour, time.minute);
-  final problem = pickupTimeProblem(at, DateTime.now(), c);
-  if (problem != null) {
-    showInfo(context, problem);
-    return null;
-  }
-  return at;
-}
+/// Asks for the pickup on the Choose date and time sheet; null when it is
+/// closed.
+Future<DateTime?> pickPickupTime(BuildContext context, ScheduledRidesConfig c, {DateTime? initial}) =>
+    showPickupTimeSheet(context, c, initial: initial);
 
 /// The confirm step's "When" row: now, or a pickup time with the
 /// scheduling fee and the free-cancellation window.
