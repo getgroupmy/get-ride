@@ -827,36 +827,76 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       return const [ListTile(leading: Icon(Icons.bookmark_border), title: Text('Sign in to save your places'))];
     }
     final v = arrangeSavedPlaces(ref.watch(savedPlacesProvider).value ?? const []);
-    Widget saved(SavedPlace p, IconData icon) => ListTile(
+    final muted = t.colorScheme.onSurfaceVariant;
+    final titleStyle = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500);
+    // The same row as a search result: icon, name over address, distance,
+    // and a round button (here: edit).
+    Widget saved(SavedPlace p, IconData icon) => InkWell(
       key: ValueKey('saved-${p.kind.name}-${p.id}'),
-      leading: Icon(icon, size: 28),
-      title: Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        [p.address, if (p.entrance.isNotEmpty) p.entrance].join(' · '),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(savedPlaceDistance(widget.near, p.point), style: t.textTheme.bodyLarge),
-          const SizedBox(width: 10),
-          IconButton.filledTonal(
-            key: ValueKey('saved-edit-${p.id}'),
-            tooltip: 'Edit',
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: () => showSavedPlaceForm(context, p, near: widget.near),
-          ),
-        ],
-      ),
       onTap: () => _done(PlacePick.place(savedPlaceAsPlace(p), entrance: p.entrance)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        child: Row(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Icon(icon, size: 30, color: muted),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+                  const SizedBox(height: 2),
+                  Text(
+                    [p.address, if (p.entrance.isNotEmpty) p.entrance].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Text(
+                savedPlaceDistance(widget.near, p.point),
+                style: t.textTheme.bodyLarge?.copyWith(color: muted),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: IconButton.filledTonal(
+                key: ValueKey('saved-edit-${p.id}'),
+                tooltip: 'Edit',
+                style: IconButton.styleFrom(
+                  backgroundColor: t.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                  foregroundColor: t.colorScheme.onSurface,
+                ),
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: () => showSavedPlaceForm(context, p, near: widget.near),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
-    Widget add(String label, IconData icon, SavedPlaceKind kind, Key key) => ListTile(
+    Widget add(String label, IconData icon, SavedPlaceKind kind, Key key) => InkWell(
       key: key,
-      leading: Icon(icon, size: 28),
-      title: Text(label),
-      trailing: const Icon(Icons.chevron_right),
       onTap: () => _add(kind),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 18, 20, 18),
+        child: Row(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Icon(icon, size: 30, color: muted),
+            ),
+            Expanded(child: Text(label, style: titleStyle)),
+            Icon(Icons.chevron_right, color: muted),
+          ],
+        ),
+      ),
     );
     return [
       v.home != null
@@ -871,7 +911,6 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   }
 }
 
-/// A Suggested / Saved switch: black when on, grey when off (inDrive's).
 /// The sheet's tabs: what was found, the suggestions, the saved places.
 enum _Tab {
   results('Search Results'),
@@ -882,6 +921,7 @@ enum _Tab {
   final String label;
 }
 
+/// A tab: black when on, grey when off (inDrive's).
 class _Pill extends StatelessWidget {
   const _Pill({super.key, required this.label, required this.on, required this.onTap});
   final String label;
