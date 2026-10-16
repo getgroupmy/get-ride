@@ -64,7 +64,7 @@ else
 fi
 
 gh release delete "$tag" --cleanup-tag --yes 2>/dev/null || true
-gh release create "$tag" "$dir/$asset" "$dir/build.json" "${extra[@]}" \
+gh release create "$tag" "$dir/$asset" "$dir/build.json" ${extra[@]+"${extra[@]}"} \
   --target "$GITHUB_SHA" \
   --prerelease \
   --title "GET.ride $title $version ($build)" \
