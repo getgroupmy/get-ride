@@ -58,11 +58,6 @@ class _AdminMapsScreenState extends ConsumerState<AdminMapsScreen> {
   Future<void> _save() async {
     final d = _draft;
     if (d == null) return;
-    final conflicts = d.googleConflicts;
-    if (conflicts.isNotEmpty) {
-      showInfo(context, 'Google search, address lookup or distances need a Google map: ${conflicts.join(', ')}.');
-      return;
-    }
     final traffic = d.googleTrafficConflicts;
     if (traffic.isNotEmpty) {
       showInfo(
@@ -200,10 +195,9 @@ class _DevicesTab extends ConsumerWidget {
           _Notice(
             key: const ValueKey('maps-google-warning'),
             icon: Icons.gavel_outlined,
-            error: true,
             text:
-                "Google's terms: its place search and address lookup may only be shown on Google's map. "
-                'Set Google for Map and Map (dark mode), or pick another provider: ${conflicts.join(', ')}.',
+                "Note: Google's terms ask that its place search, address lookup and distances be shown on "
+                "Google's map. These use them over another map: ${conflicts.join(', ')}. Saving is allowed.",
           ),
         if (trafficConflicts.isNotEmpty)
           _Notice(
@@ -223,6 +217,57 @@ class _DevicesTab extends ConsumerWidget {
                 'to the next provider (or what is built in). Add one in Admin → API Keys, or for Google '
                 'add it to GitHub and run Actions → Sync map keys.',
           ),
+        Card(
+          key: const ValueKey('maps-search-results'),
+          margin: const EdgeInsets.only(top: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Place search results', style: t.textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Text(
+                  'For every rider and partner. Autocomplete asks Google as the rider types and looks the place up '
+                  'when picked (one billed session). Smart address C costs one extra Google call per picked street '
+                  'address.',
+                  style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  // Keyed by the value so Discard shows the stored choice again.
+                  key: ValueKey('maps-google-search-${settings.googleSearch}'),
+                  initialValue: settings.googleSearch,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Google place search', isDense: true),
+                  items: [
+                    for (final (id, label) in mapGoogleSearches)
+                      DropdownMenuItem(
+                        value: id,
+                        child: Text(label, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: canEdit ? (v) => v == null ? null : onChanged(settings.copyWith(googleSearch: v)) : null,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  key: ValueKey('maps-smart-address-${settings.smartAddress}'),
+                  initialValue: settings.smartAddress,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Smart address', isDense: true),
+                  items: [
+                    for (final (id, label) in mapSmartAddresses)
+                      DropdownMenuItem(
+                        value: id,
+                        child: Text(label, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: canEdit ? (v) => v == null ? null : onChanged(settings.copyWith(smartAddress: v)) : null,
+                ),
+              ],
+            ),
+          ),
+        ),
         for (final d in mapDevices)
           _DeviceCard(
             key: ValueKey('maps-device-$role-$d'),

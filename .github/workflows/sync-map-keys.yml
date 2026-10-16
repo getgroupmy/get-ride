@@ -29,6 +29,10 @@ jobs:
       GOOGLE_DIRECTIONS_API_KEY: ${{ secrets.GOOGLE_DIRECTIONS_API_KEY }}
       # Optional: a browser key for Google's JavaScript map, restricted to the site.
       GOOGLE_MAPS_JS_API_KEY: ${{ secrets.GOOGLE_MAPS_JS_API_KEY }}
+      # Optional: a key of its own for Map Tiles API (else GOOGLE_MAP_API_KEY).
+      GOOGLE_MAP_TILES_API_KEY: ${{ secrets.GOOGLE_MAP_TILES_API_KEY }}
+      # Optional: Address Validation API, for smart address C (else GOOGLE_PLACES_API_KEY).
+      GOOGLE_ADDRESS_VALIDATION_API_KEY: ${{ secrets.GOOGLE_ADDRESS_VALIDATION_API_KEY }}
     steps:
       - uses: supabase/setup-cli@v3
       - name: Copy the keys that are set
@@ -41,7 +45,7 @@ jobs:
           trap 'rm -f "$env_file"' EXIT
           names=""
           for name in GOOGLE_MAP_API_KEY GOOGLE_PLACES_API_KEY GOOGLE_GEOCODING_API_KEY GOOGLE_DIRECTIONS_API_KEY \
-                      GOOGLE_MAPS_JS_API_KEY; do
+                      GOOGLE_MAPS_JS_API_KEY GOOGLE_MAP_TILES_API_KEY GOOGLE_ADDRESS_VALIDATION_API_KEY; do
             value="${!name}"
             if [ -n "$value" ]; then
               printf '%s=%s\n' "$name" "$value" >> "$env_file"

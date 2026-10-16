@@ -8,12 +8,48 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/map_link.dart';
 import '../core/map_profile.dart';
+import '../core/smart_address.dart';
 
 class Place {
-  const Place({required this.name, required this.address, required this.point});
+  const Place({
+    required this.name,
+    required this.address,
+    required this.point,
+    this.types = const [],
+    this.placeId,
+    this.km,
+    this.verified = false,
+  });
+
+  /// One of Google's Autocomplete suggestions: no position until it is
+  /// looked up ([GeoService.resolve]) when picked.
+  const Place.suggestion({
+    required this.name,
+    required this.address,
+    required String this.placeId,
+    this.types = const [],
+    this.km,
+  }) : point = const LatLng(0, 0),
+       verified = false;
+
   final String name;
   final String address;
   final LatLng point;
+
+  /// Google's place types ("airport", "street_address" …), where it said.
+  final List<String> types;
+
+  /// Google's place id, for a [pending] suggestion.
+  final String? placeId;
+
+  /// As the crow flies from the user, where the provider said (Autocomplete).
+  final double? km;
+
+  /// Google's Address Validation confirmed the address (smart address C).
+  final bool verified;
+
+  /// An Autocomplete suggestion not looked up yet: [point] means nothing.
+  bool get pending => placeId != null && point == const LatLng(0, 0);
 }
 
 /// Where a point is, as a rate card is scoped: country, state, city, suburb.
@@ -81,6 +117,14 @@ class GeoService {
   final GeoLookup? lookup;
   final MapProfile Function() _profile;
 
+  /// Google bills Autocomplete's keystrokes and the pick as one session:
+  /// made at the first search, ended by the pick ([resolve]).
+  String? _session;
+  final _random = math.Random();
+
+  String get _searchSession =>
+      _session ??= [for (var i = 0; i < 24; i++) '0123456789abcdefghijklmnopqrstuvwxyz'[_random.nextInt(36)]].join();
+
   static const _nominatim = String.fromEnvironment(
     'NOMINATIM_URL',
     defaultValue: 'https://nominatim.openstreetmap.org',
@@ -122,6 +166,9 @@ class GeoService {
       ? const {'Accept-Language': 'en'}
       : const {'User-Agent': 'GET.ride Flutter (getgroup.my)', 'Accept-Language': 'en'};
 
+  /// How results are shown and checked (Admin → Settings → Maps).
+  SmartAddress get smartAddress => SmartAddress(_profile().smartAddress);
+
   /// Places for [query]; a pasted Google Maps link (or coordinates) gives
   /// the place it points to.
   Future<List<Place>> search(String query, {LatLng? near}) async {
@@ -137,18 +184,86 @@ class GeoService {
         'q': query,
         if (near != null) 'lat': '${near.latitude}',
         if (near != null) 'lng': '${near.longitude}',
+        if (provider == 'google') 'session': _searchSession,
       });
-      return [
-        for (final p in (body?['places'] as List?) ?? const [])
-          if (p is Map && p['lat'] is num && p['lng'] is num)
-            Place(
-              name: '${p['name'] ?? ''}',
-              address: '${p['address'] ?? ''}',
-              point: LatLng((p['lat'] as num).toDouble(), (p['lng'] as num).toDouble()),
-            ),
-      ];
+      return [for (final p in (body?['places'] as List?) ?? const []) ?_placeFrom(p)];
     });
     return found ?? [];
+  }
+
+  /// A place from `geo`'s answer: with a position, or an Autocomplete
+  /// suggestion (Google's id, no position yet).
+  static Place? _placeFrom(Object? p) {
+    if (p is! Map) return null;
+    final types = [for (final t in (p['types'] as List?) ?? const []) '$t'];
+    final name = '${p['name'] ?? ''}', address = '${p['address'] ?? ''}';
+    if (p['lat'] is num && p['lng'] is num) {
+      return Place(
+        name: name,
+        address: address,
+        point: LatLng((p['lat'] as num).toDouble(), (p['lng'] as num).toDouble()),
+        types: types,
+      );
+    }
+    final id = p['id'];
+    if (id is! String || id.isEmpty || name.isEmpty) return null;
+    return Place.suggestion(
+      name: name,
+      address: address,
+      placeId: id,
+      types: types,
+      km: p['km'] is num ? (p['km'] as num).toDouble() : null,
+    );
+  }
+
+  /// [p] with its position: an Autocomplete suggestion looked up through
+  /// `geo` (ending the search session), anything else as it is. Null when
+  /// it can't be looked up.
+  Future<Place?> resolve(Place p) async {
+    if (!p.pending) return p;
+    if (lookup == null) return null;
+    final session = _session;
+    _session = null;
+    try {
+      final body = await lookup!({
+        'action': 'details',
+        'provider': 'google',
+        'id': p.placeId!,
+        'session': ?session,
+        'lang': 'en',
+      });
+      final found = _placeFrom(body?['place']);
+      if (found == null || found.pending) return null;
+      // Keep the suggestion's short name; the address is Google's full one.
+      return Place(name: p.name, address: found.address, point: found.point, types: found.types);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Smart address C: Google's Address Validation of [p]'s address, through
+  /// `geo`. The corrected address (and position, when Google gives one),
+  /// marked [Place.verified] when Google found every part; [p] as it is when
+  /// it can't say.
+  Future<Place> checkAddress(Place p) async {
+    if (lookup == null) return p;
+    try {
+      final body = await lookup!({'action': 'validate', 'address': p.address.isEmpty ? p.name : p.address});
+      final c = body?['checked'];
+      if (c is! Map || '${c['address'] ?? ''}'.trim().isEmpty) return p;
+      final at = c['lat'] is num && c['lng'] is num
+          ? LatLng((c['lat'] as num).toDouble(), (c['lng'] as num).toDouble())
+          : p.point;
+      return Place(
+        name: p.name,
+        address: '${c['address']}'.trim(),
+        point: at,
+        types: p.types,
+        verified: c['complete'] == true,
+      );
+    } catch (_) {
+      return p;
+    }
   }
 
   /// The place a Google Maps link points to: a share link expanded by `geo`

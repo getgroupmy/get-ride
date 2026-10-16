@@ -1,0 +1,158 @@
+// Smart address (Admin → Settings → Maps, migration 0207): how place search
+// results are shown and checked.
+//
+//   A  clean two-line results: the place's name, and under it only its area
+//      ("Sepang, Selangor"), with an icon for what it is
+//   B  places first: the rider's saved and recent places that match on top,
+//      then named places, then plain street addresses
+//   C  a picked street address is checked and completed by Google's Address
+//      Validation ("✓ Address confirmed by Google")
+//
+// 'all' is A, B and C together; 'normal' is none of them.
+import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../data/geo_service.dart';
+import 'saved_places.dart';
+
+/// Admin → Settings → Maps' smart address choice.
+@immutable
+class SmartAddress {
+  const SmartAddress(this.option);
+
+  /// 'normal', 'a', 'b', 'c' or 'all'.
+  final String option;
+
+  bool get clean => option == 'a' || option == 'all';
+  bool get placesFirst => option == 'b' || option == 'all';
+  bool get check => option == 'c' || option == 'all';
+}
+
+const _countries = {
+  'malaysia',
+  'singapore',
+  'indonesia',
+  'thailand',
+  'brunei',
+  'philippines',
+  'vietnam',
+  'myanmar',
+  'cambodia',
+};
+
+/// Option A's second line: [p]'s area without its name, house number,
+/// postcode or country ("Kuala Lumpur International Airport (KLIA), 64000
+/// Sepang, Selangor, Malaysia" → "Sepang, Selangor"). The address as it is
+/// when nothing is left.
+String shortArea(Place p) {
+  final name = p.name.trim().toLowerCase();
+  final parts = <String>[];
+  for (var part in p.address.split(',')) {
+    part = part.trim().replaceFirst(RegExp(r'^\d{4,6}\s+'), '').replaceFirst(RegExp(r'\s+\d{4,6}$'), '');
+    final l = part.toLowerCase();
+    if (part.isEmpty || l == name || _countries.contains(l) || RegExp(r'^[\d\s/-]+$').hasMatch(part)) continue;
+    if (parts.isNotEmpty && parts.last.toLowerCase() == l) continue;
+    parts.add(part);
+  }
+  if (parts.isEmpty) return p.address;
+  return parts.length <= 2 ? parts.join(', ') : parts.sublist(parts.length - 2).join(', ');
+}
+
+const _addressTypes = {
+  'street_address',
+  'route',
+  'premise',
+  'subpremise',
+  'street_number',
+  'postal_code',
+  'plus_code',
+  'intersection',
+};
+
+final _streetWords = RegExp(
+  r'^(\d|no\.?\s|lot\s|jalan\b|jln\.?\s|lorong\b|lrg\.?\s|persiaran\b|lebuh\b|lebuhraya\b|street\b|road\b)',
+  caseSensitive: false,
+);
+
+/// A plain street address rather than a named place: by Google's types
+/// where it gave them, else by how the name reads ("12 Jalan …", "Jalan …").
+bool isStreetAddress(Place p) {
+  if (p.types.isNotEmpty) {
+    if (p.types.any(_addressTypes.contains)) return true;
+    return false;
+  }
+  return _streetWords.hasMatch(p.name.trim());
+}
+
+/// What a result is, as an icon (option A).
+IconData placeIcon(Place p) {
+  final t = p.types.toSet();
+  bool any(List<String> xs) => xs.any(t.contains);
+  if (any(['airport'])) return Icons.flight;
+  if (any(['train_station', 'subway_station', 'light_rail_station', 'transit_station'])) return Icons.train;
+  if (any(['bus_station', 'bus_stop'])) return Icons.directions_bus;
+  if (any(['shopping_mall', 'department_store'])) return Icons.local_mall_outlined;
+  if (any(['lodging', 'hotel'])) return Icons.hotel_outlined;
+  if (any(['hospital', 'doctor', 'pharmacy'])) return Icons.local_hospital_outlined;
+  if (any(['university', 'school', 'secondary_school', 'primary_school'])) return Icons.school_outlined;
+  if (any(['restaurant', 'cafe', 'food'])) return Icons.restaurant_outlined;
+  if (any(['place_of_worship', 'mosque', 'church', 'hindu_temple'])) return Icons.account_balance_outlined;
+  if (any(['park', 'tourist_attraction'])) return Icons.park_outlined;
+  if (isStreetAddress(p)) return Icons.home_outlined;
+  return Icons.place_outlined;
+}
+
+/// One row of option B's list.
+@immutable
+class SmartRow {
+  const SmartRow.saved(SavedPlace this.saved) : place = null, recent = false;
+  const SmartRow.place(Place this.place, {this.recent = false}) : saved = null;
+
+  final SavedPlace? saved;
+  final Place? place;
+
+  /// One of the rider's recent places.
+  final bool recent;
+}
+
+/// Option B's results: the rider's [saved] and [recent] places that match
+/// [query] (every word in their name or address), then the named places
+/// among [results], then the street addresses ([addresses]). Recent places
+/// already saved, and results already shown above, are left out.
+({List<SmartRow> top, List<Place> addresses}) placesFirst(
+  String query,
+  List<Place> results, {
+  List<SavedPlace> saved = const [],
+  List<Place> recent = const [],
+}) {
+  final words = query.toLowerCase().split(RegExp(r'\s+')).where((w) => w.length >= 2).toList();
+  bool matches(String text) => words.isNotEmpty && words.every(text.toLowerCase().contains);
+  bool near(LatLng a, LatLng b) => const Distance().as(LengthUnit.Meter, a, b) < 100;
+
+  final savedHits = [
+    for (final s in saved)
+      if (matches('${s.title} ${s.name} ${s.address}')) s,
+  ];
+  final recentHits = [
+    for (final r in recent)
+      if (matches('${r.name} ${r.address}') && !savedHits.any((s) => near(s.point, r.point))) r,
+  ];
+  bool shown(Place p) =>
+      !p.pending && (savedHits.any((s) => near(s.point, p.point)) || recentHits.any((r) => near(r.point, p.point)));
+  final rest = [
+    for (final p in results)
+      if (!shown(p)) p,
+  ];
+  return (
+    top: [
+      for (final s in savedHits.take(3)) SmartRow.saved(s),
+      for (final r in recentHits.take(3)) SmartRow.place(r, recent: true),
+      for (final p in rest)
+        if (!isStreetAddress(p)) SmartRow.place(p),
+    ],
+    addresses: [
+      for (final p in rest)
+        if (isStreetAddress(p)) p,
+    ],
+  );
+}

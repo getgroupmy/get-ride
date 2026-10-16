@@ -292,6 +292,51 @@ void main() {
     expect(chosen, 1);
   });
 
+  testWidgets('a choice taller than the room above the footer raises the sheet, and it settles back', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(400, 800);
+    addTearDown(tester.view.reset);
+    var tall = true;
+    late StateSetter set;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              set = setState;
+              return MapSheetLayout(
+                map: const SizedBox.expand(),
+                initial: 0.5,
+                min: 0.5,
+                footer: const SizedBox(height: 150, width: double.infinity),
+                sheet: Column(children: [
+                  for (var i = 0; i < 3; i++) SizedBox(key: ValueKey('item-$i'), height: 60),
+                  // The chosen vehicle with its fare row (bidding), or without.
+                  MapSheetReveal(child: SizedBox(key: const ValueKey('chosen'), height: tall ? 300 : 120)),
+                  for (var i = 3; i < 8; i++) SizedBox(key: ValueKey('item-$i'), height: 60),
+                ]),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    const footerTop = 800 - 150.0;
+    double handle() => tester.getBottomLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
+    Rect chosen() => tester.getRect(find.byKey(const ValueKey('chosen')));
+    expect(chosen().bottom, lessThanOrEqualTo(footerTop), reason: 'whole above the footer');
+    expect(chosen().top, greaterThanOrEqualTo(handle()), reason: 'and below the handle');
+    expect(handle(), lessThan(400), reason: 'the sheet rose past its resting half');
+
+    // Smaller again (bidding off): back down to where it rested.
+    set(() => tall = false);
+    await tester.pumpAndSettle();
+    expect(handle(), closeTo(400 + 13, 3), reason: 'back at rest');
+    expect(chosen().bottom, lessThanOrEqualTo(footerTop));
+    expect(chosen().top, greaterThanOrEqualTo(handle()));
+  });
+
   testWidgets('choosing anew brings a raised sheet down and shows the choice whole above the footer', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(400, 800);

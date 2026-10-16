@@ -22,6 +22,14 @@
  *   Amazon Location (provider "amazon", tiles "amazon_js") is asked in map_config.amazonRegion
  *   ("ap-southeast-5" Malaysia or "ap-southeast-1" Singapore), where it answers with GrabMaps
  *   data; an amazon_js slot is { engine: "maplibre", style, key } instead of tiles.
+ *   Google place search is Text Search, or Autocomplete when map_config.googleSearch is
+ *   "autocomplete" (migration 0207): its places then have { id, types, km } and no position
+ *   (lat, lng null), and the app asks for the one picked, with the same &session=:
+ *   GET ?action=details&provider=google&role=…&device=…&id=<place id>&session=…
+ *       → { place: { name, address, lat, lng, types } | null }
+ *   GET ?action=validate&role=…&device=…&address=…  (smart address C, map_config.smartAddress
+ *       "c" or "all": Google's Address Validation)
+ *       → { checked: { address, lat, lng, complete } | null }
  *   GET ?action=expand&url=https://maps.app.goo.gl/…
  *       → { url: "https://www.google.com/maps/place/…" }  a share link pasted into place
  *         search, followed only through Google's own hosts (at most 6 hops)
@@ -33,14 +41,19 @@
  * 429 { error: "rate_limited" } past the per-address limit.
  */
 import {
+  addressValidationRequest,
   amazonRegionOf,
   cacheKey,
   cacheSeconds,
   DIRECT,
   distanceRequest,
   FALLBACK_SECRETS,
+  googleAutocompleteRequest,
+  googleDetailsRequest,
   googleDirectionsRequest,
   googleDistanceMatrixRequest,
+  googleLegacyAutocompleteRequest,
+  googleLegacyDetailsRequest,
   googleLegacyRefusal,
   googleLegacySearchRequest,
   googleSessionBody,
@@ -52,6 +65,9 @@ import {
   isRole,
   type Kind,
   keySlot,
+  parseAddressValidation,
+  parseAutocomplete,
+  parseDetails,
   parseDistances,
   parseReverse,
   parseRoute,
@@ -61,6 +77,7 @@ import {
   reverseRequest,
   routeRequest,
   searchRequest,
+  sessionToken,
   type TileSource,
   tileSource,
   trafficTileUrl,
@@ -100,6 +117,17 @@ function coord(v: string | null, max: number): number | null {
   if (v == null || v.trim() === "") return null;
   const n = Number(v);
   return Number.isFinite(n) && Math.abs(n) <= max ? n : null;
+}
+
+/** Google place search as Text Search ("text", the default) or Autocomplete. */
+export function googleSearchOf(config: unknown): "text" | "autocomplete" {
+  return (config as { googleSearch?: unknown } | null)?.googleSearch === "autocomplete" ? "autocomplete" : "text";
+}
+
+/** The smart address option: "normal", "a", "b", "c" or "all" (A, B and C). */
+export function smartAddressOf(config: unknown): "normal" | "a" | "b" | "c" | "all" {
+  const v = (config as { smartAddress?: unknown } | null)?.smartAddress;
+  return v === "a" || v === "b" || v === "c" || v === "all" ? v : "normal";
 }
 
 /** Which Google API answers place search and routes: "new", "old" or "new_old" (the default). */
@@ -180,6 +208,8 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
           reverse: profile.reverse,
           routing: profile.routing,
           distance: profile.distance,
+          googleSearch: googleSearchOf(config),
+          smartAddress: smartAddressOf(config),
           direct: {
             nominatim: directUrl(apiProviders, keys.nominatim),
             osrm: directUrl(apiProviders, keys.osrm),
@@ -187,6 +217,65 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
         },
       },
     };
+  }
+
+  // Google: the newer request, the older one, or the newer then the older, as for search.
+  const askGoogle = async (newer: HttpRequest, older: HttpRequest | null) => {
+    const api = googleApiOf(config);
+    const order = api === "old" && older ? [older] : api === "new" || !older ? [newer] : [newer, older];
+    let error: unknown = null;
+    for (const r of order) {
+      try {
+        const body = await deps.call(r);
+        const refused = googleLegacyRefusal(body);
+        if (refused) throw new Error(refused);
+        return body;
+      } catch (e) {
+        error = e;
+      }
+    }
+    throw error;
+  };
+
+  if (action === "details") {
+    if (!profile.search.includes("google")) return bad("That provider is not set for this profile.", 403);
+    const id = (params.get("id") ?? "").trim();
+    if (!/^[A-Za-z0-9_-]{10,300}$/.test(id)) return bad("Give id.");
+    const k = key("google", "search");
+    if (!k) return bad("No key for that provider.", 503);
+    if (!(await deps.take(`ip:${ip}`, RATE_LIMIT))) return bad("rate_limited", 429);
+    const session = sessionToken(params.get("session"));
+    try {
+      const body = await askGoogle(
+        googleDetailsRequest(id, lang, k, session),
+        googleLegacyDetailsRequest(id, lang, k, session),
+      );
+      const place = parseDetails(body);
+      await deps.count("google", "search", place != null, false).catch(() => {});
+      return { status: 200, body: { place } };
+    } catch {
+      await deps.count("google", "search", false, false).catch(() => {});
+      return bad("The provider did not answer.", 502);
+    }
+  }
+
+  if (action === "validate") {
+    const smart = smartAddressOf(config);
+    if (smart !== "c" && smart !== "all") return bad("Address checking is off.", 403);
+    const address = (params.get("address") ?? "").trim().slice(0, 200);
+    if (address.length < 5) return bad("Give address.");
+    const k = resolveKey(apiProviders, keys.google_address) ?? deps.fallbackKey?.("google_address") ?? null;
+    if (!k) return bad("No key for that provider.", 503);
+    if (!(await deps.take(`ip:${ip}`, RATE_LIMIT))) return bad("rate_limited", 429);
+    try {
+      const body = await deps.call(addressValidationRequest(address, countries[0] ?? "my", k));
+      const checked = parseAddressValidation(body);
+      await deps.count("google", "search", checked != null, false).catch(() => {});
+      return { status: 200, body: { checked } };
+    } catch {
+      await deps.count("google", "search", false, false).catch(() => {});
+      return bad("The provider did not answer.", 502);
+    }
   }
 
   const kinds: Record<string, Kind> = { search: "search", reverse: "reverse", route: "routing", distance: "distance" };
@@ -221,9 +310,15 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     };
     req = searchRequest(provider, sp, k);
     if (provider === "google") older = googleLegacySearchRequest(sp, k);
+    const autocomplete = provider === "google" && googleSearchOf(config) === "autocomplete";
+    if (autocomplete) {
+      const session = sessionToken(params.get("session"));
+      req = googleAutocompleteRequest(sp, k, session);
+      older = googleLegacyAutocompleteRequest(sp, k, session);
+    }
     // Near the same ~1 km, the same answer.
     ck = cacheKey(provider, kind, [q, lat == null ? "" : lat.toFixed(2), lng == null ? "" : lng.toFixed(2), countries.join(","), lang]);
-    parse = (b) => ({ places: parseSearch(provider, b) });
+    parse = (b) => ({ places: autocomplete ? parseAutocomplete(b) : parseSearch(provider, b) });
   } else if (kind === "reverse") {
     const lat = coord(params.get("lat"), 90), lng = coord(params.get("lng"), 180);
     if (lat == null || lng == null) return bad("Give lat and lng.");

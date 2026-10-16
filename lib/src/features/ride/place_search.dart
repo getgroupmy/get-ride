@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/airport_areas.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
+import '../../core/smart_address.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/place_gates_repository.dart';
@@ -94,6 +95,9 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   Map<String, double> _km = const {};
   int _asked = 0;
 
+  /// A picked suggestion being looked up, or a picked address checked.
+  bool _picking = false;
+
   static String _at(LatLng p) => '${p.latitude},${p.longitude}';
 
   /// Suggested (current place, the map, recent) or Saved.
@@ -131,7 +135,10 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     final from = widget.near;
     if (mounted) setState(() => _km = const {});
     if (from == null || places.isEmpty) return;
-    final to = places.take(10).map((p) => p.point).toList();
+    // Autocomplete's suggestions have no position yet: Google's own
+    // straight-line distance stands in for them.
+    final to = places.where((p) => !p.pending).take(10).map((p) => p.point).toList();
+    if (to.isEmpty) return;
     final km = await ref.read(geoServiceProvider).distances(from, to);
     if (!mounted || ask != _asked) return;
     setState(
@@ -153,8 +160,8 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// A search result, with the admin's gates under it when it is a
   /// multi-gate place (Expo `PlaceGatesList`). Where the place requires a
   /// gate, the place itself can't be picked — only one of its gates.
-  Widget _result(Place p, GateCatalogue? catalogue) {
-    final gated = catalogue == null
+  Widget _result(Place p, GateCatalogue? catalogue, SmartAddress smart) {
+    final gated = catalogue == null || p.pending
         ? null
         : matchGatedPlace(
             places: catalogue.places,
@@ -165,8 +172,14 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           );
     final gates = gated?.gates ?? const <GateOption>[];
     final blocked = gated?.blocksPlace ?? false;
-    final km = _km[_at(p.point)];
-    final icon = Icon(gates.isEmpty ? Icons.place_outlined : Icons.door_front_door_outlined);
+    final km = p.pending ? p.km : _km[_at(p.point)];
+    final icon = Icon(
+      gates.isNotEmpty
+          ? Icons.door_front_door_outlined
+          : smart.clean
+          ? placeIcon(p)
+          : Icons.place_outlined,
+    );
     return ListTile(
       key: ValueKey('result-${p.point.latitude},${p.point.longitude}'),
       // The distance from here under the pin, as Grab shows it.
@@ -189,9 +202,14 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                 ],
               ),
             ),
-      title: Text(p.name),
+      title: Text(
+        p.name,
+        style: smart.clean ? const TextStyle(fontWeight: FontWeight.w600) : null,
+        maxLines: smart.clean ? 1 : null,
+        overflow: smart.clean ? TextOverflow.ellipsis : null,
+      ),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(p.address, maxLines: 2, overflow: TextOverflow.ellipsis),
+        Text(smart.clean ? shortArea(p) : p.address, maxLines: smart.clean ? 1 : 2, overflow: TextOverflow.ellipsis),
         if (gates.isNotEmpty) ...[
           if (blocked)
             Padding(
@@ -210,8 +228,106 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           ]),
         ],
       ]),
-      onTap: blocked ? null : () => Navigator.pop(context, PlacePick.place(p)),
+      onTap: blocked || _picking ? null : () => _pick(p, catalogue, smart),
     );
+  }
+
+  /// A result picked: an Autocomplete suggestion looked up first (shown
+  /// again with its gates when it turns out to have some), a street
+  /// address checked by Google with smart address C, then handed back.
+  Future<void> _pick(Place p, GateCatalogue? catalogue, SmartAddress smart) async {
+    final geo = ref.read(geoServiceProvider);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    setState(() => _picking = true);
+    try {
+      var place = await geo.resolve(p);
+      if (!mounted) return;
+      if (place == null) {
+        messenger?.showSnackBar(const SnackBar(content: Text("Couldn't find that place. Try another.")));
+        return;
+      }
+      if (p.pending && catalogue != null) {
+        final gated = matchGatedPlace(
+          places: catalogue.places,
+          gates: catalogue.gates,
+          point: place.point,
+          name: place.name,
+          usage: widget.usage,
+        );
+        if (gated != null && gated.gates.isNotEmpty) {
+          // Choose its gate from the list, as for any gated place.
+          final looked = place;
+          setState(() => _results = [for (final r in _results) identical(r, p) ? looked : r]);
+          _measure(_results);
+          return;
+        }
+      }
+      if (smart.check && isStreetAddress(place)) place = await geo.checkAddress(place);
+      if (!mounted) return;
+      Navigator.pop(context, PlacePick.place(place));
+      if (place.verified) {
+        messenger?.showSnackBar(
+          SnackBar(
+            key: const ValueKey('place-verified'),
+            content: Text('✓ Address confirmed by Google: ${place.address}'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  /// Option B: the rider's saved and recent places that match on top, then
+  /// named places, then street addresses under their own heading.
+  List<Widget> _placesFirst(ThemeData t, List<Place> shown, GateCatalogue? catalogue, SmartAddress smart) {
+    final rows = placesFirst(
+      _query.text,
+      shown,
+      saved: ref.watch(savedPlacesProvider).value ?? const [],
+      recent: ref.watch(recentPlacesProvider).value ?? const [],
+    );
+    return [
+      for (final r in rows.top)
+        if (r.saved case final s?)
+          ListTile(
+            key: ValueKey('smart-saved-${s.id}'),
+            leading: const Icon(Icons.star_rounded),
+            title: Text('Saved: ${s.title}', maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(s.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () => Navigator.pop(context, PlacePick.place(savedPlaceAsPlace(s), entrance: s.entrance)),
+          )
+        else if (r.recent)
+          ListTile(
+            key: ValueKey('smart-recent-${r.place!.point.latitude},${r.place!.point.longitude}'),
+            leading: const Icon(Icons.history),
+            title: Text('Recent: ${r.place!.name}', maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(
+              smart.clean ? shortArea(r.place!) : r.place!.address,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () => Navigator.pop(context, PlacePick.place(r.place!)),
+          )
+        else
+          _result(r.place!, catalogue, smart),
+      if (rows.addresses.isNotEmpty)
+        Padding(
+          key: const ValueKey('smart-addresses'),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(
+            children: [
+              const Expanded(child: Divider()),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text('Addresses', style: t.textTheme.labelMedium),
+              ),
+              const Expanded(child: Divider()),
+            ],
+          ),
+        ),
+      for (final p in rows.addresses) _result(p, catalogue, smart),
+    ];
   }
 
   @override
@@ -219,6 +335,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     final t = Theme.of(context);
     final catalogue = ref.watch(placeGatesProvider).value;
     final typing = _query.text.trim().isNotEmpty;
+    final smart = ref.watch(geoServiceProvider).smartAddress;
     final field = t.colorScheme.surfaceContainerHighest;
     return Column(
       children: [
@@ -297,7 +414,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
               suffixIcon: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_loading)
+                  if (_loading || _picking)
                     const Padding(
                       padding: EdgeInsets.only(right: 4),
                       child: SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
@@ -357,18 +474,23 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
               if (!typing && _route && _saved) ..._savedList(t),
               if (!typing && _route && !_saved) ..._suggested(t),
               if (typing)
-                for (final p in collapseAirports<Place>(
-                  _results,
-                  ref.watch(airportAreasProvider).value ?? const [],
-                  point: (p) => p.point,
-                  text: (p) => '${p.name} ${p.address}',
-                  airport: (a) => Place(
-                    name: a.name,
-                    address: a.code.isEmpty ? 'Airport' : '${a.code} · Airport',
-                    point: a.centroid,
-                  ),
-                ))
-                  _result(p, catalogue),
+                ...() {
+                  final shown = collapseAirports<Place>(
+                    _results,
+                    ref.watch(airportAreasProvider).value ?? const [],
+                    point: (p) => p.point,
+                    text: (p) => '${p.name} ${p.address}',
+                    airport: (a) => Place(
+                      name: a.name,
+                      address: a.code.isEmpty ? 'Airport' : '${a.code} · Airport',
+                      point: a.centroid,
+                      types: const ['airport'],
+                    ),
+                  );
+                  return smart.placesFirst
+                      ? _placesFirst(t, shown, catalogue, smart)
+                      : [for (final p in shown) _result(p, catalogue, smart)];
+                }(),
             ],
           ),
         ),

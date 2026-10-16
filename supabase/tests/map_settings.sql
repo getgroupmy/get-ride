@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Regression test for migration 0200: Admin → Settings → Maps. The setting
 -- is cleaned (eight profiles, known providers only, key references), Google
--- search or geocoding needs Google tiles, only an admin reads or writes it,
+-- search or geocoding over any map (Google tiles only until 0207), only an admin reads or writes it,
 -- and the geo function's rate limit and usage counts work.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/map_settings.sql
@@ -63,11 +63,11 @@ select pg_temp.check((select v->'keys'->>'mapbox' = 'mapbox/tiles#k1' and v->'ke
                           "here": "not a reference; drop table x"}}') v) s),
   'key references kept when well formed, defaults otherwise');
 
--- 2. Google's terms ---------------------------------------------------------------------------
+-- 2. Google's terms: once Google-map-only, any map since 0207 (the admin's choice) --------------
 select pg_temp.check(public.map_config_google_conflicts(public.map_config_clean('{"profiles": {
     "rider.ios": {"search": ["google", "nominatim"]},
     "partner.ios": {"tiles": {"light": "google", "dark": "google"}, "reverse": ["google"]}}}'))
-  = 'rider.ios', 'Google search on OSM tiles conflicts; on Google tiles it does not');
+  is null, 'Google search over OSM tiles is allowed');
 
 -- 3. Admin only ----------------------------------------------------------------------------------
 set local role authenticated;
@@ -79,8 +79,8 @@ select pg_temp.refused($q$select * from public.geo_cache$q$, 'reading the geo ca
 select pg_temp.refused($q$select public.geo_take('x', 1)$q$, 'taking from the rate limit');
 
 select pg_temp.as_user('00000000-0000-0000-0000-0000000200a1');
-select pg_temp.refused($q$select public.set_map_config('{"profiles": {"rider.web": {"search": ["google"]}}}')$q$,
-  'saving Google search on OSM tiles');
+select pg_temp.check(public.set_map_config('{"profiles": {"rider.web": {"search": ["google"]}}}')
+  ->'profiles'->'rider.web'->'search' = '["google"]', 'saving Google search on OSM tiles');
 select pg_temp.check((select public.set_map_config('{"profiles": {"rider.web": {"tiles": {"light": "google",
                        "dark": "google"}, "search": ["google", "nominatim"]}}}')->'profiles'->'rider.web'->'search'
                       = '["google", "nominatim"]'::jsonb),
