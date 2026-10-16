@@ -35,6 +35,24 @@ class _FakeRepo implements MapsRepository {
   Future<Set<String>> fallbackSlots() async => fallbacks;
   Set<String> fallbacks = const {};
 
+  /// 35 failures kept, newest (35) first.
+  final errorsAsked = <String>[];
+
+  @override
+  Future<List<MapErrorRow>> errors(String provider, String kind, {int? before, int limit = 30}) async {
+    errorsAsked.add('$provider $kind ${before ?? '-'} $limit');
+    return [
+      for (var id = (before ?? 36) - 1; id >= 1 && id > (before ?? 36) - 1 - limit; id--)
+        MapErrorRow(
+          id: id,
+          at: DateTime(2026, 10, 16, 7, id),
+          detail: id == 35 ? 'Answered, but found nothing' : '403 from geocode.search.hereapi.com',
+          role: 'rider',
+          device: 'web',
+        ),
+    ];
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -65,6 +83,7 @@ class _FakeProbe implements MapTestProbe {
             'satellite': null,
             'traffic': {'off': true},
           },
+          'refused': {'dark': '403 from tile.googleapis.com (PERMISSION_DENIED, SERVICE_DISABLED)'},
         },
       },
       'search' => {
@@ -175,11 +194,17 @@ void main() {
       expect(made.list.single.services.single.keys.single.label, 'Key 1');
     });
 
-    test("Google's JavaScript map and its traffic: web only, traffic only on that map", () {
-      expect(tileOptionsFor('light', 'web'), contains('google_js'));
+    test("Google's map per device: native on phones, JavaScript on the web and desktop, traffic only on them", () {
+      expect(tileOptionsFor('light', 'web'), containsAll(['google_js', 'amazon_js']));
+      expect(tileOptionsFor('light', 'web'), isNot(contains('google_native')));
+      expect(tileOptionsFor('light', 'android'), contains('google_native'));
+      expect(tileOptionsFor('satellite', 'ios'), contains('google_native'));
       expect(tileOptionsFor('light', 'android'), isNot(contains('google_js')));
-      expect(tileOptionsFor('traffic', 'web'), contains('google'));
-      expect(tileOptionsFor('traffic', 'ios'), isNot(contains('google')));
+      expect(tileOptionsFor('light', 'desktop'), contains('google_js'));
+      expect(tileOptionsFor('light', 'desktop'), isNot(anyOf(contains('google_native'), contains('amazon_js'))));
+      expect(tileOptionsFor('traffic', 'ios'), contains('google'));
+      expect(mapProviderLabel('google_native'), 'Google Maps (native)');
+      expect(mapProviderLabel('google_js'), 'Google Maps (JavaScript)');
       const js = MapProfileSetting(
         tiles: {'light': 'google_js', 'dark': 'google_js', 'satellite': 'google_js', 'traffic': 'google'},
         search: ['google'],
@@ -187,11 +212,27 @@ void main() {
       expect(js.breaksGoogleTerms, isFalse, reason: "Google search on Google's JavaScript map");
       expect(js.googleTrafficWithoutItsMap, isFalse);
       expect(js.withTile('dark', 'osm').googleTrafficWithoutItsMap, isTrue);
-      expect(js.forDevice('android').tiles.values.toSet(), {'app'}, reason: 'copied to the phone apps: as built');
+      expect(
+        js.withTile('dark', 'google_native').googleTrafficWithoutItsMap,
+        isTrue,
+        reason: 'the same Google map for both',
+      );
+      expect(js.forDevice('android').tiles, {
+        'light': 'google_native',
+        'dark': 'google_native',
+        'satellite': 'google_native',
+        'traffic': 'google',
+      }, reason: "copied to the phone apps: Google's own map there");
+      expect(js.forDevice('android').googleTrafficWithoutItsMap, isFalse);
+      expect(js.forDevice('desktop'), js);
       expect(js.forDevice('web'), js);
+      const amazon = MapProfileSetting(
+        tiles: {'light': 'amazon_js', 'dark': 'app', 'satellite': 'app', 'traffic': 'app'},
+      );
+      expect(amazon.forDevice('android').tiles['light'], 'app', reason: 'Amazon\'s map is web only');
       final s = MapSettings.fromJson(null).withProfile('rider', 'web', js.withTile('dark', 'osm'));
       expect(s.googleTrafficConflicts, ['Rider · Web']);
-      expect(s.copiedToAllDevices('rider', 'web').profile('rider', 'android').tiles['light'], 'app');
+      expect(s.copiedToAllDevices('rider', 'web').profile('rider', 'android').tiles['light'], 'google_native');
       expect(s.keyRef('google_js'), 'google/maps_js');
     });
 
@@ -516,7 +557,7 @@ void main() {
       tester,
     ) async {
       final (repo, _) = await pump(tester, dark: dark);
-      await choose(tester, 'maps-tile-web-traffic', 'Google traffic (on Google Maps JavaScript)');
+      await choose(tester, 'maps-tile-web-traffic', 'Google traffic (on a Google map)');
       expect(find.byKey(const ValueKey('maps-google-traffic-warning'), skipOffstage: false), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('maps-save')));
       await tester.pumpAndSettle();
@@ -529,6 +570,22 @@ void main() {
       expect(repo.saved.single.profile('rider', 'web').tiles, {
         'light': 'google_js',
         'dark': 'google_js',
+        'satellite': 'app',
+        'traffic': 'google',
+      });
+    });
+
+    testWidgets("phones: Google Maps (native) with Google's traffic, saved ($mode)", (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      await choose(tester, 'maps-tile-android-light', 'Google Maps (native)');
+      await choose(tester, 'maps-tile-android-dark', 'Google Maps (native)');
+      await choose(tester, 'maps-tile-android-traffic', 'Google traffic (on a Google map)');
+      expect(find.byKey(const ValueKey('maps-google-traffic-warning'), skipOffstage: false), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.profile('rider', 'android').tiles, {
+        'light': 'google_native',
+        'dark': 'google_native',
         'satellite': 'app',
         'traffic': 'google',
       });
@@ -665,6 +722,54 @@ void main() {
         'rider ios profile',
         'rider ios search',
       ]);
+    });
+  }
+
+  for (final dark in [false, true]) {
+    testWidgets('Test says why a set map fell back, in plain words (${dark ? 'dark' : 'light'})', (tester) async {
+      await pump(tester, dark: dark);
+      await choose(tester, 'maps-tile-ios-dark', 'Google');
+      await tester.ensureVisible(find.byKey(const ValueKey('maps-test-ios')));
+      await tester.tap(find.byKey(const ValueKey('maps-test-ios')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final why = tester.widget<Text>(find.byKey(const ValueKey('maps-test-refused-dark'))).data!;
+      expect(why, contains("Map Tiles API is not enabled in this key's Google Cloud project"));
+      expect(why, contains('built-in map'));
+      expect(find.byKey(const ValueKey('maps-test-refused-satellite')), findsNothing, reason: 'built in by choice');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  test('refusals in plain words', () {
+    expect(mapRefusalText('No key'), startsWith('No key for it'));
+    expect(mapRefusalText('403 (PERMISSION_DENIED, API_KEY_SERVICE_BLOCKED)'), contains("API restrictions"));
+    expect(googleJsErrorText('RefererNotAllowedMapError'), contains("website restrictions"));
+    expect(googleJsErrorText('ApiNotActivatedMapError'), contains('Maps JavaScript API is not enabled'));
+    expect(googleJsErrorText('SomethingNew'), 'Google refused: SomethingNew');
+  });
+
+  for (final dark in [false, true]) {
+    final mode = dark ? 'dark' : 'light';
+    testWidgets('Usage: a row with failures lists the latest 30, then more ($mode)', (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      await tester.tap(find.text('Usage'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('maps-usage-here-search')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('maps-errors-dialog')), findsOneWidget);
+      expect(repo.errorsAsked, ['here search - 30']);
+      expect(find.text('Answered, but found nothing'), findsOneWidget, reason: 'newest first');
+      expect(find.textContaining('Rider · Web'), findsWidgets);
+      expect(find.byKey(const ValueKey('maps-error-6')), findsOneWidget);
+      expect(find.byKey(const ValueKey('maps-error-5')), findsNothing);
+      await tester.ensureVisible(find.byKey(const ValueKey('maps-errors-more')));
+      await tester.tap(find.byKey(const ValueKey('maps-errors-more')));
+      await tester.pumpAndSettle();
+      expect(repo.errorsAsked.last, 'here search 6 30');
+      expect(find.byKey(const ValueKey('maps-error-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('maps-errors-more')), findsNothing, reason: 'all shown');
+      expect(tester.takeException(), isNull);
     });
   }
 

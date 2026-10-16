@@ -2,6 +2,7 @@
 // usage per provider, and the keys Admin → API Keys holds.
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -51,6 +52,26 @@ class MapUsageRow {
   }
 }
 
+/// One failed call through `geo` (migration 0209): when, for whom and why.
+@immutable
+class MapErrorRow {
+  const MapErrorRow({required this.id, required this.at, required this.detail, this.role, this.device});
+
+  final int id;
+  final DateTime at;
+  final String detail;
+  final String? role;
+  final String? device;
+
+  factory MapErrorRow.fromRow(Map<String, dynamic> r) => MapErrorRow(
+    id: r['id'] is num ? (r['id'] as num).toInt() : int.tryParse('${r['id']}') ?? 0,
+    at: DateTime.tryParse('${r['at']}')?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0),
+    detail: '${r['detail'] ?? ''}',
+    role: r['role'] as String?,
+    device: r['device'] as String?,
+  );
+}
+
 class MapsRepository {
   MapsRepository(this._db);
   final SupabaseClient _db;
@@ -82,6 +103,18 @@ class MapsRepository {
       return const {};
     }
   }
+
+  /// [provider]'s [kind] failures, newest first: [limit] older than [before]
+  /// (an id; null for the newest).
+  Future<List<MapErrorRow>> errors(String provider, String kind, {int? before, int limit = 30}) async => [
+    for (final r
+        in await _db.rpc(
+              'map_errors',
+              params: {'p_provider': provider, 'p_kind': kind, 'p_before': before, 'p_limit': limit},
+            )
+            as List)
+      MapErrorRow.fromRow(Map<String, dynamic>.from(r as Map)),
+  ];
 
   Future<List<MapUsageRow>> usage({int days = 30}) async => [
     for (final r in await _db.rpc('map_usage', params: {'p_days': days}) as List)

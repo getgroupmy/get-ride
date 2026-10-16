@@ -9,95 +9,32 @@ import 'package:flutter/widgets.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:web/web.dart' as web;
 
-const googleJsSupported = true;
+import 'google_map_style.dart';
 
-/// Google's dark style for the roadmap (the JavaScript API's `styles`).
-const _night = [
-  {
-    'elementType': 'geometry',
-    'stylers': [
-      {'color': '#242f3e'},
-    ],
-  },
-  {
-    'elementType': 'labels.text.stroke',
-    'stylers': [
-      {'color': '#242f3e'},
-    ],
-  },
-  {
-    'elementType': 'labels.text.fill',
-    'stylers': [
-      {'color': '#746855'},
-    ],
-  },
-  {
-    'featureType': 'road',
-    'elementType': 'geometry',
-    'stylers': [
-      {'color': '#38414e'},
-    ],
-  },
-  {
-    'featureType': 'road',
-    'elementType': 'geometry.stroke',
-    'stylers': [
-      {'color': '#212a37'},
-    ],
-  },
-  {
-    'featureType': 'road',
-    'elementType': 'labels.text.fill',
-    'stylers': [
-      {'color': '#9ca5b3'},
-    ],
-  },
-  {
-    'featureType': 'road.highway',
-    'elementType': 'geometry',
-    'stylers': [
-      {'color': '#746855'},
-    ],
-  },
-  {
-    'featureType': 'water',
-    'elementType': 'geometry',
-    'stylers': [
-      {'color': '#17263c'},
-    ],
-  },
-  {
-    'featureType': 'water',
-    'elementType': 'labels.text.fill',
-    'stylers': [
-      {'color': '#515c6d'},
-    ],
-  },
-  {
-    'featureType': 'poi',
-    'elementType': 'labels.text.fill',
-    'stylers': [
-      {'color': '#d59563'},
-    ],
-  },
-  {
-    'featureType': 'poi.park',
-    'elementType': 'geometry',
-    'stylers': [
-      {'color': '#263c3f'},
-    ],
-  },
-  {
-    'featureType': 'transit',
-    'elementType': 'geometry',
-    'stylers': [
-      {'color': '#2f3948'},
-    ],
-  },
-];
+const googleJsSupported = true;
 
 /// The API's `maps` library, loaded once per page; null when it can't load.
 Future<JSObject?>? _maps;
+
+/// Google's name for why it refused the key on this page
+/// ("ApiNotActivatedMapError", "RefererNotAllowedMapError" …), read from the
+/// error the API writes to the browser console; null while it hasn't. Only
+/// Admin → Settings → Maps → Test shows it; riders' and partners' maps just
+/// fall back.
+final googleJsError = ValueNotifier<String?>(null);
+
+final _errorName = RegExp(r'Google Maps JavaScript API (?:error|warning): (\w+)');
+
+/// Listens to the console for the API's own error, passing everything on.
+void _watchConsole() {
+  final console = globalContext['console'] as JSObject;
+  final original = console['error'] as JSFunction;
+  console['error'] = ((JSAny? a, JSAny? b, JSAny? c) {
+    final name = _errorName.firstMatch('${a?.dartify() ?? ''}')?.group(1);
+    if (name != null && googleJsError.value == null) googleJsError.value = name;
+    original.callMethod('apply'.toJS, console, [a, b, c].whereType<JSAny>().toList().toJS);
+  }).toJS;
+}
 
 /// Called by the API when the key is refused (wrong key, API off, site not
 /// allowed); every Google JavaScript map then gives way to tiles.
@@ -105,6 +42,7 @@ final _authFailed = <VoidCallback>{};
 
 Future<JSObject?> _loadMaps(String key) => _maps ??= () async {
   final ready = Completer<bool>();
+  _watchConsole();
   globalContext['__getRideGoogleMapsReady'] = (() {
     if (!ready.isCompleted) ready.complete(true);
   }).toJS;
@@ -192,7 +130,7 @@ class _GoogleJsMapViewState extends State<GoogleJsMapView> {
 
   JSAny _look() => {
     'mapTypeId': widget.satellite ? 'satellite' : 'roadmap',
-    'styles': widget.dark && !widget.satellite ? _night : <Object>[],
+    'styles': widget.dark && !widget.satellite ? googleNightStyle : <Object>[],
     'backgroundColor': widget.dark ? '#242f3e' : '#e5e3df',
   }.jsify()!;
 

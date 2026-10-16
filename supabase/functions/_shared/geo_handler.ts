@@ -92,7 +92,8 @@ export interface GeoDeps {
   call(req: HttpRequest): Promise<unknown>;
   /** Counts a call against [bucket]'s minute; false when over [limit]. */
   take(bucket: string, limit: number): Promise<boolean>;
-  count(provider: string, kind: Kind | "tiles", ok: boolean, cached: boolean): Promise<void>;
+  /** One call counted; a failed one with [detail], what went wrong, for Admin → Maps → Usage. */
+  count(provider: string, kind: Kind | "tiles", ok: boolean, cached: boolean, detail?: string): Promise<void>;
   cacheGet(key: string): Promise<unknown | null>;
   cachePut(key: string, value: unknown, seconds: number): Promise<void>;
   /** A Google Map Tiles session for [slot], reused until near its expiry. */
@@ -180,15 +181,22 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   const amazonRegion = amazonRegionOf(config);
 
   if (action === "profile") {
+    // Why a set map slot fell back to the app's own (Admin → Maps → Test shows it; the app ignores it).
+    const refused: Record<string, string> = {};
     const tile = async (slot: "light" | "dark" | "satellite"): Promise<TileSource | null> => {
       const provider = profile.tiles[slot];
       if (provider === "app") return null;
       const k = key(provider, "tiles");
       let session: string | null = null;
       if (provider === "google" && k) {
-        session = await deps.googleSession(slot, k, countries[0] ?? "my").catch(() => null);
+        session = await deps.googleSession(slot, k, countries[0] ?? "my").catch((e) => {
+          refused[slot] = e instanceof Error ? e.message : "Google refused the tile session";
+          return null;
+        });
       }
-      return tileSource(provider, slot, k, session, amazonRegion);
+      const source = tileSource(provider, slot, k, session, amazonRegion);
+      if (!source && !refused[slot]) refused[slot] = k ? "Not answered" : "No key";
+      return source;
     };
     const t = profile.tiles.traffic;
     let traffic: unknown = null;
@@ -206,6 +214,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       body: {
         profile: {
           tiles: { light: await tile("light"), dark: await tile("dark"), satellite: await tile("satellite"), traffic },
+          refused,
           search: profile.search,
           reverse: profile.reverse,
           routing: profile.routing,
@@ -254,10 +263,11 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
         googleLegacyDetailsRequest(id, lang, k, session),
       );
       const place = parseDetails(body);
-      await deps.count("google", "search", place != null, false).catch(() => {});
+      await deps.count("google", "search", place != null, false, place ? undefined : "Place details: no place for that id")
+        .catch(() => {});
       return { status: 200, body: { place } };
-    } catch {
-      await deps.count("google", "search", false, false).catch(() => {});
+    } catch (e) {
+      await deps.count("google", "search", false, false, `Place details: ${errorDetail(e)}`).catch(() => {});
       return bad("The provider did not answer.", 502);
     }
   }
@@ -273,10 +283,11 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     try {
       const body = await deps.call(addressValidationRequest(address, countries[0] ?? "my", k));
       const checked = parseAddressValidation(body);
-      await deps.count("google", "search", checked != null, false).catch(() => {});
+      await deps.count("google", "search", checked != null, false, checked ? undefined : "Address check: no answer")
+        .catch(() => {});
       return { status: 200, body: { checked } };
-    } catch {
-      await deps.count("google", "search", false, false).catch(() => {});
+    } catch (e) {
+      await deps.count("google", "search", false, false, `Address check: ${errorDetail(e)}`).catch(() => {});
       return bad("The provider did not answer.", 502);
     }
   }
@@ -391,20 +402,33 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       body = await ask(req);
     } catch (e) {
       if (!older) throw e;
-      body = await ask(older);
+      try {
+        body = await ask(older);
+      } catch (e2) {
+        throw new Error(`${errorDetail(e)}; then the older API: ${errorDetail(e2)}`);
+      }
     }
     const answer = parse(body) as Record<string, unknown>;
     const list = answer.places ?? answer.distances;
     const empty = Array.isArray(list)
       ? (answer.distances ? list.every((d) => d == null) : list.length === 0)
       : Object.values(answer)[0] == null;
-    await deps.count(provider, kind, !empty, false).catch(() => {});
+    await deps.count(provider, kind, !empty, false, empty ? "Answered, but found nothing" : undefined).catch(() => {});
     if (ttl > 0 && !empty) await deps.cachePut(ck, answer, ttl).catch(() => {});
     return { status: 200, body: answer };
-  } catch {
-    await deps.count(provider, kind, false, false).catch(() => {});
+  } catch (e) {
+    await deps.count(provider, kind, false, false, errorDetail(e)).catch(() => {});
     return bad("The provider did not answer.", 502);
   }
+}
+
+/** What went wrong, short (the request's own errors never carry the key). */
+export function errorDetail(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e ?? "");
+  if (/timed? ?out|TimeoutError|aborted/i.test(m) || (e instanceof Error && e.name === "TimeoutError")) {
+    return "No answer within 8 s";
+  }
+  return (m || "Failed").slice(0, 300);
 }
 
 /** Google's createSession answer → the session and when it expires (ms). */

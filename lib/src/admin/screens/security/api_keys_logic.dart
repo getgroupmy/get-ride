@@ -166,6 +166,8 @@ final defaultApiProviders = <ApiProviderDef>[
   ApiProviderDef(id: 'google', name: 'Google', description: 'Google Maps Platform services', category: 'Mapping', services: [
     _svc('maps', 'Maps SDK', 'Maps SDK, tiles & static maps'),
     _svc('maps_js', 'Maps JavaScript', "Browser key for Google's JavaScript map (website)"),
+    _svc('maps_android', 'Maps SDK for Android', "Google's own map in the Android app, built in at release (package com.taxxee.teksi)"),
+    _svc('maps_ios', 'Maps SDK for iOS', "Google's own map in the iPhone and iPad app, built in at release (this app's bundle ID)"),
     _svc('address_validation', 'Address Validation', 'Checks and completes picked street addresses'),
     _svc('places', 'Places', 'Place search, autocomplete & details'),
     _svc('geocoding', 'Geocoding', 'Forward & reverse geocoding'),

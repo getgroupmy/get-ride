@@ -74,17 +74,21 @@ final mapProfileRepositoryProvider = Provider((ref) => MapProfileRepository(ref.
 
 /// This user's and device's map profile, kept live; the one kept on the
 /// device, else [MapProfile.builtIn], when `geo` can't be reached. Sets
-/// [activeMapProfile] for the tile layers and [GeoService].
+/// [activeMapProfile] for the tile layers and [GeoService] ([applyMapProfile]).
 final mapProfileProvider = FutureProvider<MapProfile>((ref) async {
   ref.watchLive('app_settings');
   final role = mapRole(ref.watch(appModeProvider));
   final repo = ref.watch(mapProfileRepositoryProvider);
+  // What this device had last time draws at once while the current one is
+  // asked for; the app's own map only when neither can be had.
+  final kept = await repo.kept(role);
+  if (kept != null && mapProfileListenable.value == null) applyMapProfile(kept);
   MapProfile profile;
   try {
-    profile = await repo.fetch(role);
+    profile = await repo.fetch(role).timeout(const Duration(seconds: 8));
   } catch (_) {
-    profile = await repo.kept(role) ?? MapProfile.builtIn;
+    profile = kept ?? MapProfile.builtIn;
   }
-  activeMapProfile = profile;
+  applyMapProfile(profile);
   return profile;
 });

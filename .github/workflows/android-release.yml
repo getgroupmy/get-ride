@@ -166,6 +166,17 @@ jobs:
             -storepass "$ANDROID_KEYSTORE_PASSWORD" \
             | grep -i "SHA256:" | head -1 | tee "$RUNNER_TEMP/sha256.txt"
 
+      # Google's own map (Admin → Settings → Maps, "Google Maps (native)"):
+      # the Maps SDK for Android key from Admin → API Keys, else the
+      # GOOGLE_MAPS_ANDROID_API_KEY secret, into $GITHUB_ENV for both builds
+      # (build.gradle.kts puts it in the manifest). None: the app keeps its map.
+      - name: Google map key
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          FALLBACK_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_API_KEY }}
+        run: scripts/ci/native_map_key.sh android
+
       - name: Build the bundle
         id: build
         if: steps.creds.outputs.ready == 'true'

@@ -374,6 +374,34 @@ After the next push to `main` (web deploy), check:
   files, `adb shell pm verify-app-links --re-verify com.taxxee.teksi`.
 * Scan a My QR code with the camera: it should offer to open GET.ride.
 
+### 7. Google's own map on phones ("Google Maps (native)")
+
+Admin → Settings → Maps can give Android, iPhone and iPad Google's own map
+(the Maps SDK) under the app's layers. The key goes into the app when it is
+built, so add it before the release that should show it; without one the
+phones keep the app's own map, whatever is set.
+
+Add the keys in **Admin → API Keys → Google**:
+
+| Service | Google Cloud key |
+|---|---|
+| **Maps SDK for Android** | APIs: **Maps SDK for Android**. Application restriction: Android apps, package `com.taxxee.teksi` with the SHA-1 of the Play app signing key (Play Console → App integrity) and of the upload key. |
+| **Maps SDK for iOS** | APIs: **Maps SDK for iOS**. Application restriction: iOS apps, bundle ID of this app. |
+
+The release workflows read the first enabled key of each service with the
+`SUPABASE_ACCESS_TOKEN` secret (`scripts/ci/native_map_key.sh`). The
+Actions secrets `GOOGLE_MAPS_ANDROID_API_KEY` and `GOOGLE_MAPS_IOS_API_KEY`
+are only used when API Keys has none.
+
+Enable both APIs in the key's Google Cloud project, with billing on. The
+build's log says `GOOGLE_MAPS_NATIVE: set` when the key went in.
+
+Windows and macOS have no Google SDK: there "Google Maps (JavaScript)" shows
+Google's JavaScript map in a web view of `https://getride.my/google_map.html`,
+with the same browser key as the web (Admin → Maps → Keys), so that key's
+website restriction must allow `getride.my`. Windows needs the WebView2
+runtime (built into Windows 11). Linux keeps the app's own map.
+
 ## Flutter version
 
 Every workflow that installs Flutter (`flutter.yml`, `android-release.yml`,

@@ -41,6 +41,10 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Google's own map (Admin → Settings → Maps, "Google Maps (native)"):
+        // the Maps SDK for Android key, from the release workflow's
+        // GOOGLE_MAPS_ANDROID_API_KEY secret. Empty, the app keeps its tiles.
+        manifestPlaceholders["googleMapsKey"] = System.getenv("GOOGLE_MAPS_ANDROID_API_KEY") ?: ""
     }
 
     signingConfigs {

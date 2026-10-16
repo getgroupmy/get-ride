@@ -631,14 +631,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _choose(_PinTarget target) async {
     final pickup = target == _PinTarget.pickup;
+    // One route sheet for both ends: From over To, opened on the one tapped.
     final pick = await showPlaceSearch(
       context,
-      title: pickup ? 'Pickup' : 'Enter your route',
+      title: 'Enter your route',
       near: _me ?? _pickup?.point,
       current: _here,
-      usage: pickup ? GateUsage.pickup : GateUsage.drop,
-      // inDrive's "From" above the destination field.
-      from: pickup ? null : _pickup,
+      usage: GateUsage.drop,
+      from: _pickup,
+      to: _drop,
+      routeEnds: true,
+      startOnFrom: pickup,
     );
     if (pick == null || !mounted) return;
     // The route's "From", changed in the same dialog: the pickup.

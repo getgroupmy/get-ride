@@ -29,6 +29,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/map_profile_repository.dart' show mapProfileProvider;
+import 'google_js_map.dart' show googleJsSupported;
+import 'google_native_layer.dart' show googleNativeSupported;
 import 'map_tiles.dart' show appTileProvider, retryingTileClient;
 
 const _configuredTraffic = String.fromEnvironment('MAP_TILE_URL_TRAFFIC');
@@ -52,10 +54,13 @@ final trafficTileUrlProvider = Provider<String?>((ref) {
   return resolveTrafficTileUrl();
 });
 
-/// Google's own traffic, drawn by its JavaScript map (migration 0204): set
-/// by the admin, and only on the web. The traffic button switches it.
+/// Google's own traffic, drawn by its JavaScript map (migration 0204) or by
+/// its own map in the phone app (0210): set by the admin, where this device
+/// can draw one of them. The traffic button switches it.
 final googleTrafficProvider = Provider<bool>(
-  (ref) => kIsWeb && ref.watch(mapProfileProvider).value?.traffic?.google == true,
+  (ref) =>
+      (kIsWeb || googleNativeSupported || googleJsSupported) &&
+      ref.watch(mapProfileProvider).value?.traffic?.google == true,
 );
 
 /// The backup traffic source, validated the same way; null when there is
