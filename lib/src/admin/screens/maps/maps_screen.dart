@@ -62,6 +62,14 @@ class _AdminMapsScreenState extends ConsumerState<AdminMapsScreen> {
       showInfo(context, 'Google search or address lookup needs Google map tiles: ${conflicts.join(', ')}.');
       return;
     }
+    final traffic = d.googleTrafficConflicts;
+    if (traffic.isNotEmpty) {
+      showInfo(
+        context,
+        'Google traffic needs Google Maps (JavaScript) for Map and Map (dark mode): ${traffic.join(', ')}.',
+      );
+      return;
+    }
     setState(() => _saving = true);
     final ok = await runAdminAction(context, () async {
       final saved = await ref.read(mapsRepositoryProvider).save(d);
@@ -152,6 +160,7 @@ class _DevicesTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final conflicts = settings.googleConflicts;
+    final trafficConflicts = settings.googleTrafficConflicts;
     final keys = ref.watch(adminMapApiKeysProvider).value;
     // Synced from GitHub: `geo` uses these when Admin → API Keys has none.
     final synced = ref.watch(adminMapFallbackSlotsProvider).value ?? const <String>{};
@@ -194,6 +203,15 @@ class _DevicesTab extends ConsumerWidget {
             text:
                 "Google's terms: its place search and address lookup may only be shown on Google's map. "
                 'Set Google for Map and Map (dark mode), or pick another provider: ${conflicts.join(', ')}.',
+          ),
+        if (trafficConflicts.isNotEmpty)
+          _Notice(
+            key: const ValueKey('maps-google-traffic-warning'),
+            icon: Icons.traffic_outlined,
+            error: true,
+            text:
+                "Google traffic is drawn by Google's JavaScript map. Set Google Maps (JavaScript) for Map and "
+                'Map (dark mode), or pick another traffic source: ${trafficConflicts.join(', ')}.',
           ),
         if (missing.isNotEmpty)
           _Notice(
@@ -318,7 +336,7 @@ class _DeviceCard extends StatelessWidget {
                       key: ValueKey('maps-tile-$device-$slot'),
                       label: tileSlotLabel(slot),
                       value: profile.tiles[slot] ?? 'app',
-                      options: tileOptions[slot]!,
+                      options: tileOptionsFor(slot, device),
                       optionLabel: (p) => mapProviderLabel(p, slot: slot),
                       enabled: canEdit,
                       onChanged: (v) => onChanged(profile.withTile(slot, v)),
@@ -767,6 +785,8 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
         dimension: 48,
         child: spec == null
             ? const Icon(Icons.layers_outlined)
+            : spec.isGoogleJs
+            ? const Icon(Icons.map_outlined)
             : ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: Image.network(
@@ -777,7 +797,13 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
               ),
       ),
       title: Text(tileSlotLabel(slot)),
-      subtitle: Text(spec == null ? 'Built in' : tileHost(spec.url)),
+      subtitle: Text(
+        spec == null
+            ? 'Built in'
+            : spec.isGoogleJs
+            ? 'Google Maps (JavaScript), drawn by the browser'
+            : tileHost(spec.url),
+      ),
     );
     return AlertDialog(
       key: const ValueKey('maps-test-dialog'),

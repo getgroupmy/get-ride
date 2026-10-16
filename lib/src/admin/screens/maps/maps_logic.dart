@@ -31,12 +31,21 @@ String tileSlotLabel(String s) => switch (s) {
 };
 
 /// The providers each tile slot can use ('app': as the app was built).
+/// 'google_js' (Google's JavaScript map) and 'google' traffic are web only
+/// (migration 0204): see [tileOptionsFor].
 const tileOptions = <String, List<String>>{
-  'light': ['app', 'osm', 'google', 'mapbox', 'here', 'tomtom', 'maptiler'],
-  'dark': ['app', 'osm', 'google', 'mapbox', 'here', 'tomtom', 'maptiler'],
-  'satellite': ['app', 'esri', 'google', 'mapbox', 'here', 'tomtom', 'maptiler'],
-  'traffic': ['app', 'tomtom', 'here', 'none'],
+  'light': ['app', 'osm', 'google', 'google_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
+  'dark': ['app', 'osm', 'google', 'google_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
+  'satellite': ['app', 'esri', 'google', 'google_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
+  'traffic': ['app', 'tomtom', 'here', 'google', 'none'],
 };
+
+/// [tileOptions] for [slot] on [device]: Google's JavaScript map and its
+/// traffic only on the web.
+List<String> tileOptionsFor(String slot, String device) => [
+  for (final p in tileOptions[slot]!)
+    if (device == 'web' || !(p == 'google_js' || (slot == 'traffic' && p == 'google'))) p,
+];
 
 const placeProviders = ['nominatim', 'google', 'mapbox', 'here', 'tomtom', 'locationiq', 'maptiler'];
 const routeProviders = ['osrm', 'google', 'mapbox', 'here', 'tomtom', 'locationiq'];
@@ -53,7 +62,8 @@ String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   },
   'osm' => slot == 'dark' ? 'OpenStreetMap (darkened)' : 'OpenStreetMap',
   'esri' => 'Esri imagery',
-  'google' => 'Google',
+  'google' => slot == 'traffic' ? 'Google traffic (on Google Maps JavaScript)' : 'Google',
+  'google_js' => 'Google Maps (JavaScript)',
   'mapbox' => 'Mapbox',
   'here' => 'HERE',
   'tomtom' => 'TomTom',
@@ -115,13 +125,27 @@ class MapProfileSetting {
 
   MapProfileSetting withTile(String slot, String provider) => copyWith(tiles: {...tiles, slot: provider});
 
+  /// This profile as [device] can have it: the web-only choices back to
+  /// "Built in" elsewhere.
+  MapProfileSetting forDevice(String device) => copyWith(
+    tiles: {for (final e in tiles.entries) e.key: tileOptionsFor(e.key, device).contains(e.value) ? e.value : 'app'},
+  );
+
   /// Every provider this profile would ask, for checking keys.
   Set<String> get providers => {...tiles.values, ...search, ...reverse, ...routing};
 
-  /// Google's place search or geocoding without Google's map under it.
+  /// Google's place search or geocoding without Google's map (its tiles or
+  /// its JavaScript map) under it.
   bool get breaksGoogleTerms =>
       (search.contains('google') || reverse.contains('google')) &&
-      (tiles['light'] != 'google' || tiles['dark'] != 'google');
+      (!_googleMaps.contains(tiles['light']) || !_googleMaps.contains(tiles['dark']));
+
+  static const _googleMaps = {'google', 'google_js'};
+
+  /// Google traffic is drawn by Google's JavaScript map, so it needs it for
+  /// Map and Map (dark mode).
+  bool get googleTrafficWithoutItsMap =>
+      tiles['traffic'] == 'google' && (tiles['light'] != 'google_js' || tiles['dark'] != 'google_js');
 
   @override
   bool operator ==(Object other) =>
@@ -156,6 +180,7 @@ class MapKeySlot {
 
 const mapKeySlots = [
   MapKeySlot('google_tiles', 'Google · map tiles', 'google/maps', providers: {'google:tiles'}),
+  MapKeySlot('google_js', 'Google · Maps JavaScript (browser key)', 'google/maps_js', providers: {'google_js'}),
   MapKeySlot('google_places', 'Google · place search', 'google/places', providers: {'google:search'}),
   MapKeySlot('google_geocoding', 'Google · address lookup', 'google/geocoding', providers: {'google:reverse'}),
   MapKeySlot('google_routes', 'Google · routes', 'google/directions', providers: {'google:routing'}),
@@ -229,7 +254,7 @@ class MapSettings {
   MapSettings copiedToAllDevices(String role, String device) {
     final p = profile(role, device);
     return MapSettings(
-      profiles: {...profiles, for (final d in mapDevices) profileKey(role, d): p},
+      profiles: {...profiles, for (final d in mapDevices) profileKey(role, d): p.forDevice(d)},
       keys: keys,
       googleApi: googleApi,
     );
@@ -245,6 +270,13 @@ class MapSettings {
     for (final r in mapRoles)
       for (final d in mapDevices)
         if (profile(r, d).breaksGoogleTerms) '${mapRoleLabel(r)} · ${mapDeviceLabel(d)}',
+  ];
+
+  /// "Rider · Web": Google traffic without Google's JavaScript map.
+  List<String> get googleTrafficConflicts => [
+    for (final r in mapRoles)
+      for (final d in mapDevices)
+        if (profile(r, d).googleTrafficWithoutItsMap) '${mapRoleLabel(r)} · ${mapDeviceLabel(d)}',
   ];
 
   /// The key slots some profile uses ("google:search" for Google's).

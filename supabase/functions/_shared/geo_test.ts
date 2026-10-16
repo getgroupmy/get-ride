@@ -14,6 +14,7 @@ import {
   googleDirectionsRequest,
   googleLegacyRefusal,
   googleLegacySearchRequest,
+  keySlot,
   parseReverse,
   parseRoute,
   parseSearch,
@@ -68,6 +69,17 @@ Deno.test("tiles per provider and style", () => {
   assertStringIncludes(tileSource("maptiler", "light", "M")!.url, "streets-v2/");
   assertEquals(tileSource("google", "light", "G"), null, "Google needs a session");
   assertStringIncludes(tileSource("google", "light", "G", "S1")!.url, "session=S1&key=G");
+  assertEquals(tileSource("google_js", "dark", "GJS"), {
+    url: "",
+    darken: false,
+    attribution: "Map data © Google",
+    engine: "google_js",
+    key: "GJS",
+    mapType: "roadmap",
+  }, "Google's JavaScript map: no tiles, the browser key");
+  assertEquals(tileSource("google_js", "satellite", "GJS")!.mapType, "satellite");
+  assertEquals(tileSource("google_js", "light", null), null, "needs its key");
+  assertEquals(keySlot("google_js", "tiles"), "google_js");
   for (const p of ["mapbox", "here", "tomtom", "maptiler"]) {
     const u = tileSource(p, "light", "K")!.url;
     assert(u.includes("{z}") && u.includes("{x}") && u.includes("{y}"), p);
@@ -398,6 +410,43 @@ Deno.test("Google API choice: newer then older (default), newer only, older only
   assertEquals((rt.body as any).route.distanceKm, 1, "the older Directions API answered");
 });
 
+Deno.test("Google's JavaScript map and its traffic, on the web", async () => {
+  const web = {
+    ...config,
+    profiles: {
+      "rider.web": {
+        tiles: { light: "google_js", dark: "google_js", satellite: "google_js", traffic: "google" },
+        search: ["google"],
+        reverse: ["nominatim"],
+        routing: ["osrm"],
+      },
+    },
+  };
+  const sessions: string[] = [];
+  const { d } = deps({
+    settings: () => Promise.resolve({ config: web, apiProviders: [] }),
+    fallbackKey: (slot) => fallbackKey(slot, (n) => ({ GOOGLE_MAPS_JS_API_KEY: "BROWSER", GOOGLE_MAP_API_KEY: "SERVER" })[n]),
+    googleSession: (slot) => {
+      sessions.push(slot);
+      return Promise.resolve("S");
+    },
+  });
+  // deno-lint-ignore no-explicit-any
+  const a = (await handleGeo(q("action=profile&role=rider&device=web"), "ip", d)).body as any;
+  assertEquals(a.profile.tiles.light, {
+    url: "",
+    darken: false,
+    attribution: "Map data © Google",
+    engine: "google_js",
+    key: "BROWSER",
+    mapType: "roadmap",
+  });
+  assertEquals(a.profile.tiles.satellite.mapType, "satellite");
+  assertEquals(a.profile.tiles.traffic, { google: true });
+  assertEquals(sessions, [], "no Map Tiles session for the JavaScript map");
+  assertEquals(fallbackKey("google_js", (n) => ({ GOOGLE_MAP_API_KEY: "SERVER" })[n]), "SERVER", "the Maps key when no browser key");
+});
+
 Deno.test("fallback: the function's own Google secrets when Admin → API Keys has none", async () => {
   const env: Record<string, string> = { GOOGLE_MAP_API_KEY: " GMAP ", GOOGLE_PLACES_API_KEY: "GPLACES-ENV" };
   const get = (n: string) => env[n];
@@ -434,7 +483,7 @@ Deno.test("fallback: the function's own Google secrets when Admin → API Keys h
 
   // The admin page asks which slots have one: names only.
   const slots = await handleGeo(q("action=fallbacks"), "ip", d2);
-  assertEquals(slots.body, { slots: ["google_tiles", "google_places", "google_routes"] });
+  assertEquals(slots.body, { slots: ["google_tiles", "google_js", "google_places", "google_routes"] });
   assert(!JSON.stringify(slots.body).includes("GMAP"));
   assertEquals((await handleGeo(q("action=fallbacks"), "ip", deps().d)).body, { slots: [] });
 

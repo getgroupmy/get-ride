@@ -6,7 +6,9 @@
  *   GET ?action=profile&role=rider&device=android
  *       → { profile: { tiles: { light, dark, satellite, traffic }, search, reverse, routing,
  *                      direct: { nominatim, osrm } } }
- *         A tile slot is null to keep the app's own; traffic { off: true } for none.
+ *         A tile slot is null to keep the app's own; traffic { off: true } for none,
+ *         { google: true } for Google's own traffic on its JavaScript map (web).
+ *         A google_js slot is { engine: "google_js", key, mapType } instead of tiles.
  *   GET ?action=search&provider=here&role=…&device=…&q=…[&lat=&lng=][&countries=my][&lang=en]
  *       → { places: [{ name, address, lat, lng }] }
  *   GET ?action=reverse&provider=…&role=…&device=…&lat=…&lng=…
@@ -129,6 +131,8 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     let traffic: unknown = null;
     if (t === "none") {
       traffic = { off: true };
+    } else if (t === "google") {
+      traffic = { google: true };
     } else if (t !== "app") {
       const url = trafficTileUrl(t, key(t, "tiles"));
       const other = t === "tomtom" ? "here" : "tomtom";

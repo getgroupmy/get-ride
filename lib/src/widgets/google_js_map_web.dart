@@ -1,0 +1,253 @@
+// Google's JavaScript map on the web (see google_js_map.dart): loaded once
+// with the browser key, created in a <div> that ignores the pointer (the
+// app's map handles every gesture), and moved to wherever the app's map is.
+import 'dart:async';
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
+
+import 'package:flutter/widgets.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:web/web.dart' as web;
+
+const googleJsSupported = true;
+
+/// Google's dark style for the roadmap (the JavaScript API's `styles`).
+const _night = [
+  {
+    'elementType': 'geometry',
+    'stylers': [
+      {'color': '#242f3e'},
+    ],
+  },
+  {
+    'elementType': 'labels.text.stroke',
+    'stylers': [
+      {'color': '#242f3e'},
+    ],
+  },
+  {
+    'elementType': 'labels.text.fill',
+    'stylers': [
+      {'color': '#746855'},
+    ],
+  },
+  {
+    'featureType': 'road',
+    'elementType': 'geometry',
+    'stylers': [
+      {'color': '#38414e'},
+    ],
+  },
+  {
+    'featureType': 'road',
+    'elementType': 'geometry.stroke',
+    'stylers': [
+      {'color': '#212a37'},
+    ],
+  },
+  {
+    'featureType': 'road',
+    'elementType': 'labels.text.fill',
+    'stylers': [
+      {'color': '#9ca5b3'},
+    ],
+  },
+  {
+    'featureType': 'road.highway',
+    'elementType': 'geometry',
+    'stylers': [
+      {'color': '#746855'},
+    ],
+  },
+  {
+    'featureType': 'water',
+    'elementType': 'geometry',
+    'stylers': [
+      {'color': '#17263c'},
+    ],
+  },
+  {
+    'featureType': 'water',
+    'elementType': 'labels.text.fill',
+    'stylers': [
+      {'color': '#515c6d'},
+    ],
+  },
+  {
+    'featureType': 'poi',
+    'elementType': 'labels.text.fill',
+    'stylers': [
+      {'color': '#d59563'},
+    ],
+  },
+  {
+    'featureType': 'poi.park',
+    'elementType': 'geometry',
+    'stylers': [
+      {'color': '#263c3f'},
+    ],
+  },
+  {
+    'featureType': 'transit',
+    'elementType': 'geometry',
+    'stylers': [
+      {'color': '#2f3948'},
+    ],
+  },
+];
+
+/// The API's `maps` library, loaded once per page; null when it can't load.
+Future<JSObject?>? _maps;
+
+/// Called by the API when the key is refused (wrong key, API off, site not
+/// allowed); every Google JavaScript map then gives way to tiles.
+final _authFailed = <VoidCallback>{};
+
+Future<JSObject?> _loadMaps(String key) => _maps ??= () async {
+  final ready = Completer<bool>();
+  globalContext['__getRideGoogleMapsReady'] = (() {
+    if (!ready.isCompleted) ready.complete(true);
+  }).toJS;
+  globalContext['gm_authFailure'] = (() {
+    for (final f in [..._authFailed]) {
+      f();
+    }
+  }).toJS;
+  final script = web.HTMLScriptElement()
+    ..src =
+        'https://maps.googleapis.com/maps/api/js?key=${Uri.encodeQueryComponent(key)}'
+        '&v=weekly&loading=async&callback=__getRideGoogleMapsReady'
+    ..async = true;
+  script.onerror = ((web.Event _) {
+    if (!ready.isCompleted) ready.complete(false);
+  }).toJS;
+  web.document.head!.append(script);
+  if (!await ready.future.timeout(const Duration(seconds: 20), onTimeout: () => false)) return null;
+  try {
+    final maps = (globalContext['google'] as JSObject)['maps'] as JSObject;
+    final lib = maps.callMethod<JSPromise<JSObject>>('importLibrary'.toJS, 'maps'.toJS);
+    return await lib.toDart;
+  } catch (_) {
+    return null;
+  }
+}();
+
+class GoogleJsMapView extends StatefulWidget {
+  const GoogleJsMapView({
+    super.key,
+    required this.apiKey,
+    required this.center,
+    required this.zoom,
+    this.satellite = false,
+    this.dark = false,
+    this.traffic = false,
+    this.onFailure,
+  });
+
+  final String apiKey;
+  final LatLng center;
+  final double zoom;
+  final bool satellite;
+  final bool dark;
+  final bool traffic;
+
+  /// The API could not load, or refused the key.
+  final VoidCallback? onFailure;
+
+  @override
+  State<GoogleJsMapView> createState() => _GoogleJsMapViewState();
+}
+
+class _GoogleJsMapViewState extends State<GoogleJsMapView> {
+  JSObject? _lib;
+  JSObject? _map;
+  JSObject? _trafficLayer;
+  web.HTMLElement? _div;
+
+  void _fail() => widget.onFailure?.call();
+
+  @override
+  void initState() {
+    super.initState();
+    _authFailed.add(_fail);
+    _loadMaps(widget.apiKey).then((lib) {
+      if (!mounted) return;
+      if (lib == null) return _fail();
+      _lib = lib;
+      _create();
+    });
+  }
+
+  @override
+  void dispose() {
+    _authFailed.remove(_fail);
+    _trafficLayer?.callMethod('setMap'.toJS, null);
+    super.dispose();
+  }
+
+  JSAny _camera() => {
+    'center': {'lat': widget.center.latitude, 'lng': widget.center.longitude},
+    'zoom': widget.zoom,
+  }.jsify()!;
+
+  JSAny _look() => {
+    'mapTypeId': widget.satellite ? 'satellite' : 'roadmap',
+    'styles': widget.dark && !widget.satellite ? _night : <Object>[],
+    'backgroundColor': widget.dark ? '#242f3e' : '#e5e3df',
+  }.jsify()!;
+
+  void _create() {
+    final lib = _lib, div = _div;
+    if (lib == null || div == null || _map != null) return;
+    final options =
+        {
+              'disableDefaultUI': true,
+              'gestureHandling': 'none',
+              'keyboardShortcuts': false,
+              'clickableIcons': false,
+              'isFractionalZoomEnabled': true,
+            }.jsify()
+            as JSObject;
+    final map = (lib['Map'] as JSFunction).callAsConstructor<JSObject>(div, options);
+    map.callMethod('setOptions'.toJS, _look());
+    map.callMethod('moveCamera'.toJS, _camera());
+    _map = map;
+    _syncTraffic();
+  }
+
+  void _syncTraffic() {
+    final lib = _lib, map = _map;
+    if (lib == null || map == null) return;
+    if (widget.traffic) {
+      _trafficLayer ??= (lib['TrafficLayer'] as JSFunction).callAsConstructor<JSObject>();
+      _trafficLayer!.callMethod('setMap'.toJS, map);
+    } else {
+      _trafficLayer?.callMethod('setMap'.toJS, null);
+    }
+  }
+
+  @override
+  void didUpdateWidget(GoogleJsMapView old) {
+    super.didUpdateWidget(old);
+    final map = _map;
+    if (map == null) return;
+    if (old.center != widget.center || old.zoom != widget.zoom) map.callMethod('moveCamera'.toJS, _camera());
+    if (old.satellite != widget.satellite || old.dark != widget.dark) map.callMethod('setOptions'.toJS, _look());
+    if (old.traffic != widget.traffic) _syncTraffic();
+  }
+
+  @override
+  Widget build(BuildContext context) => HtmlElementView.fromTagName(
+    tagName: 'div',
+    onElementCreated: (element) {
+      final div = element as web.HTMLElement;
+      div.style
+        ..width = '100%'
+        ..height = '100%'
+        // The app's map takes every gesture; this one only shows.
+        ..pointerEvents = 'none';
+      _div = div;
+      _create();
+    },
+  );
+}

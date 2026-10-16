@@ -19,16 +19,40 @@ MapDevice currentMapDevice({bool web = kIsWeb, TargetPlatform? platform}) {
 }
 
 /// One tile source: an XYZ template, and whether to darken it on the device.
+/// Or Google's JavaScript map (migration 0204, web only): no template, the
+/// browser key and the map type, drawn under the app's own layers.
 @immutable
 class MapTileSpec {
-  const MapTileSpec({required this.url, this.darken = false, this.attribution = ''});
+  const MapTileSpec({required this.url, this.darken = false, this.attribution = '', this.googleJsKey});
+
+  /// Google's JavaScript map with this browser key.
+  const MapTileSpec.googleJs(String key, {this.attribution = '', bool satellite = false})
+    : url = satellite ? googleJsSatellite : googleJsRoadmap,
+      darken = false,
+      googleJsKey = key;
+
+  /// Stand-in "URLs" naming Google's JavaScript map types (never fetched).
+  static const googleJsRoadmap = 'google-js:roadmap';
+  static const googleJsSatellite = 'google-js:satellite';
 
   final String url;
   final bool darken;
   final String attribution;
+  final String? googleJsKey;
+
+  bool get isGoogleJs => googleJsKey != null;
 
   static MapTileSpec? fromJson(Object? json) {
     if (json is! Map) return null;
+    if (json['engine'] == 'google_js') {
+      final key = '${json['key'] ?? ''}'.trim();
+      if (key.isEmpty) return null;
+      return MapTileSpec.googleJs(
+        key,
+        attribution: '${json['attribution'] ?? ''}',
+        satellite: json['mapType'] == 'satellite',
+      );
+    }
     final url = '${json['url'] ?? ''}'.trim();
     if (!_isTemplate(url)) return null;
     return MapTileSpec(url: url, darken: json['darken'] == true, attribution: '${json['attribution'] ?? ''}');
@@ -36,28 +60,35 @@ class MapTileSpec {
 
   @override
   bool operator ==(Object other) =>
-      other is MapTileSpec && other.url == url && other.darken == darken && other.attribution == attribution;
+      other is MapTileSpec &&
+      other.url == url &&
+      other.darken == darken &&
+      other.attribution == attribution &&
+      other.googleJsKey == googleJsKey;
 
   @override
-  int get hashCode => Object.hash(url, darken, attribution);
+  int get hashCode => Object.hash(url, darken, attribution, googleJsKey);
 }
 
 bool _isTemplate(String url) =>
     url.startsWith('https://') && url.contains('{z}') && url.contains('{x}') && url.contains('{y}');
 
-/// The traffic overlay: off, a source (with an optional fallback), or the
-/// app's own when [MapProfile.traffic] is null.
+/// The traffic overlay: off, a source (with an optional fallback), Google's
+/// own on its JavaScript map ([google]), or the app's own when
+/// [MapProfile.traffic] is null.
 @immutable
 class MapTrafficSpec {
-  const MapTrafficSpec({this.off = false, this.url, this.fallback});
+  const MapTrafficSpec({this.off = false, this.url, this.fallback, this.google = false});
 
   final bool off;
   final String? url;
   final String? fallback;
+  final bool google;
 
   static MapTrafficSpec? fromJson(Object? json) {
     if (json is! Map) return null;
     if (json['off'] == true) return const MapTrafficSpec(off: true);
+    if (json['google'] == true) return const MapTrafficSpec(google: true);
     final url = '${json['url'] ?? ''}'.trim();
     if (!_isTemplate(url)) return null;
     final fb = '${json['fallback'] ?? ''}'.trim();

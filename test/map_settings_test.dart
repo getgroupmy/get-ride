@@ -127,6 +127,26 @@ void main() {
       expect(odd.profile('rider', 'ios').routing, ['osrm']);
     });
 
+    test("Google's JavaScript map and its traffic: web only, traffic only on that map", () {
+      expect(tileOptionsFor('light', 'web'), contains('google_js'));
+      expect(tileOptionsFor('light', 'android'), isNot(contains('google_js')));
+      expect(tileOptionsFor('traffic', 'web'), contains('google'));
+      expect(tileOptionsFor('traffic', 'ios'), isNot(contains('google')));
+      const js = MapProfileSetting(
+        tiles: {'light': 'google_js', 'dark': 'google_js', 'satellite': 'google_js', 'traffic': 'google'},
+        search: ['google'],
+      );
+      expect(js.breaksGoogleTerms, isFalse, reason: "Google search on Google's JavaScript map");
+      expect(js.googleTrafficWithoutItsMap, isFalse);
+      expect(js.withTile('dark', 'osm').googleTrafficWithoutItsMap, isTrue);
+      expect(js.forDevice('android').tiles.values.toSet(), {'app'}, reason: 'copied to the phone apps: as built');
+      expect(js.forDevice('web'), js);
+      final s = MapSettings.fromJson(null).withProfile('rider', 'web', js.withTile('dark', 'osm'));
+      expect(s.googleTrafficConflicts, ['Rider · Web']);
+      expect(s.copiedToAllDevices('rider', 'web').profile('rider', 'android').tiles['light'], 'app');
+      expect(s.keyRef('google_js'), 'google/maps_js');
+    });
+
     test("Google's terms: its search or lookup only on Google's map", () {
       var s = MapSettings.fromJson(null)
           .withProfile('rider', 'android', const MapProfileSetting(search: ['google', 'nominatim']));
@@ -428,6 +448,28 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets("web: Google's JavaScript map and Google traffic, held until both maps are Google's ($mode)", (
+      tester,
+    ) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      await choose(tester, 'maps-tile-web-traffic', 'Google traffic (on Google Maps JavaScript)');
+      expect(find.byKey(const ValueKey('maps-google-traffic-warning'), skipOffstage: false), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved, isEmpty, reason: 'not saved without the JavaScript map');
+      await choose(tester, 'maps-tile-web-light', 'Google Maps (JavaScript)');
+      await choose(tester, 'maps-tile-web-dark', 'Google Maps (JavaScript)');
+      expect(find.byKey(const ValueKey('maps-google-traffic-warning'), skipOffstage: false), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.profile('rider', 'web').tiles, {
+        'light': 'google_js',
+        'dark': 'google_js',
+        'satellite': 'app',
+        'traffic': 'google',
+      });
     });
 
     testWidgets('Google API: New then Old by default, Old only saved ($mode)', (tester) async {

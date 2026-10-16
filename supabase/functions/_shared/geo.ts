@@ -5,7 +5,9 @@
  * and how each provider is asked and answered.
  *
  *   tiles     osm · google · mapbox · here · tomtom · maptiler (light, dark,
- *             satellite; esri for satellite), tomtom · here (traffic)
+ *             satellite; esri for satellite), tomtom · here (traffic); on the
+ *             web also google_js (Google's JavaScript map, drawn by the
+ *             browser under the app's layers) and its google traffic
  *   search    nominatim · google · mapbox · here · tomtom · locationiq · maptiler
  *   reverse   the same
  *   routing   osrm · google · mapbox · here · tomtom · locationiq
@@ -70,6 +72,7 @@ export function isDevice(v: string): v is Device {
 
 /** The key slot in map_config.keys a provider uses for [use]. */
 export function keySlot(provider: string, use: "tiles" | Kind): string {
+  if (provider === "google_js") return "google_js";
   if (provider !== "google") return provider;
   return { tiles: "google_tiles", search: "google_places", reverse: "google_geocoding", routing: "google_routes" }[use];
 }
@@ -106,6 +109,8 @@ export function resolveKey(apiProviders: unknown, ref: string | undefined): stri
  */
 export const FALLBACK_SECRETS: Record<string, string[]> = {
   google_tiles: ["GOOGLE_MAP_API_KEY"],
+  // A browser key, restricted to the site, for Google's JavaScript map.
+  google_js: ["GOOGLE_MAPS_JS_API_KEY", "GOOGLE_MAP_API_KEY"],
   google_places: ["GOOGLE_PLACES_API_KEY"],
   google_geocoding: ["GOOGLE_GEOCODING_API_KEY"],
   google_routes: ["GOOGLE_DIRECTIONS_API_KEY", "GOOGLE_MAP_API_KEY"],
@@ -127,12 +132,21 @@ export interface TileSource {
   /** Darken on the device (OSM's tiles have no dark style). */
   darken: boolean;
   attribution: string;
+  /**
+   * "google_js": no tiles; the browser draws Google's JavaScript map with
+   * [key], as [mapType] ("roadmap" | "satellite"), styled dark for 'dark'.
+   * Older apps ignore it (no template) and keep their own tiles.
+   */
+  engine?: "google_js";
+  key?: string;
+  mapType?: "roadmap" | "satellite";
 }
 
 const ATTRIBUTION: Record<string, string> = {
   osm: "© OpenStreetMap contributors",
   esri: "Imagery © Esri",
   google: "Map data © Google",
+  google_js: "Map data © Google",
   mapbox: "© Mapbox © OpenStreetMap",
   here: "© HERE",
   tomtom: "© TomTom",
@@ -170,6 +184,15 @@ export function tileSource(
   }
   if (!key) return null;
   switch (provider) {
+    case "google_js":
+      return {
+        url: "",
+        darken: false,
+        attribution: a,
+        engine: "google_js",
+        key,
+        mapType: slot === "satellite" ? "satellite" : "roadmap",
+      };
     case "google":
       if (!googleSession) return null;
       return {
