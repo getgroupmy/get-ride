@@ -191,6 +191,11 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// new choice rather than the first (which only reveals).
   bool _chosen = false;
 
+  /// Where the sheet rested before it rose to fit an item taller than the
+  /// room between its handle and the footer; null when it hasn't. It goes
+  /// back there once the item fits again (or nothing is kept in view).
+  double? _restSize;
+
   /// How far the content is slid up under the handle to bring [_target]
   /// into view while the sheet is below full height. Sliding rather than
   /// scrolling keeps a drag on the sheet moving the sheet: a sheet whose
@@ -235,11 +240,38 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     // At full height the disclaimer stands over the foot of it as well.
     final bottom = origin + layout.size.height - _footerHeight - (_full ? _aboveHeight : 0) - margin;
     final card = box.localToGlobal(Offset.zero) & box.size;
+    const move = Duration(milliseconds: 250);
+    final h = layout.size.height;
+    if (!_full && h > 0) {
+      final gap = bottom - top;
+      final rest = _restSize;
+      if (card.height > gap + 1 && _sheet.size < widget.max - 0.001) {
+        // Taller than the room left: the sheet rises just enough to show it
+        // whole (the content's slide below then brings it into place).
+        final to = math.min(widget.max, _sheet.size + (card.height - gap) / h);
+        _restSize ??= _sheet.size;
+        _sheet.animateTo(to, duration: move, curve: Curves.easeOut).then(
+          (_) => WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && target.mounted && _target == target) _reveal(target);
+          }),
+        );
+        return;
+      }
+      if (rest != null && card.height <= gap - (_sheet.size - rest) * h) {
+        // It fits at the old height again: back down to it.
+        _restSize = null;
+        _sheet.animateTo(rest, duration: move, curve: Curves.easeOut).then(
+          (_) => WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && target.mounted && _target == target) _reveal(target);
+          }),
+        );
+        return;
+      }
+    }
     var by = 0.0;
     if (card.bottom > bottom) by = card.bottom - bottom;
     if (card.top - by < top) by = card.top - top; // taller than the gap: its top wins
     if (by.abs() < 1) return;
-    const move = Duration(milliseconds: 250);
     if (_full) {
       final p = scroll.position;
       final to = (p.pixels + by).clamp(p.minScrollExtent, p.maxScrollExtent);
@@ -247,6 +279,18 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     } else {
       _shift.animateTo(math.max(0.0, _shift.value + by), duration: move, curve: Curves.easeOut);
     }
+  }
+
+  /// Back to where the sheet rested before it rose for an item.
+  void _lowerToRest() {
+    final rest = _restSize;
+    _restSize = null;
+    if (rest == null || !_sheet.isAttached || widget.locked) return;
+    _sheet.animateTo(
+      rest.clamp(widget.min, widget.max),
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
   }
 
   void _revealTarget() {
@@ -338,6 +382,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     if (widget.locked) return false;
     if (n is ScrollStartNotification && n.dragDetails != null) {
       _dragging = true;
+      // Moved by hand: where it rests is the rider's choice now.
+      _restSize = null;
       _release();
     }
     if (n is OverscrollNotification && n.dragDetails != null && n.overscroll < 0) {
@@ -726,6 +772,7 @@ class _MapSheetRevealState extends State<MapSheetReveal> {
         if (layout.mounted && layout._target == null) {
           layout._chosen = false;
           layout._shift.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+          layout._lowerToRest();
         }
       });
     }
@@ -738,6 +785,21 @@ class _MapSheetRevealState extends State<MapSheetReveal> {
     super.dispose();
   }
 
+  /// The item grew or shrank (its fare row came in, bidding was turned on
+  /// or off): kept in view again, the sheet rising or settling back for it.
+  bool _resized(SizeChangedLayoutNotification _) {
+    final layout = _layout;
+    if (layout != null && layout._target == context) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && layout.mounted && layout._target == context) layout._reveal(context);
+      });
+    }
+    return true;
+  }
+
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) => NotificationListener<SizeChangedLayoutNotification>(
+    onNotification: _resized,
+    child: SizeChangedLayoutNotifier(child: widget.child),
+  );
 }
