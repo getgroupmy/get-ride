@@ -347,7 +347,7 @@ jobs:
           PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID
           CODE_SIGN_IDENTITY = Apple Distribution
           CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
-          GOOGLE_MAPS_IOS_API_KEY = $GOOGLE_MAPS_IOS_API_KEY
+          GOOGLE_MAPS_IOS_API_KEY = ${GOOGLE_MAPS_IOS_API_KEY:-}
           CFG
 
           xcodebuild archive \
