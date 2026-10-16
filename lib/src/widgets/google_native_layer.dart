@@ -21,9 +21,15 @@ bool get googleNativeSupported =>
     !kIsWeb && (Platform.isAndroid || Platform.isIOS) && const String.fromEnvironment('GOOGLE_MAPS_NATIVE') == 'true';
 
 class GoogleNativeBaseLayer extends ConsumerStatefulWidget {
-  const GoogleNativeBaseLayer({super.key, required this.fallback, this.satellite = false});
+  const GoogleNativeBaseLayer({super.key, required this.fallback, this.satellite = false, this.mapType});
 
   final bool satellite;
+
+  /// "roadmap", "satellite", "hybrid" or "terrain" (Admin → Maps, migration
+  /// 0211); null for the roadmap, or satellite when [satellite].
+  final String? mapType;
+
+  String get type => mapType ?? (satellite ? 'satellite' : 'roadmap');
 
   /// The tiles to draw instead when this build has no Google map.
   final Widget fallback;
@@ -78,8 +84,13 @@ class _GoogleNativeBaseLayerState extends ConsumerState<GoogleNativeBaseLayer> {
             _shown = null;
             _follow(MapCamera.of(context));
           },
-          mapType: widget.satellite ? gm.MapType.satellite : gm.MapType.normal,
-          style: dark && !widget.satellite ? googleNightStyleJson : null,
+          mapType: switch (widget.type) {
+            'satellite' => gm.MapType.satellite,
+            'hybrid' => gm.MapType.hybrid,
+            'terrain' => gm.MapType.terrain,
+            _ => gm.MapType.normal,
+          },
+          style: dark && widget.type == 'roadmap' ? googleNightStyleJson : null,
           trafficEnabled: traffic,
           // Only shows: the app's own map and buttons do the rest.
           zoomControlsEnabled: false,

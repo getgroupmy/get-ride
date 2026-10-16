@@ -39,6 +39,7 @@ class GoogleJsMapView extends StatefulWidget {
     required this.center,
     required this.zoom,
     this.satellite = false,
+    this.mapType,
     this.dark = false,
     this.traffic = false,
     this.onFailure,
@@ -48,6 +49,10 @@ class GoogleJsMapView extends StatefulWidget {
   final LatLng center;
   final double zoom;
   final bool satellite;
+
+  /// "roadmap", "satellite", "hybrid" or "terrain" (migration 0211); null for
+  /// the roadmap, or satellite when [satellite].
+  final String? mapType;
   final bool dark;
   final bool traffic;
 
@@ -139,7 +144,10 @@ class _GoogleJsMapViewState extends State<GoogleJsMapView> {
 
   void _push({bool view = false, bool look = false}) {
     if (view) _run('setView(${widget.center.latitude},${widget.center.longitude},${widget.zoom},0)');
-    if (look) _run('setLook(${widget.satellite},${widget.dark},${widget.traffic})');
+    if (look) {
+      final type = widget.mapType ?? (widget.satellite ? 'satellite' : 'roadmap');
+      _run("setLook(${widget.satellite},${widget.dark},${widget.traffic},'$type')");
+    }
   }
 
   @override
@@ -147,7 +155,11 @@ class _GoogleJsMapViewState extends State<GoogleJsMapView> {
     super.didUpdateWidget(old);
     _push(
       view: old.center != widget.center || old.zoom != widget.zoom,
-      look: old.satellite != widget.satellite || old.dark != widget.dark || old.traffic != widget.traffic,
+      look:
+          old.satellite != widget.satellite ||
+          old.mapType != widget.mapType ||
+          old.dark != widget.dark ||
+          old.traffic != widget.traffic,
     );
   }
 

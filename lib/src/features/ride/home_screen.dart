@@ -345,8 +345,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  /// Moves on every change here, so a page opened over this one with a copy
+  /// of the trip ("Offer your fare") follows its stops and fare.
+  final _changes = ValueNotifier<int>(0);
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _changes.value++;
+  }
+
   @override
   void dispose() {
+    _changes.dispose();
     _carsTimer?.cancel();
     _lifecycle?.dispose();
     _expiry?.cancel();
@@ -805,38 +816,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// payment, auto-accept and entrance alongside; "Find a driver" there
   /// books straight away.
   Future<void> _openOfferFare() async {
-    final recommended = _recommendedFor(_service);
     final style = currencyStyles[_currency.trim().toUpperCase()];
     final r = await Navigator.of(context).push<OfferFareResult>(
       MaterialPageRoute(
-        builder: (_) => OfferFareScreen(
-          recommended: recommended,
-          current: recommended + _adjust,
-          currencyLabel: (style?.symbol ?? _currency).trim(),
-          money: _fareMoney,
-          payment: _payment,
-          payments: _payments,
-          autoAccept: _autoAccept,
-          entrance: _entrance,
-          pickupName: _pickup?.name ?? 'Pickup',
-          routeLabel: _stops.isEmpty ? (_drop?.name ?? 'Destination') : '${_stops.length + 1} route stops',
-          onRoute: _drop == null
-              ? null
-              : () => showRouteStopsSheet(context, destinations: [..._stops, _drop!], onChanged: _setDestinations),
-          onAddStop: _stops.length < maxRideStops ? _addStop : null,
-          optionsOn: _options.any,
-          onOptions: (c) => showRideOptionsSheet(
-            c,
-            options: _options,
-            onChanged: (o) => setState(() => _options = o),
-            note: _note,
+        // Rebuilt on every change here: a stop added, removed or moved there
+        // changes the route label and, once the route is worked out, the fare.
+        builder: (_) => ValueListenableBuilder<int>(
+          valueListenable: _changes,
+          builder: (_, _, _) => OfferFareScreen(
+            recommended: _recommendedFor(_service),
+            current: _recommendedFor(_service) + _adjust,
+            currencyLabel: (style?.symbol ?? _currency).trim(),
+            money: _fareMoney,
+            payment: _payment,
+            payments: _payments,
+            autoAccept: _autoAccept,
+            entrance: _entrance,
+            pickupName: _pickup?.name ?? 'Pickup',
+            routeLabel: _stops.isEmpty ? (_drop?.name ?? 'Destination') : '${_stops.length + 1} route stops',
+            onRoute: _drop == null
+                ? null
+                : () => showRouteStopsSheet(context, destinations: [..._stops, _drop!], onChanged: _setDestinations),
+            onAddStop: _stops.length < maxRideStops ? _addStop : null,
+            optionsOn: _options.any,
+            onOptions: (c) => showRideOptionsSheet(
+              c,
+              options: _options,
+              onChanged: (o) => setState(() => _options = o),
+              note: _note,
+            ),
           ),
         ),
       ),
     );
     if (r == null || !mounted) return;
     setState(() {
-      if (r.fare != null) _adjust = r.fare! - recommended;
+      if (r.fare != null) _adjust = r.fare! - _recommendedFor(_service);
       _paymentPick = r.payment;
       _autoAccept = r.autoAccept;
       _entrance = r.entrance;

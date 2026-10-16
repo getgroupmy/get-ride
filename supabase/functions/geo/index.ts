@@ -22,7 +22,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import countries from "npm:world-countries@5.1.0";
 
-import { fallbackKey } from "../_shared/geo.ts";
+import { fallbackKey, googleMapType } from "../_shared/geo.ts";
 import { errorDetail, googleSessionBody, handleGeo, parseGoogleSession } from "../_shared/geo_handler.ts";
 import { clientIp } from "../_shared/pin_login.ts";
 
@@ -109,8 +109,11 @@ Deno.serve(async (req) => {
           expires_at: new Date(Date.now() + seconds * 1000).toISOString(),
         });
       },
-      googleSession: async (slot, key, region) => {
-        const kind = `google:${slot}:${region}`;
+      googleSession: async (slot, key, region, look) => {
+        // One session per look: "google:satellite:my", "google:satellite-hybrid:my" …
+        const type = googleMapType(slot, look);
+        const variant = type === "hybrid" || type === "terrain" ? `-${type}` : "";
+        const kind = `google:${slot}${variant}:${region}`;
         const { data } = await db.from("map_tile_sessions").select("session, expires_at").eq("kind", kind)
           .maybeSingle();
         // Reused until a day before it expires (sessions last about two weeks).
@@ -121,7 +124,7 @@ Deno.serve(async (req) => {
             url: `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(key)}`,
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(googleSessionBody(slot, region)),
+            body: JSON.stringify(googleSessionBody(slot, region, "en-US", look)),
           });
         } catch (e) {
           // Google refused (API off, key restricted, billing): say why in the function's logs.

@@ -7,7 +7,8 @@
   is never sent to a server.
 
   The app moves it:   setView(lat, lng, zoom, bearing)
-                      setLook(satellite, dark, traffic)
+                      setLook(satellite, dark, traffic, mapType)
+                        mapType: roadmap, satellite, hybrid or terrain (0211)
   It tells the app:   "ready", or "failed:<Google's error name>"
 -->
 <html lang="en">
@@ -27,7 +28,8 @@
       (function () {
         var params = new URLSearchParams(location.hash.slice(1));
         var key = params.get("key") || "";
-        var map = null, traffic = null, look = { satellite: false, dark: false, traffic: false }, pending = null;
+        var map = null, traffic = null, look = { type: "roadmap", dark: false, traffic: false }, pending = null;
+        var TYPES = ["roadmap", "satellite", "hybrid", "terrain"];
         var night = JSON.parse(params.get("night") || "[]");
         var failed = false;
 
@@ -54,10 +56,11 @@
 
         function applyLook() {
           if (!map) return;
-          document.body.className = look.dark && !look.satellite ? "dark" : "";
+          var styled = look.dark && look.type === "roadmap";
+          document.body.className = styled ? "dark" : "";
           map.setOptions({
-            mapTypeId: look.satellite ? "satellite" : "roadmap",
-            styles: look.dark && !look.satellite ? night : [],
+            mapTypeId: look.type,
+            styles: styled ? night : [],
             backgroundColor: look.dark ? "#242f3e" : "#e5e3df",
           });
           if (look.traffic) {
@@ -72,8 +75,10 @@
           if (!map) { pending = [lat, lng, zoom, bearing]; return; }
           map.moveCamera({ center: { lat: lat, lng: lng }, zoom: zoom, heading: bearing || 0 });
         };
-        window.setLook = function (satellite, dark, withTraffic) {
-          look = { satellite: !!satellite, dark: !!dark, traffic: !!withTraffic };
+        window.setLook = function (satellite, dark, withTraffic, mapType) {
+          // Older apps send no mapType: satellite or the roadmap.
+          var type = TYPES.indexOf(mapType) >= 0 ? mapType : satellite ? "satellite" : "roadmap";
+          look = { type: type, dark: !!dark, traffic: !!withTraffic };
           applyLook();
         };
         window.__getRideMapReady = function () {

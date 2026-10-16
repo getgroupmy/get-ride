@@ -58,6 +58,8 @@ import {
   googleLegacyDetailsRequest,
   googleLegacyRefusal,
   googleLegacySearchRequest,
+  googleLookOf,
+  type GoogleLook,
   googleSessionBody,
   type HttpRequest,
   isGoogleMapsHost,
@@ -96,8 +98,13 @@ export interface GeoDeps {
   count(provider: string, kind: Kind | "tiles", ok: boolean, cached: boolean, detail?: string): Promise<void>;
   cacheGet(key: string): Promise<unknown | null>;
   cachePut(key: string, value: unknown, seconds: number): Promise<void>;
-  /** A Google Map Tiles session for [slot], reused until near its expiry. */
-  googleSession(slot: "light" | "dark" | "satellite", key: string, region: string): Promise<string | null>;
+  /** A Google Map Tiles session for [slot] as [look] has it, reused until near its expiry. */
+  googleSession(
+    slot: "light" | "dark" | "satellite",
+    key: string,
+    region: string,
+    look: GoogleLook,
+  ): Promise<string | null>;
   /** ISO alpha-2 → alpha-3 ("my" → "MYS"), or null. */
   iso3(cc: string): string | null;
   /** The function's own secret for a key slot, when Admin → API Keys has none. */
@@ -179,6 +186,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     .filter((c) => /^[a-z]{2}$/.test(c)).slice(0, 5);
   const lang = /^[a-z]{2}(-[A-Za-z]{2})?$/.test(params.get("lang") ?? "") ? params.get("lang")! : "en";
   const amazonRegion = amazonRegionOf(config);
+  const look = googleLookOf(config);
 
   if (action === "profile") {
     // Why a set map slot fell back to the app's own (Admin → Maps → Test shows it; the app ignores it).
@@ -189,12 +197,12 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       const k = key(provider, "tiles");
       let session: string | null = null;
       if (provider === "google" && k) {
-        session = await deps.googleSession(slot, k, countries[0] ?? "my").catch((e) => {
+        session = await deps.googleSession(slot, k, countries[0] ?? "my", look).catch((e) => {
           refused[slot] = e instanceof Error ? e.message : "Google refused the tile session";
           return null;
         });
       }
-      const source = tileSource(provider, slot, k, session, amazonRegion);
+      const source = tileSource(provider, slot, k, session, amazonRegion, look);
       if (!source && !refused[slot]) refused[slot] = k ? "Not answered" : "No key";
       return source;
     };

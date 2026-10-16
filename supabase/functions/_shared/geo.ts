@@ -250,7 +250,8 @@ export interface TileSource {
    */
   engine?: "google_js" | "google_native" | "maplibre";
   key?: string;
-  mapType?: "roadmap" | "satellite";
+  /** "hybrid" (satellite with roads and names) and "terrain" since migration 0211. */
+  mapType?: GoogleMapType;
   /**
    * "maplibre": the MapLibre style the browser draws (Amazon's map, whose
    * tiles are vector only), with [key] added to each of its requests.
@@ -264,6 +265,7 @@ const ATTRIBUTION: Record<string, string> = {
   google: "Map data © Google",
   google_js: "Map data © Google",
   google_native: "Map data © Google",
+  google_xyz: "Map data © Google",
   mapbox: "© Mapbox © OpenStreetMap",
   here: "© HERE",
   tomtom: "© TomTom",
@@ -272,6 +274,33 @@ const ATTRIBUTION: Record<string, string> = {
 };
 
 const enc = encodeURIComponent;
+
+export type GoogleMapType = "roadmap" | "satellite" | "hybrid" | "terrain";
+
+/**
+ * How Google's map looks (migration 0211): satellite imagery alone or with
+ * roads and names (hybrid), and the light map as the roadmap or terrain.
+ */
+export interface GoogleLook {
+  satellite: "satellite" | "hybrid";
+  map: "roadmap" | "terrain";
+}
+
+export const DEFAULT_LOOK: GoogleLook = { satellite: "satellite", map: "roadmap" };
+
+export function googleLookOf(config: unknown): GoogleLook {
+  const c = config as { googleSatellite?: unknown; googleMap?: unknown } | null;
+  return {
+    satellite: c?.googleSatellite === "hybrid" ? "hybrid" : "satellite",
+    map: c?.googleMap === "terrain" ? "terrain" : "roadmap",
+  };
+}
+
+/** [slot]'s Google map type: the dark map is always the (night) roadmap. */
+export function googleMapType(slot: "light" | "dark" | "satellite", look: GoogleLook = DEFAULT_LOOK): GoogleMapType {
+  if (slot === "satellite") return look.satellite;
+  return slot === "light" ? look.map : "roadmap";
+}
 
 /**
  * The XYZ template for [provider]'s [slot] ('light' | 'dark' | 'satellite'),
@@ -286,19 +315,30 @@ export function tileSource(
   key: string | null,
   googleSession?: string | null,
   amazonRegion: string = AMAZON_REGIONS[0],
+  look: GoogleLook = DEFAULT_LOOK,
 ): TileSource | null {
   const a = ATTRIBUTION[provider] ?? "";
   const k = key ? enc(key) : "";
   // Google's own map in the phone app (migration 0210): the key is the one
   // the release build carries, so none is sent.
   if (provider === "google_native") {
-    const mapType = slot === "satellite" ? "satellite" : "roadmap";
-    return { url: "", darken: false, attribution: a, engine: "google_native", mapType };
+    return { url: "", darken: false, attribution: a, engine: "google_native", mapType: googleMapType(slot, look) };
   }
   switch (provider) {
     case "osm":
       if (slot === "satellite") return null;
       return { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", darken: slot === "dark", attribution: a };
+    case "google_xyz": {
+      // Google's own tile address, no key (migration 0211): for testing only,
+      // as its terms allow tiles through the Maps APIs alone. The dark map is
+      // the roadmap darkened on the device, as with OpenStreetMap.
+      const lyrs = { roadmap: "m", terrain: "p", satellite: "s", hybrid: "y" }[googleMapType(slot, look)];
+      return {
+        url: `https://mt1.google.com/vt/lyrs=${lyrs}&x={x}&y={y}&z={z}`,
+        darken: slot === "dark",
+        attribution: a,
+      };
+    }
     case "esri":
       if (slot !== "satellite") return null;
       return {
@@ -316,7 +356,7 @@ export function tileSource(
         attribution: a,
         engine: "google_js",
         key,
-        mapType: slot === "satellite" ? "satellite" : "roadmap",
+        mapType: googleMapType(slot, look),
       };
     case "amazon_js":
       if (slot === "satellite") return null;
@@ -391,12 +431,22 @@ export const GOOGLE_NIGHT_STYLES = [
   { elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
 ];
 
-/** The body to create a Google Map Tiles session for [slot]. */
-export function googleSessionBody(slot: "light" | "dark" | "satellite", region: string, language = "en-US") {
+/**
+ * The body to create a Google Map Tiles session for [slot]. Hybrid is the
+ * satellite with the roadmap layer on it; terrain needs that layer too.
+ */
+export function googleSessionBody(
+  slot: "light" | "dark" | "satellite",
+  region: string,
+  language = "en-US",
+  look: GoogleLook = DEFAULT_LOOK,
+) {
+  const type = googleMapType(slot, look);
   return {
-    mapType: slot === "satellite" ? "satellite" : "roadmap",
+    mapType: type === "hybrid" ? "satellite" : type,
     language,
     region: region.toUpperCase(),
+    ...(type === "hybrid" || type === "terrain" ? { layerTypes: ["layerRoadmap"] } : {}),
     ...(slot === "dark" ? { styles: GOOGLE_NIGHT_STYLES } : {}),
   };
 }
