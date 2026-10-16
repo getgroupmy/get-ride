@@ -110,12 +110,25 @@ typedef GeoLookup = Future<Map<String, dynamic>?> Function(Map<String, String> p
 /// ([lookup]), which holds their keys, in the profile's order until one
 /// answers.
 class GeoService {
-  GeoService({http.Client? client, this.lookup, MapProfile Function()? profile})
-      : _http = client ?? http.Client(),
+  GeoService({
+    http.Client? client,
+    this.lookup,
+    MapProfile Function()? profile,
+    this.nominatimGap = const Duration(milliseconds: 1100),
+  })  : _http = client ?? http.Client(),
         _profile = profile ?? (() => activeMapProfile);
   final http.Client _http;
   final GeoLookup? lookup;
   final MapProfile Function() _profile;
+
+  /// The least time between this device's own position lookups on
+  /// Nominatim for suggestions ([roughPoints]): its usage policy allows one
+  /// request a second.
+  final Duration nominatimGap;
+  DateTime? _nextNominatim;
+
+  /// Suggestions' positions found on OpenStreetMap, by Google's place id.
+  final _rough = <String, LatLng?>{};
 
   /// Google bills Autocomplete's keystrokes and the pick as one session:
   /// made at the first search, ended by the pick ([resolve]).
@@ -178,7 +191,7 @@ class GeoService {
       return p == null ? [] : [p];
     }
     if (query.trim().length < 3) return [];
-    final found = await _first<List<Place>>(_profile().search, (provider) async {
+    final found = await _first<List<Place>>(MapProfile.withOsm(_profile().search), (provider) async {
       if (provider == 'nominatim') return _nominatimSearch(query, near);
       final body = await _ask('search', provider, {
         'q': query,
@@ -241,6 +254,62 @@ class GeoService {
     }
   }
 
+  /// Where Autocomplete's [suggestions] roughly are, in order (null where
+  /// none knows), so their road distance can be measured ([distances])
+  /// before one is picked. Asked of the profile's locate providers in turn
+  /// (Admin → Settings → Maps, migration 0208), OpenStreetMap last; one
+  /// suggestion at a time, Nominatim at most once a second ([nominatimGap]),
+  /// kept by place id. The pick itself still takes Google's exact position
+  /// ([resolve]). [stillWanted] false stops the lookups (a newer search).
+  Future<List<LatLng?>> roughPoints(List<Place> suggestions, {LatLng? near, bool Function()? stillWanted}) async {
+    final out = <LatLng?>[];
+    for (final p in suggestions) {
+      final id = p.placeId;
+      if (id == null || !p.pending) {
+        out.add(id == null ? null : p.point);
+        continue;
+      }
+      if (!_rough.containsKey(id)) {
+        if (stillWanted != null && !stillWanted()) break;
+        final q = p.address.isEmpty || p.address.startsWith(p.name) ? p.address : '${p.name}, ${p.address}';
+        var stopped = false;
+        LatLng? found;
+        try {
+          found = await _first<LatLng>(MapProfile.withOsm(_profile().locate), (provider) async {
+            if (provider == 'nominatim') {
+              final now = DateTime.now();
+              final at = _nextNominatim == null || _nextNominatim!.isBefore(now) ? now : _nextNominatim!;
+              _nextNominatim = at.add(nominatimGap);
+              if (at.isAfter(now)) await Future<void>.delayed(at.difference(now));
+              if (stillWanted != null && !stillWanted()) {
+                stopped = true;
+                return null;
+              }
+              final hits = await _nominatimSearch(q.isEmpty ? p.name : q, near, limit: 1);
+              return hits.isEmpty ? null : hits.first.point;
+            }
+            final body = await _ask('locate', provider, {
+              'q': q.isEmpty ? p.name : q,
+              if (near != null) 'lat': '${near.latitude}',
+              if (near != null) 'lng': '${near.longitude}',
+            });
+            final hit = [
+              for (final e in (body?['places'] as List?) ?? const []) ?_placeFrom(e),
+            ].where((e) => !e.pending);
+            return hit.isEmpty ? null : hit.first.point;
+          });
+        } catch (_) {
+          found = null;
+        }
+        if (stopped) break;
+        if (_rough.length >= 200) _rough.remove(_rough.keys.first);
+        _rough[id] = found;
+      }
+      out.add(_rough[id]);
+    }
+    return out;
+  }
+
   /// Smart address C: Google's Address Validation of [p]'s address, through
   /// `geo`. The corrected address (and position, when Google gives one),
   /// marked [Place.verified] when Google found every part; [p] as it is when
@@ -292,12 +361,12 @@ class GeoService {
     return found.isEmpty ? null : found.first;
   }
 
-  Future<List<Place>> _nominatimSearch(String query, LatLng? near) async {
+  Future<List<Place>> _nominatimSearch(String query, LatLng? near, {int limit = 8}) async {
     final params = {
       'q': query,
       'format': 'jsonv2',
       'addressdetails': '1',
-      'limit': '8',
+      'limit': '$limit',
       if (_countryCodes.isNotEmpty) 'countrycodes': _countryCodes,
       if (near != null)
         'viewbox':
@@ -321,7 +390,7 @@ class GeoService {
 
   Future<Place> reverse(LatLng p) async {
     try {
-      final found = await _first<Place>(_profile().reverse, (provider) async {
+      final found = await _first<Place>(MapProfile.withOsm(_profile().reverse), (provider) async {
         if (provider == 'nominatim') return _nominatimReverse(p);
         final a = await _proxyArea(provider, p);
         return a == null ? null : Place(name: a.label ?? a.address ?? '', address: a.address ?? '', point: p);

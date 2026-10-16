@@ -13,6 +13,11 @@
  *   routing   osrm · google · mapbox · here · tomtom · locationiq · amazon
  *   distance  the same, and straight (as the crow flies): each place search
  *             result's road distance from the user (migration 0205)
+ *   locate    as search: where a Google Autocomplete suggestion is, roughly, so
+ *             its road distance can be shown before it is picked (migration 0208)
+ *
+ * For search, reverse and locate the app asks OpenStreetMap (nominatim) last
+ * when none of the set ones answers.
  *
  * 'app' (tiles) keeps what the app was built with. nominatim, osrm and straight are
  * called by the device itself (spread over every device's own address, as
@@ -37,6 +42,7 @@ export interface Profile {
   reverse: string[];
   routing: string[];
   distance: string[];
+  locate: string[];
 }
 
 export interface MapConfig {
@@ -56,6 +62,7 @@ const DEFAULT_PROFILE: Profile = {
   reverse: ["nominatim"],
   routing: ["osrm"],
   distance: ["osrm"],
+  locate: ["nominatim"],
 };
 
 /** [role].[device]'s profile in [config] (the stored one is already cleaned by the database). */
@@ -69,6 +76,7 @@ export function profileOf(config: unknown, role: string, device: string): Profil
     reverse: list(p.reverse, DEFAULT_PROFILE.reverse),
     routing: list(p.routing, DEFAULT_PROFILE.routing),
     distance: list(p.distance, DEFAULT_PROFILE.distance),
+    locate: list(p.locate, DEFAULT_PROFILE.locate),
   };
 }
 

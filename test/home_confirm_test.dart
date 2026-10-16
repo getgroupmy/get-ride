@@ -650,4 +650,29 @@ void main() {
     expect(find.byKey(const ValueKey('offer-fare-screen')), findsNothing);
     expect(tester.widget<Text>(find.byKey(const ValueKey('confirm-fare'))).data, contains('$typed'));
   });
+
+  testWidgets("Enter your route: the From changes the pickup, the destination kept", (tester) async {
+    await _pump(tester, _Rides());
+    final card = find.byKey(const ValueKey('confirm-address-card'));
+    expect(find.descendant(of: card, matching: find.textContaining('KLCC', findRichText: true)), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('confirm-drop')));
+    await _settle(tester);
+    expect(find.text('Enter your route'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('place-search-from')));
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('recent-2.93,101.83')));
+    await _settle(tester);
+    expect(find.text('Enter your route'), findsNothing);
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('confirm-pickup')), matching: find.text('Eco Majestic')),
+      findsOneWidget,
+      reason: 'the new pickup',
+    );
+    expect(
+      find.descendant(of: card, matching: find.textContaining('KLCC', findRichText: true)),
+      findsOneWidget,
+      reason: 'the destination kept',
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

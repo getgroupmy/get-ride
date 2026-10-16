@@ -259,6 +259,14 @@ void main() {
       expect(p.search, ['google', 'nominatim']);
       expect(p.routing, ['osrm']);
       expect(p.distance, ['osrm'], reason: 'OpenStreetMap by default');
+      expect(p.locate, ['nominatim'], reason: 'OpenStreetMap by default');
+      expect(MapProfile.fromJson({
+        'profile': {
+          'locate': ['google'],
+        },
+      }).locate, ['google']);
+      expect(MapProfile.withOsm(const ['google', 'here']), ['google', 'here', 'nominatim'], reason: 'OSM last');
+      expect(MapProfile.withOsm(const ['nominatim', 'google']), ['nominatim', 'google']);
       expect(MapProfile.fromJson({
         'profile': {
           'distance': ['here', 'straight'],
@@ -588,6 +596,22 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('maps-save')));
       await tester.pumpAndSettle();
       expect(repo.saved.single.profile('rider', 'android').distance, ['here', 'straight']);
+    });
+
+    testWidgets('suggestion positions: their own order, OpenStreetMap always last, saved ($mode)', (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      expect(find.byKey(const ValueKey('maps-locate-android-osm')), findsNothing, reason: 'OpenStreetMap is on it');
+      await choose(tester, 'maps-locate-android-0', 'Google · key');
+      expect(find.byKey(const ValueKey('maps-locate-android-osm')), findsOneWidget);
+      expect(find.text('Then, always'), findsWidgets);
+      await choose(tester, 'maps-reverse-android-0', 'Google · key');
+      expect(find.byKey(const ValueKey('maps-reverse-android-osm')), findsOneWidget, reason: 'the pickup point name');
+      expect(find.byKey(const ValueKey('maps-distance-android-osm')), findsNothing, reason: 'not for distances');
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.profile('rider', 'android').locate, ['google']);
+      expect(repo.saved.single.profile('rider', 'android').toJson()['locate'], ['google']);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('Amazon Location: its region and key slots on the Keys tab, saved ($mode)', (tester) async {
