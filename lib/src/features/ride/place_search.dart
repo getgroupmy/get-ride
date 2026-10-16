@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/airport_areas.dart';
+import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
@@ -88,6 +89,13 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   List<Place> _results = [];
   bool _loading = false;
 
+  /// Each result's road distance from where the user is (Admin → Settings →
+  /// Maps → distance), by [_at]; arrives after the results.
+  Map<String, double> _km = const {};
+  int _asked = 0;
+
+  static String _at(LatLng p) => '${p.latitude},${p.longitude}';
+
   /// Suggested (current place, the map, recent) or Saved.
   bool _saved = false;
 
@@ -109,10 +117,29 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       try {
         final r = await ref.read(geoServiceProvider).search(q, near: widget.near);
         if (mounted) setState(() => _results = r);
+        _measure(r);
       } finally {
         if (mounted) setState(() => _loading = false);
       }
     });
+  }
+
+  /// The results' distances from [_PlaceSearch.near], up to ten, without
+  /// holding the list back; a newer search's results replace them.
+  Future<void> _measure(List<Place> places) async {
+    final ask = ++_asked;
+    final from = widget.near;
+    if (mounted) setState(() => _km = const {});
+    if (from == null || places.isEmpty) return;
+    final to = places.take(10).map((p) => p.point).toList();
+    final km = await ref.read(geoServiceProvider).distances(from, to);
+    if (!mounted || ask != _asked) return;
+    setState(
+      () => _km = {
+        for (var i = 0; i < to.length && i < km.length; i++)
+          if (km[i] != null) _at(to[i]): km[i]!,
+      },
+    );
   }
 
   /// The map picker (inDrive's): the place chosen there, handed straight back.
@@ -138,9 +165,30 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           );
     final gates = gated?.gates ?? const <GateOption>[];
     final blocked = gated?.blocksPlace ?? false;
+    final km = _km[_at(p.point)];
+    final icon = Icon(gates.isEmpty ? Icons.place_outlined : Icons.door_front_door_outlined);
     return ListTile(
       key: ValueKey('result-${p.point.latitude},${p.point.longitude}'),
-      leading: Icon(gates.isEmpty ? Icons.place_outlined : Icons.door_front_door_outlined),
+      // The distance from here under the pin, as Grab shows it.
+      leading: km == null
+          ? icon
+          : SizedBox(
+              width: 52,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  icon,
+                  const SizedBox(height: 2),
+                  Text(
+                    placeDistanceLabel(km),
+                    key: ValueKey('result-km-${p.point.latitude},${p.point.longitude}'),
+                    maxLines: 1,
+                    style: Theme.of(context).textTheme.labelSmall
+                        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
       title: Text(p.name),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(p.address, maxLines: 2, overflow: TextOverflow.ellipsis),

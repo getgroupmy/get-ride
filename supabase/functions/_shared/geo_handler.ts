@@ -4,7 +4,7 @@
  * passed in, so it is tested without a network.
  *
  *   GET ?action=profile&role=rider&device=android
- *       → { profile: { tiles: { light, dark, satellite, traffic }, search, reverse, routing,
+ *       → { profile: { tiles: { light, dark, satellite, traffic }, search, reverse, routing, distance,
  *                      direct: { nominatim, osrm } } }
  *         A tile slot is null to keep the app's own; traffic { off: true } for none,
  *         { google: true } for Google's own traffic on its JavaScript map (web).
@@ -15,7 +15,9 @@
  *       → { place: { name, address, lat, lng, country, state, city, suburb } | null }
  *   GET ?action=route&provider=…&role=…&device=…&points=lat,lng;lat,lng[;…]
  *       → { route: { distanceKm, durationMin, points: [[lat, lng], …] } | null }
- *   Google's place search and routes use the newer API, the older one, or the newer then the
+ *   GET ?action=distance&provider=…&role=…&device=…&from=lat,lng&to=lat,lng;lat,lng[;…]
+ *       → { distances: [km | null, …] }  road distance to each place search result (up to 10)
+ *   Google's place search, routes and distances use the newer API, the older one, or the newer then the
  *   older when it refuses, as map_config.googleApi says ("new" | "old" | "new_old").
  *   GET ?action=expand&url=https://maps.app.goo.gl/…
  *       → { url: "https://www.google.com/maps/place/…" }  a share link pasted into place
@@ -31,8 +33,10 @@ import {
   cacheKey,
   cacheSeconds,
   DIRECT,
+  distanceRequest,
   FALLBACK_SECRETS,
   googleDirectionsRequest,
+  googleDistanceMatrixRequest,
   googleLegacyRefusal,
   googleLegacySearchRequest,
   googleSessionBody,
@@ -44,6 +48,7 @@ import {
   isRole,
   type Kind,
   keySlot,
+  parseDistances,
   parseReverse,
   parseRoute,
   parseSearch,
@@ -169,6 +174,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
           search: profile.search,
           reverse: profile.reverse,
           routing: profile.routing,
+          distance: profile.distance,
           direct: {
             nominatim: directUrl(apiProviders, keys.nominatim),
             osrm: directUrl(apiProviders, keys.osrm),
@@ -178,9 +184,8 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     };
   }
 
-  const kind: Kind | null = action === "search" ? "search" : action === "reverse" ? "reverse" : action === "route"
-    ? "routing"
-    : null;
+  const kinds: Record<string, Kind> = { search: "search", reverse: "reverse", route: "routing", distance: "distance" };
+  const kind: Kind | null = kinds[action] ?? null;
   if (!kind) return bad("Unknown action.");
   const provider = params.get("provider") ?? "";
   if (DIRECT.has(provider) || !profile[kind].includes(provider)) {
@@ -219,6 +224,25 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     req = reverseRequest(provider, lat, lng, lang, k);
     ck = cacheKey(provider, kind, [lat, lng, lang]);
     parse = (b) => ({ place: parseReverse(provider, b, lat, lng) });
+  } else if (kind === "distance") {
+    const point = (p: string) => {
+      const [a, b] = p.split(",");
+      const la = coord(a, 90), ln = coord(b, 180);
+      return la == null || ln == null ? null : [la, ln] as [number, number];
+    };
+    const from = point(params.get("from") ?? "");
+    const to = (params.get("to") ?? "").split(";").filter((p) => p.trim() !== "").slice(0, 10).map(point);
+    if (!from || !to.length || to.some((p) => p == null)) return bad("Give from=lat,lng and to=lat,lng;lat,lng.");
+    const dest = to as [number, number][];
+    req = distanceRequest(provider, from, dest, k);
+    if (provider === "google") older = googleDistanceMatrixRequest(from, dest, k);
+    // The user's own spot to ~100 m; the places as given.
+    ck = cacheKey(provider, kind, [from[0].toFixed(3), from[1].toFixed(3), ...dest.flat()]);
+    parse = (b) => {
+      const distances = parseDistances(provider, b, dest.length);
+      if (!distances) throw new Error("not a matrix");
+      return { distances };
+    };
   } else {
     const points = (params.get("points") ?? "").split(";").slice(0, 12).map((p) => {
       const [a, b] = p.split(",");
@@ -259,7 +283,10 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       body = await ask(older);
     }
     const answer = parse(body) as Record<string, unknown>;
-    const empty = answer.places ? (answer.places as unknown[]).length === 0 : Object.values(answer)[0] == null;
+    const list = answer.places ?? answer.distances;
+    const empty = Array.isArray(list)
+      ? (answer.distances ? list.every((d) => d == null) : list.length === 0)
+      : Object.values(answer)[0] == null;
     await deps.count(provider, kind, !empty, false).catch(() => {});
     if (ttl > 0 && !empty) await deps.cachePut(ck, answer, ttl).catch(() => {});
     return { status: 200, body: answer };

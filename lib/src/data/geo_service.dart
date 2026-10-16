@@ -351,6 +351,48 @@ class GeoService {
     return null;
   }
 
+  /// Each of [to]'s road distance in km from [from], in order (null where
+  /// none was found), as place search results show it. The profile's
+  /// distance providers in turn (OSRM by default; `straight` is as the crow
+  /// flies); all null when none answers.
+  Future<List<double?>> distances(LatLng from, List<LatLng> to) async {
+    final none = List<double?>.filled(to.length, null);
+    if (to.isEmpty) return none;
+    try {
+      final found = await _first<List<double?>>(_profile().distance, (provider) async {
+        final List<double?>? km;
+        if (provider == 'straight') {
+          km = [for (final p in to) const Distance().as(LengthUnit.Meter, from, p) / 1000];
+        } else if (provider == 'osrm') {
+          km = await _osrmTable(from, to);
+        } else {
+          final body = await _ask('distance', provider, {
+            'from': '${from.latitude},${from.longitude}',
+            'to': to.map((p) => '${p.latitude},${p.longitude}').join(';'),
+          });
+          final list = body?['distances'];
+          km = list is List && list.length == to.length ? [for (final d in list) d is num ? d.toDouble() : null] : null;
+        }
+        return km == null || km.every((d) => d == null) ? null : km;
+      });
+      return found ?? none;
+    } catch (_) {
+      return none;
+    }
+  }
+
+  Future<List<double?>?> _osrmTable(LatLng from, List<LatLng> to) async {
+    final coords = [from, ...to].map((p) => '${p.longitude},${p.latitude}').join(';');
+    final uri = Uri.parse('$_osrmBase/table/v1/driving/$coords?sources=0&annotations=distance');
+    final res = await _http.get(uri, headers: _headers);
+    if (res.statusCode != 200) return null;
+    final rows = (jsonDecode(res.body) as Map<String, dynamic>)['distances'];
+    final row = rows is List && rows.isNotEmpty ? rows.first : null;
+    if (row is! List || row.length != to.length + 1) return null;
+    // The first column is the origin itself.
+    return [for (final m in row.skip(1)) m is num ? m / 1000 : null];
+  }
+
   static RouteInfo straightLine(LatLng from, LatLng to) {
     final km = const Distance().as(LengthUnit.Meter, from, to) / 1000 * 1.3;
     return RouteInfo(distanceKm: km, durationMin: math.max(1, km / 30 * 60), points: [from, to]);

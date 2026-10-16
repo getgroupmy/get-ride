@@ -50,8 +50,12 @@ List<String> tileOptionsFor(String slot, String device) => [
 const placeProviders = ['nominatim', 'google', 'mapbox', 'here', 'tomtom', 'locationiq', 'maptiler'];
 const routeProviders = ['osrm', 'google', 'mapbox', 'here', 'tomtom', 'locationiq'];
 
+/// Who measures place search results' distance from the user (migration
+/// 0205); `straight` is as the crow flies, worked out on the phone.
+const distanceProviders = [...routeProviders, 'straight'];
+
 /// Providers the phone calls itself (no key).
-const freeProviders = {'nominatim', 'osrm', 'osm', 'esri'};
+const freeProviders = {'nominatim', 'osrm', 'osm', 'esri', 'straight'};
 
 String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   'app' => switch (slot) {
@@ -71,6 +75,7 @@ String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   'locationiq' => 'LocationIQ',
   'nominatim' => 'OpenStreetMap (Nominatim)',
   'osrm' => 'OpenStreetMap (OSRM)',
+  'straight' => 'Straight line (no roads)',
   'none' => 'Off',
   _ => p,
 };
@@ -83,12 +88,16 @@ class MapProfileSetting {
     this.search = const ['nominatim'],
     this.reverse = const ['nominatim'],
     this.routing = const ['osrm'],
+    this.distance = const ['osrm'],
   });
 
   final Map<String, String> tiles;
   final List<String> search;
   final List<String> reverse;
   final List<String> routing;
+
+  /// Place search results' distance from the user.
+  final List<String> distance;
 
   factory MapProfileSetting.fromJson(Object? json) {
     final m = json is Map ? json : const {};
@@ -106,21 +115,30 @@ class MapProfileSetting {
       search: list(m['search'], placeProviders, 'nominatim'),
       reverse: list(m['reverse'], placeProviders, 'nominatim'),
       routing: list(m['routing'], routeProviders, 'osrm'),
+      distance: list(m['distance'], distanceProviders, 'osrm'),
     );
   }
 
-  Map<String, dynamic> toJson() => {'tiles': tiles, 'search': search, 'reverse': reverse, 'routing': routing};
+  Map<String, dynamic> toJson() => {
+    'tiles': tiles,
+    'search': search,
+    'reverse': reverse,
+    'routing': routing,
+    'distance': distance,
+  };
 
   MapProfileSetting copyWith({
     Map<String, String>? tiles,
     List<String>? search,
     List<String>? reverse,
     List<String>? routing,
+    List<String>? distance,
   }) => MapProfileSetting(
     tiles: tiles ?? this.tiles,
     search: search ?? this.search,
     reverse: reverse ?? this.reverse,
     routing: routing ?? this.routing,
+    distance: distance ?? this.distance,
   );
 
   MapProfileSetting withTile(String slot, String provider) => copyWith(tiles: {...tiles, slot: provider});
@@ -132,12 +150,12 @@ class MapProfileSetting {
   );
 
   /// Every provider this profile would ask, for checking keys.
-  Set<String> get providers => {...tiles.values, ...search, ...reverse, ...routing};
+  Set<String> get providers => {...tiles.values, ...search, ...reverse, ...routing, ...distance};
 
-  /// Google's place search or geocoding without Google's map (its tiles or
-  /// its JavaScript map) under it.
+  /// Google's place search, geocoding or distances without Google's map (its
+  /// tiles or its JavaScript map) under it.
   bool get breaksGoogleTerms =>
-      (search.contains('google') || reverse.contains('google')) &&
+      (search.contains('google') || reverse.contains('google') || distance.contains('google')) &&
       (!_googleMaps.contains(tiles['light']) || !_googleMaps.contains(tiles['dark']));
 
   static const _googleMaps = {'google', 'google_js'};
@@ -153,7 +171,8 @@ class MapProfileSetting {
       mapEquals(other.tiles, tiles) &&
       listEquals(other.search, search) &&
       listEquals(other.reverse, reverse) &&
-      listEquals(other.routing, routing);
+      listEquals(other.routing, routing) &&
+      listEquals(other.distance, distance);
 
   @override
   int get hashCode => Object.hash(
@@ -161,6 +180,7 @@ class MapProfileSetting {
     Object.hashAll(search),
     Object.hashAll(reverse),
     Object.hashAll(routing),
+    Object.hashAll(distance),
   );
 }
 
@@ -183,7 +203,12 @@ const mapKeySlots = [
   MapKeySlot('google_js', 'Google · Maps JavaScript (browser key)', 'google/maps_js', providers: {'google_js'}),
   MapKeySlot('google_places', 'Google · place search', 'google/places', providers: {'google:search'}),
   MapKeySlot('google_geocoding', 'Google · address lookup', 'google/geocoding', providers: {'google:reverse'}),
-  MapKeySlot('google_routes', 'Google · routes', 'google/directions', providers: {'google:routing'}),
+  MapKeySlot(
+    'google_routes',
+    'Google · routes and distances',
+    'google/directions',
+    providers: {'google:routing', 'google:distance'},
+  ),
   MapKeySlot('mapbox', 'Mapbox', 'mapbox/tiles', providers: {'mapbox'}),
   MapKeySlot('here', 'HERE', 'here/api', providers: {'here'}),
   MapKeySlot('tomtom', 'TomTom', 'tomtom/api', providers: {'tomtom'}),
@@ -288,7 +313,12 @@ class MapSettings {
         for (final t in p.tiles.values) {
           used.add(t == 'google' ? 'google:tiles' : t);
         }
-        for (final (kind, list) in [('search', p.search), ('reverse', p.reverse), ('routing', p.routing)]) {
+        for (final (kind, list) in [
+          ('search', p.search),
+          ('reverse', p.reverse),
+          ('routing', p.routing),
+          ('distance', p.distance),
+        ]) {
           for (final x in list) {
             used.add(x == 'google' ? 'google:$kind' : x);
           }

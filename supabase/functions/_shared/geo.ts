@@ -11,8 +11,10 @@
  *   search    nominatim · google · mapbox · here · tomtom · locationiq · maptiler
  *   reverse   the same
  *   routing   osrm · google · mapbox · here · tomtom · locationiq
+ *   distance  the same, and straight (as the crow flies): each place search
+ *             result's road distance from the user (migration 0205)
  *
- * 'app' (tiles) keeps what the app was built with. nominatim and osrm are
+ * 'app' (tiles) keeps what the app was built with. nominatim, osrm and straight are
  * called by the device itself (spread over every device's own address, as
  * OpenStreetMap's usage policy needs); the rest go through `geo`, which
  * holds the keys. Fetching is in geo/index.ts.
@@ -22,7 +24,7 @@ export const ROLES = ["rider", "partner"] as const;
 export const DEVICES = ["android", "ios", "web", "desktop"] as const;
 export type Role = (typeof ROLES)[number];
 export type Device = (typeof DEVICES)[number];
-export type Kind = "search" | "reverse" | "routing";
+export type Kind = "search" | "reverse" | "routing" | "distance";
 export type TileSlot = "light" | "dark" | "satellite" | "traffic";
 
 export interface Profile {
@@ -30,6 +32,7 @@ export interface Profile {
   search: string[];
   reverse: string[];
   routing: string[];
+  distance: string[];
 }
 
 export interface MapConfig {
@@ -37,14 +40,18 @@ export interface MapConfig {
   keys: Record<string, string>;
 }
 
-/** Providers the device calls itself (no key, OpenStreetMap's servers or the admin's own). */
-export const DIRECT = new Set(["nominatim", "osrm"]);
+/**
+ * Providers the device calls itself (no key, OpenStreetMap's servers or the
+ * admin's own), and straight, which it works out.
+ */
+export const DIRECT = new Set(["nominatim", "osrm", "straight"]);
 
 const DEFAULT_PROFILE: Profile = {
   tiles: { light: "app", dark: "app", satellite: "app", traffic: "app" },
   search: ["nominatim"],
   reverse: ["nominatim"],
   routing: ["osrm"],
+  distance: ["osrm"],
 };
 
 /** [role].[device]'s profile in [config] (the stored one is already cleaned by the database). */
@@ -57,6 +64,7 @@ export function profileOf(config: unknown, role: string, device: string): Profil
     search: list(p.search, DEFAULT_PROFILE.search),
     reverse: list(p.reverse, DEFAULT_PROFILE.reverse),
     routing: list(p.routing, DEFAULT_PROFILE.routing),
+    distance: list(p.distance, DEFAULT_PROFILE.distance),
   };
 }
 
@@ -74,7 +82,13 @@ export function isDevice(v: string): v is Device {
 export function keySlot(provider: string, use: "tiles" | Kind): string {
   if (provider === "google_js") return "google_js";
   if (provider !== "google") return provider;
-  return { tiles: "google_tiles", search: "google_places", reverse: "google_geocoding", routing: "google_routes" }[use];
+  return {
+    tiles: "google_tiles",
+    search: "google_places",
+    reverse: "google_geocoding",
+    routing: "google_routes",
+    distance: "google_routes",
+  }[use];
 }
 
 interface KeyEntry {
@@ -726,6 +740,143 @@ export function parseRoute(provider: string, body: J): Route | null {
   return null;
 }
 
+// ---- Distances (place search results) ----------------------------------------------------------
+
+/**
+ * The road distance from [from] to each of [to], one request: a matrix of
+ * one origin. Google's newer Routes API; googleDistanceMatrixRequest is the
+ * older one.
+ */
+export function distanceRequest(provider: string, from: [number, number], to: [number, number][], key: string):
+  | HttpRequest
+  | null {
+  if (!to.length) return null;
+  const k = enc(key);
+  const lngLat = [from, ...to].map(([la, ln]) => `${ln},${la}`).join(";");
+  const json = { "Content-Type": "application/json" };
+  switch (provider) {
+    case "google": {
+      const wp = ([la, ln]: [number, number]) => ({
+        waypoint: { location: { latLng: { latitude: la, longitude: ln } } },
+      });
+      return {
+        url: "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix",
+        method: "POST",
+        headers: {
+          ...json,
+          "X-Goog-Api-Key": key,
+          "X-Goog-FieldMask": "originIndex,destinationIndex,distanceMeters,condition",
+        },
+        body: JSON.stringify({ origins: [wp(from)], destinations: to.map(wp), travelMode: "DRIVE" }),
+      };
+    }
+    case "mapbox":
+      return {
+        url: `https://api.mapbox.com/directions-matrix/v1/mapbox/driving/${lngLat}?sources=0&annotations=distance` +
+          `&access_token=${k}`,
+      };
+    case "locationiq":
+      return {
+        url: `https://us1.locationiq.com/v1/matrix/driving/${lngLat}?sources=0&annotations=distance&key=${k}`,
+      };
+    case "here": {
+      const pt = ([la, ln]: [number, number]) => ({ lat: la, lng: ln });
+      return {
+        url: `https://matrix.router.hereapi.com/v8/matrix?async=false&apiKey=${k}`,
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({
+          origins: [pt(from)],
+          destinations: to.map(pt),
+          regionDefinition: { type: "world" },
+          transportMode: "car",
+          matrixAttributes: ["distances"],
+        }),
+      };
+    }
+    case "tomtom": {
+      const pt = ([la, ln]: [number, number]) => ({ point: { latitude: la, longitude: ln } });
+      return {
+        url: `https://api.tomtom.com/routing/matrix/2?key=${k}`,
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ origins: [pt(from)], destinations: to.map(pt), options: { travelMode: "car" } }),
+      };
+    }
+  }
+  return null;
+}
+
+/** Google's older Distance Matrix API, asked when the newer one refuses. */
+export function googleDistanceMatrixRequest(from: [number, number], to: [number, number][], key: string): HttpRequest {
+  const at = ([la, ln]: [number, number]) => `${la},${ln}`;
+  return {
+    url: `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${at(from)}` +
+      `&destinations=${enc(to.map(at).join("|"))}&mode=driving&key=${enc(key)}`,
+  };
+}
+
+/**
+ * Kilometres to each of [count] destinations, in order; null for one the
+ * provider found no road to. Null when the answer isn't a matrix at all.
+ */
+export function parseDistances(provider: string, body: J, count: number): (number | null)[] | null {
+  const out: (number | null)[] = Array(count).fill(null);
+  const km = (m: unknown) => {
+    const n = num(m);
+    return n == null || n < 0 ? null : Math.round(n) / 1000;
+  };
+  switch (provider) {
+    case "google": {
+      // The older Distance Matrix API: rows[0].elements, one per destination.
+      const elements = body?.rows?.[0]?.elements;
+      if (Array.isArray(elements)) {
+        elements.slice(0, count).forEach((e: J, i: number) => {
+          out[i] = e?.status === "OK" ? km(e?.distance?.value) : null;
+        });
+        return out;
+      }
+      if (!Array.isArray(body)) return null;
+      for (const e of body) {
+        const i = num(e?.destinationIndex) ?? 0;
+        // A zero distance is left out of the answer.
+        if (i >= 0 && i < count && (e?.condition ?? "ROUTE_EXISTS") === "ROUTE_EXISTS") {
+          out[i] = km(e?.distanceMeters ?? 0);
+        }
+      }
+      return out;
+    }
+    case "mapbox":
+    case "locationiq":
+    case "osrm": {
+      const row = body?.distances?.[0];
+      if (!Array.isArray(row)) return null;
+      // The first column is the origin itself.
+      for (let i = 0; i < count; i++) out[i] = row[i + 1] == null ? null : km(row[i + 1]);
+      return out;
+    }
+    case "here": {
+      const d = body?.matrix?.distances;
+      if (!Array.isArray(d)) return null;
+      const errors = body?.matrix?.errorCodes;
+      for (let i = 0; i < count; i++) {
+        out[i] = Array.isArray(errors) && errors[i] ? null : km(d[i]);
+      }
+      return out;
+    }
+    case "tomtom": {
+      const data = body?.data;
+      if (!Array.isArray(data)) return null;
+      for (const e of data) {
+        const i = num(e?.destinationIndex) ?? -1;
+        if (i >= 0 && i < count) out[i] = km(e?.routeSummary?.lengthInMeters);
+      }
+      return out;
+    }
+  }
+  return null;
+}
+
 /** Google's encoded polyline (precision 5) as [lat, lng] pairs. */
 export function decodePolyline(s: string): [number, number][] {
   const out: [number, number][] = [];
@@ -788,7 +939,7 @@ export function decodeFlexiblePolyline(s: string): [number, number][] {
 /** Google's terms allow no caching of its place content: those answers are never kept. */
 export function cacheSeconds(provider: string, kind: Kind): number {
   if (provider === "google") return 0;
-  return { search: 86400, reverse: 30 * 86400, routing: 3600 }[kind];
+  return { search: 86400, reverse: 30 * 86400, routing: 3600, distance: 3600 }[kind];
 }
 
 /** The cache key: same provider, kind and (rounded) question. */

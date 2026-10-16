@@ -139,6 +139,27 @@ void main() {
       expect(odd.profile('rider', 'ios').routing, ['osrm']);
     });
 
+    test('distance in search results: OSRM by default, its own list, Google only on a Google map', () {
+      final s = MapSettings.fromJson(null);
+      expect(s.profile('rider', 'android').distance, ['osrm']);
+      final p = MapSettings.fromJson({
+        'profiles': {
+          'rider.android': {
+            'distance': ['here', 'bogus', 'straight', 'here', 'google', 'tomtom'],
+          },
+        },
+      }).profile('rider', 'android');
+      expect(p.distance, ['here', 'straight', 'google'], reason: 'known, once, three at most');
+      expect(p.toJson()['distance'], ['here', 'straight', 'google']);
+      expect(p.breaksGoogleTerms, isTrue, reason: "Google's distances over OpenStreetMap");
+      expect(p.withTile('light', 'google').withTile('dark', 'google_js').breaksGoogleTerms, isFalse);
+      expect(p == p.copyWith(distance: ['osrm']), isFalse, reason: 'a change to save');
+      final used = s.withProfile('partner', 'web', const MapProfileSetting(distance: ['google'])).usedKeySlots;
+      expect(used, contains('google_routes'), reason: "Google's distances use the routes key");
+      expect(mapProviderLabel('straight'), 'Straight line (no roads)');
+      expect(freeProviders, contains('straight'));
+    });
+
     test('a key added from the page lands in API Keys under the slot, and is picked', () {
       final places = mapKeySlots.firstWhere((s) => s.id == 'google_places');
       final r = addMapKey(_keys, places, 'Prod 2', ' AIzaNEWPLACES ', id: 'k9');
@@ -237,6 +258,12 @@ void main() {
       expect(p.traffic?.fallback, isNull, reason: 'the same as the primary');
       expect(p.search, ['google', 'nominatim']);
       expect(p.routing, ['osrm']);
+      expect(p.distance, ['osrm'], reason: 'OpenStreetMap by default');
+      expect(MapProfile.fromJson({
+        'profile': {
+          'distance': ['here', 'straight'],
+        },
+      }).distance, ['here', 'straight']);
       expect(p.nominatimUrl, 'https://geo.example.my');
       expect(p.osrmUrl, isNull);
       expect(
@@ -543,6 +570,26 @@ void main() {
       await tester.pumpAndSettle();
       expect(repo.saved.single.googleApi, 'old');
       expect(repo.saved.single.toJson()['googleApi'], 'old');
+    });
+
+    testWidgets('distance in search results: its own order, tested through geo, saved ($mode)', (tester) async {
+      final (repo, probe) = await pump(tester, dark: dark);
+      expect(find.text('Distance in search results'), findsWidgets);
+      await choose(tester, 'maps-distance-android-0', 'HERE · key');
+      await choose(tester, 'maps-distance-android-1', 'Straight line (no roads)');
+      await tester.ensureVisible(find.byKey(const ValueKey('maps-test-android')));
+      await tester.tap(find.byKey(const ValueKey('maps-test-android')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('HERE · distance'), findsOneWidget);
+      expect(find.text('Straight line (no roads) · distance'), findsNothing, reason: 'worked out on the phone');
+      expect(probe.asked.last['action'], 'distance');
+      expect(probe.asked.last['to'], isNotEmpty);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.profile('rider', 'android').distance, ['here', 'straight']);
     });
 
     testWidgets('keys and usage ($mode)', (tester) async {

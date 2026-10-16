@@ -10,13 +10,16 @@ import {
   cacheSeconds,
   decodeFlexiblePolyline,
   decodePolyline,
+  distanceRequest,
   fallbackKey,
   googleDirectionsRequest,
+  googleDistanceMatrixRequest,
   googleLegacyRefusal,
   googleLegacySearchRequest,
   isShortMapLink,
   keySlot,
   nextMapHop,
+  parseDistances,
   parseReverse,
   parseRoute,
   parseSearch,
@@ -532,4 +535,92 @@ Deno.test("fallback: the function's own Google secrets when Admin → API Keys h
   // Neither: Google isn't available.
   const { d: d3 } = deps({ settings: () => Promise.resolve({ config, apiProviders: [] }) });
   assert((await handleGeo(q("action=search&provider=google&role=rider&device=android&q=klcc"), "ip", d3)).status !== 200);
+});
+
+Deno.test("distances: one origin to each result, from every provider", () => {
+  const from: [number, number] = [3.1, 101.6];
+  const to: [number, number][] = [[3.2, 101.7], [2.75, 101.71]];
+  assertEquals(profileOf({}, "rider", "web").distance, ["osrm"], "OpenStreetMap by default");
+  assertEquals(keySlot("google", "distance"), "google_routes");
+  assertEquals(keySlot("tomtom", "distance"), "tomtom");
+
+  const g = distanceRequest("google", from, to, "GK")!;
+  assertStringIncludes(g.url, "computeRouteMatrix");
+  assertEquals(g.headers?.["X-Goog-Api-Key"], "GK");
+  assertEquals(JSON.parse(g.body!).destinations.length, 2);
+  assertStringIncludes(googleDistanceMatrixRequest(from, to, "GK").url, "destinations=3.2%2C101.7%7C2.75%2C101.71");
+  assertStringIncludes(distanceRequest("mapbox", from, to, "MK")!.url, "driving/101.6,3.1;101.7,3.2;101.71,2.75?sources=0");
+  assertStringIncludes(distanceRequest("locationiq", from, to, "LK")!.url, "matrix/driving/101.6,3.1;");
+  assertEquals(JSON.parse(distanceRequest("here", from, to, "HK")!.body!).origins, [{ lat: 3.1, lng: 101.6 }]);
+  assertEquals(JSON.parse(distanceRequest("tomtom", from, to, "TK")!.body!).destinations[1], {
+    point: { latitude: 2.75, longitude: 101.71 },
+  });
+  assertEquals(distanceRequest("nominatim", from, to, "x"), null);
+  assertEquals(distanceRequest("here", from, [], "x"), null);
+
+  // Answers: kilometres in order, null where there's no road.
+  assertEquals(
+    parseDistances("google", [
+      { originIndex: 0, destinationIndex: 1, distanceMeters: 8590, condition: "ROUTE_EXISTS" },
+      { originIndex: 0, destinationIndex: 0, condition: "ROUTE_NOT_FOUND" },
+    ], 2),
+    [null, 8.59],
+  );
+  assertEquals(parseDistances("google", [{ destinationIndex: 0, condition: "ROUTE_EXISTS" }], 1), [0], "zero is left out");
+  assertEquals(
+    parseDistances("google", {
+      status: "OK",
+      rows: [{ elements: [{ status: "OK", distance: { value: 29400 } }, { status: "ZERO_RESULTS" }] }],
+    }, 2),
+    [29.4, null],
+  );
+  assertEquals(parseDistances("osrm", { code: "Ok", distances: [[0, 850, null]] }, 2), [0.85, null]);
+  assertEquals(parseDistances("mapbox", { distances: [[0, 1200.4, 5000]] }, 2), [1.2, 5]);
+  assertEquals(parseDistances("here", { matrix: { distances: [1000, 2000], errorCodes: [0, 3] } }, 2), [1, null]);
+  assertEquals(
+    parseDistances("tomtom", { data: [{ originIndex: 0, destinationIndex: 1, routeSummary: { lengthInMeters: 3000 } }] }, 2),
+    [null, 3],
+  );
+  assertEquals(parseDistances("tomtom", { error: "x" }, 2), null, "not a matrix");
+  assertEquals(cacheSeconds("google", "distance"), 0);
+  assertEquals(cacheSeconds("here", "distance"), 3600);
+});
+
+Deno.test("distance action: listed providers only, cached, Google's older API when the newer refuses", async () => {
+  const cfg = {
+    ...config,
+    profiles: {
+      ...config.profiles,
+      "rider.android": { ...config.profiles["rider.android"], distance: ["here", "google", "straight"] },
+    },
+  };
+  const asked: string[] = [];
+  const { d, log } = deps({
+    settings: () => Promise.resolve({ config: cfg, apiProviders }),
+    fallbackKey: (slot) => (slot === "google_routes" ? "GMAP" : null),
+    call: (req) => {
+      asked.push(new URL(req.url).host);
+      if (req.url.includes("matrix.router.hereapi")) return Promise.resolve({ matrix: { distances: [8590, 29000] } });
+      if (req.url.includes("routes.googleapis")) return Promise.reject(new Error("403 from routes.googleapis.com"));
+      return Promise.resolve({ status: "OK", rows: [{ elements: [{ status: "OK", distance: { value: 1500 } }] }] });
+    },
+  });
+  const url = "action=distance&role=rider&device=android&from=3.1,101.6&to=3.2,101.7;2.75,101.71&provider=";
+  const h = await handleGeo(q(url + "here"), "ip", d);
+  assertEquals(h.body, { distances: [8.59, 29] });
+  await handleGeo(q(url + "here"), "ip", d);
+  assertEquals(asked.filter((a) => a.startsWith("matrix")).length, 1, "the second from the cache");
+  assert(log.includes("count here distance true true"));
+
+  const g = await handleGeo(q("action=distance&role=rider&device=android&from=3.1,101.6&to=3.2,101.7&provider=google"), "ip", d);
+  assertEquals(g.body, { distances: [1.5] });
+  assertEquals(asked.slice(-2), ["routes.googleapis.com", "maps.googleapis.com"]);
+
+  assertEquals((await handleGeo(q(url + "straight"), "ip", d)).status, 403, "worked out on the device");
+  assertEquals((await handleGeo(q(url + "tomtom"), "ip", d)).status, 403, "not listed");
+  assertEquals((await handleGeo(q(url.replace("from=3.1,101.6", "from=99,1") + "here"), "ip", d)).status, 400);
+  assertEquals((await handleGeo(q(url.replace(/to=[^&]*/, "to=") + "here"), "ip", d)).status, 400);
+  // deno-lint-ignore no-explicit-any
+  const prof = (await handleGeo(q("action=profile&role=rider&device=android"), "ip", d)).body as any;
+  assertEquals(prof.profile.distance, ["here", "google", "straight"]);
 });

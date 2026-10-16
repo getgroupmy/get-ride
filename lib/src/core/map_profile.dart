@@ -96,8 +96,9 @@ class MapTrafficSpec {
   }
 }
 
-/// Providers the device calls itself; every other one goes through `geo`.
-const directGeoProviders = {'nominatim', 'osrm'};
+/// Providers the device calls itself, and `straight`, which it works out;
+/// every other one goes through `geo`.
+const directGeoProviders = {'nominatim', 'osrm', 'straight'};
 
 @immutable
 class MapProfile {
@@ -109,6 +110,7 @@ class MapProfile {
     this.search = const ['nominatim'],
     this.reverse = const ['nominatim'],
     this.routing = const ['osrm'],
+    this.distance = const ['osrm'],
     this.nominatimUrl,
     this.osrmUrl,
   });
@@ -126,6 +128,9 @@ class MapProfile {
   final List<String> search;
   final List<String> reverse;
   final List<String> routing;
+
+  /// Who measures each place search result's distance from the user.
+  final List<String> distance;
 
   /// A self-hosted Nominatim or OSRM from Admin → API Keys; null for the
   /// app's own.
@@ -157,6 +162,7 @@ class MapProfile {
       search: list(p['search'], const ['nominatim']),
       reverse: list(p['reverse'], const ['nominatim']),
       routing: list(p['routing'], const ['osrm']),
+      distance: list(p['distance'], const ['osrm']),
       nominatimUrl: url(direct['nominatim']),
       osrmUrl: url(direct['osrm']),
     );

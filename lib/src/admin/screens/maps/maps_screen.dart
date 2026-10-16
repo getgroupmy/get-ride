@@ -60,7 +60,7 @@ class _AdminMapsScreenState extends ConsumerState<AdminMapsScreen> {
     if (d == null) return;
     final conflicts = d.googleConflicts;
     if (conflicts.isNotEmpty) {
-      showInfo(context, 'Google search or address lookup needs Google map tiles: ${conflicts.join(', ')}.');
+      showInfo(context, 'Google search, address lookup or distances need a Google map: ${conflicts.join(', ')}.');
       return;
     }
     final traffic = d.googleTrafficConflicts;
@@ -368,6 +368,14 @@ class _DeviceCard extends StatelessWidget {
               options: routeProviders,
               enabled: canEdit,
               onChanged: (v) => onChanged(profile.copyWith(routing: v)),
+            ),
+            heading('Distance in search results'),
+            _Order(
+              id: 'maps-distance-$device',
+              value: profile.distance,
+              options: distanceProviders,
+              enabled: canEdit,
+              onChanged: (v) => onChanged(profile.copyWith(distance: v)),
             ),
           ],
         ),
@@ -806,6 +814,7 @@ String _kindLabel(String k) => switch (k) {
   'search' => 'place search',
   'reverse' => 'address lookup',
   'routing' => 'routes',
+  'distance' => 'distances',
   'tiles' => 'map sessions',
   _ => k,
 };
@@ -879,6 +888,18 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
               'points': '${at.latitude},${at.longitude};${at.latitude + 0.02},${at.longitude + 0.02}',
             },
             (b) => b?['route'] is Map,
+          ),
+      for (final s in p.distance)
+        if (!freeProviders.contains(s))
+          (
+            '${mapProviderLabel(s)} · distance',
+            {
+              'action': 'distance',
+              'provider': s,
+              'from': '${at.latitude},${at.longitude}',
+              'to': '${at.latitude + 0.02},${at.longitude + 0.02}',
+            },
+            (b) => ((b?['distances'] as List?) ?? const []).any((d) => d is num),
           ),
     ];
     for (final (label, params, ok) in checks) {
