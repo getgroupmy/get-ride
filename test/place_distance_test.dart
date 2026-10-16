@@ -240,6 +240,8 @@ void main() {
       bool suggest = false,
       Place? from,
       Place? to,
+      bool routeEnds = false,
+      bool startOnFrom = false,
       List<PlacePick?>? picked,
     }) async {
       tester.view.devicePixelRatio = 1;
@@ -261,7 +263,15 @@ void main() {
               builder: (context) => Scaffold(
                 body: TextButton(
                   onPressed: () async {
-                    final p = await showPlaceSearch(context, title: 'Where to?', near: near, from: from, to: to);
+                    final p = await showPlaceSearch(
+                      context,
+                      title: 'Where to?',
+                      near: near,
+                      from: from,
+                      to: to,
+                      routeEnds: routeEnds,
+                      startOnFrom: startOnFrom,
+                    );
                     picked?.add(p);
                   },
                   child: const Text('open'),
@@ -273,7 +283,7 @@ void main() {
       );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
-      if (from != null) return geo;
+      if (from != null || routeEnds) return geo;
       await tester.enterText(find.byKey(const ValueKey('place-search-field')), 'kl');
       await tester.pumpAndSettle(const Duration(milliseconds: 500));
       return geo;
@@ -376,6 +386,30 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('place-search-from')), findsOneWidget, reason: 'back to searching To');
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('nothing typed: From (empty) over the To field, Suggested and Saved only ($mode)', (tester) async {
+      await open(tester, [8.587, null], routeEnds: true);
+      final from = find.byKey(const ValueKey('place-search-from'));
+      expect(find.descendant(of: from, matching: find.text('From')), findsOneWidget, reason: 'its name, greyed');
+      expect(find.text('Search, or paste a Google Maps link'), findsNothing, reason: 'only the To label');
+      expect(find.byKey(const ValueKey('place-tab-suggested')), findsOneWidget);
+      expect(find.byKey(const ValueKey('place-tab-saved')), findsOneWidget);
+      expect(find.byKey(const ValueKey('place-tab-results')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('opened on the pickup: From searched first, To under it ($mode)', (tester) async {
+      final picked = <PlacePick?>[];
+      const klcc = Place(name: 'KLCC', address: 'KL', point: LatLng(3.15, 101.71));
+      await open(tester, [8.587, null], routeEnds: true, startOnFrom: true, to: klcc, picked: picked);
+      expect(find.byKey(const ValueKey('place-search-from')), findsNothing);
+      expect(find.descendant(of: find.byKey(const ValueKey('place-search-to')), matching: find.text('KLCC')), findsOne);
+      await tester.enterText(find.byKey(const ValueKey('place-search-field')), 'kl');
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
+      await tester.tap(find.text('KLCC').last);
+      await tester.pumpAndSettle();
+      expect(picked.single?.from, isTrue, reason: 'the pickup');
     });
 
     testWidgets('the bookmark asks to sign in before saving ($mode)', (tester) async {

@@ -48,6 +48,8 @@ Future<PlacePick?> showPlaceSearch(
   GateUsage? usage,
   Place? from,
   Place? to,
+  bool routeEnds = false,
+  bool startOnFrom = false,
   PlaceSearchMode mode = PlaceSearchMode.route,
 }) {
   final wide = MediaQuery.sizeOf(context).width >= 720;
@@ -58,6 +60,8 @@ Future<PlacePick?> showPlaceSearch(
     usage: usage,
     from: from,
     to: to,
+    routeEnds: routeEnds,
+    startOnFrom: startOnFrom,
     mode: mode,
   );
   if (wide) {
@@ -84,6 +88,8 @@ class _PlaceSearch extends ConsumerStatefulWidget {
     this.usage,
     this.from,
     this.to,
+    this.routeEnds = false,
+    this.startOnFrom = false,
     this.mode = PlaceSearchMode.route,
   });
   final String title;
@@ -98,6 +104,13 @@ class _PlaceSearch extends ConsumerStatefulWidget {
 
   /// Where it ends so far, shown under the From field while that is searched.
   final Place? to;
+
+  /// Both ends of the trip shown, From over To, even with neither set yet
+  /// (the home screen's route sheet).
+  final bool routeEnds;
+
+  /// Search the From (the pickup) first rather than the To.
+  final bool startOnFrom;
   final PlaceSearchMode mode;
 
   @override
@@ -128,7 +141,10 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   bool get _route => widget.mode == PlaceSearchMode.route;
 
   /// Changing the trip's start ("From", tapped) instead of its end.
-  bool _editFrom = false;
+  late bool _editFrom = widget.startOnFrom && _ends;
+
+  /// From over To, as the route sheet shows them.
+  bool get _ends => _route && (widget.routeEnds || widget.from != null);
 
   GateUsage? get _usage => _editFrom ? GateUsage.pickup : widget.usage;
 
@@ -176,7 +192,6 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
               : 'Address',
           labelStyle: TextStyle(color: t.colorScheme.onSurfaceVariant),
           floatingLabelStyle: TextStyle(color: t.colorScheme.onSurfaceVariant),
-          hintText: 'Search, or paste a Google Maps link',
           floatingLabelBehavior: FloatingLabelBehavior.always,
           contentPadding: const EdgeInsets.fromLTRB(12, 18, 8, 18),
           enabledBorder: border,
@@ -702,18 +717,18 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
         ),
         // inDrive's route sheet: From over To, the one being searched an
         // outlined field, the other a row that is tapped to search it.
-        if (_route && widget.from != null && _editFrom)
+        if (_ends && _editFrom)
           _field(t)
-        else if (_route && widget.from != null)
+        else if (_ends)
           _endRow(
             t,
             key: const ValueKey('place-search-from'),
             icon: Icons.emoji_people,
             label: 'From',
-            value: widget.from!.name,
+            value: widget.from?.name,
             onTap: _changeFrom,
           ),
-        if (_route && widget.from != null) const SizedBox(height: 12),
+        if (_ends) const SizedBox(height: 12),
         if (_editFrom)
           _endRow(
             t,
