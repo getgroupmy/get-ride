@@ -13,8 +13,10 @@ import 'package:get_ride/src/core/place_gates.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/place_gates_repository.dart';
+import 'package:get_ride/src/data/saved_places_repository.dart';
 import 'package:get_ride/src/features/ride/place_search.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/map_pick_icon.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
@@ -237,6 +239,7 @@ void main() {
       LatLng? near = _me,
       bool suggest = false,
       Place? from,
+      Place? to,
       List<PlacePick?>? picked,
     }) async {
       tester.view.devicePixelRatio = 1;
@@ -247,6 +250,8 @@ void main() {
         ProviderScope(
           overrides: [
             recentPlacesProvider.overrideWith((ref) async => const []),
+            savedPlacesProvider.overrideWith((ref) async => const []),
+            currentUserIdProvider.overrideWithValue(null),
             geoServiceProvider.overrideWithValue(geo),
             placeGatesProvider.overrideWith((ref) async => (places: <GateRow>[], gates: <GateRow>[])),
           ],
@@ -256,7 +261,7 @@ void main() {
               builder: (context) => Scaffold(
                 body: TextButton(
                   onPressed: () async {
-                    final p = await showPlaceSearch(context, title: 'Where to?', near: near, from: from);
+                    final p = await showPlaceSearch(context, title: 'Where to?', near: near, from: from, to: to);
                     picked?.add(p);
                   },
                   child: const Text('open'),
@@ -325,6 +330,59 @@ void main() {
       expect(picked.single?.from, isTrue);
       expect(picked.single?.place?.name, 'KLCC');
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the route sheet: From over To, Search Results, highlighted names, clear ($mode)', (tester) async {
+      const eco = Place(name: 'Eco Majestic', address: 'Semenyih', point: LatLng(2.93, 101.83));
+      const klcc = Place(name: 'KLCC', address: 'KL', point: LatLng(3.15, 101.71));
+      await open(tester, [8.587, null], from: eco, to: klcc);
+      expect(find.byType(MapPickIcon), findsOneWidget, reason: 'choose on map');
+      expect(find.byKey(const ValueKey('place-tab-results')), findsNothing, reason: 'nothing typed');
+      await tester.tap(find.byKey(const ValueKey('place-search-from')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('place-search-field'))).dy,
+        lessThan(tester.getTopLeft(find.byKey(const ValueKey('place-search-to'))).dy),
+        reason: 'From is searched over the To row',
+      );
+      expect(find.descendant(of: find.byKey(const ValueKey('place-search-to')), matching: find.text('KLCC')), findsOne);
+      await tester.enterText(find.byKey(const ValueKey('place-search-field')), 'kl');
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
+      final results = tester.widget<Material>(
+        find.descendant(of: find.byKey(const ValueKey('place-tab-results')), matching: find.byType(Material)).first,
+      );
+      expect(results.color, Theme.of(tester.element(find.byType(Scaffold).last)).colorScheme.onSurface,
+          reason: 'Search Results chosen');
+      final title = tester.widget<RichText>(
+        find.descendant(
+          of: find.byKey(const ValueKey('result-2.7456,101.7072')),
+          matching: find.byWidgetPredicate((w) => w is RichText && w.text.toPlainText() == 'KLIA'),
+        ),
+      );
+      final lit = <String>[];
+      title.text.visitChildren((span) {
+        if (span is TextSpan && span.text != null && span.style?.color != null) lit.add(span.text!);
+        return true;
+      });
+      expect(lit, contains('KL'), reason: 'what was typed, in the accent colour');
+      expect(find.byKey(const ValueKey('result-save-2.7456,101.7072')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('place-tab-suggested')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('result-2.7456,101.7072')), findsNothing, reason: 'the suggestions instead');
+      await tester.tap(find.byKey(const ValueKey('place-search-clear')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('place-tab-results')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('place-search-to')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('place-search-from')), findsOneWidget, reason: 'back to searching To');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the bookmark asks to sign in before saving ($mode)', (tester) async {
+      await open(tester, [8.587, null]);
+      await tester.tap(find.byKey(const ValueKey('result-save-3.1579,101.7116')));
+      await tester.pump();
+      expect(find.text('Sign in to save your places'), findsOneWidget);
     });
 
     testWidgets('a destination picked with From shown is not the start ($mode)', (tester) async {

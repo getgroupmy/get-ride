@@ -639,6 +639,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       usage: pickup ? GateUsage.pickup : GateUsage.drop,
       // inDrive's "From" above the destination field.
       from: pickup ? null : _pickup,
+      to: pickup ? null : _drop,
     );
     if (pick == null || !mounted) return;
     // The route's "From", changed in the same dialog: the pickup.

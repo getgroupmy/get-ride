@@ -14,6 +14,7 @@ import '../../data/place_gates_repository.dart';
 import '../../core/saved_places.dart';
 import '../../data/saved_places_repository.dart';
 import '../../providers.dart';
+import '../../widgets/map_pick_icon.dart';
 import 'map_place_picker.dart';
 import 'saved_place_form.dart';
 
@@ -46,10 +47,19 @@ Future<PlacePick?> showPlaceSearch(
   Place? current,
   GateUsage? usage,
   Place? from,
+  Place? to,
   PlaceSearchMode mode = PlaceSearchMode.route,
 }) {
   final wide = MediaQuery.sizeOf(context).width >= 720;
-  final body = _PlaceSearch(title: title, near: near, current: current, usage: usage, from: from, mode: mode);
+  final body = _PlaceSearch(
+    title: title,
+    near: near,
+    current: current,
+    usage: usage,
+    from: from,
+    to: to,
+    mode: mode,
+  );
   if (wide) {
     return showDialog<PlacePick>(
       context: context,
@@ -73,6 +83,7 @@ class _PlaceSearch extends ConsumerStatefulWidget {
     this.current,
     this.usage,
     this.from,
+    this.to,
     this.mode = PlaceSearchMode.route,
   });
   final String title;
@@ -84,6 +95,9 @@ class _PlaceSearch extends ConsumerStatefulWidget {
 
   /// Where the trip starts, shown above the field ("From").
   final Place? from;
+
+  /// Where it ends so far, shown under the From field while that is searched.
+  final Place? to;
   final PlaceSearchMode mode;
 
   @override
@@ -108,8 +122,8 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
 
   static String _at(LatLng p) => '${p.latitude},${p.longitude}';
 
-  /// Suggested (current place, the map, recent) or Saved.
-  bool _saved = false;
+  /// Search Results (while typing), Suggested (current place, recent) or Saved.
+  _Tab _tab = _Tab.suggested;
 
   bool get _route => widget.mode == PlaceSearchMode.route;
 
@@ -121,6 +135,155 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// Closes with [p], marked as the new start when the rider is changing it.
   void _done(PlacePick p) => Navigator.pop(context, _editFrom ? p._asFrom() : p);
 
+  /// Back to searching the trip's end (the To row tapped).
+  void _changeTo() {
+    _debounce?.cancel();
+    _query.clear();
+    _asked++;
+    setState(() {
+      _editFrom = false;
+      _results = [];
+      _km = const {};
+      _tab = _Tab.suggested;
+    });
+    _focus.requestFocus();
+  }
+
+  /// The search field: outlined, a search icon, its label (From, To or
+  /// Address) over the text, a clear button while there is text, and the
+  /// choose-on-map button.
+  Widget _field(ThemeData t) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: t.colorScheme.onSurface, width: 2),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: TextField(
+        key: const ValueKey('place-search-field'),
+        controller: _query,
+        focusNode: _focus,
+        autofocus: true,
+        style: t.textTheme.titleMedium?.copyWith(fontSize: 18),
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: t.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+          prefixIcon: Icon(Icons.search, size: 28, color: t.colorScheme.onSurface),
+          labelText: _editFrom
+              ? 'From'
+              : _route
+              ? 'To'
+              : 'Address',
+          labelStyle: TextStyle(color: t.colorScheme.onSurfaceVariant),
+          floatingLabelStyle: TextStyle(color: t.colorScheme.onSurfaceVariant),
+          hintText: 'Search, or paste a Google Maps link',
+          floatingLabelBehavior: FloatingLabelBehavior.always,
+          contentPadding: const EdgeInsets.fromLTRB(12, 18, 8, 18),
+          enabledBorder: border,
+          focusedBorder: border,
+          suffixIcon: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_loading || _picking)
+                const Padding(
+                  padding: EdgeInsets.only(right: 6),
+                  child: SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              else if (_query.text.isNotEmpty)
+                IconButton(
+                  key: const ValueKey('place-search-clear'),
+                  tooltip: 'Clear',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.cancel, size: 22, color: t.colorScheme.onSurfaceVariant),
+                  onPressed: () {
+                    _query.clear();
+                    _onChanged('');
+                  },
+                ),
+              // Choose the spot on the map instead.
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Tooltip(
+                  message: 'Choose on map',
+                  child: InkWell(
+                    key: const ValueKey('place-search-map'),
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: _onMap,
+                    child: const MapPickIcon(size: 44),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        onChanged: _onChanged,
+      ),
+    );
+  }
+
+  /// The end of the trip not being searched: its icon and place (or its
+  /// name greyed), tapped to search it instead.
+  Widget _endRow(
+    ThemeData t, {
+    required Key key,
+    required IconData icon,
+    required String label,
+    required String? value,
+    required VoidCallback onTap,
+  }) {
+    final has = value != null && value.trim().isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: t.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          key: key,
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 64),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(icon, size: 28, color: t.colorScheme.onSurface),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: has
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                label,
+                                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                              ),
+                              Text(
+                                value,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t.textTheme.titleMedium,
+                              ),
+                            ],
+                          )
+                        : Text(
+                            label,
+                            style: t.textTheme.titleMedium?.copyWith(
+                              fontSize: 18,
+                              color: t.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _changeFrom() {
     _debounce?.cancel();
     _query.clear();
@@ -129,7 +292,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       _editFrom = true;
       _results = [];
       _km = const {};
-      _saved = false;
+      _tab = _Tab.suggested;
     });
     _focus.requestFocus();
   }
@@ -143,8 +306,14 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   }
 
   void _onChanged(String q) {
-    // Typing hides the lists under the field; clearing shows them again.
-    setState(() {});
+    // Typing shows the results; clearing goes back to the suggestions.
+    setState(() {
+      if (q.trim().isNotEmpty) {
+        _tab = _Tab.results;
+      } else if (_tab == _Tab.results) {
+        _tab = _Tab.suggested;
+      }
+    });
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 450), () async {
       setState(() => _loading = true);
@@ -224,63 +393,182 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     final gates = gated?.gates ?? const <GateOption>[];
     final blocked = gated?.blocksPlace ?? false;
     final km = p.pending ? _km[p.placeId] ?? p.km : _km[_at(p.point)];
-    final icon = Icon(
-      gates.isNotEmpty
-          ? Icons.door_front_door_outlined
-          : smart.clean
-          ? placeIcon(p)
-          : Icons.place_outlined,
-    );
-    return ListTile(
+    final t = Theme.of(context);
+    final muted = t.colorScheme.onSurfaceVariant;
+    // A pin, or what the place is (smart address A) where that says more.
+    final typed = smart.clean ? placeIcon(p) : null;
+    final icon = gates.isNotEmpty
+        ? Icons.door_front_door_outlined
+        : typed == null || typed == Icons.place_outlined || typed == Icons.home_outlined
+        ? Icons.location_on_outlined
+        : typed;
+    final saved = _savedAt(p);
+    return InkWell(
       // Suggestions have no position yet: each by Google's id, so no two share a key.
-      key: ValueKey(p.pending ? 'result-${p.placeId}' : 'result-${p.point.latitude},${p.point.longitude}'),
-      // The distance from here under the pin, as Grab shows it.
-      leading: km == null
-          ? icon
-          : SizedBox(
-              width: 52,
+      key: ValueKey('result-${_id(p)}'),
+      onTap: blocked || _picking ? null : () => _pick(p, catalogue, smart),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 6, right: 16),
+              child: Icon(icon, size: 30, color: muted),
+            ),
+            Expanded(
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  icon,
+                  Text.rich(
+                    _highlighted(p.name, _query.text, t),
+                    maxLines: smart.clean ? 1 : 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500),
+                  ),
                   const SizedBox(height: 2),
                   Text(
-                    placeDistanceLabel(km),
-                    key: ValueKey('result-km-${p.pending ? p.placeId : '${p.point.latitude},${p.point.longitude}'}'),
-                    maxLines: 1,
-                    style: Theme.of(context).textTheme.labelSmall
-                        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    smart.clean ? shortArea(p) : p.address,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
                   ),
+                  if (gates.isNotEmpty) ...[
+                    if (blocked)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('Choose a gate', style: t.textTheme.labelMedium),
+                      ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final g in gates)
+                          ActionChip(
+                            key: ValueKey('gate-${g.id}'),
+                            avatar: const Icon(Icons.door_front_door_outlined, size: 16),
+                            label: Text(g.name),
+                            onPressed: () => _done(PlacePick.place(gatePlace(p, gated!, g))),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
-      title: Text(
-        p.name,
-        style: smart.clean ? const TextStyle(fontWeight: FontWeight.w600) : null,
-        maxLines: smart.clean ? 1 : null,
-        overflow: smart.clean ? TextOverflow.ellipsis : null,
-      ),
-      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(smart.clean ? shortArea(p) : p.address, maxLines: smart.clean ? 1 : 2, overflow: TextOverflow.ellipsis),
-        if (gates.isNotEmpty) ...[
-          if (blocked)
+            // The distance from here, then save it (Grab's and inDrive's
+            // right-hand side).
             Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text('Choose a gate', style: Theme.of(context).textTheme.labelMedium),
-            ),
-          const SizedBox(height: 6),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final g in gates)
-              ActionChip(
-                key: ValueKey('gate-${g.id}'),
-                avatar: const Icon(Icons.door_front_door_outlined, size: 16),
-                label: Text(g.name),
-                onPressed: () => _done(PlacePick.place(gatePlace(p, gated!, g))),
+              padding: const EdgeInsets.only(left: 8, top: 10),
+              child: SizedBox(
+                width: 64,
+                child: km == null
+                    ? null
+                    : Text(
+                        placeDistanceLabel(km),
+                        key: ValueKey('result-km-${_id(p)}'),
+                        maxLines: 1,
+                        textAlign: TextAlign.right,
+                        style: t.textTheme.bodyLarge?.copyWith(color: muted),
+                      ),
               ),
-          ]),
-        ],
-      ]),
-      onTap: blocked || _picking ? null : () => _pick(p, catalogue, smart),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: IconButton.filledTonal(
+                key: ValueKey('result-save-${_id(p)}'),
+                tooltip: saved == null ? 'Save place' : 'Saved',
+                style: IconButton.styleFrom(
+                  backgroundColor: t.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+                  foregroundColor: t.colorScheme.onSurface,
+                ),
+                icon: Icon(saved == null ? Icons.bookmark_border : Icons.bookmark),
+                onPressed: _picking ? null : () => _savePlace(p, saved),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// A result's key part: Google's id for a suggestion (no position yet, so
+  /// no two share one), else its position.
+  static String _id(Place p) => p.pending ? '${p.placeId}' : '${p.point.latitude},${p.point.longitude}';
+
+  /// [text] with each word of [query] in it in the accent colour (what was
+  /// typed, as found).
+  static TextSpan _highlighted(String text, String query, ThemeData t) {
+    final words = query.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return TextSpan(text: text);
+    final lower = text.toLowerCase();
+    final hit = List<bool>.filled(text.length, false);
+    for (final w in words) {
+      for (var i = lower.indexOf(w); i >= 0; i = lower.indexOf(w, i + w.length)) {
+        for (var j = i; j < i + w.length && j < hit.length; j++) {
+          hit[j] = true;
+        }
+      }
+    }
+    final accent = TextStyle(
+      color: t.brightness == Brightness.dark ? const Color(0xFF8AB4FF) : const Color(0xFF3D5AFE),
+    );
+    final spans = <TextSpan>[];
+    var start = 0;
+    for (var i = 1; i <= text.length; i++) {
+      if (i == text.length || hit[i] != hit[start]) {
+        spans.add(TextSpan(text: text.substring(start, i), style: hit[start] ? accent : null));
+        start = i;
+      }
+    }
+    return TextSpan(children: spans);
+  }
+
+  /// The rider's saved place at [p] (within 100 m), if there is one.
+  SavedPlace? _savedAt(Place p) {
+    if (p.pending) return null;
+    for (final s in ref.watch(savedPlacesProvider).value ?? const <SavedPlace>[]) {
+      if (const Distance().as(LengthUnit.Meter, s.point, p.point) < 100) return s;
+    }
+    return null;
+  }
+
+  /// The bookmark: [p] saved as one of the rider's places (looked up first
+  /// when it is a suggestion), or the saved one opened.
+  Future<void> _savePlace(Place p, SavedPlace? saved) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (ref.read(currentUserIdProvider) == null) {
+      messenger?.showSnackBar(const SnackBar(content: Text('Sign in to save your places')));
+      return;
+    }
+    if (saved != null) {
+      await showSavedPlaceForm(context, saved, near: widget.near);
+      return;
+    }
+    var place = p;
+    if (p.pending) {
+      setState(() => _picking = true);
+      try {
+        place = await ref.read(geoServiceProvider).resolve(p) ?? p;
+      } finally {
+        if (mounted) setState(() => _picking = false);
+      }
+      if (place.pending) {
+        messenger?.showSnackBar(const SnackBar(content: Text("Couldn't find that place. Try another.")));
+        return;
+      }
+    }
+    if (!mounted) return;
+    await showSavedPlaceForm(
+      context,
+      SavedPlace(
+        kind: SavedPlaceKind.other,
+        name: place.name,
+        address: place.address.isEmpty ? place.name : place.address,
+        point: place.point,
+      ),
+      near: widget.near,
     );
   }
 
@@ -388,7 +676,6 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     final catalogue = ref.watch(placeGatesProvider).value;
     final typing = _query.text.trim().isNotEmpty;
     final smart = ref.watch(geoServiceProvider).smartAddress;
-    final field = t.colorScheme.surfaceContainerHighest;
     return Column(
       children: [
         // The title in the middle, a round close on the right (inDrive's).
@@ -413,140 +700,58 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             ],
           ),
         ),
-        // The start, tapped to change it here too.
-        if (_route && widget.from != null && !_editFrom)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: Material(
-              color: field,
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                key: const ValueKey('place-search-from'),
-                borderRadius: BorderRadius.circular(14),
-                onTap: _changeFrom,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.emoji_people, size: 26),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'From',
-                              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
-                            ),
-                            Text(
-                              widget.from!.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: t.textTheme.bodyLarge,
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(Icons.edit_outlined, size: 20, color: t.colorScheme.onSurfaceVariant),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+        // inDrive's route sheet: From over To, the one being searched an
+        // outlined field, the other a row that is tapped to search it.
+        if (_route && widget.from != null && _editFrom)
+          _field(t)
+        else if (_route && widget.from != null)
+          _endRow(
+            t,
+            key: const ValueKey('place-search-from'),
+            icon: Icons.emoji_people,
+            label: 'From',
+            value: widget.from!.name,
+            onTap: _changeFrom,
           ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: TextField(
-            key: const ValueKey('place-search-field'),
-            controller: _query,
-            focusNode: _focus,
-            autofocus: true,
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: field,
-              prefixIcon: _editFrom
-                  ? const Icon(Icons.emoji_people)
-                  : _route
-                  ? const Icon(Icons.search)
-                  : null,
-              labelText: _editFrom
-                  ? 'From'
-                  : _route
-                  ? 'To'
-                  : 'Address',
-              hintText: 'Search, or paste a Google Maps link',
-              floatingLabelBehavior: FloatingLabelBehavior.always,
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: t.colorScheme.onSurface, width: 2),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: t.colorScheme.onSurface, width: 2),
-              ),
-              suffixIcon: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_loading || _picking)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 4),
-                      child: SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                    ),
-                  // The map: choose the spot there instead (inDrive's map button).
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Tooltip(
-                      message: 'Choose on map',
-                      child: Material(
-                        color: t.colorScheme.surface,
-                        borderRadius: BorderRadius.circular(10),
-                        elevation: 1,
-                        child: InkWell(
-                          key: const ValueKey('place-search-map'),
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: _onMap,
-                          child: const SizedBox.square(
-                            dimension: 40,
-                            child: Icon(Icons.location_on, color: Color(0xFF2D7FF9), size: 26),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            onChanged: _onChanged,
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (_route && !typing)
+        if (_route && widget.from != null) const SizedBox(height: 12),
+        if (_editFrom)
+          _endRow(
+            t,
+            key: const ValueKey('place-search-to'),
+            icon: Icons.flag,
+            label: 'To',
+            value: widget.to?.name,
+            onTap: _changeTo,
+          )
+        else
+          _field(t),
+        const SizedBox(height: 16),
+        if (_route)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Row(
-              children: [
-                _Pill(
-                  key: const ValueKey('place-tab-suggested'),
-                  label: 'Suggested',
-                  on: !_saved,
-                  onTap: () => setState(() => _saved = false),
-                ),
-                const SizedBox(width: 10),
-                _Pill(
-                  key: const ValueKey('place-tab-saved'),
-                  label: 'Saved',
-                  on: _saved,
-                  onTap: () => setState(() => _saved = true),
-                ),
-              ],
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final tab in [if (typing) _Tab.results, _Tab.suggested, _Tab.saved]) ...[
+                    _Pill(
+                      key: ValueKey('place-tab-${tab.name}'),
+                      label: tab.label,
+                      on: _tab == tab,
+                      onTap: () => setState(() => _tab = tab),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                ],
+              ),
             ),
           ),
         Expanded(
           child: ListView(
             children: [
-              if (!typing && _route && _saved) ..._savedList(t),
-              if (!typing && _route && !_saved) ..._suggested(t),
-              if (typing)
+              if (_route && _tab == _Tab.saved) ..._savedList(t),
+              if (_route && _tab == _Tab.suggested) ..._suggested(t),
+              if (typing && (!_route || _tab == _Tab.results))
                 ...() {
                   final shown = collapseAirports<Place>(
                     _results,
@@ -652,6 +857,16 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
 }
 
 /// A Suggested / Saved switch: black when on, grey when off (inDrive's).
+/// The sheet's tabs: what was found, the suggestions, the saved places.
+enum _Tab {
+  results('Search Results'),
+  suggested('Suggested'),
+  saved('Saved');
+
+  const _Tab(this.label);
+  final String label;
+}
+
 class _Pill extends StatelessWidget {
   const _Pill({super.key, required this.label, required this.on, required this.onTap});
   final String label;
