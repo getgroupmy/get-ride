@@ -70,6 +70,19 @@ class ApiKeyEntry {
         extra: extra,
       );
 
+  /// The same key with [fields] added to its stored JSON.
+  ApiKeyEntry withExtra(Map<String, dynamic> fields) => ApiKeyEntry(
+        id: id,
+        label: label,
+        value: value,
+        useCount: useCount,
+        failedCount: failedCount,
+        disabled: disabled,
+        lastUsedAt: lastUsedAt,
+        lastFailedAt: lastFailedAt,
+        extra: {...extra, ...fields},
+      );
+
   Map<String, dynamic> toJson() => {
         ...extra,
         'id': id,
@@ -432,3 +445,147 @@ bool matchesService(ApiServiceDef s, String query) {
   if (q.isEmpty) return true;
   return s.name.toLowerCase().contains(q) || (s.description ?? '').toLowerCase().contains(q);
 }
+
+// ---- Key tests (the `key-test` function) ---------------------------------------
+
+/// How a test request is sent: as the server, or as the website / app the
+/// key is restricted to.
+enum KeySendAs {
+  server('Server (no restriction)'),
+  web('Website (getride.my)'),
+  android('Android app'),
+  ios('iPhone / iPad app');
+
+  const KeySendAs(this.label);
+  final String label;
+
+  static KeySendAs parse(Object? v) => values.firstWhere((a) => a.name == v, orElse: () => server);
+}
+
+/// One test the admin can pick for a key (the function's `GET` list).
+class KeyTestDef {
+  const KeyTestDef({
+    required this.id,
+    required this.provider,
+    required this.label,
+    this.about = '',
+    this.services = const [],
+    this.sendAs = KeySendAs.server,
+    this.browser = false,
+  });
+
+  factory KeyTestDef.fromJson(Object? json) {
+    final m = _map(json);
+    return KeyTestDef(
+      id: '${m['id'] ?? ''}',
+      provider: '${m['provider'] ?? ''}',
+      label: '${m['label'] ?? ''}',
+      about: '${m['about'] ?? ''}',
+      services: [for (final s in (m['services'] as List?) ?? const []) '$s'],
+      sendAs: KeySendAs.parse(m['as']),
+      browser: m['browser'] == true,
+    );
+  }
+
+  final String id;
+  final String provider;
+  final String label;
+  final String about;
+
+  /// Services it is offered first for ('*' = all of the provider's).
+  final List<String> services;
+  final KeySendAs sendAs;
+
+  /// Runs in the admin's browser (Google's JavaScript map), not the function.
+  final bool browser;
+
+  bool meantFor(String service) => services.contains(service) || services.contains('*');
+}
+
+/// [provider]'s tests for a key of [service]: the ones meant for it first.
+List<KeyTestDef> keyTestsFor(List<KeyTestDef> all, String provider, String service) {
+  final mine = all.where((t) => t.provider == provider).toList();
+  return [...mine.where((t) => t.meantFor(service)), ...mine.where((t) => !t.meantFor(service))];
+}
+
+/// How a key of [service] is sent unless the admin picks otherwise.
+KeySendAs defaultSendAs(String service, KeyTestDef? test) => switch (service) {
+      'maps_android' => KeySendAs.android,
+      'maps_ios' => KeySendAs.ios,
+      'maps_js' => KeySendAs.web,
+      _ => test?.sendAs ?? KeySendAs.server,
+    };
+
+enum KeyTestOutcome { ok, warn, fail }
+
+class KeyTestResult {
+  const KeyTestResult({required this.outcome, required this.title, this.detail = '', this.http, this.ms});
+
+  factory KeyTestResult.fromJson(Object? json) {
+    final m = _map(json);
+    final error = m['error'];
+    if (error != null && m['result'] == null) {
+      return KeyTestResult(outcome: KeyTestOutcome.fail, title: "Couldn't run the test", detail: _errorText('$error'));
+    }
+    return KeyTestResult(
+      outcome: KeyTestOutcome.values.firstWhere((o) => o.name == m['result'], orElse: () => KeyTestOutcome.fail),
+      title: '${m['title'] ?? 'No answer'}',
+      detail: '${m['detail'] ?? ''}',
+      http: m['http'] is num && (m['http'] as num) > 0 ? (m['http'] as num).toInt() : null,
+      ms: m['ms'] is num ? (m['ms'] as num).toInt() : null,
+    );
+  }
+
+  final KeyTestOutcome outcome;
+  final String title;
+  final String detail;
+  final int? http;
+  final int? ms;
+
+  /// "HTTP 403 · 312 ms", or empty.
+  String get meta => [if (http != null) 'HTTP $http', if (ms != null) '$ms ms'].join(' · ');
+}
+
+String _errorText(String error) => switch (error) {
+      'admin_only' => 'Only admins can test keys.',
+      'unavailable' => 'The test service had a problem. Try again.',
+      _ => error,
+    };
+
+/// A key's last test, kept on the key (`lastTest`) so the list shows it.
+class KeyLastTest {
+  const KeyLastTest({required this.label, required this.outcome, required this.title, required this.at});
+
+  static KeyLastTest? fromKey(ApiKeyEntry k) {
+    final m = k.extra['lastTest'];
+    if (m is! Map) return null;
+    final at = m['at'];
+    if (at is! num) return null;
+    return KeyLastTest(
+      label: '${m['label'] ?? ''}',
+      outcome: KeyTestOutcome.values.firstWhere((o) => o.name == m['result'], orElse: () => KeyTestOutcome.fail),
+      title: '${m['title'] ?? ''}',
+      at: at.toInt(),
+    );
+  }
+
+  final String label;
+  final KeyTestOutcome outcome;
+  final String title;
+
+  /// Epoch ms.
+  final int at;
+}
+
+/// Keeps [result] of [test] on the key, for the list.
+List<ApiProviderDef> recordKeyTest(List<ApiProviderDef> list, String providerId, String serviceId, String keyId,
+        KeyTestDef test, KeyTestResult result, {DateTime? now}) =>
+    updateKey(list, providerId, serviceId, keyId, (k) => k.withExtra({
+          'lastTest': {
+            'test': test.id,
+            'label': test.label,
+            'result': result.outcome.name,
+            'title': result.title,
+            'at': (now ?? DateTime.now()).millisecondsSinceEpoch,
+          },
+        }));
