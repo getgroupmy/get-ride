@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/map_profile.dart';
 import 'package:get_ride/src/widgets/map_tiles.dart';
 import 'package:get_ride/src/widgets/ride_map.dart';
 import 'package:http/http.dart' as http;
@@ -11,6 +12,25 @@ import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 
 void main() {
+  test("Google's own map (0210): where this build can draw it, else the app's own", () {
+    final p = MapProfile.fromJson({
+      'profile': {
+        'tiles': {
+          'light': {'engine': 'google_native', 'mapType': 'roadmap', 'attribution': 'Map data © Google'},
+          'satellite': {'engine': 'google_native', 'mapType': 'satellite'},
+          'dark': {'engine': 'google_js', 'key': 'BROWSER', 'mapType': 'roadmap'},
+        },
+      },
+    });
+    expect(p.light, const MapTileSpec.googleNative(attribution: 'Map data © Google'));
+    expect(p.satellite?.url, MapTileSpec.googleNativeSatellite);
+    final native = profileTileSource(p, dark: false, googleNative: true)!;
+    expect([native.googleNative, native.isBrowserMap, native.attribution], [true, false, 'Map data © Google']);
+    expect(profileTileSource(p, dark: false, googleNative: false), isNull, reason: 'a build without the key');
+    expect(profileTileSource(p, dark: true, web: false, googleJs: true)?.googleJsKey, 'BROWSER', reason: 'desktop');
+    expect(profileTileSource(p, dark: true, web: false, googleJs: false), isNull, reason: 'Linux, phones');
+  });
+
   test('defaults to OpenStreetMap, darkened only in dark mode', () {
     final light = resolveTileSource(dark: false, light: '', darkUrl: '');
     expect(light.url, osmTileUrl);

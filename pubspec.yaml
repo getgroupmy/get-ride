@@ -81,6 +81,9 @@ dependencies:
   audioplayers: ^6.8.1
   flutter_tts: ^4.2.5
   package_info_plus: ^10.2.2
+  google_maps_flutter: ^2.19.0
+  webview_windows: ^0.4.0
+  google_maps_flutter_ios_sdk9: ^2.19.0
 
 dev_dependencies:
   flutter_test:

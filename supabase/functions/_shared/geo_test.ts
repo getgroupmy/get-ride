@@ -919,3 +919,23 @@ Deno.test("profile: why a set map slot fell back, for Admin → Maps → Test", 
   assertEquals(p.refused.dark, "No key");
   assertEquals(p.refused.satellite, undefined, "built in by choice");
 });
+
+Deno.test("Google's own map on phones: no key sent, the build carries it (0210)", async () => {
+  const cfg = {
+    ...config,
+    profiles: {
+      ...config.profiles,
+      "rider.android": {
+        ...config.profiles["rider.android"],
+        tiles: { light: "google_native", dark: "google_native", satellite: "google_native", traffic: "google" },
+      },
+    },
+  };
+  const { d } = deps({ settings: () => Promise.resolve({ config: cfg, apiProviders }) });
+  // deno-lint-ignore no-explicit-any
+  const p = ((await handleGeo(q("action=profile&role=rider&device=android"), "ip", d)).body as any).profile;
+  assertEquals(p.tiles.light, { url: "", darken: false, attribution: "Map data © Google", engine: "google_native", mapType: "roadmap" });
+  assertEquals(p.tiles.satellite.mapType, "satellite");
+  assertEquals(p.tiles.traffic, { google: true });
+  assertEquals(p.refused, {});
+});

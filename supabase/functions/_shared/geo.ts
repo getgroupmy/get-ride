@@ -7,7 +7,9 @@
  *   tiles     osm · google · mapbox · here · tomtom · maptiler (light, dark,
  *             satellite; esri for satellite), tomtom · here (traffic); on the
  *             web also google_js (Google's JavaScript map, drawn by the
- *             browser under the app's layers) and its google traffic
+ *             browser under the app's layers) and its google traffic; on
+ *             Android and iOS google_native (Google's own map, the Maps SDK
+ *             in the app, migration 0210), and google_js on desktop too
  *   search    nominatim · google · mapbox · here · tomtom · locationiq · maptiler · amazon
  *   reverse   the same
  *   routing   osrm · google · mapbox · here · tomtom · locationiq · amazon
@@ -246,7 +248,7 @@ export interface TileSource {
    * [key], as [mapType] ("roadmap" | "satellite"), styled dark for 'dark'.
    * Older apps ignore it (no template) and keep their own tiles.
    */
-  engine?: "google_js" | "maplibre";
+  engine?: "google_js" | "google_native" | "maplibre";
   key?: string;
   mapType?: "roadmap" | "satellite";
   /**
@@ -261,6 +263,7 @@ const ATTRIBUTION: Record<string, string> = {
   esri: "Imagery © Esri",
   google: "Map data © Google",
   google_js: "Map data © Google",
+  google_native: "Map data © Google",
   mapbox: "© Mapbox © OpenStreetMap",
   here: "© HERE",
   tomtom: "© TomTom",
@@ -286,6 +289,12 @@ export function tileSource(
 ): TileSource | null {
   const a = ATTRIBUTION[provider] ?? "";
   const k = key ? enc(key) : "";
+  // Google's own map in the phone app (migration 0210): the key is the one
+  // the release build carries, so none is sent.
+  if (provider === "google_native") {
+    const mapType = slot === "satellite" ? "satellite" : "roadmap";
+    return { url: "", darken: false, attribution: a, engine: "google_native", mapType };
+  }
   switch (provider) {
     case "osm":
       if (slot === "satellite") return null;

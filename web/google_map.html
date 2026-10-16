@@ -1,0 +1,104 @@
+<!doctype html>
+<!--
+  Google's JavaScript map for the desktop app (Windows, macOS), shown in a
+  web view under the app's own layers (Admin → Settings → Maps, migration
+  0210). Served from this site so the browser key's website restriction is
+  the same as on the web. The key comes in the address's #fragment, which
+  is never sent to a server.
+
+  The app moves it:   setView(lat, lng, zoom, bearing)
+                      setLook(satellite, dark, traffic)
+  It tells the app:   "ready", or "failed:<Google's error name>"
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Map</title>
+    <style>
+      html, body, #map { margin: 0; width: 100%; height: 100%; background: #e5e3df; }
+      body.dark, body.dark #map { background: #242f3e; }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.hash.slice(1));
+        var key = params.get("key") || "";
+        var map = null, traffic = null, look = { satellite: false, dark: false, traffic: false }, pending = null;
+        var night = JSON.parse(params.get("night") || "[]");
+        var failed = false;
+
+        function tell(message) {
+          try {
+            if (window.GetRide && window.GetRide.postMessage) window.GetRide.postMessage(message);
+            else if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(message);
+          } catch (e) {}
+        }
+        function fail(name) {
+          if (failed) return;
+          failed = true;
+          tell("failed:" + (name || "Failed"));
+        }
+
+        // The API names why it refused the key only in the console.
+        var error = console.error;
+        console.error = function () {
+          var m = /Google Maps JavaScript API (?:error|warning): (\w+)/.exec(String(arguments[0] || ""));
+          if (m) fail(m[1]);
+          return error.apply(console, arguments);
+        };
+        window.gm_authFailure = function () { fail("AuthFailure"); };
+
+        function applyLook() {
+          if (!map) return;
+          document.body.className = look.dark && !look.satellite ? "dark" : "";
+          map.setOptions({
+            mapTypeId: look.satellite ? "satellite" : "roadmap",
+            styles: look.dark && !look.satellite ? night : [],
+            backgroundColor: look.dark ? "#242f3e" : "#e5e3df",
+          });
+          if (look.traffic) {
+            traffic = traffic || new google.maps.TrafficLayer();
+            traffic.setMap(map);
+          } else if (traffic) {
+            traffic.setMap(null);
+          }
+        }
+
+        window.setView = function (lat, lng, zoom, bearing) {
+          if (!map) { pending = [lat, lng, zoom, bearing]; return; }
+          map.moveCamera({ center: { lat: lat, lng: lng }, zoom: zoom, heading: bearing || 0 });
+        };
+        window.setLook = function (satellite, dark, withTraffic) {
+          look = { satellite: !!satellite, dark: !!dark, traffic: !!withTraffic };
+          applyLook();
+        };
+        window.__getRideMapReady = function () {
+          map = new google.maps.Map(document.getElementById("map"), {
+            center: { lat: 3.139, lng: 101.6869 },
+            zoom: 13,
+            disableDefaultUI: true,
+            gestureHandling: "none",
+            keyboardShortcuts: false,
+            clickableIcons: false,
+            isFractionalZoomEnabled: true,
+          });
+          applyLook();
+          if (pending) window.setView.apply(null, pending);
+          if (!failed) tell("ready");
+        };
+
+        if (!key) return fail("MissingKeyMapError");
+        var script = document.createElement("script");
+        script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(key) +
+          "&v=weekly&callback=__getRideMapReady";
+        script.async = true;
+        script.onerror = function () { fail("NotLoaded"); };
+        document.head.appendChild(script);
+      })();
+    </script>
+  </body>
+</html>

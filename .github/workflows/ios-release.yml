@@ -294,6 +294,10 @@ jobs:
           MAP_TILE_URL_TRAFFIC_FALLBACK: ${{ secrets.MAP_TILE_URL_TRAFFIC_FALLBACK || vars.MAP_TILE_URL_TRAFFIC_FALLBACK }}
           TOM_TOM_API_KEY: ${{ secrets.TOM_TOM_API_KEY }}
           HERE_API_KEY: ${{ secrets.HERE_API_KEY }}
+          # Google's own map (Admin → Settings → Maps, "Google Maps (native)"):
+          # a Maps SDK for iOS key, restricted to this app. Unset, the app
+          # keeps its tiles. Goes into Info.plist (GMSApiKey) below.
+          GOOGLE_MAPS_IOS_API_KEY: ${{ secrets.GOOGLE_MAPS_IOS_API_KEY }}
         run: |
           set -euo pipefail
           build=$(( ${{ github.run_number }} + OFFSET ))
@@ -336,6 +340,7 @@ jobs:
           PROVISIONING_PROFILE_SPECIFIER = $PROFILE_UUID
           CODE_SIGN_IDENTITY = Apple Distribution
           CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
+          GOOGLE_MAPS_IOS_API_KEY = $GOOGLE_MAPS_IOS_API_KEY
           CFG
 
           xcodebuild archive \

@@ -194,11 +194,17 @@ void main() {
       expect(made.list.single.services.single.keys.single.label, 'Key 1');
     });
 
-    test("Google's JavaScript map and its traffic: web only, traffic only on that map", () {
-      expect(tileOptionsFor('light', 'web'), contains('google_js'));
+    test("Google's map per device: native on phones, JavaScript on the web and desktop, traffic only on them", () {
+      expect(tileOptionsFor('light', 'web'), containsAll(['google_js', 'amazon_js']));
+      expect(tileOptionsFor('light', 'web'), isNot(contains('google_native')));
+      expect(tileOptionsFor('light', 'android'), contains('google_native'));
+      expect(tileOptionsFor('satellite', 'ios'), contains('google_native'));
       expect(tileOptionsFor('light', 'android'), isNot(contains('google_js')));
-      expect(tileOptionsFor('traffic', 'web'), contains('google'));
-      expect(tileOptionsFor('traffic', 'ios'), isNot(contains('google')));
+      expect(tileOptionsFor('light', 'desktop'), contains('google_js'));
+      expect(tileOptionsFor('light', 'desktop'), isNot(anyOf(contains('google_native'), contains('amazon_js'))));
+      expect(tileOptionsFor('traffic', 'ios'), contains('google'));
+      expect(mapProviderLabel('google_native'), 'Google Maps (native)');
+      expect(mapProviderLabel('google_js'), 'Google Maps (JavaScript)');
       const js = MapProfileSetting(
         tiles: {'light': 'google_js', 'dark': 'google_js', 'satellite': 'google_js', 'traffic': 'google'},
         search: ['google'],
@@ -206,11 +212,27 @@ void main() {
       expect(js.breaksGoogleTerms, isFalse, reason: "Google search on Google's JavaScript map");
       expect(js.googleTrafficWithoutItsMap, isFalse);
       expect(js.withTile('dark', 'osm').googleTrafficWithoutItsMap, isTrue);
-      expect(js.forDevice('android').tiles.values.toSet(), {'app'}, reason: 'copied to the phone apps: as built');
+      expect(
+        js.withTile('dark', 'google_native').googleTrafficWithoutItsMap,
+        isTrue,
+        reason: 'the same Google map for both',
+      );
+      expect(js.forDevice('android').tiles, {
+        'light': 'google_native',
+        'dark': 'google_native',
+        'satellite': 'google_native',
+        'traffic': 'google',
+      }, reason: "copied to the phone apps: Google's own map there");
+      expect(js.forDevice('android').googleTrafficWithoutItsMap, isFalse);
+      expect(js.forDevice('desktop'), js);
       expect(js.forDevice('web'), js);
+      const amazon = MapProfileSetting(
+        tiles: {'light': 'amazon_js', 'dark': 'app', 'satellite': 'app', 'traffic': 'app'},
+      );
+      expect(amazon.forDevice('android').tiles['light'], 'app', reason: 'Amazon\'s map is web only');
       final s = MapSettings.fromJson(null).withProfile('rider', 'web', js.withTile('dark', 'osm'));
       expect(s.googleTrafficConflicts, ['Rider · Web']);
-      expect(s.copiedToAllDevices('rider', 'web').profile('rider', 'android').tiles['light'], 'app');
+      expect(s.copiedToAllDevices('rider', 'web').profile('rider', 'android').tiles['light'], 'google_native');
       expect(s.keyRef('google_js'), 'google/maps_js');
     });
 
@@ -535,7 +557,7 @@ void main() {
       tester,
     ) async {
       final (repo, _) = await pump(tester, dark: dark);
-      await choose(tester, 'maps-tile-web-traffic', 'Google traffic (on Google Maps JavaScript)');
+      await choose(tester, 'maps-tile-web-traffic', 'Google traffic (on a Google map)');
       expect(find.byKey(const ValueKey('maps-google-traffic-warning'), skipOffstage: false), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('maps-save')));
       await tester.pumpAndSettle();
@@ -548,6 +570,22 @@ void main() {
       expect(repo.saved.single.profile('rider', 'web').tiles, {
         'light': 'google_js',
         'dark': 'google_js',
+        'satellite': 'app',
+        'traffic': 'google',
+      });
+    });
+
+    testWidgets("phones: Google Maps (native) with Google's traffic, saved ($mode)", (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      await choose(tester, 'maps-tile-android-light', 'Google Maps (native)');
+      await choose(tester, 'maps-tile-android-dark', 'Google Maps (native)');
+      await choose(tester, 'maps-tile-android-traffic', 'Google traffic (on a Google map)');
+      expect(find.byKey(const ValueKey('maps-google-traffic-warning'), skipOffstage: false), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.profile('rider', 'android').tiles, {
+        'light': 'google_native',
+        'dark': 'google_native',
         'satellite': 'app',
         'traffic': 'google',
       });

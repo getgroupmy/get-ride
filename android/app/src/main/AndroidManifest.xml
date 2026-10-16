@@ -316,6 +316,10 @@
             android:name="com.hiennv.flutter_callkit_incoming.CallkitNotificationService"
             android:foregroundServiceType="phoneCall|microphone"
             tools:replace="android:foregroundServiceType"/>
+        <!-- Google's own map: the key the release build carries (build.gradle.kts). -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${googleMapsKey}"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

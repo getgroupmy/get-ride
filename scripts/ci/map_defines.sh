@@ -18,6 +18,10 @@
 #                           overlay is TomTom's relative-flow tiles with this key
 #   HERE_API_KEY            HERE's traffic-flow tiles: the backup behind
 #                           TomTom, or the primary when there is no TomTom key
+#   GOOGLE_MAPS_ANDROID_API_KEY / GOOGLE_MAPS_IOS_API_KEY
+#                           the Maps SDK key this build carries (in the
+#                           manifest / Info.plist, not here): when set, the app
+#                           may draw Google's own map (GOOGLE_MAPS_NATIVE=true)
 #
 # Written as JSON (via jq) rather than passed as --dart-define arguments so
 # a key never lands on a command line, and so `{z}`/`&` survive untouched.
@@ -46,19 +50,27 @@ if [ -z "$fallback" ] && [ "$here" != "$traffic" ]; then
   fallback="$here"
 fi
 
+# Google's own map: only a build that carries a Maps SDK key may draw it.
+native=""
+if [ -n "${GOOGLE_MAPS_ANDROID_API_KEY:-}${GOOGLE_MAPS_IOS_API_KEY:-}" ]; then
+  native="true"
+fi
+
 jq -n \
   --arg light "${MAP_TILE_URL:-}" \
   --arg dark "${MAP_TILE_URL_DARK:-}" \
   --arg satellite "${MAP_TILE_URL_SATELLITE:-}" \
   --arg traffic "$traffic" \
   --arg fallback "$fallback" \
+  --arg native "$native" \
   '{MAP_TILE_URL: $light, MAP_TILE_URL_DARK: $dark,
     MAP_TILE_URL_SATELLITE: $satellite, MAP_TILE_URL_TRAFFIC: $traffic,
-    MAP_TILE_URL_TRAFFIC_FALLBACK: $fallback}' > "$out"
+    MAP_TILE_URL_TRAFFIC_FALLBACK: $fallback, GOOGLE_MAPS_NATIVE: $native}' > "$out"
 chmod 600 "$out"
 
 # Say what is on, never what the values are.
-for name in MAP_TILE_URL MAP_TILE_URL_DARK MAP_TILE_URL_SATELLITE MAP_TILE_URL_TRAFFIC MAP_TILE_URL_TRAFFIC_FALLBACK; do
+for name in MAP_TILE_URL MAP_TILE_URL_DARK MAP_TILE_URL_SATELLITE MAP_TILE_URL_TRAFFIC MAP_TILE_URL_TRAFFIC_FALLBACK \
+  GOOGLE_MAPS_NATIVE; do
   if [ -n "$(jq -r --arg k "$name" '.[$k]' "$out")" ]; then
     echo "$name: set"
   else

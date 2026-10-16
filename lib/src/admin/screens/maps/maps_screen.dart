@@ -207,8 +207,9 @@ class _DevicesTab extends ConsumerWidget {
             icon: Icons.traffic_outlined,
             error: true,
             text:
-                "Google traffic is drawn by Google's JavaScript map. Set Google Maps (JavaScript) for Map and "
-                'Map (dark mode), or pick another traffic source: ${trafficConflicts.join(', ')}.',
+                "Google traffic is drawn by Google's own map. Set Google Maps (native) on phones, or Google Maps "
+                '(JavaScript) on the web and desktop, for Map and Map (dark mode), or pick another traffic source: '
+                '${trafficConflicts.join(', ')}.',
           ),
         if (missing.isNotEmpty)
           _Notice(
@@ -1179,7 +1180,7 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
               ? Icon(Icons.error_outline, color: t.colorScheme.error)
               : spec == null
               ? const Icon(Icons.layers_outlined)
-              : spec.isBrowserMap
+              : spec.isBrowserMap || spec.googleNative
               ? const Icon(Icons.map_outlined)
               : ClipRRect(
                   borderRadius: BorderRadius.circular(6),
@@ -1206,6 +1207,9 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
             : Text(
                 spec == null
                     ? 'Built in'
+                    : spec.googleNative
+                    ? 'Google Maps (native), drawn by the phone app with the key its release carries '
+                          '(GOOGLE_MAPS_ANDROID_API_KEY / GOOGLE_MAPS_IOS_API_KEY); without it, the built-in map'
                     : spec.isMapLibre
                     ? '${tileHost(spec.url)}, drawn by the browser'
                     : tileHost(spec.url),

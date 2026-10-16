@@ -31,21 +31,31 @@ String tileSlotLabel(String s) => switch (s) {
 };
 
 /// The providers each tile slot can use ('app': as the app was built).
-/// 'google_js' (Google's JavaScript map), 'amazon_js' (Amazon Location's
-/// GrabMaps map, migration 0206) and 'google' traffic are web only (migration
-/// 0204): see [tileOptionsFor].
+/// 'google_native' (Google's own map in the phone app, migration 0210) on
+/// Android and iOS; 'google_js' (Google's JavaScript map, 0204) on the web
+/// and, in a web view, on desktop; 'amazon_js' (Amazon Location's GrabMaps
+/// map, 0206) on the web; 'google' traffic with either Google map: see
+/// [tileOptionsFor].
 const tileOptions = <String, List<String>>{
-  'light': ['app', 'osm', 'google', 'google_js', 'amazon_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
-  'dark': ['app', 'osm', 'google', 'google_js', 'amazon_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
-  'satellite': ['app', 'esri', 'google', 'google_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
+  'light': ['app', 'osm', 'google', 'google_native', 'google_js', 'amazon_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
+  'dark': ['app', 'osm', 'google', 'google_native', 'google_js', 'amazon_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
+  'satellite': ['app', 'esri', 'google', 'google_native', 'google_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
   'traffic': ['app', 'tomtom', 'here', 'google', 'none'],
 };
 
-/// [tileOptions] for [slot] on [device]: the browser-drawn maps and Google's
-/// traffic only on the web.
+/// The Google map [device] can draw under the app's layers: its own on
+/// phones, the JavaScript one on the web and desktop.
+String googleMapFor(String device) => device == 'android' || device == 'ios' ? 'google_native' : 'google_js';
+
+/// [tileOptions] for [slot] on [device].
 List<String> tileOptionsFor(String slot, String device) => [
   for (final p in tileOptions[slot]!)
-    if (device == 'web' || !(p == 'google_js' || p == 'amazon_js' || (slot == 'traffic' && p == 'google'))) p,
+    if (switch (p) {
+      'google_native' || 'google_js' => p == googleMapFor(device),
+      'amazon_js' => device == 'web',
+      _ => true,
+    })
+      p,
 ];
 
 const placeProviders = ['nominatim', 'google', 'mapbox', 'here', 'tomtom', 'locationiq', 'maptiler', 'amazon'];
@@ -67,8 +77,9 @@ String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   },
   'osm' => slot == 'dark' ? 'OpenStreetMap (darkened)' : 'OpenStreetMap',
   'esri' => 'Esri imagery',
-  'google' => slot == 'traffic' ? 'Google traffic (on Google Maps JavaScript)' : 'Google',
+  'google' => slot == 'traffic' ? 'Google traffic (on a Google map)' : 'Google',
   'google_js' => 'Google Maps (JavaScript)',
+  'google_native' => 'Google Maps (native)',
   'mapbox' => 'Mapbox',
   'here' => 'HERE',
   'tomtom' => 'TomTom',
@@ -159,10 +170,17 @@ class MapProfileSetting {
 
   MapProfileSetting withTile(String slot, String provider) => copyWith(tiles: {...tiles, slot: provider});
 
-  /// This profile as [device] can have it: the web-only choices back to
-  /// "Built in" elsewhere.
+  /// This profile as [device] can have it: Google's map as that device draws
+  /// it, the web-only choices back to "Built in" elsewhere.
   MapProfileSetting forDevice(String device) => copyWith(
-    tiles: {for (final e in tiles.entries) e.key: tileOptionsFor(e.key, device).contains(e.value) ? e.value : 'app'},
+    tiles: {
+      for (final e in tiles.entries)
+        e.key: switch (e.value) {
+          // Google's map, as this device draws it.
+          'google_native' || 'google_js' => googleMapFor(device),
+          final v => tileOptionsFor(e.key, device).contains(v) ? v : 'app',
+        },
+    },
   );
 
   /// Every provider this profile would ask, for checking keys.
@@ -174,12 +192,13 @@ class MapProfileSetting {
       (search.contains('google') || reverse.contains('google') || distance.contains('google')) &&
       (!_googleMaps.contains(tiles['light']) || !_googleMaps.contains(tiles['dark']));
 
-  static const _googleMaps = {'google', 'google_js'};
+  static const _googleMaps = {'google', 'google_js', 'google_native'};
 
-  /// Google traffic is drawn by Google's JavaScript map, so it needs it for
-  /// Map and Map (dark mode).
+  /// Google traffic is drawn by Google's own or JavaScript map, so it needs
+  /// one of them for Map and Map (dark mode).
   bool get googleTrafficWithoutItsMap =>
-      tiles['traffic'] == 'google' && (tiles['light'] != 'google_js' || tiles['dark'] != 'google_js');
+      tiles['traffic'] == 'google' &&
+      (!const {'google_js', 'google_native'}.contains(tiles['light']) || tiles['dark'] != tiles['light']);
 
   @override
   bool operator ==(Object other) =>

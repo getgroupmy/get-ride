@@ -23,6 +23,8 @@ import 'package:http/retry.dart';
 
 import '../core/map_profile.dart';
 import 'google_js_layer.dart';
+import 'google_js_map.dart' show googleJsSupported;
+import 'google_native_layer.dart';
 import 'maplibre_layer.dart';
 
 const osmTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -36,7 +38,14 @@ const satelliteTileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/W
 
 /// Which tiles to load, and whether they need darkening on the device.
 class TileSource {
-  const TileSource(this.url, {required this.darken, this.attribution = '', this.googleJsKey, this.maplibreKey});
+  const TileSource(
+    this.url, {
+    required this.darken,
+    this.attribution = '',
+    this.googleJsKey,
+    this.maplibreKey,
+    this.googleNative = false,
+  });
   final String url;
   final bool darken;
 
@@ -47,6 +56,9 @@ class TileSource {
   /// A MapLibre map instead of tiles (Amazon Location's, migration 0206,
   /// web only): [url] is its style, this key goes with its requests.
   final String? maplibreKey;
+
+  /// Google's own map in the phone app instead of tiles (migration 0210).
+  final bool googleNative;
 
   /// Drawn by the browser rather than from tiles.
   bool get isBrowserMap => googleJsKey != null || maplibreKey != null;
@@ -81,16 +93,29 @@ TileSource resolveTileSource({
 
 /// The tiles Admin → Settings → Maps (migration 0200) set for this user and
 /// device, for the theme or satellite; null where it keeps the app's own.
-/// Google's JavaScript map and MapLibre maps only on the [web].
-TileSource? profileTileSource(MapProfile profile, {required bool dark, bool satellite = false, bool web = kIsWeb}) {
+/// MapLibre maps only on the [web]; Google's JavaScript map there and where
+/// a web view can draw it ([googleJs]); Google's own map where this build
+/// can draw it ([googleNative]).
+TileSource? profileTileSource(
+  MapProfile profile, {
+  required bool dark,
+  bool satellite = false,
+  bool web = kIsWeb,
+  bool? googleJs,
+  bool? googleNative,
+}) {
   final spec = satellite ? profile.satellite : (dark ? profile.dark : profile.light);
-  if (spec == null || (spec.isBrowserMap && !web)) return null;
+  if (spec == null) return null;
+  if (spec.isMapLibre && !web) return null;
+  if (spec.isGoogleJs && !(web || (googleJs ?? googleJsSupported))) return null;
+  if (spec.googleNative && !(googleNative ?? googleNativeSupported)) return null;
   return TileSource(
     spec.url,
     darken: spec.darken,
     attribution: spec.attribution,
     googleJsKey: spec.googleJsKey,
     maplibreKey: spec.maplibreKey,
+    googleNative: spec.googleNative,
   );
 }
 
@@ -158,6 +183,13 @@ Widget currentBaseLayer(BuildContext context, {bool satellite = false}) {
       key: ValueKey(source.url),
       style: source.url,
       apiKey: maplibreKey,
+      fallback: _tileLayer(fallbackTileSource(context, satellite: satellite)),
+    );
+  }
+  if (source.googleNative) {
+    return GoogleNativeBaseLayer(
+      key: ValueKey(source.url),
+      satellite: satellite,
       fallback: _tileLayer(fallbackTileSource(context, satellite: satellite)),
     );
   }

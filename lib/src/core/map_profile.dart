@@ -19,10 +19,11 @@ MapDevice currentMapDevice({bool web = kIsWeb, TargetPlatform? platform}) {
 }
 
 /// One tile source: an XYZ template, and whether to darken it on the device.
-/// Or Google's JavaScript map (migration 0204, web only): no template, the
-/// browser key and the map type, drawn under the app's own layers. Or a
-/// MapLibre style (Amazon Location's map, migration 0206, web only), drawn
-/// the same way.
+/// Or Google's JavaScript map (migration 0204; the web, and Windows and
+/// macOS in a web view since 0210): no template, the browser key and the map
+/// type, drawn under the app's own layers. Or Google's own map in the phone
+/// app (0210), drawn the same way. Or a MapLibre style (Amazon Location's
+/// map, migration 0206, web only).
 @immutable
 class MapTileSpec {
   const MapTileSpec({
@@ -31,6 +32,7 @@ class MapTileSpec {
     this.attribution = '',
     this.googleJsKey,
     this.maplibreKey,
+    this.googleNative = false,
   });
 
   /// A MapLibre map of [style] (its URL, which [url] then is), with [key]
@@ -39,14 +41,28 @@ class MapTileSpec {
     : url = style,
       darken = false,
       googleJsKey = null,
-      maplibreKey = key;
+      maplibreKey = key,
+      googleNative = false;
 
   /// Google's JavaScript map with this browser key.
   const MapTileSpec.googleJs(String key, {this.attribution = '', bool satellite = false})
     : url = satellite ? googleJsSatellite : googleJsRoadmap,
       darken = false,
       googleJsKey = key,
-      maplibreKey = null;
+      maplibreKey = null,
+      googleNative = false;
+
+  /// Google's own map in the phone app (migration 0210): the Maps SDK, with
+  /// the key the release build carries.
+  const MapTileSpec.googleNative({this.attribution = '', bool satellite = false})
+    : url = satellite ? googleNativeSatellite : googleNativeRoadmap,
+      darken = false,
+      googleJsKey = null,
+      maplibreKey = null,
+      googleNative = true;
+
+  static const googleNativeRoadmap = 'google-native:roadmap';
+  static const googleNativeSatellite = 'google-native:satellite';
 
   /// Stand-in "URLs" naming Google's JavaScript map types (never fetched).
   static const googleJsRoadmap = 'google-js:roadmap';
@@ -57,6 +73,7 @@ class MapTileSpec {
   final String attribution;
   final String? googleJsKey;
   final String? maplibreKey;
+  final bool googleNative;
 
   bool get isGoogleJs => googleJsKey != null;
   bool get isMapLibre => maplibreKey != null;
@@ -71,6 +88,12 @@ class MapTileSpec {
       if (key.isEmpty) return null;
       return MapTileSpec.googleJs(
         key,
+        attribution: '${json['attribution'] ?? ''}',
+        satellite: json['mapType'] == 'satellite',
+      );
+    }
+    if (json['engine'] == 'google_native') {
+      return MapTileSpec.googleNative(
         attribution: '${json['attribution'] ?? ''}',
         satellite: json['mapType'] == 'satellite',
       );
@@ -93,10 +116,11 @@ class MapTileSpec {
       other.darken == darken &&
       other.attribution == attribution &&
       other.googleJsKey == googleJsKey &&
-      other.maplibreKey == maplibreKey;
+      other.maplibreKey == maplibreKey &&
+      other.googleNative == googleNative;
 
   @override
-  int get hashCode => Object.hash(url, darken, attribution, googleJsKey, maplibreKey);
+  int get hashCode => Object.hash(url, darken, attribution, googleJsKey, maplibreKey, googleNative);
 }
 
 bool _isTemplate(String url) =>

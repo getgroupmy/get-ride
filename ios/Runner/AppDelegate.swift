@@ -29,7 +29,21 @@ import flutter_callkit_incoming
     registry.delegate = self
     registry.desiredPushTypes = [.voIP]
     voipRegistry = registry
+    provideGoogleMapsKey()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  /// Google's own map (Admin → Settings → Maps, "Google Maps (native)"): the
+  /// Maps SDK for iOS key the release build put in Info.plist (GMSApiKey,
+  /// from the GOOGLE_MAPS_IOS_API_KEY secret). Handed over by name so the
+  /// app builds the same with or without the SDK linked; without a key the
+  /// app never shows Google's map (GOOGLE_MAPS_NATIVE is not set).
+  private func provideGoogleMapsKey() {
+    guard let key = Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String,
+      !key.isEmpty, !key.hasPrefix("$("),
+      let services = NSClassFromString("GMSServices") as? NSObject.Type
+    else { return }
+    _ = services.perform(NSSelectorFromString("provideAPIKey:"), with: key)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
