@@ -129,6 +129,15 @@ Deno.serve(async (req) => {
       },
       iso3: (cc) => iso3By.get(cc.toLowerCase()) ?? null,
       fallbackKey: (slot) => fallbackKey(slot, (name) => Deno.env.get(name)),
+      redirect: async (url) => {
+        const res = await fetch(url, {
+          redirect: "manual",
+          headers: { "User-Agent": "GET.ride (getride.my)" },
+          signal: AbortSignal.timeout(8000),
+        });
+        await res.body?.cancel();
+        return res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+      },
     });
     return new Response(JSON.stringify(answer.body), {
       status: answer.status,

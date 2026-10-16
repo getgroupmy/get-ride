@@ -7,13 +7,20 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 
 import {
+  amazonRegionOf,
   cacheSeconds,
   decodeFlexiblePolyline,
   decodePolyline,
+  distanceRequest,
   fallbackKey,
   googleDirectionsRequest,
+  googleDistanceMatrixRequest,
   googleLegacyRefusal,
   googleLegacySearchRequest,
+  isShortMapLink,
+  keySlot,
+  nextMapHop,
+  parseDistances,
   parseReverse,
   parseRoute,
   parseSearch,
@@ -68,6 +75,17 @@ Deno.test("tiles per provider and style", () => {
   assertStringIncludes(tileSource("maptiler", "light", "M")!.url, "streets-v2/");
   assertEquals(tileSource("google", "light", "G"), null, "Google needs a session");
   assertStringIncludes(tileSource("google", "light", "G", "S1")!.url, "session=S1&key=G");
+  assertEquals(tileSource("google_js", "dark", "GJS"), {
+    url: "",
+    darken: false,
+    attribution: "Map data © Google",
+    engine: "google_js",
+    key: "GJS",
+    mapType: "roadmap",
+  }, "Google's JavaScript map: no tiles, the browser key");
+  assertEquals(tileSource("google_js", "satellite", "GJS")!.mapType, "satellite");
+  assertEquals(tileSource("google_js", "light", null), null, "needs its key");
+  assertEquals(keySlot("google_js", "tiles"), "google_js");
   for (const p of ["mapbox", "here", "tomtom", "maptiler"]) {
     const u = tileSource(p, "light", "K")!.url;
     assert(u.includes("{z}") && u.includes("{x}") && u.includes("{y}"), p);
@@ -398,6 +416,83 @@ Deno.test("Google API choice: newer then older (default), newer only, older only
   assertEquals((rt.body as any).route.distanceKm, 1, "the older Directions API answered");
 });
 
+Deno.test("Google's JavaScript map and its traffic, on the web", async () => {
+  const web = {
+    ...config,
+    profiles: {
+      "rider.web": {
+        tiles: { light: "google_js", dark: "google_js", satellite: "google_js", traffic: "google" },
+        search: ["google"],
+        reverse: ["nominatim"],
+        routing: ["osrm"],
+      },
+    },
+  };
+  const sessions: string[] = [];
+  const { d } = deps({
+    settings: () => Promise.resolve({ config: web, apiProviders: [] }),
+    fallbackKey: (slot) => fallbackKey(slot, (n) => ({ GOOGLE_MAPS_JS_API_KEY: "BROWSER", GOOGLE_MAP_API_KEY: "SERVER" })[n]),
+    googleSession: (slot) => {
+      sessions.push(slot);
+      return Promise.resolve("S");
+    },
+  });
+  // deno-lint-ignore no-explicit-any
+  const a = (await handleGeo(q("action=profile&role=rider&device=web"), "ip", d)).body as any;
+  assertEquals(a.profile.tiles.light, {
+    url: "",
+    darken: false,
+    attribution: "Map data © Google",
+    engine: "google_js",
+    key: "BROWSER",
+    mapType: "roadmap",
+  });
+  assertEquals(a.profile.tiles.satellite.mapType, "satellite");
+  assertEquals(a.profile.tiles.traffic, { google: true });
+  assertEquals(sessions, [], "no Map Tiles session for the JavaScript map");
+  assertEquals(fallbackKey("google_js", (n) => ({ GOOGLE_MAP_API_KEY: "SERVER" })[n]), "SERVER", "the Maps key when no browser key");
+});
+
+Deno.test("share links: followed only through Google's own hosts", async () => {
+  assert(isShortMapLink("https://maps.app.goo.gl/AbC123"));
+  assert(isShortMapLink("https://goo.gl/maps/XyZ"));
+  assert(!isShortMapLink("https://goo.gl/other"));
+  assert(!isShortMapLink("http://maps.app.goo.gl/AbC123"), "https only");
+  assert(!isShortMapLink("https://evil.example/maps"));
+  assertEquals(nextMapHop("/maps/place/x", "https://www.google.com/a"), "https://www.google.com/maps/place/x");
+  assertEquals(nextMapHop("https://169.254.169.254/latest", "https://maps.app.goo.gl/a"), null);
+  assertEquals(
+    nextMapHop(
+      "https://consent.google.com/m?continue=https%3A%2F%2Fwww.google.com%2Fmaps%2Fplace%2FKLIA",
+      "https://maps.app.goo.gl/a",
+    ),
+    "https://www.google.com/maps/place/KLIA",
+  );
+
+  const hops: Record<string, string> = {
+    "https://maps.app.goo.gl/AbC123": "https://www.google.com/maps/place/KLIA/@2.7,101.7,15z/data=!3d2.7456!4d101.7072",
+    "https://maps.app.goo.gl/Away": "https://example.com/phish",
+  };
+  const asked: string[] = [];
+  const { d } = deps({
+    redirect: (url) => {
+      asked.push(url);
+      return Promise.resolve(hops[url] ?? null);
+    },
+  });
+  const ok = await handleGeo(q("action=expand&url=https://maps.app.goo.gl/AbC123"), "ip", d);
+  assertEquals(ok, {
+    status: 200,
+    body: { url: "https://www.google.com/maps/place/KLIA/@2.7,101.7,15z/data=!3d2.7456!4d101.7072" },
+  });
+  assertEquals((await handleGeo(q("action=expand&url=https://maps.app.goo.gl/Away"), "ip", d)).status, 422);
+  assertEquals((await handleGeo(q("action=expand&url=https://example.com/x"), "ip", d)).status, 400);
+  assert(!asked.includes("https://example.com/x"), "never fetched");
+  assert(!asked.includes("https://example.com/phish"), "never followed");
+  const limited = deps({ take: () => Promise.resolve(false), redirect: () => Promise.resolve(null) }).d;
+  assertEquals((await handleGeo(q("action=expand&url=https://maps.app.goo.gl/AbC123"), "ip", limited)).status, 429);
+});
+
 Deno.test("fallback: the function's own Google secrets when Admin → API Keys has none", async () => {
   const env: Record<string, string> = { GOOGLE_MAP_API_KEY: " GMAP ", GOOGLE_PLACES_API_KEY: "GPLACES-ENV" };
   const get = (n: string) => env[n];
@@ -434,11 +529,221 @@ Deno.test("fallback: the function's own Google secrets when Admin → API Keys h
 
   // The admin page asks which slots have one: names only.
   const slots = await handleGeo(q("action=fallbacks"), "ip", d2);
-  assertEquals(slots.body, { slots: ["google_tiles", "google_places", "google_routes"] });
+  assertEquals(slots.body, { slots: ["google_tiles", "google_js", "google_places", "google_routes"] });
   assert(!JSON.stringify(slots.body).includes("GMAP"));
   assertEquals((await handleGeo(q("action=fallbacks"), "ip", deps().d)).body, { slots: [] });
 
   // Neither: Google isn't available.
   const { d: d3 } = deps({ settings: () => Promise.resolve({ config, apiProviders: [] }) });
   assert((await handleGeo(q("action=search&provider=google&role=rider&device=android&q=klcc"), "ip", d3)).status !== 200);
+});
+
+Deno.test("distances: one origin to each result, from every provider", () => {
+  const from: [number, number] = [3.1, 101.6];
+  const to: [number, number][] = [[3.2, 101.7], [2.75, 101.71]];
+  assertEquals(profileOf({}, "rider", "web").distance, ["osrm"], "OpenStreetMap by default");
+  assertEquals(keySlot("google", "distance"), "google_routes");
+  assertEquals(keySlot("tomtom", "distance"), "tomtom");
+
+  const g = distanceRequest("google", from, to, "GK")!;
+  assertStringIncludes(g.url, "computeRouteMatrix");
+  assertEquals(g.headers?.["X-Goog-Api-Key"], "GK");
+  assertEquals(JSON.parse(g.body!).destinations.length, 2);
+  assertStringIncludes(googleDistanceMatrixRequest(from, to, "GK").url, "destinations=3.2%2C101.7%7C2.75%2C101.71");
+  assertStringIncludes(distanceRequest("mapbox", from, to, "MK")!.url, "driving/101.6,3.1;101.7,3.2;101.71,2.75?sources=0");
+  assertStringIncludes(distanceRequest("locationiq", from, to, "LK")!.url, "matrix/driving/101.6,3.1;");
+  assertEquals(JSON.parse(distanceRequest("here", from, to, "HK")!.body!).origins, [{ lat: 3.1, lng: 101.6 }]);
+  assertEquals(JSON.parse(distanceRequest("tomtom", from, to, "TK")!.body!).destinations[1], {
+    point: { latitude: 2.75, longitude: 101.71 },
+  });
+  assertEquals(distanceRequest("nominatim", from, to, "x"), null);
+  assertEquals(distanceRequest("here", from, [], "x"), null);
+
+  // Answers: kilometres in order, null where there's no road.
+  assertEquals(
+    parseDistances("google", [
+      { originIndex: 0, destinationIndex: 1, distanceMeters: 8590, condition: "ROUTE_EXISTS" },
+      { originIndex: 0, destinationIndex: 0, condition: "ROUTE_NOT_FOUND" },
+    ], 2),
+    [null, 8.59],
+  );
+  assertEquals(parseDistances("google", [{ destinationIndex: 0, condition: "ROUTE_EXISTS" }], 1), [0], "zero is left out");
+  assertEquals(
+    parseDistances("google", {
+      status: "OK",
+      rows: [{ elements: [{ status: "OK", distance: { value: 29400 } }, { status: "ZERO_RESULTS" }] }],
+    }, 2),
+    [29.4, null],
+  );
+  assertEquals(parseDistances("osrm", { code: "Ok", distances: [[0, 850, null]] }, 2), [0.85, null]);
+  assertEquals(parseDistances("mapbox", { distances: [[0, 1200.4, 5000]] }, 2), [1.2, 5]);
+  assertEquals(parseDistances("here", { matrix: { distances: [1000, 2000], errorCodes: [0, 3] } }, 2), [1, null]);
+  assertEquals(
+    parseDistances("tomtom", { data: [{ originIndex: 0, destinationIndex: 1, routeSummary: { lengthInMeters: 3000 } }] }, 2),
+    [null, 3],
+  );
+  assertEquals(parseDistances("tomtom", { error: "x" }, 2), null, "not a matrix");
+  assertEquals(cacheSeconds("google", "distance"), 0);
+  assertEquals(cacheSeconds("here", "distance"), 3600);
+});
+
+Deno.test("distance action: listed providers only, cached, Google's older API when the newer refuses", async () => {
+  const cfg = {
+    ...config,
+    profiles: {
+      ...config.profiles,
+      "rider.android": { ...config.profiles["rider.android"], distance: ["here", "google", "straight"] },
+    },
+  };
+  const asked: string[] = [];
+  const { d, log } = deps({
+    settings: () => Promise.resolve({ config: cfg, apiProviders }),
+    fallbackKey: (slot) => (slot === "google_routes" ? "GMAP" : null),
+    call: (req) => {
+      asked.push(new URL(req.url).host);
+      if (req.url.includes("matrix.router.hereapi")) return Promise.resolve({ matrix: { distances: [8590, 29000] } });
+      if (req.url.includes("routes.googleapis")) return Promise.reject(new Error("403 from routes.googleapis.com"));
+      return Promise.resolve({ status: "OK", rows: [{ elements: [{ status: "OK", distance: { value: 1500 } }] }] });
+    },
+  });
+  const url = "action=distance&role=rider&device=android&from=3.1,101.6&to=3.2,101.7;2.75,101.71&provider=";
+  const h = await handleGeo(q(url + "here"), "ip", d);
+  assertEquals(h.body, { distances: [8.59, 29] });
+  await handleGeo(q(url + "here"), "ip", d);
+  assertEquals(asked.filter((a) => a.startsWith("matrix")).length, 1, "the second from the cache");
+  assert(log.includes("count here distance true true"));
+
+  const g = await handleGeo(q("action=distance&role=rider&device=android&from=3.1,101.6&to=3.2,101.7&provider=google"), "ip", d);
+  assertEquals(g.body, { distances: [1.5] });
+  assertEquals(asked.slice(-2), ["routes.googleapis.com", "maps.googleapis.com"]);
+
+  assertEquals((await handleGeo(q(url + "straight"), "ip", d)).status, 403, "worked out on the device");
+  assertEquals((await handleGeo(q(url + "tomtom"), "ip", d)).status, 403, "not listed");
+  assertEquals((await handleGeo(q(url.replace("from=3.1,101.6", "from=99,1") + "here"), "ip", d)).status, 400);
+  assertEquals((await handleGeo(q(url.replace(/to=[^&]*/, "to=") + "here"), "ip", d)).status, 400);
+  // deno-lint-ignore no-explicit-any
+  const prof = (await handleGeo(q("action=profile&role=rider&device=android"), "ip", d)).body as any;
+  assertEquals(prof.profile.distance, ["here", "google", "straight"]);
+});
+
+Deno.test("Amazon Location (GrabMaps): requests in its region, answers read like the others", () => {
+  assertEquals(amazonRegionOf({}), "ap-southeast-5", "Malaysia by default");
+  assertEquals(amazonRegionOf({ amazonRegion: "ap-southeast-1" }), "ap-southeast-1");
+  assertEquals(amazonRegionOf({ amazonRegion: "us-east-1" }), "ap-southeast-5", "GrabMaps regions only");
+  assertEquals(keySlot("amazon", "search"), "amazon");
+  assertEquals(keySlot("amazon_js", "tiles"), "amazon_maps");
+  assertEquals(cacheSeconds("amazon", "routing"), 0, "never kept");
+
+  const sp = { q: "klcc", countries: ["my"], countries3: ["MYS"], lang: "en-GB" };
+  const s = searchRequest("amazon", { ...sp, lat: 3.1, lng: 101.6, amazonRegion: "ap-southeast-1" }, "AK")!;
+  assertEquals(s.url, "https://places.geo.ap-southeast-1.amazonaws.com/v2/search-text?key=AK");
+  assertEquals(JSON.parse(s.body!), {
+    QueryText: "klcc",
+    MaxResults: 8,
+    Language: "en",
+    BiasPosition: [101.6, 3.1],
+    Filter: { IncludeCountries: ["MYS"] },
+  });
+  assertEquals(JSON.parse(searchRequest("amazon", sp, "AK")!.body!).BiasPosition, [101.6869, 3.139], "KL without a fix");
+  assertStringIncludes(searchRequest("amazon", sp, "AK")!.url, "ap-southeast-5");
+  assertEquals(parseSearch("amazon", {
+    ResultItems: [{ Title: "Suria KLCC", Address: { Label: "Jalan Ampang, KL" }, Position: [101.7116, 3.1579] }],
+  }), [{ name: "Suria KLCC", address: "Jalan Ampang, KL", lat: 3.1579, lng: 101.7116 }]);
+
+  assertEquals(JSON.parse(reverseRequest("amazon", 3.1, 101.6, "ms", "AK")!.body!), { QueryPosition: [101.6, 3.1], Language: "ms" });
+  assertEquals(
+    parseReverse("amazon", {
+      ResultItems: [{
+        Title: "Jalan Ampang",
+        Address: {
+          Label: "Jalan Ampang, 50450 Kuala Lumpur",
+          Country: { Name: "Malaysia" },
+          Region: { Name: "Kuala Lumpur" },
+          Locality: "Kuala Lumpur",
+          District: "KLCC",
+        },
+      }],
+    }, 3.1, 101.6),
+    {
+      name: "Jalan Ampang",
+      address: "Jalan Ampang, 50450 Kuala Lumpur",
+      lat: 3.1,
+      lng: 101.6,
+      country: "Malaysia",
+      state: "Kuala Lumpur",
+      city: "Kuala Lumpur",
+      suburb: "KLCC",
+    },
+  );
+
+  const r = routeRequest("amazon", [[3.1, 101.6], [3.15, 101.65], [3.2, 101.7]], "AK")!;
+  assertEquals(r.url, "https://routes.geo.ap-southeast-5.amazonaws.com/v2/routes?key=AK");
+  assertEquals(JSON.parse(r.body!), {
+    Origin: [101.6, 3.1],
+    Destination: [101.7, 3.2],
+    Waypoints: [{ Position: [101.65, 3.15] }],
+    TravelMode: "Car",
+    LegGeometryFormat: "Simple",
+  });
+  assertEquals(
+    parseRoute("amazon", {
+      Routes: [{
+        Summary: { Distance: 12500, Duration: 1200 },
+        Legs: [{ Geometry: { LineString: [[101.6, 3.1], [101.7, 3.2]] } }],
+      }],
+    }),
+    { distanceKm: 12.5, durationMin: 20, points: [[3.1, 101.6], [3.2, 101.7]] },
+  );
+
+  const m = distanceRequest("amazon", [3.1, 101.6], [[3.2, 101.7], [2.75, 101.71]], "AK", "ap-southeast-1")!;
+  assertStringIncludes(m.url, "routes.geo.ap-southeast-1.amazonaws.com/v2/route-matrix");
+  assertEquals(JSON.parse(m.body!).RoutingBoundary, { Unbounded: true });
+  assertEquals(JSON.parse(m.body!).Destinations[1], { Position: [101.71, 2.75] });
+  assertEquals(parseDistances("amazon", { RouteMatrix: [[{ Distance: 8590 }, { Error: "NoRoute" }]] }, 2), [8.59, null]);
+
+  // Its map: a MapLibre style, light and dark, no imagery.
+  const t = tileSource("amazon_js", "dark", "MAPKEY", null, "ap-southeast-5")!;
+  assertEquals(t.engine, "maplibre");
+  assertEquals(t.style, "https://maps.geo.ap-southeast-5.amazonaws.com/v2/styles/Standard/descriptor?color-scheme=Dark&key=MAPKEY");
+  assertStringIncludes(t.attribution, "Grab");
+  assertStringIncludes(tileSource("amazon_js", "light", "K")!.style!, "color-scheme=Light");
+  assertEquals(tileSource("amazon_js", "satellite", "K"), null);
+  assertEquals(tileSource("amazon_js", "light", null), null, "needs its key");
+});
+
+Deno.test("Amazon through geo: the configured region and its own key slots", async () => {
+  const cfg = {
+    ...config,
+    amazonRegion: "ap-southeast-1",
+    keys: { ...config.keys, amazon: "amazon/location", amazon_maps: "amazon/maps" },
+    profiles: {
+      ...config.profiles,
+      "partner.web": {
+        ...config.profiles["partner.web"],
+        tiles: { light: "amazon_js", dark: "amazon_js", satellite: "app", traffic: "app" },
+        search: ["amazon"],
+      },
+    },
+  };
+  const providers = [
+    ...apiProviders,
+    { id: "amazon", services: [{ id: "location", keys: [{ id: "a1", value: "SERVERKEY" }] }, { id: "maps", keys: [{ id: "m1", value: "BROWSERKEY" }] }] },
+  ];
+  const asked: string[] = [];
+  const { d } = deps({
+    settings: () => Promise.resolve({ config: cfg, apiProviders: providers }),
+    call: (req) => {
+      asked.push(req.url);
+      return Promise.resolve({ ResultItems: [{ Title: "Changi", Address: { Label: "Singapore" }, Position: [103.99, 1.36] }] });
+    },
+  });
+  // deno-lint-ignore no-explicit-any
+  const prof = (await handleGeo(q("action=profile&role=partner&device=web"), "ip", d)).body as any;
+  assertEquals(prof.profile.tiles.light.engine, "maplibre");
+  assertStringIncludes(prof.profile.tiles.light.style, "maps.geo.ap-southeast-1.amazonaws.com");
+  assertStringIncludes(prof.profile.tiles.dark.style, "key=BROWSERKEY", "the map's own key");
+  const s = await handleGeo(q("action=search&provider=amazon&role=partner&device=web&q=changi"), "ip", d);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((s.body as any).places[0].name, "Changi");
+  assertEquals(asked, ["https://places.geo.ap-southeast-1.amazonaws.com/v2/search-text?key=SERVERKEY"]);
 });

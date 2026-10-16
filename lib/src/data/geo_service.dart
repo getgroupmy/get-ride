@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../core/map_link.dart';
 import '../core/map_profile.dart';
 
 class Place {
@@ -121,7 +122,14 @@ class GeoService {
       ? const {'Accept-Language': 'en'}
       : const {'User-Agent': 'GET.ride Flutter (getgroup.my)', 'Accept-Language': 'en'};
 
+  /// Places for [query]; a pasted Google Maps link (or coordinates) gives
+  /// the place it points to.
   Future<List<Place>> search(String query, {LatLng? near}) async {
+    final link = parseMapLink(query);
+    if (link != null) {
+      final p = await placeFromLink(link, near: near);
+      return p == null ? [] : [p];
+    }
     if (query.trim().length < 3) return [];
     final found = await _first<List<Place>>(_profile().search, (provider) async {
       if (provider == 'nominatim') return _nominatimSearch(query, near);
@@ -141,6 +149,32 @@ class GeoService {
       ];
     });
     return found ?? [];
+  }
+
+  /// The place a Google Maps link points to: a share link expanded by `geo`
+  /// first; a pin named from the link or by address lookup; a named place
+  /// searched for near where the link's map was looking. Null when it can't
+  /// be told.
+  Future<Place?> placeFromLink(MapLink link, {LatLng? near}) async {
+    var l = link;
+    if (l.short) {
+      if (lookup == null || l.url == null) return null;
+      final body = await lookup!({'action': 'expand', 'url': l.url!}).catchError((_) => null);
+      final long = body?['url'];
+      final read = long is String ? parseMapLink(long) : null;
+      if (read == null || read.short) return null;
+      l = read;
+    }
+    final point = l.point;
+    if (point != null) {
+      final at = await reverse(point);
+      final name = l.name?.trim();
+      return Place(name: name == null || name.isEmpty ? at.name : name, address: at.address, point: point);
+    }
+    final q = l.query;
+    if (q == null || q.trim().length < 3) return null;
+    final found = await search(q, near: l.near ?? near);
+    return found.isEmpty ? null : found.first;
   }
 
   Future<List<Place>> _nominatimSearch(String query, LatLng? near) async {
@@ -315,6 +349,48 @@ class GeoService {
       }
     } catch (_) {}
     return null;
+  }
+
+  /// Each of [to]'s road distance in km from [from], in order (null where
+  /// none was found), as place search results show it. The profile's
+  /// distance providers in turn (OSRM by default; `straight` is as the crow
+  /// flies); all null when none answers.
+  Future<List<double?>> distances(LatLng from, List<LatLng> to) async {
+    final none = List<double?>.filled(to.length, null);
+    if (to.isEmpty) return none;
+    try {
+      final found = await _first<List<double?>>(_profile().distance, (provider) async {
+        final List<double?>? km;
+        if (provider == 'straight') {
+          km = [for (final p in to) const Distance().as(LengthUnit.Meter, from, p) / 1000];
+        } else if (provider == 'osrm') {
+          km = await _osrmTable(from, to);
+        } else {
+          final body = await _ask('distance', provider, {
+            'from': '${from.latitude},${from.longitude}',
+            'to': to.map((p) => '${p.latitude},${p.longitude}').join(';'),
+          });
+          final list = body?['distances'];
+          km = list is List && list.length == to.length ? [for (final d in list) d is num ? d.toDouble() : null] : null;
+        }
+        return km == null || km.every((d) => d == null) ? null : km;
+      });
+      return found ?? none;
+    } catch (_) {
+      return none;
+    }
+  }
+
+  Future<List<double?>?> _osrmTable(LatLng from, List<LatLng> to) async {
+    final coords = [from, ...to].map((p) => '${p.longitude},${p.latitude}').join(';');
+    final uri = Uri.parse('$_osrmBase/table/v1/driving/$coords?sources=0&annotations=distance');
+    final res = await _http.get(uri, headers: _headers);
+    if (res.statusCode != 200) return null;
+    final rows = (jsonDecode(res.body) as Map<String, dynamic>)['distances'];
+    final row = rows is List && rows.isNotEmpty ? rows.first : null;
+    if (row is! List || row.length != to.length + 1) return null;
+    // The first column is the origin itself.
+    return [for (final m in row.skip(1)) m is num ? m / 1000 : null];
   }
 
   static RouteInfo straightLine(LatLng from, LatLng to) {

@@ -14,6 +14,7 @@ import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../security/security_data.dart' show securityRepositoryProvider;
 import 'maps_data.dart';
 import 'maps_logic.dart';
 
@@ -59,7 +60,15 @@ class _AdminMapsScreenState extends ConsumerState<AdminMapsScreen> {
     if (d == null) return;
     final conflicts = d.googleConflicts;
     if (conflicts.isNotEmpty) {
-      showInfo(context, 'Google search or address lookup needs Google map tiles: ${conflicts.join(', ')}.');
+      showInfo(context, 'Google search, address lookup or distances need a Google map: ${conflicts.join(', ')}.');
+      return;
+    }
+    final traffic = d.googleTrafficConflicts;
+    if (traffic.isNotEmpty) {
+      showInfo(
+        context,
+        'Google traffic needs Google Maps (JavaScript) for Map and Map (dark mode): ${traffic.join(', ')}.',
+      );
       return;
     }
     setState(() => _saving = true);
@@ -152,6 +161,7 @@ class _DevicesTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final conflicts = settings.googleConflicts;
+    final trafficConflicts = settings.googleTrafficConflicts;
     final keys = ref.watch(adminMapApiKeysProvider).value;
     // Synced from GitHub: `geo` uses these when Admin → API Keys has none.
     final synced = ref.watch(adminMapFallbackSlotsProvider).value ?? const <String>{};
@@ -194,6 +204,15 @@ class _DevicesTab extends ConsumerWidget {
             text:
                 "Google's terms: its place search and address lookup may only be shown on Google's map. "
                 'Set Google for Map and Map (dark mode), or pick another provider: ${conflicts.join(', ')}.',
+          ),
+        if (trafficConflicts.isNotEmpty)
+          _Notice(
+            key: const ValueKey('maps-google-traffic-warning'),
+            icon: Icons.traffic_outlined,
+            error: true,
+            text:
+                "Google traffic is drawn by Google's JavaScript map. Set Google Maps (JavaScript) for Map and "
+                'Map (dark mode), or pick another traffic source: ${trafficConflicts.join(', ')}.',
           ),
         if (missing.isNotEmpty)
           _Notice(
@@ -318,7 +337,7 @@ class _DeviceCard extends StatelessWidget {
                       key: ValueKey('maps-tile-$device-$slot'),
                       label: tileSlotLabel(slot),
                       value: profile.tiles[slot] ?? 'app',
-                      options: tileOptions[slot]!,
+                      options: tileOptionsFor(slot, device),
                       optionLabel: (p) => mapProviderLabel(p, slot: slot),
                       enabled: canEdit,
                       onChanged: (v) => onChanged(profile.withTile(slot, v)),
@@ -349,6 +368,14 @@ class _DeviceCard extends StatelessWidget {
               options: routeProviders,
               enabled: canEdit,
               onChanged: (v) => onChanged(profile.copyWith(routing: v)),
+            ),
+            heading('Distance in search results'),
+            _Order(
+              id: 'maps-distance-$device',
+              value: profile.distance,
+              options: distanceProviders,
+              enabled: canEdit,
+              onChanged: (v) => onChanged(profile.copyWith(distance: v)),
             ),
           ],
         ),
@@ -529,6 +556,41 @@ class _KeysTab extends ConsumerWidget {
               ),
             ),
           ),
+          Card(
+            key: const ValueKey('maps-amazon-region'),
+            margin: const EdgeInsets.only(top: 8),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Amazon Location (GrabMaps)', style: t.textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Amazon Location answers with Grab's map of Southeast Asia from these regions. Create the keys "
+                    'in the same region. Its map is drawn by the browser, on the web only.',
+                    style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    // Keyed by the value so Discard shows the stored choice again.
+                    key: ValueKey('maps-amazon-region-${settings.amazonRegion}'),
+                    initialValue: settings.amazonRegion,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Region', isDense: true),
+                    items: [
+                      for (final (id, label) in mapAmazonRegions)
+                        DropdownMenuItem(
+                          value: id,
+                          child: Text('$label · $id', overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: canEdit ? (v) => v == null ? null : onChanged(settings.withAmazonRegion(v)) : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
           for (final slot in mapKeySlots)
             _KeyRow(
               key: ValueKey('maps-key-${slot.id}'),
@@ -540,9 +602,116 @@ class _KeysTab extends ConsumerWidget {
               synced: synced.contains(slot.id),
               canEdit: canEdit,
               onChanged: (ref) => onChanged(settings.withKey(slot.id, ref)),
+              onAdd: () => _addKey(context, ref, slot),
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Asks for a key, adds it to Admin → API Keys under [slot]'s service and
+/// picks it for [slot] (saved with the page's Save).
+extension on _KeysTab {
+  Future<void> _addKey(BuildContext context, WidgetRef ref, MapKeySlot slot) async {
+    final entered = await showDialog<(String, String)>(
+      context: context,
+      builder: (_) => _AddKeyDialog(slot: slot),
+    );
+    if (entered == null || !context.mounted) return;
+    String? picked;
+    final ok = await runAdminAction(context, () async {
+      await ref.read(securityRepositoryProvider).mutateApiProviders((list) {
+        final r = addMapKey(list, slot, entered.$1, entered.$2);
+        picked = r.ref;
+        return r.list;
+      });
+    }, success: 'Key added to API Keys. Save maps to use it.');
+    ref.invalidate(adminMapApiKeysProvider);
+    if (ok && picked != null) onChanged(settings.withKey(slot.id, picked!));
+  }
+}
+
+class _AddKeyDialog extends StatefulWidget {
+  const _AddKeyDialog({required this.slot});
+  final MapKeySlot slot;
+
+  @override
+  State<_AddKeyDialog> createState() => _AddKeyDialogState();
+}
+
+class _AddKeyDialogState extends State<_AddKeyDialog> {
+  final _label = TextEditingController();
+  final _value = TextEditingController();
+  bool _show = false;
+
+  @override
+  void dispose() {
+    _label.dispose();
+    _value.dispose();
+    super.dispose();
+  }
+
+  void _done() {
+    final v = _value.text.trim();
+    if (v.isEmpty) return;
+    Navigator.of(context).pop((_label.text.trim(), v));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return AlertDialog(
+      key: const ValueKey('maps-add-key-dialog'),
+      title: Text('Add key · ${widget.slot.label}'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Kept in API Keys under ${widget.slot.defaultRef}, where it can be turned off or removed later. '
+              'Only its last characters are shown again.',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('maps-add-key-label'),
+              controller: _label,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Label (optional)', hintText: 'e.g. Production'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('maps-add-key-value'),
+              controller: _value,
+              obscureText: !_show,
+              autocorrect: false,
+              enableSuggestions: false,
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _done(),
+              decoration: InputDecoration(
+                labelText: 'Key',
+                suffixIcon: IconButton(
+                  tooltip: _show ? 'Hide' : 'Show',
+                  icon: Icon(_show ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                  onPressed: () => setState(() => _show = !_show),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(
+          key: const ValueKey('maps-add-key-save'),
+          style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+          onPressed: _value.text.trim().isEmpty ? null : _done,
+          child: const Text('Add key'),
+        ),
+      ],
     );
   }
 }
@@ -558,6 +727,7 @@ class _KeyRow extends StatelessWidget {
     this.synced = false,
     required this.canEdit,
     required this.onChanged,
+    this.onAdd,
   });
 
   final MapKeySlot slot;
@@ -570,6 +740,9 @@ class _KeyRow extends StatelessWidget {
   final bool synced;
   final bool canEdit;
   final ValueChanged<String> onChanged;
+
+  /// Adds a new key for this slot.
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -598,6 +771,8 @@ class _KeyRow extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
+              // Keyed by the value so a key just added (or Discard) shows.
+              key: ValueKey('maps-key-${slot.id}-$current'),
               initialValue: current,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Key', isDense: true),
@@ -610,6 +785,16 @@ class _KeyRow extends StatelessWidget {
               ],
               onChanged: canEdit ? (v) => v == null ? null : onChanged(v) : null,
             ),
+            if (canEdit && onAdd != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: ValueKey('maps-key-add-${slot.id}'),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add key'),
+                  onPressed: onAdd,
+                ),
+              ),
           ],
         ),
       ),
@@ -664,6 +849,7 @@ String _kindLabel(String k) => switch (k) {
   'search' => 'place search',
   'reverse' => 'address lookup',
   'routing' => 'routes',
+  'distance' => 'distances',
   'tiles' => 'map sessions',
   _ => k,
 };
@@ -738,6 +924,18 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
             },
             (b) => b?['route'] is Map,
           ),
+      for (final s in p.distance)
+        if (!freeProviders.contains(s))
+          (
+            '${mapProviderLabel(s)} · distance',
+            {
+              'action': 'distance',
+              'provider': s,
+              'from': '${at.latitude},${at.longitude}',
+              'to': '${at.latitude + 0.02},${at.longitude + 0.02}',
+            },
+            (b) => ((b?['distances'] as List?) ?? const []).any((d) => d is num),
+          ),
     ];
     for (final (label, params, ok) in checks) {
       final sw = Stopwatch()..start();
@@ -767,6 +965,8 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
         dimension: 48,
         child: spec == null
             ? const Icon(Icons.layers_outlined)
+            : spec.isBrowserMap
+            ? const Icon(Icons.map_outlined)
             : ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: Image.network(
@@ -777,7 +977,15 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
               ),
       ),
       title: Text(tileSlotLabel(slot)),
-      subtitle: Text(spec == null ? 'Built in' : tileHost(spec.url)),
+      subtitle: Text(
+        spec == null
+            ? 'Built in'
+            : spec.isGoogleJs
+            ? 'Google Maps (JavaScript), drawn by the browser'
+            : spec.isMapLibre
+            ? '${tileHost(spec.url)}, drawn by the browser'
+            : tileHost(spec.url),
+      ),
     );
     return AlertDialog(
       key: const ValueKey('maps-test-dialog'),

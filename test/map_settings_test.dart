@@ -13,6 +13,7 @@ import 'package:get_ride/src/admin/screens/maps/maps_logic.dart';
 import 'package:get_ride/src/admin/screens/maps/maps_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/admin/screens/security/api_keys_logic.dart';
+import 'package:get_ride/src/admin/screens/security/security_data.dart';
 import 'package:get_ride/src/core/map_profile.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/map_profile_repository.dart' show mapRole;
@@ -33,6 +34,17 @@ class _FakeRepo implements MapsRepository {
   @override
   Future<Set<String>> fallbackSlots() async => fallbacks;
   Set<String> fallbacks = const {};
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeSecurity implements SecurityRepository {
+  List<ApiProviderDef> stored = _keys;
+
+  @override
+  Future<List<ApiProviderDef>> mutateApiProviders(List<ApiProviderDef> Function(List<ApiProviderDef>) change) async =>
+      stored = change(stored);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -127,6 +139,62 @@ void main() {
       expect(odd.profile('rider', 'ios').routing, ['osrm']);
     });
 
+    test('distance in search results: OSRM by default, its own list, Google only on a Google map', () {
+      final s = MapSettings.fromJson(null);
+      expect(s.profile('rider', 'android').distance, ['osrm']);
+      final p = MapSettings.fromJson({
+        'profiles': {
+          'rider.android': {
+            'distance': ['here', 'bogus', 'straight', 'here', 'google', 'tomtom'],
+          },
+        },
+      }).profile('rider', 'android');
+      expect(p.distance, ['here', 'straight', 'google'], reason: 'known, once, three at most');
+      expect(p.toJson()['distance'], ['here', 'straight', 'google']);
+      expect(p.breaksGoogleTerms, isTrue, reason: "Google's distances over OpenStreetMap");
+      expect(p.withTile('light', 'google').withTile('dark', 'google_js').breaksGoogleTerms, isFalse);
+      expect(p == p.copyWith(distance: ['osrm']), isFalse, reason: 'a change to save');
+      final used = s.withProfile('partner', 'web', const MapProfileSetting(distance: ['google'])).usedKeySlots;
+      expect(used, contains('google_routes'), reason: "Google's distances use the routes key");
+      expect(mapProviderLabel('straight'), 'Straight line (no roads)');
+      expect(freeProviders, contains('straight'));
+    });
+
+    test('a key added from the page lands in API Keys under the slot, and is picked', () {
+      final places = mapKeySlots.firstWhere((s) => s.id == 'google_places');
+      final r = addMapKey(_keys, places, 'Prod 2', ' AIzaNEWPLACES ', id: 'k9');
+      expect(r.ref, 'google/places#k9');
+      final svc = r.list.firstWhere((p) => p.id == 'google').services.firstWhere((s) => s.id == 'places');
+      expect(svc.keys.map((k) => (k.id, k.label, k.value)), contains(('k9', 'Prod 2', 'AIzaNEWPLACES')));
+      expect(mapKeyUsable(r.list, r.ref), isTrue);
+
+      final js = mapKeySlots.firstWhere((s) => s.id == 'google_js');
+      final made = addMapKey(const [], js, '', 'AIzaBROWSER', id: 'b1');
+      expect(made.ref, 'google/maps_js#b1', reason: 'provider and service made when missing');
+      expect(mapKeyUsable(made.list, made.ref), isTrue);
+      expect(made.list.single.services.single.keys.single.label, 'Key 1');
+    });
+
+    test("Google's JavaScript map and its traffic: web only, traffic only on that map", () {
+      expect(tileOptionsFor('light', 'web'), contains('google_js'));
+      expect(tileOptionsFor('light', 'android'), isNot(contains('google_js')));
+      expect(tileOptionsFor('traffic', 'web'), contains('google'));
+      expect(tileOptionsFor('traffic', 'ios'), isNot(contains('google')));
+      const js = MapProfileSetting(
+        tiles: {'light': 'google_js', 'dark': 'google_js', 'satellite': 'google_js', 'traffic': 'google'},
+        search: ['google'],
+      );
+      expect(js.breaksGoogleTerms, isFalse, reason: "Google search on Google's JavaScript map");
+      expect(js.googleTrafficWithoutItsMap, isFalse);
+      expect(js.withTile('dark', 'osm').googleTrafficWithoutItsMap, isTrue);
+      expect(js.forDevice('android').tiles.values.toSet(), {'app'}, reason: 'copied to the phone apps: as built');
+      expect(js.forDevice('web'), js);
+      final s = MapSettings.fromJson(null).withProfile('rider', 'web', js.withTile('dark', 'osm'));
+      expect(s.googleTrafficConflicts, ['Rider · Web']);
+      expect(s.copiedToAllDevices('rider', 'web').profile('rider', 'android').tiles['light'], 'app');
+      expect(s.keyRef('google_js'), 'google/maps_js');
+    });
+
     test("Google's terms: its search or lookup only on Google's map", () {
       var s = MapSettings.fromJson(null)
           .withProfile('rider', 'android', const MapProfileSetting(search: ['google', 'nominatim']));
@@ -190,6 +258,12 @@ void main() {
       expect(p.traffic?.fallback, isNull, reason: 'the same as the primary');
       expect(p.search, ['google', 'nominatim']);
       expect(p.routing, ['osrm']);
+      expect(p.distance, ['osrm'], reason: 'OpenStreetMap by default');
+      expect(MapProfile.fromJson({
+        'profile': {
+          'distance': ['here', 'straight'],
+        },
+      }).distance, ['here', 'straight']);
       expect(p.nominatimUrl, 'https://geo.example.my');
       expect(p.osrmUrl, isNull);
       expect(
@@ -327,6 +401,7 @@ void main() {
     bool dark = false,
     bool edit = true,
     Set<String> fallbacks = const {},
+    SecurityRepository? security,
   }) async {
     final repo = _FakeRepo()..fallbacks = fallbacks;
     final probe = _FakeProbe();
@@ -339,6 +414,7 @@ void main() {
           mapsRepositoryProvider.overrideWithValue(repo),
           adminMapSettingsProvider.overrideWith((_) async => MapSettings.fromJson(null)),
           adminMapApiKeysProvider.overrideWith((_) async => _keys),
+          if (security != null) securityRepositoryProvider.overrideWithValue(security),
           adminMapUsageProvider.overrideWith(
             (_) async => const [MapUsageRow(provider: 'here', kind: 'search', calls: 42, cached: 30, failures: 1)],
           ),
@@ -430,6 +506,57 @@ void main() {
       );
     });
 
+    testWidgets("web: Google's JavaScript map and Google traffic, held until both maps are Google's ($mode)", (
+      tester,
+    ) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      await choose(tester, 'maps-tile-web-traffic', 'Google traffic (on Google Maps JavaScript)');
+      expect(find.byKey(const ValueKey('maps-google-traffic-warning'), skipOffstage: false), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved, isEmpty, reason: 'not saved without the JavaScript map');
+      await choose(tester, 'maps-tile-web-light', 'Google Maps (JavaScript)');
+      await choose(tester, 'maps-tile-web-dark', 'Google Maps (JavaScript)');
+      expect(find.byKey(const ValueKey('maps-google-traffic-warning'), skipOffstage: false), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.profile('rider', 'web').tiles, {
+        'light': 'google_js',
+        'dark': 'google_js',
+        'satellite': 'app',
+        'traffic': 'google',
+      });
+    });
+
+    testWidgets('a key added on the Keys tab goes to API Keys and is picked for that slot ($mode)', (tester) async {
+      final security = _FakeSecurity();
+      final (repo, _) = await pump(tester, dark: dark, security: security);
+      await tester.tap(find.byKey(const ValueKey('maps-tab-keys')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('maps-key-add-google_geocoding')));
+      await tester.tap(find.byKey(const ValueKey('maps-key-add-google_geocoding')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('maps-add-key-dialog')), findsOneWidget);
+      final save = find.byKey(const ValueKey('maps-add-key-save'));
+      expect(tester.widget<FilledButton>(save).onPressed, isNull, reason: 'nothing to add yet');
+      await tester.enterText(find.byKey(const ValueKey('maps-add-key-label')), 'Prod');
+      await tester.enterText(find.byKey(const ValueKey('maps-add-key-value')), 'AIzaGEOCODE1234');
+      await tester.pump();
+      expect(
+        tester.widget<TextField>(find.byKey(const ValueKey('maps-add-key-value'))).obscureText,
+        isTrue,
+        reason: 'hidden while typed',
+      );
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      final svc = security.stored.firstWhere((p) => p.id == 'google').services.firstWhere((s) => s.id == 'geocoding');
+      final added = svc.keys.single;
+      expect([added.label, added.value], ['Prod', 'AIzaGEOCODE1234']);
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.keyRef('google_geocoding'), 'google/geocoding#${added.id}');
+    });
+
     testWidgets('Google API: New then Old by default, Old only saved ($mode)', (tester) async {
       final (repo, _) = await pump(tester, dark: dark);
       await tester.tap(find.byKey(const ValueKey('maps-tab-keys')));
@@ -443,6 +570,38 @@ void main() {
       await tester.pumpAndSettle();
       expect(repo.saved.single.googleApi, 'old');
       expect(repo.saved.single.toJson()['googleApi'], 'old');
+    });
+
+    testWidgets('distance in search results: its own order, tested through geo, saved ($mode)', (tester) async {
+      final (repo, probe) = await pump(tester, dark: dark);
+      expect(find.text('Distance in search results'), findsWidgets);
+      await choose(tester, 'maps-distance-android-0', 'HERE · key');
+      await choose(tester, 'maps-distance-android-1', 'Straight line (no roads)');
+      await tester.ensureVisible(find.byKey(const ValueKey('maps-test-android')));
+      await tester.tap(find.byKey(const ValueKey('maps-test-android')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('HERE · distance'), findsOneWidget);
+      expect(find.text('Straight line (no roads) · distance'), findsNothing, reason: 'worked out on the phone');
+      expect(probe.asked.last['action'], 'distance');
+      expect(probe.asked.last['to'], isNotEmpty);
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.profile('rider', 'android').distance, ['here', 'straight']);
+    });
+
+    testWidgets('Amazon Location: its region and key slots on the Keys tab, saved ($mode)', (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      await tester.tap(find.byKey(const ValueKey('maps-tab-keys')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('maps-key-amazon')), findsOneWidget);
+      expect(find.byKey(const ValueKey('maps-key-amazon_maps')), findsOneWidget);
+      await choose(tester, 'maps-amazon-region-ap-southeast-5', 'Asia Pacific (Singapore) · ap-southeast-1');
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.amazonRegion, 'ap-southeast-1');
     });
 
     testWidgets('keys and usage ($mode)', (tester) async {

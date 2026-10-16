@@ -47,7 +47,7 @@ void main() {
       MaterialApp(
         home: Builder(
           builder: (context) {
-            layer = baseTileLayer(context);
+            layer = baseTileLayer(context) as TileLayer;
             return const SizedBox();
           },
         ),
@@ -117,7 +117,7 @@ void main() {
       MaterialApp(
         home: Builder(
           builder: (context) {
-            layer = baseTileLayer(context);
+            layer = baseTileLayer(context) as TileLayer;
             return const SizedBox();
           },
         ),

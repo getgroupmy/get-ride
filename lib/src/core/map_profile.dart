@@ -19,16 +19,68 @@ MapDevice currentMapDevice({bool web = kIsWeb, TargetPlatform? platform}) {
 }
 
 /// One tile source: an XYZ template, and whether to darken it on the device.
+/// Or Google's JavaScript map (migration 0204, web only): no template, the
+/// browser key and the map type, drawn under the app's own layers. Or a
+/// MapLibre style (Amazon Location's map, migration 0206, web only), drawn
+/// the same way.
 @immutable
 class MapTileSpec {
-  const MapTileSpec({required this.url, this.darken = false, this.attribution = ''});
+  const MapTileSpec({
+    required this.url,
+    this.darken = false,
+    this.attribution = '',
+    this.googleJsKey,
+    this.maplibreKey,
+  });
+
+  /// A MapLibre map of [style] (its URL, which [url] then is), with [key]
+  /// added to the provider's requests.
+  const MapTileSpec.maplibre(String style, String key, {this.attribution = ''})
+    : url = style,
+      darken = false,
+      googleJsKey = null,
+      maplibreKey = key;
+
+  /// Google's JavaScript map with this browser key.
+  const MapTileSpec.googleJs(String key, {this.attribution = '', bool satellite = false})
+    : url = satellite ? googleJsSatellite : googleJsRoadmap,
+      darken = false,
+      googleJsKey = key,
+      maplibreKey = null;
+
+  /// Stand-in "URLs" naming Google's JavaScript map types (never fetched).
+  static const googleJsRoadmap = 'google-js:roadmap';
+  static const googleJsSatellite = 'google-js:satellite';
 
   final String url;
   final bool darken;
   final String attribution;
+  final String? googleJsKey;
+  final String? maplibreKey;
+
+  bool get isGoogleJs => googleJsKey != null;
+  bool get isMapLibre => maplibreKey != null;
+
+  /// Drawn by the browser (web only).
+  bool get isBrowserMap => isGoogleJs || isMapLibre;
 
   static MapTileSpec? fromJson(Object? json) {
     if (json is! Map) return null;
+    if (json['engine'] == 'google_js') {
+      final key = '${json['key'] ?? ''}'.trim();
+      if (key.isEmpty) return null;
+      return MapTileSpec.googleJs(
+        key,
+        attribution: '${json['attribution'] ?? ''}',
+        satellite: json['mapType'] == 'satellite',
+      );
+    }
+    if (json['engine'] == 'maplibre') {
+      final style = '${json['style'] ?? ''}'.trim();
+      final key = '${json['key'] ?? ''}'.trim();
+      if (!style.startsWith('https://') || key.isEmpty) return null;
+      return MapTileSpec.maplibre(style, key, attribution: '${json['attribution'] ?? ''}');
+    }
     final url = '${json['url'] ?? ''}'.trim();
     if (!_isTemplate(url)) return null;
     return MapTileSpec(url: url, darken: json['darken'] == true, attribution: '${json['attribution'] ?? ''}');
@@ -36,28 +88,36 @@ class MapTileSpec {
 
   @override
   bool operator ==(Object other) =>
-      other is MapTileSpec && other.url == url && other.darken == darken && other.attribution == attribution;
+      other is MapTileSpec &&
+      other.url == url &&
+      other.darken == darken &&
+      other.attribution == attribution &&
+      other.googleJsKey == googleJsKey &&
+      other.maplibreKey == maplibreKey;
 
   @override
-  int get hashCode => Object.hash(url, darken, attribution);
+  int get hashCode => Object.hash(url, darken, attribution, googleJsKey, maplibreKey);
 }
 
 bool _isTemplate(String url) =>
     url.startsWith('https://') && url.contains('{z}') && url.contains('{x}') && url.contains('{y}');
 
-/// The traffic overlay: off, a source (with an optional fallback), or the
-/// app's own when [MapProfile.traffic] is null.
+/// The traffic overlay: off, a source (with an optional fallback), Google's
+/// own on its JavaScript map ([google]), or the app's own when
+/// [MapProfile.traffic] is null.
 @immutable
 class MapTrafficSpec {
-  const MapTrafficSpec({this.off = false, this.url, this.fallback});
+  const MapTrafficSpec({this.off = false, this.url, this.fallback, this.google = false});
 
   final bool off;
   final String? url;
   final String? fallback;
+  final bool google;
 
   static MapTrafficSpec? fromJson(Object? json) {
     if (json is! Map) return null;
     if (json['off'] == true) return const MapTrafficSpec(off: true);
+    if (json['google'] == true) return const MapTrafficSpec(google: true);
     final url = '${json['url'] ?? ''}'.trim();
     if (!_isTemplate(url)) return null;
     final fb = '${json['fallback'] ?? ''}'.trim();
@@ -65,8 +125,9 @@ class MapTrafficSpec {
   }
 }
 
-/// Providers the device calls itself; every other one goes through `geo`.
-const directGeoProviders = {'nominatim', 'osrm'};
+/// Providers the device calls itself, and `straight`, which it works out;
+/// every other one goes through `geo`.
+const directGeoProviders = {'nominatim', 'osrm', 'straight'};
 
 @immutable
 class MapProfile {
@@ -78,6 +139,7 @@ class MapProfile {
     this.search = const ['nominatim'],
     this.reverse = const ['nominatim'],
     this.routing = const ['osrm'],
+    this.distance = const ['osrm'],
     this.nominatimUrl,
     this.osrmUrl,
   });
@@ -95,6 +157,9 @@ class MapProfile {
   final List<String> search;
   final List<String> reverse;
   final List<String> routing;
+
+  /// Who measures each place search result's distance from the user.
+  final List<String> distance;
 
   /// A self-hosted Nominatim or OSRM from Admin → API Keys; null for the
   /// app's own.
@@ -126,6 +191,7 @@ class MapProfile {
       search: list(p['search'], const ['nominatim']),
       reverse: list(p['reverse'], const ['nominatim']),
       routing: list(p['routing'], const ['osrm']),
+      distance: list(p['distance'], const ['osrm']),
       nominatimUrl: url(direct['nominatim']),
       osrmUrl: url(direct['osrm']),
     );

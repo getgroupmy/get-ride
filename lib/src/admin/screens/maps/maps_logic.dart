@@ -31,18 +31,32 @@ String tileSlotLabel(String s) => switch (s) {
 };
 
 /// The providers each tile slot can use ('app': as the app was built).
+/// 'google_js' (Google's JavaScript map), 'amazon_js' (Amazon Location's
+/// GrabMaps map, migration 0206) and 'google' traffic are web only (migration
+/// 0204): see [tileOptionsFor].
 const tileOptions = <String, List<String>>{
-  'light': ['app', 'osm', 'google', 'mapbox', 'here', 'tomtom', 'maptiler'],
-  'dark': ['app', 'osm', 'google', 'mapbox', 'here', 'tomtom', 'maptiler'],
-  'satellite': ['app', 'esri', 'google', 'mapbox', 'here', 'tomtom', 'maptiler'],
-  'traffic': ['app', 'tomtom', 'here', 'none'],
+  'light': ['app', 'osm', 'google', 'google_js', 'amazon_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
+  'dark': ['app', 'osm', 'google', 'google_js', 'amazon_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
+  'satellite': ['app', 'esri', 'google', 'google_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
+  'traffic': ['app', 'tomtom', 'here', 'google', 'none'],
 };
 
-const placeProviders = ['nominatim', 'google', 'mapbox', 'here', 'tomtom', 'locationiq', 'maptiler'];
-const routeProviders = ['osrm', 'google', 'mapbox', 'here', 'tomtom', 'locationiq'];
+/// [tileOptions] for [slot] on [device]: the browser-drawn maps and Google's
+/// traffic only on the web.
+List<String> tileOptionsFor(String slot, String device) => [
+  for (final p in tileOptions[slot]!)
+    if (device == 'web' || !(p == 'google_js' || p == 'amazon_js' || (slot == 'traffic' && p == 'google'))) p,
+];
+
+const placeProviders = ['nominatim', 'google', 'mapbox', 'here', 'tomtom', 'locationiq', 'maptiler', 'amazon'];
+const routeProviders = ['osrm', 'google', 'mapbox', 'here', 'tomtom', 'locationiq', 'amazon'];
+
+/// Who measures place search results' distance from the user (migration
+/// 0205); `straight` is as the crow flies, worked out on the phone.
+const distanceProviders = [...routeProviders, 'straight'];
 
 /// Providers the phone calls itself (no key).
-const freeProviders = {'nominatim', 'osrm', 'osm', 'esri'};
+const freeProviders = {'nominatim', 'osrm', 'osm', 'esri', 'straight'};
 
 String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   'app' => switch (slot) {
@@ -53,14 +67,18 @@ String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   },
   'osm' => slot == 'dark' ? 'OpenStreetMap (darkened)' : 'OpenStreetMap',
   'esri' => 'Esri imagery',
-  'google' => 'Google',
+  'google' => slot == 'traffic' ? 'Google traffic (on Google Maps JavaScript)' : 'Google',
+  'google_js' => 'Google Maps (JavaScript)',
   'mapbox' => 'Mapbox',
   'here' => 'HERE',
   'tomtom' => 'TomTom',
   'maptiler' => 'MapTiler',
   'locationiq' => 'LocationIQ',
+  'amazon' => 'Amazon Location (GrabMaps)',
+  'amazon_js' => 'Amazon Location map (GrabMaps)',
   'nominatim' => 'OpenStreetMap (Nominatim)',
   'osrm' => 'OpenStreetMap (OSRM)',
+  'straight' => 'Straight line (no roads)',
   'none' => 'Off',
   _ => p,
 };
@@ -73,12 +91,16 @@ class MapProfileSetting {
     this.search = const ['nominatim'],
     this.reverse = const ['nominatim'],
     this.routing = const ['osrm'],
+    this.distance = const ['osrm'],
   });
 
   final Map<String, String> tiles;
   final List<String> search;
   final List<String> reverse;
   final List<String> routing;
+
+  /// Place search results' distance from the user.
+  final List<String> distance;
 
   factory MapProfileSetting.fromJson(Object? json) {
     final m = json is Map ? json : const {};
@@ -96,32 +118,55 @@ class MapProfileSetting {
       search: list(m['search'], placeProviders, 'nominatim'),
       reverse: list(m['reverse'], placeProviders, 'nominatim'),
       routing: list(m['routing'], routeProviders, 'osrm'),
+      distance: list(m['distance'], distanceProviders, 'osrm'),
     );
   }
 
-  Map<String, dynamic> toJson() => {'tiles': tiles, 'search': search, 'reverse': reverse, 'routing': routing};
+  Map<String, dynamic> toJson() => {
+    'tiles': tiles,
+    'search': search,
+    'reverse': reverse,
+    'routing': routing,
+    'distance': distance,
+  };
 
   MapProfileSetting copyWith({
     Map<String, String>? tiles,
     List<String>? search,
     List<String>? reverse,
     List<String>? routing,
+    List<String>? distance,
   }) => MapProfileSetting(
     tiles: tiles ?? this.tiles,
     search: search ?? this.search,
     reverse: reverse ?? this.reverse,
     routing: routing ?? this.routing,
+    distance: distance ?? this.distance,
   );
 
   MapProfileSetting withTile(String slot, String provider) => copyWith(tiles: {...tiles, slot: provider});
 
-  /// Every provider this profile would ask, for checking keys.
-  Set<String> get providers => {...tiles.values, ...search, ...reverse, ...routing};
+  /// This profile as [device] can have it: the web-only choices back to
+  /// "Built in" elsewhere.
+  MapProfileSetting forDevice(String device) => copyWith(
+    tiles: {for (final e in tiles.entries) e.key: tileOptionsFor(e.key, device).contains(e.value) ? e.value : 'app'},
+  );
 
-  /// Google's place search or geocoding without Google's map under it.
+  /// Every provider this profile would ask, for checking keys.
+  Set<String> get providers => {...tiles.values, ...search, ...reverse, ...routing, ...distance};
+
+  /// Google's place search, geocoding or distances without Google's map (its
+  /// tiles or its JavaScript map) under it.
   bool get breaksGoogleTerms =>
-      (search.contains('google') || reverse.contains('google')) &&
-      (tiles['light'] != 'google' || tiles['dark'] != 'google');
+      (search.contains('google') || reverse.contains('google') || distance.contains('google')) &&
+      (!_googleMaps.contains(tiles['light']) || !_googleMaps.contains(tiles['dark']));
+
+  static const _googleMaps = {'google', 'google_js'};
+
+  /// Google traffic is drawn by Google's JavaScript map, so it needs it for
+  /// Map and Map (dark mode).
+  bool get googleTrafficWithoutItsMap =>
+      tiles['traffic'] == 'google' && (tiles['light'] != 'google_js' || tiles['dark'] != 'google_js');
 
   @override
   bool operator ==(Object other) =>
@@ -129,7 +174,8 @@ class MapProfileSetting {
       mapEquals(other.tiles, tiles) &&
       listEquals(other.search, search) &&
       listEquals(other.reverse, reverse) &&
-      listEquals(other.routing, routing);
+      listEquals(other.routing, routing) &&
+      listEquals(other.distance, distance);
 
   @override
   int get hashCode => Object.hash(
@@ -137,6 +183,7 @@ class MapProfileSetting {
     Object.hashAll(search),
     Object.hashAll(reverse),
     Object.hashAll(routing),
+    Object.hashAll(distance),
   );
 }
 
@@ -156,9 +203,17 @@ class MapKeySlot {
 
 const mapKeySlots = [
   MapKeySlot('google_tiles', 'Google · map tiles', 'google/maps', providers: {'google:tiles'}),
+  MapKeySlot('google_js', 'Google · Maps JavaScript (browser key)', 'google/maps_js', providers: {'google_js'}),
   MapKeySlot('google_places', 'Google · place search', 'google/places', providers: {'google:search'}),
   MapKeySlot('google_geocoding', 'Google · address lookup', 'google/geocoding', providers: {'google:reverse'}),
-  MapKeySlot('google_routes', 'Google · routes', 'google/directions', providers: {'google:routing'}),
+  MapKeySlot(
+    'google_routes',
+    'Google · routes and distances',
+    'google/directions',
+    providers: {'google:routing', 'google:distance'},
+  ),
+  MapKeySlot('amazon', 'Amazon Location · search, address, routes', 'amazon/location', providers: {'amazon'}),
+  MapKeySlot('amazon_maps', 'Amazon Location · map (browser key)', 'amazon/maps', providers: {'amazon_js'}),
   MapKeySlot('mapbox', 'Mapbox', 'mapbox/tiles', providers: {'mapbox'}),
   MapKeySlot('here', 'HERE', 'here/api', providers: {'here'}),
   MapKeySlot('tomtom', 'TomTom', 'tomtom/api', providers: {'tomtom'}),
@@ -177,10 +232,21 @@ const mapGoogleApis = [
   ('old', 'Old only (Places API, Directions API)'),
 ];
 
+/// Amazon Location's regions that answer with GrabMaps data (migration 0206).
+const mapAmazonRegions = [
+  ('ap-southeast-5', 'Asia Pacific (Malaysia)'),
+  ('ap-southeast-1', 'Asia Pacific (Singapore)'),
+];
+
 /// The whole setting.
 @immutable
 class MapSettings {
-  const MapSettings({this.profiles = const {}, this.keys = const {}, this.googleApi = 'new_old'});
+  const MapSettings({
+    this.profiles = const {},
+    this.keys = const {},
+    this.googleApi = 'new_old',
+    this.amazonRegion = 'ap-southeast-5',
+  });
 
   /// Keyed "rider.android" …; a missing one is [MapProfileSetting]'s default.
   final Map<String, MapProfileSetting> profiles;
@@ -188,6 +254,9 @@ class MapSettings {
 
   /// One of [mapGoogleApis].
   final String googleApi;
+
+  /// One of [mapAmazonRegions].
+  final String amazonRegion;
 
   static String profileKey(String role, String device) => '$role.$device';
 
@@ -210,6 +279,7 @@ class MapSettings {
         for (final s in mapKeySlots) s.id: k[s.id] is String && '${k[s.id]}'.isNotEmpty ? '${k[s.id]}' : s.defaultRef,
       },
       googleApi: mapGoogleApis.any((a) => a.$1 == m['googleApi']) ? '${m['googleApi']}' : 'new_old',
+      amazonRegion: mapAmazonRegions.any((a) => a.$1 == m['amazonRegion']) ? '${m['amazonRegion']}' : 'ap-southeast-5',
     );
   }
 
@@ -220,31 +290,48 @@ class MapSettings {
     },
     'keys': {for (final s in mapKeySlots) s.id: keyRef(s.id)},
     'googleApi': googleApi,
+    'amazonRegion': amazonRegion,
   };
 
-  MapSettings withProfile(String role, String device, MapProfileSetting p) =>
-      MapSettings(profiles: {...profiles, profileKey(role, device): p}, keys: keys, googleApi: googleApi);
+  MapSettings withProfile(String role, String device, MapProfileSetting p) => MapSettings(
+    profiles: {...profiles, profileKey(role, device): p},
+    keys: keys,
+    googleApi: googleApi,
+    amazonRegion: amazonRegion,
+  );
 
   /// [role]'s [device] profile copied to the other devices.
   MapSettings copiedToAllDevices(String role, String device) {
     final p = profile(role, device);
     return MapSettings(
-      profiles: {...profiles, for (final d in mapDevices) profileKey(role, d): p},
+      profiles: {...profiles, for (final d in mapDevices) profileKey(role, d): p.forDevice(d)},
       keys: keys,
       googleApi: googleApi,
+      amazonRegion: amazonRegion,
     );
   }
 
   MapSettings withKey(String slot, String ref) =>
-      MapSettings(profiles: profiles, keys: {...keys, slot: ref}, googleApi: googleApi);
+      MapSettings(profiles: profiles, keys: {...keys, slot: ref}, googleApi: googleApi, amazonRegion: amazonRegion);
 
-  MapSettings withGoogleApi(String api) => MapSettings(profiles: profiles, keys: keys, googleApi: api);
+  MapSettings withGoogleApi(String api) =>
+      MapSettings(profiles: profiles, keys: keys, googleApi: api, amazonRegion: amazonRegion);
+
+  MapSettings withAmazonRegion(String region) =>
+      MapSettings(profiles: profiles, keys: keys, googleApi: googleApi, amazonRegion: region);
 
   /// "Rider · Android, Partner · Web": the profiles Google's terms block.
   List<String> get googleConflicts => [
     for (final r in mapRoles)
       for (final d in mapDevices)
         if (profile(r, d).breaksGoogleTerms) '${mapRoleLabel(r)} · ${mapDeviceLabel(d)}',
+  ];
+
+  /// "Rider · Web": Google traffic without Google's JavaScript map.
+  List<String> get googleTrafficConflicts => [
+    for (final r in mapRoles)
+      for (final d in mapDevices)
+        if (profile(r, d).googleTrafficWithoutItsMap) '${mapRoleLabel(r)} · ${mapDeviceLabel(d)}',
   ];
 
   /// The key slots some profile uses ("google:search" for Google's).
@@ -256,7 +343,12 @@ class MapSettings {
         for (final t in p.tiles.values) {
           used.add(t == 'google' ? 'google:tiles' : t);
         }
-        for (final (kind, list) in [('search', p.search), ('reverse', p.reverse), ('routing', p.routing)]) {
+        for (final (kind, list) in [
+          ('search', p.search),
+          ('reverse', p.reverse),
+          ('routing', p.routing),
+          ('distance', p.distance),
+        ]) {
           for (final x in list) {
             used.add(x == 'google' ? 'google:$kind' : x);
           }
@@ -274,13 +366,15 @@ class MapSettings {
       other is MapSettings &&
       mapEquals(other.profiles, profiles) &&
       mapEquals(other.keys, keys) &&
-      other.googleApi == googleApi;
+      other.googleApi == googleApi &&
+      other.amazonRegion == amazonRegion;
 
   @override
   int get hashCode => Object.hash(
     Object.hashAllUnordered(profiles.entries.map((e) => Object.hash(e.key, e.value))),
     Object.hashAllUnordered(keys.entries.map((e) => '${e.key}=${e.value}')),
     googleApi,
+    amazonRegion,
   );
 }
 
@@ -330,6 +424,25 @@ List<MapKeyChoice> mapKeyChoices(List<ApiProviderDef> providers, MapKeySlot slot
   }
   if (!out.any((c) => c.ref == current)) out.add(MapKeyChoice(current, current, usable: false));
   return out;
+}
+
+/// [value] added to Admin → API Keys under [slot]'s own service (the
+/// provider and service made if missing), and the reference that picks it.
+({List<ApiProviderDef> list, String ref}) addMapKey(
+  List<ApiProviderDef> list,
+  MapKeySlot slot,
+  String label,
+  String value, {
+  String? id,
+}) {
+  final (pId, sId) = _split(slot.defaultRef);
+  var out = list;
+  if (!out.any((p) => p.id == pId)) out = addProvider(out, pId, id: pId);
+  final provider = out.firstWhere((p) => p.id == pId);
+  if (!provider.services.any((s) => s.id == sId)) out = addService(out, pId, sId, id: sId);
+  final keyId = id ?? genApiId('key');
+  out = addKey(out, pId, sId, label, value, id: keyId);
+  return (list: out, ref: '${slot.defaultRef}#$keyId');
 }
 
 (String, String) _split(String ref) {

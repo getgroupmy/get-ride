@@ -77,6 +77,15 @@ String formatTime(DateTime? dt) =>
 String formatDistance(num? km) =>
     km == null ? '—' : (km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(1)} km');
 
+/// A place search result's distance, as Grab shows it: "850m", "8.59km",
+/// "29.4km", "129km".
+String placeDistanceLabel(double km) {
+  if (km < 1) return '${(km * 1000).round()}m';
+  if (km < 10) return '${km.toStringAsFixed(2)}km';
+  if (km < 100) return '${km.toStringAsFixed(1)}km';
+  return '${km.round()}km';
+}
+
 String formatDuration(num? min) {
   if (min == null) return '—';
   final m = min.round();

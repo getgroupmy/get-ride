@@ -42,11 +42,12 @@ on conflict do nothing;
 -- 1. Cleaning -------------------------------------------------------------------------------
 select pg_temp.check((select count(*) = 8 from jsonb_object_keys(public.map_config_clean('{}')->'profiles')),
   'eight profiles: rider and partner on android, ios, web and desktop');
-select pg_temp.check(public.map_config_clean('{}')->'profiles'->'rider.android'
+-- (Later migrations add more lists, such as 0205's distance; these check 0200's own.)
+select pg_temp.check((public.map_config_clean('{}')->'profiles'->'rider.android') - 'distance'
                      = '{"tiles": {"light": "app", "dark": "app", "satellite": "app", "traffic": "app"},
                          "search": ["nominatim"], "reverse": ["nominatim"], "routing": ["osrm"]}'::jsonb,
   'by default everything stays as the app was built');
-select pg_temp.check((select v->'profiles'->'partner.web' = '{"tiles": {"light": "mapbox", "dark": "app",
+select pg_temp.check((select (v->'profiles'->'partner.web') - 'distance' = '{"tiles": {"light": "mapbox", "dark": "app",
                          "satellite": "esri", "traffic": "app"}, "search": ["here", "nominatim"],
                          "reverse": ["nominatim"], "routing": ["tomtom", "osrm", "google"]}'::jsonb
                         from (select public.map_config_clean('{"profiles": {"partner.web": {

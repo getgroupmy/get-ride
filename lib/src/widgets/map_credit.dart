@@ -10,6 +10,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/map_credit.dart';
+import 'google_js_layer.dart';
+import 'maplibre_layer.dart';
 import 'map_tiles.dart';
 
 /// Asks Google for the copyright of a viewport; null when it can't say.
@@ -33,6 +35,28 @@ class MapCreditLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final source = currentTileSource(context, satellite: satellite);
+    if (source.maplibreKey != null) {
+      // MapLibre's own credit is off: the provider's line in the ⓘ button,
+      // or the app's tiles' once it has given way to them.
+      return ValueListenableBuilder<bool>(
+        valueListenable: maplibreFailed,
+        builder: (context, failed, _) =>
+            _tilesCredit(failed ? fallbackTileSource(context, satellite: satellite) : source),
+      );
+    }
+    if (source.googleJsKey != null) {
+      // Google's JavaScript map draws its own logo and copyright; the app's
+      // tiles' credit only once it has given way to them.
+      return ValueListenableBuilder<bool>(
+        valueListenable: googleJsFailed,
+        builder: (context, failed, _) =>
+            failed ? _tilesCredit(fallbackTileSource(context, satellite: satellite)) : const SizedBox.shrink(),
+      );
+    }
+    return _tilesCredit(source);
+  }
+
+  Widget _tilesCredit(TileSource source) {
     final credit = mapCreditFor(source.url, attribution: source.attribution);
     if (credit.google) {
       return GoogleMapCredit(tileUrl: source.url, fallback: credit.text, onDark: source.darken || satellite);

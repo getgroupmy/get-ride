@@ -165,6 +165,7 @@ ApiServiceDef _svc(String id, String name, String description) => ApiServiceDef(
 final defaultApiProviders = <ApiProviderDef>[
   ApiProviderDef(id: 'google', name: 'Google', description: 'Google Maps Platform services', category: 'Mapping', services: [
     _svc('maps', 'Maps SDK', 'Maps SDK, tiles & static maps'),
+    _svc('maps_js', 'Maps JavaScript', "Browser key for Google's JavaScript map (website)"),
     _svc('places', 'Places', 'Place search, autocomplete & details'),
     _svc('geocoding', 'Geocoding', 'Forward & reverse geocoding'),
     _svc('directions', 'Directions', 'Routing, ETAs & navigation'),
@@ -175,6 +176,10 @@ final defaultApiProviders = <ApiProviderDef>[
     _svc('nominatim', 'Nominatim', 'Geocoding & boundary lookup'),
     _svc('overpass', 'Overpass API', 'Custom Overpass server URL'),
     _svc('osrm', 'OSRM Routing', 'Open Source Routing Machine'),
+  ]),
+  ApiProviderDef(id: 'amazon', name: 'Amazon Location', description: 'Amazon Location Service (GrabMaps in Southeast Asia)', category: 'Mapping', services: [
+    _svc('location', 'Places & Routes', 'API key for place search, address lookup, routes and route matrices'),
+    _svc('maps', 'Maps', 'Browser API key for the map (GetTile), restricted to the website'),
   ]),
   ApiProviderDef(id: 'mapbox', name: 'Mapbox', description: 'Mapbox tiles, geocoding & navigation', category: 'Mapping', services: [
     _svc('tiles', 'Tiles & Geocoding', 'Maps & geocoding access token'),

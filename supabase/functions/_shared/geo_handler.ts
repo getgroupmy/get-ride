@@ -4,17 +4,27 @@
  * passed in, so it is tested without a network.
  *
  *   GET ?action=profile&role=rider&device=android
- *       → { profile: { tiles: { light, dark, satellite, traffic }, search, reverse, routing,
+ *       → { profile: { tiles: { light, dark, satellite, traffic }, search, reverse, routing, distance,
  *                      direct: { nominatim, osrm } } }
- *         A tile slot is null to keep the app's own; traffic { off: true } for none.
+ *         A tile slot is null to keep the app's own; traffic { off: true } for none,
+ *         { google: true } for Google's own traffic on its JavaScript map (web).
+ *         A google_js slot is { engine: "google_js", key, mapType } instead of tiles.
  *   GET ?action=search&provider=here&role=…&device=…&q=…[&lat=&lng=][&countries=my][&lang=en]
  *       → { places: [{ name, address, lat, lng }] }
  *   GET ?action=reverse&provider=…&role=…&device=…&lat=…&lng=…
  *       → { place: { name, address, lat, lng, country, state, city, suburb } | null }
  *   GET ?action=route&provider=…&role=…&device=…&points=lat,lng;lat,lng[;…]
  *       → { route: { distanceKm, durationMin, points: [[lat, lng], …] } | null }
- *   Google's place search and routes use the newer API, the older one, or the newer then the
+ *   GET ?action=distance&provider=…&role=…&device=…&from=lat,lng&to=lat,lng;lat,lng[;…]
+ *       → { distances: [km | null, …] }  road distance to each place search result (up to 10)
+ *   Google's place search, routes and distances use the newer API, the older one, or the newer then the
  *   older when it refuses, as map_config.googleApi says ("new" | "old" | "new_old").
+ *   Amazon Location (provider "amazon", tiles "amazon_js") is asked in map_config.amazonRegion
+ *   ("ap-southeast-5" Malaysia or "ap-southeast-1" Singapore), where it answers with GrabMaps
+ *   data; an amazon_js slot is { engine: "maplibre", style, key } instead of tiles.
+ *   GET ?action=expand&url=https://maps.app.goo.gl/…
+ *       → { url: "https://www.google.com/maps/place/…" }  a share link pasted into place
+ *         search, followed only through Google's own hosts (at most 6 hops)
  *   GET ?action=fallbacks
  *       → { slots: ["google_tiles", …] }  the key slots with a secret synced from GitHub
  *         (names only, never a key), so Admin → Settings → Maps doesn't call them missing.
@@ -23,19 +33,26 @@
  * 429 { error: "rate_limited" } past the per-address limit.
  */
 import {
+  amazonRegionOf,
   cacheKey,
   cacheSeconds,
   DIRECT,
+  distanceRequest,
   FALLBACK_SECRETS,
   googleDirectionsRequest,
+  googleDistanceMatrixRequest,
   googleLegacyRefusal,
   googleLegacySearchRequest,
   googleSessionBody,
   type HttpRequest,
+  isGoogleMapsHost,
+  isShortMapLink,
+  nextMapHop,
   isDevice,
   isRole,
   type Kind,
   keySlot,
+  parseDistances,
   parseReverse,
   parseRoute,
   parseSearch,
@@ -65,6 +82,8 @@ export interface GeoDeps {
   iso3(cc: string): string | null;
   /** The function's own secret for a key slot, when Admin → API Keys has none. */
   fallbackKey?(slot: string): string | null;
+  /** Where [url] redirects to (its Location), without following it; null when it doesn't. */
+  redirect?(url: string): Promise<string | null>;
 }
 
 /** Proxied lookups per caller address per minute. */
@@ -100,6 +119,21 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   if (action === "fallbacks") {
     return { status: 200, body: { slots: Object.keys(FALLBACK_SECRETS).filter((s) => !!deps.fallbackKey?.(s)) } };
   }
+  if (action === "expand") {
+    const url = (params.get("url") ?? "").trim();
+    if (!isShortMapLink(url) || !deps.redirect) return bad("Not a Google Maps share link.");
+    if (!(await deps.take(`ip:${ip}`, RATE_LIMIT))) return bad("rate_limited", 429);
+    let at = url;
+    for (let hop = 0; hop < 6; hop++) {
+      const location = await deps.redirect(at).catch(() => null);
+      if (!location) break;
+      const next = nextMapHop(location, at);
+      if (!next) return bad("That link leads outside Google Maps.", 422);
+      at = next;
+    }
+    if (!isGoogleMapsHost(new URL(at).hostname)) return bad("That link did not open a place.", 422);
+    return { status: 200, body: { url: at } };
+  }
   const role = params.get("role") ?? "";
   const device = params.get("device") ?? "";
   if (!isRole(role) || !isDevice(device)) return bad("Give role (rider|partner) and device (android|ios|web|desktop).");
@@ -113,6 +147,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   const countries = (params.get("countries") ?? "my").toLowerCase().split(",").map((c) => c.trim())
     .filter((c) => /^[a-z]{2}$/.test(c)).slice(0, 5);
   const lang = /^[a-z]{2}(-[A-Za-z]{2})?$/.test(params.get("lang") ?? "") ? params.get("lang")! : "en";
+  const amazonRegion = amazonRegionOf(config);
 
   if (action === "profile") {
     const tile = async (slot: "light" | "dark" | "satellite"): Promise<TileSource | null> => {
@@ -123,12 +158,14 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       if (provider === "google" && k) {
         session = await deps.googleSession(slot, k, countries[0] ?? "my").catch(() => null);
       }
-      return tileSource(provider, slot, k, session);
+      return tileSource(provider, slot, k, session, amazonRegion);
     };
     const t = profile.tiles.traffic;
     let traffic: unknown = null;
     if (t === "none") {
       traffic = { off: true };
+    } else if (t === "google") {
+      traffic = { google: true };
     } else if (t !== "app") {
       const url = trafficTileUrl(t, key(t, "tiles"));
       const other = t === "tomtom" ? "here" : "tomtom";
@@ -142,6 +179,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
           search: profile.search,
           reverse: profile.reverse,
           routing: profile.routing,
+          distance: profile.distance,
           direct: {
             nominatim: directUrl(apiProviders, keys.nominatim),
             osrm: directUrl(apiProviders, keys.osrm),
@@ -151,9 +189,8 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     };
   }
 
-  const kind: Kind | null = action === "search" ? "search" : action === "reverse" ? "reverse" : action === "route"
-    ? "routing"
-    : null;
+  const kinds: Record<string, Kind> = { search: "search", reverse: "reverse", route: "routing", distance: "distance" };
+  const kind: Kind | null = kinds[action] ?? null;
   if (!kind) return bad("Unknown action.");
   const provider = params.get("provider") ?? "";
   if (DIRECT.has(provider) || !profile[kind].includes(provider)) {
@@ -180,6 +217,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       countries,
       countries3: countries.map((c) => deps.iso3(c)).filter((c): c is string => !!c),
       lang,
+      amazonRegion,
     };
     req = searchRequest(provider, sp, k);
     if (provider === "google") older = googleLegacySearchRequest(sp, k);
@@ -189,9 +227,28 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   } else if (kind === "reverse") {
     const lat = coord(params.get("lat"), 90), lng = coord(params.get("lng"), 180);
     if (lat == null || lng == null) return bad("Give lat and lng.");
-    req = reverseRequest(provider, lat, lng, lang, k);
+    req = reverseRequest(provider, lat, lng, lang, k, amazonRegion);
     ck = cacheKey(provider, kind, [lat, lng, lang]);
     parse = (b) => ({ place: parseReverse(provider, b, lat, lng) });
+  } else if (kind === "distance") {
+    const point = (p: string) => {
+      const [a, b] = p.split(",");
+      const la = coord(a, 90), ln = coord(b, 180);
+      return la == null || ln == null ? null : [la, ln] as [number, number];
+    };
+    const from = point(params.get("from") ?? "");
+    const to = (params.get("to") ?? "").split(";").filter((p) => p.trim() !== "").slice(0, 10).map(point);
+    if (!from || !to.length || to.some((p) => p == null)) return bad("Give from=lat,lng and to=lat,lng;lat,lng.");
+    const dest = to as [number, number][];
+    req = distanceRequest(provider, from, dest, k, amazonRegion);
+    if (provider === "google") older = googleDistanceMatrixRequest(from, dest, k);
+    // The user's own spot to ~100 m; the places as given.
+    ck = cacheKey(provider, kind, [from[0].toFixed(3), from[1].toFixed(3), ...dest.flat()]);
+    parse = (b) => {
+      const distances = parseDistances(provider, b, dest.length);
+      if (!distances) throw new Error("not a matrix");
+      return { distances };
+    };
   } else {
     const points = (params.get("points") ?? "").split(";").slice(0, 12).map((p) => {
       const [a, b] = p.split(",");
@@ -199,7 +256,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       return la == null || ln == null ? null : [la, ln] as [number, number];
     });
     if (points.length < 2 || points.some((p) => p == null)) return bad("Give points=lat,lng;lat,lng.");
-    req = routeRequest(provider, points as [number, number][], k);
+    req = routeRequest(provider, points as [number, number][], k, amazonRegion);
     if (provider === "google") older = googleDirectionsRequest(points as [number, number][], k);
     ck = cacheKey(provider, kind, (points as [number, number][]).flat());
     parse = (b) => ({ route: parseRoute(provider, b) });
@@ -232,7 +289,10 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       body = await ask(older);
     }
     const answer = parse(body) as Record<string, unknown>;
-    const empty = answer.places ? (answer.places as unknown[]).length === 0 : Object.values(answer)[0] == null;
+    const list = answer.places ?? answer.distances;
+    const empty = Array.isArray(list)
+      ? (answer.distances ? list.every((d) => d == null) : list.length === 0)
+      : Object.values(answer)[0] == null;
     await deps.count(provider, kind, !empty, false).catch(() => {});
     if (ttl > 0 && !empty) await deps.cachePut(ck, answer, ttl).catch(() => {});
     return { status: 200, body: answer };

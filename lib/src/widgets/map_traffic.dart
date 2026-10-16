@@ -48,9 +48,15 @@ String? resolveTrafficTileUrl({String configured = _configuredTraffic}) {
 /// hides the traffic button.
 final trafficTileUrlProvider = Provider<String?>((ref) {
   final set = ref.watch(mapProfileProvider).value?.traffic;
-  if (set != null) return set.off ? null : set.url;
+  if (set != null) return set.off || set.google ? null : set.url;
   return resolveTrafficTileUrl();
 });
+
+/// Google's own traffic, drawn by its JavaScript map (migration 0204): set
+/// by the admin, and only on the web. The traffic button switches it.
+final googleTrafficProvider = Provider<bool>(
+  (ref) => kIsWeb && ref.watch(mapProfileProvider).value?.traffic?.google == true,
+);
 
 /// The backup traffic source, validated the same way; null when there is
 /// none, or when it is the same as the primary (nothing to fall back to).
@@ -64,7 +70,7 @@ String? resolveTrafficFallbackUrl({
 
 final trafficFallbackTileUrlProvider = Provider<String?>((ref) {
   final set = ref.watch(mapProfileProvider).value?.traffic;
-  if (set != null) return set.off ? null : set.fallback;
+  if (set != null) return set.off || set.google ? null : set.fallback;
   return resolveTrafficFallbackUrl(primary: ref.watch(trafficTileUrlProvider));
 });
 
@@ -141,7 +147,7 @@ class TrafficButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(trafficTileUrlProvider) == null) return const SizedBox.shrink();
+    if (ref.watch(trafficTileUrlProvider) == null && !ref.watch(googleTrafficProvider)) return const SizedBox.shrink();
     final on = ref.watch(mapTrafficProvider);
     final scheme = Theme.of(context).colorScheme;
     return Padding(

@@ -5,22 +5,30 @@
  * and how each provider is asked and answered.
  *
  *   tiles     osm · google · mapbox · here · tomtom · maptiler (light, dark,
- *             satellite; esri for satellite), tomtom · here (traffic)
- *   search    nominatim · google · mapbox · here · tomtom · locationiq · maptiler
+ *             satellite; esri for satellite), tomtom · here (traffic); on the
+ *             web also google_js (Google's JavaScript map, drawn by the
+ *             browser under the app's layers) and its google traffic
+ *   search    nominatim · google · mapbox · here · tomtom · locationiq · maptiler · amazon
  *   reverse   the same
- *   routing   osrm · google · mapbox · here · tomtom · locationiq
+ *   routing   osrm · google · mapbox · here · tomtom · locationiq · amazon
+ *   distance  the same, and straight (as the crow flies): each place search
+ *             result's road distance from the user (migration 0205)
  *
- * 'app' (tiles) keeps what the app was built with. nominatim and osrm are
+ * 'app' (tiles) keeps what the app was built with. nominatim, osrm and straight are
  * called by the device itself (spread over every device's own address, as
  * OpenStreetMap's usage policy needs); the rest go through `geo`, which
  * holds the keys. Fetching is in geo/index.ts.
+ *
+ * amazon is Amazon Location Service (migration 0206): in its Malaysia and
+ * Singapore regions it answers with GrabMaps data. Its map (amazon_js, web)
+ * comes as vector tiles only, which the browser draws with MapLibre.
  */
 
 export const ROLES = ["rider", "partner"] as const;
 export const DEVICES = ["android", "ios", "web", "desktop"] as const;
 export type Role = (typeof ROLES)[number];
 export type Device = (typeof DEVICES)[number];
-export type Kind = "search" | "reverse" | "routing";
+export type Kind = "search" | "reverse" | "routing" | "distance";
 export type TileSlot = "light" | "dark" | "satellite" | "traffic";
 
 export interface Profile {
@@ -28,6 +36,7 @@ export interface Profile {
   search: string[];
   reverse: string[];
   routing: string[];
+  distance: string[];
 }
 
 export interface MapConfig {
@@ -35,14 +44,18 @@ export interface MapConfig {
   keys: Record<string, string>;
 }
 
-/** Providers the device calls itself (no key, OpenStreetMap's servers or the admin's own). */
-export const DIRECT = new Set(["nominatim", "osrm"]);
+/**
+ * Providers the device calls itself (no key, OpenStreetMap's servers or the
+ * admin's own), and straight, which it works out.
+ */
+export const DIRECT = new Set(["nominatim", "osrm", "straight"]);
 
 const DEFAULT_PROFILE: Profile = {
   tiles: { light: "app", dark: "app", satellite: "app", traffic: "app" },
   search: ["nominatim"],
   reverse: ["nominatim"],
   routing: ["osrm"],
+  distance: ["osrm"],
 };
 
 /** [role].[device]'s profile in [config] (the stored one is already cleaned by the database). */
@@ -55,6 +68,7 @@ export function profileOf(config: unknown, role: string, device: string): Profil
     search: list(p.search, DEFAULT_PROFILE.search),
     reverse: list(p.reverse, DEFAULT_PROFILE.reverse),
     routing: list(p.routing, DEFAULT_PROFILE.routing),
+    distance: list(p.distance, DEFAULT_PROFILE.distance),
   };
 }
 
@@ -70,8 +84,16 @@ export function isDevice(v: string): v is Device {
 
 /** The key slot in map_config.keys a provider uses for [use]. */
 export function keySlot(provider: string, use: "tiles" | Kind): string {
+  if (provider === "google_js") return "google_js";
+  if (provider === "amazon_js") return "amazon_maps";
   if (provider !== "google") return provider;
-  return { tiles: "google_tiles", search: "google_places", reverse: "google_geocoding", routing: "google_routes" }[use];
+  return {
+    tiles: "google_tiles",
+    search: "google_places",
+    reverse: "google_geocoding",
+    routing: "google_routes",
+    distance: "google_routes",
+  }[use];
 }
 
 interface KeyEntry {
@@ -106,6 +128,8 @@ export function resolveKey(apiProviders: unknown, ref: string | undefined): stri
  */
 export const FALLBACK_SECRETS: Record<string, string[]> = {
   google_tiles: ["GOOGLE_MAP_API_KEY"],
+  // A browser key, restricted to the site, for Google's JavaScript map.
+  google_js: ["GOOGLE_MAPS_JS_API_KEY", "GOOGLE_MAP_API_KEY"],
   google_places: ["GOOGLE_PLACES_API_KEY"],
   google_geocoding: ["GOOGLE_GEOCODING_API_KEY"],
   google_routes: ["GOOGLE_DIRECTIONS_API_KEY", "GOOGLE_MAP_API_KEY"],
@@ -120,6 +144,86 @@ export function fallbackKey(slot: string, env: (name: string) => string | undefi
   return null;
 }
 
+// ---- Amazon Location (GrabMaps) ------------------------------------------------------------
+
+/** The regions Amazon Location serves GrabMaps from: Malaysia (default) and Singapore. */
+export const AMAZON_REGIONS = ["ap-southeast-5", "ap-southeast-1"] as const;
+
+/** map_config.amazonRegion, or Malaysia. */
+export function amazonRegionOf(config: unknown): string {
+  const v = (config as { amazonRegion?: unknown } | null)?.amazonRegion;
+  return (AMAZON_REGIONS as readonly unknown[]).includes(v) ? v as string : AMAZON_REGIONS[0];
+}
+
+/** Its place search needs a point to rank by: the region's capital when the user's is unknown. */
+const AMAZON_CENTRE: Record<string, [number, number]> = {
+  "ap-southeast-5": [101.6869, 3.139],
+  "ap-southeast-1": [103.8198, 1.3521],
+};
+
+const amazonHost = (api: "places" | "routes" | "maps", region: string) => `https://${api}.geo.${region}.amazonaws.com`;
+
+/** The languages GrabMaps answers in; anything else gets English. */
+const AMAZON_LANGS = new Set(["en", "id", "km", "lo", "ms", "my", "pt", "th", "tl", "vi", "zh"]);
+const amazonLang = (lang: string) => {
+  const l = lang.slice(0, 2).toLowerCase();
+  return AMAZON_LANGS.has(l) ? l : "en";
+};
+
+const amazonPost = (
+  api: "places" | "routes",
+  region: string,
+  path: string,
+  key: string,
+  body: unknown,
+): HttpRequest => ({
+  url: `${amazonHost(api, region)}/v2/${path}?key=${enc(key)}`,
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+// ---- Google Maps share links ---------------------------------------------------------------
+
+/** Google's short and share link hosts (maps.app.goo.gl/AbC…), expanded for place search. */
+const SHORT_HOSTS = new Set(["maps.app.goo.gl", "goo.gl", "share.google", "g.co"]);
+
+/** www.google.com, maps.google.com, google.com.my … */
+export function isGoogleMapsHost(host: string): boolean {
+  return /^((www|maps)\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host.toLowerCase());
+}
+
+/** A Google Maps share link worth expanding: https, one of Google's short hosts. */
+export function isShortMapLink(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" || !SHORT_HOSTS.has(u.hostname)) return false;
+    return u.hostname !== "goo.gl" || u.pathname.startsWith("/maps");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The next hop of a share link, when it stays on Google (short hosts, Maps,
+ * or the cookie-consent page, whose `continue` is taken instead); null for
+ * anywhere else, so `geo` never fetches a host it was not meant to.
+ */
+export function nextMapHop(location: string, from: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(location, from);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  if (u.hostname === "consent.google.com") {
+    const cont = u.searchParams.get("continue");
+    return cont ? nextMapHop(cont, from) : null;
+  }
+  return SHORT_HOSTS.has(u.hostname) || isGoogleMapsHost(u.hostname) ? u.toString() : null;
+}
+
 // ---- Tiles -----------------------------------------------------------------------------------
 
 export interface TileSource {
@@ -127,16 +231,31 @@ export interface TileSource {
   /** Darken on the device (OSM's tiles have no dark style). */
   darken: boolean;
   attribution: string;
+  /**
+   * "google_js": no tiles; the browser draws Google's JavaScript map with
+   * [key], as [mapType] ("roadmap" | "satellite"), styled dark for 'dark'.
+   * Older apps ignore it (no template) and keep their own tiles.
+   */
+  engine?: "google_js" | "maplibre";
+  key?: string;
+  mapType?: "roadmap" | "satellite";
+  /**
+   * "maplibre": the MapLibre style the browser draws (Amazon's map, whose
+   * tiles are vector only), with [key] added to each of its requests.
+   */
+  style?: string;
 }
 
 const ATTRIBUTION: Record<string, string> = {
   osm: "© OpenStreetMap contributors",
   esri: "Imagery © Esri",
   google: "Map data © Google",
+  google_js: "Map data © Google",
   mapbox: "© Mapbox © OpenStreetMap",
   here: "© HERE",
   tomtom: "© TomTom",
   maptiler: "© MapTiler © OpenStreetMap contributors",
+  amazon_js: "© AWS, Grab, © OpenMapTiles, © OpenStreetMap contributors",
 };
 
 const enc = encodeURIComponent;
@@ -153,6 +272,7 @@ export function tileSource(
   slot: "light" | "dark" | "satellite",
   key: string | null,
   googleSession?: string | null,
+  amazonRegion: string = AMAZON_REGIONS[0],
 ): TileSource | null {
   const a = ATTRIBUTION[provider] ?? "";
   const k = key ? enc(key) : "";
@@ -170,6 +290,26 @@ export function tileSource(
   }
   if (!key) return null;
   switch (provider) {
+    case "google_js":
+      return {
+        url: "",
+        darken: false,
+        attribution: a,
+        engine: "google_js",
+        key,
+        mapType: slot === "satellite" ? "satellite" : "roadmap",
+      };
+    case "amazon_js":
+      if (slot === "satellite") return null;
+      return {
+        url: "",
+        darken: false,
+        attribution: a,
+        engine: "maplibre",
+        key,
+        style: `${amazonHost("maps", amazonRegion)}/v2/styles/Standard/descriptor?color-scheme=` +
+          (slot === "dark" ? "Dark" : "Light") + `&key=${k}`,
+      };
     case "google":
       if (!googleSession) return null;
       return {
@@ -274,6 +414,8 @@ export interface SearchParams {
   /** The same countries as alpha-3 (HERE wants those). */
   countries3: string[];
   lang: string;
+  /** Amazon Location's region (amazonRegionOf). */
+  amazonRegion?: string;
 }
 
 const num = (v: unknown): number | null => {
@@ -338,6 +480,17 @@ export function searchRequest(provider: string, p: SearchParams, key: string): H
         url: `https://api.maptiler.com/geocoding/${q}.json?limit=8&language=${p.lang}` +
           (cc ? `&country=${cc}` : "") + (near(p) ? `&proximity=${p.lng},${p.lat}` : "") + `&key=${k}`,
       };
+    case "amazon": {
+      const region = p.amazonRegion ?? AMAZON_REGIONS[0];
+      return amazonPost("places", region, "search-text", key, {
+        QueryText: p.q,
+        MaxResults: 8,
+        Language: amazonLang(p.lang),
+        // One of BiasPosition, a box or a circle is required.
+        BiasPosition: near(p) ? [p.lng, p.lat] : AMAZON_CENTRE[region] ?? AMAZON_CENTRE["ap-southeast-5"],
+        ...(p.countries3.length ? { Filter: { IncludeCountries: p.countries3 } } : {}),
+      });
+    }
   }
   return null;
 }
@@ -428,13 +581,30 @@ export function parseSearch(provider: string, body: J): Place[] {
         out.push(place(str(f?.text), str(f?.place_name), f?.center?.[1], f?.center?.[0]));
       }
       break;
+    case "amazon":
+      for (const r of body?.ResultItems ?? []) {
+        out.push(place(str(r?.Title), str(r?.Address?.Label), r?.Position?.[1], r?.Position?.[0]));
+      }
+      break;
   }
   return out.filter((p): p is Place => p != null).slice(0, 8);
 }
 
-export function reverseRequest(provider: string, lat: number, lng: number, lang: string, key: string): HttpRequest | null {
+export function reverseRequest(
+  provider: string,
+  lat: number,
+  lng: number,
+  lang: string,
+  key: string,
+  amazonRegion: string = AMAZON_REGIONS[0],
+): HttpRequest | null {
   const k = enc(key);
   switch (provider) {
+    case "amazon":
+      return amazonPost("places", amazonRegion, "reverse-geocode", key, {
+        QueryPosition: [lng, lat],
+        Language: amazonLang(lang),
+      });
     case "google":
       return { url: `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=${lang}&key=${k}` };
     case "mapbox":
@@ -473,6 +643,17 @@ function area(name: string, address: string, lat: number, lng: number, parts: Pa
 /** The first answer, at the point asked about ([lat], [lng]). */
 export function parseReverse(provider: string, body: J, lat: number, lng: number): Area | null {
   switch (provider) {
+    case "amazon": {
+      const r = body?.ResultItems?.[0];
+      if (!r) return null;
+      const a = r.Address ?? {};
+      return area(str(r.Title), str(a.Label), lat, lng, {
+        country: str(a.Country?.Name),
+        state: str(a.Region?.Name),
+        city: str(a.Locality) || str(a.SubRegion?.Name),
+        suburb: str(a.District) || str(a.SubDistrict),
+      });
+    }
     case "google": {
       const r = body?.results?.[0];
       if (!r) return null;
@@ -559,13 +740,26 @@ export interface Route {
   points: [number, number][];
 }
 
-export function routeRequest(provider: string, points: [number, number][], key: string): HttpRequest | null {
+export function routeRequest(
+  provider: string,
+  points: [number, number][],
+  key: string,
+  amazonRegion: string = AMAZON_REGIONS[0],
+): HttpRequest | null {
   if (points.length < 2) return null;
   const k = enc(key);
   const lngLat = points.map(([la, ln]) => `${ln},${la}`).join(";");
   const [from, to] = [points[0], points[points.length - 1]];
   const via = points.slice(1, -1);
   switch (provider) {
+    case "amazon":
+      return amazonPost("routes", amazonRegion, "routes", key, {
+        Origin: [from[1], from[0]],
+        Destination: [to[1], to[0]],
+        ...(via.length ? { Waypoints: via.map(([la, ln]) => ({ Position: [ln, la] })) } : {}),
+        TravelMode: "Car",
+        LegGeometryFormat: "Simple",
+      });
     case "google": {
       const loc = ([la, ln]: [number, number]) => ({ location: { latLng: { latitude: la, longitude: ln } } });
       return {
@@ -610,6 +804,16 @@ export function routeRequest(provider: string, points: [number, number][], key: 
 
 export function parseRoute(provider: string, body: J): Route | null {
   switch (provider) {
+    case "amazon": {
+      const r = body?.Routes?.[0];
+      const m = num(r?.Summary?.Distance), s = num(r?.Summary?.Duration);
+      if (m == null || s == null) return null;
+      const pts: [number, number][] = [];
+      for (const leg of r?.Legs ?? []) {
+        for (const c of leg?.Geometry?.LineString ?? []) pts.push([c[1], c[0]]);
+      }
+      return { distanceKm: m / 1000, durationMin: s / 60, points: pts };
+    }
     case "google": {
       const r = body?.routes?.[0];
       // The older Directions API answers in legs.
@@ -657,6 +861,163 @@ export function parseRoute(provider: string, body: J): Route | null {
         for (const p of leg?.points ?? []) pts.push([p.latitude, p.longitude]);
       }
       return { distanceKm: m / 1000, durationMin: s / 60, points: pts };
+    }
+  }
+  return null;
+}
+
+// ---- Distances (place search results) ----------------------------------------------------------
+
+/**
+ * The road distance from [from] to each of [to], one request: a matrix of
+ * one origin. Google's newer Routes API; googleDistanceMatrixRequest is the
+ * older one.
+ */
+export function distanceRequest(
+  provider: string,
+  from: [number, number],
+  to: [number, number][],
+  key: string,
+  amazonRegion: string = AMAZON_REGIONS[0],
+): HttpRequest | null {
+  if (!to.length) return null;
+  const k = enc(key);
+  const lngLat = [from, ...to].map(([la, ln]) => `${ln},${la}`).join(";");
+  const json = { "Content-Type": "application/json" };
+  switch (provider) {
+    case "amazon": {
+      const at = ([la, ln]: [number, number]) => ({ Position: [ln, la] });
+      return amazonPost("routes", amazonRegion, "route-matrix", key, {
+        Origins: [at(from)],
+        Destinations: to.map(at),
+        // GrabMaps takes only an unbounded matrix.
+        RoutingBoundary: { Unbounded: true },
+        TravelMode: "Car",
+      });
+    }
+    case "google": {
+      const wp = ([la, ln]: [number, number]) => ({
+        waypoint: { location: { latLng: { latitude: la, longitude: ln } } },
+      });
+      return {
+        url: "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix",
+        method: "POST",
+        headers: {
+          ...json,
+          "X-Goog-Api-Key": key,
+          "X-Goog-FieldMask": "originIndex,destinationIndex,distanceMeters,condition",
+        },
+        body: JSON.stringify({ origins: [wp(from)], destinations: to.map(wp), travelMode: "DRIVE" }),
+      };
+    }
+    case "mapbox":
+      return {
+        url: `https://api.mapbox.com/directions-matrix/v1/mapbox/driving/${lngLat}?sources=0&annotations=distance` +
+          `&access_token=${k}`,
+      };
+    case "locationiq":
+      return {
+        url: `https://us1.locationiq.com/v1/matrix/driving/${lngLat}?sources=0&annotations=distance&key=${k}`,
+      };
+    case "here": {
+      const pt = ([la, ln]: [number, number]) => ({ lat: la, lng: ln });
+      return {
+        url: `https://matrix.router.hereapi.com/v8/matrix?async=false&apiKey=${k}`,
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({
+          origins: [pt(from)],
+          destinations: to.map(pt),
+          regionDefinition: { type: "world" },
+          transportMode: "car",
+          matrixAttributes: ["distances"],
+        }),
+      };
+    }
+    case "tomtom": {
+      const pt = ([la, ln]: [number, number]) => ({ point: { latitude: la, longitude: ln } });
+      return {
+        url: `https://api.tomtom.com/routing/matrix/2?key=${k}`,
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ origins: [pt(from)], destinations: to.map(pt), options: { travelMode: "car" } }),
+      };
+    }
+  }
+  return null;
+}
+
+/** Google's older Distance Matrix API, asked when the newer one refuses. */
+export function googleDistanceMatrixRequest(from: [number, number], to: [number, number][], key: string): HttpRequest {
+  const at = ([la, ln]: [number, number]) => `${la},${ln}`;
+  return {
+    url: `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${at(from)}` +
+      `&destinations=${enc(to.map(at).join("|"))}&mode=driving&key=${enc(key)}`,
+  };
+}
+
+/**
+ * Kilometres to each of [count] destinations, in order; null for one the
+ * provider found no road to. Null when the answer isn't a matrix at all.
+ */
+export function parseDistances(provider: string, body: J, count: number): (number | null)[] | null {
+  const out: (number | null)[] = Array(count).fill(null);
+  const km = (m: unknown) => {
+    const n = num(m);
+    return n == null || n < 0 ? null : Math.round(n) / 1000;
+  };
+  switch (provider) {
+    case "amazon": {
+      const row = body?.RouteMatrix?.[0];
+      if (!Array.isArray(row)) return null;
+      for (let i = 0; i < count; i++) out[i] = row[i] == null || row[i].Error ? null : km(row[i].Distance);
+      return out;
+    }
+    case "google": {
+      // The older Distance Matrix API: rows[0].elements, one per destination.
+      const elements = body?.rows?.[0]?.elements;
+      if (Array.isArray(elements)) {
+        elements.slice(0, count).forEach((e: J, i: number) => {
+          out[i] = e?.status === "OK" ? km(e?.distance?.value) : null;
+        });
+        return out;
+      }
+      if (!Array.isArray(body)) return null;
+      for (const e of body) {
+        const i = num(e?.destinationIndex) ?? 0;
+        // A zero distance is left out of the answer.
+        if (i >= 0 && i < count && (e?.condition ?? "ROUTE_EXISTS") === "ROUTE_EXISTS") {
+          out[i] = km(e?.distanceMeters ?? 0);
+        }
+      }
+      return out;
+    }
+    case "mapbox":
+    case "locationiq":
+    case "osrm": {
+      const row = body?.distances?.[0];
+      if (!Array.isArray(row)) return null;
+      // The first column is the origin itself.
+      for (let i = 0; i < count; i++) out[i] = row[i + 1] == null ? null : km(row[i + 1]);
+      return out;
+    }
+    case "here": {
+      const d = body?.matrix?.distances;
+      if (!Array.isArray(d)) return null;
+      const errors = body?.matrix?.errorCodes;
+      for (let i = 0; i < count; i++) {
+        out[i] = Array.isArray(errors) && errors[i] ? null : km(d[i]);
+      }
+      return out;
+    }
+    case "tomtom": {
+      const data = body?.data;
+      if (!Array.isArray(data)) return null;
+      for (const e of data) {
+        const i = num(e?.destinationIndex) ?? -1;
+        if (i >= 0 && i < count) out[i] = km(e?.routeSummary?.lengthInMeters);
+      }
+      return out;
     }
   }
   return null;
@@ -721,10 +1082,14 @@ export function decodeFlexiblePolyline(s: string): [number, number][] {
 
 // ---- Cache -------------------------------------------------------------------------------------
 
-/** Google's terms allow no caching of its place content: those answers are never kept. */
+/**
+ * Google's terms allow no caching of its place content, nor do AWS's of
+ * Amazon Location's (GrabMaps can't mark an answer for storage): those
+ * answers are never kept.
+ */
 export function cacheSeconds(provider: string, kind: Kind): number {
-  if (provider === "google") return 0;
-  return { search: 86400, reverse: 30 * 86400, routing: 3600 }[kind];
+  if (provider === "google" || provider === "amazon") return 0;
+  return { search: 86400, reverse: 30 * 86400, routing: 3600, distance: 3600 }[kind];
 }
 
 /** The cache key: same provider, kind and (rounded) question. */
