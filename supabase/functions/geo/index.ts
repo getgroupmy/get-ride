@@ -23,7 +23,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import countries from "npm:world-countries@5.1.0";
 
 import { fallbackKey } from "../_shared/geo.ts";
-import { googleSessionBody, handleGeo, parseGoogleSession } from "../_shared/geo_handler.ts";
+import { errorDetail, googleSessionBody, handleGeo, parseGoogleSession } from "../_shared/geo_handler.ts";
 import { clientIp } from "../_shared/pin_login.ts";
 
 const corsHeaders = {
@@ -74,16 +74,28 @@ async function call(req: { url: string; method?: string; headers?: Record<string
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
+  const params = new URL(req.url).searchParams;
+  // A failed call, kept for Admin → Maps → Usage (the last 30 days).
+  const logError = async (provider: string, kind: string, detail: string) => {
+    await db.rpc("geo_log_error", {
+      p_provider: provider,
+      p_kind: kind,
+      p_role: params.get("role"),
+      p_device: params.get("device"),
+      p_detail: detail,
+    });
+  };
   try {
-    const answer = await handleGeo(new URL(req.url).searchParams, clientIp(req.headers), {
+    const answer = await handleGeo(params, clientIp(req.headers), {
       settings,
       call,
       take: async (bucket, limit) => {
         const { data, error } = await db.rpc("geo_take", { p_bucket: bucket, p_limit: limit });
         return error ? true : data === true;
       },
-      count: async (provider, kind, ok, cached) => {
+      count: async (provider, kind, ok, cached, detail) => {
         await db.rpc("geo_count", { p_provider: provider, p_kind: kind, p_ok: ok, p_cached: cached });
+        if (!ok && detail) await logError(provider, kind, detail).catch(() => {});
       },
       cacheGet: async (key) => {
         const { data } = await db.from("geo_cache").select("value").eq("key", key)
@@ -115,6 +127,7 @@ Deno.serve(async (req) => {
           // Google refused (API off, key restricted, billing): say why in the function's logs.
           console.error(`geo: Google ${slot} tile session refused:`, e instanceof Error ? e.message : "failed");
           await db.rpc("geo_count", { p_provider: "google", p_kind: "tiles", p_ok: false, p_cached: false });
+          await logError("google", "tiles", `${slot} map: ${errorDetail(e)}`).catch(() => {});
           throw e;
         }
         const s = parseGoogleSession(answer);

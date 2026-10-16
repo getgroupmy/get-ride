@@ -899,3 +899,23 @@ Deno.test("locate: by the profile's locate list, Google's Text Search even when 
   const p = (await handleGeo(q("action=profile&role=rider&device=android"), "ip", plain)).body as any;
   assertEquals(p.profile.locate, ["nominatim"], "OpenStreetMap by default");
 });
+
+Deno.test("profile: why a set map slot fell back, for Admin → Maps → Test", async () => {
+  const cfg = {
+    ...config,
+    profiles: {
+      ...config.profiles,
+      "rider.android": { ...config.profiles["rider.android"], tiles: { light: "google", dark: "mapbox", satellite: "app", traffic: "app" } },
+    },
+  };
+  const { d } = deps({
+    settings: () => Promise.resolve({ config: cfg, apiProviders }),
+    googleSession: () => Promise.reject(new Error("403 from tile.googleapis.com (PERMISSION_DENIED, SERVICE_DISABLED)")),
+  });
+  // deno-lint-ignore no-explicit-any
+  const p = ((await handleGeo(q("action=profile&role=rider&device=android"), "ip", d)).body as any).profile;
+  assertEquals(p.tiles.light, null, "the app's own map instead");
+  assertStringIncludes(p.refused.light, "SERVICE_DISABLED");
+  assertEquals(p.refused.dark, "No key");
+  assertEquals(p.refused.satellite, undefined, "built in by choice");
+});

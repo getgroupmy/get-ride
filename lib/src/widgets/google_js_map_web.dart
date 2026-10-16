@@ -99,12 +99,33 @@ const _night = [
 /// The API's `maps` library, loaded once per page; null when it can't load.
 Future<JSObject?>? _maps;
 
+/// Google's name for why it refused the key on this page
+/// ("ApiNotActivatedMapError", "RefererNotAllowedMapError" …), read from the
+/// error the API writes to the browser console; null while it hasn't. Only
+/// Admin → Settings → Maps → Test shows it; riders' and partners' maps just
+/// fall back.
+final googleJsError = ValueNotifier<String?>(null);
+
+final _errorName = RegExp(r'Google Maps JavaScript API (?:error|warning): (\w+)');
+
+/// Listens to the console for the API's own error, passing everything on.
+void _watchConsole() {
+  final console = globalContext['console'] as JSObject;
+  final original = console['error'] as JSFunction;
+  console['error'] = ((JSAny? a, JSAny? b, JSAny? c) {
+    final name = _errorName.firstMatch('${a?.dartify() ?? ''}')?.group(1);
+    if (name != null && googleJsError.value == null) googleJsError.value = name;
+    original.callMethod('apply'.toJS, console, [a, b, c].whereType<JSAny>().toList().toJS);
+  }).toJS;
+}
+
 /// Called by the API when the key is refused (wrong key, API off, site not
 /// allowed); every Google JavaScript map then gives way to tiles.
 final _authFailed = <VoidCallback>{};
 
 Future<JSObject?> _loadMaps(String key) => _maps ??= () async {
   final ready = Completer<bool>();
+  _watchConsole();
   globalContext['__getRideGoogleMapsReady'] = (() {
     if (!ready.isCompleted) ready.complete(true);
   }).toJS;

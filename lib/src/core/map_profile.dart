@@ -223,3 +223,18 @@ class MapProfile {
 /// The map profile in use, set as it arrives (see `mapProfileProvider`);
 /// read by the tile layers and [GeoService]. [MapProfile.builtIn] until then.
 MapProfile activeMapProfile = MapProfile.builtIn;
+
+/// The profile the maps draw, as it changes; null while the app waits for
+/// this user's settings at start ([waitForMapProfile]), so a map shows what
+/// is set first rather than the app's own map and then that.
+final mapProfileListenable = ValueNotifier<MapProfile?>(MapProfile.builtIn);
+
+/// The maps wait (blank) until [applyMapProfile]: called once at app start.
+void waitForMapProfile() {
+  if (identical(activeMapProfile, MapProfile.builtIn)) mapProfileListenable.value = null;
+}
+
+void applyMapProfile(MapProfile p) {
+  activeMapProfile = p;
+  mapProfileListenable.value = p;
+}

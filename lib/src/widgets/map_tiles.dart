@@ -135,8 +135,21 @@ TileSource currentTileSource(BuildContext context, {bool satellite = false}) {
 
 /// The base layer for [context]'s theme, or satellite imagery: tiles, or
 /// Google's JavaScript map or a MapLibre map (with the app's own tiles
-/// should it fail).
-Widget baseTileLayer(BuildContext context, {bool satellite = false}) {
+/// should it fail). Blank while the app waits for this user's map settings
+/// ([mapProfileListenable]), then what they set.
+Widget baseTileLayer(BuildContext context, {bool satellite = false}) => ValueListenableBuilder<MapProfile?>(
+  valueListenable: mapProfileListenable,
+  builder: (context, profile, _) => profile == null
+      ? SizedBox.expand(
+          key: const ValueKey('map-waiting'),
+          child: ColoredBox(
+            color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF242F3E) : const Color(0xFFE5E3DF),
+          ),
+        )
+      : _baseLayer(context, satellite: satellite),
+);
+
+Widget _baseLayer(BuildContext context, {bool satellite = false}) {
   final source = currentTileSource(context, satellite: satellite);
   final maplibreKey = source.maplibreKey;
   if (maplibreKey != null) {

@@ -4,6 +4,9 @@ import 'package:latlong2/latlong.dart';
 
 const googleJsSupported = false;
 
+/// Google's reason for refusing the key (web only; never set here).
+final googleJsError = ValueNotifier<String?>(null);
+
 class GoogleJsMapView extends StatelessWidget {
   const GoogleJsMapView({
     super.key,

@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/format.dart' show formatDateTime;
 import '../../../core/map_profile.dart';
 import '../../../data/geo_service.dart' show defaultCenter;
 import '../../../data/map_profile_repository.dart' show GeoProxy;
 import '../../../providers.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/google_js_map.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
@@ -911,13 +913,136 @@ class _UsageTab extends ConsumerWidget {
                       key: ValueKey('maps-usage-${r.provider}-${r.kind}'),
                       title: Text('${mapProviderLabel(r.provider)} · ${_kindLabel(r.kind)}'),
                       subtitle: Text('${r.cached} cached · ${r.failures} failed'),
-                      trailing: Text('${r.calls}', style: t.textTheme.titleMedium),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('${r.calls}', style: t.textTheme.titleMedium),
+                          if (r.failures > 0) const Icon(Icons.chevron_right),
+                        ],
+                      ),
+                      // Its failures, the latest 30 first.
+                      onTap: r.failures > 0
+                          ? () => showDialog<void>(
+                              context: context,
+                              builder: (_) => MapErrorsDialog(provider: r.provider, kind: r.kind),
+                            )
+                          : null,
                     ),
                 ],
               ),
             ),
         ],
       ),
+    );
+  }
+}
+
+/// A Usage row's failures, newest first: the latest 30, and 30 more each
+/// time "Show more" is pressed (the last 30 days are kept).
+class MapErrorsDialog extends ConsumerStatefulWidget {
+  const MapErrorsDialog({super.key, required this.provider, required this.kind});
+
+  final String provider;
+  final String kind;
+
+  @override
+  ConsumerState<MapErrorsDialog> createState() => _MapErrorsDialogState();
+}
+
+class _MapErrorsDialogState extends ConsumerState<MapErrorsDialog> {
+  static const _page = 30;
+  final _rows = <MapErrorRow>[];
+  bool _loading = false;
+  bool _more = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (_loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final next = await ref
+          .read(mapsRepositoryProvider)
+          .errors(widget.provider, widget.kind, before: _rows.isEmpty ? null : _rows.last.id, limit: _page);
+      if (!mounted) return;
+      setState(() {
+        _rows.addAll(next);
+        _more = next.length == _page;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant);
+    return AlertDialog(
+      key: const ValueKey('maps-errors-dialog'),
+      title: Text('${mapProviderLabel(widget.provider)} · ${_kindLabel(widget.kind)} · failures'),
+      content: SizedBox(
+        width: 520,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Text('Newest first, from the last 30 days.', style: muted),
+            if (_rows.isEmpty && !_loading && _error == null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  'No details kept for these. Failures are recorded with their reason from now on.',
+                  key: const ValueKey('maps-errors-empty'),
+                  style: t.textTheme.bodyMedium,
+                ),
+              ),
+            for (final e in _rows)
+              ListTile(
+                key: ValueKey('maps-error-${e.id}'),
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.error_outline, color: t.colorScheme.error),
+                title: Text(e.detail),
+                subtitle: Text(
+                  [
+                    formatDateTime(e.at),
+                    if (e.role != null) mapRoleLabel(e.role!),
+                    if (e.device != null) mapDeviceLabel(e.device!),
+                  ].join(' · '),
+                  style: muted,
+                ),
+              ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(_error!, style: TextStyle(color: t.colorScheme.error)),
+              ),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_more && _rows.isNotEmpty || _error != null)
+              Center(
+                child: TextButton(
+                  key: const ValueKey('maps-errors-more'),
+                  onPressed: _load,
+                  child: Text(_error != null ? 'Try again' : 'Show more'),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
     );
   }
 }
@@ -955,6 +1080,9 @@ class _Result {
 
 class _MapTestDialogState extends ConsumerState<MapTestDialog> {
   MapProfile? _resolved;
+
+  /// Why a map slot set here fell back to the app's own, by slot.
+  Map<String, String> _refused = const {};
   String? _error;
   final _results = <_Result>[];
   bool _running = true;
@@ -969,7 +1097,10 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
     final probe = ref.read(mapTestProbeProvider);
     final at = defaultCenter;
     try {
-      _resolved = MapProfile.fromJson(await probe.ask(widget.role, widget.device, {'action': 'profile'}));
+      final body = await probe.ask(widget.role, widget.device, {'action': 'profile'});
+      _resolved = MapProfile.fromJson(body);
+      final refused = (body?['profile'] as Map?)?['refused'];
+      _refused = refused is Map ? {for (final e in refused.entries) '${e.key}': '${e.value}'} : const {};
     } catch (e) {
       _error = errorText(e);
     }
@@ -1035,35 +1166,52 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
     final t = Theme.of(context);
     final r = _resolved;
     final at = defaultCenter;
-    Widget tile(String slot, MapTileSpec? spec) => ListTile(
-      key: ValueKey('maps-test-tile-$slot'),
-      contentPadding: EdgeInsets.zero,
-      leading: SizedBox.square(
-        dimension: 48,
-        child: spec == null
-            ? const Icon(Icons.layers_outlined)
-            : spec.isBrowserMap
-            ? const Icon(Icons.map_outlined)
-            : ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: Image.network(
-                  sampleTileUrl(spec.url, at.latitude, at.longitude),
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Icon(Icons.broken_image_outlined, color: t.colorScheme.error),
+    Widget tile(String slot, MapTileSpec? spec) {
+      final set = widget.profile.tiles[slot] ?? 'app';
+      // Set here, but the app's own map is what riders and partners get.
+      final refused = spec == null && set != 'app' ? _refused[slot] : null;
+      return ListTile(
+        key: ValueKey('maps-test-tile-$slot'),
+        contentPadding: EdgeInsets.zero,
+        leading: SizedBox.square(
+          dimension: 48,
+          child: refused != null
+              ? Icon(Icons.error_outline, color: t.colorScheme.error)
+              : spec == null
+              ? const Icon(Icons.layers_outlined)
+              : spec.isBrowserMap
+              ? const Icon(Icons.map_outlined)
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.network(
+                    sampleTileUrl(spec.url, at.latitude, at.longitude),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => Icon(Icons.broken_image_outlined, color: t.colorScheme.error),
+                  ),
                 ),
+        ),
+        title: Text(tileSlotLabel(slot)),
+        subtitle: refused != null
+            ? Text(
+                '${mapRefusalText(refused)}. Riders and partners get the built-in map until it is fixed.',
+                key: ValueKey('maps-test-refused-$slot'),
+                style: TextStyle(color: t.colorScheme.error),
+              )
+            : spec != null && spec.isGoogleJs
+            ? GoogleJsCheck(
+                key: ValueKey('maps-test-js-$slot'),
+                apiKey: spec.googleJsKey!,
+                satellite: slot == 'satellite',
+              )
+            : Text(
+                spec == null
+                    ? 'Built in'
+                    : spec.isMapLibre
+                    ? '${tileHost(spec.url)}, drawn by the browser'
+                    : tileHost(spec.url),
               ),
-      ),
-      title: Text(tileSlotLabel(slot)),
-      subtitle: Text(
-        spec == null
-            ? 'Built in'
-            : spec.isGoogleJs
-            ? 'Google Maps (JavaScript), drawn by the browser'
-            : spec.isMapLibre
-            ? '${tileHost(spec.url)}, drawn by the browser'
-            : tileHost(spec.url),
-      ),
-    );
+      );
+    }
     return AlertDialog(
       key: const ValueKey('maps-test-dialog'),
       title: Text('Test · ${mapRoleLabel(widget.role)} · ${mapDeviceLabel(widget.device)}'),
@@ -1121,6 +1269,65 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
         ),
       ),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+    );
+  }
+}
+
+/// Google's JavaScript map tried with [apiKey] in this browser (the admin
+/// pages run on the web): a small live map and whether Google took the key,
+/// and why not when it didn't. Elsewhere, what it is.
+class GoogleJsCheck extends StatefulWidget {
+  const GoogleJsCheck({super.key, required this.apiKey, this.satellite = false});
+
+  final String apiKey;
+  final bool satellite;
+
+  @override
+  State<GoogleJsCheck> createState() => _GoogleJsCheckState();
+}
+
+class _GoogleJsCheckState extends State<GoogleJsCheck> {
+  bool _failed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    const what = Text('Google Maps (JavaScript), drawn by the browser');
+    if (!googleJsSupported) return what;
+    final t = Theme.of(context);
+    return ValueListenableBuilder<String?>(
+      valueListenable: googleJsError,
+      builder: (context, error, _) {
+        final refused = error != null || _failed;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            refused
+                ? Text(
+                    '${error == null ? "Google's JavaScript map didn't load" : googleJsErrorText(error)}. '
+                    'Riders and partners get the built-in map until it is fixed.',
+                    key: const ValueKey('maps-test-js-refused'),
+                    style: TextStyle(color: t.colorScheme.error),
+                  )
+                : what,
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 120,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: GoogleJsMapView(
+                  apiKey: widget.apiKey,
+                  center: defaultCenter,
+                  zoom: 13,
+                  satellite: widget.satellite,
+                  onFailure: () {
+                    if (mounted) setState(() => _failed = true);
+                  },
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

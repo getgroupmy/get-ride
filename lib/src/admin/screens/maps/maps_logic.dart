@@ -535,3 +535,32 @@ String sampleTileUrl(String template, double lat, double lng, {int zoom = 12}) {
 
 /// A tile template's host, to name it without its key.
 String tileHost(String url) => Uri.tryParse(url)?.host ?? '';
+
+/// Why a map slot set here fell back to the app's own, as the geo function
+/// said (its `refused`), in plain words for Admin → Maps → Test.
+String mapRefusalText(String raw) {
+  if (raw == 'No key') return 'No key for it: add one on the Keys tab or in Admin → API Keys';
+  if (raw.contains('SERVICE_DISABLED')) {
+    return "Google refused: Map Tiles API is not enabled in this key's Google Cloud project";
+  }
+  if (raw.contains('API_KEY_SERVICE_BLOCKED')) {
+    return "Google refused: this key's API restrictions don't include Map Tiles API";
+  }
+  if (raw.contains('BILLING')) return 'Google refused: billing is not enabled for this key\'s project';
+  if (raw.contains('API_KEY_INVALID') || raw.contains('INVALID_ARGUMENT')) {
+    return 'Google refused: the key is not valid';
+  }
+  return 'Refused: $raw';
+}
+
+/// Google's JavaScript map error name in plain words (Admin → Maps → Test).
+String googleJsErrorText(String name) => switch (name) {
+  'ApiNotActivatedMapError' => "Google refused: Maps JavaScript API is not enabled in this key's project",
+  'RefererNotAllowedMapError' => "Google refused: this site isn't in the key's website restrictions",
+  'ApiTargetBlockedMapError' => "Google refused: this key's API restrictions don't include Maps JavaScript API",
+  'BillingNotEnabledMapError' => "Google refused: billing is not enabled for this key's project",
+  'InvalidKeyMapError' => 'Google refused: the key is not valid',
+  'ExpiredKeyMapError' => 'Google refused: the key has expired',
+  'MissingKeyMapError' => 'No key was sent',
+  _ => 'Google refused: $name',
+};

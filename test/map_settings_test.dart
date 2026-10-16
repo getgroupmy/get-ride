@@ -35,6 +35,24 @@ class _FakeRepo implements MapsRepository {
   Future<Set<String>> fallbackSlots() async => fallbacks;
   Set<String> fallbacks = const {};
 
+  /// 35 failures kept, newest (35) first.
+  final errorsAsked = <String>[];
+
+  @override
+  Future<List<MapErrorRow>> errors(String provider, String kind, {int? before, int limit = 30}) async {
+    errorsAsked.add('$provider $kind ${before ?? '-'} $limit');
+    return [
+      for (var id = (before ?? 36) - 1; id >= 1 && id > (before ?? 36) - 1 - limit; id--)
+        MapErrorRow(
+          id: id,
+          at: DateTime(2026, 10, 16, 7, id),
+          detail: id == 35 ? 'Answered, but found nothing' : '403 from geocode.search.hereapi.com',
+          role: 'rider',
+          device: 'web',
+        ),
+    ];
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -65,6 +83,7 @@ class _FakeProbe implements MapTestProbe {
             'satellite': null,
             'traffic': {'off': true},
           },
+          'refused': {'dark': '403 from tile.googleapis.com (PERMISSION_DENIED, SERVICE_DISABLED)'},
         },
       },
       'search' => {
@@ -665,6 +684,54 @@ void main() {
         'rider ios profile',
         'rider ios search',
       ]);
+    });
+  }
+
+  for (final dark in [false, true]) {
+    testWidgets('Test says why a set map fell back, in plain words (${dark ? 'dark' : 'light'})', (tester) async {
+      await pump(tester, dark: dark);
+      await choose(tester, 'maps-tile-ios-dark', 'Google');
+      await tester.ensureVisible(find.byKey(const ValueKey('maps-test-ios')));
+      await tester.tap(find.byKey(const ValueKey('maps-test-ios')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final why = tester.widget<Text>(find.byKey(const ValueKey('maps-test-refused-dark'))).data!;
+      expect(why, contains("Map Tiles API is not enabled in this key's Google Cloud project"));
+      expect(why, contains('built-in map'));
+      expect(find.byKey(const ValueKey('maps-test-refused-satellite')), findsNothing, reason: 'built in by choice');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  test('refusals in plain words', () {
+    expect(mapRefusalText('No key'), startsWith('No key for it'));
+    expect(mapRefusalText('403 (PERMISSION_DENIED, API_KEY_SERVICE_BLOCKED)'), contains("API restrictions"));
+    expect(googleJsErrorText('RefererNotAllowedMapError'), contains("website restrictions"));
+    expect(googleJsErrorText('ApiNotActivatedMapError'), contains('Maps JavaScript API is not enabled'));
+    expect(googleJsErrorText('SomethingNew'), 'Google refused: SomethingNew');
+  });
+
+  for (final dark in [false, true]) {
+    final mode = dark ? 'dark' : 'light';
+    testWidgets('Usage: a row with failures lists the latest 30, then more ($mode)', (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      await tester.tap(find.text('Usage'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('maps-usage-here-search')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('maps-errors-dialog')), findsOneWidget);
+      expect(repo.errorsAsked, ['here search - 30']);
+      expect(find.text('Answered, but found nothing'), findsOneWidget, reason: 'newest first');
+      expect(find.textContaining('Rider · Web'), findsWidgets);
+      expect(find.byKey(const ValueKey('maps-error-6')), findsOneWidget);
+      expect(find.byKey(const ValueKey('maps-error-5')), findsNothing);
+      await tester.ensureVisible(find.byKey(const ValueKey('maps-errors-more')));
+      await tester.tap(find.byKey(const ValueKey('maps-errors-more')));
+      await tester.pumpAndSettle();
+      expect(repo.errorsAsked.last, 'here search 6 30');
+      expect(find.byKey(const ValueKey('maps-error-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('maps-errors-more')), findsNothing, reason: 'all shown');
+      expect(tester.takeException(), isNull);
     });
   }
 
