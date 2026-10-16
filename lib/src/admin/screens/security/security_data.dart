@@ -228,6 +228,45 @@ class SecurityRepository {
     return next;
   }
 
+  /// The tests Admin → API Keys can run (the `key-test` function's list).
+  Future<List<KeyTestDef>> keyTests() async {
+    final res = await _db.functions.invoke('key-test', method: HttpMethod.get);
+    final data = res.data is String ? jsonDecode(res.data as String) : res.data;
+    final tests = data is Map ? data['tests'] : null;
+    return [for (final t in tests is List ? tests : const []) KeyTestDef.fromJson(t)];
+  }
+
+  /// One real request with a stored key (by id; the key itself never leaves the server).
+  Future<KeyTestResult> testKey({
+    required String providerId,
+    required String serviceId,
+    required String keyId,
+    required String testId,
+    required KeySendAs sendAs,
+    String? cert,
+  }) async {
+    try {
+      final res = await _db.functions.invoke('key-test', body: {
+        'provider': providerId,
+        'service': serviceId,
+        'key': keyId,
+        'test': testId,
+        'as': sendAs.name,
+        if (cert != null && cert.trim().isNotEmpty) 'cert': cert.trim(),
+      });
+      return KeyTestResult.fromJson(res.data is String ? jsonDecode(res.data as String) : res.data);
+    } on FunctionException catch (e) {
+      final body = _jsonOf(e.details);
+      return KeyTestResult.fromJson(body is Map ? body : {'error': 'HTTP ${e.status}'});
+    } catch (_) {
+      return const KeyTestResult(
+        outcome: KeyTestOutcome.fail,
+        title: "Couldn't run the test",
+        detail: 'The key-test function did not answer.',
+      );
+    }
+  }
+
   Future<Map<String, dynamic>> elifeConfig() async => normalizeElife(await _appSetting(elifeRemoteKey));
 
   Future<void> saveElifeConfig(Map<String, dynamic> config) => _saveAppSetting(elifeRemoteKey, config);
@@ -378,5 +417,15 @@ Future<void> exportCsv(BuildContext context, String filename, String csv) async 
   } catch (_) {
     await Clipboard.setData(ClipboardData(text: csv));
     if (context.mounted) showInfo(context, 'Saving isn\'t available here — CSV copied to the clipboard.');
+  }
+}
+
+/// A function's error body as JSON, or null.
+Object? _jsonOf(Object? d) {
+  if (d is! String) return d;
+  try {
+    return jsonDecode(d);
+  } catch (_) {
+    return null;
   }
 }

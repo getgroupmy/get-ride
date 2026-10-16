@@ -7,6 +7,7 @@ import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
+import '../maps/maps_screen.dart' show GoogleJsCheck;
 import 'api_keys_logic.dart';
 import 'security_data.dart';
 import '../../../data/live_tables.dart';
@@ -18,6 +19,9 @@ final apiProvidersProvider = FutureProvider.autoDispose((ref) {
   ref.watchLive('app_settings');
   return ref.watch(securityRepositoryProvider).apiProviders();
 });
+
+/// The tests a key can run (the `key-test` function's list).
+final keyTestsProvider = FutureProvider.autoDispose((ref) => ref.watch(securityRepositoryProvider).keyTests());
 
 bool _canEdit(WidgetRef ref, String page) =>
     ref.watch(securityLevelProvider('$apiKeysPage,$page')) == AccessLevel.edit;
@@ -433,6 +437,11 @@ class AdminApiKeysScreen extends ConsumerWidget {
     if (context.mounted) await _mutate(context, ref, (l) => removeKey(l, providerId, serviceId, k.id), success: 'Key removed');
   }
 
+  Future<void> _test(BuildContext context, List<ApiKeyEntry> keys, bool canSave) => showDialog<void>(
+        context: context,
+        builder: (_) => KeyTestDialog(providerId: providerId, serviceId: serviceId, keys: keys, canSave: canSave),
+      );
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = _canEdit(ref, 'admin-settings-api-keys-keys');
@@ -440,9 +449,19 @@ class AdminApiKeysScreen extends ConsumerWidget {
     final provider = providers.value?.where((p) => p.id == providerId).firstOrNull;
     final service = provider?.services.where((s) => s.id == serviceId).firstOrNull;
     final next = service == null ? null : pickNextKey(service);
+    final testable = service?.keys.where((k) => k.hasValue).toList() ?? const <ApiKeyEntry>[];
     return AdminPage(
       title: service?.name ?? 'Keys',
       page: apiKeysPage,
+      actions: [
+        if (testable.length > 1)
+          IconButton(
+            key: const ValueKey('api-keys-test-all'),
+            tooltip: 'Test all keys',
+            icon: const Icon(Icons.fact_check_outlined),
+            onPressed: () => _test(context, testable, canEdit),
+          ),
+      ],
       floatingActionButton: service == null
           ? null
           : FloatingActionButton.extended(
@@ -508,34 +527,46 @@ class AdminApiKeysScreen extends ConsumerWidget {
                       ]),
                       Text('Used ${k.useCount} · Failed ${k.failedCount}'
                           '${k.lastUsedAt != null ? ' · last used ${dateText(DateTime.fromMillisecondsSinceEpoch(k.lastUsedAt!).toIso8601String())}' : ''}'),
-                      if (canEdit)
-                        Wrap(spacing: 4, children: [
-                          BusyButton.text(
-                            icon: const Icon(Icons.check_circle_outline, size: 16),
-                            child: const Text('+ Use'),
-                            onPressed: () => _mutate(context, ref, (l) => reportKeyUsage(l, providerId, serviceId, k.id, true)),
+                      if (KeyLastTest.fromKey(k) case final last?)
+                        _LastTestLine(last, key: ValueKey('api-key-last-test-${k.id}')),
+                      Wrap(spacing: 4, children: [
+                        if (k.hasValue)
+                          TextButton.icon(
+                            key: ValueKey('api-key-test-${k.id}'),
+                            icon: const Icon(Icons.network_check, size: 16),
+                            label: const Text('Test'),
+                            onPressed: () => _test(context, [k], canEdit),
                           ),
-                          BusyButton.text(
-                            icon: const Icon(Icons.highlight_off, size: 16),
-                            child: const Text('+ Fail'),
-                            onPressed: () => _mutate(context, ref, (l) => reportKeyUsage(l, providerId, serviceId, k.id, false)),
-                          ),
-                          BusyButton.text(
-                            icon: const Icon(Icons.restart_alt, size: 16),
-                            child: const Text('Reset'),
-                            onPressed: () => _patch(context, ref, k, (x) => x.copyWith(useCount: 0, failedCount: 0)),
-                          ),
-                          BusyButton.text(
-                            icon: const Icon(Icons.power_settings_new, size: 16),
-                            child: Text(k.isDisabled ? 'Enable' : 'Disable'),
-                            onPressed: () => _patch(context, ref, k, (x) => x.copyWith(disabled: !x.isDisabled)),
-                          ),
-                          BusyButton.text(
-                            icon: const Icon(Icons.delete_outline, size: 16),
-                            child: const Text('Delete'),
-                            onPressed: () => _delete(context, ref, k),
-                          ),
-                        ]),
+                        if (canEdit) ...[
+                            BusyButton.text(
+                              icon: const Icon(Icons.check_circle_outline, size: 16),
+                              child: const Text('+ Use'),
+                              onPressed: () =>
+                                  _mutate(context, ref, (l) => reportKeyUsage(l, providerId, serviceId, k.id, true)),
+                            ),
+                            BusyButton.text(
+                              icon: const Icon(Icons.highlight_off, size: 16),
+                              child: const Text('+ Fail'),
+                              onPressed: () =>
+                                  _mutate(context, ref, (l) => reportKeyUsage(l, providerId, serviceId, k.id, false)),
+                            ),
+                            BusyButton.text(
+                              icon: const Icon(Icons.restart_alt, size: 16),
+                              child: const Text('Reset'),
+                              onPressed: () => _patch(context, ref, k, (x) => x.copyWith(useCount: 0, failedCount: 0)),
+                            ),
+                            BusyButton.text(
+                              icon: const Icon(Icons.power_settings_new, size: 16),
+                              child: Text(k.isDisabled ? 'Enable' : 'Disable'),
+                              onPressed: () => _patch(context, ref, k, (x) => x.copyWith(disabled: !x.isDisabled)),
+                            ),
+                            BusyButton.text(
+                              icon: const Icon(Icons.delete_outline, size: 16),
+                              child: const Text('Delete'),
+                              onPressed: () => _delete(context, ref, k),
+                            ),
+                        ],
+                      ]),
                     ]),
                   ),
                 ),
@@ -586,4 +617,247 @@ class _KeyDialogState extends State<_KeyDialog> {
           ),
         ],
       );
+}
+
+// ---- Key tests -----------------------------------------------------------------
+
+({IconData icon, Color color}) _outcomeLook(BuildContext context, KeyTestOutcome o) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return switch (o) {
+    KeyTestOutcome.ok => (icon: Icons.check_circle, color: dark ? Colors.green.shade300 : Colors.green.shade700),
+    KeyTestOutcome.warn => (icon: Icons.warning_amber, color: dark ? Colors.orange.shade300 : Colors.orange.shade800),
+    KeyTestOutcome.fail => (icon: Icons.error, color: Theme.of(context).colorScheme.error),
+  };
+}
+
+/// "Last test: Map Tiles API · Works · 2026-10-16 17:29" under a key.
+class _LastTestLine extends StatelessWidget {
+  const _LastTestLine(this.last, {super.key});
+  final KeyLastTest last;
+
+  @override
+  Widget build(BuildContext context) {
+    final look = _outcomeLook(context, last.outcome);
+    final when = dateText(DateTime.fromMillisecondsSinceEpoch(last.at).toIso8601String());
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(look.icon, size: 16, color: look.color),
+        const SizedBox(width: 6),
+        Expanded(child: Text('Last test: ${last.label} · ${last.title} · $when')),
+      ]),
+    );
+  }
+}
+
+/// Admin → API Keys → Test: pick a test, how to send it, and run it on
+/// [keys] (one, or every key of the service). Each answer is shown, and kept
+/// on the key when [canSave].
+class KeyTestDialog extends ConsumerStatefulWidget {
+  const KeyTestDialog({
+    super.key,
+    required this.providerId,
+    required this.serviceId,
+    required this.keys,
+    this.canSave = false,
+  });
+
+  final String providerId;
+  final String serviceId;
+  final List<ApiKeyEntry> keys;
+  final bool canSave;
+
+  @override
+  ConsumerState<KeyTestDialog> createState() => _KeyTestDialogState();
+}
+
+class _KeyTestDialogState extends ConsumerState<KeyTestDialog> {
+  final _cert = TextEditingController();
+  String? _testId;
+  KeySendAs? _as;
+  bool _running = false;
+  final _results = <String, KeyTestResult>{};
+
+  @override
+  void dispose() {
+    _cert.dispose();
+    super.dispose();
+  }
+
+  List<KeyTestDef> _choices(List<KeyTestDef> all) {
+    final list = keyTestsFor(all, widget.providerId, widget.serviceId);
+    // Google's JavaScript map runs in this page, one key at a time.
+    return widget.keys.length > 1 ? list.where((t) => !t.browser).toList() : list;
+  }
+
+  Future<void> _run(KeyTestDef test, KeySendAs as) async {
+    setState(() {
+      _running = true;
+      _results.clear();
+    });
+    final repo = ref.read(securityRepositoryProvider);
+    for (final k in widget.keys) {
+      final r = await repo.testKey(
+        providerId: widget.providerId,
+        serviceId: widget.serviceId,
+        keyId: k.id,
+        testId: test.id,
+        sendAs: as,
+        cert: as == KeySendAs.android ? _cert.text : null,
+      );
+      if (!mounted) return;
+      setState(() => _results[k.id] = r);
+    }
+    if (widget.canSave) {
+      try {
+        await repo.mutateApiProviders((l) {
+          var next = l;
+          for (final e in _results.entries) {
+            next = recordKeyTest(next, widget.providerId, widget.serviceId, e.key, test, e.value);
+          }
+          return next;
+        });
+        ref.invalidate(apiProvidersProvider);
+      } catch (_) {
+        // The answers are on screen; keeping them on the key is a nicety.
+      }
+    }
+    if (mounted) setState(() => _running = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final tests = ref.watch(keyTestsProvider);
+    final one = widget.keys.length == 1;
+    final choices = _choices(tests.value ?? const []);
+    final test = choices.where((c) => c.id == _testId).firstOrNull ?? choices.firstOrNull;
+    final as = _as ?? defaultSendAs(widget.serviceId, test);
+    return AlertDialog(
+      key: const ValueKey('key-test-dialog'),
+      title: Text(one ? 'Test ${widget.keys.single.label}' : 'Test ${widget.keys.length} keys'),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (tests.isLoading && !tests.hasValue)
+              const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
+            else if (tests.hasError && !tests.hasValue)
+              Text("Couldn't load the tests. Try again in a moment.", style: TextStyle(color: t.colorScheme.error))
+            else if (test == null)
+              const Text('There is no test for this provider yet.', key: ValueKey('key-test-none'))
+            else ...[
+              DropdownButtonFormField<String>(
+                key: const ValueKey('key-test-pick'),
+                initialValue: test.id,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Test'),
+                items: [
+                  for (final c in choices)
+                    DropdownMenuItem(value: c.id, child: Text(c.label, overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: _running
+                    ? null
+                    : (v) => setState(() {
+                          _testId = v;
+                          _as = null;
+                          _results.clear();
+                        }),
+              ),
+              if (test.about.isNotEmpty)
+                Padding(padding: const EdgeInsets.only(top: 6), child: Text(test.about, style: t.textTheme.bodySmall)),
+              const SizedBox(height: 12),
+              if (test.browser)
+                GoogleJsCheck(key: ValueKey('key-test-js-${widget.keys.single.id}'), apiKey: widget.keys.single.value)
+              else ...[
+                DropdownButtonFormField<KeySendAs>(
+                  key: const ValueKey('key-test-as'),
+                  initialValue: as,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Send as',
+                    helperText: 'As the app or site the key is kept to',
+                  ),
+                  items: [for (final a in KeySendAs.values) DropdownMenuItem(value: a, child: Text(a.label))],
+                  onChanged: _running ? null : (v) => setState(() => _as = v),
+                ),
+                if (as == KeySendAs.android) ...[
+                  const SizedBox(height: 8),
+                  TextField(
+                    key: const ValueKey('key-test-cert'),
+                    controller: _cert,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'SHA-1 of the signing key (optional)',
+                      hintText: 'AB:CD:…',
+                      helperText: 'Play Console → App integrity. Without it, a key kept to the app is refused.',
+                      helperMaxLines: 2,
+                    ),
+                  ),
+                ],
+              ],
+              for (final k in widget.keys)
+                if (_results[k.id] case final r?)
+                  _ResultRow(label: one ? null : k.label, result: r, key: ValueKey('key-test-result-${k.id}'))
+                else if (_running)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Row(children: [
+                      const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(one ? 'Testing…' : '${k.label}: testing…')),
+                    ]),
+                  ),
+            ],
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+        if (test != null && !test.browser)
+          FilledButton.icon(
+            key: const ValueKey('key-test-run'),
+            onPressed: _running ? null : () => _run(test, as),
+            icon: const Icon(Icons.play_arrow),
+            label: Text(_results.isEmpty ? 'Run test' : 'Run again'),
+          ),
+      ],
+    );
+  }
+}
+
+class _ResultRow extends StatelessWidget {
+  const _ResultRow({super.key, required this.result, this.label});
+  final KeyTestResult result;
+
+  /// The key's label, when several are tested.
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final look = _outcomeLook(context, result.outcome);
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: look.color.withValues(alpha: 0.08),
+        border: Border.all(color: look.color.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(look.icon, color: look.color, size: 20),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label == null ? result.title : '$label: ${result.title}',
+                style: t.textTheme.titleSmall?.copyWith(color: look.color)),
+            if (result.detail.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 2), child: Text(result.detail)),
+            if (result.meta.isNotEmpty)
+              Padding(padding: const EdgeInsets.only(top: 2), child: Text(result.meta, style: t.textTheme.bodySmall)),
+          ]),
+        ),
+      ]),
+    );
+  }
 }
