@@ -14,10 +14,11 @@
 /// silent, on the sign-in screen, for everyone.
 ///
 /// So the mobile implementation throws this instead, and
-/// `signInWithPasskey` turns it into a message. The browser has no
-/// equivalent — WebAuthn reports a dismissal and a refusal with the
-/// same `NotAllowedError`, deliberately, so that a page cannot learn
-/// which it was — so nothing on web throws this.
+/// `signInWithPasskey` turns it into a message. In a browser a dismissal
+/// and most refusals are the same `NotAllowedError`, deliberately, so
+/// that a page cannot learn which it was; those stay silent. The other
+/// errors a browser raises do name a reason ([webPasskeyRefusal]), and
+/// the web implementation throws this with it.
 library;
 
 /// Thrown by a platform implementation when the ceremony failed for a
@@ -48,6 +49,31 @@ const passkeyDomainNotAssociated =
     'please tell GET.ride support, and sign in with your PIN '
     'for now.';
 
+/// The sentence for a browser that refused because the site's passkey
+/// setting (Supabase → Authentication → Passkeys, Relying Party ID) does
+/// not match the page's address: a `SecurityError`.
+const passkeySiteMismatch =
+    "Your browser refused the passkey: this site's passkey setting doesn't match "
+    'its address. It is a setting on the site rather than anything you have done — '
+    'please tell GET.ride support, and sign in with your PIN for now.';
+
+/// What to say when a browser's WebAuthn call failed with the
+/// `DOMException` [name]; null for a dismissal or a timeout, which say
+/// nothing. [creating] is saving a passkey rather than using one.
+String? webPasskeyRefusal(String name, {required bool creating}) => switch (name) {
+  'NotAllowedError' || 'AbortError' || '' => null,
+  'SecurityError' => passkeySiteMismatch,
+  'InvalidStateError' when creating => 'A passkey for this account is already saved on this device.',
+  'NotSupportedError' =>
+    "This browser can't ${creating ? 'save' : 'use'} a passkey. Try another browser, or sign in with your PIN.",
+  'ConstraintError' =>
+    "This device can't ${creating ? 'save' : 'use'} a passkey without a screen lock. "
+        'Turn on a screen lock or fingerprint, then try again.',
+  _ =>
+    'Your browser refused the passkey ($name). '
+        '${creating ? 'Try again, or sign in with your PIN.' : 'Sign in with your PIN instead.'}',
+};
+
 /// Whether a failure is the SITE not being configured.
 ///
 /// This is worth telling apart from every other refusal, because it is
@@ -65,4 +91,4 @@ const passkeyDomainNotAssociated =
 /// again on every press. The cards draw a plain note instead and stop
 /// offering the button, which is what an unconfigured feature should
 /// look like.
-bool passkeyNotSetUpHere(String? message) => message == passkeyDomainNotAssociated;
+bool passkeyNotSetUpHere(String? message) => message == passkeyDomainNotAssociated || message == passkeySiteMismatch;

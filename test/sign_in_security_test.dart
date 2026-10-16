@@ -103,6 +103,33 @@ void main() {
     });
   });
 
+  group("the browser's reason", () {
+    test('a dismissal or timeout says nothing', () {
+      for (final n in ['NotAllowedError', 'AbortError', '']) {
+        expect(pk.webPasskeyRefusal(n, creating: true), isNull, reason: n);
+        expect(pk.webPasskeyRefusal(n, creating: false), isNull, reason: n);
+      }
+    });
+
+    test("a site whose passkey setting doesn't match its address is named, as a site setting", () {
+      final m = pk.webPasskeyRefusal('SecurityError', creating: true);
+      expect(m, pk.passkeySiteMismatch);
+      expect(m, contains("passkey setting doesn't match"));
+      expect(pk.passkeyNotSetUpHere(m), isTrue, reason: 'shown as a plain note, not a red error');
+      expect(pk.passkeyNotSetUpHere(pk.passkeyDomainNotAssociated), isTrue);
+      expect(pk.passkeyNotSetUpHere('Something else'), isFalse);
+    });
+
+    test('other refusals say what to do', () {
+      expect(pk.webPasskeyRefusal('InvalidStateError', creating: true), contains('already saved on this device'));
+      expect(pk.webPasskeyRefusal('NotSupportedError', creating: true), contains("can't save a passkey"));
+      expect(pk.webPasskeyRefusal('NotSupportedError', creating: false), contains("can't use a passkey"));
+      expect(pk.webPasskeyRefusal('ConstraintError', creating: true), contains('screen lock'));
+      expect(pk.webPasskeyRefusal('UnknownError', creating: false), contains('(UnknownError)'));
+      expect(pk.webPasskeyRefusal('InvalidStateError', creating: false), contains('(InvalidStateError)'));
+    });
+  });
+
   group('one device', () {
     test("a token's session id is read from its claims", () {
       expect(sessionIdOf(_token({'sub': 'u', 'session_id': 's-1'})), 's-1');
