@@ -1,6 +1,8 @@
 // The map's base tiles, shared by every FlutterMap in the app.
 //
-// By default these are OpenStreetMap's standard tiles, which need no key. In
+// Release builds default to TomTom's map with the build's TomTom key
+// (scripts/ci/map_defines.sh): OpenStreetMap's public server refuses
+// phones. Without one they are OpenStreetMap's standard tiles. In
 // dark mode the same tiles are darkened on the device rather than fetched
 // from a dark-style provider: the CARTO "dark matter" tiles used before
 // started answering public sites with an "API KEY REQUIRED" placeholder.
