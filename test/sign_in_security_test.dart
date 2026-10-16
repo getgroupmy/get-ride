@@ -1,3 +1,5 @@
+// ignore_for_file: experimental_member_use
+// `Passkey` (gotrue) is @experimental: passkeys are a beta Supabase feature.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -13,11 +15,24 @@ import 'package:get_ride/src/features/auth/passkey/passkey.dart' as pk;
 import 'package:get_ride/src/features/auth/passkey_sign_in_button.dart';
 import 'package:get_ride/src/features/auth/phone_screen.dart';
 import 'package:get_ride/src/features/auth/welcome_screen.dart';
+import 'package:get_ride/src/features/settings/passkeys_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show Passkey;
 
 class _Auth implements AuthRepository {
   int passkeySignIns = 0;
+  int passkeySaves = 0;
+
+  @override
+  Future<List<Passkey>> passkeys() async => const [];
+
+  @override
+  Future<pk.PasskeyResult> savePasskey() async {
+    passkeySaves++;
+    return (outcome: pk.PasskeyOutcome.cancelled, message: null);
+  }
+
   pk.PasskeyResult next = (outcome: pk.PasskeyOutcome.cancelled, message: null);
 
   @override
@@ -58,6 +73,36 @@ void main() {
     });
   });
 
+  group('wrong address', () {
+    test('passkeys work only on https://www.getride.my; anywhere else is sent there, same page', () {
+      expect(passkeyAddressFix(Uri.parse('https://www.getride.my/account/settings/passkeys')), isNull);
+      expect(
+        passkeyAddressFix(Uri.parse('http://getride.my/account/settings?x=1#top')),
+        Uri.parse('https://www.getride.my/account/settings?x=1#top'),
+      );
+      expect(passkeyAddressFix(Uri.parse('http://www.getride.my/login')), Uri.parse('https://www.getride.my/login'));
+      expect(passkeyAddressFix(Uri.parse('https://getride.my')), Uri.parse('https://www.getride.my/'));
+      expect(
+        passkeyAddressFix(Uri.parse('https://get-ride-abc.vercel.app/login')),
+        Uri.parse('https://www.getride.my/login'),
+      );
+      expect(
+        passkeyAddressFix(Uri.parse('http://localhost:8080/login')),
+        Uri.parse('https://www.getride.my/login'),
+        reason: 'the port is not carried over',
+      );
+    });
+
+    test('says where passkeys work and why not here', () {
+      final insecure = passkeyWrongAddressMessage(Uri.parse('http://getride.my/account'));
+      expect(insecure, contains('only work at www.getride.my'));
+      expect(insecure, contains('open at getride.my without a secure (https) connection'));
+      final other = passkeyWrongAddressMessage(Uri.parse('https://getride.my/account'));
+      expect(other, contains('open at getride.my,'));
+      expect(other, isNot(contains('https) connection')));
+    });
+  });
+
   group('one device', () {
     test("a token's session id is read from its claims", () {
       expect(sessionIdOf(_token({'sub': 'u', 'session_id': 's-1'})), 's-1');
@@ -93,7 +138,7 @@ void main() {
   });
 
   group('welcome page', () {
-    Future<_Auth> pump(WidgetTester tester, {required bool offered, Brightness b = Brightness.light}) async {
+    Future<_Auth> pump(WidgetTester tester, {required bool offered, Brightness b = Brightness.light, Uri? fix}) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(500, 1100);
       addTearDown(tester.view.reset);
@@ -105,6 +150,7 @@ void main() {
             authRepositoryProvider.overrideWithValue(auth),
             appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
             passkeyOfferedHereProvider.overrideWith((ref) async => offered),
+            passkeyAddressFixProvider.overrideWithValue(fix),
           ],
           child: MaterialApp.router(
             theme: ThemeData(brightness: b),
@@ -148,6 +194,56 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
         expect(find.text('There is no passkey saved on this device.'), findsOneWidget);
+      });
+
+      testWidgets('on the wrong address it offers www.getride.my instead of a passkey (${b.name})', (tester) async {
+        final auth = await pump(tester, offered: true, b: b, fix: Uri.parse('https://www.getride.my/login'));
+        expect(find.byKey(const ValueKey('passkey-sign-in')), findsNothing);
+        expect(find.byKey(const ValueKey('passkey-open-www')), findsOneWidget);
+        expect(find.text('Use a passkey at www.getride.my'), findsOneWidget);
+        expect(find.text('Continue with phone'), findsOneWidget);
+        expect(auth.passkeySignIns, 0);
+      });
+
+      testWidgets('Settings → Passkeys on the wrong address says where they work (${b.name})', (tester) async {
+        final auth = _Auth();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              authRepositoryProvider.overrideWithValue(auth),
+              passkeyPageProvider.overrideWithValue(Uri.parse('http://getride.my/account/settings/passkeys')),
+              passkeyAddressFixProvider.overrideWithValue(
+                Uri.parse('https://www.getride.my/account/settings/passkeys'),
+              ),
+            ],
+            child: MaterialApp(theme: ThemeData(brightness: b), home: const PasskeysScreen()),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('passkeys-wrong-address')), findsOneWidget);
+        expect(find.textContaining('This page is open at getride.my without a secure'), findsOneWidget);
+        expect(find.byKey(const ValueKey('passkeys-open-www')), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('passkeys-save')));
+        await tester.pump();
+        expect(auth.passkeySaves, 0, reason: 'the browser would refuse it here');
+      });
+
+      testWidgets('Settings → Passkeys on www.getride.my saves as before (${b.name})', (tester) async {
+        final auth = _Auth();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              authRepositoryProvider.overrideWithValue(auth),
+              passkeyAddressFixProvider.overrideWithValue(null),
+            ],
+            child: MaterialApp(theme: ThemeData(brightness: b), home: const PasskeysScreen()),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('passkeys-wrong-address')), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('passkeys-save')));
+        await tester.pumpAndSettle();
+        expect(auth.passkeySaves, 1);
       });
 
       testWidgets('continue with phone opens the number page, and back returns (${b.name})', (tester) async {

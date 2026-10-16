@@ -3,6 +3,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/sign_in_security.dart';
 import '../../data/session_guard.dart';
@@ -25,8 +26,22 @@ final passkeyOfferedHereProvider = FutureProvider<bool>((ref) async {
   }
 });
 
+/// On the web, the address passkeys need when this page isn't on it
+/// (`passkeyAddressFix`); null on it, and in the apps.
+final passkeyAddressFixProvider = Provider<Uri?>(
+  (ref) => kIsWeb ? passkeyAddressFix(ref.watch(passkeyPageProvider)) : null,
+);
+
+/// The page's own address (the browser's, on the web).
+final passkeyPageProvider = Provider<Uri>((ref) => Uri.base);
+
+/// Opens [fix] in this tab: a passkey can only be saved or used there.
+Future<void> openPasskeyAddress(Uri fix) => launchUrl(fix, webOnlyWindowName: '_self');
+
 /// "Continue with passkey", the first choice on the sign-in screen (as
-/// inDrive does) wherever passkeys are offered; nothing elsewhere.
+/// inDrive does) wherever passkeys are offered; nothing elsewhere. On the
+/// wrong address (getride.my, http, a preview) it offers to open
+/// www.getride.my instead, as the passkey would only be refused here.
 class PasskeySignInButton extends ConsumerStatefulWidget {
   const PasskeySignInButton({super.key});
 
@@ -58,6 +73,19 @@ class _PasskeySignInButtonState extends ConsumerState<PasskeySignInButton> {
   Widget build(BuildContext context) {
     if (ref.watch(passkeyOfferedHereProvider).value != true) return const SizedBox.shrink();
     final t = Theme.of(context);
+    final fix = ref.watch(passkeyAddressFixProvider);
+    if (fix != null) {
+      return OutlinedButton.icon(
+        key: const ValueKey('passkey-open-www'),
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(56),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        onPressed: () => openPasskeyAddress(fix),
+        icon: const Icon(Icons.open_in_new),
+        label: const Text('Use a passkey at $passkeyHost'),
+      );
+    }
     return FilledButton.icon(
       key: const ValueKey('passkey-sign-in'),
       style: FilledButton.styleFrom(

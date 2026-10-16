@@ -13,6 +13,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/sign_in_security.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -103,6 +104,7 @@ class _PasskeysScreenState extends ConsumerState<PasskeysScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
+    final fix = ref.watch(passkeyAddressFixProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Passkeys')),
       body: ListView(
@@ -119,6 +121,37 @@ class _PasskeysScreenState extends ConsumerState<PasskeysScreen> {
                   style: t.textTheme.bodyMedium?.copyWith(color: muted),
                 ),
                 const SizedBox(height: 16),
+                // On the wrong address the browser would refuse the passkey
+                // without a word, so say where it works instead.
+                if (fix != null) ...[
+                  Card(
+                    key: const ValueKey('passkeys-wrong-address'),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.info_outline, color: muted),
+                              const SizedBox(width: 12),
+                              Expanded(child: Text(passkeyWrongAddressMessage(ref.watch(passkeyPageProvider)))),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.tonalIcon(
+                            key: const ValueKey('passkeys-open-www'),
+                            onPressed: () => openPasskeyAddress(fix),
+                            icon: const Icon(Icons.open_in_new),
+                            label: const Text('Open $passkeyHost'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 if (_note != null) ...[
                   Card(
                     key: const ValueKey('passkeys-not-set-up'),
@@ -128,7 +161,7 @@ class _PasskeysScreenState extends ConsumerState<PasskeysScreen> {
                 ],
                 BusyButton.filled(
                   key: const ValueKey('passkeys-save'),
-                  onPressed: _note == null ? _save : null,
+                  onPressed: _note == null && fix == null ? _save : null,
                   icon: const Icon(Icons.add),
                   child: const Text('Save a passkey on this device'),
                 ),
@@ -178,6 +211,9 @@ class _PasskeysScreenState extends ConsumerState<PasskeysScreen> {
 /// to save a passkey, where passkeys are offered. Quiet in every other case.
 Future<void> offerPasskeyOnce(BuildContext context, WidgetRef ref, String userId) async {
   if (await ref.read(passkeyOfferedHereProvider.future) != true) return;
+  // Not on the wrong address: the browser would refuse it, and the offer
+  // is kept for when this account signs in at www.getride.my.
+  if (ref.read(passkeyAddressFixProvider) != null) return;
   final prefs = await SharedPreferences.getInstance();
   final key = 'passkey_offered_$userId';
   if (prefs.getBool(key) == true) return;
