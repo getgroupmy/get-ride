@@ -109,6 +109,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Place? _pickup;
   Place? _drop;
 
+  /// The confirm step's address card, measured so the route is framed in
+  /// the map left between its bottom edge and the sheet.
+  final _confirmCard = GlobalKey();
+
+  /// The card's bottom edge, down from the map's top (0 until measured).
+  double _confirmCardBottom = 0;
+
+  /// The room kept above and below the route on the confirm map, as last laid out.
+  double _confirmFitTop = 160, _confirmFitBottom = 64;
+
   /// Stops on the way, in order (up to [maxRideStops]).
   final List<Place> _stops = [];
   RouteInfo? _route;
@@ -1030,6 +1040,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// The route button: the whole trip back in view.
+  /// Where the confirm card's bottom edge falls on the map; a new fit
+  /// when it moved (the card grew with a stop, or the map's height changed).
+  void _measureConfirmCard() {
+    if (!mounted) return;
+    final card = _confirmCard.currentContext?.findRenderObject();
+    final map = _pin.currentContext?.findRenderObject();
+    if (card is! RenderBox || map is! RenderBox || !card.hasSize || !map.hasSize) return;
+    final bottom = card.localToGlobal(Offset(0, card.size.height)).dy - map.localToGlobal(Offset.zero).dy;
+    if ((bottom - _confirmCardBottom).abs() > 1) setState(() => _confirmCardBottom = bottom);
+  }
+
   void _showWholeRoute(double bottom) {
     final pts = [
       ?_pickup?.point,
@@ -1039,7 +1060,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ];
     if (pts.length > 1) {
       _map.fitCamera(
-        CameraFit.coordinates(coordinates: pts, padding: EdgeInsets.fromLTRB(64, 160, 64, 64 + bottom), maxZoom: 16),
+        CameraFit.coordinates(
+          coordinates: pts,
+          padding: EdgeInsets.fromLTRB(64, _confirmFitTop, 64, _confirmFitBottom + bottom),
+          maxZoom: 16,
+        ),
       );
     }
     setState(() => _routeMoved = false);
@@ -1228,6 +1253,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final aboveBar = layout.promoBar || demand != null
         ? PromoBanner.visibleHeight + (layout.promoBarInFront ? PromoBanner.tuck : 0) + 12 - layout.promoBarOffset
         : 12.0;
+    // On the confirm map the route is framed between the address card and
+    // the promo bar on the sheet, with room for the marks standing over it.
+    if (confirming && _pinTarget == _PinTarget.none) {
+      final cardBottom = _confirmCardBottom > 0 ? _confirmCardBottom : 150.0;
+      _confirmFitTop = cardBottom + 12 + confirmPickupTop;
+      _confirmFitBottom = aboveBar + 16 + confirmPickupDot;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measureConfirmCard());
+    }
     // Places that move with the sheet: [build] gets how far up it reaches.
     Widget aboveSheet(Widget Function(double inset) build) => Positioned.fill(
       child: Builder(builder: (c) => MapBottomInset.listen(c, (inset) => Stack(children: [build(inset)]))),
@@ -1282,6 +1315,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               pointZoom: homeStreetZoom,
               onGesture: confirming && !_routeMoved ? () => setState(() => _routeMoved = true) : null,
               autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
+              fitTop: confirming ? _confirmFitTop : 64,
+              fitBottom: confirming ? _confirmFitBottom : 64,
               drop: _drop?.point,
               stops: [for (final p in _stops) p.point],
               route: _route?.points ?? const [],
@@ -1409,6 +1444,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           right: 16 - layout.address.$1,
           child: SafeArea(
             child: ConfirmAddressCard(
+              key: _confirmCard,
               pickup: _pickup,
               drop: _drop!,
               stops: _stops,

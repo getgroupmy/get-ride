@@ -159,6 +159,7 @@ class RideMap extends StatefulWidget {
     this.showPickup = true,
     this.dotPins = false,
     this.fitTop = 64,
+    this.fitBottom = 64,
     this.focusPickup = false,
     this.extraLayers = const [],
     this.hideCredit = false,
@@ -218,6 +219,10 @@ class RideMap extends StatefulWidget {
   /// labels stand over the pins, or a title over the map).
   final double fitTop;
 
+  /// Room kept below the lowest point, over what a sheet covers
+  /// ([MapBottomInset]): more where a bar stands on the sheet's top.
+  final double fitBottom;
+
   /// The home map's look (inDrive's): with no drop-off yet the camera keeps
   /// the pickup (else the rider) alone in the middle of the map above the
   /// sheet when it is all the way down ([MapBottomInset.focusOffset]),
@@ -264,6 +269,9 @@ class _RideMapState extends State<RideMap> {
             old.stops.length != widget.stops.length ||
             old.route.length != widget.route.length ||
             old.framed.length != widget.framed.length ||
+            // Room above or below changed (the card over the map grew).
+            old.fitTop != widget.fitTop ||
+            old.fitBottom != widget.fitBottom ||
             // The first fix: a map opened before it was centred on nothing.
             (old.me == null && widget.me != null))) {
       _fit();
@@ -278,7 +286,7 @@ class _RideMapState extends State<RideMap> {
     final bottom = MapBottomInset.of(context);
     return CameraFit.coordinates(
       coordinates: pts,
-      padding: EdgeInsets.fromLTRB(64, widget.fitTop, 64, 64 + bottom),
+      padding: EdgeInsets.fromLTRB(64, widget.fitTop, 64, widget.fitBottom + bottom),
       maxZoom: 16,
     );
   }
@@ -318,7 +326,7 @@ class _RideMapState extends State<RideMap> {
           _points,
           widget.route,
           Size(constraints.maxWidth, constraints.maxHeight),
-          bottom: MapBottomInset.of(context),
+          bottom: MapBottomInset.of(context) + widget.fitBottom - 64,
           top: widget.fitTop,
           pointZoom: widget.pointZoom,
         );

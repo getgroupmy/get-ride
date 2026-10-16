@@ -337,6 +337,18 @@ void main() {
     expect(top, greaterThan(860 * (1 - 0.22) - 24), reason: 'at its lowest (22%), not half way up');
   });
 
+  testWidgets('the route is framed between the address card and the bar on the sheet', (tester) async {
+    await _pump(tester, _Rides());
+    await _settle(tester);
+    final card = tester.getRect(find.byKey(const ValueKey('confirm-address-card')));
+    final bar = tester.getRect(find.byKey(const ValueKey('promo-banner')));
+    for (final mark in ['map-dot-pickup', 'map-dot-drop']) {
+      final r = tester.getRect(find.byKey(ValueKey(mark)));
+      expect(r.top, greaterThanOrEqualTo(card.bottom), reason: '$mark below the card');
+      expect(r.bottom, lessThanOrEqualTo(bar.top), reason: '$mark above the bar on the sheet');
+    }
+  });
+
   testWidgets('the confirm step is laid out as Expo ride-confirm', (tester) async {
     await _pump(tester, _Rides());
 
