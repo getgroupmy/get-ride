@@ -125,6 +125,47 @@ export function fallbackKey(slot: string, env: (name: string) => string | undefi
   return null;
 }
 
+// ---- Google Maps share links ---------------------------------------------------------------
+
+/** Google's short and share link hosts (maps.app.goo.gl/AbC…), expanded for place search. */
+const SHORT_HOSTS = new Set(["maps.app.goo.gl", "goo.gl", "share.google", "g.co"]);
+
+/** www.google.com, maps.google.com, google.com.my … */
+export function isGoogleMapsHost(host: string): boolean {
+  return /^((www|maps)\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host.toLowerCase());
+}
+
+/** A Google Maps share link worth expanding: https, one of Google's short hosts. */
+export function isShortMapLink(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:" || !SHORT_HOSTS.has(u.hostname)) return false;
+    return u.hostname !== "goo.gl" || u.pathname.startsWith("/maps");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The next hop of a share link, when it stays on Google (short hosts, Maps,
+ * or the cookie-consent page, whose `continue` is taken instead); null for
+ * anywhere else, so `geo` never fetches a host it was not meant to.
+ */
+export function nextMapHop(location: string, from: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(location, from);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  if (u.hostname === "consent.google.com") {
+    const cont = u.searchParams.get("continue");
+    return cont ? nextMapHop(cont, from) : null;
+  }
+  return SHORT_HOSTS.has(u.hostname) || isGoogleMapsHost(u.hostname) ? u.toString() : null;
+}
+
 // ---- Tiles -----------------------------------------------------------------------------------
 
 export interface TileSource {

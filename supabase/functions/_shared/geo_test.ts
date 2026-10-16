@@ -14,7 +14,9 @@ import {
   googleDirectionsRequest,
   googleLegacyRefusal,
   googleLegacySearchRequest,
+  isShortMapLink,
   keySlot,
+  nextMapHop,
   parseReverse,
   parseRoute,
   parseSearch,
@@ -445,6 +447,46 @@ Deno.test("Google's JavaScript map and its traffic, on the web", async () => {
   assertEquals(a.profile.tiles.traffic, { google: true });
   assertEquals(sessions, [], "no Map Tiles session for the JavaScript map");
   assertEquals(fallbackKey("google_js", (n) => ({ GOOGLE_MAP_API_KEY: "SERVER" })[n]), "SERVER", "the Maps key when no browser key");
+});
+
+Deno.test("share links: followed only through Google's own hosts", async () => {
+  assert(isShortMapLink("https://maps.app.goo.gl/AbC123"));
+  assert(isShortMapLink("https://goo.gl/maps/XyZ"));
+  assert(!isShortMapLink("https://goo.gl/other"));
+  assert(!isShortMapLink("http://maps.app.goo.gl/AbC123"), "https only");
+  assert(!isShortMapLink("https://evil.example/maps"));
+  assertEquals(nextMapHop("/maps/place/x", "https://www.google.com/a"), "https://www.google.com/maps/place/x");
+  assertEquals(nextMapHop("https://169.254.169.254/latest", "https://maps.app.goo.gl/a"), null);
+  assertEquals(
+    nextMapHop(
+      "https://consent.google.com/m?continue=https%3A%2F%2Fwww.google.com%2Fmaps%2Fplace%2FKLIA",
+      "https://maps.app.goo.gl/a",
+    ),
+    "https://www.google.com/maps/place/KLIA",
+  );
+
+  const hops: Record<string, string> = {
+    "https://maps.app.goo.gl/AbC123": "https://www.google.com/maps/place/KLIA/@2.7,101.7,15z/data=!3d2.7456!4d101.7072",
+    "https://maps.app.goo.gl/Away": "https://example.com/phish",
+  };
+  const asked: string[] = [];
+  const { d } = deps({
+    redirect: (url) => {
+      asked.push(url);
+      return Promise.resolve(hops[url] ?? null);
+    },
+  });
+  const ok = await handleGeo(q("action=expand&url=https://maps.app.goo.gl/AbC123"), "ip", d);
+  assertEquals(ok, {
+    status: 200,
+    body: { url: "https://www.google.com/maps/place/KLIA/@2.7,101.7,15z/data=!3d2.7456!4d101.7072" },
+  });
+  assertEquals((await handleGeo(q("action=expand&url=https://maps.app.goo.gl/Away"), "ip", d)).status, 422);
+  assertEquals((await handleGeo(q("action=expand&url=https://example.com/x"), "ip", d)).status, 400);
+  assert(!asked.includes("https://example.com/x"), "never fetched");
+  assert(!asked.includes("https://example.com/phish"), "never followed");
+  const limited = deps({ take: () => Promise.resolve(false), redirect: () => Promise.resolve(null) }).d;
+  assertEquals((await handleGeo(q("action=expand&url=https://maps.app.goo.gl/AbC123"), "ip", limited)).status, 429);
 });
 
 Deno.test("fallback: the function's own Google secrets when Admin → API Keys has none", async () => {

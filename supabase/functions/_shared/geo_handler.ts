@@ -17,6 +17,9 @@
  *       → { route: { distanceKm, durationMin, points: [[lat, lng], …] } | null }
  *   Google's place search and routes use the newer API, the older one, or the newer then the
  *   older when it refuses, as map_config.googleApi says ("new" | "old" | "new_old").
+ *   GET ?action=expand&url=https://maps.app.goo.gl/…
+ *       → { url: "https://www.google.com/maps/place/…" }  a share link pasted into place
+ *         search, followed only through Google's own hosts (at most 6 hops)
  *   GET ?action=fallbacks
  *       → { slots: ["google_tiles", …] }  the key slots with a secret synced from GitHub
  *         (names only, never a key), so Admin → Settings → Maps doesn't call them missing.
@@ -34,6 +37,9 @@ import {
   googleLegacySearchRequest,
   googleSessionBody,
   type HttpRequest,
+  isGoogleMapsHost,
+  isShortMapLink,
+  nextMapHop,
   isDevice,
   isRole,
   type Kind,
@@ -67,6 +73,8 @@ export interface GeoDeps {
   iso3(cc: string): string | null;
   /** The function's own secret for a key slot, when Admin → API Keys has none. */
   fallbackKey?(slot: string): string | null;
+  /** Where [url] redirects to (its Location), without following it; null when it doesn't. */
+  redirect?(url: string): Promise<string | null>;
 }
 
 /** Proxied lookups per caller address per minute. */
@@ -101,6 +109,21 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   const action = params.get("action") ?? "";
   if (action === "fallbacks") {
     return { status: 200, body: { slots: Object.keys(FALLBACK_SECRETS).filter((s) => !!deps.fallbackKey?.(s)) } };
+  }
+  if (action === "expand") {
+    const url = (params.get("url") ?? "").trim();
+    if (!isShortMapLink(url) || !deps.redirect) return bad("Not a Google Maps share link.");
+    if (!(await deps.take(`ip:${ip}`, RATE_LIMIT))) return bad("rate_limited", 429);
+    let at = url;
+    for (let hop = 0; hop < 6; hop++) {
+      const location = await deps.redirect(at).catch(() => null);
+      if (!location) break;
+      const next = nextMapHop(location, at);
+      if (!next) return bad("That link leads outside Google Maps.", 422);
+      at = next;
+    }
+    if (!isGoogleMapsHost(new URL(at).hostname)) return bad("That link did not open a place.", 422);
+    return { status: 200, body: { url: at } };
   }
   const role = params.get("role") ?? "";
   const device = params.get("device") ?? "";

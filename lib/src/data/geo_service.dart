@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../core/map_link.dart';
 import '../core/map_profile.dart';
 
 class Place {
@@ -121,7 +122,14 @@ class GeoService {
       ? const {'Accept-Language': 'en'}
       : const {'User-Agent': 'GET.ride Flutter (getgroup.my)', 'Accept-Language': 'en'};
 
+  /// Places for [query]; a pasted Google Maps link (or coordinates) gives
+  /// the place it points to.
   Future<List<Place>> search(String query, {LatLng? near}) async {
+    final link = parseMapLink(query);
+    if (link != null) {
+      final p = await placeFromLink(link, near: near);
+      return p == null ? [] : [p];
+    }
     if (query.trim().length < 3) return [];
     final found = await _first<List<Place>>(_profile().search, (provider) async {
       if (provider == 'nominatim') return _nominatimSearch(query, near);
@@ -141,6 +149,32 @@ class GeoService {
       ];
     });
     return found ?? [];
+  }
+
+  /// The place a Google Maps link points to: a share link expanded by `geo`
+  /// first; a pin named from the link or by address lookup; a named place
+  /// searched for near where the link's map was looking. Null when it can't
+  /// be told.
+  Future<Place?> placeFromLink(MapLink link, {LatLng? near}) async {
+    var l = link;
+    if (l.short) {
+      if (lookup == null || l.url == null) return null;
+      final body = await lookup!({'action': 'expand', 'url': l.url!}).catchError((_) => null);
+      final long = body?['url'];
+      final read = long is String ? parseMapLink(long) : null;
+      if (read == null || read.short) return null;
+      l = read;
+    }
+    final point = l.point;
+    if (point != null) {
+      final at = await reverse(point);
+      final name = l.name?.trim();
+      return Place(name: name == null || name.isEmpty ? at.name : name, address: at.address, point: point);
+    }
+    final q = l.query;
+    if (q == null || q.trim().length < 3) return null;
+    final found = await search(q, near: l.near ?? near);
+    return found.isEmpty ? null : found.first;
   }
 
   Future<List<Place>> _nominatimSearch(String query, LatLng? near) async {

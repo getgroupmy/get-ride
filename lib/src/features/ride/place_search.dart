@@ -236,7 +236,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
               fillColor: field,
               prefixIcon: _route ? const Icon(Icons.search) : null,
               labelText: _route ? 'To' : 'Address',
-              hintText: 'Search a place or address',
+              hintText: 'Search, or paste a Google Maps link',
               floatingLabelBehavior: FloatingLabelBehavior.always,
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
