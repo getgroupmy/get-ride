@@ -76,7 +76,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'passkey_failure.dart';
 import 'passkey_stub.dart' if (dart.library.js_interop) 'passkey_web.dart' if (dart.library.io) 'passkey_native.dart';
 
-export 'passkey_failure.dart' show PasskeyFailure, passkeyDomainNotAssociated, passkeyNotSetUpHere;
+export 'passkey_failure.dart'
+    show PasskeyFailure, passkeyDomainNotAssociated, passkeyNotSetUpHere, passkeySiteMismatch, webPasskeyRefusal;
 export 'passkey_stub.dart'
     if (dart.library.js_interop) 'passkey_web.dart'
     if (dart.library.io) 'passkey_native.dart'
@@ -178,10 +179,10 @@ Future<PasskeyResult> signInWithPasskey(GoTrueClient auth, {String? captchaToken
   try {
     assertion = await getPasskeyAssertion(options);
   } on PasskeyFailure catch (e) {
-    // The platform refused for a reason it was willing to state. Web
-    // never does this; a phone does, and the commonest one is a build
-    // whose domain is not associated, which is otherwise a button that
-    // silently does nothing.
+    // The platform refused for a reason it was willing to state: on a
+    // phone, commonly a build whose domain is not associated; in a
+    // browser, a site whose passkey setting doesn't match its address.
+    // Either is otherwise a button that silently does nothing.
     return (outcome: PasskeyOutcome.failed, message: e.message);
   }
   if (assertion == null) {

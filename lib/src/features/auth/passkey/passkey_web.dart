@@ -36,6 +36,8 @@ import 'dart:js_interop_unsafe';
 
 import 'package:web/web.dart' as web;
 
+import 'passkey_failure.dart';
+
 /// The browser can be asked. Whether it will succeed is
 /// [passkeysUsable].
 bool get passkeysAvailable => true;
@@ -47,6 +49,17 @@ JSObject? get _pkc {
 }
 
 bool _has(JSObject o, String name) => o.getProperty<JSAny?>(name.toJS) != null;
+
+/// A thrown DOMException's `name` ("SecurityError" …), or "" when there
+/// is none to read.
+String _errorName(Object e) {
+  try {
+    final o = e as JSObject;
+    final name = o.getProperty<JSAny?>('name'.toJS);
+    if (name.isA<JSString>()) return (name as JSString).toDart;
+  } catch (_) {}
+  return RegExp(r'\b(\w+Error)\b').firstMatch('$e')?.group(1) ?? '';
+}
 
 /// Whether this browser can actually complete a passkey ceremony.
 ///
@@ -119,21 +132,26 @@ Future<Map<String, dynamic>?> _ceremony(Map<String, dynamic> options, {required 
   final parse = creating ? 'parseCreationOptionsFromJSON' : 'parseRequestOptionsFromJSON';
   if (!_has(pkc, parse)) return null;
 
-  final parsed = pkc.callMethod<JSObject>(parse.toJS, options.jsify() as JSObject);
-
-  final request = JSObject()..setProperty('publicKey'.toJS, parsed);
-
   final JSAny? credential;
   try {
+    final parsed = pkc.callMethod<JSObject>(parse.toJS, options.jsify() as JSObject);
+    final request = JSObject()..setProperty('publicKey'.toJS, parsed);
     credential = creating
         ? await web.window.navigator.credentials.create(request as web.CredentialCreationOptions).toDart
         : await web.window.navigator.credentials.get(request as web.CredentialRequestOptions).toDart;
-  } catch (_) {
+  } catch (e) {
     // `NotAllowedError` is what a dismissed prompt and a timeout both
     // raise, and neither is a fault worth putting in front of somebody
-    // who simply changed their mind. The caller says "that did not
-    // work" once, for every reason.
-    return null;
+    // who simply changed their mind: those say nothing. Any other error
+    // names a reason (a site whose passkey setting doesn't match this
+    // address is a `SecurityError`), and a button that silently did
+    // nothing for it is how one goes unnoticed. The browser's own words
+    // go to the console for whoever is setting the site up.
+    final name = _errorName(e);
+    final message = webPasskeyRefusal(name, creating: creating);
+    if (message == null) return null;
+    web.console.warn('Passkey refused by the browser: $e'.toJS);
+    throw PasskeyFailure(message);
   }
 
   if (credential == null || !credential.isA<JSObject>()) return null;

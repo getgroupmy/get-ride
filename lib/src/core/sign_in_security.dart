@@ -81,6 +81,33 @@ bool passkeyOffered(SignInConfig c, SignInSurface surface) => switch (surface) {
   SignInSurface.other => false,
 };
 
+/// The one address passkeys work at: Supabase → Authentication → Passkeys'
+/// Relying Party ID (docs/passkeys.md). Every passkey is bound to it, and a
+/// browser refuses one on any other address, or on a page that isn't
+/// https, without saying why.
+const passkeyHost = 'www.getride.my';
+
+/// Where a web page at [page] has to be for passkeys: the same page on
+/// https://www.getride.my. Null when it is already there.
+Uri? passkeyAddressFix(Uri page) {
+  if (page.scheme == 'https' && page.host == passkeyHost) return null;
+  return Uri(
+    scheme: 'https',
+    host: passkeyHost,
+    path: page.path.isEmpty ? '/' : page.path,
+    query: page.hasQuery ? page.query : null,
+    fragment: page.hasFragment ? page.fragment : null,
+  );
+}
+
+/// What a page on the wrong address says instead of offering a passkey.
+String passkeyWrongAddressMessage(Uri page) {
+  final here = page.host.isEmpty ? 'another address' : page.host;
+  final insecure = page.scheme != 'https' ? ' without a secure (https) connection' : '';
+  return 'Passkeys only work at $passkeyHost. This page is open at $here$insecure, '
+      "so your browser won't save or use one here. Open $passkeyHost and sign in there once.";
+}
+
 /// What a device signed out by a newer sign-in elsewhere is told.
 const signedOutElsewhereMessage =
     "You signed in on another device, so you've been signed out here. "
