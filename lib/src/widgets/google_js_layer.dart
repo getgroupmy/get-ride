@@ -15,10 +15,19 @@ import 'map_traffic.dart' show googleTrafficProvider, mapTrafficProvider;
 final googleJsFailed = ValueNotifier<bool>(!googleJsSupported);
 
 class GoogleJsBaseLayer extends ConsumerWidget {
-  const GoogleJsBaseLayer({super.key, required this.apiKey, required this.fallback, this.satellite = false});
+  const GoogleJsBaseLayer({
+    super.key,
+    required this.apiKey,
+    required this.fallback,
+    this.satellite = false,
+    this.mapType,
+  });
 
   final String apiKey;
   final bool satellite;
+
+  /// "hybrid", "terrain" … (migration 0211); null for [satellite]'s.
+  final String? mapType;
 
   /// The tiles to draw instead when Google's map can't be shown.
   final Widget fallback;
@@ -40,6 +49,7 @@ class GoogleJsBaseLayer extends ConsumerWidget {
               center: camera.center,
               zoom: camera.zoom,
               satellite: satellite,
+              mapType: mapType,
               dark: dark,
               traffic: traffic,
               onFailure: () => googleJsFailed.value = true,

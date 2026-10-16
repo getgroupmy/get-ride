@@ -77,6 +77,7 @@ class GoogleJsMapView extends StatefulWidget {
     required this.center,
     required this.zoom,
     this.satellite = false,
+    this.mapType,
     this.dark = false,
     this.traffic = false,
     this.onFailure,
@@ -86,6 +87,10 @@ class GoogleJsMapView extends StatefulWidget {
   final LatLng center;
   final double zoom;
   final bool satellite;
+
+  /// "roadmap", "satellite", "hybrid" or "terrain" (migration 0211); null for
+  /// the roadmap, or satellite when [satellite].
+  final String? mapType;
   final bool dark;
   final bool traffic;
 
@@ -128,9 +133,11 @@ class _GoogleJsMapViewState extends State<GoogleJsMapView> {
     'zoom': widget.zoom,
   }.jsify()!;
 
+  String get _type => widget.mapType ?? (widget.satellite ? 'satellite' : 'roadmap');
+
   JSAny _look() => {
-    'mapTypeId': widget.satellite ? 'satellite' : 'roadmap',
-    'styles': widget.dark && !widget.satellite ? googleNightStyle : <Object>[],
+    'mapTypeId': _type,
+    'styles': widget.dark && _type == 'roadmap' ? googleNightStyle : <Object>[],
     'backgroundColor': widget.dark ? '#242f3e' : '#e5e3df',
   }.jsify()!;
 
@@ -170,7 +177,9 @@ class _GoogleJsMapViewState extends State<GoogleJsMapView> {
     final map = _map;
     if (map == null) return;
     if (old.center != widget.center || old.zoom != widget.zoom) map.callMethod('moveCamera'.toJS, _camera());
-    if (old.satellite != widget.satellite || old.dark != widget.dark) map.callMethod('setOptions'.toJS, _look());
+    if (old.satellite != widget.satellite || old.mapType != widget.mapType || old.dark != widget.dark) {
+      map.callMethod('setOptions'.toJS, _look());
+    }
     if (old.traffic != widget.traffic) _syncTraffic();
   }
 

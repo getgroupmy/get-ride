@@ -159,6 +159,7 @@ class _DevicesTab extends ConsumerWidget {
     final t = Theme.of(context);
     final conflicts = settings.googleConflicts;
     final trafficConflicts = settings.googleTrafficConflicts;
+    final unofficial = settings.unofficialGoogleTiles;
     final keys = ref.watch(adminMapApiKeysProvider).value;
     // Synced from GitHub: `geo` uses these when Admin → API Keys has none.
     final synced = ref.watch(adminMapFallbackSlotsProvider).value ?? const <String>{};
@@ -210,6 +211,16 @@ class _DevicesTab extends ConsumerWidget {
                 "Google traffic is drawn by Google's own map. Set Google Maps (native) on phones, or Google Maps "
                 '(JavaScript) on the web and desktop, for Map and Map (dark mode), or pick another traffic source: '
                 '${trafficConflicts.join(', ')}.',
+          ),
+        if (unofficial.isNotEmpty)
+          _Notice(
+            key: const ValueKey('maps-google-xyz-warning'),
+            icon: Icons.science_outlined,
+            error: true,
+            text:
+                "Google tiles (unofficial) are Google's own tile address, not one of its APIs: for testing only. "
+                "Google's terms don't allow them in a released app, and Google can block them at any time. "
+                'Set on: ${unofficial.join(', ')}.',
           ),
         if (missing.isNotEmpty)
           _Notice(
@@ -266,6 +277,56 @@ class _DevicesTab extends ConsumerWidget {
                       ),
                   ],
                   onChanged: canEdit ? (v) => v == null ? null : onChanged(settings.copyWith(smartAddress: v)) : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+        Card(
+          key: const ValueKey('maps-google-look'),
+          margin: const EdgeInsets.only(top: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text("Google's map", style: t.textTheme.titleSmall),
+                const SizedBox(height: 4),
+                Text(
+                  "For every rider and partner on a Google map: Map Tiles, Google Maps (native) and Google Maps "
+                  '(JavaScript). Terrain is for Map only; Map (dark mode) stays the night roadmap.',
+                  style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  // Keyed by the value so Discard shows the stored choice again.
+                  key: ValueKey('maps-google-satellite-${settings.googleSatellite}'),
+                  initialValue: settings.googleSatellite,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Satellite', isDense: true),
+                  items: [
+                    for (final (id, label) in mapGoogleSatellites)
+                      DropdownMenuItem(
+                        value: id,
+                        child: Text(label, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: canEdit ? (v) => v == null ? null : onChanged(settings.copyWith(googleSatellite: v)) : null,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  key: ValueKey('maps-google-map-${settings.googleMap}'),
+                  initialValue: settings.googleMap,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Map', isDense: true),
+                  items: [
+                    for (final (id, label) in mapGoogleMaps)
+                      DropdownMenuItem(
+                        value: id,
+                        child: Text(label, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: canEdit ? (v) => v == null ? null : onChanged(settings.copyWith(googleMap: v)) : null,
                 ),
               ],
             ),

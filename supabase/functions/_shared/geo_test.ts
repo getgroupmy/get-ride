@@ -37,6 +37,9 @@ import {
   reverseRequest,
   routeRequest,
   searchRequest,
+  googleLookOf,
+  googleMapType,
+  googleSessionBody,
   tileSource,
   trafficTileUrl,
 } from "./geo.ts";
@@ -938,4 +941,68 @@ Deno.test("Google's own map on phones: no key sent, the build carries it (0210)"
   assertEquals(p.tiles.satellite.mapType, "satellite");
   assertEquals(p.tiles.traffic, { google: true });
   assertEquals(p.refused, {});
+});
+
+Deno.test("Google's look (0211): hybrid satellite and terrain, the dark map the night roadmap", () => {
+  const look = googleLookOf({ googleSatellite: "hybrid", googleMap: "terrain" });
+  assertEquals(look, { satellite: "hybrid", map: "terrain" });
+  assertEquals(googleLookOf(null), { satellite: "satellite", map: "roadmap" });
+  assertEquals(googleLookOf({ googleSatellite: "train", googleMap: "m" }), { satellite: "satellite", map: "roadmap" });
+  assertEquals([googleMapType("light", look), googleMapType("dark", look), googleMapType("satellite", look)],
+    ["terrain", "roadmap", "hybrid"]);
+  assertEquals(tileSource("google_native", "satellite", null, null, undefined, look)!.mapType, "hybrid");
+  assertEquals(tileSource("google_js", "light", "K", null, undefined, look)!.mapType, "terrain");
+  assertEquals(tileSource("google_js", "dark", "K", null, undefined, look)!.mapType, "roadmap");
+
+  assertEquals(googleSessionBody("satellite", "my", "en-US", look), {
+    mapType: "satellite",
+    language: "en-US",
+    region: "MY",
+    layerTypes: ["layerRoadmap"],
+  });
+  assertEquals(googleSessionBody("light", "my", "en-US", look).mapType, "terrain");
+  assertEquals(googleSessionBody("light", "my", "en-US", look).layerTypes, ["layerRoadmap"]);
+  const dark = googleSessionBody("dark", "my", "en-US", look);
+  assertEquals([dark.mapType, "layerTypes" in dark, "styles" in dark], ["roadmap", false, true]);
+  assertEquals("layerTypes" in googleSessionBody("satellite", "my"), false, "imagery only by default");
+});
+
+Deno.test("the profile asks Map Tiles for the look set", async () => {
+  const cfg = {
+    ...config,
+    googleSatellite: "hybrid",
+    googleMap: "terrain",
+    profiles: {
+      ...config.profiles,
+      "rider.android": {
+        ...config.profiles["rider.android"],
+        tiles: { light: "google", dark: "google", satellite: "google", traffic: "app" },
+      },
+    },
+  };
+  const asked: string[] = [];
+  const { d } = deps({
+    settings: () => Promise.resolve({ config: cfg, apiProviders }),
+    googleSession: (slot, _key, _region, look) => {
+      asked.push(`${slot}:${googleMapType(slot, look)}`);
+      return Promise.resolve(`S-${slot}`);
+    },
+  });
+  await handleGeo(q("action=profile&role=rider&device=android"), "ip", d);
+  assertEquals(asked.sort(), ["dark:roadmap", "light:terrain", "satellite:hybrid"]);
+});
+
+Deno.test("Google's unofficial tiles for testing (0211): no key, the look set, dark darkened", () => {
+  const plain = tileSource("google_xyz", "light", null)!;
+  assertEquals(plain, {
+    url: "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+    darken: false,
+    attribution: "Map data © Google",
+  });
+  assertEquals(tileSource("google_xyz", "dark", null)!.darken, true);
+  assertEquals(tileSource("google_xyz", "satellite", null)!.url, "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}");
+  const look = { satellite: "hybrid" as const, map: "terrain" as const };
+  assertStringIncludes(tileSource("google_xyz", "satellite", null, null, undefined, look)!.url, "lyrs=y&");
+  assertStringIncludes(tileSource("google_xyz", "light", null, null, undefined, look)!.url, "lyrs=p&");
+  assertStringIncludes(tileSource("google_xyz", "dark", null, null, undefined, look)!.url, "lyrs=m&");
 });

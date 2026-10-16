@@ -44,9 +44,10 @@ class MapTileSpec {
       maplibreKey = key,
       googleNative = false;
 
-  /// Google's JavaScript map with this browser key.
-  const MapTileSpec.googleJs(String key, {this.attribution = '', bool satellite = false})
-    : url = satellite ? googleJsSatellite : googleJsRoadmap,
+  /// Google's JavaScript map with this browser key, as [mapType] (one of
+  /// [googleMapTypes]; by default the roadmap, or satellite when [satellite]).
+  const MapTileSpec.googleJs(String key, {this.attribution = '', bool satellite = false, String? mapType})
+    : url = 'google-js:${mapType ?? (satellite ? 'satellite' : 'roadmap')}',
       darken = false,
       googleJsKey = key,
       maplibreKey = null,
@@ -54,8 +55,8 @@ class MapTileSpec {
 
   /// Google's own map in the phone app (migration 0210): the Maps SDK, with
   /// the key the release build carries.
-  const MapTileSpec.googleNative({this.attribution = '', bool satellite = false})
-    : url = satellite ? googleNativeSatellite : googleNativeRoadmap,
+  const MapTileSpec.googleNative({this.attribution = '', bool satellite = false, String? mapType})
+    : url = 'google-native:${mapType ?? (satellite ? 'satellite' : 'roadmap')}',
       darken = false,
       googleJsKey = null,
       maplibreKey = null,
@@ -67,6 +68,10 @@ class MapTileSpec {
   /// Stand-in "URLs" naming Google's JavaScript map types (never fetched).
   static const googleJsRoadmap = 'google-js:roadmap';
   static const googleJsSatellite = 'google-js:satellite';
+
+  /// Google's map types: hybrid (satellite with roads and names) and terrain
+  /// since migration 0211.
+  static const googleMapTypes = {'roadmap', 'satellite', 'hybrid', 'terrain'};
 
   final String url;
   final bool darken;
@@ -86,17 +91,10 @@ class MapTileSpec {
     if (json['engine'] == 'google_js') {
       final key = '${json['key'] ?? ''}'.trim();
       if (key.isEmpty) return null;
-      return MapTileSpec.googleJs(
-        key,
-        attribution: '${json['attribution'] ?? ''}',
-        satellite: json['mapType'] == 'satellite',
-      );
+      return MapTileSpec.googleJs(key, attribution: '${json['attribution'] ?? ''}', mapType: _googleType(json));
     }
     if (json['engine'] == 'google_native') {
-      return MapTileSpec.googleNative(
-        attribution: '${json['attribution'] ?? ''}',
-        satellite: json['mapType'] == 'satellite',
-      );
+      return MapTileSpec.googleNative(attribution: '${json['attribution'] ?? ''}', mapType: _googleType(json));
     }
     if (json['engine'] == 'maplibre') {
       final style = '${json['style'] ?? ''}'.trim();
@@ -121,6 +119,21 @@ class MapTileSpec {
 
   @override
   int get hashCode => Object.hash(url, darken, attribution, googleJsKey, maplibreKey, googleNative);
+}
+
+String _googleType(Map json) =>
+    MapTileSpec.googleMapTypes.contains(json['mapType']) ? '${json['mapType']}' : 'roadmap';
+
+/// The Google map type a stand-in URL names ("google-js:hybrid" → "hybrid"),
+/// or null for any other source.
+String? googleMapTypeOf(String url) {
+  for (final prefix in const ['google-js:', 'google-native:']) {
+    if (url.startsWith(prefix)) {
+      final t = url.substring(prefix.length);
+      return MapTileSpec.googleMapTypes.contains(t) ? t : null;
+    }
+  }
+  return null;
 }
 
 bool _isTemplate(String url) =>

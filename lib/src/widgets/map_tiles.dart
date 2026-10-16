@@ -190,6 +190,7 @@ Widget currentBaseLayer(BuildContext context, {bool satellite = false}) {
     return GoogleNativeBaseLayer(
       key: ValueKey(source.url),
       satellite: satellite,
+      mapType: googleMapTypeOf(source.url),
       fallback: _tileLayer(fallbackTileSource(context, satellite: satellite)),
     );
   }
@@ -199,6 +200,7 @@ Widget currentBaseLayer(BuildContext context, {bool satellite = false}) {
     key: ValueKey(source.url),
     apiKey: key,
     satellite: satellite,
+    mapType: googleMapTypeOf(source.url),
     fallback: _tileLayer(fallbackTileSource(context, satellite: satellite)),
   );
 }

@@ -37,9 +37,18 @@ String tileSlotLabel(String s) => switch (s) {
 /// map, 0206) on the web; 'google' traffic with either Google map: see
 /// [tileOptionsFor].
 const tileOptions = <String, List<String>>{
-  'light': ['app', 'osm', 'google', 'google_native', 'google_js', 'amazon_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
-  'dark': ['app', 'osm', 'google', 'google_native', 'google_js', 'amazon_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
-  'satellite': ['app', 'esri', 'google', 'google_native', 'google_js', 'mapbox', 'here', 'tomtom', 'maptiler'],
+  'light': [
+    'app', 'osm', 'google', 'google_native', 'google_js', 'amazon_js', //
+    'mapbox', 'here', 'tomtom', 'maptiler', 'google_xyz',
+  ],
+  'dark': [
+    'app', 'osm', 'google', 'google_native', 'google_js', 'amazon_js', //
+    'mapbox', 'here', 'tomtom', 'maptiler', 'google_xyz',
+  ],
+  'satellite': [
+    'app', 'esri', 'google', 'google_native', 'google_js', //
+    'mapbox', 'here', 'tomtom', 'maptiler', 'google_xyz',
+  ],
   'traffic': ['app', 'tomtom', 'here', 'google', 'none'],
 };
 
@@ -66,7 +75,7 @@ const routeProviders = ['osrm', 'google', 'mapbox', 'here', 'tomtom', 'locationi
 const distanceProviders = [...routeProviders, 'straight'];
 
 /// Providers the phone calls itself (no key).
-const freeProviders = {'nominatim', 'osrm', 'osm', 'esri', 'straight'};
+const freeProviders = {'nominatim', 'osrm', 'osm', 'esri', 'straight', 'google_xyz'};
 
 String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   'app' => switch (slot) {
@@ -80,6 +89,8 @@ String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   'google' => slot == 'traffic' ? 'Google traffic (on a Google map)' : 'Google',
   'google_js' => 'Google Maps (JavaScript)',
   'google_native' => 'Google Maps (native)',
+  'google_xyz' =>
+    slot == 'dark' ? 'Google tiles, darkened (unofficial, testing only)' : 'Google tiles (unofficial, testing only)',
   'mapbox' => 'Mapbox',
   'here' => 'HERE',
   'tomtom' => 'TomTom',
@@ -293,6 +304,18 @@ const mapAmazonRegions = [
   ('ap-southeast-1', 'Asia Pacific (Singapore)'),
 ];
 
+/// Google's satellite map: imagery only, or with roads and names (migration 0211).
+const mapGoogleSatellites = [
+  ('satellite', 'Satellite (imagery only)'),
+  ('hybrid', 'Hybrid (satellite with roads and names)'),
+];
+
+/// Google's light map: the roadmap, or terrain (migration 0211). Dark mode keeps the night roadmap.
+const mapGoogleMaps = [
+  ('roadmap', 'Roadmap'),
+  ('terrain', 'Terrain (hills and relief)'),
+];
+
 /// The whole setting.
 @immutable
 class MapSettings {
@@ -303,6 +326,8 @@ class MapSettings {
     this.amazonRegion = 'ap-southeast-5',
     this.googleSearch = 'text',
     this.smartAddress = 'normal',
+    this.googleSatellite = 'satellite',
+    this.googleMap = 'roadmap',
   });
 
   /// Keyed "rider.android" …; a missing one is [MapProfileSetting]'s default.
@@ -321,6 +346,12 @@ class MapSettings {
   /// One of [mapSmartAddresses].
   final String smartAddress;
 
+  /// One of [mapGoogleSatellites].
+  final String googleSatellite;
+
+  /// One of [mapGoogleMaps].
+  final String googleMap;
+
   MapSettings copyWith({
     Map<String, MapProfileSetting>? profiles,
     Map<String, String>? keys,
@@ -328,6 +359,8 @@ class MapSettings {
     String? amazonRegion,
     String? googleSearch,
     String? smartAddress,
+    String? googleSatellite,
+    String? googleMap,
   }) => MapSettings(
     profiles: profiles ?? this.profiles,
     keys: keys ?? this.keys,
@@ -335,6 +368,8 @@ class MapSettings {
     amazonRegion: amazonRegion ?? this.amazonRegion,
     googleSearch: googleSearch ?? this.googleSearch,
     smartAddress: smartAddress ?? this.smartAddress,
+    googleSatellite: googleSatellite ?? this.googleSatellite,
+    googleMap: googleMap ?? this.googleMap,
   );
 
   static String profileKey(String role, String device) => '$role.$device';
@@ -361,6 +396,8 @@ class MapSettings {
       amazonRegion: mapAmazonRegions.any((a) => a.$1 == m['amazonRegion']) ? '${m['amazonRegion']}' : 'ap-southeast-5',
       googleSearch: m['googleSearch'] == 'autocomplete' ? 'autocomplete' : 'text',
       smartAddress: mapSmartAddresses.any((a) => a.$1 == m['smartAddress']) ? '${m['smartAddress']}' : 'normal',
+      googleSatellite: m['googleSatellite'] == 'hybrid' ? 'hybrid' : 'satellite',
+      googleMap: m['googleMap'] == 'terrain' ? 'terrain' : 'roadmap',
     );
   }
 
@@ -374,6 +411,8 @@ class MapSettings {
     'amazonRegion': amazonRegion,
     'googleSearch': googleSearch,
     'smartAddress': smartAddress,
+    'googleSatellite': googleSatellite,
+    'googleMap': googleMap,
   };
 
   MapSettings withProfile(String role, String device, MapProfileSetting p) =>
@@ -397,6 +436,14 @@ class MapSettings {
     for (final r in mapRoles)
       for (final d in mapDevices)
         if (profile(r, d).breaksGoogleTerms) '${mapRoleLabel(r)} · ${mapDeviceLabel(d)}',
+  ];
+
+  /// "Rider · Android": the profiles on Google's unofficial tile address
+  /// (migration 0211), for testing only.
+  List<String> get unofficialGoogleTiles => [
+    for (final r in mapRoles)
+      for (final d in mapDevices)
+        if (profile(r, d).tiles.values.contains('google_xyz')) '${mapRoleLabel(r)} · ${mapDeviceLabel(d)}',
   ];
 
   /// "Rider · Web": Google traffic without Google's JavaScript map.
@@ -442,7 +489,9 @@ class MapSettings {
       other.googleApi == googleApi &&
       other.amazonRegion == amazonRegion &&
       other.googleSearch == googleSearch &&
-      other.smartAddress == smartAddress;
+      other.smartAddress == smartAddress &&
+      other.googleSatellite == googleSatellite &&
+      other.googleMap == googleMap;
 
   @override
   int get hashCode => Object.hash(
@@ -452,6 +501,8 @@ class MapSettings {
     amazonRegion,
     googleSearch,
     smartAddress,
+    googleSatellite,
+    googleMap,
   );
 }
 

@@ -31,6 +31,41 @@ void main() {
     expect(profileTileSource(p, dark: true, web: false, googleJs: false), isNull, reason: 'Linux, phones');
   });
 
+  test("Google's map types (0211): hybrid and terrain reach the native and JavaScript maps", () {
+    final p = MapProfile.fromJson({
+      'profile': {
+        'tiles': {
+          'light': {'engine': 'google_native', 'mapType': 'terrain'},
+          'satellite': {'engine': 'google_js', 'key': 'BROWSER', 'mapType': 'hybrid'},
+          'dark': {'engine': 'google_native', 'mapType': 'nonsense'},
+        },
+      },
+    });
+    expect(googleMapTypeOf(p.light!.url), 'terrain');
+    expect(googleMapTypeOf(p.satellite!.url), 'hybrid');
+    expect(googleMapTypeOf(p.dark!.url), 'roadmap', reason: 'anything else: the roadmap');
+    expect(googleMapTypeOf('https://tile.openstreetmap.org/{z}/{x}/{y}.png'), isNull);
+    expect(const MapTileSpec.googleNative(satellite: true).url, MapTileSpec.googleNativeSatellite);
+    expect(const MapTileSpec.googleJs('K').url, MapTileSpec.googleJsRoadmap);
+  });
+
+  test("Google's unofficial tiles (0211) are plain tiles, the dark one darkened", () {
+    final p = MapProfile.fromJson({
+      'profile': {
+        'tiles': {
+          'light': {'url': 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', 'attribution': 'Map data © Google'},
+          'dark': {'url': 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', 'darken': true},
+        },
+      },
+    });
+    final light = profileTileSource(p, dark: false)!;
+    expect(
+      [light.url, light.darken, light.isBrowserMap],
+      ['https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', false, false],
+    );
+    expect(profileTileSource(p, dark: true)!.darken, isTrue);
+  });
+
   test('defaults to OpenStreetMap, darkened only in dark mode', () {
     final light = resolveTileSource(dark: false, light: '', darkUrl: '');
     expect(light.url, osmTileUrl);

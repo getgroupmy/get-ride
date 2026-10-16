@@ -694,6 +694,29 @@ void main() {
       expect(repo.saved.single.usedKeySlots, contains('google_address'), reason: 'C needs the Address Validation key');
     });
 
+    testWidgets("Google's look: hybrid satellite and terrain, saved ($mode)", (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      await choose(tester, 'maps-google-satellite-satellite', 'Hybrid (satellite with roads and names)');
+      await choose(tester, 'maps-google-map-roadmap', 'Terrain (hills and relief)');
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect([repo.saved.single.googleSatellite, repo.saved.single.googleMap], ['hybrid', 'terrain']);
+      expect(repo.saved.single.toJson()['googleSatellite'], 'hybrid');
+    });
+
+    testWidgets("Google's unofficial tiles: offered on every device, flagged for testing only ($mode)", (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      expect(find.byKey(const ValueKey('maps-google-xyz-warning'), skipOffstage: false), findsNothing);
+      await choose(tester, 'maps-tile-android-light', 'Google tiles (unofficial, testing only)');
+      expect(find.byKey(const ValueKey('maps-google-xyz-warning'), skipOffstage: false), findsOneWidget);
+      expect(find.textContaining('for testing only', skipOffstage: false), findsWidgets);
+      expect(find.textContaining('Set on: Rider · Android', skipOffstage: false), findsOneWidget);
+      expect(find.byKey(const ValueKey('maps-missing-keys'), skipOffstage: false), findsNothing, reason: 'no key');
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.profile('rider', 'android').tiles['light'], 'google_xyz');
+    });
+
     testWidgets('keys and usage ($mode)', (tester) async {
       await pump(tester, dark: dark);
       await tester.tap(find.byKey(const ValueKey('maps-tab-keys')));
