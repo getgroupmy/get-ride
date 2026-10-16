@@ -83,6 +83,17 @@ class _OfferFareScreenState extends State<OfferFareScreen> {
   late String _entrance = widget.entrance;
 
   @override
+  void didUpdateWidget(OfferFareScreen old) {
+    super.didUpdateWidget(old);
+    // The route changed under the page (a stop added, removed or moved): the
+    // new fare replaces the old one unless the rider typed their own.
+    final untouched = _fare.text == old.current.round().toString();
+    if (untouched && widget.current.round() != old.current.round()) {
+      _fare.text = widget.current.round().toString();
+    }
+  }
+
+  @override
   void dispose() {
     _fare.dispose();
     super.dispose();

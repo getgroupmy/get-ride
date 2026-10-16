@@ -651,6 +651,29 @@ void main() {
     expect(tester.widget<Text>(find.byKey(const ValueKey('confirm-fare'))).data, contains('$typed'));
   });
 
+  testWidgets('Offer your fare follows a stop added there: the route and the recommended fare', (tester) async {
+    await _pump(tester, _Rides(bidding: true));
+    await tester.tap(find.byKey(const ValueKey('fare-edit')));
+    await tester.pumpAndSettle();
+    final note = find.byKey(const ValueKey('offer-fare-note'));
+    final before = tester.widget<Text>(note).data!;
+    final field = tester.widget<TextField>(find.byKey(const ValueKey('offer-fare-field'))).controller!;
+    final typedBefore = field.text;
+    expect(find.text('KLCC'), findsOneWidget, reason: 'one destination');
+
+    await tester.tap(find.byKey(const ValueKey('offer-fare-add-stop')));
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('recent-2.93,101.83')));
+    await _settle(tester);
+
+    expect(find.byKey(const ValueKey('offer-fare-screen')), findsOneWidget, reason: 'still on the page');
+    expect(find.text('2 route stops'), findsOneWidget);
+    final after = tester.widget<Text>(note).data!;
+    expect(after, isNot(before), reason: 'the fare for the new route');
+    expect(field.text, isNot(typedBefore), reason: 'an untouched fare follows the new one');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets("Enter your route: the From changes the pickup, the destination kept", (tester) async {
     await _pump(tester, _Rides());
     final card = find.byKey(const ValueKey('confirm-address-card'));
