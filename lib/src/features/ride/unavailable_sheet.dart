@@ -8,13 +8,23 @@ enum UnavailableAt { pickup, stop, drop }
 
 /// The words for a trip GET.ride can't serve (Bolt's "currently
 /// unavailable"): the message and the button's label. Pure.
-({String message, String action}) unavailableCopy(UnavailableAt at, CoverageGap gap, {String? region}) {
+/// [block] is what the region's Block stops (migration 0212): a region
+/// closed only to pickups or only to drop-offs says which.
+({String message, String action}) unavailableCopy(
+  UnavailableAt at,
+  CoverageGap gap, {
+  String? region,
+  RegionBlock block = RegionBlock.both,
+}) {
   final place = switch (at) {
     UnavailableAt.pickup => 'pickup',
     UnavailableAt.stop => 'stop',
     UnavailableAt.drop => 'destination',
   };
+  final where = region == null ? 'there' : 'in $region';
   final why = switch (gap) {
+    CoverageGap.blocked when block == RegionBlock.pickup => "GET.ride doesn't pick up $where right now.",
+    CoverageGap.blocked when block == RegionBlock.drop => "GET.ride doesn't drop off $where right now.",
     CoverageGap.blocked when region != null => 'GET.ride is paused in $region right now.',
     CoverageGap.blocked => 'GET.ride is paused there right now.',
     CoverageGap.outside when region != null => "GET.ride doesn't run in that part of $region yet.",
@@ -40,6 +50,7 @@ Future<void> showServiceUnavailable(
   required UnavailableAt at,
   required CoverageGap gap,
   String? region,
+  RegionBlock block = RegionBlock.both,
   required VoidCallback onChange,
 }) => showModalBottomSheet<void>(
   context: context,
@@ -51,6 +62,7 @@ Future<void> showServiceUnavailable(
     at: at,
     gap: gap,
     region: region,
+    block: block,
     onChange: () {
       Navigator.pop(c);
       onChange();
@@ -59,18 +71,26 @@ Future<void> showServiceUnavailable(
 );
 
 class ServiceUnavailableSheet extends StatelessWidget {
-  const ServiceUnavailableSheet({super.key, required this.at, required this.gap, this.region, required this.onChange});
+  const ServiceUnavailableSheet({
+    super.key,
+    required this.at,
+    required this.gap,
+    this.region,
+    this.block = RegionBlock.both,
+    required this.onChange,
+  });
 
   final UnavailableAt at;
   final CoverageGap gap;
   final String? region;
+  final RegionBlock block;
   final VoidCallback onChange;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final scheme = t.colorScheme;
-    final copy = unavailableCopy(at, gap, region: region);
+    final copy = unavailableCopy(at, gap, region: region, block: block);
     return Padding(
       key: const ValueKey('service-unavailable'),
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),

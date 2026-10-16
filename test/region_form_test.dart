@@ -6,6 +6,7 @@ import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/geo/geo_data.dart';
 import 'package:get_ride/src/admin/screens/geo/geo_logic.dart';
 import 'package:get_ride/src/admin/screens/geo/regions_screen.dart';
+import 'package:get_ride/src/core/service_tree.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -22,7 +23,24 @@ class _Repo extends GeoAdminRepository {
   @override
   Future<List<RegionEntry>> regions() async => entries;
   @override
-  Future<List<ServiceOption>> services() async => const [];
+  Future<List<ServiceOption>> services() async => const [
+        ServiceOption(id: 'car', name: 'Car', description: 'Standard car service'),
+        ServiceOption(id: 'bike', name: 'Bike'),
+      ];
+  @override
+  Future<ServiceTree> serviceTree() async => ServiceTree.build(
+        const [
+          ServiceEntry(id: 'car', name: 'Car', category: masterServiceCategory),
+          ServiceEntry(id: 'bike', name: 'Bike', category: masterServiceCategory),
+        ],
+        const [
+          ServiceEntry(id: 'ride', name: 'Ride', category: 'vehicle-services', typeNames: ['Car']),
+          ServiceEntry(id: 'ride-xl', name: 'Ride XL', category: 'vehicle-services', parentIds: ['ride']),
+          ServiceEntry(id: 'moto', name: 'Moto', category: 'vehicle-services', typeNames: ['bike']),
+          ServiceEntry(id: 'boat', name: 'Boat', category: 'vehicle-services'),
+          ServiceEntry(id: 'parcel', name: 'Parcel', category: 'delivery-services', parentIds: ['moto']),
+        ],
+      );
   @override
   Future<Map<String, dynamic>?> regionDefaults(String country) async {
     asked.add(country);
@@ -80,7 +98,7 @@ void main() {
     });
   });
 
-  Future<_Repo> pump(WidgetTester tester, {Map<String, dynamic>? defaults}) async {
+  Future<_Repo> pump(WidgetTester tester, {Map<String, dynamic>? defaults, bool dark = false}) async {
     tester.view.physicalSize = const Size(1000, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -95,7 +113,10 @@ void main() {
           adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
           geoAdminRepositoryProvider.overrideWithValue(repo),
         ],
-        child: const MaterialApp(home: AdminRegionsScreen()),
+        child: MaterialApp(
+          theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+          home: const AdminRegionsScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -127,6 +148,62 @@ void main() {
     expect(repo.saved.single['city'], '');
     await _drain(tester);
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('Block: pickups, drop-offs or both, saved (${dark ? 'dark' : 'light'})', (tester) async {
+      final repo = await pump(tester, dark: dark);
+      await tester.tap(find.text('Malaysia'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add state').first);
+      await tester.pumpAndSettle();
+      await tester.enterText(field('State'), 'Johor');
+      expect(find.byKey(const ValueKey('region-block-at')), findsNothing, reason: 'open: no choice yet');
+
+      await tester.ensureVisible(find.byKey(const ValueKey('region-blocked')));
+      await tester.tap(find.byKey(const ValueKey('region-blocked')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('region-block-at')), findsOneWidget);
+      expect(find.textContaining("riders can't start, stop or end a ride here"), findsOneWidget, reason: 'both first');
+
+      await tester.tap(find.text('Drop-off'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Drop-offs blocked'), findsOneWidget);
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect([repo.saved.single['blockAt'], repo.saved.single['blocked']], ['drop', false]);
+      await _drain(tester);
+    });
+  }
+
+  for (final dark in [false, true]) {
+    final mode = dark ? 'dark' : 'light';
+    testWidgets('Services: every sub-service under its parent, any depth, switched on its own ($mode)', (tester) async {
+      final repo = await pump(tester, dark: dark);
+      await tester.tap(find.text('Malaysia'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add state').first);
+      await tester.pumpAndSettle();
+      await tester.enterText(field('State'), 'Johor');
+
+      for (final key in ['ride-1', 'ride-xl-2', 'moto-1', 'parcel-2', 'boat-0']) {
+        expect(find.byKey(ValueKey('region-sub-$key')), findsOneWidget, reason: key);
+      }
+      expect(find.text('Sub-services under no master service'), findsOneWidget, reason: 'Boat');
+      expect(find.textContaining('delivery-services'), findsOneWidget, reason: 'another category, found by its parent');
+      double left(String key) => tester.getTopLeft(find.byKey(ValueKey('region-sub-$key'))).dx;
+      double top(String key) => tester.getTopLeft(find.byKey(ValueKey('region-sub-$key'))).dy;
+      expect(left('ride-xl-2') > left('ride-1'), isTrue, reason: 'Ride XL indented under Ride');
+      expect(top('ride-1') < top('ride-xl-2') && top('ride-xl-2') < top('moto-1'), isTrue);
+
+      await tester.ensureVisible(find.byKey(const ValueKey('region-sub-ride-xl-2')));
+      await tester.tap(find.byKey(const ValueKey('region-sub-ride-xl-2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single['subServices'], {'ride-xl': false});
+      await _drain(tester);
+    });
+  }
 
   testWidgets('adding a country: Fill defaults pulls its details', (tester) async {
     final repo = await pump(tester, defaults: _api);

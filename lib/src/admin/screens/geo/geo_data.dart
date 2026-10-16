@@ -14,6 +14,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../providers.dart';
+import '../../../core/service_tree.dart';
 import 'geo_logic.dart';
 import '../../../data/live_tables.dart';
 
@@ -116,6 +117,49 @@ class GeoAdminRepository {
     ]);
   }
 
+  /// Every service as a tree (core/service_tree.dart): the master services
+  /// (Service Settings) and their sub-services — Vehicle Services, and any
+  /// entry of any category naming its parents in `parentServices` — in
+  /// display order.
+  Future<ServiceTree> serviceTree() async {
+    final rows = [
+      ...await _db
+          .from('settings_entries')
+          .select('id, category, values, position')
+          .inFilter('category', [masterServiceCategory, ...subServiceCategories])
+          .order('position'),
+      ...await _db
+          .from('settings_entries')
+          .select('id, category, values, position')
+          .not('values->parentServices', 'is', null)
+          .order('position'),
+    ];
+    final byId = <String, Map<String, dynamic>>{};
+    for (final r in rows) {
+      byId.putIfAbsent(r['id'] as String, () => Map<String, dynamic>.from(r));
+    }
+    List<ServiceEntry> sorted(bool masters) {
+      final picked = [
+        for (final r in byId.values)
+          if ((r['category'] == masterServiceCategory) == masters) r,
+      ];
+      final order = sortServices([
+        for (final r in picked)
+          (id: r['id'] as String, values: Map<String, dynamic>.from((r['values'] as Map?) ?? const {})),
+      ]);
+      return [
+        for (final o in order)
+          ServiceEntry.fromValues(
+            o.id,
+            '${byId[o.id]!['category']}',
+            Map<String, dynamic>.from((byId[o.id]!['values'] as Map?) ?? const {}),
+          ),
+      ];
+    }
+
+    return ServiceTree.build(sorted(true), sorted(false));
+  }
+
   /// The Vehicle Services entries (Ride, Comfort, …), in display order, for
   /// the region rules' service picker.
   Future<List<ServiceOption>> vehicleTypes() async {
@@ -197,6 +241,14 @@ final regionVehicleTypesProvider = FutureProvider.autoDispose<List<ServiceOption
     return await ref.watch(geoAdminRepositoryProvider).vehicleTypes();
   } catch (_) {
     return const [];
+  }
+});
+final serviceTreeProvider = FutureProvider.autoDispose<ServiceTree?>((ref) async {
+  ref.watchLive('settings_entries');
+  try {
+    return await ref.watch(geoAdminRepositoryProvider).serviceTree();
+  } catch (_) {
+    return null;
   }
 });
 final serviceVehiclesProvider = FutureProvider.autoDispose<List<ServiceVehicle>>((ref) async {

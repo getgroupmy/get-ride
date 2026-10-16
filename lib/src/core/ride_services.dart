@@ -5,6 +5,7 @@ library;
 
 import '../admin/screens/meterapp/display_logic.dart';
 import 'fare.dart';
+import 'service_tree.dart';
 
 /// Expo prices each service at `costPerKm / 1.5` of the base fare.
 const baseCostPerKm = 1.5;
@@ -36,6 +37,7 @@ List<RideService> rideServicesFromCatalogue(List<CatalogueEntry> entries, Map<St
         id: e.id,
         image: _image(v['heroImageUri']) ?? _image(v['iconUri']),
         serviceTypes: types,
+        parentIds: serviceParentIds(v),
       ),
     );
   }

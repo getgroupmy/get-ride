@@ -10,6 +10,7 @@ library;
 import 'dart:convert';
 
 import '../../../core/my_ride.dart';
+import '../../../core/service_tree.dart';
 import '../../admin_settings_models.dart';
 
 // ---------------------------------------------------------------------------
@@ -188,6 +189,7 @@ ValuesResult buildVehicleServiceValues({
   required Map<String, String> text, // name, description, shortDescription, iconUri, heroImageUri, mapIconUri, mapIconColor
   required Map<String, String> numbers,
   required List<String> serviceTypes,
+  List<String> parents = const [],
   required List<String> fuel,
   required bool status,
   Map<String, String> dispatch = const {},
@@ -212,6 +214,8 @@ ValuesResult buildVehicleServiceValues({
     'description': (text['description'] ?? '').trim(),
     'shortDescription': (text['shortDescription'] ?? '').trim(),
     'serviceTypes': serviceTypes,
+    // The sub-services it sits under (core/service_tree.dart).
+    'parentServices': parents,
     'fuelTypes': fuel,
     'status': status,
   };
@@ -1459,4 +1463,17 @@ List<ApiProviderInfo> providersFromStored(Object? stored) {
   }
   final defaultIds = _defaultProviders.map((d) => d.$1).toSet();
   return [...defaults, ...list.where((p) => !defaultIds.contains(p.id))];
+}
+
+/// The vehicle services [self] may sit under: every other one except those
+/// already under it (which would make a loop), by id and name.
+List<({String id, String name})> parentServiceOptions(List<SettingEntry> all, String? self) {
+  final tree = ServiceTree.build(const [], [
+    for (final e in all) ServiceEntry.fromValues(e.id, vehicleServicesKey, e.values),
+  ]);
+  return [
+    for (final e in all)
+      if (e.id != self && (self == null || !tree.lineage(e.id).contains(self)))
+        (id: e.id, name: '${e.values['name'] ?? ''}'.trim().isEmpty ? 'Unnamed service' : '${e.values['name']}'.trim()),
+  ];
 }
