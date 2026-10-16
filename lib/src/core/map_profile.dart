@@ -20,16 +20,33 @@ MapDevice currentMapDevice({bool web = kIsWeb, TargetPlatform? platform}) {
 
 /// One tile source: an XYZ template, and whether to darken it on the device.
 /// Or Google's JavaScript map (migration 0204, web only): no template, the
-/// browser key and the map type, drawn under the app's own layers.
+/// browser key and the map type, drawn under the app's own layers. Or a
+/// MapLibre style (Amazon Location's map, migration 0206, web only), drawn
+/// the same way.
 @immutable
 class MapTileSpec {
-  const MapTileSpec({required this.url, this.darken = false, this.attribution = '', this.googleJsKey});
+  const MapTileSpec({
+    required this.url,
+    this.darken = false,
+    this.attribution = '',
+    this.googleJsKey,
+    this.maplibreKey,
+  });
+
+  /// A MapLibre map of [style] (its URL, which [url] then is), with [key]
+  /// added to the provider's requests.
+  const MapTileSpec.maplibre(String style, String key, {this.attribution = ''})
+    : url = style,
+      darken = false,
+      googleJsKey = null,
+      maplibreKey = key;
 
   /// Google's JavaScript map with this browser key.
   const MapTileSpec.googleJs(String key, {this.attribution = '', bool satellite = false})
     : url = satellite ? googleJsSatellite : googleJsRoadmap,
       darken = false,
-      googleJsKey = key;
+      googleJsKey = key,
+      maplibreKey = null;
 
   /// Stand-in "URLs" naming Google's JavaScript map types (never fetched).
   static const googleJsRoadmap = 'google-js:roadmap';
@@ -39,8 +56,13 @@ class MapTileSpec {
   final bool darken;
   final String attribution;
   final String? googleJsKey;
+  final String? maplibreKey;
 
   bool get isGoogleJs => googleJsKey != null;
+  bool get isMapLibre => maplibreKey != null;
+
+  /// Drawn by the browser (web only).
+  bool get isBrowserMap => isGoogleJs || isMapLibre;
 
   static MapTileSpec? fromJson(Object? json) {
     if (json is! Map) return null;
@@ -53,6 +75,12 @@ class MapTileSpec {
         satellite: json['mapType'] == 'satellite',
       );
     }
+    if (json['engine'] == 'maplibre') {
+      final style = '${json['style'] ?? ''}'.trim();
+      final key = '${json['key'] ?? ''}'.trim();
+      if (!style.startsWith('https://') || key.isEmpty) return null;
+      return MapTileSpec.maplibre(style, key, attribution: '${json['attribution'] ?? ''}');
+    }
     final url = '${json['url'] ?? ''}'.trim();
     if (!_isTemplate(url)) return null;
     return MapTileSpec(url: url, darken: json['darken'] == true, attribution: '${json['attribution'] ?? ''}');
@@ -64,10 +92,11 @@ class MapTileSpec {
       other.url == url &&
       other.darken == darken &&
       other.attribution == attribution &&
-      other.googleJsKey == googleJsKey;
+      other.googleJsKey == googleJsKey &&
+      other.maplibreKey == maplibreKey;
 
   @override
-  int get hashCode => Object.hash(url, darken, attribution, googleJsKey);
+  int get hashCode => Object.hash(url, darken, attribution, googleJsKey, maplibreKey);
 }
 
 bool _isTemplate(String url) =>

@@ -556,6 +556,41 @@ class _KeysTab extends ConsumerWidget {
               ),
             ),
           ),
+          Card(
+            key: const ValueKey('maps-amazon-region'),
+            margin: const EdgeInsets.only(top: 8),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Amazon Location (GrabMaps)', style: t.textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Amazon Location answers with Grab's map of Southeast Asia from these regions. Create the keys "
+                    'in the same region. Its map is drawn by the browser, on the web only.',
+                    style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    // Keyed by the value so Discard shows the stored choice again.
+                    key: ValueKey('maps-amazon-region-${settings.amazonRegion}'),
+                    initialValue: settings.amazonRegion,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Region', isDense: true),
+                    items: [
+                      for (final (id, label) in mapAmazonRegions)
+                        DropdownMenuItem(
+                          value: id,
+                          child: Text('$label · $id', overflow: TextOverflow.ellipsis),
+                        ),
+                    ],
+                    onChanged: canEdit ? (v) => v == null ? null : onChanged(settings.withAmazonRegion(v)) : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
           for (final slot in mapKeySlots)
             _KeyRow(
               key: ValueKey('maps-key-${slot.id}'),
@@ -930,7 +965,7 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
         dimension: 48,
         child: spec == null
             ? const Icon(Icons.layers_outlined)
-            : spec.isGoogleJs
+            : spec.isBrowserMap
             ? const Icon(Icons.map_outlined)
             : ClipRRect(
                 borderRadius: BorderRadius.circular(6),
@@ -947,6 +982,8 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
             ? 'Built in'
             : spec.isGoogleJs
             ? 'Google Maps (JavaScript), drawn by the browser'
+            : spec.isMapLibre
+            ? '${tileHost(spec.url)}, drawn by the browser'
             : tileHost(spec.url),
       ),
     );

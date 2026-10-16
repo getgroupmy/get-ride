@@ -7,6 +7,7 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 
 import {
+  amazonRegionOf,
   cacheSeconds,
   decodeFlexiblePolyline,
   decodePolyline,
@@ -623,4 +624,126 @@ Deno.test("distance action: listed providers only, cached, Google's older API wh
   // deno-lint-ignore no-explicit-any
   const prof = (await handleGeo(q("action=profile&role=rider&device=android"), "ip", d)).body as any;
   assertEquals(prof.profile.distance, ["here", "google", "straight"]);
+});
+
+Deno.test("Amazon Location (GrabMaps): requests in its region, answers read like the others", () => {
+  assertEquals(amazonRegionOf({}), "ap-southeast-5", "Malaysia by default");
+  assertEquals(amazonRegionOf({ amazonRegion: "ap-southeast-1" }), "ap-southeast-1");
+  assertEquals(amazonRegionOf({ amazonRegion: "us-east-1" }), "ap-southeast-5", "GrabMaps regions only");
+  assertEquals(keySlot("amazon", "search"), "amazon");
+  assertEquals(keySlot("amazon_js", "tiles"), "amazon_maps");
+  assertEquals(cacheSeconds("amazon", "routing"), 0, "never kept");
+
+  const sp = { q: "klcc", countries: ["my"], countries3: ["MYS"], lang: "en-GB" };
+  const s = searchRequest("amazon", { ...sp, lat: 3.1, lng: 101.6, amazonRegion: "ap-southeast-1" }, "AK")!;
+  assertEquals(s.url, "https://places.geo.ap-southeast-1.amazonaws.com/v2/search-text?key=AK");
+  assertEquals(JSON.parse(s.body!), {
+    QueryText: "klcc",
+    MaxResults: 8,
+    Language: "en",
+    BiasPosition: [101.6, 3.1],
+    Filter: { IncludeCountries: ["MYS"] },
+  });
+  assertEquals(JSON.parse(searchRequest("amazon", sp, "AK")!.body!).BiasPosition, [101.6869, 3.139], "KL without a fix");
+  assertStringIncludes(searchRequest("amazon", sp, "AK")!.url, "ap-southeast-5");
+  assertEquals(parseSearch("amazon", {
+    ResultItems: [{ Title: "Suria KLCC", Address: { Label: "Jalan Ampang, KL" }, Position: [101.7116, 3.1579] }],
+  }), [{ name: "Suria KLCC", address: "Jalan Ampang, KL", lat: 3.1579, lng: 101.7116 }]);
+
+  assertEquals(JSON.parse(reverseRequest("amazon", 3.1, 101.6, "ms", "AK")!.body!), { QueryPosition: [101.6, 3.1], Language: "ms" });
+  assertEquals(
+    parseReverse("amazon", {
+      ResultItems: [{
+        Title: "Jalan Ampang",
+        Address: {
+          Label: "Jalan Ampang, 50450 Kuala Lumpur",
+          Country: { Name: "Malaysia" },
+          Region: { Name: "Kuala Lumpur" },
+          Locality: "Kuala Lumpur",
+          District: "KLCC",
+        },
+      }],
+    }, 3.1, 101.6),
+    {
+      name: "Jalan Ampang",
+      address: "Jalan Ampang, 50450 Kuala Lumpur",
+      lat: 3.1,
+      lng: 101.6,
+      country: "Malaysia",
+      state: "Kuala Lumpur",
+      city: "Kuala Lumpur",
+      suburb: "KLCC",
+    },
+  );
+
+  const r = routeRequest("amazon", [[3.1, 101.6], [3.15, 101.65], [3.2, 101.7]], "AK")!;
+  assertEquals(r.url, "https://routes.geo.ap-southeast-5.amazonaws.com/v2/routes?key=AK");
+  assertEquals(JSON.parse(r.body!), {
+    Origin: [101.6, 3.1],
+    Destination: [101.7, 3.2],
+    Waypoints: [{ Position: [101.65, 3.15] }],
+    TravelMode: "Car",
+    LegGeometryFormat: "Simple",
+  });
+  assertEquals(
+    parseRoute("amazon", {
+      Routes: [{
+        Summary: { Distance: 12500, Duration: 1200 },
+        Legs: [{ Geometry: { LineString: [[101.6, 3.1], [101.7, 3.2]] } }],
+      }],
+    }),
+    { distanceKm: 12.5, durationMin: 20, points: [[3.1, 101.6], [3.2, 101.7]] },
+  );
+
+  const m = distanceRequest("amazon", [3.1, 101.6], [[3.2, 101.7], [2.75, 101.71]], "AK", "ap-southeast-1")!;
+  assertStringIncludes(m.url, "routes.geo.ap-southeast-1.amazonaws.com/v2/route-matrix");
+  assertEquals(JSON.parse(m.body!).RoutingBoundary, { Unbounded: true });
+  assertEquals(JSON.parse(m.body!).Destinations[1], { Position: [101.71, 2.75] });
+  assertEquals(parseDistances("amazon", { RouteMatrix: [[{ Distance: 8590 }, { Error: "NoRoute" }]] }, 2), [8.59, null]);
+
+  // Its map: a MapLibre style, light and dark, no imagery.
+  const t = tileSource("amazon_js", "dark", "MAPKEY", null, "ap-southeast-5")!;
+  assertEquals(t.engine, "maplibre");
+  assertEquals(t.style, "https://maps.geo.ap-southeast-5.amazonaws.com/v2/styles/Standard/descriptor?color-scheme=Dark&key=MAPKEY");
+  assertStringIncludes(t.attribution, "Grab");
+  assertStringIncludes(tileSource("amazon_js", "light", "K")!.style!, "color-scheme=Light");
+  assertEquals(tileSource("amazon_js", "satellite", "K"), null);
+  assertEquals(tileSource("amazon_js", "light", null), null, "needs its key");
+});
+
+Deno.test("Amazon through geo: the configured region and its own key slots", async () => {
+  const cfg = {
+    ...config,
+    amazonRegion: "ap-southeast-1",
+    keys: { ...config.keys, amazon: "amazon/location", amazon_maps: "amazon/maps" },
+    profiles: {
+      ...config.profiles,
+      "partner.web": {
+        ...config.profiles["partner.web"],
+        tiles: { light: "amazon_js", dark: "amazon_js", satellite: "app", traffic: "app" },
+        search: ["amazon"],
+      },
+    },
+  };
+  const providers = [
+    ...apiProviders,
+    { id: "amazon", services: [{ id: "location", keys: [{ id: "a1", value: "SERVERKEY" }] }, { id: "maps", keys: [{ id: "m1", value: "BROWSERKEY" }] }] },
+  ];
+  const asked: string[] = [];
+  const { d } = deps({
+    settings: () => Promise.resolve({ config: cfg, apiProviders: providers }),
+    call: (req) => {
+      asked.push(req.url);
+      return Promise.resolve({ ResultItems: [{ Title: "Changi", Address: { Label: "Singapore" }, Position: [103.99, 1.36] }] });
+    },
+  });
+  // deno-lint-ignore no-explicit-any
+  const prof = (await handleGeo(q("action=profile&role=partner&device=web"), "ip", d)).body as any;
+  assertEquals(prof.profile.tiles.light.engine, "maplibre");
+  assertStringIncludes(prof.profile.tiles.light.style, "maps.geo.ap-southeast-1.amazonaws.com");
+  assertStringIncludes(prof.profile.tiles.dark.style, "key=BROWSERKEY", "the map's own key");
+  const s = await handleGeo(q("action=search&provider=amazon&role=partner&device=web&q=changi"), "ip", d);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((s.body as any).places[0].name, "Changi");
+  assertEquals(asked, ["https://places.geo.ap-southeast-1.amazonaws.com/v2/search-text?key=SERVERKEY"]);
 });

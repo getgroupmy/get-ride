@@ -23,6 +23,7 @@ import 'package:http/retry.dart';
 
 import '../core/map_profile.dart';
 import 'google_js_layer.dart';
+import 'maplibre_layer.dart';
 
 const osmTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
@@ -35,13 +36,20 @@ const satelliteTileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/W
 
 /// Which tiles to load, and whether they need darkening on the device.
 class TileSource {
-  const TileSource(this.url, {required this.darken, this.attribution = '', this.googleJsKey});
+  const TileSource(this.url, {required this.darken, this.attribution = '', this.googleJsKey, this.maplibreKey});
   final String url;
   final bool darken;
 
   /// Google's JavaScript map with this browser key instead of tiles
   /// (migration 0204, web only); [url] then only names the map type.
   final String? googleJsKey;
+
+  /// A MapLibre map instead of tiles (Amazon Location's, migration 0206,
+  /// web only): [url] is its style, this key goes with its requests.
+  final String? maplibreKey;
+
+  /// Drawn by the browser rather than from tiles.
+  bool get isBrowserMap => googleJsKey != null || maplibreKey != null;
 
   /// The credit Admin → Settings → Maps sent with these tiles; empty for the
   /// app's own (worked out from the URL, see core/map_credit.dart).
@@ -73,11 +81,17 @@ TileSource resolveTileSource({
 
 /// The tiles Admin → Settings → Maps (migration 0200) set for this user and
 /// device, for the theme or satellite; null where it keeps the app's own.
-/// Google's JavaScript map only on the [web].
+/// Google's JavaScript map and MapLibre maps only on the [web].
 TileSource? profileTileSource(MapProfile profile, {required bool dark, bool satellite = false, bool web = kIsWeb}) {
   final spec = satellite ? profile.satellite : (dark ? profile.dark : profile.light);
-  if (spec == null || (spec.isGoogleJs && !web)) return null;
-  return TileSource(spec.url, darken: spec.darken, attribution: spec.attribution, googleJsKey: spec.googleJsKey);
+  if (spec == null || (spec.isBrowserMap && !web)) return null;
+  return TileSource(
+    spec.url,
+    darken: spec.darken,
+    attribution: spec.attribution,
+    googleJsKey: spec.googleJsKey,
+    maplibreKey: spec.maplibreKey,
+  );
 }
 
 /// Whether a failed tile request is worth asking again: the server
@@ -120,9 +134,19 @@ TileSource currentTileSource(BuildContext context, {bool satellite = false}) {
 }
 
 /// The base layer for [context]'s theme, or satellite imagery: tiles, or
-/// Google's JavaScript map (with the app's own tiles should it fail).
+/// Google's JavaScript map or a MapLibre map (with the app's own tiles
+/// should it fail).
 Widget baseTileLayer(BuildContext context, {bool satellite = false}) {
   final source = currentTileSource(context, satellite: satellite);
+  final maplibreKey = source.maplibreKey;
+  if (maplibreKey != null) {
+    return MapLibreBaseLayer(
+      key: ValueKey(source.url),
+      style: source.url,
+      apiKey: maplibreKey,
+      fallback: _tileLayer(fallbackTileSource(context, satellite: satellite)),
+    );
+  }
   final key = source.googleJsKey;
   if (key == null) return _tileLayer(source);
   return GoogleJsBaseLayer(
@@ -133,7 +157,7 @@ Widget baseTileLayer(BuildContext context, {bool satellite = false}) {
   );
 }
 
-/// The app's own tiles, under Google's JavaScript map should it fail.
+/// The app's own tiles, under a browser-drawn map should it fail.
 TileSource fallbackTileSource(BuildContext context, {bool satellite = false}) =>
     resolveTileSource(dark: Theme.of(context).brightness == Brightness.dark, satellite: satellite);
 

@@ -177,6 +177,10 @@ final defaultApiProviders = <ApiProviderDef>[
     _svc('overpass', 'Overpass API', 'Custom Overpass server URL'),
     _svc('osrm', 'OSRM Routing', 'Open Source Routing Machine'),
   ]),
+  ApiProviderDef(id: 'amazon', name: 'Amazon Location', description: 'Amazon Location Service (GrabMaps in Southeast Asia)', category: 'Mapping', services: [
+    _svc('location', 'Places & Routes', 'API key for place search, address lookup, routes and route matrices'),
+    _svc('maps', 'Maps', 'Browser API key for the map (GetTile), restricted to the website'),
+  ]),
   ApiProviderDef(id: 'mapbox', name: 'Mapbox', description: 'Mapbox tiles, geocoding & navigation', category: 'Mapping', services: [
     _svc('tiles', 'Tiles & Geocoding', 'Maps & geocoding access token'),
     _svc('navigation', 'Navigation', 'Turn-by-turn navigation SDK'),

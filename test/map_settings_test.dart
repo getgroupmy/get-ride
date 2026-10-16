@@ -592,6 +592,18 @@ void main() {
       expect(repo.saved.single.profile('rider', 'android').distance, ['here', 'straight']);
     });
 
+    testWidgets('Amazon Location: its region and key slots on the Keys tab, saved ($mode)', (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      await tester.tap(find.byKey(const ValueKey('maps-tab-keys')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('maps-key-amazon')), findsOneWidget);
+      expect(find.byKey(const ValueKey('maps-key-amazon_maps')), findsOneWidget);
+      await choose(tester, 'maps-amazon-region-ap-southeast-5', 'Asia Pacific (Singapore) · ap-southeast-1');
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.amazonRegion, 'ap-southeast-1');
+    });
+
     testWidgets('keys and usage ($mode)', (tester) async {
       await pump(tester, dark: dark);
       await tester.tap(find.byKey(const ValueKey('maps-tab-keys')));

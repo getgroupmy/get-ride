@@ -19,6 +19,9 @@
  *       → { distances: [km | null, …] }  road distance to each place search result (up to 10)
  *   Google's place search, routes and distances use the newer API, the older one, or the newer then the
  *   older when it refuses, as map_config.googleApi says ("new" | "old" | "new_old").
+ *   Amazon Location (provider "amazon", tiles "amazon_js") is asked in map_config.amazonRegion
+ *   ("ap-southeast-5" Malaysia or "ap-southeast-1" Singapore), where it answers with GrabMaps
+ *   data; an amazon_js slot is { engine: "maplibre", style, key } instead of tiles.
  *   GET ?action=expand&url=https://maps.app.goo.gl/…
  *       → { url: "https://www.google.com/maps/place/…" }  a share link pasted into place
  *         search, followed only through Google's own hosts (at most 6 hops)
@@ -30,6 +33,7 @@
  * 429 { error: "rate_limited" } past the per-address limit.
  */
 import {
+  amazonRegionOf,
   cacheKey,
   cacheSeconds,
   DIRECT,
@@ -143,6 +147,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   const countries = (params.get("countries") ?? "my").toLowerCase().split(",").map((c) => c.trim())
     .filter((c) => /^[a-z]{2}$/.test(c)).slice(0, 5);
   const lang = /^[a-z]{2}(-[A-Za-z]{2})?$/.test(params.get("lang") ?? "") ? params.get("lang")! : "en";
+  const amazonRegion = amazonRegionOf(config);
 
   if (action === "profile") {
     const tile = async (slot: "light" | "dark" | "satellite"): Promise<TileSource | null> => {
@@ -153,7 +158,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       if (provider === "google" && k) {
         session = await deps.googleSession(slot, k, countries[0] ?? "my").catch(() => null);
       }
-      return tileSource(provider, slot, k, session);
+      return tileSource(provider, slot, k, session, amazonRegion);
     };
     const t = profile.tiles.traffic;
     let traffic: unknown = null;
@@ -212,6 +217,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       countries,
       countries3: countries.map((c) => deps.iso3(c)).filter((c): c is string => !!c),
       lang,
+      amazonRegion,
     };
     req = searchRequest(provider, sp, k);
     if (provider === "google") older = googleLegacySearchRequest(sp, k);
@@ -221,7 +227,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   } else if (kind === "reverse") {
     const lat = coord(params.get("lat"), 90), lng = coord(params.get("lng"), 180);
     if (lat == null || lng == null) return bad("Give lat and lng.");
-    req = reverseRequest(provider, lat, lng, lang, k);
+    req = reverseRequest(provider, lat, lng, lang, k, amazonRegion);
     ck = cacheKey(provider, kind, [lat, lng, lang]);
     parse = (b) => ({ place: parseReverse(provider, b, lat, lng) });
   } else if (kind === "distance") {
@@ -234,7 +240,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     const to = (params.get("to") ?? "").split(";").filter((p) => p.trim() !== "").slice(0, 10).map(point);
     if (!from || !to.length || to.some((p) => p == null)) return bad("Give from=lat,lng and to=lat,lng;lat,lng.");
     const dest = to as [number, number][];
-    req = distanceRequest(provider, from, dest, k);
+    req = distanceRequest(provider, from, dest, k, amazonRegion);
     if (provider === "google") older = googleDistanceMatrixRequest(from, dest, k);
     // The user's own spot to ~100 m; the places as given.
     ck = cacheKey(provider, kind, [from[0].toFixed(3), from[1].toFixed(3), ...dest.flat()]);
@@ -250,7 +256,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       return la == null || ln == null ? null : [la, ln] as [number, number];
     });
     if (points.length < 2 || points.some((p) => p == null)) return bad("Give points=lat,lng;lat,lng.");
-    req = routeRequest(provider, points as [number, number][], k);
+    req = routeRequest(provider, points as [number, number][], k, amazonRegion);
     if (provider === "google") older = googleDirectionsRequest(points as [number, number][], k);
     ck = cacheKey(provider, kind, (points as [number, number][]).flat());
     parse = (b) => ({ route: parseRoute(provider, b) });
