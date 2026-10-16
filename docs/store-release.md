@@ -378,13 +378,20 @@ After the next push to `main` (web deploy), check:
 
 Admin → Settings → Maps can give Android, iPhone and iPad Google's own map
 (the Maps SDK) under the app's layers. The key goes into the app when it is
-built, so it needs these Actions secrets before the release that should
-show it; without them the phones keep the app's own map, whatever is set.
+built, so add it before the release that should show it; without one the
+phones keep the app's own map, whatever is set.
 
-| Secret | Google Cloud key |
+Add the keys in **Admin → API Keys → Google**:
+
+| Service | Google Cloud key |
 |---|---|
-| `GOOGLE_MAPS_ANDROID_API_KEY` | APIs: **Maps SDK for Android**. Application restriction: Android apps, package `com.taxxee.teksi` with the SHA-1 of the Play app signing key (Play Console → App integrity) and of the upload key. |
-| `GOOGLE_MAPS_IOS_API_KEY` | APIs: **Maps SDK for iOS**. Application restriction: iOS apps, bundle ID of this app. |
+| **Maps SDK for Android** | APIs: **Maps SDK for Android**. Application restriction: Android apps, package `com.taxxee.teksi` with the SHA-1 of the Play app signing key (Play Console → App integrity) and of the upload key. |
+| **Maps SDK for iOS** | APIs: **Maps SDK for iOS**. Application restriction: iOS apps, bundle ID of this app. |
+
+The release workflows read the first enabled key of each service with the
+`SUPABASE_ACCESS_TOKEN` secret (`scripts/ci/native_map_key.sh`). The
+Actions secrets `GOOGLE_MAPS_ANDROID_API_KEY` and `GOOGLE_MAPS_IOS_API_KEY`
+are only used when API Keys has none.
 
 Enable both APIs in the key's Google Cloud project, with billing on. The
 build's log says `GOOGLE_MAPS_NATIVE: set` when the key went in.

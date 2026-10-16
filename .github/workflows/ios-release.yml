@@ -266,6 +266,17 @@ jobs:
             echo "ADHOC_UUID=" >> "$GITHUB_ENV"
           fi
 
+      # Google's own map (Admin → Settings → Maps, "Google Maps (native)"):
+      # the Maps SDK for iOS key from Admin → API Keys, else the
+      # GOOGLE_MAPS_IOS_API_KEY secret, into $GITHUB_ENV; the Archive step
+      # puts it in Info.plist (GMSApiKey). None: the app keeps its own map.
+      - name: Google map key
+        if: steps.creds.outputs.ready == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          FALLBACK_KEY: ${{ secrets.GOOGLE_MAPS_IOS_API_KEY }}
+        run: scripts/ci/native_map_key.sh ios
+
       # Flutter compiles without signing, then xcodebuild archives with the
       # distribution identity named explicitly. `flutter build ipa` looks
       # for a DEVELOPMENT certificate first, which a distribution-only
@@ -294,10 +305,6 @@ jobs:
           MAP_TILE_URL_TRAFFIC_FALLBACK: ${{ secrets.MAP_TILE_URL_TRAFFIC_FALLBACK || vars.MAP_TILE_URL_TRAFFIC_FALLBACK }}
           TOM_TOM_API_KEY: ${{ secrets.TOM_TOM_API_KEY }}
           HERE_API_KEY: ${{ secrets.HERE_API_KEY }}
-          # Google's own map (Admin → Settings → Maps, "Google Maps (native)"):
-          # a Maps SDK for iOS key, restricted to this app. Unset, the app
-          # keeps its tiles. Goes into Info.plist (GMSApiKey) below.
-          GOOGLE_MAPS_IOS_API_KEY: ${{ secrets.GOOGLE_MAPS_IOS_API_KEY }}
         run: |
           set -euo pipefail
           build=$(( ${{ github.run_number }} + OFFSET ))
