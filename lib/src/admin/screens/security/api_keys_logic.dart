@@ -165,6 +165,7 @@ ApiServiceDef _svc(String id, String name, String description) => ApiServiceDef(
 final defaultApiProviders = <ApiProviderDef>[
   ApiProviderDef(id: 'google', name: 'Google', description: 'Google Maps Platform services', category: 'Mapping', services: [
     _svc('maps', 'Maps SDK', 'Maps SDK, tiles & static maps'),
+    _svc('maps_js', 'Maps JavaScript', "Browser key for Google's JavaScript map (website)"),
     _svc('places', 'Places', 'Place search, autocomplete & details'),
     _svc('geocoding', 'Geocoding', 'Forward & reverse geocoding'),
     _svc('directions', 'Directions', 'Routing, ETAs & navigation'),

@@ -13,6 +13,7 @@ import 'package:get_ride/src/admin/screens/maps/maps_logic.dart';
 import 'package:get_ride/src/admin/screens/maps/maps_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/admin/screens/security/api_keys_logic.dart';
+import 'package:get_ride/src/admin/screens/security/security_data.dart';
 import 'package:get_ride/src/core/map_profile.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/map_profile_repository.dart' show mapRole;
@@ -33,6 +34,17 @@ class _FakeRepo implements MapsRepository {
   @override
   Future<Set<String>> fallbackSlots() async => fallbacks;
   Set<String> fallbacks = const {};
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _FakeSecurity implements SecurityRepository {
+  List<ApiProviderDef> stored = _keys;
+
+  @override
+  Future<List<ApiProviderDef>> mutateApiProviders(List<ApiProviderDef> Function(List<ApiProviderDef>) change) async =>
+      stored = change(stored);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -125,6 +137,21 @@ void main() {
       expect(odd.profile('rider', 'ios').tiles['light'], 'app');
       expect(odd.profile('rider', 'ios').search, ['here', 'nominatim', 'tomtom'], reason: 'known, once, three at most');
       expect(odd.profile('rider', 'ios').routing, ['osrm']);
+    });
+
+    test('a key added from the page lands in API Keys under the slot, and is picked', () {
+      final places = mapKeySlots.firstWhere((s) => s.id == 'google_places');
+      final r = addMapKey(_keys, places, 'Prod 2', ' AIzaNEWPLACES ', id: 'k9');
+      expect(r.ref, 'google/places#k9');
+      final svc = r.list.firstWhere((p) => p.id == 'google').services.firstWhere((s) => s.id == 'places');
+      expect(svc.keys.map((k) => (k.id, k.label, k.value)), contains(('k9', 'Prod 2', 'AIzaNEWPLACES')));
+      expect(mapKeyUsable(r.list, r.ref), isTrue);
+
+      final js = mapKeySlots.firstWhere((s) => s.id == 'google_js');
+      final made = addMapKey(const [], js, '', 'AIzaBROWSER', id: 'b1');
+      expect(made.ref, 'google/maps_js#b1', reason: 'provider and service made when missing');
+      expect(mapKeyUsable(made.list, made.ref), isTrue);
+      expect(made.list.single.services.single.keys.single.label, 'Key 1');
     });
 
     test("Google's JavaScript map and its traffic: web only, traffic only on that map", () {
@@ -347,6 +374,7 @@ void main() {
     bool dark = false,
     bool edit = true,
     Set<String> fallbacks = const {},
+    SecurityRepository? security,
   }) async {
     final repo = _FakeRepo()..fallbacks = fallbacks;
     final probe = _FakeProbe();
@@ -359,6 +387,7 @@ void main() {
           mapsRepositoryProvider.overrideWithValue(repo),
           adminMapSettingsProvider.overrideWith((_) async => MapSettings.fromJson(null)),
           adminMapApiKeysProvider.overrideWith((_) async => _keys),
+          if (security != null) securityRepositoryProvider.overrideWithValue(security),
           adminMapUsageProvider.overrideWith(
             (_) async => const [MapUsageRow(provider: 'here', kind: 'search', calls: 42, cached: 30, failures: 1)],
           ),
@@ -470,6 +499,35 @@ void main() {
         'satellite': 'app',
         'traffic': 'google',
       });
+    });
+
+    testWidgets('a key added on the Keys tab goes to API Keys and is picked for that slot ($mode)', (tester) async {
+      final security = _FakeSecurity();
+      final (repo, _) = await pump(tester, dark: dark, security: security);
+      await tester.tap(find.byKey(const ValueKey('maps-tab-keys')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('maps-key-add-google_geocoding')));
+      await tester.tap(find.byKey(const ValueKey('maps-key-add-google_geocoding')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('maps-add-key-dialog')), findsOneWidget);
+      final save = find.byKey(const ValueKey('maps-add-key-save'));
+      expect(tester.widget<FilledButton>(save).onPressed, isNull, reason: 'nothing to add yet');
+      await tester.enterText(find.byKey(const ValueKey('maps-add-key-label')), 'Prod');
+      await tester.enterText(find.byKey(const ValueKey('maps-add-key-value')), 'AIzaGEOCODE1234');
+      await tester.pump();
+      expect(
+        tester.widget<TextField>(find.byKey(const ValueKey('maps-add-key-value'))).obscureText,
+        isTrue,
+        reason: 'hidden while typed',
+      );
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      final svc = security.stored.firstWhere((p) => p.id == 'google').services.firstWhere((s) => s.id == 'geocoding');
+      final added = svc.keys.single;
+      expect([added.label, added.value], ['Prod', 'AIzaGEOCODE1234']);
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.keyRef('google_geocoding'), 'google/geocoding#${added.id}');
     });
 
     testWidgets('Google API: New then Old by default, Old only saved ($mode)', (tester) async {

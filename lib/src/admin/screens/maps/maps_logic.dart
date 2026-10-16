@@ -364,6 +364,25 @@ List<MapKeyChoice> mapKeyChoices(List<ApiProviderDef> providers, MapKeySlot slot
   return out;
 }
 
+/// [value] added to Admin → API Keys under [slot]'s own service (the
+/// provider and service made if missing), and the reference that picks it.
+({List<ApiProviderDef> list, String ref}) addMapKey(
+  List<ApiProviderDef> list,
+  MapKeySlot slot,
+  String label,
+  String value, {
+  String? id,
+}) {
+  final (pId, sId) = _split(slot.defaultRef);
+  var out = list;
+  if (!out.any((p) => p.id == pId)) out = addProvider(out, pId, id: pId);
+  final provider = out.firstWhere((p) => p.id == pId);
+  if (!provider.services.any((s) => s.id == sId)) out = addService(out, pId, sId, id: sId);
+  final keyId = id ?? genApiId('key');
+  out = addKey(out, pId, sId, label, value, id: keyId);
+  return (list: out, ref: '${slot.defaultRef}#$keyId');
+}
+
 (String, String) _split(String ref) {
   final base = ref.split('#').first;
   final i = base.indexOf('/');

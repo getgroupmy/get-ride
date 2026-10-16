@@ -14,6 +14,7 @@ import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../security/security_data.dart' show securityRepositoryProvider;
 import 'maps_data.dart';
 import 'maps_logic.dart';
 
@@ -558,9 +559,116 @@ class _KeysTab extends ConsumerWidget {
               synced: synced.contains(slot.id),
               canEdit: canEdit,
               onChanged: (ref) => onChanged(settings.withKey(slot.id, ref)),
+              onAdd: () => _addKey(context, ref, slot),
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Asks for a key, adds it to Admin → API Keys under [slot]'s service and
+/// picks it for [slot] (saved with the page's Save).
+extension on _KeysTab {
+  Future<void> _addKey(BuildContext context, WidgetRef ref, MapKeySlot slot) async {
+    final entered = await showDialog<(String, String)>(
+      context: context,
+      builder: (_) => _AddKeyDialog(slot: slot),
+    );
+    if (entered == null || !context.mounted) return;
+    String? picked;
+    final ok = await runAdminAction(context, () async {
+      await ref.read(securityRepositoryProvider).mutateApiProviders((list) {
+        final r = addMapKey(list, slot, entered.$1, entered.$2);
+        picked = r.ref;
+        return r.list;
+      });
+    }, success: 'Key added to API Keys. Save maps to use it.');
+    ref.invalidate(adminMapApiKeysProvider);
+    if (ok && picked != null) onChanged(settings.withKey(slot.id, picked!));
+  }
+}
+
+class _AddKeyDialog extends StatefulWidget {
+  const _AddKeyDialog({required this.slot});
+  final MapKeySlot slot;
+
+  @override
+  State<_AddKeyDialog> createState() => _AddKeyDialogState();
+}
+
+class _AddKeyDialogState extends State<_AddKeyDialog> {
+  final _label = TextEditingController();
+  final _value = TextEditingController();
+  bool _show = false;
+
+  @override
+  void dispose() {
+    _label.dispose();
+    _value.dispose();
+    super.dispose();
+  }
+
+  void _done() {
+    final v = _value.text.trim();
+    if (v.isEmpty) return;
+    Navigator.of(context).pop((_label.text.trim(), v));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return AlertDialog(
+      key: const ValueKey('maps-add-key-dialog'),
+      title: Text('Add key · ${widget.slot.label}'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Kept in API Keys under ${widget.slot.defaultRef}, where it can be turned off or removed later. '
+              'Only its last characters are shown again.',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('maps-add-key-label'),
+              controller: _label,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Label (optional)', hintText: 'e.g. Production'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('maps-add-key-value'),
+              controller: _value,
+              obscureText: !_show,
+              autocorrect: false,
+              enableSuggestions: false,
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _done(),
+              decoration: InputDecoration(
+                labelText: 'Key',
+                suffixIcon: IconButton(
+                  tooltip: _show ? 'Hide' : 'Show',
+                  icon: Icon(_show ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                  onPressed: () => setState(() => _show = !_show),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(
+          key: const ValueKey('maps-add-key-save'),
+          style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+          onPressed: _value.text.trim().isEmpty ? null : _done,
+          child: const Text('Add key'),
+        ),
+      ],
     );
   }
 }
@@ -576,6 +684,7 @@ class _KeyRow extends StatelessWidget {
     this.synced = false,
     required this.canEdit,
     required this.onChanged,
+    this.onAdd,
   });
 
   final MapKeySlot slot;
@@ -588,6 +697,9 @@ class _KeyRow extends StatelessWidget {
   final bool synced;
   final bool canEdit;
   final ValueChanged<String> onChanged;
+
+  /// Adds a new key for this slot.
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -616,6 +728,8 @@ class _KeyRow extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
+              // Keyed by the value so a key just added (or Discard) shows.
+              key: ValueKey('maps-key-${slot.id}-$current'),
               initialValue: current,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Key', isDense: true),
@@ -628,6 +742,16 @@ class _KeyRow extends StatelessWidget {
               ],
               onChanged: canEdit ? (v) => v == null ? null : onChanged(v) : null,
             ),
+            if (canEdit && onAdd != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: ValueKey('maps-key-add-${slot.id}'),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add key'),
+                  onPressed: onAdd,
+                ),
+              ),
           ],
         ),
       ),
