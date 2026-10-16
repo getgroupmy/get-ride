@@ -43,33 +43,23 @@ select pg_temp.check(public.map_config_clean('{"profiles": {"partner.web": {"til
 select pg_temp.check((select count(*) = 8 from jsonb_object_keys(public.map_config_clean('{}')->'profiles')),
   'eight profiles');
 
--- Google's distances only on a Google map.
+-- Google's distances on any map (0207 lifted the Google-map-only rule).
 select pg_temp.check(public.map_config_google_conflicts(public.map_config_clean('{"profiles": {"rider.android": {
-    "distance": ["google", "osrm"]}}}')) = 'rider.android', 'not over OpenStreetMap');
-select pg_temp.check(public.map_config_google_conflicts(public.map_config_clean('{"profiles": {"rider.android": {
-    "tiles": {"light": "google", "dark": "google"}, "distance": ["google"]}}}')) is null, 'fine on Google tiles');
-select pg_temp.check(public.map_config_google_conflicts(public.map_config_clean('{"profiles": {"rider.web": {
-    "tiles": {"light": "google_js", "dark": "google_js"}, "distance": ["google"]}}}')) is null,
-  'fine on Google''s JavaScript map');
+    "distance": ["google", "osrm"]}}}')) is null, 'over OpenStreetMap too');
 
 -- Counted under its own kind.
 select public.geo_count('osrm', 'distance', true, false);
 select pg_temp.check((select calls = 1 from public.geo_usage_daily where provider = 'osrm' and kind = 'distance'),
   'usage counted');
 
--- Saved and read back by an admin; Google's refused off a Google map.
+-- Saved and read back by an admin, Google's over OpenStreetMap too.
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000205a1');
 select pg_temp.check(public.set_map_config('{"profiles": {"rider.web": {"distance": ["mapbox", "straight"]}}}')
   ->'profiles'->'rider.web'->'distance' = '["mapbox", "straight"]', 'saved');
 select pg_temp.check(public.map_config()->'profiles'->'rider.web'->'distance' = '["mapbox", "straight"]', 'read back');
-do $$
-begin
-  perform public.set_map_config('{"profiles": {"rider.web": {"distance": ["google"]}}}');
-  raise exception 'FAILED: Google distances over OpenStreetMap saved';
-exception when others then
-  if sqlerrm <> 'MAP_GOOGLE_TERMS' then raise; end if;
-end $$;
+select pg_temp.check(public.set_map_config('{"profiles": {"rider.web": {"distance": ["google"]}}}')
+  ->'profiles'->'rider.web'->'distance' = '["google"]', 'Google distances over OpenStreetMap saved');
 reset role;
 
 rollback;

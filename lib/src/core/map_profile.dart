@@ -140,6 +140,8 @@ class MapProfile {
     this.reverse = const ['nominatim'],
     this.routing = const ['osrm'],
     this.distance = const ['osrm'],
+    this.smartAddress = 'normal',
+    this.googleAutocomplete = false,
     this.nominatimUrl,
     this.osrmUrl,
   });
@@ -160,6 +162,14 @@ class MapProfile {
 
   /// Who measures each place search result's distance from the user.
   final List<String> distance;
+
+  /// Admin → Settings → Maps (migration 0207): 'normal', 'a' (clean
+  /// two-line results), 'b' (places first, saved and recent on top),
+  /// 'c' (Google checks a picked street address) or 'all'.
+  final String smartAddress;
+
+  /// Google's place search suggests as the rider types (Autocomplete).
+  final bool googleAutocomplete;
 
   /// A self-hosted Nominatim or OSRM from Admin → API Keys; null for the
   /// app's own.
@@ -192,6 +202,8 @@ class MapProfile {
       reverse: list(p['reverse'], const ['nominatim']),
       routing: list(p['routing'], const ['osrm']),
       distance: list(p['distance'], const ['osrm']),
+      smartAddress: const ['a', 'b', 'c', 'all'].contains(p['smartAddress']) ? p['smartAddress'] as String : 'normal',
+      googleAutocomplete: p['googleSearch'] == 'autocomplete',
       nominatimUrl: url(direct['nominatim']),
       osrmUrl: url(direct['osrm']),
     );

@@ -61,8 +61,8 @@ select pg_temp.check(public.map_config_google_conflicts(public.map_config_clean(
     "tiles": {"light": "google_js", "dark": "google_js"}, "search": ["google"]}}}')) is null,
   'Google search on Google''s JavaScript map is fine');
 select pg_temp.check(public.map_config_google_conflicts(public.map_config_clean('{"profiles": {"rider.web": {
-    "tiles": {"light": "google_js", "dark": "osm"}, "search": ["google"]}}}')) = 'rider.web',
-  'but not over OpenStreetMap in dark mode');
+    "tiles": {"light": "google_js", "dark": "osm"}, "search": ["google"]}}}')) is null,
+  'and over OpenStreetMap in dark mode too (0207 lifted the Google-map-only rule)');
 
 -- Saved and read back by an admin.
 set local role authenticated;

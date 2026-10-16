@@ -438,7 +438,15 @@ void main() {
   for (final dark in [false, true]) {
     final mode = dark ? 'dark' : 'light';
 
-    testWidgets('a device set, blocked by Google\'s terms until its map is Google, then saved ($mode)', (tester) async {
+    testWidgets("Google's search on Google's map: no note ($mode)", (tester) async {
+      await pump(tester, dark: dark);
+      await choose(tester, 'maps-search-android-0', 'Google · key');
+      await choose(tester, 'maps-tile-android-light', 'Google');
+      await choose(tester, 'maps-tile-android-dark', 'Google');
+      expect(find.byKey(const ValueKey('maps-google-warning'), skipOffstage: false), findsNothing);
+    });
+
+    testWidgets("a device set, Google's search over another map noted but saved ($mode)", (tester) async {
       final (repo, _) = await pump(tester, dark: dark);
       expect(find.byKey(const ValueKey('maps-device-rider-android')), findsOneWidget);
       expect(find.byKey(const ValueKey('maps-save')), findsNothing, reason: 'nothing changed');
@@ -452,17 +460,7 @@ void main() {
       );
       await tester.tap(find.byKey(const ValueKey('maps-save')));
       await tester.pumpAndSettle();
-      expect(repo.saved, isEmpty);
-
-      await choose(tester, 'maps-tile-android-light', 'Google');
-      await choose(tester, 'maps-tile-android-dark', 'Google');
-      expect(find.byKey(const ValueKey('maps-google-warning'), skipOffstage: false), findsNothing);
-      await choose(tester, 'maps-search-android-1', 'OpenStreetMap (Nominatim)');
-      await tester.tap(find.byKey(const ValueKey('maps-save')));
-      await tester.pumpAndSettle();
-      final p = repo.saved.single.profile('rider', 'android');
-      expect(p.search, ['google', 'nominatim']);
-      expect([p.tiles['light'], p.tiles['dark']], ['google', 'google']);
+      expect(repo.saved.single.profile('rider', 'android').search, ['google'], reason: 'over OpenStreetMap, saved');
       expect(repo.saved.single.profile('rider', 'ios').search, ['nominatim'], reason: 'other devices untouched');
     });
 
@@ -602,6 +600,17 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('maps-save')));
       await tester.pumpAndSettle();
       expect(repo.saved.single.amazonRegion, 'ap-southeast-1');
+    });
+
+    testWidgets('place search results: Autocomplete and each smart address option, saved ($mode)', (tester) async {
+      final (repo, _) = await pump(tester, dark: dark);
+      expect(find.byKey(const ValueKey('maps-search-results')), findsOneWidget);
+      await choose(tester, 'maps-google-search-text', 'Autocomplete (suggestions as the rider types)');
+      await choose(tester, 'maps-smart-address-normal', 'Combination: A, B and C');
+      await tester.tap(find.byKey(const ValueKey('maps-save')));
+      await tester.pumpAndSettle();
+      expect([repo.saved.single.googleSearch, repo.saved.single.smartAddress], ['autocomplete', 'all']);
+      expect(repo.saved.single.usedKeySlots, contains('google_address'), reason: 'C needs the Address Validation key');
     });
 
     testWidgets('keys and usage ($mode)', (tester) async {

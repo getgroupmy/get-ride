@@ -7,19 +7,27 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 
 import {
+  addressValidationRequest,
   amazonRegionOf,
   cacheSeconds,
   decodeFlexiblePolyline,
   decodePolyline,
   distanceRequest,
+  FALLBACK_SECRETS,
   fallbackKey,
+  googleAutocompleteRequest,
+  googleDetailsRequest,
   googleDirectionsRequest,
   googleDistanceMatrixRequest,
+  googleLegacyAutocompleteRequest,
   googleLegacyRefusal,
   googleLegacySearchRequest,
   isShortMapLink,
   keySlot,
   nextMapHop,
+  parseAddressValidation,
+  parseAutocomplete,
+  parseDetails,
   parseDistances,
   parseReverse,
   parseRoute,
@@ -32,7 +40,7 @@ import {
   tileSource,
   trafficTileUrl,
 } from "./geo.ts";
-import { type GeoDeps, googleApiOf, handleGeo, parseGoogleSession } from "./geo_handler.ts";
+import { type GeoDeps, googleApiOf, googleSearchOf, handleGeo, parseGoogleSession, smartAddressOf } from "./geo_handler.ts";
 
 const apiProviders = [
   {
@@ -529,7 +537,7 @@ Deno.test("fallback: the function's own Google secrets when Admin → API Keys h
 
   // The admin page asks which slots have one: names only.
   const slots = await handleGeo(q("action=fallbacks"), "ip", d2);
-  assertEquals(slots.body, { slots: ["google_tiles", "google_js", "google_places", "google_routes"] });
+  assertEquals(slots.body, { slots: ["google_tiles", "google_js", "google_places", "google_address", "google_routes"] });
   assert(!JSON.stringify(slots.body).includes("GMAP"));
   assertEquals((await handleGeo(q("action=fallbacks"), "ip", deps().d)).body, { slots: [] });
 
@@ -746,4 +754,119 @@ Deno.test("Amazon through geo: the configured region and its own key slots", asy
   // deno-lint-ignore no-explicit-any
   assertEquals((s.body as any).places[0].name, "Changi");
   assertEquals(asked, ["https://places.geo.ap-southeast-1.amazonaws.com/v2/search-text?key=SERVERKEY"]);
+});
+
+Deno.test("Google Autocomplete: suggestions without a position, the pick looked up with the same session", () => {
+  const sp = { q: "klia", lat: 3.1, lng: 101.6, countries: ["my"], countries3: ["MYS"], lang: "en" };
+  const r = googleAutocompleteRequest(sp, "PK", "sess-12345678");
+  assertEquals(r.url, "https://places.googleapis.com/v1/places:autocomplete");
+  assertEquals(JSON.parse(r.body!), {
+    input: "klia",
+    languageCode: "en",
+    includedRegionCodes: ["my"],
+    locationBias: { circle: { center: { latitude: 3.1, longitude: 101.6 }, radius: 50000 } },
+    origin: { latitude: 3.1, longitude: 101.6 },
+    sessionToken: "sess-12345678",
+  });
+  assertStringIncludes(googleLegacyAutocompleteRequest(sp, "PK", "sess-12345678").url, "components=country:my");
+  assertStringIncludes(googleLegacyAutocompleteRequest(sp, "PK", null).url, "&origin=3.1,101.6&key=PK");
+
+  assertEquals(
+    parseAutocomplete({
+      suggestions: [{
+        placePrediction: {
+          placeId: "ChIJ-klia",
+          text: { text: "KLIA Terminal 1, Sepang, Selangor, Malaysia" },
+          structuredFormat: { mainText: { text: "KLIA Terminal 1" }, secondaryText: { text: "Sepang, Selangor, Malaysia" } },
+          types: ["airport", "establishment"],
+          distanceMeters: 38000,
+        },
+      }, { queryPrediction: { text: { text: "klia express" } } }],
+    }),
+    [{
+      name: "KLIA Terminal 1",
+      address: "Sepang, Selangor, Malaysia",
+      lat: null,
+      lng: null,
+      id: "ChIJ-klia",
+      types: ["airport", "establishment"],
+      km: 38,
+    }],
+  );
+  assertEquals(parseAutocomplete({
+    status: "OK",
+    predictions: [{ place_id: "ChIJ-2", description: "KLIA2, Sepang", types: ["airport"] }],
+  })[0], { name: "KLIA2", address: "KLIA2, Sepang", lat: null, lng: null, id: "ChIJ-2", types: ["airport"], km: null });
+
+  const d = googleDetailsRequest("ChIJ-klia", "en", "PK", "sess-12345678");
+  assertEquals(d.url, "https://places.googleapis.com/v1/places/ChIJ-klia?languageCode=en&sessionToken=sess-12345678");
+  assertEquals(
+    parseDetails({ displayName: { text: "KLIA" }, formattedAddress: "Sepang", location: { latitude: 2.74, longitude: 101.7 }, types: ["airport"] }),
+    { name: "KLIA", address: "Sepang", lat: 2.74, lng: 101.7, types: ["airport"] },
+  );
+  assertEquals(
+    parseDetails({ result: { name: "KLIA2", formatted_address: "Sepang", geometry: { location: { lat: 2.74, lng: 101.68 } } } }),
+    { name: "KLIA2", address: "Sepang", lat: 2.74, lng: 101.68 },
+  );
+
+  const v = addressValidationRequest("12 Jalan Eco Majestic 1/2D", "my", "AV");
+  assertEquals(JSON.parse(v.body!), { address: { regionCode: "MY", addressLines: ["12 Jalan Eco Majestic 1/2D"] } });
+  assertEquals(
+    parseAddressValidation({
+      result: {
+        verdict: { addressComplete: true },
+        address: { formattedAddress: "12, Jalan Eco Majestic 1/2D, Eco Majestic, 43500 Semenyih, Selangor, Malaysia" },
+        geocode: { location: { latitude: 2.94, longitude: 101.84 } },
+      },
+    }),
+    { address: "12, Jalan Eco Majestic 1/2D, Eco Majestic, 43500 Semenyih, Selangor, Malaysia", lat: 2.94, lng: 101.84, complete: true },
+  );
+  assertEquals(parseAddressValidation({}), null);
+  assertEquals(googleSearchOf({ googleSearch: "autocomplete" }), "autocomplete");
+  assertEquals(googleSearchOf({}), "text");
+  assertEquals(smartAddressOf({ smartAddress: "all" }), "all");
+  assertEquals(smartAddressOf({ smartAddress: "x" }), "normal");
+  assertEquals(FALLBACK_SECRETS.google_tiles, ["GOOGLE_MAP_TILES_API_KEY", "GOOGLE_MAP_API_KEY"], "a tiles key of its own first");
+});
+
+Deno.test("Autocomplete, details and validate through geo", async () => {
+  const cfg = { ...config, googleSearch: "autocomplete", smartAddress: "all", keys: { ...config.keys, google_address: "google/address_validation" } };
+  const providers = [
+    ...apiProviders.filter((p) => p.id !== "google"),
+    { id: "google", services: [...apiProviders[0].services, { id: "address_validation", keys: [{ id: "v1", value: "AVKEY" }] }] },
+  ];
+  const asked: string[] = [];
+  const { d } = deps({
+    settings: () => Promise.resolve({ config: cfg, apiProviders: providers }),
+    call: (req) => {
+      asked.push(req.url.replace(/key=[^&]+/, "key=…"));
+      if (req.url.includes("places:autocomplete")) {
+        return Promise.resolve({ suggestions: [{ placePrediction: { placeId: "ChIJ-klia1", text: { text: "KLIA, Sepang" } } }] });
+      }
+      if (req.url.includes("/v1/places/")) {
+        return Promise.resolve({ displayName: { text: "KLIA" }, formattedAddress: "Sepang", location: { latitude: 2.74, longitude: 101.7 } });
+      }
+      return Promise.resolve({ result: { address: { formattedAddress: "12, Jalan X, 43500 Semenyih" }, verdict: {} } });
+    },
+  });
+  // deno-lint-ignore no-explicit-any
+  const prof = (await handleGeo(q("action=profile&role=rider&device=android"), "ip", d)).body as any;
+  assertEquals([prof.profile.googleSearch, prof.profile.smartAddress], ["autocomplete", "all"]);
+  // deno-lint-ignore no-explicit-any
+  const s = (await handleGeo(q("action=search&provider=google&role=rider&device=android&q=klia&session=sess-12345678"), "ip", d)).body as any;
+  assertEquals(s.places[0].id, "ChIJ-klia1");
+  assertEquals(s.places[0].lat, null);
+  // deno-lint-ignore no-explicit-any
+  const p = (await handleGeo(q("action=details&provider=google&role=rider&device=android&id=ChIJ-klia1&session=sess-12345678"), "ip", d)).body as any;
+  assertEquals(p.place, { name: "KLIA", address: "Sepang", lat: 2.74, lng: 101.7 });
+  assertStringIncludes(asked[1], "sessionToken=sess-12345678");
+  assertEquals((await handleGeo(q("action=details&role=partner&device=web&id=ChIJ-klia1"), "ip", d)).status, 403, "Google not listed");
+  assertEquals((await handleGeo(q("action=details&role=rider&device=android&id=bad id"), "ip", d)).status, 400);
+  // deno-lint-ignore no-explicit-any
+  const v = (await handleGeo(q("action=validate&role=rider&device=android&address=12 Jalan X Semenyih"), "ip", d)).body as any;
+  assertEquals(v.checked, { address: "12, Jalan X, 43500 Semenyih", lat: null, lng: null, complete: false });
+  assertStringIncludes(asked[2], "addressvalidation.googleapis.com");
+
+  const off = deps({ settings: () => Promise.resolve({ config, apiProviders }) }).d;
+  assertEquals((await handleGeo(q("action=validate&role=rider&device=android&address=12 Jalan X"), "ip", off)).status, 403, "C off");
 });

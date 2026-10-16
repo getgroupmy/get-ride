@@ -202,9 +202,15 @@ class MapKeySlot {
 }
 
 const mapKeySlots = [
-  MapKeySlot('google_tiles', 'Google · map tiles', 'google/maps', providers: {'google:tiles'}),
+  MapKeySlot('google_tiles', 'Google · map tiles (Map Tiles API)', 'google/maps', providers: {'google:tiles'}),
   MapKeySlot('google_js', 'Google · Maps JavaScript (browser key)', 'google/maps_js', providers: {'google_js'}),
   MapKeySlot('google_places', 'Google · place search', 'google/places', providers: {'google:search'}),
+  MapKeySlot(
+    'google_address',
+    'Google · Address Validation (smart address C)',
+    'google/address_validation',
+    providers: {'smart:check'},
+  ),
   MapKeySlot('google_geocoding', 'Google · address lookup', 'google/geocoding', providers: {'google:reverse'}),
   MapKeySlot(
     'google_routes',
@@ -232,6 +238,21 @@ const mapGoogleApis = [
   ('old', 'Old only (Places API, Directions API)'),
 ];
 
+/// How Google's place search answers (migration 0207).
+const mapGoogleSearches = [
+  ('text', 'Text Search (results when typing stops)'),
+  ('autocomplete', 'Autocomplete (suggestions as the rider types)'),
+];
+
+/// How place search results are shown and checked (migration 0207).
+const mapSmartAddresses = [
+  ('normal', 'Normal: the provider\'s results as given'),
+  ('a', 'A: clean two-line results (name, then area)'),
+  ('b', 'B: places first, saved and recent on top'),
+  ('c', 'C: Google checks a picked street address'),
+  ('all', 'Combination: A, B and C'),
+];
+
 /// Amazon Location's regions that answer with GrabMaps data (migration 0206).
 const mapAmazonRegions = [
   ('ap-southeast-5', 'Asia Pacific (Malaysia)'),
@@ -246,6 +267,8 @@ class MapSettings {
     this.keys = const {},
     this.googleApi = 'new_old',
     this.amazonRegion = 'ap-southeast-5',
+    this.googleSearch = 'text',
+    this.smartAddress = 'normal',
   });
 
   /// Keyed "rider.android" …; a missing one is [MapProfileSetting]'s default.
@@ -257,6 +280,28 @@ class MapSettings {
 
   /// One of [mapAmazonRegions].
   final String amazonRegion;
+
+  /// One of [mapGoogleSearches].
+  final String googleSearch;
+
+  /// One of [mapSmartAddresses].
+  final String smartAddress;
+
+  MapSettings copyWith({
+    Map<String, MapProfileSetting>? profiles,
+    Map<String, String>? keys,
+    String? googleApi,
+    String? amazonRegion,
+    String? googleSearch,
+    String? smartAddress,
+  }) => MapSettings(
+    profiles: profiles ?? this.profiles,
+    keys: keys ?? this.keys,
+    googleApi: googleApi ?? this.googleApi,
+    amazonRegion: amazonRegion ?? this.amazonRegion,
+    googleSearch: googleSearch ?? this.googleSearch,
+    smartAddress: smartAddress ?? this.smartAddress,
+  );
 
   static String profileKey(String role, String device) => '$role.$device';
 
@@ -280,6 +325,8 @@ class MapSettings {
       },
       googleApi: mapGoogleApis.any((a) => a.$1 == m['googleApi']) ? '${m['googleApi']}' : 'new_old',
       amazonRegion: mapAmazonRegions.any((a) => a.$1 == m['amazonRegion']) ? '${m['amazonRegion']}' : 'ap-southeast-5',
+      googleSearch: m['googleSearch'] == 'autocomplete' ? 'autocomplete' : 'text',
+      smartAddress: mapSmartAddresses.any((a) => a.$1 == m['smartAddress']) ? '${m['smartAddress']}' : 'normal',
     );
   }
 
@@ -291,36 +338,27 @@ class MapSettings {
     'keys': {for (final s in mapKeySlots) s.id: keyRef(s.id)},
     'googleApi': googleApi,
     'amazonRegion': amazonRegion,
+    'googleSearch': googleSearch,
+    'smartAddress': smartAddress,
   };
 
-  MapSettings withProfile(String role, String device, MapProfileSetting p) => MapSettings(
-    profiles: {...profiles, profileKey(role, device): p},
-    keys: keys,
-    googleApi: googleApi,
-    amazonRegion: amazonRegion,
-  );
+  MapSettings withProfile(String role, String device, MapProfileSetting p) =>
+      copyWith(profiles: {...profiles, profileKey(role, device): p});
 
   /// [role]'s [device] profile copied to the other devices.
   MapSettings copiedToAllDevices(String role, String device) {
     final p = profile(role, device);
-    return MapSettings(
-      profiles: {...profiles, for (final d in mapDevices) profileKey(role, d): p.forDevice(d)},
-      keys: keys,
-      googleApi: googleApi,
-      amazonRegion: amazonRegion,
-    );
+    return copyWith(profiles: {...profiles, for (final d in mapDevices) profileKey(role, d): p.forDevice(d)});
   }
 
-  MapSettings withKey(String slot, String ref) =>
-      MapSettings(profiles: profiles, keys: {...keys, slot: ref}, googleApi: googleApi, amazonRegion: amazonRegion);
+  MapSettings withKey(String slot, String ref) => copyWith(keys: {...keys, slot: ref});
 
-  MapSettings withGoogleApi(String api) =>
-      MapSettings(profiles: profiles, keys: keys, googleApi: api, amazonRegion: amazonRegion);
+  MapSettings withGoogleApi(String api) => copyWith(googleApi: api);
 
-  MapSettings withAmazonRegion(String region) =>
-      MapSettings(profiles: profiles, keys: keys, googleApi: googleApi, amazonRegion: region);
+  MapSettings withAmazonRegion(String region) => copyWith(amazonRegion: region);
 
-  /// "Rider · Android, Partner · Web": the profiles Google's terms block.
+  /// "Rider · Android, Partner · Web": the profiles using Google's results
+  /// over another map (allowed since migration 0207; the page notes it).
   List<String> get googleConflicts => [
     for (final r in mapRoles)
       for (final d in mapDevices)
@@ -355,6 +393,7 @@ class MapSettings {
         }
       }
     }
+    if (smartAddress == 'c' || smartAddress == 'all') used.add('smart:check');
     return {
       for (final s in mapKeySlots)
         if (s.providers.any(used.contains)) s.id,
@@ -367,7 +406,9 @@ class MapSettings {
       mapEquals(other.profiles, profiles) &&
       mapEquals(other.keys, keys) &&
       other.googleApi == googleApi &&
-      other.amazonRegion == amazonRegion;
+      other.amazonRegion == amazonRegion &&
+      other.googleSearch == googleSearch &&
+      other.smartAddress == smartAddress;
 
   @override
   int get hashCode => Object.hash(
@@ -375,6 +416,8 @@ class MapSettings {
     Object.hashAllUnordered(keys.entries.map((e) => '${e.key}=${e.value}')),
     googleApi,
     amazonRegion,
+    googleSearch,
+    smartAddress,
   );
 }
 

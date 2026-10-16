@@ -127,10 +127,12 @@ export function resolveKey(apiProviders: unknown, ref: string | undefined): stri
  * key unless a Directions key is set.
  */
 export const FALLBACK_SECRETS: Record<string, string[]> = {
-  google_tiles: ["GOOGLE_MAP_API_KEY"],
+  // A key of its own for Map Tiles API, else the Maps key.
+  google_tiles: ["GOOGLE_MAP_TILES_API_KEY", "GOOGLE_MAP_API_KEY"],
   // A browser key, restricted to the site, for Google's JavaScript map.
   google_js: ["GOOGLE_MAPS_JS_API_KEY", "GOOGLE_MAP_API_KEY"],
   google_places: ["GOOGLE_PLACES_API_KEY"],
+  google_address: ["GOOGLE_ADDRESS_VALIDATION_API_KEY", "GOOGLE_PLACES_API_KEY"],
   google_geocoding: ["GOOGLE_GEOCODING_API_KEY"],
   google_routes: ["GOOGLE_DIRECTIONS_API_KEY", "GOOGLE_MAP_API_KEY"],
 };
@@ -389,6 +391,24 @@ export interface Place {
   address: string;
   lat: number;
   lng: number;
+  /** Google's place types ("airport", "street_address" …), where it says. */
+  types?: string[];
+}
+
+/**
+ * One of Google's Autocomplete suggestions (migration 0207): no position
+ * yet; the app asks `details` for it, with the same session, once picked.
+ */
+export interface Suggestion {
+  name: string;
+  address: string;
+  lat: null;
+  lng: null;
+  /** Google's place id. */
+  id: string;
+  types: string[];
+  /** As the crow flies from where the rider is, when Google says. */
+  km: number | null;
 }
 
 export interface Area extends Place {
@@ -437,7 +457,7 @@ export function searchRequest(provider: string, p: SearchParams, key: string): H
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": key,
-          "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location",
+          "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.types",
         },
         body: JSON.stringify({
           textQuery: p.q,
@@ -530,13 +550,14 @@ export function googleLegacyRefusal(body: unknown): string | null {
   return typeof status === "string" && status !== "OK" && status !== "ZERO_RESULTS" ? status : null;
 }
 
-function place(name: string, address: string, lat: unknown, lng: unknown): Place | null {
+function place(name: string, address: string, lat: unknown, lng: unknown, types?: unknown): Place | null {
   const la = num(lat), ln = num(lng);
   if (la == null || ln == null) return null;
   const addr = address || name;
   const n = name || addr.split(",")[0]?.trim() || "";
   if (!n) return null;
-  return { name: n, address: addr, lat: la, lng: ln };
+  const t = Array.isArray(types) ? types.filter((x): x is string => typeof x === "string") : [];
+  return { name: n, address: addr, lat: la, lng: ln, ...(t.length ? { types: t } : {}) };
 }
 
 // deno-lint-ignore no-explicit-any
@@ -548,10 +569,12 @@ export function parseSearch(provider: string, body: J): Place[] {
     case "google":
       // The older Text Search answers with `results`.
       for (const r of Array.isArray(body?.results) ? body.results : []) {
-        out.push(place(str(r?.name), str(r?.formatted_address), r?.geometry?.location?.lat, r?.geometry?.location?.lng));
+        const at = r?.geometry?.location;
+        out.push(place(str(r?.name), str(r?.formatted_address), at?.lat, at?.lng, r?.types));
       }
       for (const p of body?.places ?? []) {
-        out.push(place(str(p?.displayName?.text), str(p?.formattedAddress), p?.location?.latitude, p?.location?.longitude));
+        const at = p?.location;
+        out.push(place(str(p?.displayName?.text), str(p?.formattedAddress), at?.latitude, at?.longitude, p?.types));
       }
       break;
     case "mapbox":
@@ -729,6 +752,136 @@ export function parseNominatim(body: J, lat: number, lng: number): Area | null {
     city: pick(["city", "town", "municipality", "village"]),
     suburb: pick(["suburb", "neighbourhood", "quarter", "city_district"]),
   });
+}
+
+// ---- Google Autocomplete, place details, Address Validation (migration 0207) ------------------
+
+/** A session token the app made for one search (Google bills Autocomplete and the pick together). */
+export function sessionToken(v: string | null): string | null {
+  return v && /^[A-Za-z0-9_-]{8,64}$/.test(v) ? v : null;
+}
+
+/** Google's Autocomplete: the newer Places API (New), or the older one (googleLegacyAutocompleteRequest). */
+export function googleAutocompleteRequest(p: SearchParams, key: string, session: string | null): HttpRequest {
+  const at = near(p) ? { latitude: p.lat, longitude: p.lng } : null;
+  return {
+    url: "https://places.googleapis.com/v1/places:autocomplete",
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key },
+    body: JSON.stringify({
+      input: p.q,
+      languageCode: p.lang,
+      ...(p.countries.length ? { includedRegionCodes: p.countries } : {}),
+      ...(at ? { locationBias: { circle: { center: at, radius: 50000 } }, origin: at } : {}),
+      ...(session ? { sessionToken: session } : {}),
+    }),
+  };
+}
+
+export function googleLegacyAutocompleteRequest(p: SearchParams, key: string, session: string | null): HttpRequest {
+  return {
+    url: `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${enc(p.q)}&language=${enc(p.lang)}` +
+      (p.countries.length ? `&components=${p.countries.map((c) => `country:${c}`).join("|")}` : "") +
+      (near(p) ? `&location=${p.lat},${p.lng}&radius=50000&origin=${p.lat},${p.lng}` : "") +
+      (session ? `&sessiontoken=${enc(session)}` : "") + `&key=${enc(key)}`,
+  };
+}
+
+/** Either Autocomplete's answer as suggestions (at most 8). */
+export function parseAutocomplete(body: J): Suggestion[] {
+  const out: Suggestion[] = [];
+  const types = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  const km = (v: unknown) => {
+    const m = num(v);
+    return m == null ? null : m / 1000;
+  };
+  for (const s of body?.suggestions ?? []) {
+    const p = s?.placePrediction;
+    const id = str(p?.placeId);
+    const full = str(p?.text?.text);
+    if (!id || !full) continue;
+    out.push({
+      name: str(p?.structuredFormat?.mainText?.text) || full.split(",")[0].trim(),
+      address: str(p?.structuredFormat?.secondaryText?.text) || full,
+      lat: null,
+      lng: null,
+      id,
+      types: types(p?.types),
+      km: km(p?.distanceMeters),
+    });
+  }
+  for (const p of body?.predictions ?? []) {
+    const id = str(p?.place_id);
+    const full = str(p?.description);
+    if (!id || !full) continue;
+    out.push({
+      name: str(p?.structured_formatting?.main_text) || full.split(",")[0].trim(),
+      address: str(p?.structured_formatting?.secondary_text) || full,
+      lat: null,
+      lng: null,
+      id,
+      types: types(p?.types),
+      km: km(p?.distance_meters),
+    });
+  }
+  return out.slice(0, 8);
+}
+
+/** A picked suggestion's place: name, address and position. Newer API, or the older. */
+export function googleDetailsRequest(id: string, lang: string, key: string, session: string | null): HttpRequest {
+  return {
+    url: `https://places.googleapis.com/v1/places/${enc(id)}?languageCode=${enc(lang)}` +
+      (session ? `&sessionToken=${enc(session)}` : ""),
+    headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": "id,displayName,formattedAddress,location,types" },
+  };
+}
+
+export function googleLegacyDetailsRequest(id: string, lang: string, key: string, session: string | null): HttpRequest {
+  return {
+    url: `https://maps.googleapis.com/maps/api/place/details/json?place_id=${enc(id)}&language=${enc(lang)}` +
+      `&fields=name,formatted_address,geometry/location,types` + (session ? `&sessiontoken=${enc(session)}` : "") +
+      `&key=${enc(key)}`,
+  };
+}
+
+export function parseDetails(body: J): Place | null {
+  const r = body?.result;
+  if (r) {
+    const at = r.geometry?.location;
+    return place(str(r.name), str(r.formatted_address), at?.lat, at?.lng, r.types);
+  }
+  const at = body?.location;
+  return place(str(body?.displayName?.text), str(body?.formattedAddress), at?.latitude, at?.longitude, body?.types);
+}
+
+/** Google's Address Validation for a picked street address ([region]: "MY"). */
+export function addressValidationRequest(address: string, region: string, key: string): HttpRequest {
+  return {
+    url: `https://addressvalidation.googleapis.com/v1:validateAddress?key=${enc(key)}`,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address: { regionCode: region.toUpperCase(), addressLines: [address] } }),
+  };
+}
+
+export interface CheckedAddress {
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  /** Google found every part of it (verdict.addressComplete). */
+  complete: boolean;
+}
+
+export function parseAddressValidation(body: J): CheckedAddress | null {
+  const r = body?.result;
+  const address = str(r?.address?.formattedAddress);
+  if (!address) return null;
+  return {
+    address,
+    lat: num(r?.geocode?.location?.latitude),
+    lng: num(r?.geocode?.location?.longitude),
+    complete: r?.verdict?.addressComplete === true,
+  };
 }
 
 // ---- Routing -----------------------------------------------------------------------------------
