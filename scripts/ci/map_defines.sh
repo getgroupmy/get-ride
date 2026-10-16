@@ -8,14 +8,19 @@
 # default", which is what lib/src/widgets/map_tiles.dart and map_traffic.dart
 # already do for an empty define):
 #
-#   MAP_TILE_URL            light base tiles (default: OpenStreetMap)
-#   MAP_TILE_URL_DARK       dark base tiles
+#   MAP_TILE_URL            light base tiles (default: TomTom's map with
+#                           TOM_TOM_API_KEY, else OpenStreetMap)
+#   MAP_TILE_URL_DARK       dark base tiles (default: TomTom's night map
+#                           with TOM_TOM_API_KEY, when the light is TomTom's)
 #   MAP_TILE_URL_SATELLITE  satellite imagery
 #   MAP_TILE_URL_TRAFFIC    traffic overlay, a full XYZ template with its key
 #   MAP_TILE_URL_TRAFFIC_FALLBACK  backup traffic template, fetched per tile
 #                           when the primary fails (quota, outage)
-#   TOM_TOM_API_KEY         when MAP_TILE_URL_TRAFFIC is empty, the traffic
-#                           overlay is TomTom's relative-flow tiles with this key
+#   TOM_TOM_API_KEY         when MAP_TILE_URL is empty, the app's own map is
+#                           TomTom's (OpenStreetMap's public server refuses
+#                           phones, and CARTO's keyless tiles are now a
+#                           placeholder); when MAP_TILE_URL_TRAFFIC is empty,
+#                           the traffic overlay is TomTom's relative-flow tiles
 #   HERE_API_KEY            HERE's traffic-flow tiles: the backup behind
 #                           TomTom, or the primary when there is no TomTom key
 #   GOOGLE_MAPS_ANDROID_API_KEY / GOOGLE_MAPS_IOS_API_KEY
@@ -39,6 +44,17 @@ if [ -n "${HERE_API_KEY:-}" ]; then
   here="https://traffic.maps.hereapi.com/v3/flow/mc/{z}/{x}/{y}/png?apiKey=${HERE_API_KEY}"
 fi
 
+# The app's own map (what Admin → Settings → Maps "app's own" draws, and what
+# Google's map gives way to): an explicit template, else TomTom's, else the
+# app's built-in OpenStreetMap. TomTom's night map goes with TomTom's day
+# map only, so a configured light map is never paired with it.
+light="${MAP_TILE_URL:-}"
+dark="${MAP_TILE_URL_DARK:-}"
+if [ -z "$light" ] && [ -n "${TOM_TOM_API_KEY:-}" ]; then
+  light="https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?key=${TOM_TOM_API_KEY}"
+  [ -n "$dark" ] || dark="https://api.tomtom.com/map/1/tile/basic/night/{z}/{x}/{y}.png?key=${TOM_TOM_API_KEY}"
+fi
+
 # Primary: an explicit template, else TomTom, else HERE.
 traffic="${MAP_TILE_URL_TRAFFIC:-}"
 [ -n "$traffic" ] || traffic="$tomtom"
@@ -57,8 +73,8 @@ if [ -n "${GOOGLE_MAPS_ANDROID_API_KEY:-}${GOOGLE_MAPS_IOS_API_KEY:-}" ]; then
 fi
 
 jq -n \
-  --arg light "${MAP_TILE_URL:-}" \
-  --arg dark "${MAP_TILE_URL_DARK:-}" \
+  --arg light "$light" \
+  --arg dark "$dark" \
   --arg satellite "${MAP_TILE_URL_SATELLITE:-}" \
   --arg traffic "$traffic" \
   --arg fallback "$fallback" \
