@@ -9,6 +9,7 @@ import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
+import '../../../core/service_tree.dart' show serviceParentIds;
 
 /// Shared list for the two `displayPriority`-ordered service categories.
 class _PriorityList extends ConsumerStatefulWidget {
@@ -285,6 +286,7 @@ class VehicleServicesScreen extends ConsumerWidget {
         entry: e,
         count: all.length,
         serviceTypes: options,
+        parents: parentServiceOptions(all, e?.id),
         canEdit: canEditPage(ref, vehicleServicesCategory.page),
       ),
     );
@@ -327,10 +329,19 @@ class VehicleServicesScreen extends ConsumerWidget {
 }
 
 class _VehicleServiceEditor extends StatefulWidget {
-  const _VehicleServiceEditor({this.entry, required this.count, required this.serviceTypes, required this.canEdit});
+  const _VehicleServiceEditor({
+    this.entry,
+    required this.count,
+    required this.serviceTypes,
+    this.parents = const [],
+    required this.canEdit,
+  });
   final SettingEntry? entry;
   final int count;
   final List<String> serviceTypes;
+
+  /// The other vehicle services it may sit under (parentServiceOptions).
+  final List<({String id, String name})> parents;
   final bool canEdit;
 
   @override
@@ -356,6 +367,7 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
   late final _images = {for (final k in ['iconUri', 'heroImageUri', 'mapIconUri']) k: str(v[k])};
   late String _color = str(v['mapIconColor']);
   late List<String> _serviceTypes = stringList(v['serviceTypes']);
+  late List<String> _parents = serviceParentIds(v);
   late List<String> _fuel = stringList(v['fuelTypes']);
   late bool _status = jsBool(v['status'], true);
   String? _error;
@@ -377,6 +389,7 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
       },
       numbers: {for (final e in _numbers.entries) e.key: e.value.text},
       serviceTypes: _serviceTypes,
+      parents: [for (final p in _parents) if (widget.parents.any((o) => o.id == p)) p],
       fuel: _fuel,
       status: _status,
       dispatch: _dispatchText,
@@ -495,6 +508,25 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
                 onSelected: (_) => setState(() => _serviceTypes = _toggle(_serviceTypes, o)),
               ),
           ]),
+        if (widget.parents.isNotEmpty) ...[
+          const SectionLabel('Under'),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+              'The vehicle services this one sits under (Ride XL under Ride), to any depth. A region that switches '
+              'one off switches off everything under it.',
+            ),
+          ),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            for (final o in widget.parents)
+              FilterChip(
+                key: ValueKey('vs-parent-${o.id}'),
+                label: Text(o.name),
+                selected: _parents.contains(o.id),
+                onSelected: (_) => setState(() => _parents = _toggle(_parents, o.id)),
+              ),
+          ]),
+        ],
         const SectionLabel('Fuel Type'),
         Wrap(spacing: 8, children: [
           for (final o in fuelTypes)

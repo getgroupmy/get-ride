@@ -24,6 +24,7 @@ import '../../core/fare_offer.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/region_pricing.dart';
+import '../../core/service_tree.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_request_metadata.dart';
 import '../../core/home_sections.dart';
@@ -94,7 +95,7 @@ const aiEstimateTimeout = Duration(seconds: 30);
 
 /// A point of a trip GET.ride can't serve ([UnavailableAt]; [stop] is the
 /// stop's index when it is a stop).
-typedef TripGap = ({UnavailableAt at, int stop, CoverageGap gap, String? region});
+typedef TripGap = ({UnavailableAt at, int stop, CoverageGap gap, String? region, RegionBlock block});
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -217,8 +218,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return {for (final id in types.keys) if (_rules.available(types: {id}, nowUtc: now)) id};
   }
 
-  bool _availableNow(RideService s, [RegionRuleContext? rules]) =>
-      (rules ?? _rules).available(types: _typesOf(s), vehicleType: s.id, nowUtc: DateTime.now().toUtc());
+  /// [s] and every sub-service above it (Admin → Vehicle Services → Under),
+  /// for the regions' sub-service switches.
+  List<String> _lineageOf(RideService s) {
+    final id = s.id;
+    if (id == null) return const [];
+    final masters = ref.read(serviceBoxNamesProvider).value ?? const <String, String>{};
+    final tree = ServiceTree.build(
+      [for (final e in masters.entries) ServiceEntry(id: e.key, name: e.value, category: masterServiceCategory)],
+      [
+        for (final r in _catalogue)
+          if (r.id != null)
+            ServiceEntry(
+              id: r.id!,
+              name: r.name,
+              category: 'vehicle-services',
+              parentIds: r.parentIds,
+              typeNames: r.serviceTypes,
+            ),
+      ],
+    );
+    return tree.lineage(id);
+  }
+
+  bool _availableNow(RideService s, [RegionRuleContext? rules]) => (rules ?? _rules).available(
+        types: _typesOf(s),
+        vehicleType: s.id,
+        lineage: _lineageOf(s),
+        nowUtc: DateTime.now().toUtc(),
+      );
 
   /// Whether [s]'s fare may be bid on now: a rule for it, else the
   /// region's Bidding switch.
@@ -501,16 +529,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<TripGap?> _findGap(Place a, List<Place> stops, Place b) async {
     final rides = ref.read(rideRepositoryProvider);
     final geo = ref.read(geoServiceProvider);
-    Future<({CoverageGap gap, BiddingRegion? region})?> check(LatLng p) async {
+    Future<({CoverageGap gap, BiddingRegion? region})?> check(LatLng p, {required bool pickup}) async {
       try {
-        return await rides.coverageAt(p, () => geo.reverseArea(p));
+        return await rides.coverageAt(p, () => geo.reverseArea(p), pickup: pickup);
       } catch (_) {
         return null;
       }
     }
 
     final points = [a, ...stops, b];
-    final found = await Future.wait([for (final p in points) check(p.point)]);
+    final found = await Future.wait([
+      for (final (i, p) in points.indexed) check(p.point, pickup: i == 0),
+    ]);
     for (var i = 0; i < points.length; i++) {
       final g = found[i];
       if (g == null) continue;
@@ -519,6 +549,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         stop: i - 1,
         gap: g.gap,
         region: g.region?.name,
+        block: g.region?.block ?? RegionBlock.both,
       );
     }
     return null;
@@ -531,6 +562,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         at: g.at,
         gap: g.gap,
         region: g.region,
+        block: g.block,
         onChange: () {
           switch (g.at) {
             case UnavailableAt.pickup:
@@ -1039,6 +1071,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         stop: e.stop,
         gap: e.gap,
         region: e.region,
+        block: RegionBlock.both,
       );
       setState(() => _gap = gap);
       _showGap(gap);

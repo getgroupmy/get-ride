@@ -41,6 +41,7 @@ class RideService {
     this.id,
     this.image,
     this.serviceTypes = const [],
+    this.parentIds = const [],
   });
   final String name;
   final String description;
@@ -56,6 +57,10 @@ class RideService {
   /// The Service Settings types it belongs to, by name (Car, Bike, …):
   /// region rules and fares set for a type apply to it.
   final List<String> serviceTypes;
+
+  /// The sub-services it sits under, by settings entry id (`parentServices`,
+  /// see core/service_tree.dart).
+  final List<String> parentIds;
 }
 
 /// Used only when the admin Vehicle Services catalogue cannot be read.

@@ -552,14 +552,19 @@ class RideRepository {
   /// bidding, taxes, surcharges), for pricing each service at booking time.
   /// Whether GET.ride serves [point] (see [coverageGap]): null when it
   /// does, or when the regions can't be read.
-  Future<({CoverageGap gap, BiddingRegion? region})?> coverageAt(LatLng point, Future<AreaInfo?> Function() area) async {
+  /// [pickup] false checks it as a stop or the destination.
+  Future<({CoverageGap gap, BiddingRegion? region})?> coverageAt(
+    LatLng point,
+    Future<AreaInfo?> Function() area, {
+    bool pickup = true,
+  }) async {
     final regions = await biddingRegions(at: point);
     if (regions.isEmpty) return null;
     AreaInfo? names;
     try {
       names = await area().timeout(const Duration(seconds: 5));
     } catch (_) {}
-    return coverageGap(regions, point, area: names);
+    return coverageGap(regions, point, area: names, pickup: pickup);
   }
 
   Future<RegionRuleContext> ruleContextFor(LatLng pickup, Future<AreaInfo?> Function() area) async {

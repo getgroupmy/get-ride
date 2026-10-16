@@ -192,6 +192,84 @@ void main() {
     expect(RegionForm.fromEntry(RegionEntry(id: 'y', values: {'country': 'Malaysia'})).blocked, isFalse);
   });
 
+  test('a sub-service switched off in a region, or anything above it; the most specific region decides', () {
+    BiddingRegion r(Map<String, dynamic> v) => BiddingRegion.fromValues(v)!;
+    final now = DateTime.utc(2026, 10, 16, 3);
+    final state = r({'country': 'Malaysia', 'state': 'Johor', 'subServices': {'ride': false}});
+    final city = r({'country': 'Malaysia', 'state': 'Johor', 'city': 'Johor Bahru', 'subServices': '{"ride": true}'});
+    final ctx = RegionRuleContext([state]);
+    expect(ctx.available(types: {'car'}, vehicleType: 'ride', nowUtc: now), isFalse);
+    expect(ctx.available(types: {'car'}, vehicleType: 'comfort', nowUtc: now), isTrue);
+    expect(
+      ctx.available(types: {'car'}, vehicleType: 'ride-xl', lineage: ['ride-xl', 'ride', 'car'], nowUtc: now),
+      isFalse,
+      reason: 'under Ride, which is off',
+    );
+    expect(RegionRuleContext([city, state]).available(types: {'car'}, vehicleType: 'ride', nowUtc: now), isTrue);
+    final f = RegionForm.fromEntry(
+      RegionEntry(id: 'x', values: {'country': 'Malaysia', 'subServices': {'ride': false}}),
+    );
+    expect(f.subServices, {'ride': false});
+    expect(f.toValues()['subServices'], {'ride': false});
+  });
+
+  group('Block for pickups, drop-offs or both (0212)', () {
+    BiddingRegion r(Map<String, dynamic> v) => BiddingRegion.fromValues(v)!;
+    List<BiddingRegion> withKl(Map<String, dynamic> block) => [
+      r({'country': 'Malaysia'}),
+      r({'country': 'Malaysia', 'state': 'Kuala Lumpur', ...block}),
+    ];
+
+    test('pickups only: no ride starts there, stops and ends still can', () {
+      final regions = withKl({'blockAt': 'pickup'});
+      expect(coverageGap(regions, klcc, area: kl)?.gap, CoverageGap.blocked);
+      expect(coverageGap(regions, klcc, area: kl, pickup: false), isNull);
+    });
+
+    test('drop-offs only: rides start there, none stops or ends there', () {
+      final regions = withKl({'blockAt': 'drop'});
+      expect(coverageGap(regions, klcc, area: kl), isNull);
+      final g = coverageGap(regions, klcc, area: kl, pickup: false);
+      expect([g?.gap, g?.region?.block], [CoverageGap.blocked, RegionBlock.drop]);
+    });
+
+    test('both, and the old switch, block either way; none is open', () {
+      for (final block in [
+        {'blockAt': 'both'},
+        {'blocked': true},
+      ]) {
+        final regions = withKl(block);
+        expect(coverageGap(regions, klcc, area: kl)?.gap, CoverageGap.blocked, reason: '$block');
+        expect(coverageGap(regions, klcc, area: kl, pickup: false)?.gap, CoverageGap.blocked, reason: '$block');
+      }
+      expect(coverageGap(withKl({'blockAt': 'none', 'blocked': false}), klcc, area: kl, pickup: false), isNull);
+    });
+
+    test('the sheet says which', () {
+      expect(
+        unavailableCopy(UnavailableAt.pickup, CoverageGap.blocked, region: 'Johor', block: RegionBlock.pickup).message,
+        "GET.ride doesn't pick up in Johor right now. Try changing your pickup.",
+      );
+      expect(
+        unavailableCopy(UnavailableAt.stop, CoverageGap.blocked, region: 'Penang', block: RegionBlock.drop).message,
+        "GET.ride doesn't drop off in Penang right now. Try removing or changing the stop.",
+      );
+    });
+
+    test('the admin form saves which, the old switch only for both', () {
+      final f = RegionForm.fromEntry(RegionEntry(id: 'x', values: {'country': 'Malaysia', 'blocked': true}));
+      expect([f.blocked, f.blockAt], [true, RegionBlock.both], reason: 'the old Block is both');
+      f.blockAt = RegionBlock.pickup;
+      expect([f.toValues()['blocked'], f.toValues()['blockAt']], [false, 'pickup']);
+      f.blockAt = RegionBlock.both;
+      expect([f.toValues()['blocked'], f.toValues()['blockAt']], [true, 'both']);
+      f.blocked = false;
+      expect([f.toValues()['blocked'], f.toValues()['blockAt']], [false, 'none']);
+      final drop = RegionForm.fromEntry(RegionEntry(id: 'y', values: {'country': 'Malaysia', 'blockAt': 'drop'}));
+      expect([drop.blocked, drop.blockAt], [true, RegionBlock.drop]);
+    });
+  });
+
   for (final brightness in Brightness.values) {
     testWidgets('slides up from the bottom; the button changes the point (${brightness.name})', (tester) async {
       var changed = 0;

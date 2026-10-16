@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/region_pricing.dart';
+import '../../../core/ride_bidding.dart' show RegionBlock;
+import '../../../core/service_tree.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/keyboard_dismiss.dart';
@@ -468,6 +470,36 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final services = ref.watch(regionServicesProvider).value ?? const <ServiceOption>[];
+    final tree = ref.watch(serviceTreeProvider).value;
+    final rootById = {for (final n in tree?.roots ?? const <ServiceNode>[]) n.id: n};
+    // A sub-service and what sits under it, indented by depth, each with its
+    // own switch (on unless switched off here; else it follows the regions
+    // around it).
+    Iterable<Widget> subTree(ServiceNode n) sync* {
+      final own = f.subServices[n.id];
+      yield Padding(
+        padding: EdgeInsets.only(left: 20.0 * n.depth),
+        child: SwitchListTile(
+          key: ValueKey('region-sub-${n.id}-${n.depth}'),
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          secondary: Icon(Icons.subdirectory_arrow_right, size: 18, color: t.colorScheme.onSurfaceVariant),
+          title: Text(n.entry.name),
+          subtitle: Text(
+            [
+              if (n.entry.category != 'vehicle-services') n.entry.category,
+              if (own == null) 'On (follows the regions around it)',
+            ].join(' · '),
+          ),
+          value: own ?? true,
+          onChanged: (on) => setState(() => f.subServices = {...f.subServices, n.id: on}),
+        ),
+      );
+      for (final c in n.children) {
+        yield* subTree(c);
+      }
+    }
+
     const gap = SizedBox(height: 12);
     final on = f.services.values.where((v) => v).length;
     final parentLine = regionParentLine(f, widget.level);
@@ -522,13 +554,35 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
         contentPadding: EdgeInsets.zero,
         secondary: Icon(Icons.block, color: f.blocked ? t.colorScheme.error : t.colorScheme.onSurfaceVariant),
         title: const Text('Block'),
-        subtitle: Text(f.blocked
-            ? 'Blocked: riders can\'t start, stop or end a ride here — the app says GET.ride is unavailable. '
-                'Covers everything inside it.'
-            : 'Open: rides can start, stop and end here.'),
+        subtitle: Text(switch (f.blocked ? f.blockAt : RegionBlock.none) {
+          RegionBlock.none => 'Open: rides can start, stop and end here.',
+          RegionBlock.pickup =>
+            "Pickups blocked: no ride starts here. Rides from elsewhere can still stop and end here. "
+                'Covers everything inside it.',
+          RegionBlock.drop =>
+            "Drop-offs blocked: rides can start here, but none stops or ends here. Covers everything inside it.",
+          RegionBlock.both =>
+            "Blocked: riders can't start, stop or end a ride here — the app says GET.ride is unavailable. "
+                'Covers everything inside it.',
+        }),
         value: f.blocked,
         onChanged: (v) => setState(() => f.blocked = v),
       ),
+      if (f.blocked)
+        Padding(
+          padding: const EdgeInsets.only(left: 40, bottom: 4),
+          child: SegmentedButton<RegionBlock>(
+            key: const ValueKey('region-block-at'),
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: RegionBlock.pickup, label: Text('Pickup'), icon: Icon(Icons.hail)),
+              ButtonSegment(value: RegionBlock.drop, label: Text('Drop-off'), icon: Icon(Icons.flag_outlined)),
+              ButtonSegment(value: RegionBlock.both, label: Text('Both'), icon: Icon(Icons.block)),
+            ],
+            selected: {f.blockAt},
+            onSelectionChanged: (v) => setState(() => f.blockAt = v.first),
+          ),
+        ),
       const SizedBox(height: 8),
       Row(children: [
         Icon(Icons.build_outlined, size: 16, color: t.colorScheme.onSurfaceVariant),
@@ -555,7 +609,7 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
           child: Text('No services defined yet. Add some in Service Settings.', style: t.textTheme.bodySmall),
         )
       else
-        for (final s in services)
+        for (final s in services) ...[
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(s.name),
@@ -563,6 +617,17 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
             value: f.services[s.id] == true,
             onChanged: (v) => setState(() => f.services = {...f.services, s.id: v}),
           ),
+          // Its sub-services, to any depth (core/service_tree.dart), each
+          // switched on or off here on its own.
+          for (final c in rootById[s.id]?.children ?? const <ServiceNode>[]) ...subTree(c),
+        ],
+      if (tree != null && tree.unlinked.isNotEmpty) ...[
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text('Sub-services under no master service', style: t.textTheme.labelMedium),
+        ),
+        for (final n in tree.unlinked) ...subTree(n),
+      ],
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text('Bidding (OfferMe)'),

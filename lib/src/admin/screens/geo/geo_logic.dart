@@ -13,6 +13,8 @@ import 'dart:math' as math;
 import 'package:latlong2/latlong.dart';
 
 import '../../../core/region_rules.dart';
+import '../../../core/ride_bidding.dart' show RegionBlock, regionBlockOf;
+import '../../../core/service_tree.dart' show regionSubServiceSwitches;
 
 // ---------------------------------------------------------------------------
 // Boundaries / geofences
@@ -528,8 +530,10 @@ class RegionForm {
     this.lat = '',
     this.lng = '',
     Map<String, bool>? services,
+    Map<String, bool>? subServices,
     this.biddingEnabled = true,
     this.blocked = false,
+    this.blockAt = RegionBlock.both,
     this.currencyName = '',
     this.currencySymbol = '',
     this.emergencyNumber = '',
@@ -546,6 +550,7 @@ class RegionForm {
     this.handoverShare = '',
     List<RegionRule>? rules,
   })  : services = services ?? {},
+        subServices = subServices ?? {},
         rules = rules ?? [];
 
   String country, state, city, suburb, lat, lng;
@@ -555,6 +560,14 @@ class RegionForm {
   /// Blocked: no ride starts, ends or stops here — the rider app says
   /// GET.ride is unavailable — whatever the regions around it allow.
   bool blocked;
+
+  /// Each sub-service (a vehicle service, or anything under a master
+  /// service, to any depth) switched here, by its settings entry id; one not
+  /// listed follows the regions around it (on). See core/service_tree.dart.
+  Map<String, bool> subServices;
+
+  /// What [blocked] stops (migration 0212): pickups, drop-offs or both.
+  RegionBlock blockAt;
   String currencyName, currencySymbol, emergencyNumber, languageCode, dateFormat, callingCode, timezone;
 
   /// Fare pricing (see core/region_pricing.dart). A country always sets it;
@@ -591,8 +604,10 @@ class RegionForm {
       lat: v['lat'] is num ? '${v['lat']}' : '',
       lng: v['lng'] is num ? '${v['lng']}' : '',
       services: parseServicesMap(v['services']),
+      subServices: regionSubServiceSwitches(v['subServices']),
       biddingEnabled: v['biddingEnabled'] != false,
-      blocked: v['blocked'] == true,
+      blocked: regionBlockOf(v) != RegionBlock.none,
+      blockAt: regionBlockOf(v) == RegionBlock.none ? RegionBlock.both : regionBlockOf(v),
       currencyName: str('currencyName'),
       currencySymbol: str('currencySymbol'),
       emergencyNumber: v['emergencyNumber'] != null ? str('emergencyNumber') : (def?.emergencyNumber ?? ''),
@@ -631,8 +646,12 @@ class RegionForm {
     }
     if (sb.isEmpty) values['timezone'] = timezone.trim();
     values['services'] = encodeServicesMap(services);
+    values['subServices'] = {...subServices};
     values['biddingEnabled'] = biddingEnabled;
-    values['blocked'] = blocked;
+    // The old switch stays true for a full block only, so apps from before
+    // pickup- or drop-off-only blocks don't refuse what is allowed.
+    values['blocked'] = blocked && blockAt == RegionBlock.both;
+    values['blockAt'] = blocked ? blockAt.name : 'none';
     // Pricing is written in full, or cleared, so an old value never lingers
     // under the saved one (the caller merges over the stored values).
     final own = setsPricing;

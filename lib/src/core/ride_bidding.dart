@@ -22,6 +22,7 @@ import '../data/models.dart';
 import 'region_pricing.dart';
 import 'region_rules.dart';
 import 'region_time.dart';
+import 'service_tree.dart';
 
 // ---- Region switch (Expo utils/regionBidding.ts) --------------------------
 
@@ -36,14 +37,16 @@ class BiddingRegion {
     this.rings = const [],
     this.pricing,
     this.services,
+    this.subServices = const {},
     this.rules = const [],
     this.timezone,
     this.currency,
     this.currencySymbol,
     this.blocked = false,
+    RegionBlock? blockAt,
     this.boundaryAt,
     this.boundaryArea,
-  });
+  }) : block = blockAt ?? (blocked ? RegionBlock.both : RegionBlock.none);
 
   final String country;
   final String state;
@@ -107,9 +110,29 @@ class BiddingRegion {
   final String? currency;
   final String? currencySymbol;
 
+  /// Admin → Country / States / Cities → Services → each sub-service (a
+  /// vehicle service, or anything under a master service, to any depth)
+  /// switched on or off here by its settings entry id; one not listed
+  /// follows the regions around it (on by default). See service_tree.dart.
+  final Map<String, bool> subServices;
+
   /// Admin → Country / States / Cities → Block: no ride starts, stops or
-  /// ends here, whatever the regions around it allow.
+  /// ends here, whatever the regions around it allow. Kept for the old
+  /// switch; [block] says which (migration 0212).
   final bool blocked;
+
+  /// What the Block stops here: pickups, drop-offs (stops and the
+  /// destination) or both.
+  final RegionBlock block;
+
+  /// Whether the Block stops a ride at a point here: its pickup ([pickup])
+  /// or a stop or the destination.
+  bool blocks({required bool pickup}) => switch (block) {
+    RegionBlock.none => false,
+    RegionBlock.both => true,
+    RegionBlock.pickup => pickup,
+    RegionBlock.drop => !pickup,
+  };
 
   /// Its own name: the suburb, city, state or country.
   String get name => [suburb, city, state, country].firstWhere((n) => n.isNotEmpty);
@@ -138,11 +161,13 @@ class BiddingRegion {
       rings: _parseBoundary(v['boundary']),
       pricing: RegionPricing.fromValues(v),
       services: _enabledServices(v['services']),
+      subServices: regionSubServiceSwitches(v['subServices']),
       rules: parseRegionRules(v['rules']),
       timezone: s(v['timezone']).isEmpty ? null : s(v['timezone']),
       currency: RegExp(r'^[A-Za-z]{3}$').hasMatch(s(v['currencyName'])) ? s(v['currencyName']).toUpperCase() : null,
       currencySymbol: s(v['currencySymbol']).isEmpty ? null : s(v['currencySymbol']),
       blocked: v['blocked'] == true,
+      blockAt: regionBlockOf(v),
       boundaryAt: boundaryAt,
       boundaryArea: boundaryArea,
     );
@@ -468,6 +493,18 @@ bool placeNameMatches(String? region, String? place) {
   return r.isNotEmpty && p.isNotEmpty && ' $p '.contains(' $r ');
 }
 
+/// What a region's Block stops (migration 0212).
+enum RegionBlock { none, pickup, drop, both }
+
+/// A region's Block from its `values`: `blockAt`, else the old `blocked`
+/// switch (both).
+RegionBlock regionBlockOf(Map<String, dynamic> v) => switch (v['blockAt']) {
+  'pickup' => RegionBlock.pickup,
+  'drop' => RegionBlock.drop,
+  'both' => RegionBlock.both,
+  _ => v['blocked'] == true ? RegionBlock.both : RegionBlock.none,
+};
+
 /// Why GET.ride can't serve a point.
 enum CoverageGap {
   /// In no country / state / city / suburb the admin has set up.
@@ -517,7 +554,9 @@ class ServiceUnavailableError implements Exception {
 /// geocoder gives that level ([area]). Missing a level's list is
 /// [CoverageGap.outside], with the region it is in (Perak, for a town Perak
 /// doesn't list); a block on any region it is in is [CoverageGap.blocked],
-/// with the most specific blocked one.
+/// with the most specific blocked one. A region blocking only pickups or
+/// only drop-offs blocks the point as the trip's [pickup], or as a stop or
+/// the destination.
 ///
 /// Errs towards serving: with no regions at all, or where a level can't be
 /// told (no boundary holds the point and the geocoder gave no name for that
@@ -527,6 +566,7 @@ class ServiceUnavailableError implements Exception {
   List<BiddingRegion> regions,
   LatLng point, {
   AreaInfo? area,
+  bool pickup = true,
 }) {
   if (regions.isEmpty) return null;
   String own(BiddingRegion r, int level) => switch (level) {
@@ -575,7 +615,7 @@ class ServiceUnavailableError implements Exception {
     if (verdicts.contains(null)) break;
     return (gap: CoverageGap.outside, region: parent);
   }
-  final block = chain.reversed.where((r) => r.blocked).firstOrNull;
+  final block = chain.reversed.where((r) => r.blocks(pickup: pickup)).firstOrNull;
   return block == null ? null : (gap: CoverageGap.blocked, region: block);
 }
 
@@ -614,9 +654,19 @@ class RegionRuleContext {
   /// Whether a vehicle type in [types] is offered now: a rule decides while
   /// one holds; else, when its region restricts the service types and the
   /// vehicle has some, one of them must be on.
-  bool available({Set<String> types = const {}, String? vehicleType, required DateTime nowUtc}) {
+  /// [lineage] is the service and every sub-service above it, nearest first
+  /// (ServiceTree.lineage); without it, [vehicleType] alone.
+  bool available({
+    Set<String> types = const {},
+    String? vehicleType,
+    Iterable<String> lineage = const [],
+    required DateTime nowUtc,
+  }) {
     final rule = outcomeFor(types: types, vehicleType: vehicleType, nowUtc: nowUtc).available;
     if (rule != null) return rule;
+    // Switched off here, or something above it is (service_tree.dart).
+    final line = lineage.isNotEmpty ? lineage : [?vehicleType];
+    if (!subServiceOn(line, [for (final r in around) r.subServices])) return false;
     final allowed = allowedTypes;
     if (allowed == null || types.isEmpty) return true;
     return types.any(allowed.contains);
