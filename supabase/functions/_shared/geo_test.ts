@@ -870,3 +870,32 @@ Deno.test("Autocomplete, details and validate through geo", async () => {
   const off = deps({ settings: () => Promise.resolve({ config, apiProviders }) }).d;
   assertEquals((await handleGeo(q("action=validate&role=rider&device=android&address=12 Jalan X"), "ip", off)).status, 403, "C off");
 });
+
+Deno.test("locate: by the profile's locate list, Google's Text Search even when search is Autocomplete", async () => {
+  const cfg = {
+    ...config,
+    googleSearch: "autocomplete",
+    profiles: { ...config.profiles, "rider.android": { ...config.profiles["rider.android"], locate: ["google"] } },
+  };
+  const asked: string[] = [];
+  const { d, log } = deps({
+    settings: () => Promise.resolve({ config: cfg, apiProviders }),
+    call: (req) => {
+      asked.push(req.url);
+      return Promise.resolve({ places: [{ displayName: { text: "KLIA T2" }, formattedAddress: "Sepang", location: { latitude: 2.74, longitude: 101.68 } }] });
+    },
+  });
+  // deno-lint-ignore no-explicit-any
+  const prof = (await handleGeo(q("action=profile&role=rider&device=android"), "ip", d)).body as any;
+  assertEquals(prof.profile.locate, ["google"]);
+  // deno-lint-ignore no-explicit-any
+  const r = (await handleGeo(q("action=locate&provider=google&role=rider&device=android&q=KLIA T2, Selangor&lat=3.1&lng=101.6"), "ip", d)).body as any;
+  assertEquals(r.places[0], { name: "KLIA T2", address: "Sepang", lat: 2.74, lng: 101.68 });
+  assertStringIncludes(asked[0], "places:searchText");
+  assertEquals(log.at(-1), "count google search true false");
+  assertEquals((await handleGeo(q("action=locate&provider=here&role=rider&device=android&q=klia"), "ip", d)).status, 403, "not on the locate list");
+  const plain = deps().d;
+  // deno-lint-ignore no-explicit-any
+  const p = (await handleGeo(q("action=profile&role=rider&device=android"), "ip", plain)).body as any;
+  assertEquals(p.profile.locate, ["nominatim"], "OpenStreetMap by default");
+});

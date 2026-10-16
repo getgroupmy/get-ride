@@ -396,14 +396,16 @@ class _DeviceCard extends StatelessWidget {
               value: profile.search,
               options: placeProviders,
               enabled: canEdit,
+              osmLast: true,
               onChanged: (v) => onChanged(profile.copyWith(search: v)),
             ),
-            heading('Address lookup (reverse geocoding)'),
+            heading('Address lookup (reverse geocoding, the pickup point name)'),
             _Order(
               id: 'maps-reverse-$device',
               value: profile.reverse,
               options: placeProviders,
               enabled: canEdit,
+              osmLast: true,
               onChanged: (v) => onChanged(profile.copyWith(reverse: v)),
             ),
             heading('Routes and ETA'),
@@ -421,6 +423,15 @@ class _DeviceCard extends StatelessWidget {
               options: distanceProviders,
               enabled: canEdit,
               onChanged: (v) => onChanged(profile.copyWith(distance: v)),
+            ),
+            heading('Suggestion positions (Google Autocomplete, for their distance)'),
+            _Order(
+              id: 'maps-locate-$device',
+              value: profile.locate,
+              options: placeProviders,
+              enabled: canEdit,
+              osmLast: true,
+              onChanged: (v) => onChanged(profile.copyWith(locate: v)),
             ),
           ],
         ),
@@ -471,6 +482,7 @@ class _Order extends StatelessWidget {
     required this.options,
     required this.enabled,
     required this.onChanged,
+    this.osmLast = false,
   });
 
   final String id;
@@ -478,6 +490,9 @@ class _Order extends StatelessWidget {
   final List<String> options;
   final bool enabled;
   final ValueChanged<List<String>> onChanged;
+
+  /// The app asks OpenStreetMap (Nominatim) after these when none answers.
+  final bool osmLast;
 
   static const _none = '';
 
@@ -523,6 +538,23 @@ class _Order extends StatelessWidget {
                     }
                     onChanged(next);
                   },
+          ),
+        ),
+      );
+    }
+    if (osmLast && !value.contains('nominatim')) {
+      final t = Theme.of(context);
+      slots.add(
+        SizedBox(
+          width: 240,
+          child: InputDecorator(
+            key: ValueKey('$id-osm'),
+            decoration: const InputDecoration(labelText: 'Then, always', isDense: true, enabled: false),
+            child: Text(
+              mapProviderLabel('nominatim'),
+              overflow: TextOverflow.ellipsis,
+              style: t.textTheme.bodyLarge?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
           ),
         ),
       );

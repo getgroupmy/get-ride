@@ -17,6 +17,8 @@
  *       → { route: { distanceKm, durationMin, points: [[lat, lng], …] } | null }
  *   GET ?action=distance&provider=…&role=…&device=…&from=lat,lng&to=lat,lng;lat,lng[;…]
  *       → { distances: [km | null, …] }  road distance to each place search result (up to 10)
+ *   GET ?action=locate&provider=…&role=…&device=…&q=…[&lat=&lng=]  as search, by the profile's
+ *       locate list and never Autocomplete: where a suggestion is (migration 0208); counted as search
  *   Google's place search, routes and distances use the newer API, the older one, or the newer then the
  *   older when it refuses, as map_config.googleApi says ("new" | "old" | "new_old").
  *   Amazon Location (provider "amazon", tiles "amazon_js") is asked in map_config.amazonRegion
@@ -208,6 +210,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
           reverse: profile.reverse,
           routing: profile.routing,
           distance: profile.distance,
+          locate: profile.locate,
           googleSearch: googleSearchOf(config),
           smartAddress: smartAddressOf(config),
           direct: {
@@ -278,11 +281,18 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     }
   }
 
-  const kinds: Record<string, Kind> = { search: "search", reverse: "reverse", route: "routing", distance: "distance" };
+  const kinds: Record<string, Kind> = {
+    search: "search",
+    locate: "search",
+    reverse: "reverse",
+    route: "routing",
+    distance: "distance",
+  };
   const kind: Kind | null = kinds[action] ?? null;
   if (!kind) return bad("Unknown action.");
+  const locate = action === "locate";
   const provider = params.get("provider") ?? "";
-  if (DIRECT.has(provider) || !profile[kind].includes(provider)) {
+  if (DIRECT.has(provider) || !(locate ? profile.locate : profile[kind]).includes(provider)) {
     return bad("That provider is not set for this profile.", 403);
   }
   const k = key(provider, kind);
@@ -310,7 +320,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     };
     req = searchRequest(provider, sp, k);
     if (provider === "google") older = googleLegacySearchRequest(sp, k);
-    const autocomplete = provider === "google" && googleSearchOf(config) === "autocomplete";
+    const autocomplete = !locate && provider === "google" && googleSearchOf(config) === "autocomplete";
     if (autocomplete) {
       const session = sessionToken(params.get("session"));
       req = googleAutocompleteRequest(sp, k, session);

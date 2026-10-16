@@ -20,13 +20,19 @@ import 'saved_place_form.dart';
 /// Result of the place picker: either a concrete place or a request to drop
 /// a pin on the map.
 class PlacePick {
-  const PlacePick.place(Place this.place, {this.entrance = ''}) : pickOnMap = false;
-  const PlacePick.onMap() : place = null, entrance = '', pickOnMap = true;
+  const PlacePick.place(Place this.place, {this.entrance = '', this.from = false}) : pickOnMap = false;
+  const PlacePick.onMap({this.from = false}) : place = null, entrance = '', pickOnMap = true;
   final Place? place;
   final bool pickOnMap;
 
   /// A saved place's entrance ("Gate B"); empty for none.
   final String entrance;
+
+  /// The rider changed the trip's start ("From") instead of its end.
+  final bool from;
+
+  PlacePick _asFrom() =>
+      pickOnMap ? const PlacePick.onMap(from: true) : PlacePick.place(place!, entrance: entrance, from: true);
 }
 
 /// What the sheet is for: a trip's end (inDrive's "Enter your route", with
@@ -86,12 +92,14 @@ class _PlaceSearch extends ConsumerStatefulWidget {
 
 class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   final _query = TextEditingController();
+  final _focus = FocusNode();
   Timer? _debounce;
   List<Place> _results = [];
   bool _loading = false;
 
   /// Each result's road distance from where the user is (Admin → Settings →
-  /// Maps → distance), by [_at]; arrives after the results.
+  /// Maps → distance), by [_at] or a suggestion's place id; arrives after
+  /// the results.
   Map<String, double> _km = const {};
   int _asked = 0;
 
@@ -105,10 +113,32 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
 
   bool get _route => widget.mode == PlaceSearchMode.route;
 
+  /// Changing the trip's start ("From", tapped) instead of its end.
+  bool _editFrom = false;
+
+  GateUsage? get _usage => _editFrom ? GateUsage.pickup : widget.usage;
+
+  /// Closes with [p], marked as the new start when the rider is changing it.
+  void _done(PlacePick p) => Navigator.pop(context, _editFrom ? p._asFrom() : p);
+
+  void _changeFrom() {
+    _debounce?.cancel();
+    _query.clear();
+    _asked++;
+    setState(() {
+      _editFrom = true;
+      _results = [];
+      _km = const {};
+      _saved = false;
+    });
+    _focus.requestFocus();
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
     _query.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -135,16 +165,37 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     final from = widget.near;
     if (mounted) setState(() => _km = const {});
     if (from == null || places.isEmpty) return;
-    // Autocomplete's suggestions have no position yet: Google's own
-    // straight-line distance stands in for them.
+    final geo = ref.read(geoServiceProvider);
     final to = places.where((p) => !p.pending).take(10).map((p) => p.point).toList();
-    if (to.isEmpty) return;
-    final km = await ref.read(geoServiceProvider).distances(from, to);
+    if (to.isNotEmpty) {
+      final km = await geo.distances(from, to);
+      if (!mounted || ask != _asked) return;
+      setState(
+        () => _km = {
+          for (var i = 0; i < to.length && i < km.length; i++)
+            if (km[i] != null) _at(to[i]): km[i]!,
+        },
+      );
+    }
+    // Autocomplete's suggestions have no position yet: found roughly on
+    // OpenStreetMap, then measured by road like the rest. Google's own
+    // straight-line distance stands in until then, and where OSM can't.
+    final pending = places.where((p) => p.pending).take(5).toList();
+    if (pending.isEmpty) return;
+    final rough = await geo.roughPoints(pending, near: from, stillWanted: () => mounted && ask == _asked);
+    if (!mounted || ask != _asked) return;
+    final found = [
+      for (var i = 0; i < rough.length; i++)
+        if (rough[i] != null) (id: pending[i].placeId!, at: rough[i]!),
+    ];
+    if (found.isEmpty) return;
+    final km = await geo.distances(from, [for (final f in found) f.at]);
     if (!mounted || ask != _asked) return;
     setState(
       () => _km = {
-        for (var i = 0; i < to.length && i < km.length; i++)
-          if (km[i] != null) _at(to[i]): km[i]!,
+        ..._km,
+        for (var i = 0; i < found.length && i < km.length; i++)
+          if (km[i] != null) found[i].id: km[i]!,
       },
     );
   }
@@ -152,7 +203,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// The map picker (inDrive's): the place chosen there, handed straight back.
   Future<void> _onMap() async {
     final p = await pickPlaceOnMap(context, start: widget.current?.point ?? widget.near, me: widget.near);
-    if (p != null && mounted) Navigator.pop(context, PlacePick.place(p));
+    if (p != null && mounted) _done(PlacePick.place(p));
   }
 
   Future<void> _add(SavedPlaceKind kind) => addSavedPlace(context, kind, near: widget.near);
@@ -168,11 +219,11 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             gates: catalogue.gates,
             point: p.point,
             name: p.name,
-            usage: widget.usage,
+            usage: _usage,
           );
     final gates = gated?.gates ?? const <GateOption>[];
     final blocked = gated?.blocksPlace ?? false;
-    final km = p.pending ? p.km : _km[_at(p.point)];
+    final km = p.pending ? _km[p.placeId] ?? p.km : _km[_at(p.point)];
     final icon = Icon(
       gates.isNotEmpty
           ? Icons.door_front_door_outlined
@@ -181,7 +232,8 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           : Icons.place_outlined,
     );
     return ListTile(
-      key: ValueKey('result-${p.point.latitude},${p.point.longitude}'),
+      // Suggestions have no position yet: each by Google's id, so no two share a key.
+      key: ValueKey(p.pending ? 'result-${p.placeId}' : 'result-${p.point.latitude},${p.point.longitude}'),
       // The distance from here under the pin, as Grab shows it.
       leading: km == null
           ? icon
@@ -194,7 +246,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                   const SizedBox(height: 2),
                   Text(
                     placeDistanceLabel(km),
-                    key: ValueKey('result-km-${p.point.latitude},${p.point.longitude}'),
+                    key: ValueKey('result-km-${p.pending ? p.placeId : '${p.point.latitude},${p.point.longitude}'}'),
                     maxLines: 1,
                     style: Theme.of(context).textTheme.labelSmall
                         ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
@@ -223,7 +275,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                 key: ValueKey('gate-${g.id}'),
                 avatar: const Icon(Icons.door_front_door_outlined, size: 16),
                 label: Text(g.name),
-                onPressed: () => Navigator.pop(context, PlacePick.place(gatePlace(p, gated!, g))),
+                onPressed: () => _done(PlacePick.place(gatePlace(p, gated!, g))),
               ),
           ]),
         ],
@@ -252,7 +304,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           gates: catalogue.gates,
           point: place.point,
           name: place.name,
-          usage: widget.usage,
+          usage: _usage,
         );
         if (gated != null && gated.gates.isNotEmpty) {
           // Choose its gate from the list, as for any gated place.
@@ -264,7 +316,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       }
       if (smart.check && isStreetAddress(place)) place = await geo.checkAddress(place);
       if (!mounted) return;
-      Navigator.pop(context, PlacePick.place(place));
+      _done(PlacePick.place(place));
       if (place.verified) {
         messenger?.showSnackBar(
           SnackBar(
@@ -295,7 +347,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             leading: const Icon(Icons.star_rounded),
             title: Text('Saved: ${s.title}', maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(s.address, maxLines: 1, overflow: TextOverflow.ellipsis),
-            onTap: () => Navigator.pop(context, PlacePick.place(savedPlaceAsPlace(s), entrance: s.entrance)),
+            onTap: () => _done(PlacePick.place(savedPlaceAsPlace(s), entrance: s.entrance)),
           )
         else if (r.recent)
           ListTile(
@@ -307,7 +359,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            onTap: () => Navigator.pop(context, PlacePick.place(r.place!)),
+            onTap: () => _done(PlacePick.place(r.place!)),
           )
         else
           _result(r.place!, catalogue, smart),
@@ -361,32 +413,44 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             ],
           ),
         ),
-        if (_route && widget.from != null)
+        // The start, tapped to change it here too.
+        if (_route && widget.from != null && !_editFrom)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: Container(
-              key: const ValueKey('place-search-from'),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(color: field, borderRadius: BorderRadius.circular(14)),
-              child: Row(
-                children: [
-                  const Icon(Icons.emoji_people, size: 26),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('From', style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
-                        Text(
-                          widget.from!.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: t.textTheme.bodyLarge,
+            child: Material(
+              color: field,
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                key: const ValueKey('place-search-from'),
+                borderRadius: BorderRadius.circular(14),
+                onTap: _changeFrom,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.emoji_people, size: 26),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'From',
+                              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                            ),
+                            Text(
+                              widget.from!.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: t.textTheme.bodyLarge,
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      Icon(Icons.edit_outlined, size: 20, color: t.colorScheme.onSurfaceVariant),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -395,12 +459,21 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           child: TextField(
             key: const ValueKey('place-search-field'),
             controller: _query,
+            focusNode: _focus,
             autofocus: true,
             decoration: InputDecoration(
               filled: true,
               fillColor: field,
-              prefixIcon: _route ? const Icon(Icons.search) : null,
-              labelText: _route ? 'To' : 'Address',
+              prefixIcon: _editFrom
+                  ? const Icon(Icons.emoji_people)
+                  : _route
+                  ? const Icon(Icons.search)
+                  : null,
+              labelText: _editFrom
+                  ? 'From'
+                  : _route
+                  ? 'To'
+                  : 'Address',
               hintText: 'Search, or paste a Google Maps link',
               floatingLabelBehavior: FloatingLabelBehavior.always,
               enabledBorder: OutlineInputBorder(
@@ -504,7 +577,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
         leading: const Icon(Icons.my_location),
         title: const Text('Current location'),
         subtitle: Text(widget.current!.address, maxLines: 1, overflow: TextOverflow.ellipsis),
-        onTap: () => Navigator.pop(context, PlacePick.place(widget.current!)),
+        onTap: () => _done(PlacePick.place(widget.current!)),
       ),
     // Choosing on the map is the pin button in the search field.
     ...switch (ref.watch(recentPlacesProvider).value ?? const <Place>[]) {
@@ -520,7 +593,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             leading: const Icon(Icons.history),
             title: Text(p.name),
             subtitle: Text(p.address, maxLines: 1, overflow: TextOverflow.ellipsis),
-            onTap: () => Navigator.pop(context, PlacePick.place(p)),
+            onTap: () => _done(PlacePick.place(p)),
           ),
       ],
       _ => const <Widget>[],
@@ -556,7 +629,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           ),
         ],
       ),
-      onTap: () => Navigator.pop(context, PlacePick.place(savedPlaceAsPlace(p), entrance: p.entrance)),
+      onTap: () => _done(PlacePick.place(savedPlaceAsPlace(p), entrance: p.entrance)),
     );
     Widget add(String label, IconData icon, SavedPlaceKind kind, Key key) => ListTile(
       key: key,

@@ -641,13 +641,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       from: pickup ? null : _pickup,
     );
     if (pick == null || !mounted) return;
+    // The route's "From", changed in the same dialog: the pickup.
+    final toPickup = pickup || pick.from;
     if (pick.pickOnMap) {
-      setState(() => _pinTarget = target);
-      showInfo(context, 'Tap the map to set the ${pickup ? 'pickup' : 'destination'}');
+      setState(() => _pinTarget = toPickup ? _PinTarget.pickup : target);
+      showInfo(context, 'Tap the map to set the ${toPickup ? 'pickup' : 'destination'}');
       return;
     }
     setState(() {
-      if (pickup) {
+      if (toPickup) {
         _pickup = pick.place;
         // A saved place's entrance is where to wait.
         if (pick.entrance.isNotEmpty) _entrance = pick.entrance;

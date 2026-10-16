@@ -92,6 +92,7 @@ class MapProfileSetting {
     this.reverse = const ['nominatim'],
     this.routing = const ['osrm'],
     this.distance = const ['osrm'],
+    this.locate = const ['nominatim'],
   });
 
   final Map<String, String> tiles;
@@ -101,6 +102,14 @@ class MapProfileSetting {
 
   /// Place search results' distance from the user.
   final List<String> distance;
+
+  /// Who finds where Google's Autocomplete suggestions roughly are, for
+  /// their distance (migration 0208). The app asks OpenStreetMap last for
+  /// this, place search and address lookup ([osmFallback]).
+  final List<String> locate;
+
+  /// The lists the app falls back to OpenStreetMap (Nominatim) for.
+  static const osmFallback = {'search', 'reverse', 'locate'};
 
   factory MapProfileSetting.fromJson(Object? json) {
     final m = json is Map ? json : const {};
@@ -119,6 +128,7 @@ class MapProfileSetting {
       reverse: list(m['reverse'], placeProviders, 'nominatim'),
       routing: list(m['routing'], routeProviders, 'osrm'),
       distance: list(m['distance'], distanceProviders, 'osrm'),
+      locate: list(m['locate'], placeProviders, 'nominatim'),
     );
   }
 
@@ -128,6 +138,7 @@ class MapProfileSetting {
     'reverse': reverse,
     'routing': routing,
     'distance': distance,
+    'locate': locate,
   };
 
   MapProfileSetting copyWith({
@@ -136,12 +147,14 @@ class MapProfileSetting {
     List<String>? reverse,
     List<String>? routing,
     List<String>? distance,
+    List<String>? locate,
   }) => MapProfileSetting(
     tiles: tiles ?? this.tiles,
     search: search ?? this.search,
     reverse: reverse ?? this.reverse,
     routing: routing ?? this.routing,
     distance: distance ?? this.distance,
+    locate: locate ?? this.locate,
   );
 
   MapProfileSetting withTile(String slot, String provider) => copyWith(tiles: {...tiles, slot: provider});
@@ -153,7 +166,7 @@ class MapProfileSetting {
   );
 
   /// Every provider this profile would ask, for checking keys.
-  Set<String> get providers => {...tiles.values, ...search, ...reverse, ...routing, ...distance};
+  Set<String> get providers => {...tiles.values, ...search, ...reverse, ...routing, ...distance, ...locate};
 
   /// Google's place search, geocoding or distances without Google's map (its
   /// tiles or its JavaScript map) under it.
@@ -175,7 +188,8 @@ class MapProfileSetting {
       listEquals(other.search, search) &&
       listEquals(other.reverse, reverse) &&
       listEquals(other.routing, routing) &&
-      listEquals(other.distance, distance);
+      listEquals(other.distance, distance) &&
+      listEquals(other.locate, locate);
 
   @override
   int get hashCode => Object.hash(
@@ -184,6 +198,7 @@ class MapProfileSetting {
     Object.hashAll(reverse),
     Object.hashAll(routing),
     Object.hashAll(distance),
+    Object.hashAll(locate),
   );
 }
 

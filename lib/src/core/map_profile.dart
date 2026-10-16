@@ -140,6 +140,7 @@ class MapProfile {
     this.reverse = const ['nominatim'],
     this.routing = const ['osrm'],
     this.distance = const ['osrm'],
+    this.locate = const ['nominatim'],
     this.smartAddress = 'normal',
     this.googleAutocomplete = false,
     this.nominatimUrl,
@@ -162,6 +163,14 @@ class MapProfile {
 
   /// Who measures each place search result's distance from the user.
   final List<String> distance;
+
+  /// Who finds where Google's Autocomplete suggestions roughly are, for
+  /// their distance (migration 0208).
+  final List<String> locate;
+
+  /// [list] with OpenStreetMap (Nominatim) last when it isn't on it: place
+  /// search, address lookup and [locate] fall back to it, whatever is set.
+  static List<String> withOsm(List<String> list) => list.contains('nominatim') ? list : [...list, 'nominatim'];
 
   /// Admin → Settings → Maps (migration 0207): 'normal', 'a' (clean
   /// two-line results), 'b' (places first, saved and recent on top),
@@ -202,6 +211,7 @@ class MapProfile {
       reverse: list(p['reverse'], const ['nominatim']),
       routing: list(p['routing'], const ['osrm']),
       distance: list(p['distance'], const ['osrm']),
+      locate: list(p['locate'], const ['nominatim']),
       smartAddress: const ['a', 'b', 'c', 'all'].contains(p['smartAddress']) ? p['smartAddress'] as String : 'normal',
       googleAutocomplete: p['googleSearch'] == 'autocomplete',
       nominatimUrl: url(direct['nominatim']),
