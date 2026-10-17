@@ -34,8 +34,9 @@ select pg_temp.check((select v->'profiles'->'rider.web'->'tiles'->>'light' = 'ap
                          and v->'profiles'->'rider.web'->'tiles'->>'dark' = 'google_js' from t), 'web: no native map');
 select pg_temp.check((select v->'profiles'->'partner.desktop'->'tiles'->>'light' = 'app' from t),
   'desktop: no native map');
-select pg_temp.check((select v->'profiles'->'partner.android'->'tiles'->>'light' = 'app' from t),
-  'phones: not the JavaScript map');
+-- Phones have the JavaScript map too since 0213 (map_google_js_phones.sql).
+select pg_temp.check((select v->'profiles'->'partner.android'->'tiles'->>'light' = 'google_js' from t),
+  'phones: the JavaScript map too (0213)');
 select pg_temp.check((select v->'profiles'->'rider.android'->'distance' = '["osrm"]'
                          and v->'profiles'->'rider.android'->'locate' = '["nominatim"]' from t), '0205 to 0208 kept');
 

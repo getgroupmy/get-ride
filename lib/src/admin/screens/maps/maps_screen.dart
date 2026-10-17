@@ -208,8 +208,8 @@ class _DevicesTab extends ConsumerWidget {
             icon: Icons.traffic_outlined,
             error: true,
             text:
-                "Google traffic is drawn by Google's own map. Set Google Maps (native) on phones, or Google Maps "
-                '(JavaScript) on the web and desktop, for Map and Map (dark mode), or pick another traffic source: '
+                "Google traffic is drawn by Google's own map. Set Google Maps (native) or Google Maps "
+                '(JavaScript) on phones, or Google Maps (JavaScript) on the web and desktop, for Map and Map (dark mode), or pick another traffic source: '
                 '${trafficConflicts.join(', ')}.',
           ),
         if (unofficial.isNotEmpty)
