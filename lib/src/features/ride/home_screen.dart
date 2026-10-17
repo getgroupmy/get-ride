@@ -128,6 +128,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// A stop being added: its own steps show, then what it adds.
   bool _addingStop = false;
+
+  /// The home sheet's content and its search bar, measured so the sheet all
+  /// the way down still shows the search bar whole ([_foldHeight]).
+  final _panelKey = GlobalKey();
+  final _foldKey = GlobalKey();
+
+  /// How tall the sheet must be, all the way down, to show everything to
+  /// the foot of the search bar: its handle, the vehicle bar (when shown)
+  /// and the bar itself. 0 until measured.
+  double _foldHeight = 0;
+
+  /// Measures [_foldHeight] after a frame; a change sets the sheet's least
+  /// height again.
+  void _measureFold() {
+    if (!mounted) return;
+    final panel = _panelKey.currentContext?.findRenderObject() as RenderBox?;
+    final fold = _foldKey.currentContext?.findRenderObject() as RenderBox?;
+    if (panel == null || fold == null || !panel.attached || !fold.attached) return;
+    // The handle above the content, and a margin under the bar.
+    final need = fold.localToGlobal(Offset(0, fold.size.height), ancestor: panel).dy + 22 + 16;
+    if ((need - _foldHeight).abs() > 1) setState(() => _foldHeight = need);
+  }
   String? _serviceName;
 
   /// What the booking sheet offers: the admin Vehicle Services catalogue,
@@ -893,7 +915,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         tollCharges: showTolls && ai?.tollsToShow != null
             ? formatMoney(ai!.tollsToShow, _currency)
             : null,
-        tax: _chargeLines(),
+        // No trip yet (the home bar's (i)): no fare to work a tax out on.
+        tax: _basis == null ? null : _chargeLines(),
         trend: ai?.trend,
       ),
     );
@@ -1257,6 +1280,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             services: _services,
             selected: _service,
             onSelect: (s) => setState(() => _serviceName = s.name),
+            // As the confirm step's, without the trip's high-fare note,
+            // tolls, coins or taxes: there is no trip yet.
+            onInfo: (s) => _showFareInfo(s, null, false, null),
           )
         else
           const VehicleTypeBarSkeleton(),
@@ -1269,15 +1295,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           title: Text(_pickup?.name ?? 'Set pickup'),
           onTap: () => _choose(_PinTarget.pickup),
         ),
-      if (sections.searchBar)
-        HomeSearchPill(onTap: whereTo)
-      else
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.location_on, color: Colors.red.shade700),
-          title: const Text('Where to?'),
-          onTap: whereTo,
-        ),
+      KeyedSubtree(
+        key: _foldKey,
+        child: sections.searchBar
+            ? HomeSearchPill(onTap: whereTo)
+            : ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.location_on, color: Colors.red.shade700),
+                title: const Text('Where to?'),
+                onTap: whereTo,
+              ),
+      ),
       const UpcomingRideCard(),
       // Under the search bar only with the sheet up: all the way down it
       // would peek out below it.
@@ -1787,6 +1815,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         : 0.0;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final navLiftFraction = screenHeight > 0 ? navLift / screenHeight : 0.0;
+    if (!confirming) WidgetsBinding.instance.addPostFrameCallback((_) => _measureFold());
     return Scaffold(
       body: calculating(PopScope(
         // Back on the confirm step leaves it, as its back arrow does.
@@ -1794,15 +1823,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop && confirming) _leaveConfirm();
         },
-        child: MapSheetLayout(
+        child: LayoutBuilder(builder: (context, box) {
+          // All the way down, the sheet still shows the search bar whole,
+          // however tall the screen (a fixed share of a short one cut it).
+          final fold = !confirming && _foldHeight > 0 && box.maxHeight > 0 ? _foldHeight / box.maxHeight : 0.0;
+          final least = math.min(0.6, math.max(0.22, fold));
+          return MapSheetLayout(
           map: map,
           // Android's own buttons (three-button navigation, drawn over the
           // app edge to edge) would cover the sheet's foot — the search bar —
           // where no footer sits above them: the sheet rises by their height.
-          sheet: navLift > 0 ? Padding(padding: EdgeInsets.only(bottom: navLift), child: panel) : panel,
-          min: (confirming ? 0.5 : 0.22) + navLiftFraction,
+          sheet: KeyedSubtree(
+            key: _panelKey,
+            child: navLift > 0 ? Padding(padding: EdgeInsets.only(bottom: navLift), child: panel) : panel,
+          ),
+          min: (confirming ? 0.5 : least) + navLiftFraction,
           // The main screen's sheet starts fully down; the rider drags it up.
-          initial: (confirming ? 0.55 : 0.22) + navLiftFraction,
+          initial: (confirming ? 0.55 : least) + navLiftFraction,
           hidden: _pinMoving,
           footer: footer,
           // Over the foot of the sheet, only while it is all the way up.
@@ -1817,7 +1854,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 ),
           front: confirming && !wide && (layout.promoBar || demand != null) && layout.promoBarInFront ? Stack(children: [promoBar()]) : null,
-        ),
+        );
+        }),
       )),
     );
   }

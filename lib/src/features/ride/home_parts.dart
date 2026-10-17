@@ -107,11 +107,21 @@ class VehicleTypeBarSkeleton extends StatelessWidget {
 /// skeleton: the bar comes alive once every picture has painted or fallen
 /// back to the car icon (vehicleBarReady).
 class VehicleTypeBar extends StatefulWidget {
-  const VehicleTypeBar({super.key, required this.services, required this.selected, required this.onSelect});
+  const VehicleTypeBar({
+    super.key,
+    required this.services,
+    required this.selected,
+    required this.onSelect,
+    this.onInfo,
+  });
 
   final List<RideService> services;
   final RideService selected;
   final ValueChanged<RideService> onSelect;
+
+  /// What the "i" opens: the fare details where the home screen knows the
+  /// rates; the service's description alone otherwise.
+  final ValueChanged<RideService>? onInfo;
 
   /// The chosen box's fill and its "i" (inDrive's indigo and blue): indigo
   /// with white text on a dark sheet, a light blue with dark text on a light one.
@@ -220,7 +230,7 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
                             InkResponse(
                               key: ValueKey('vehicle-info-${s.name}'),
                               radius: 18,
-                              onTap: () => _info(context, s),
+                              onTap: () => widget.onInfo != null ? widget.onInfo!(s) : _info(context, s),
                               child: const Icon(Icons.info_outline, size: 22, color: infoBlue),
                             ),
                           ],
