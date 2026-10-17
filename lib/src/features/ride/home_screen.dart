@@ -258,6 +258,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   RegionPricing _pricingFor(RideService s, {RegionRuleContext? rules, RegionPricing? base}) =>
       (rules ?? _rules).pricingFor(base ?? _pricing, types: _typesOf(s), vehicleType: s.id, nowUtc: DateTime.now().toUtc());
   LatLng? _biddingAt;
+
+  /// The pickup the bidding, pricing and rules shown were last read for.
+  LatLng? _pricedAt;
   bool _routing = false;
   RideRequest? _ongoing;
 
@@ -769,14 +772,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final pricing = await pricingF;
     final services = await servicesF;
     final rules = await rulesF;
-    if (mounted && _biddingAt == pickup) {
-      setState(() {
-        _rules = rules;
-        _biddingOn = on;
-        _pricing = pricing;
-        _regionServices = services;
-      });
-    }
+    if (!mounted || _biddingAt != pickup) return;
+    // Read again for the same pickup (a region changed, or the live link
+    // came back after the screen was unlocked) while the pickup's place
+    // can't be looked up: what it was priced at stays, rather than a fare
+    // without its rounding until the next read.
+    if (_pricedAt == pickup && await orElse(() => area, null) == null) return;
+    if (!mounted || _biddingAt != pickup) return;
+    setState(() {
+      _pricedAt = pickup;
+      _rules = rules;
+      _biddingOn = on;
+      _pricing = pricing;
+      _regionServices = services;
+    });
   }
 
   /// The booking tariff card for [s] at the pickup (Admin → Fare tariffs):

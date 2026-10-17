@@ -431,7 +431,16 @@ class RideRepository {
     final now = DateTime.now();
     if (cached != null && now.isBefore(cached.until)) return cached.list;
     var failed = false;
-    final list = _lookupRegions(at, () => failed = true);
+    // A read that fails (the network still waking after the screen was
+    // unlocked, say) keeps the regions last read here, so whole fares and
+    // tax don't drop off the open booking sheet until the next read.
+    final list = _lookupRegions(at, () => failed = true).then((r) {
+      if (failed) return _lastGoodRegions[key] ?? r;
+      if (_lastGoodRegions.length >= 16 && !_lastGoodRegions.containsKey(key)) {
+        _lastGoodRegions.remove(_lastGoodRegions.keys.first);
+      }
+      return _lastGoodRegions[key] = r;
+    });
     final kept = (until: now.add(regionsCacheFor), list: list);
     if (_regions.length >= 16) _regions.remove(_regions.keys.first);
     _regions[key] = kept;
@@ -452,6 +461,10 @@ class RideRepository {
   static const regionsCacheFor = Duration(minutes: 10);
   static const regionsRetryAfter = Duration(seconds: 45);
   final Map<String, ({DateTime until, Future<List<BiddingRegion>> list})> _regions = {};
+
+  /// The regions last read at each spot, kept through [forgetRegions] for
+  /// when a later read fails.
+  final Map<String, List<BiddingRegion>> _lastGoodRegions = {};
 
   /// Whether `regions_at` exists; false after the database said it does
   /// not (before migration 0169), so the whole tables are read instead.
