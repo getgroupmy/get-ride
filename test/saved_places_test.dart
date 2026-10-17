@@ -40,6 +40,23 @@ void main() {
     expect(savedPlaceDistance(null, klcc), '');
   });
 
+  test("the line under a saved place: inDrive's short address", () {
+    SavedPlace at(SavedPlaceKind kind, String name, String address) =>
+        SavedPlace(kind: kind, name: name, address: address, point: eco);
+    expect(
+      savedPlaceLine(
+        at(SavedPlaceKind.other, 'Eco Majestic', 'Eco Majestic, 25, Jalan Eco Majestic 1/2C, 43500 Semenyih'),
+      ),
+      '25, Jalan Eco Majestic 1/2C',
+      reason: 'its own name dropped, the first two parts kept',
+    );
+    expect(savedPlaceLine(at(SavedPlaceKind.other, 'KLCC', 'KLCC')), 'KLCC', reason: 'nothing else to show');
+    expect(
+      savedPlaceLine(at(SavedPlaceKind.home, '', 'Jalan Ampang, Kuala Lumpur, Malaysia')),
+      'Jalan Ampang, Kuala Lumpur',
+    );
+  });
+
   test('what stops a save', () {
     expect(savedPlaceProblem(kind: SavedPlaceKind.other, name: '', address: 'KLCC'), 'Give the place a name');
     expect(savedPlaceProblem(kind: SavedPlaceKind.home, name: '', address: 'Eco'), isNull);

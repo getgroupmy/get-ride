@@ -76,10 +76,40 @@ Future<PlacePick?> showPlaceSearch(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    // inDrive's: nearly the whole screen, plain (white by day), no handle.
+    // inDrive's: the whole screen under the status bar, plain (white by
+    // day), no handle.
     showDragHandle: false,
-    backgroundColor: Theme.of(context).colorScheme.surface,
-    builder: (_) => FractionallySizedBox(heightFactor: 0.96, child: body),
+    backgroundColor: routeSheetBackground(Theme.of(context)),
+    builder: (c) => Theme(data: routeSheetTheme(Theme.of(c)), child: body),
+  );
+}
+
+/// The route sheet's page: white by day.
+Color routeSheetBackground(ThemeData t) => t.brightness == Brightness.dark ? t.colorScheme.surface : Colors.white;
+
+/// The route sheet's theme: inDrive's text, with no letter spacing (the
+/// app's Material text spreads its letters out).
+ThemeData routeSheetTheme(ThemeData t) {
+  TextStyle? tight(TextStyle? s) => s?.copyWith(letterSpacing: 0);
+  final x = t.textTheme;
+  return t.copyWith(
+    textTheme: x.copyWith(
+      displayLarge: tight(x.displayLarge),
+      displayMedium: tight(x.displayMedium),
+      displaySmall: tight(x.displaySmall),
+      headlineLarge: tight(x.headlineLarge),
+      headlineMedium: tight(x.headlineMedium),
+      headlineSmall: tight(x.headlineSmall),
+      titleLarge: tight(x.titleLarge),
+      titleMedium: tight(x.titleMedium),
+      titleSmall: tight(x.titleSmall),
+      bodyLarge: tight(x.bodyLarge),
+      bodyMedium: tight(x.bodyMedium),
+      bodySmall: tight(x.bodySmall),
+      labelLarge: tight(x.labelLarge),
+      labelMedium: tight(x.labelMedium),
+      labelSmall: tight(x.labelSmall),
+    ),
   );
 }
 
@@ -455,7 +485,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                     _highlighted(p.name, _query.text, t),
                     maxLines: smart.clean ? 1 : 2,
                     overflow: TextOverflow.ellipsis,
-                    style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400),
+                    style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -708,7 +738,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       children: [
         // The title in the middle, a round close on the right (inDrive's).
         Padding(
-          padding: const EdgeInsets.fromLTRB(56, 14, 16, 14),
+          padding: const EdgeInsets.fromLTRB(56, 12, 16, 16),
           child: Row(
             children: [
               Expanded(
@@ -742,7 +772,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             value: widget.from?.name,
             onTap: _changeFrom,
           ),
-        if (_ends) const SizedBox(height: 10),
+        if (_ends) const SizedBox(height: 12),
         if (_editFrom)
           _endRow(
             t,
@@ -754,24 +784,29 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           )
         else
           _field(t),
-        const SizedBox(height: 16),
+        const SizedBox(height: 22),
         if (_route)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final tab in [if (typing) _Tab.results, _Tab.suggested, _Tab.saved]) ...[
-                    _Pill(
-                      key: ValueKey('place-tab-${tab.name}'),
-                      label: tab.label,
-                      on: _tab == tab,
-                      onTap: () => setState(() => _tab = tab),
-                    ),
-                    const SizedBox(width: 8),
+            // From the left, as inDrive's.
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: SingleChildScrollView(
+                key: const ValueKey('place-tabs'),
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    for (final tab in [if (typing) _Tab.results, _Tab.suggested, _Tab.saved]) ...[
+                      _Pill(
+                        key: ValueKey('place-tab-${tab.name}'),
+                        label: tab.label,
+                        on: _tab == tab,
+                        onTap: () => setState(() => _tab = tab),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -842,7 +877,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     }
     final v = arrangeSavedPlaces(ref.watch(savedPlacesProvider).value ?? const []);
     final muted = t.colorScheme.onSurfaceVariant;
-    final titleStyle = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400);
+    final titleStyle = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500);
     // The same row as a search result: icon, name over address, distance,
     // and a round button (here: edit).
     Widget saved(SavedPlace p, IconData icon) => InkWell(
@@ -863,7 +898,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                   Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
                   const SizedBox(height: 2),
                   Text(
-                    [p.address, if (p.entrance.isNotEmpty) p.entrance].join(' · '),
+                    [savedPlaceLine(p), if (p.entrance.isNotEmpty) p.entrance].join(' · '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
@@ -967,13 +1002,21 @@ class _Pill extends StatelessWidget {
 
 /// The sheet's grey: the From box, the off tabs and the round buttons
 /// (inDrive's light grey by day, a lifted grey at night).
-Color _fill(ThemeData t) => t.brightness == Brightness.dark ? const Color(0xFF2C2D30) : const Color(0xFFF1F2F4);
+Color _fill(ThemeData t) => routeSheetFill(t);
+
+/// The route sheet's warm grey, for the forms opened from it too.
+Color routeSheetFill(ThemeData t) =>
+    t.brightness == Brightness.dark ? const Color(0xFF2C2D30) : const Color(0xFFF2F1EE);
 
 /// A 36 round grey button with a dark icon: close, save, edit.
-ButtonStyle _roundButton(ThemeData t) => IconButton.styleFrom(
+ButtonStyle _roundButton(ThemeData t) => routeSheetRoundButton(t);
+
+/// [_roundButton], for the forms opened from the route sheet.
+ButtonStyle routeSheetRoundButton(ThemeData t) => IconButton.styleFrom(
   backgroundColor: _fill(t),
   foregroundColor: t.colorScheme.onSurface,
   fixedSize: const Size.square(36),
   minimumSize: const Size.square(36),
   padding: EdgeInsets.zero,
+  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
 );

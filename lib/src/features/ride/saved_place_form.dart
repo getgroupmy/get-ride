@@ -16,15 +16,26 @@ import '../../widgets/map_tiles.dart';
 import 'place_search.dart';
 
 /// Opens the form for [place] (a new one when it has no id). True when it
-/// was saved or deleted.
-Future<bool> showSavedPlaceForm(BuildContext context, SavedPlace place, {LatLng? near}) async =>
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => SavedPlaceForm(place: place, near: near),
-      ),
-    ) ??
-    false;
+/// was saved or deleted. A saved place is edited in a sheet like the route
+/// sheet's (inDrive's "Editing place"); a new one on a page with its spot.
+Future<bool> showSavedPlaceForm(BuildContext context, SavedPlace place, {LatLng? near}) async {
+  final form = SavedPlaceForm(place: place, near: near);
+  if (place.id != null && MediaQuery.sizeOf(context).width < 720) {
+    return await showModalBottomSheet<bool>(
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          showDragHandle: false,
+          backgroundColor: routeSheetBackground(Theme.of(context)),
+          builder: (c) => Theme(data: routeSheetTheme(Theme.of(c)), child: form),
+        ) ??
+        false;
+  }
+  return await Navigator.of(context).push<bool>(
+        MaterialPageRoute(fullscreenDialog: true, builder: (_) => form),
+      ) ??
+      false;
+}
 
 /// Adds Home, Work or another place: the address first ("Enter address"),
 /// then the form. True when one was saved.
@@ -137,13 +148,22 @@ class _SavedPlaceFormState extends ConsumerState<SavedPlaceForm> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final problem = savedPlaceProblem(kind: _place.kind, name: _name.text, address: _place.address);
-    final field = t.colorScheme.surfaceContainerHighest;
-    InputDecoration deco(String label) => InputDecoration(
+    // The route sheet's fields: warm grey, the one being typed in outlined.
+    final field = routeSheetFill(t);
+    final muted = t.colorScheme.onSurfaceVariant;
+    InputDecoration deco(String label, {bool enabled = true}) => InputDecoration(
       labelText: label,
+      labelStyle: TextStyle(color: muted, fontSize: 17),
+      floatingLabelStyle: TextStyle(color: muted, fontSize: 15),
       filled: true,
-      fillColor: field,
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      fillColor: enabled ? field : field.withValues(alpha: 0.5),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: t.colorScheme.onSurface, width: 2),
+      ),
+      contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
     );
     final form = Column(
       mainAxisSize: MainAxisSize.min,
@@ -157,7 +177,16 @@ class _SavedPlaceFormState extends ConsumerState<SavedPlaceForm> {
             maxLength: 80,
             buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
             onChanged: (_) => setState(() {}),
-            decoration: deco('Name'),
+            decoration: deco('Name').copyWith(
+              suffixIcon: _name.text.isEmpty
+                  ? null
+                  : IconButton(
+                      key: const ValueKey('saved-place-name-clear'),
+                      tooltip: 'Clear',
+                      icon: Icon(Icons.cancel, size: 22, color: muted.withValues(alpha: 0.8)),
+                      onPressed: () => setState(_name.clear),
+                    ),
+            ),
           ),
           const SizedBox(height: 12),
         ],
@@ -166,13 +195,14 @@ class _SavedPlaceFormState extends ConsumerState<SavedPlaceForm> {
           borderRadius: BorderRadius.circular(14),
           onTap: _busy ? null : _changeAddress,
           child: InputDecorator(
-            decoration: deco('Address'),
+            decoration: deco('Address', enabled: !_editing),
             child: Text(
               _place.address,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: t.textTheme.bodyLarge?.copyWith(
-                color: _editing ? t.colorScheme.onSurfaceVariant : t.colorScheme.onSurface,
+                fontSize: 17,
+                color: _editing ? muted.withValues(alpha: 0.7) : t.colorScheme.onSurface,
               ),
             ),
           ),
@@ -194,8 +224,8 @@ class _SavedPlaceFormState extends ConsumerState<SavedPlaceForm> {
               style: TextButton.styleFrom(
                 backgroundColor: field,
                 foregroundColor: t.colorScheme.error,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w500),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
               ),
               onPressed: _busy ? null : _delete,
               child: const Text('Delete place'),
@@ -212,7 +242,7 @@ class _SavedPlaceFormState extends ConsumerState<SavedPlaceForm> {
           : const Text('Save', style: TextStyle(fontSize: 18)),
     );
     final header = Padding(
-      padding: const EdgeInsets.fromLTRB(56, 16, 12, 16),
+      padding: const EdgeInsets.fromLTRB(56, 12, 16, 16),
       child: Row(
         children: [
           Expanded(
@@ -221,31 +251,37 @@ class _SavedPlaceFormState extends ConsumerState<SavedPlaceForm> {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              style: t.textTheme.titleLarge?.copyWith(fontSize: 20, fontWeight: FontWeight.w700),
             ),
           ),
           const SizedBox(width: 4),
           IconButton.filledTonal(
             key: const ValueKey('saved-place-close'),
             tooltip: 'Close',
-            icon: const Icon(Icons.close),
+            style: routeSheetRoundButton(t),
+            icon: const Icon(Icons.close, size: 22),
             onPressed: () => Navigator.pop(context),
           ),
         ],
       ),
     );
-    // A saved place is edited on a plain page; a new one shows its spot.
+    // A saved place is edited in the route sheet's style, Save just above
+    // the keyboard; a new one shows its spot.
     if (_editing) {
-      return Scaffold(
-        body: SafeArea(
-          child: Column(
-            children: [
-              header,
-              Expanded(
-                child: SingleChildScrollView(padding: const EdgeInsets.symmetric(horizontal: 16), child: form),
-              ),
-              Padding(padding: const EdgeInsets.all(16), child: save),
-            ],
+      return Material(
+        color: routeSheetBackground(t),
+        child: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+            child: Column(
+              children: [
+                header,
+                Expanded(
+                  child: SingleChildScrollView(padding: const EdgeInsets.symmetric(horizontal: 16), child: form),
+                ),
+                Padding(padding: const EdgeInsets.all(16), child: save),
+              ],
+            ),
           ),
         ),
       );
