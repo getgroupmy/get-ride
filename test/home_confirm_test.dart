@@ -207,6 +207,36 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets("the home vehicle bar's (i) opens the fare details", (tester) async {
+    await _pump(tester, _Rides(), book: false);
+    await tester.tap(find.byKey(const ValueKey('vehicle-type-GET XL')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('vehicle-info-GET XL')));
+    await tester.pumpAndSettle();
+    final sheet = find.byKey(const ValueKey('fare-details-sheet'));
+    expect(find.descendant(of: sheet, matching: find.text('GET XL')), findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.text('Fares in the app:')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('fare-info-ok')));
+    await tester.pumpAndSettle();
+    expect(sheet, findsNothing);
+  });
+
+  testWidgets('all the way down, a short screen still shows the whole search bar', (tester) async {
+    await _pump(tester, _Rides(), book: false);
+    // A short phone, its navigation bar already taken off the bottom.
+    tester.view.physicalSize = const Size(400, 600);
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final bar = find.byKey(const ValueKey('home-search'));
+    expect(bar, findsOneWidget);
+    expect(tester.getRect(bar).bottom, lessThanOrEqualTo(600), reason: 'inside the sheet, not cut off');
+    // Dragged down, it stops there.
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(bar).bottom, lessThanOrEqualTo(600));
+  });
+
   testWidgets('fare trend arrows stand before every fare, and leave the one the rider changes', (tester) async {
     final ai = _SlowAi();
     await _pump(tester, _Rides(bidding: true), ai: ai);
