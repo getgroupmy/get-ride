@@ -41,7 +41,7 @@ class MapCreditLayer extends StatelessWidget {
       return ValueListenableBuilder<bool>(
         valueListenable: maplibreFailed,
         builder: (context, failed, _) =>
-            _tilesCredit(failed ? fallbackTileSource(context, satellite: satellite) : source),
+            _tilesCredit(failed ? fallbackShownSource(context, satellite: satellite) : source),
       );
     }
     if (source.googleJsKey != null) {
@@ -50,13 +50,15 @@ class MapCreditLayer extends StatelessWidget {
       return ValueListenableBuilder<bool>(
         valueListenable: googleJsFailed,
         builder: (context, failed, _) =>
-            failed ? _tilesCredit(fallbackTileSource(context, satellite: satellite)) : const SizedBox.shrink(),
+            failed ? _tilesCredit(fallbackShownSource(context, satellite: satellite)) : const SizedBox.shrink(),
       );
     }
     return _tilesCredit(source);
   }
 
   Widget _tilesCredit(TileSource source) {
+    // Apple's map draws its own logo and Legal link.
+    if (source.appleNative) return const SizedBox.shrink();
     final credit = mapCreditFor(source.url, attribution: source.attribution);
     if (credit.google) {
       return GoogleMapCredit(tileUrl: source.url, fallback: credit.text, onDark: source.darken || satellite);

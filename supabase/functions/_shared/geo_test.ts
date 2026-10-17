@@ -943,6 +943,27 @@ Deno.test("Google's own map on phones: no key sent, the build carries it (0210)"
   assertEquals(p.refused, {});
 });
 
+Deno.test("Apple's own map on iPhones: no key, its standard map and the chosen imagery (0214)", async () => {
+  const cfg = {
+    ...config,
+    profiles: {
+      ...config.profiles,
+      "rider.ios": {
+        ...config.profiles["rider.android"],
+        tiles: { light: "apple_native", dark: "apple_native", satellite: "apple_native", traffic: "app" },
+      },
+    },
+  };
+  const { d } = deps({ settings: () => Promise.resolve({ config: cfg, apiProviders }) });
+  // deno-lint-ignore no-explicit-any
+  const p = ((await handleGeo(q("action=profile&role=rider&device=ios"), "ip", d)).body as any).profile;
+  assertEquals(p.tiles.light, { url: "", darken: false, attribution: "Apple Maps", engine: "apple_native", mapType: "roadmap" });
+  assertEquals(p.tiles.satellite.mapType, "satellite");
+  const look = googleLookOf({ googleSatellite: "hybrid", googleMap: "terrain" });
+  assertEquals(tileSource("apple_native", "light", null, null, undefined, look)!.mapType, "roadmap", "no terrain");
+  assertEquals(tileSource("apple_native", "satellite", null, null, undefined, look)!.mapType, "hybrid");
+});
+
 Deno.test("Google's look (0211): hybrid satellite and terrain, the dark map the night roadmap", () => {
   const look = googleLookOf({ googleSatellite: "hybrid", googleMap: "terrain" });
   assertEquals(look, { satellite: "hybrid", map: "terrain" });

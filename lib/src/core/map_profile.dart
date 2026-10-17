@@ -62,6 +62,14 @@ class MapTileSpec {
       maplibreKey = null,
       googleNative = true;
 
+  /// Apple's own map in the iPhone app (migration 0214): MapKit, no key.
+  const MapTileSpec.appleNative({this.attribution = '', bool satellite = false, String? mapType})
+    : url = 'apple-native:${mapType ?? (satellite ? 'satellite' : 'roadmap')}',
+      darken = false,
+      googleJsKey = null,
+      maplibreKey = null,
+      googleNative = false;
+
   static const googleNativeRoadmap = 'google-native:roadmap';
   static const googleNativeSatellite = 'google-native:satellite';
 
@@ -81,6 +89,7 @@ class MapTileSpec {
   final bool googleNative;
 
   bool get isGoogleJs => googleJsKey != null;
+  bool get appleNative => url.startsWith('apple-native:');
   bool get isMapLibre => maplibreKey != null;
 
   /// Drawn by the browser (web only).
@@ -95,6 +104,9 @@ class MapTileSpec {
     }
     if (json['engine'] == 'google_native') {
       return MapTileSpec.googleNative(attribution: '${json['attribution'] ?? ''}', mapType: _googleType(json));
+    }
+    if (json['engine'] == 'apple_native') {
+      return MapTileSpec.appleNative(attribution: '${json['attribution'] ?? ''}', mapType: _googleType(json));
     }
     if (json['engine'] == 'maplibre') {
       final style = '${json['style'] ?? ''}'.trim();
@@ -124,10 +136,10 @@ class MapTileSpec {
 String _googleType(Map json) =>
     MapTileSpec.googleMapTypes.contains(json['mapType']) ? '${json['mapType']}' : 'roadmap';
 
-/// The Google map type a stand-in URL names ("google-js:hybrid" → "hybrid"),
-/// or null for any other source.
+/// The Google (or Apple) map type a stand-in URL names ("google-js:hybrid" →
+/// "hybrid"), or null for any other source.
 String? googleMapTypeOf(String url) {
-  for (final prefix in const ['google-js:', 'google-native:']) {
+  for (final prefix in const ['google-js:', 'google-native:', 'apple-native:']) {
     if (url.startsWith(prefix)) {
       final t = url.substring(prefix.length);
       return MapTileSpec.googleMapTypes.contains(t) ? t : null;

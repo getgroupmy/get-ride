@@ -26,6 +26,7 @@ import 'package:http/retry.dart';
 import '../core/map_profile.dart';
 import 'google_js_layer.dart';
 import 'google_js_map.dart' show googleJsSupported;
+import 'apple_native_layer.dart';
 import 'google_native_layer.dart';
 import 'maplibre_layer.dart';
 
@@ -61,6 +62,10 @@ class TileSource {
 
   /// Google's own map in the phone app instead of tiles (migration 0210).
   final bool googleNative;
+
+  /// Apple's own map in the iPhone app instead of tiles (migration 0214);
+  /// [url] only names the map type.
+  bool get appleNative => url.startsWith('apple-native:');
 
   /// Drawn by the browser rather than from tiles.
   bool get isBrowserMap => googleJsKey != null || maplibreKey != null;
@@ -105,12 +110,14 @@ TileSource? profileTileSource(
   bool web = kIsWeb,
   bool? googleJs,
   bool? googleNative,
+  bool? appleNative,
 }) {
   final spec = satellite ? profile.satellite : (dark ? profile.dark : profile.light);
   if (spec == null) return null;
   if (spec.isMapLibre && !web) return null;
   if (spec.isGoogleJs && !(web || (googleJs ?? googleJsSupported))) return null;
   if (spec.googleNative && !(googleNative ?? googleNativeSupported)) return null;
+  if (spec.appleNative && !(appleNative ?? appleNativeSupported)) return null;
   return TileSource(
     spec.url,
     darken: spec.darken,
@@ -157,8 +164,14 @@ http.Client retryingTileClient() => RetryClient(
 TileSource currentTileSource(BuildContext context, {bool satellite = false}) {
   final dark = Theme.of(context).brightness == Brightness.dark;
   return profileTileSource(activeMapProfile, dark: dark, satellite: satellite) ??
-      resolveTileSource(dark: dark, satellite: satellite);
+      builtInTileSource(dark: dark, satellite: satellite);
 }
+
+/// The app's own map ("Built in"): Apple's on iPhones (migration 0214), with
+/// nothing to load and no key to go wrong; elsewhere the build's tiles.
+TileSource builtInTileSource({required bool dark, bool satellite = false, bool? apple}) => (apple ?? appleNativeSupported)
+    ? TileSource(satellite ? 'apple-native:satellite' : 'apple-native:roadmap', darken: false)
+    : resolveTileSource(dark: dark, satellite: satellite);
 
 /// The base layer for [context]'s theme, or satellite imagery: tiles, or
 /// Google's JavaScript map or a MapLibre map (with the app's own tiles
@@ -185,11 +198,19 @@ Widget currentBaseLayer(BuildContext context, {bool satellite = false}) {
       key: ValueKey(source.url),
       style: source.url,
       apiKey: maplibreKey,
-      fallback: _tileLayer(fallbackTileSource(context, satellite: satellite)),
+      fallback: _fallbackLayer(context, satellite: satellite),
     );
   }
   if (source.googleNative) {
     return GoogleNativeBaseLayer(
+      key: ValueKey(source.url),
+      satellite: satellite,
+      mapType: googleMapTypeOf(source.url),
+      fallback: _fallbackLayer(context, satellite: satellite),
+    );
+  }
+  if (source.appleNative) {
+    return AppleNativeBaseLayer(
       key: ValueKey(source.url),
       satellite: satellite,
       mapType: googleMapTypeOf(source.url),
@@ -203,13 +224,24 @@ Widget currentBaseLayer(BuildContext context, {bool satellite = false}) {
     apiKey: key,
     satellite: satellite,
     mapType: googleMapTypeOf(source.url),
-    fallback: _tileLayer(fallbackTileSource(context, satellite: satellite)),
+    fallback: _fallbackLayer(context, satellite: satellite),
   );
 }
 
 /// The app's own tiles, under a browser-drawn map should it fail.
 TileSource fallbackTileSource(BuildContext context, {bool satellite = false}) =>
     resolveTileSource(dark: Theme.of(context).brightness == Brightness.dark, satellite: satellite);
+
+/// What shows when the map set can't draw: Apple's map on iPhones (migration
+/// 0214), the app's own tiles elsewhere (and under Apple's, should it fail).
+TileSource fallbackShownSource(BuildContext context, {bool satellite = false}) =>
+    builtInTileSource(dark: Theme.of(context).brightness == Brightness.dark, satellite: satellite);
+
+Widget _fallbackLayer(BuildContext context, {bool satellite = false}) {
+  final tiles = _tileLayer(fallbackTileSource(context, satellite: satellite));
+  if (!appleNativeSupported) return tiles;
+  return AppleNativeBaseLayer(satellite: satellite, fallback: tiles);
+}
 
 TileLayer _tileLayer(TileSource source) {
   return TileLayer(
