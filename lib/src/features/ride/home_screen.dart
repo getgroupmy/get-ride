@@ -683,6 +683,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() => _addingStop = false);
     final after = _basis;
     final extra = _fareFor(_service) - before.fare;
+    // Admin → Display → "Ask before adding a stop" off: added at once.
+    final ask = ConfirmLayout.fromSettings(
+      ref.read(displaySettingsBlobProvider).value ?? const <String, dynamic>{},
+    ).confirmAddStop;
+    if (after != null && !ask) return;
     final add = after != null &&
         await confirmAddStop(
           context,

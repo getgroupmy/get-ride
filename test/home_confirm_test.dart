@@ -118,7 +118,13 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = true, RouteEstimateRepository? ai}) async {
+Future<ProviderContainer> _pump(
+  WidgetTester tester,
+  _Rides rides, {
+  bool book = true,
+  RouteEstimateRepository? ai,
+  Map<String, dynamic> display = const <String, dynamic>{},
+}) async {
   SharedPreferences.setMockInitialValues({});
   tester.view.physicalSize = const Size(400, 860);
   tester.view.devicePixelRatio = 1;
@@ -138,7 +144,7 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = 
         ],
       ),
       recentPlacesProvider.overrideWith((ref) async => const [_eco, _klcc]),
-      displaySettingsBlobProvider.overrideWith((ref) async => const <String, dynamic>{}),
+      displaySettingsBlobProvider.overrideWith((ref) async => display),
       appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
       deviceBlockedProvider.overrideWith((ref) async => false),
       profileProvider.overrideWith((ref) async => null),
@@ -329,6 +335,19 @@ void main() {
     await _settle(tester);
     expect(find.byKey(const ValueKey('add-stop-confirm')), findsNothing);
     expect(find.textContaining('route stops', findRichText: true), findsNothing, reason: 'the stop is not added');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('"Ask before adding a stop" off: the stop is added without Add or Cancel', (tester) async {
+    await _pump(tester, _Rides(), display: const {'addStopConfirm': false});
+    await tester.tap(find.byKey(const ValueKey('confirm-add-stop')));
+    await _settle(tester);
+    await tester.tap(find.text('Eco Majestic').last);
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byKey(const ValueKey('add-stop-confirm')), findsNothing);
+    expect(find.textContaining('2 route stops', findRichText: true), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -227,6 +227,7 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'discountBarHeightOffset': 0,
       'discountBarInFront': false,
       'discountBar': true,
+      'addStopConfirm': true,
       'rcBackVertical': 0,
       'rcBackHorizontal': 0,
       'rcRecenterVertical': 0,

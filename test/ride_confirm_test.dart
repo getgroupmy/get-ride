@@ -71,6 +71,8 @@ void main() {
     expect(l.promoBarInFront, isTrue);
     expect(ConfirmLayout.fromSettings(const {}).promoBarInFront, isFalse, reason: 'behind the sheet by default, as Expo');
     expect(ConfirmLayout.fromSettings(const {'discountBarInFront': 'off'}).promoBarInFront, isFalse);
+    expect(ConfirmLayout.fromSettings(const {}).confirmAddStop, isTrue, reason: 'asks before adding a stop by default');
+    expect(ConfirmLayout.fromSettings(const {'addStopConfirm': false}).confirmAddStop, isFalse);
   });
 
   test("the trip maps' recenter offsets: the rider's and the driver's", () {

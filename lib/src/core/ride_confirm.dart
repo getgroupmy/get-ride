@@ -17,6 +17,7 @@ class ConfirmLayout {
     this.promoBar = true,
     this.promoBarOffset = 0,
     this.promoBarInFront = false,
+    this.confirmAddStop = true,
   });
 
   /// (horizontal, vertical) offsets.
@@ -33,6 +34,10 @@ class ConfirmLayout {
   /// Admin → Display → "Discount bar in front": the bar is drawn over the
   /// sheet, whole, instead of tucked behind its top edge.
   final bool promoBarInFront;
+
+  /// Admin → Display → "Ask before adding a stop": a new stop's additional
+  /// cost and time are shown with Add or Cancel; off, it is added at once.
+  final bool confirmAddStop;
 
   static ConfirmLayout fromSettings(Map<String, dynamic> s) {
     double n(String k) {
@@ -62,6 +67,7 @@ class ConfirmLayout {
       promoBar: flag('discountBar', true),
       promoBarOffset: n('discountBarHeightOffset'),
       promoBarInFront: flag('discountBarInFront', false),
+      confirmAddStop: flag('addStopConfirm', true),
     );
   }
 }
