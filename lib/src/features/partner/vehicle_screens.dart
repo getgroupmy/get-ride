@@ -100,18 +100,30 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
                     return Card(
                       child: ListTile(
                         leading: const CircleAvatar(child: Icon(Icons.directions_car_outlined)),
-                        title: Text('${v['plate'] ?? ''}'),
-                        subtitle: Text(_vehicleTitle(v)),
-                        trailing: step == VehicleStep.done
-                            ? Chip(
-                                label: Text(approval.label),
-                                labelStyle: TextStyle(color: _toneColor(approval.tone), fontSize: 12),
-                                visualDensity: VisualDensity.compact,
-                              )
-                            : Chip(
-                                label: Text('Incomplete: ${step.label}'),
-                                visualDensity: VisualDensity.compact,
-                              ),
+                        title: Text('${v['plate'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                        // The status under the name, so a long one ("Incomplete:
+                        // Make & model") never squeezes the plate and name into a
+                        // sliver beside it.
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(_vehicleTitle(v), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 6),
+                            step == VehicleStep.done
+                                ? Chip(
+                                    label: Text(approval.label),
+                                    labelStyle: TextStyle(color: _toneColor(approval.tone), fontSize: 12),
+                                    visualDensity: VisualDensity.compact,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  )
+                                : Chip(
+                                    label: Text('Incomplete: ${step.label}'),
+                                    visualDensity: VisualDensity.compact,
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                          ],
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
                         onTap: () => _open('/drive/vehicles/${v['id']}'),
                       ),
                     );

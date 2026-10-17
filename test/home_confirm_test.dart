@@ -3,6 +3,7 @@
 // bar with the payment icon and "Find a driver".
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,7 +21,7 @@ import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/features/ride/auto_accept.dart';
-import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmSwitch;
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmSwitch, addStopSteps;
 import 'package:get_ride/src/features/ride/home_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
@@ -117,7 +118,13 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
-Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = true, RouteEstimateRepository? ai}) async {
+Future<ProviderContainer> _pump(
+  WidgetTester tester,
+  _Rides rides, {
+  bool book = true,
+  RouteEstimateRepository? ai,
+  Map<String, dynamic> display = const <String, dynamic>{},
+}) async {
   SharedPreferences.setMockInitialValues({});
   tester.view.physicalSize = const Size(400, 860);
   tester.view.devicePixelRatio = 1;
@@ -137,7 +144,7 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = 
         ],
       ),
       recentPlacesProvider.overrideWith((ref) async => const [_eco, _klcc]),
-      displaySettingsBlobProvider.overrideWith((ref) async => const <String, dynamic>{}),
+      displaySettingsBlobProvider.overrideWith((ref) async => display),
       appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
       deviceBlockedProvider.overrideWith((ref) async => false),
       profileProvider.overrideWith((ref) async => null),
@@ -186,6 +193,20 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = 
 }
 
 void main() {
+  testWidgets("Android's navigation buttons don't cover the sheet's search bar", (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.padding = const FakeViewPadding(bottom: 48);
+    tester.view.viewPadding = const FakeViewPadding(bottom: 48);
+    addTearDown(tester.view.resetPadding);
+    addTearDown(tester.view.resetViewPadding);
+    await _pump(tester, _Rides(), book: false);
+    final bar = find.byKey(const ValueKey('home-search'));
+    expect(bar, findsOneWidget);
+    expect(tester.getRect(bar).bottom, lessThanOrEqualTo(860 - 48), reason: 'above the buttons');
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('fare trend arrows stand before every fare, and leave the one the rider changes', (tester) async {
     final ai = _SlowAi();
     await _pump(tester, _Rides(bidding: true), ai: ai);
@@ -274,7 +295,61 @@ void main() {
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
+    await tester.tap(find.byKey(const ValueKey('add-stop-add')));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
   }
+
+  testWidgets('adding a stop: its steps, then what it adds, to Add or Cancel', (tester) async {
+    final ai = _SlowAi();
+    await _pump(tester, _Rides(), ai: ai);
+    ai.answer.complete((estimate: null, unavailable: false));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final card = find.byKey(const ValueKey('confirm-address-card'));
+    expect(find.descendant(of: card, matching: find.textContaining('KLCC', findRichText: true)), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('confirm-add-stop')));
+    await _settle(tester);
+    await tester.tap(find.text('Eco Majestic').last);
+    await tester.pump();
+    await tester.pump();
+    expect(find.byKey(const ValueKey('add-stop-progress')), findsOneWidget);
+    expect(find.byKey(const ValueKey('calculating-fare')), findsOneWidget, reason: 'one box, not two');
+    expect(
+      [addStopSteps[0], addStopSteps[1], addStopSteps[2]].contains(
+        tester.widget<Text>(find.byKey(const ValueKey('calculating-title'))).data,
+      ),
+      isTrue,
+    );
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byKey(const ValueKey('add-stop-progress')), findsNothing);
+    expect(find.byKey(const ValueKey('add-stop-confirm')), findsOneWidget);
+    expect(find.byKey(const ValueKey('add-stop-cost')), findsOneWidget);
+    expect(find.byKey(const ValueKey('add-stop-time')), findsOneWidget);
+    // Cancel: the trip as it was.
+    await tester.tap(find.byKey(const ValueKey('add-stop-cancel')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('add-stop-confirm')), findsNothing);
+    expect(find.textContaining('route stops', findRichText: true), findsNothing, reason: 'the stop is not added');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('"Ask before adding a stop" off: the stop is added without Add or Cancel', (tester) async {
+    await _pump(tester, _Rides(), display: const {'addStopConfirm': false});
+    await tester.tap(find.byKey(const ValueKey('confirm-add-stop')));
+    await _settle(tester);
+    await tester.tap(find.text('Eco Majestic').last);
+    for (var i = 0; i < 12; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byKey(const ValueKey('add-stop-confirm')), findsNothing);
+    expect(find.textContaining('2 route stops', findRichText: true), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('a stop is priced by the AI through it, and again when the stops change', (tester) async {
     final ai = _StopsAi();
@@ -664,6 +739,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('offer-fare-add-stop')));
     await _settle(tester);
     await tester.tap(find.byKey(const ValueKey('recent-2.93,101.83')));
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('add-stop-add')));
     await _settle(tester);
 
     expect(find.byKey(const ValueKey('offer-fare-screen')), findsOneWidget, reason: 'still on the page');

@@ -125,6 +125,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   RouteInfo? _route;
   RouteEstimate? _ai;
   int _routeSeq = 0;
+
+  /// A stop being added: its own steps show, then what it adds.
+  bool _addingStop = false;
   String? _serviceName;
 
   /// What the booking sheet offers: the admin Vehicle Services catalogue,
@@ -258,6 +261,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   RegionPricing _pricingFor(RideService s, {RegionRuleContext? rules, RegionPricing? base}) =>
       (rules ?? _rules).pricingFor(base ?? _pricing, types: _typesOf(s), vehicleType: s.id, nowUtc: DateTime.now().toUtc());
   LatLng? _biddingAt;
+
+  /// The pickup the bidding, pricing and rules shown were last read for.
+  LatLng? _pricedAt;
   bool _routing = false;
   RideRequest? _ongoing;
 
@@ -583,7 +589,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (g != null) _showGap(g);
   }
 
-  Future<void> _updateRoute() async {
+  /// [onRouted] is told once the map route is in, before the AI's estimate.
+  Future<void> _updateRoute({VoidCallback? onRouted}) async {
     final a = _pickup, b = _drop;
     final seq = ++_routeSeq;
     // A new route is a new recommended fare: any offer starts again from it.
@@ -616,6 +623,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final r = await ref.read(geoServiceProvider).route(a.point, b.point, via: via);
     if (!mounted || seq != _routeSeq) return;
     setState(() => _route = r);
+    onRouted?.call();
     // Both before the fare shows (Expo's "Calculating fare" overlay stays up
     // through the AI estimate): the fare is never shown, or booked, on the
     // map route only to change a moment later.
@@ -655,8 +663,49 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (pick == null || !mounted) return;
     final place = pick.place;
     if (place == null) return showInfo(context, 'Search for the stop by name or address.');
-    setState(() => _stops.add(place));
-    _updateRoute();
+    // What the trip was before the stop, to show what it adds and to go
+    // back to on Cancel.
+    final before = (route: _route, ai: _ai, adjust: _adjust, fare: _fareFor(_service), minutes: _basis?.durationMin);
+    final step = ValueNotifier(addStopSteps[0]);
+    final progress = showAddStopProgress(context, step);
+    setState(() {
+      _addingStop = true;
+      _stops.add(place);
+    });
+    await _updateRoute(onRouted: () => step.value = addStopSteps[1]);
+    step.value = addStopSteps[2];
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    await progress;
+    step.dispose();
+    if (!mounted) return;
+    setState(() => _addingStop = false);
+    final after = _basis;
+    final extra = _fareFor(_service) - before.fare;
+    // Admin → Display → "Ask before adding a stop" off: added at once.
+    final ask = ConfirmLayout.fromSettings(
+      ref.read(displaySettingsBlobProvider).value ?? const <String, dynamic>{},
+    ).confirmAddStop;
+    if (after != null && !ask) return;
+    final add = after != null &&
+        await confirmAddStop(
+          context,
+          stopName: place.name,
+          extraFare: extra <= 0 ? 'No extra cost' : '+${_fareMoney(extra)}',
+          extraMinutes: after.durationMin - (before.minutes ?? after.durationMin),
+        );
+    if (!mounted || add) return;
+    if (after == null) showInfo(context, "Couldn't work out the route through that stop.");
+    // Cancelled: the trip as it was, without asking for its route again.
+    _routeSeq++;
+    setState(() {
+      _stops.remove(place);
+      _route = before.route;
+      _ai = before.ai;
+      _adjust = before.adjust;
+      _routing = false;
+    });
   }
 
   /// The places after the pickup, in their new order (the destinations
@@ -769,14 +818,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final pricing = await pricingF;
     final services = await servicesF;
     final rules = await rulesF;
-    if (mounted && _biddingAt == pickup) {
-      setState(() {
-        _rules = rules;
-        _biddingOn = on;
-        _pricing = pricing;
-        _regionServices = services;
-      });
-    }
+    if (!mounted || _biddingAt != pickup) return;
+    // Read again for the same pickup (a region changed, or the live link
+    // came back after the screen was unlocked) while the pickup's place
+    // can't be looked up: what it was priced at stays, rather than a fare
+    // without its rounding until the next read.
+    if (_pricedAt == pickup && await orElse(() => area, null) == null) return;
+    if (!mounted || _biddingAt != pickup) return;
+    setState(() {
+      _pricedAt = pickup;
+      _rules = rules;
+      _biddingOn = on;
+      _pricing = pricing;
+      _regionServices = services;
+    });
   }
 
   /// The booking tariff card for [s] at the pickup (Admin → Fare tariffs):
@@ -1715,7 +1770,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // While the fare is being worked out (Expo's "Calculating fare").
     Widget calculating(Widget body) => Stack(children: [
           Positioned.fill(child: body),
-          if (confirming && _routing) const Positioned.fill(child: CalculatingFareOverlay()),
+          // Adding a stop shows its own steps instead.
+          if (confirming && _routing && !_addingStop) const Positioned.fill(child: CalculatingFareOverlay()),
         ]);
     if (wide) {
       return Scaffold(
@@ -1726,6 +1782,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ])),
       );
     }
+    final navLift = footer == null && Theme.of(context).platform == TargetPlatform.android
+        ? MediaQuery.viewPaddingOf(context).bottom
+        : 0.0;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final navLiftFraction = screenHeight > 0 ? navLift / screenHeight : 0.0;
     return Scaffold(
       body: calculating(PopScope(
         // Back on the confirm step leaves it, as its back arrow does.
@@ -1735,10 +1796,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
         child: MapSheetLayout(
           map: map,
-          sheet: panel,
-          min: confirming ? 0.5 : 0.22,
+          // Android's own buttons (three-button navigation, drawn over the
+          // app edge to edge) would cover the sheet's foot — the search bar —
+          // where no footer sits above them: the sheet rises by their height.
+          sheet: navLift > 0 ? Padding(padding: EdgeInsets.only(bottom: navLift), child: panel) : panel,
+          min: (confirming ? 0.5 : 0.22) + navLiftFraction,
           // The main screen's sheet starts fully down; the rider drags it up.
-          initial: confirming ? 0.55 : 0.22,
+          initial: (confirming ? 0.55 : 0.22) + navLiftFraction,
           hidden: _pinMoving,
           footer: footer,
           // Over the foot of the sheet, only while it is all the way up.

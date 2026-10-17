@@ -260,6 +260,12 @@ class _DisplayBody extends ConsumerWidget {
                   displayBool(s, 'discountBar'), (v) => set('discountBar', v)),
               toggle('Discount bar in front', 'On = promo bar sits in front of the bottom sheet. Off = sent behind it.',
                   displayBool(s, 'discountBarInFront'), (v) => set('discountBarInFront', v)),
+              toggle(
+                  'Ask before adding a stop',
+                  'On = after working out a new stop, show its additional cost and time with Add or Cancel. '
+                      'Off = the stop is added straight away.',
+                  displayBool(s, 'addStopConfirm'),
+                  (v) => set('addStopConfirm', v)),
               for (final i in rideConfirmLayoutItems) stepper(i),
             ]),
           ),

@@ -233,6 +233,20 @@ void main() {
     expect(find.text('Add vehicle'), findsOneWidget);
   });
 
+  testWidgets('on a phone the status sits under the name, not beside it', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await _pump(tester, const VehiclesScreen(),
+        vehicles: _FakeVehicles(existing: {..._ready, 'make': null, 'model': null}));
+    await tester.pump();
+    final plate = tester.getRect(find.text('WXY 1'));
+    final status = tester.getRect(find.text('Incomplete: Make & model'));
+    expect(status.top, greaterThan(plate.bottom), reason: 'below, so the plate keeps its width');
+    expect(plate.height, lessThan(40), reason: 'one line, not a letter per line');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('the year must be four digits in range', (tester) async {
     final repo = await _pump(
       tester,
