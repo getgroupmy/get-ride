@@ -57,6 +57,7 @@ class PermissionChecks {
     this.locationService = true,
     this.location = true,
     this.locationAlways = false,
+    this.locationAlwaysAndroid = false,
     this.notifications = true,
   });
 
@@ -68,6 +69,11 @@ class PermissionChecks {
 
   /// Allowed "Always" (iPhone; partners).
   final bool locationAlways;
+
+  /// Allowed "All the time" (Android; partners). Off unless the admin turns
+  /// it on: Android keeps an online driver's location through its
+  /// foreground service with "While using the app" already.
+  final bool locationAlwaysAndroid;
 
   /// GET.ride allowed to send notifications.
   final bool notifications;
@@ -84,6 +90,7 @@ class PermissionChecks {
       locationService: _on(m['locationService'], fallback.locationService),
       location: _on(m['location'], fallback.location),
       locationAlways: _on(m['locationAlways'], fallback.locationAlways),
+      locationAlwaysAndroid: _on(m['locationAlwaysAndroid'], fallback.locationAlwaysAndroid),
       notifications: _on(m['notifications'], fallback.notifications),
     );
   }
@@ -92,18 +99,25 @@ class PermissionChecks {
     'locationService': locationService,
     'location': location,
     if (always) 'locationAlways': locationAlways,
+    if (always) 'locationAlwaysAndroid': locationAlwaysAndroid,
     'notifications': notifications,
   };
 
-  PermissionChecks copyWith({bool? locationService, bool? location, bool? locationAlways, bool? notifications}) =>
-      PermissionChecks(
-        locationService: locationService ?? this.locationService,
-        location: location ?? this.location,
-        locationAlways: locationAlways ?? this.locationAlways,
-        notifications: notifications ?? this.notifications,
-      );
+  PermissionChecks copyWith({
+    bool? locationService,
+    bool? location,
+    bool? locationAlways,
+    bool? locationAlwaysAndroid,
+    bool? notifications,
+  }) => PermissionChecks(
+    locationService: locationService ?? this.locationService,
+    location: location ?? this.location,
+    locationAlways: locationAlways ?? this.locationAlways,
+    locationAlwaysAndroid: locationAlwaysAndroid ?? this.locationAlwaysAndroid,
+    notifications: notifications ?? this.notifications,
+  );
 
-  bool get any => locationService || location || locationAlways || notifications;
+  bool get any => locationService || location || locationAlways || locationAlwaysAndroid || notifications;
 }
 
 /// The admin's permission rules: riders before the home map, partners
@@ -149,6 +163,14 @@ enum PermissionBlock {
     'GET.ride needs your location all the time while you are online, so riders keep finding you and trips stay on '
         'track while you use other apps or the screen is off.',
   ),
+  // Google Play's prominent disclosure for background location: what is
+  // collected, when, and what for, shown before Android is asked.
+  notAllTheTime(
+    'Allow location all the time',
+    'GET.ride collects your location in the background, even when the app is closed or not in use, while you are '
+        'online and during trips. Riders see you on the way to them and during the trip, and it is kept for safety. '
+        'It is not collected while you are offline.',
+  ),
   notificationsNotAsked(
     'Allow notifications',
     'So you hear ride requests, calls and trip updates when GET.ride is not on screen.',
@@ -163,7 +185,7 @@ enum PermissionBlock {
   final String title;
   final String message;
 
-  bool get isLocation => index <= notAlways.index;
+  bool get isLocation => index <= notAllTheTime.index;
 
   /// Only the phone's Settings can fix it (the app can't ask again).
   bool get needsSettings => this == serviceOff || this == locationOff || this == notificationsOff;
@@ -171,6 +193,7 @@ enum PermissionBlock {
   /// Where in the phone's Settings it is changed, when that is the way.
   String? get settingsPath => switch (this) {
     notAlways || locationOff => 'Settings → GET.ride → Location → Always',
+    notAllTheTime => 'Settings → Apps → GET.ride → Permissions → Location → Allow all the time',
     notificationsOff => 'Settings → GET.ride → Notifications → Allow',
     _ => null,
   };
@@ -178,9 +201,10 @@ enum PermissionBlock {
 
 /// Everything holding someone up under [checks], location first. Anything a
 /// phone can't say ([PermState.unknown]) is let through, and nothing is
-/// asked of the web. "Always" is an iPhone setting: Android keeps an online
-/// driver's location through its foreground service, which needs only
-/// "While using the app". Pure.
+/// asked of the web. "Always" is an iPhone setting; Android's "All the
+/// time" is its own switch, off by default, since Android keeps an online
+/// driver's location through its foreground service with only "While using
+/// the app". Pure.
 List<PermissionBlock> permissionBlocks({
   required PermissionChecks checks,
   required bool serviceOn,
@@ -193,7 +217,8 @@ List<PermissionBlock> permissionBlocks({
   final out = <PermissionBlock>[];
   if (checks.locationService && !serviceOn) out.add(PermissionBlock.serviceOff);
   final always = checks.locationAlways && platform == TargetPlatform.iOS;
-  if (checks.location || always) {
+  final allTheTime = checks.locationAlwaysAndroid && platform == TargetPlatform.android;
+  if (checks.location || always || allTheTime) {
     switch (location) {
       case PermState.notAsked:
         out.add(PermissionBlock.locationNotAsked);
@@ -201,6 +226,8 @@ List<PermissionBlock> permissionBlocks({
         out.add(PermissionBlock.locationOff);
       case PermState.limited when always:
         out.add(PermissionBlock.notAlways);
+      case PermState.limited when allTheTime:
+        out.add(PermissionBlock.notAllTheTime);
       default:
         break;
     }

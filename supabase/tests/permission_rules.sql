@@ -1,5 +1,5 @@
 -- ============================================================================
--- Regression test for migration 0196: the permission rules riders and
+-- Regression test for migrations 0196 and 0215: the permission rules riders and
 -- partners are held to, read by everyone signed in, changed by admins only.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/permission_rules.sql
@@ -46,6 +46,7 @@ grant execute on function pg_temp.as_user(uuid), pg_temp.check(boolean, text), p
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000196a1');
 select pg_temp.check((select r #>> '{user,notifications}' = 'true' and r #>> '{partner,locationAlways}' = 'true'
+                             and r #>> '{partner,locationAlwaysAndroid}' = 'false'
                              and r ->> 'showPermissionsCard' = 'true'
                         from (select public.permission_rules() r) s), 'all enforced by default');
 
@@ -63,6 +64,15 @@ select pg_temp.check((select r ->> 'showPermissionsCard' = 'false' and r #>> '{u
                         from (select public.set_permission_rules('{"showPermissionsCard":"off"}') r) s),
   'the card hidden, the earlier change kept');
 select pg_temp.refused($q$select public.set_permission_rules('[1]')$q$, 'rules that are not an object');
+
+-- 3b. Android's "All the time" (0215): its own switch, the iPhone's kept -----------------
+select pg_temp.check((select r #>> '{partner,locationAlwaysAndroid}' = 'true' and r #>> '{partner,locationAlways}' = 'true'
+                             and r #>> '{user,notifications}' = 'false'
+                        from (select public.set_permission_rules('{"partner":{"locationAlwaysAndroid":true}}') r) s),
+  'Android all the time switched on, the rest kept');
+select pg_temp.check((select r #>> '{partner,locationAlwaysAndroid}' = 'true'
+                        from (select public.set_permission_rules('{"partner":{"locationAlways":false}}') r) s),
+  'the iPhone switch changed alone');
 
 -- 4. What the rider now reads --------------------------------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000196a1');

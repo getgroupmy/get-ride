@@ -108,6 +108,7 @@ import 'providers.dart';
 import 'platform/web_favicon.dart';
 import 'widgets/app_icon_changed.dart';
 import 'widgets/connection_status_dialog.dart';
+import 'widgets/android_nav_bar_inset.dart';
 import 'widgets/keyboard_dismiss.dart';
 import 'widgets/notifications_off_banner.dart';
 import 'widgets/map_sheet_layout.dart' show appBottomSheetTheme;
@@ -845,22 +846,24 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       darkTheme: appTheme(Brightness.dark, colors: branding?.darkColors ?? const {}),
       themeMode: mode,
       routerConfig: router,
-      builder: (_, child) => SplashGate(
-        cached: widget.branding,
-        live: _branding?.latest,
-        child: UpdateGate(
-          child: PermissionGate(
-            location: () => router.routerDelegate.currentConfiguration.uri.path,
-            listenable: router.routerDelegate,
-            child: WebBuildGate(
+      builder: (_, child) => AndroidNavBarInset(
+        child: SplashGate(
+          cached: widget.branding,
+          live: _branding?.latest,
+          child: UpdateGate(
+            child: PermissionGate(
               location: () => router.routerDelegate.currentConfiguration.uri.path,
-              child: VoiceProtectionHost(
-                child: IncomingTransferListener(
-                  child: IncomingCallListener(
-                    child: RideCallListener(
-                      child: KeyboardDismissOnChange(
-                        listenable: router.routerDelegate,
-                        child: KeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+              listenable: router.routerDelegate,
+              child: WebBuildGate(
+                location: () => router.routerDelegate.currentConfiguration.uri.path,
+                child: VoiceProtectionHost(
+                  child: IncomingTransferListener(
+                    child: IncomingCallListener(
+                      child: RideCallListener(
+                        child: KeyboardDismissOnChange(
+                          listenable: router.routerDelegate,
+                          child: KeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+                        ),
                       ),
                     ),
                   ),

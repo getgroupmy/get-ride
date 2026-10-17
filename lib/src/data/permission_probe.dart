@@ -30,6 +30,10 @@ abstract class PermissionProbe {
   /// (shown once at most). Answers where it stands afterwards.
   Future<PermState> requestLocation();
 
+  /// Asks Android for location all the time (background location), once
+  /// location is allowed while in use. Answers where it stands afterwards.
+  Future<PermState> requestLocationAlways();
+
   /// Asks for [p] where the phone can still show its question.
   Future<void> request(AppPermission p);
 
@@ -142,6 +146,18 @@ class DevicePermissionProbe implements PermissionProbe {
     } catch (_) {
       return (await location()).$2;
     }
+  }
+
+  @override
+  Future<PermState> requestLocationAlways() async {
+    try {
+      if (_android && await Geolocator.checkPermission() == LocationPermission.whileInUse) {
+        // Background location alone: Android 11+ ignores it asked together
+        // with the foreground permission (MainActivity.kt).
+        await permissionsChannel.invokeMethod<String>('requestLocationAlways');
+      }
+    } catch (_) {}
+    return (await location()).$2;
   }
 
   @override

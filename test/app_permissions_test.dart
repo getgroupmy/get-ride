@@ -19,6 +19,7 @@ class FakeProbe implements PermissionProbe {
     this.notif = PermState.granted,
     this.notifAfterAsk,
     this.statusMap = const {},
+    this.afterAlwaysAsk,
   });
   bool service;
   PermState loc;
@@ -36,6 +37,17 @@ class FakeProbe implements PermissionProbe {
   @override
   Future<PermState> requestLocation() async {
     loc = afterAsk ?? loc;
+    return loc;
+  }
+
+  /// What "Allow all the time" leaves location at (Android).
+  PermState? afterAlwaysAsk;
+  var alwaysAsked = 0;
+
+  @override
+  Future<PermState> requestLocationAlways() async {
+    alwaysAsked++;
+    loc = afterAlwaysAsk ?? loc;
     return loc;
   }
 
@@ -106,6 +118,16 @@ void main() {
       expect(blocks(PermState.granted, n: PermState.unknown), isEmpty);
       // Android's foreground service keeps an online driver's location.
       expect(blocks(PermState.limited, p: TargetPlatform.android), isEmpty);
+      // Unless the admin holds Android partners to "All the time" too, which
+      // asks nothing more of an iPhone.
+      final allTheTime = partner.copyWith(locationAlwaysAndroid: true);
+      expect(blocks(PermState.limited, checks: allTheTime, p: TargetPlatform.android), [
+        PermissionBlock.notAllTheTime,
+      ]);
+      expect(blocks(PermState.granted, checks: allTheTime, p: TargetPlatform.android), isEmpty);
+      expect(blocks(PermState.limited, checks: allTheTime.copyWith(locationAlways: false)), isEmpty);
+      expect(PermissionBlock.notAllTheTime.settingsPath, contains('Allow all the time'));
+      expect(PermissionBlock.notAllTheTime.message, contains('background'));
       expect(blocks(PermState.denied, web: true), isEmpty);
       // A rider is never asked for Always.
       expect(blocks(PermState.limited, checks: const PermissionChecks()), isEmpty);
@@ -116,6 +138,7 @@ void main() {
       expect(blocks(PermState.limited, checks: none.copyWith(locationAlways: true)), [PermissionBlock.notAlways]);
       expect(PermissionBlock.notificationsOff.settingsPath, contains('Notifications'));
       expect(PermissionBlock.notAlways.isLocation, isTrue);
+      expect(PermissionBlock.notAllTheTime.isLocation, isTrue);
       expect(PermissionBlock.notificationsOff.isLocation, isFalse);
     });
 
@@ -123,6 +146,14 @@ void main() {
       expect(PermissionRules.fromJson(null).user.notifications, isTrue);
       expect(PermissionRules.fromJson(null).partner.locationAlways, isTrue);
       expect(PermissionRules.fromJson(null).user.locationAlways, isFalse);
+      expect(PermissionRules.fromJson(null).partner.locationAlwaysAndroid, isFalse);
+      expect(
+        PermissionRules.fromJson({
+          'partner': {'locationAlwaysAndroid': true},
+        }).partner.locationAlwaysAndroid,
+        isTrue,
+      );
+      expect(PermissionRules.defaults.toJson()['partner'], containsPair('locationAlwaysAndroid', false));
       final r = PermissionRules.fromJson({
         'user': {'notifications': false, 'location': 'off'},
         'partner': {'locationAlways': false},
@@ -145,9 +176,10 @@ void main() {
       FakeProbe probe, {
       bool tapFix = true,
       PermissionRules rules = PermissionRules.defaults,
+      TargetPlatform platform = TargetPlatform.iOS,
     }) async {
       bool? result;
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      debugDefaultTargetPlatformOverride = platform;
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -207,6 +239,29 @@ void main() {
       expect(await run(tester, probe), isFalse);
       expect(probe.locationSettingsOpened, 1);
     });
+    group('Android, with "All the time" switched on', () {
+      const rules = PermissionRules(partner: PermissionChecks(locationAlwaysAndroid: true));
+
+      testWidgets('While using: Android asked for all the time, then online', (tester) async {
+        final probe = FakeProbe(afterAlwaysAsk: PermState.granted);
+        expect(await run(tester, probe, rules: rules, platform: TargetPlatform.android), isTrue);
+        expect(probe.alwaysAsked, 1);
+        expect(probe.settingsOpened, 0);
+      });
+
+      testWidgets('still While using: Settings, and offline meanwhile', (tester) async {
+        final probe = FakeProbe();
+        expect(await run(tester, probe, rules: rules, platform: TargetPlatform.android), isFalse);
+        expect(probe.settingsOpened, 1);
+      });
+
+      testWidgets('switched off: While using is enough on Android', (tester) async {
+        final probe = FakeProbe();
+        expect(await run(tester, probe, platform: TargetPlatform.android), isTrue);
+        expect(probe.alwaysAsked, 0);
+      });
+    });
+
     testWidgets('notifications off: asked, then online once allowed', (tester) async {
       final probe = FakeProbe(loc: PermState.granted, notif: PermState.notAsked, notifAfterAsk: PermState.granted);
       expect(await run(tester, probe), isTrue);

@@ -7,6 +7,13 @@
          geolocator's foreground service, with its notification. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <!-- "Allow all the time", asked only when Admin → App Settings →
+         Permissions holds Android partners to it before going online
+         (MainActivity.requestLocationAlways). Declared, Google Play asks for
+         the background-location declaration in Play Console. Geolocator
+         adds it to its own request only when location is already "While
+         using the app", which the app never asks again. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <!-- flutter_callkit_incoming also asks for a camera foreground service, for
          video calls. Every GET.ride call is voice only (CallKitParams type 0,
          and the plugin adds the camera type only to a video call), so it is
