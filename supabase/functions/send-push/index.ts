@@ -444,6 +444,8 @@ async function dispatch(payload: SendBody): Promise<Response> {
             failed += 1;
             if (outcome === "unregistered") deadTokens.add(token);
             tickets.push({ status: "error", service: "fcm", http: res.status, error: result?.error?.status ?? null });
+            // Why, for the logs (never the token itself).
+            console.log("[send-push] FCM", style, res.status, outcome, result?.error?.status ?? "", result?.error?.message ?? "");
           }
         } catch (e) {
           failed += 1;
