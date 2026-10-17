@@ -447,7 +447,7 @@ class _DeviceCard extends StatelessWidget {
                       label: tileSlotLabel(slot),
                       value: profile.tiles[slot] ?? 'app',
                       options: tileOptionsFor(slot, device),
-                      optionLabel: (p) => mapProviderLabel(p, slot: slot),
+                      optionLabel: (p) => mapProviderLabel(p, slot: slot, device: device),
                       enabled: canEdit,
                       onChanged: (v) => onChanged(profile.withTile(slot, v)),
                     ),
@@ -1241,7 +1241,7 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
               ? Icon(Icons.error_outline, color: t.colorScheme.error)
               : spec == null
               ? const Icon(Icons.layers_outlined)
-              : spec.isBrowserMap || spec.googleNative
+              : spec.isBrowserMap || spec.googleNative || spec.appleNative
               ? const Icon(Icons.map_outlined)
               : ClipRRect(
                   borderRadius: BorderRadius.circular(6),
@@ -1271,6 +1271,8 @@ class _MapTestDialogState extends ConsumerState<MapTestDialog> {
                     : spec.googleNative
                     ? 'Google Maps (native), drawn by the phone app with the key its release carries '
                           '(GOOGLE_MAPS_ANDROID_API_KEY / GOOGLE_MAPS_IOS_API_KEY); without it, the built-in map'
+                    : spec.appleNative
+                    ? "Apple Maps (native), built into the iPhone; no key"
                     : spec.isMapLibre
                     ? '${tileHost(spec.url)}, drawn by the browser'
                     : tileHost(spec.url),

@@ -33,20 +33,21 @@ String tileSlotLabel(String s) => switch (s) {
 /// The providers each tile slot can use ('app': as the app was built).
 /// 'google_native' (Google's own map in the phone app, migration 0210) on
 /// Android and iOS; 'google_js' (Google's JavaScript map, 0204) on the web
-/// and, in a web view, on desktop and phones (0213); 'amazon_js' (Amazon Location's GrabMaps
+/// and, in a web view, on desktop and phones (0213); 'apple_native' (Apple's
+/// own map, MapKit, 0214) on iOS; 'amazon_js' (Amazon Location's GrabMaps
 /// map, 0206) on the web; 'google' traffic with either Google map: see
 /// [tileOptionsFor].
 const tileOptions = <String, List<String>>{
   'light': [
-    'app', 'osm', 'google', 'google_native', 'google_js', 'amazon_js', //
+    'app', 'osm', 'google', 'google_native', 'google_js', 'apple_native', 'amazon_js', //
     'mapbox', 'here', 'tomtom', 'maptiler', 'google_xyz',
   ],
   'dark': [
-    'app', 'osm', 'google', 'google_native', 'google_js', 'amazon_js', //
+    'app', 'osm', 'google', 'google_native', 'google_js', 'apple_native', 'amazon_js', //
     'mapbox', 'here', 'tomtom', 'maptiler', 'google_xyz',
   ],
   'satellite': [
-    'app', 'esri', 'google', 'google_native', 'google_js', //
+    'app', 'esri', 'google', 'google_native', 'google_js', 'apple_native', //
     'mapbox', 'here', 'tomtom', 'maptiler', 'google_xyz',
   ],
   'traffic': ['app', 'tomtom', 'here', 'google', 'none'],
@@ -62,6 +63,7 @@ List<String> tileOptionsFor(String slot, String device) => [
   for (final p in tileOptions[slot]!)
     if (switch (p) {
       'google_native' => p == googleMapFor(device),
+      'apple_native' => device == 'ios',
       'amazon_js' => device == 'web',
       _ => true,
     })
@@ -76,9 +78,11 @@ const routeProviders = ['osrm', 'google', 'mapbox', 'here', 'tomtom', 'locationi
 const distanceProviders = [...routeProviders, 'straight'];
 
 /// Providers the phone calls itself (no key).
-const freeProviders = {'nominatim', 'osrm', 'osm', 'esri', 'straight', 'google_xyz'};
+const freeProviders = {'nominatim', 'osrm', 'osm', 'esri', 'straight', 'google_xyz', 'apple_native'};
 
-String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
+String mapProviderLabel(String p, {String slot = '', String device = ''}) => switch (p) {
+  // The iPhone app's own map is Apple's (migration 0214).
+  'app' when device == 'ios' && slot != 'traffic' => 'Built in (Apple Maps)',
   'app' => switch (slot) {
     // The build's own map (scripts/ci/map_defines.sh): TomTom's unless
     // GitHub's MAP_TILE_URL variables name another.
@@ -92,6 +96,7 @@ String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   'google' => slot == 'traffic' ? 'Google traffic (on a Google map)' : 'Google',
   'google_js' => 'Google Maps (JavaScript)',
   'google_native' => 'Google Maps (native)',
+  'apple_native' => 'Apple Maps (native)',
   'google_xyz' =>
     slot == 'dark' ? 'Google tiles, darkened (unofficial, testing only)' : 'Google tiles (unofficial, testing only)',
   'mapbox' => 'Mapbox',

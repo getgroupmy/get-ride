@@ -9,7 +9,8 @@
  *             web also google_js (Google's JavaScript map, drawn by the
  *             browser under the app's layers) and its google traffic; on
  *             Android and iOS google_native (Google's own map, the Maps SDK
- *             in the app, migration 0210), and google_js on desktop too
+ *             in the app, migration 0210), and google_js on desktop too;
+ *             on iOS apple_native (Apple's own map, MapKit, 0214)
  *   search    nominatim · google · mapbox · here · tomtom · locationiq · maptiler · amazon
  *   reverse   the same
  *   routing   osrm · google · mapbox · here · tomtom · locationiq · amazon
@@ -248,7 +249,7 @@ export interface TileSource {
    * [key], as [mapType] ("roadmap" | "satellite"), styled dark for 'dark'.
    * Older apps ignore it (no template) and keep their own tiles.
    */
-  engine?: "google_js" | "google_native" | "maplibre";
+  engine?: "google_js" | "google_native" | "apple_native" | "maplibre";
   key?: string;
   /** "hybrid" (satellite with roads and names) and "terrain" since migration 0211. */
   mapType?: GoogleMapType;
@@ -265,6 +266,7 @@ const ATTRIBUTION: Record<string, string> = {
   google: "Map data © Google",
   google_js: "Map data © Google",
   google_native: "Map data © Google",
+  apple_native: "Apple Maps",
   google_xyz: "Map data © Google",
   mapbox: "© Mapbox © OpenStreetMap",
   here: "© HERE",
@@ -323,6 +325,12 @@ export function tileSource(
   // the release build carries, so none is sent.
   if (provider === "google_native") {
     return { url: "", darken: false, attribution: a, engine: "google_native", mapType: googleMapType(slot, look) };
+  }
+  // Apple's own map in the iPhone app (migration 0214): no key. Apple has no
+  // terrain map, so the light map is always its standard one.
+  if (provider === "apple_native") {
+    const mapType = slot === "satellite" ? look.satellite : "roadmap";
+    return { url: "", darken: false, attribution: a, engine: "apple_native", mapType };
   }
   switch (provider) {
     case "osm":
