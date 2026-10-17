@@ -40,12 +40,17 @@
              second Flutter engine racing the first for the session (which
              signed the phone out, and so stopped its push), and a call
              that ended on the new copy's home screen. Now the running app
-             is brought forward and handed the intent (onNewIntent). -->
+             is brought forward and handed the intent (onNewIntent).
+             No taskAffinity="" (Flutter's template default): with it the
+             app's window has no affinity, so Android could only find it by
+             the exact component that opened it, and the launcher opens it
+             through an icon alias while a call opens MainActivity, so a
+             call still got a window of its own. With the app's own
+             affinity every way in lands in the one window. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
