@@ -91,6 +91,16 @@ String savedPlaceDistance(LatLng? from, LatLng to) {
   return '${km.toStringAsFixed(1)}km';
 }
 
+/// A saved place's line under its name, inDrive's short form: the address
+/// without the place's own name in front, to its first two parts
+/// ("25, Jalan Eco Majestic 1/2C"); the whole address when that leaves
+/// nothing.
+String savedPlaceLine(SavedPlace p) {
+  final parts = [for (final s in p.address.split(',')) s.trim()]..removeWhere((s) => s.isEmpty);
+  if (parts.length > 1 && parts.first.toLowerCase() == p.title.trim().toLowerCase()) parts.removeAt(0);
+  return parts.isEmpty ? p.address : parts.take(2).join(', ');
+}
+
 /// Why a place can't be saved yet; null when it can.
 String? savedPlaceProblem({required SavedPlaceKind kind, required String name, required String address}) {
   if (address.trim().isEmpty) return 'Choose the address first';
