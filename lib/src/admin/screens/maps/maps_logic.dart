@@ -79,10 +79,12 @@ const freeProviders = {'nominatim', 'osrm', 'osm', 'esri', 'straight', 'google_x
 
 String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   'app' => switch (slot) {
+    // The build's own map (scripts/ci/map_defines.sh): TomTom's unless
+    // GitHub's MAP_TILE_URL variables name another.
     'traffic' => 'Built in (TomTom, then HERE)',
-    'satellite' => 'Built in (Esri imagery)',
-    'dark' => 'Built in (OpenStreetMap, darkened)',
-    _ => 'Built in (OpenStreetMap)',
+    'satellite' => "Built in (this build's imagery)",
+    'dark' => "Built in (this build's map: TomTom night)",
+    _ => "Built in (this build's map: TomTom)",
   },
   'osm' => slot == 'dark' ? 'OpenStreetMap (darkened)' : 'OpenStreetMap',
   'esri' => 'Esri imagery',
