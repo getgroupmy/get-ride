@@ -34,10 +34,17 @@
         android:label="GET.ride"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- singleTask: there is only ever one copy of the app. The call
+             screen (flutter_callkit_incoming) opens the app from its own
+             task; under singleTop that started a second MainActivity, a
+             second Flutter engine racing the first for the session (which
+             signed the phone out, and so stopped its push), and a call
+             that ended on the new copy's home screen. Now the running app
+             is brought forward and handed the intent (onNewIntent). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
