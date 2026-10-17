@@ -33,6 +33,8 @@ class _Probe implements PermissionProbe {
   @override
   Future<PermState> requestLocation() async => loc;
   @override
+  Future<PermState> requestLocationAlways() async => loc;
+  @override
   Future<void> request(AppPermission p) async {
     requested.add(p);
     if (p == AppPermission.notifications) notif = PermState.granted;
@@ -141,9 +143,11 @@ void main() {
       expect(on('user-location-service'), isTrue);
       expect(on('user-notifications'), isFalse);
       expect(on('partner-location-always'), isTrue);
+      // Android's "All the time" is off unless the admin turns it on.
+      expect(on('partner-location-always-android'), isFalse);
       expect(on('partner-notifications'), isTrue);
       expect(on('show-card'), isFalse);
-      expect(find.textContaining('\nBypassed'), findsOneWidget);
+      expect(find.textContaining('\nBypassed'), findsNWidgets(2));
       expect(find.text('Hidden'), findsOneWidget);
     });
   }

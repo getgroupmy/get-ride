@@ -123,11 +123,19 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
     if (ok) ref.invalidate(regionsProvider);
   }
 
-  void _map(RegionRow r, bool canEdit) {
+  Future<void> _map(RegionRow r, bool canEdit) async {
     dismissKeyboard();
     final repo = ref.read(geoAdminRepositoryProvider);
     final entry = r.entry;
-    final stored = r.boundary;
+    var stored = r.boundary;
+    // The list carries only a mark; the shape is read now.
+    if (stored == null && entry != null && r.hasBoundary) {
+      String? raw;
+      final ok = await runAdminAction(context, () async => raw = await repo.boundaryOf(entry));
+      if (!ok || !mounted) return;
+      stored = parseBoundary(raw);
+    }
+    if (!mounted) return;
     BoundaryEditorPage.open(
       context,
       BoundaryEditorPage(
@@ -144,7 +152,7 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
           );
           ref.invalidate(regionsProvider);
         },
-        onClear: entry == null || stored == null
+        onClear: entry == null || !r.hasBoundary
             ? null
             : () async {
                 await repo.saveRegion(id: entry.id, values: withoutBoundary(entry.values), position: entry.position);
@@ -272,7 +280,7 @@ class _RegionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final custom = row.entry != null;
-    final hasBoundary = row.boundary != null;
+    final hasBoundary = row.hasBoundary;
     final icon = switch (row.level) {
       RegionLevel.country => Icons.public,
       RegionLevel.state => Icons.place_outlined,

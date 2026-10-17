@@ -111,9 +111,17 @@ class PermissionRulesCard extends ConsumerWidget {
                 rule(
                   'partner-location-always',
                   'Location set to Always',
-                  'iPhone only. Android keeps an online partner\'s location with "While using the app".',
+                  'iPhone only. Android has its own switch below.',
                   p.locationAlways,
                   (v) => partner(p.copyWith(locationAlways: v)),
+                ),
+                rule(
+                  'partner-location-always-android',
+                  'Location set to Allow all the time (Android)',
+                  'Android keeps an online partner\'s location with "While using the app" already. On: they also '
+                      'pick "Allow all the time" in Android Settings before going online.',
+                  p.locationAlwaysAndroid,
+                  (v) => partner(p.copyWith(locationAlwaysAndroid: v)),
                 ),
                 rule(
                   'partner-notifications',

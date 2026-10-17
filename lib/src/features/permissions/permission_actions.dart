@@ -11,6 +11,7 @@ String permissionBlockAction(PermissionBlock block) => switch (block) {
   PermissionBlock.serviceOff => 'Open Location settings',
   PermissionBlock.locationNotAsked => 'Allow location',
   PermissionBlock.notAlways => 'Allow Always',
+  PermissionBlock.notAllTheTime => 'Allow all the time',
   PermissionBlock.notificationsNotAsked => 'Allow notifications',
   PermissionBlock.locationOff || PermissionBlock.notificationsOff => 'Open Settings',
 };
@@ -36,6 +37,11 @@ Future<PermissionFix> resolvePermissionBlock(PermissionProbe probe, PermissionBl
     case PermissionBlock.notAlways:
       // iOS offers "Change to Always Allow" once; after that only Settings can.
       if (await probe.requestLocation() == PermState.granted) return PermissionFix.asked;
+      return open(probe.openAppSettings());
+    case PermissionBlock.notAllTheTime:
+      // Android 11+ answers with the app's Location page, where "Allow all
+      // the time" is picked; refused before, only the app's Settings can.
+      if (await probe.requestLocationAlways() == PermState.granted) return PermissionFix.asked;
       return open(probe.openAppSettings());
     case PermissionBlock.locationOff:
       return open(probe.openAppSettings());

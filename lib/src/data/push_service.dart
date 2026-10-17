@@ -59,6 +59,7 @@ class PushService {
   final _taps = StreamController<String>.broadcast();
   final _foreground = StreamController<RemoteMessage>.broadcast();
   final _calls = StreamController<Map<String, dynamic>>.broadcast();
+  final _received = StreamController<Map<String, dynamic>>.broadcast();
 
   /// The VoIP token stored for the signed-in profile.
   String? _registeredVoip;
@@ -72,6 +73,11 @@ class PushService {
   /// Ride-call data messages (`ride_call`, `ride_call_end`) received while
   /// the app is open.
   Stream<Map<String, dynamic>> get calls => _calls.stream;
+
+  /// The data of every push that reaches the open app, on every platform,
+  /// so a screen can re-read what it says changed without waiting on a live
+  /// update (which can lag or drop).
+  Stream<Map<String, dynamic>> get received => _received.stream;
 
   /// The route from the notification the app was launched from, once.
   String? takePendingRoute() {
@@ -112,6 +118,7 @@ class PushService {
 
     FirebaseMessaging.onMessage.listen((message) {
       unawaited(_ack(message.data, 'delivered'));
+      _received.add(message.data);
       if (callRingFromPush(message.data) != null || endedCallFromPush(message.data) != null) {
         _calls.add(message.data);
       }

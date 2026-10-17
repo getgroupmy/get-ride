@@ -11,6 +11,10 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private companion object {
+        const val ALWAYS_REQUEST = 7311
+    }
+
     private var classicPrinter: ClassicPrinterChannel? = null
     private var appIcon: AppIconChannel? = null
 
@@ -23,8 +27,38 @@ class MainActivity : FlutterActivity() {
         // Settings → Permissions (lib/src/data/permission_probe.dart): where
         // the camera, microphone and Bluetooth stand, without asking.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "get_ride/permissions").setMethodCallHandler { call, result ->
-            if (call.method == "statuses") result.success(permissionStatuses()) else result.notImplemented()
+            when (call.method) {
+                "statuses" -> result.success(permissionStatuses())
+                "requestLocationAlways" -> requestLocationAlways(result)
+                else -> result.notImplemented()
+            }
         }
+    }
+
+    // Admin → App Settings → Permissions → "Allow all the time (Android)":
+    // background location asked on its own, once "While using the app" is
+    // allowed (Android 11+ ignores it asked together with the foreground
+    // permission, and answers with the app's Location page instead of a
+    // dialog). The Dart side reads where it stands afterwards.
+    private var alwaysResult: MethodChannel.Result? = null
+
+    private fun requestLocationAlways(result: MethodChannel.Result) {
+        val background = Manifest.permission.ACCESS_BACKGROUND_LOCATION
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || checkSelfPermission(background) == PackageManager.PERMISSION_GRANTED) {
+            result.success("always")
+            return
+        }
+        alwaysResult?.success(null)
+        alwaysResult = result
+        requestPermissions(arrayOf(background), ALWAYS_REQUEST)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != ALWAYS_REQUEST) return
+        val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        alwaysResult?.success(if (granted) "always" else "whileInUse")
+        alwaysResult = null
     }
 
     private fun permissionStatuses(): Map<String, String> {

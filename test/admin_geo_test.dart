@@ -184,6 +184,32 @@ void main() {
       expect(suburb.row['city'], 'C');
     });
 
+    test('the list carries only a mark of a stored boundary, and saving keeps it', () {
+      // As the admin list reads a row: the shape left out, its marks in.
+      final listed = regionEntryFromRow({
+        'id': 's1',
+        'country': 'Malaysia',
+        'name': 'Selangor',
+        'values': {'timezone': 'Asia/Kuala_Lumpur'},
+        'geofence_source': 'osm',
+        'geofence_updated': '2026-10-01T00:00:00Z',
+      }, RegionLevel.state);
+      expect(listed.values['boundary'], isNull);
+      expect(RegionRow(level: RegionLevel.state, country: 'Malaysia', state: 'Selangor', entry: listed).hasBoundary,
+          isTrue);
+      // Saving the form leaves the stored shape alone (no geofence written).
+      final kept = regionUpsert('s1', {...listed.values, 'timezone': 'Asia/Singapore'})!;
+      expect(kept.row.containsKey('geofence'), isFalse);
+      expect(kept.row['values'], {'timezone': 'Asia/Singapore'});
+      // Clearing it drops the marks too, and writes no shape.
+      final cleared = regionUpsert('s1', withoutBoundary(listed.values))!;
+      expect(cleared.row.containsKey('geofence'), isTrue);
+      expect(cleared.row['geofence'], isNull);
+      // A row without one is marked as such.
+      final plain = regionEntryFromRow({'id': 'c1', 'name': 'Malaysia', 'values': {}}, RegionLevel.country);
+      expect(RegionRow(level: RegionLevel.country, country: 'Malaysia', entry: plain).hasBoundary, isFalse);
+    });
+
     RegionEntry e(String id, String c, [String s = '', String ci = '', String sb = '', Map<String, dynamic>? extra]) =>
         RegionEntry(id: id, values: {'country': c, 'state': s, 'city': ci, 'suburb': sb, ...?extra});
 

@@ -323,6 +323,11 @@ class RegionEntry {
 /// Expo `rowToRegionEntry`.
 RegionEntry regionEntryFromRow(Map<String, dynamic> row, RegionLevel level) {
   final values = <String, dynamic>{...?(row['values'] as Map?)?.cast<String, dynamic>()};
+  // The admin list's marks of a stored boundary not sent with it.
+  for (final (col, key) in const [('geofence_source', 'boundarySource'), ('geofence_updated', 'boundaryUpdatedAt')]) {
+    final v = row[col];
+    if (v is String && v.isNotEmpty) values[key] = v;
+  }
   final gf = row['geofence'];
   if (gf is Map) {
     if (gf['boundary'] is String && (gf['boundary'] as String).isNotEmpty) values['boundary'] = gf['boundary'];
@@ -371,6 +376,10 @@ RegionEntry regionEntryFromRow(Map<String, dynamic> row, RegionLevel level) {
     ..remove('boundary')
     ..remove('boundarySource')
     ..remove('boundaryUpdatedAt');
+  // A boundary marked but not loaded (the admin list leaves the shapes
+  // out) is left as stored; one cleared ([withoutBoundary]) drops the marks
+  // too, and is cleared.
+  final keepStored = boundary.isEmpty && (source.isNotEmpty || updatedAt.isNotEmpty);
   final geofence = boundary.isEmpty
       ? null
       : {
@@ -387,7 +396,7 @@ RegionEntry regionEntryFromRow(Map<String, dynamic> row, RegionLevel level) {
       RegionLevel.suburb => {'country': country, 'state': state, 'city': city, 'name': suburb},
     },
     'values': payload,
-    'geofence': geofence,
+    if (!keepStored) 'geofence': geofence,
     'position': position,
   };
   return (table: regionTables[level]!, onConflict: regionConflictKeys[level]!, row: row, level: level);
@@ -425,6 +434,11 @@ class RegionRow {
   String get key => regionRowKey(country, state, city, suburb);
 
   BoundaryShape? get boundary => parseBoundary(entry?.values['boundary']);
+
+  /// Whether a boundary is stored, loaded or only marked (the admin list).
+  bool get hasBoundary =>
+      boundary != null ||
+      [entry?.values['boundarySource'], entry?.values['boundaryUpdatedAt']].any((v) => v is String && v.isNotEmpty);
 
   /// The geocoder query for this row (Expo `queryFromRow`).
   String get query => switch (level) {
