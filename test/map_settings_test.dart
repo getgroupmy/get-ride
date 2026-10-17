@@ -199,7 +199,8 @@ void main() {
       expect(tileOptionsFor('light', 'web'), isNot(contains('google_native')));
       expect(tileOptionsFor('light', 'android'), contains('google_native'));
       expect(tileOptionsFor('satellite', 'ios'), contains('google_native'));
-      expect(tileOptionsFor('light', 'android'), isNot(contains('google_js')));
+      expect(tileOptionsFor('light', 'android'), contains('google_js'), reason: 'in a web view (0213)');
+      expect(tileOptionsFor('satellite', 'ios'), contains('google_js'));
       expect(tileOptionsFor('light', 'desktop'), contains('google_js'));
       expect(tileOptionsFor('light', 'desktop'), isNot(anyOf(contains('google_native'), contains('amazon_js'))));
       expect(tileOptionsFor('traffic', 'ios'), contains('google'));

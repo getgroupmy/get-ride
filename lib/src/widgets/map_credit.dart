@@ -61,9 +61,37 @@ class MapCreditLayer extends StatelessWidget {
     if (credit.google) {
       return GoogleMapCredit(tileUrl: source.url, fallback: credit.text, onDark: source.darken || satellite);
     }
+    final brand = mapBrandFor(source.url);
     return RichAttributionWidget(
       alignment: AttributionAlignment.bottomLeft,
-      attributions: [TextSourceAttribution(credit.text, prependCopyright: false)],
+      // The map's own provider beside the ⓘ, not flutter_map's logo.
+      showFlutterMapAttribution: false,
+      attributions: [
+        if (brand.isNotEmpty) LogoSourceAttribution(MapBrand(brand), tooltip: brand),
+        TextSourceAttribution(credit.text, prependCopyright: false),
+      ],
+    );
+  }
+}
+
+/// The provider's name in a small pill, readable on any map.
+class MapBrand extends StatelessWidget {
+  const MapBrand(this.name, {super.key});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: const ValueKey('map-brand'),
+      decoration: BoxDecoration(color: const Color(0xB3FFFFFF), borderRadius: BorderRadius.circular(4)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        child: Text(
+          name,
+          style: const TextStyle(color: Color(0xFF3C4043), fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
+        ),
+      ),
     );
   }
 }

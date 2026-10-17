@@ -29,6 +29,15 @@ void main() {
       expect(mapCreditFor('https://tiles.example.org/{z}/{x}/{y}.png').text, osmCredit, reason: 'unknown: OSM data');
     });
 
+    test('the provider named beside the ⓘ', () {
+      expect(mapBrandFor(osmTileUrl), 'OpenStreetMap');
+      expect(mapBrandFor('https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}@2x.png?key=k'), 'MapTiler');
+      expect(mapBrandFor('https://api.tomtom.com/map/1/tile/basic/main/{z}/{x}/{y}.png?key=k'), 'TomTom');
+      expect(mapBrandFor('https://maps.hereapi.com/v3/base/mc/{z}/{x}/{y}/png8?apiKey=k'), 'HERE');
+      expect(mapBrandFor('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}'), 'Google');
+      expect(mapBrandFor('https://tiles.example.org/{z}/{x}/{y}.png'), '', reason: 'unknown: no name');
+    });
+
     test("the admin's attribution wins; Google is always Google", () {
       expect(
         mapCreditFor('https://tiles.example.org/{z}/{x}/{y}.png', attribution: '© Example'),
@@ -103,6 +112,8 @@ void main() {
       activeMapProfile = const MapProfile(light: spec, dark: spec);
       addTearDown(() => activeMapProfile = MapProfile.builtIn);
       await pumpMap(tester);
+      expect(find.descendant(of: find.byKey(const ValueKey('map-brand')), matching: find.text('Mapbox')), findsOne);
+      expect(find.byType(Image), findsNothing, reason: "the map's name, not flutter_map's logo");
       await tester.tap(find.byIcon(Icons.info_outlined));
       await tester.pumpAndSettle();
       expect(find.text('© Mapbox © OpenStreetMap'), findsOneWidget);

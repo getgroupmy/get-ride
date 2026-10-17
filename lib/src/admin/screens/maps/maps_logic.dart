@@ -33,7 +33,7 @@ String tileSlotLabel(String s) => switch (s) {
 /// The providers each tile slot can use ('app': as the app was built).
 /// 'google_native' (Google's own map in the phone app, migration 0210) on
 /// Android and iOS; 'google_js' (Google's JavaScript map, 0204) on the web
-/// and, in a web view, on desktop; 'amazon_js' (Amazon Location's GrabMaps
+/// and, in a web view, on desktop and phones (0213); 'amazon_js' (Amazon Location's GrabMaps
 /// map, 0206) on the web; 'google' traffic with either Google map: see
 /// [tileOptionsFor].
 const tileOptions = <String, List<String>>{
@@ -52,15 +52,16 @@ const tileOptions = <String, List<String>>{
   'traffic': ['app', 'tomtom', 'here', 'google', 'none'],
 };
 
-/// The Google map [device] can draw under the app's layers: its own on
-/// phones, the JavaScript one on the web and desktop.
+/// The Google map [device] draws under the app's layers by default: its own
+/// on phones, the JavaScript one on the web and desktop. Phones can have the
+/// JavaScript one too (migration 0213).
 String googleMapFor(String device) => device == 'android' || device == 'ios' ? 'google_native' : 'google_js';
 
 /// [tileOptions] for [slot] on [device].
 List<String> tileOptionsFor(String slot, String device) => [
   for (final p in tileOptions[slot]!)
     if (switch (p) {
-      'google_native' || 'google_js' => p == googleMapFor(device),
+      'google_native' => p == googleMapFor(device),
       'amazon_js' => device == 'web',
       _ => true,
     })
@@ -79,10 +80,12 @@ const freeProviders = {'nominatim', 'osrm', 'osm', 'esri', 'straight', 'google_x
 
 String mapProviderLabel(String p, {String slot = ''}) => switch (p) {
   'app' => switch (slot) {
+    // The build's own map (scripts/ci/map_defines.sh): TomTom's unless
+    // GitHub's MAP_TILE_URL variables name another.
     'traffic' => 'Built in (TomTom, then HERE)',
-    'satellite' => 'Built in (Esri imagery)',
-    'dark' => 'Built in (OpenStreetMap, darkened)',
-    _ => 'Built in (OpenStreetMap)',
+    'satellite' => "Built in (this build's imagery)",
+    'dark' => "Built in (this build's map: TomTom night)",
+    _ => "Built in (this build's map: TomTom)",
   },
   'osm' => slot == 'dark' ? 'OpenStreetMap (darkened)' : 'OpenStreetMap',
   'esri' => 'Esri imagery',

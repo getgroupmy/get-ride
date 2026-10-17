@@ -1,8 +1,8 @@
 // Google's JavaScript map off the web (see google_js_map.dart): on Windows
-// and macOS, the backup to Google's own phone map (migration 0210), in a
-// web view of this site's google_map.html, so the browser key's website
-// restriction holds as on the web. Elsewhere (Android, iOS, Linux) there is
-// none, and the map keeps its tiles.
+// and macOS (migration 0210), and on Android and iOS beside Google's own map
+// (0213), in a web view of this site's google_map.html, so the browser key's
+// website restriction holds as on the web. On Linux there is none, and the
+// map keeps its tiles.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
@@ -15,7 +15,8 @@ import 'package:webview_windows/webview_windows.dart' as ww;
 
 import 'google_map_style.dart';
 
-bool get googleJsSupported => !kIsWeb && (Platform.isWindows || Platform.isMacOS);
+bool get googleJsSupported =>
+    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isIOS || Platform.isAndroid);
 
 /// Google's name for why it refused the key ("ApiNotActivatedMapError" …),
 /// as the page reports it; only Admin → Settings → Maps → Test shows it.
@@ -83,7 +84,8 @@ class _GoogleJsMapViewState extends State<GoogleJsMapView> {
       if (!_ready) _fail('NotLoaded');
     });
     final address = googleJsPageAddress(widget.apiKey);
-    if (Platform.isMacOS) {
+    // WKWebView on macOS and iOS, Android's WebView; WebView2 on Windows.
+    if (!Platform.isWindows) {
       _mac = wf.WebViewController()
         ..setJavaScriptMode(wf.JavaScriptMode.unrestricted)
         ..addJavaScriptChannel('GetRide', onMessageReceived: (m) => _message(m.message))

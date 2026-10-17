@@ -76,7 +76,10 @@ Future<PlacePick?> showPlaceSearch(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => FractionallySizedBox(heightFactor: 0.92, child: body),
+    // inDrive's: nearly the whole screen, plain (white by day), no handle.
+    showDragHandle: false,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    builder: (_) => FractionallySizedBox(heightFactor: 0.96, child: body),
   );
 }
 
@@ -166,72 +169,80 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   }
 
   /// The search field: outlined, a search icon, its label (From, To or
-  /// Address) over the text, a clear button while there is text, and the
-  /// choose-on-map button.
+  /// Address) small over the text, a clear button while there is text, and
+  /// the choose-on-map button (inDrive's, 58 high).
   Widget _field(ThemeData t) {
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: t.colorScheme.onSurface, width: 2),
-    );
+    final muted = t.colorScheme.onSurfaceVariant;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: TextField(
-        key: const ValueKey('place-search-field'),
-        controller: _query,
-        focusNode: _focus,
-        autofocus: true,
-        style: t.textTheme.titleMedium?.copyWith(fontSize: 18),
-        decoration: InputDecoration(
-          filled: true,
-          fillColor: t.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-          prefixIcon: Icon(Icons.search, size: 28, color: t.colorScheme.onSurface),
-          labelText: _editFrom
-              ? 'From'
-              : _route
-              ? 'To'
-              : 'Address',
-          labelStyle: TextStyle(color: t.colorScheme.onSurfaceVariant),
-          floatingLabelStyle: TextStyle(color: t.colorScheme.onSurfaceVariant),
-          floatingLabelBehavior: FloatingLabelBehavior.always,
-          contentPadding: const EdgeInsets.fromLTRB(12, 18, 8, 18),
-          enabledBorder: border,
-          focusedBorder: border,
-          suffixIcon: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_loading || _picking)
-                const Padding(
-                  padding: EdgeInsets.only(right: 6),
-                  child: SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                )
-              else if (_query.text.isNotEmpty)
-                IconButton(
-                  key: const ValueKey('place-search-clear'),
-                  tooltip: 'Clear',
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(Icons.cancel, size: 22, color: t.colorScheme.onSurfaceVariant),
-                  onPressed: () {
-                    _query.clear();
-                    _onChanged('');
-                  },
-                ),
-              // Choose the spot on the map instead.
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Tooltip(
-                  message: 'Choose on map',
-                  child: InkWell(
-                    key: const ValueKey('place-search-map'),
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: _onMap,
-                    child: const MapPickIcon(size: 44),
-                  ),
-                ),
-              ),
-            ],
-          ),
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 58),
+        decoration: BoxDecoration(
+          color: t.colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: t.colorScheme.onSurface, width: 2),
         ),
-        onChanged: _onChanged,
+        padding: const EdgeInsets.fromLTRB(12, 0, 6, 0),
+        child: Row(
+          children: [
+            Icon(Icons.search, size: 26, color: t.colorScheme.onSurface),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _editFrom
+                        ? 'From'
+                        : _route
+                        ? 'To'
+                        : 'Address',
+                    style: t.textTheme.bodySmall?.copyWith(fontSize: 13, height: 1.2, color: muted),
+                  ),
+                  TextField(
+                    key: const ValueKey('place-search-field'),
+                    controller: _query,
+                    focusNode: _focus,
+                    autofocus: true,
+                    style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400, height: 1.3),
+                    decoration: const InputDecoration.collapsed(hintText: null).copyWith(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.only(top: 2),
+                    ),
+                    onChanged: _onChanged,
+                  ),
+                ],
+              ),
+            ),
+            if (_loading || _picking)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            else if (_query.text.isNotEmpty)
+              IconButton(
+                key: const ValueKey('place-search-clear'),
+                tooltip: 'Clear',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.cancel, size: 22, color: muted.withValues(alpha: 0.6)),
+                onPressed: () {
+                  _query.clear();
+                  _onChanged('');
+                },
+              ),
+            // Choose the spot on the map instead.
+            Tooltip(
+              message: 'Choose on map',
+              child: InkWell(
+                key: const ValueKey('place-search-map'),
+                borderRadius: BorderRadius.circular(10),
+                onTap: _onMap,
+                child: const MapPickIcon(size: 44),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -250,20 +261,20 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Material(
-        color: t.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(14),
+        color: _fill(t),
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
           key: key,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           onTap: onTap,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 64),
+            constraints: const BoxConstraints(minHeight: 58),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               child: Row(
                 children: [
-                  Icon(icon, size: 28, color: t.colorScheme.onSurface),
-                  const SizedBox(width: 16),
+                  Icon(icon, size: 26, color: t.colorScheme.onSurface),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: has
                         ? Column(
@@ -272,20 +283,25 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                             children: [
                               Text(
                                 label,
-                                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                                style: t.textTheme.bodySmall?.copyWith(
+                                  fontSize: 13,
+                                  height: 1.2,
+                                  color: t.colorScheme.onSurfaceVariant,
+                                ),
                               ),
                               Text(
                                 value,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: t.textTheme.titleMedium,
+                                style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400),
                               ),
                             ],
                           )
                         : Text(
                             label,
                             style: t.textTheme.titleMedium?.copyWith(
-                              fontSize: 18,
+                              fontSize: 17,
+                              fontWeight: FontWeight.w400,
                               color: t.colorScheme.onSurfaceVariant,
                             ),
                           ),
@@ -423,13 +439,13 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       key: ValueKey('result-${_id(p)}'),
       onTap: blocked || _picking ? null : () => _pick(p, catalogue, smart),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.only(top: 6, right: 16),
-              child: Icon(icon, size: 30, color: muted),
+              padding: const EdgeInsets.only(top: 2, right: 16),
+              child: Icon(icon, size: 24, color: muted),
             ),
             Expanded(
               child: Column(
@@ -439,7 +455,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                     _highlighted(p.name, _query.text, t),
                     maxLines: smart.clean ? 1 : 2,
                     overflow: TextOverflow.ellipsis,
-                    style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500),
+                    style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -475,9 +491,9 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             // The distance from here, then save it (Grab's and inDrive's
             // right-hand side).
             Padding(
-              padding: const EdgeInsets.only(left: 8, top: 10),
+              padding: const EdgeInsets.only(left: 8, top: 8),
               child: SizedBox(
-                width: 64,
+                width: 60,
                 child: km == null
                     ? null
                     : Text(
@@ -485,20 +501,17 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                         key: ValueKey('result-km-${_id(p)}'),
                         maxLines: 1,
                         textAlign: TextAlign.right,
-                        style: t.textTheme.bodyLarge?.copyWith(color: muted),
+                        style: t.textTheme.bodyMedium?.copyWith(fontSize: 15, color: muted),
                       ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(left: 8),
+              padding: const EdgeInsets.only(left: 12),
               child: IconButton.filledTonal(
                 key: ValueKey('result-save-${_id(p)}'),
                 tooltip: saved == null ? 'Save place' : 'Saved',
-                style: IconButton.styleFrom(
-                  backgroundColor: t.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
-                  foregroundColor: t.colorScheme.onSurface,
-                ),
-                icon: Icon(saved == null ? Icons.bookmark_border : Icons.bookmark),
+                style: _roundButton(t),
+                icon: Icon(saved == null ? Icons.bookmark_border : Icons.bookmark, size: 20),
                 onPressed: _picking ? null : () => _savePlace(p, saved),
               ),
             ),
@@ -695,21 +708,22 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       children: [
         // The title in the middle, a round close on the right (inDrive's).
         Padding(
-          padding: const EdgeInsets.fromLTRB(56, 16, 12, 12),
+          padding: const EdgeInsets.fromLTRB(56, 14, 16, 14),
           child: Row(
             children: [
               Expanded(
                 child: Text(
                   widget.title,
                   textAlign: TextAlign.center,
-                  style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                  style: t.textTheme.titleLarge?.copyWith(fontSize: 20, fontWeight: FontWeight.w700),
                 ),
               ),
               const SizedBox(width: 4),
               IconButton.filledTonal(
                 key: const ValueKey('place-search-close'),
                 tooltip: 'Close',
-                icon: const Icon(Icons.close),
+                style: _roundButton(t),
+                icon: const Icon(Icons.close, size: 22),
                 onPressed: () => Navigator.pop(context),
               ),
             ],
@@ -728,7 +742,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             value: widget.from?.name,
             onTap: _changeFrom,
           ),
-        if (_ends) const SizedBox(height: 12),
+        if (_ends) const SizedBox(height: 10),
         if (_editFrom)
           _endRow(
             t,
@@ -743,7 +757,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
         const SizedBox(height: 16),
         if (_route)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -755,7 +769,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                       on: _tab == tab,
                       onTap: () => setState(() => _tab = tab),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: 8),
                   ],
                 ],
               ),
@@ -828,19 +842,19 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     }
     final v = arrangeSavedPlaces(ref.watch(savedPlacesProvider).value ?? const []);
     final muted = t.colorScheme.onSurfaceVariant;
-    final titleStyle = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500);
+    final titleStyle = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400);
     // The same row as a search result: icon, name over address, distance,
     // and a round button (here: edit).
     Widget saved(SavedPlace p, IconData icon) => InkWell(
       key: ValueKey('saved-${p.kind.name}-${p.id}'),
       onTap: () => _done(PlacePick.place(savedPlaceAsPlace(p), entrance: p.entrance)),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Row(
           children: [
             Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Icon(icon, size: 30, color: muted),
+              child: Icon(icon, size: 24, color: muted),
             ),
             Expanded(
               child: Column(
@@ -861,19 +875,16 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
               padding: const EdgeInsets.only(left: 8),
               child: Text(
                 savedPlaceDistance(widget.near, p.point),
-                style: t.textTheme.bodyLarge?.copyWith(color: muted),
+                style: t.textTheme.bodyMedium?.copyWith(fontSize: 15, color: muted),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(left: 16),
+              padding: const EdgeInsets.only(left: 12),
               child: IconButton.filledTonal(
                 key: ValueKey('saved-edit-${p.id}'),
                 tooltip: 'Edit',
-                style: IconButton.styleFrom(
-                  backgroundColor: t.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
-                  foregroundColor: t.colorScheme.onSurface,
-                ),
-                icon: const Icon(Icons.edit_outlined),
+                style: _roundButton(t),
+                icon: const Icon(Icons.edit_outlined, size: 20),
                 onPressed: () => showSavedPlaceForm(context, p, near: widget.near),
               ),
             ),
@@ -885,12 +896,12 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       key: key,
       onTap: () => _add(kind),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 18, 20, 18),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         child: Row(
           children: [
             Padding(
               padding: const EdgeInsets.only(right: 16),
-              child: Icon(icon, size: 30, color: muted),
+              child: Icon(icon, size: 24, color: muted),
             ),
             Expanded(child: Text(label, style: titleStyle)),
             Icon(Icons.chevron_right, color: muted),
@@ -932,19 +943,37 @@ class _Pill extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     return Material(
-      color: on ? t.colorScheme.onSurface : t.colorScheme.surfaceContainerHighest,
+      color: on ? t.colorScheme.onSurface : _fill(t),
       shape: const StadiumBorder(),
       child: InkWell(
         customBorder: const StadiumBorder(),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Text(
             label,
-            style: t.textTheme.titleMedium?.copyWith(color: on ? t.colorScheme.surface : t.colorScheme.onSurface),
+            style: t.textTheme.titleMedium?.copyWith(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              height: 1.2,
+              color: on ? t.colorScheme.surface : t.colorScheme.onSurface,
+            ),
           ),
         ),
       ),
     );
   }
 }
+
+/// The sheet's grey: the From box, the off tabs and the round buttons
+/// (inDrive's light grey by day, a lifted grey at night).
+Color _fill(ThemeData t) => t.brightness == Brightness.dark ? const Color(0xFF2C2D30) : const Color(0xFFF1F2F4);
+
+/// A 36 round grey button with a dark icon: close, save, edit.
+ButtonStyle _roundButton(ThemeData t) => IconButton.styleFrom(
+  backgroundColor: _fill(t),
+  foregroundColor: t.colorScheme.onSurface,
+  fixedSize: const Size.square(36),
+  minimumSize: const Size.square(36),
+  padding: EdgeInsets.zero,
+);
