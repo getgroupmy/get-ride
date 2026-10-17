@@ -3,6 +3,7 @@
 // bar with the payment icon and "Find a driver".
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -186,6 +187,20 @@ Future<ProviderContainer> _pump(WidgetTester tester, _Rides rides, {bool book = 
 }
 
 void main() {
+  testWidgets("Android's navigation buttons don't cover the sheet's search bar", (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    tester.view.padding = const FakeViewPadding(bottom: 48);
+    tester.view.viewPadding = const FakeViewPadding(bottom: 48);
+    addTearDown(tester.view.resetPadding);
+    addTearDown(tester.view.resetViewPadding);
+    await _pump(tester, _Rides(), book: false);
+    final bar = find.byKey(const ValueKey('home-search'));
+    expect(bar, findsOneWidget);
+    expect(tester.getRect(bar).bottom, lessThanOrEqualTo(860 - 48), reason: 'above the buttons');
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   testWidgets('fare trend arrows stand before every fare, and leave the one the rider changes', (tester) async {
     final ai = _SlowAi();
     await _pump(tester, _Rides(bidding: true), ai: ai);

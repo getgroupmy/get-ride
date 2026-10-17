@@ -1735,6 +1735,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ])),
       );
     }
+    final navLift = footer == null && Theme.of(context).platform == TargetPlatform.android
+        ? MediaQuery.viewPaddingOf(context).bottom
+        : 0.0;
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final navLiftFraction = screenHeight > 0 ? navLift / screenHeight : 0.0;
     return Scaffold(
       body: calculating(PopScope(
         // Back on the confirm step leaves it, as its back arrow does.
@@ -1744,10 +1749,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
         child: MapSheetLayout(
           map: map,
-          sheet: panel,
-          min: confirming ? 0.5 : 0.22,
+          // Android's own buttons (three-button navigation, drawn over the
+          // app edge to edge) would cover the sheet's foot — the search bar —
+          // where no footer sits above them: the sheet rises by their height.
+          sheet: navLift > 0 ? Padding(padding: EdgeInsets.only(bottom: navLift), child: panel) : panel,
+          min: (confirming ? 0.5 : 0.22) + navLiftFraction,
           // The main screen's sheet starts fully down; the rider drags it up.
-          initial: confirming ? 0.55 : 0.22,
+          initial: (confirming ? 0.55 : 0.22) + navLiftFraction,
           hidden: _pinMoving,
           footer: footer,
           // Over the foot of the sheet, only while it is all the way up.
