@@ -38,12 +38,24 @@ class GeoAdminRepository {
 
   // Regions ------------------------------------------------------------------
 
+  // The list leaves the boundary shapes out (12 MB for the states alone,
+  // which timed the page out): only their source and date come, enough to
+  // mark a region as having one. [boundaryOf] reads one when it is opened.
+  static const _boundaryMarks = 'geofence_source:geofence->>source, geofence_updated:geofence->>updatedAt';
   static const _regionSelects = {
-    RegionLevel.country: 'id, name, values, geofence, position',
-    RegionLevel.state: 'id, country, name, values, geofence, position',
-    RegionLevel.city: 'id, country, state, name, values, geofence, position',
-    RegionLevel.suburb: 'id, country, state, city, name, values, geofence, position',
+    RegionLevel.country: 'id, name, values, $_boundaryMarks, position',
+    RegionLevel.state: 'id, country, name, values, $_boundaryMarks, position',
+    RegionLevel.city: 'id, country, state, name, values, $_boundaryMarks, position',
+    RegionLevel.suburb: 'id, country, state, city, name, values, $_boundaryMarks, position',
   };
+
+  /// [e]'s stored boundary (the `BoundaryShape` JSON), or null.
+  Future<String?> boundaryOf(RegionEntry e) async {
+    final row = await _db.from(regionTables[e.level]!).select('geofence').eq('id', e.id).maybeSingle();
+    final gf = row?['geofence'];
+    final b = gf is Map ? gf['boundary'] : null;
+    return b is String && b.isNotEmpty ? b : null;
+  }
 
   /// All four region tables merged into one list (Expo `fetchRegions`). A
   /// failing table is skipped like Expo does, unless every table fails.
