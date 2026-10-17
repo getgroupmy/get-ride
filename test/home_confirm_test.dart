@@ -21,7 +21,7 @@ import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/features/ride/auto_accept.dart';
-import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmSwitch, addStopSteps;
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmSwitch, DemandNote, addStopSteps;
 import 'package:get_ride/src/features/ride/home_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
@@ -216,6 +216,8 @@ void main() {
     final sheet = find.byKey(const ValueKey('fare-details-sheet'));
     expect(find.descendant(of: sheet, matching: find.text('GET XL')), findsOneWidget);
     expect(find.descendant(of: sheet, matching: find.text('Fares in the app:')), findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.byType(DemandNote)), findsNothing, reason: 'no high-fare note here');
+    expect(find.byKey(const ValueKey('fare-tax')), findsNothing);
     await tester.tap(find.byKey(const ValueKey('fare-info-ok')));
     await tester.pumpAndSettle();
     expect(sheet, findsNothing);

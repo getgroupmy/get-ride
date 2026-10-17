@@ -915,7 +915,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         tollCharges: showTolls && ai?.tollsToShow != null
             ? formatMoney(ai!.tollsToShow, _currency)
             : null,
-        tax: _chargeLines(),
+        // No trip yet (the home bar's (i)): no fare to work a tax out on.
+        tax: _basis == null ? null : _chargeLines(),
         trend: ai?.trend,
       ),
     );
@@ -1279,8 +1280,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             services: _services,
             selected: _service,
             onSelect: (s) => setState(() => _serviceName = s.name),
-            // No trip yet: the rates and how fares work, without this trip's
-            // tolls, coins or trend.
+            // As the confirm step's, without the trip's high-fare note,
+            // tolls, coins or taxes: there is no trip yet.
             onInfo: (s) => _showFareInfo(s, null, false, null),
           )
         else
