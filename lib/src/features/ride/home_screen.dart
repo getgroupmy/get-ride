@@ -125,6 +125,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   RouteInfo? _route;
   RouteEstimate? _ai;
   int _routeSeq = 0;
+
+  /// A stop being added: its own steps show, then what it adds.
+  bool _addingStop = false;
   String? _serviceName;
 
   /// What the booking sheet offers: the admin Vehicle Services catalogue,
@@ -586,7 +589,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (g != null) _showGap(g);
   }
 
-  Future<void> _updateRoute() async {
+  /// [onRouted] is told once the map route is in, before the AI's estimate.
+  Future<void> _updateRoute({VoidCallback? onRouted}) async {
     final a = _pickup, b = _drop;
     final seq = ++_routeSeq;
     // A new route is a new recommended fare: any offer starts again from it.
@@ -619,6 +623,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final r = await ref.read(geoServiceProvider).route(a.point, b.point, via: via);
     if (!mounted || seq != _routeSeq) return;
     setState(() => _route = r);
+    onRouted?.call();
     // Both before the fare shows (Expo's "Calculating fare" overlay stays up
     // through the AI estimate): the fare is never shown, or booked, on the
     // map route only to change a moment later.
@@ -658,8 +663,44 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (pick == null || !mounted) return;
     final place = pick.place;
     if (place == null) return showInfo(context, 'Search for the stop by name or address.');
-    setState(() => _stops.add(place));
-    _updateRoute();
+    // What the trip was before the stop, to show what it adds and to go
+    // back to on Cancel.
+    final before = (route: _route, ai: _ai, adjust: _adjust, fare: _fareFor(_service), minutes: _basis?.durationMin);
+    final step = ValueNotifier(addStopSteps[0]);
+    final progress = showAddStopProgress(context, step);
+    setState(() {
+      _addingStop = true;
+      _stops.add(place);
+    });
+    await _updateRoute(onRouted: () => step.value = addStopSteps[1]);
+    step.value = addStopSteps[2];
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    await progress;
+    step.dispose();
+    if (!mounted) return;
+    setState(() => _addingStop = false);
+    final after = _basis;
+    final extra = _fareFor(_service) - before.fare;
+    final add = after != null &&
+        await confirmAddStop(
+          context,
+          stopName: place.name,
+          extraFare: extra <= 0 ? 'No extra cost' : '+${_fareMoney(extra)}',
+          extraMinutes: after.durationMin - (before.minutes ?? after.durationMin),
+        );
+    if (!mounted || add) return;
+    if (after == null) showInfo(context, "Couldn't work out the route through that stop.");
+    // Cancelled: the trip as it was, without asking for its route again.
+    _routeSeq++;
+    setState(() {
+      _stops.remove(place);
+      _route = before.route;
+      _ai = before.ai;
+      _adjust = before.adjust;
+      _routing = false;
+    });
   }
 
   /// The places after the pickup, in their new order (the destinations
@@ -1724,7 +1765,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // While the fare is being worked out (Expo's "Calculating fare").
     Widget calculating(Widget body) => Stack(children: [
           Positioned.fill(child: body),
-          if (confirming && _routing) const Positioned.fill(child: CalculatingFareOverlay()),
+          // Adding a stop shows its own steps instead.
+          if (confirming && _routing && !_addingStop) const Positioned.fill(child: CalculatingFareOverlay()),
         ]);
     if (wide) {
       return Scaffold(

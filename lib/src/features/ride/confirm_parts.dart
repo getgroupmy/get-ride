@@ -2,12 +2,14 @@
 // the address card floating over the map, the vehicle cards with the fare
 // inside the chosen one, the fixed bar with "Find a driver", and the
 // entrance, route-stops, payment and promo-code sheets.
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare.dart';
 import '../../core/fare_info.dart';
 import '../../core/fare_offer.dart';
+import '../../core/format.dart';
 import '../../core/payment_types.dart';
 import '../../core/route_estimate.dart' show FareTrend, FareTrendDirection;
 import '../../widgets/fare_trend_arrows.dart';
@@ -1678,7 +1680,14 @@ class ConfirmSwitch extends StatelessWidget {
 /// the route and the AI's traffic-aware estimate are fetched, so no fare is
 /// read or booked before it is settled.
 class CalculatingFareOverlay extends StatelessWidget {
-  const CalculatingFareOverlay({super.key});
+  const CalculatingFareOverlay({
+    super.key,
+    this.title = 'Calculating fare',
+    this.message = 'Checking live traffic and distance for the best estimate…',
+  });
+
+  final String title;
+  final String message;
 
   @override
   Widget build(BuildContext context) {
@@ -1703,12 +1712,14 @@ class CalculatingFareOverlay extends StatelessWidget {
                       const SizedBox.square(dimension: 40, child: CircularProgressIndicator(color: confirmAccent)),
                       const SizedBox(height: 18),
                       Text(
-                        'Calculating fare',
+                        title,
+                        key: const ValueKey('calculating-title'),
+                        textAlign: TextAlign.center,
                         style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700, fontSize: 18),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Checking live traffic and distance for the best estimate…',
+                        message,
                         textAlign: TextAlign.center,
                         style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant, height: 1.45),
                       ),
@@ -1722,6 +1733,85 @@ class CalculatingFareOverlay extends StatelessWidget {
       ],
     );
   }
+}
+
+/// What adding a stop is doing, step by step, in the "Calculating fare"
+/// box; one step after another.
+const addStopSteps = ['Calculating additional distance', 'Calculating additional fare', 'Updating route'];
+
+/// The "Calculating fare" box over whatever screen is open, its title the
+/// [step] adding a stop is on. Closed with `Navigator.pop`.
+Future<void> showAddStopProgress(BuildContext context, ValueListenable<String> step) => showGeneralDialog<void>(
+  context: context,
+  barrierDismissible: false,
+  barrierColor: Colors.transparent,
+  pageBuilder: (_, _, _) => PopScope(
+    canPop: false,
+    child: ValueListenableBuilder<String>(
+      valueListenable: step,
+      builder: (_, title, _) => CalculatingFareOverlay(
+        key: const ValueKey('add-stop-progress'),
+        title: title,
+        message: 'Working out what the stop adds to the trip…',
+      ),
+    ),
+  ),
+);
+
+/// What a new stop adds: [extraFare] (already formatted) and [extraMinutes],
+/// to Add or Cancel. True to add it.
+Future<bool> confirmAddStop(
+  BuildContext context, {
+  required String stopName,
+  required String extraFare,
+  required double extraMinutes,
+}) async {
+  final t = Theme.of(context);
+  Widget line(String label, String value, Key key) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      children: [
+        Expanded(child: Text(label, style: t.textTheme.bodyLarge)),
+        Text(value, key: key, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+      ],
+    ),
+  );
+  final minutes = extraMinutes.round();
+  final ok = await showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (c) => AlertDialog(
+      key: const ValueKey('add-stop-confirm'),
+      title: const Text('Add this stop?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(stopName, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          line('Additional cost', extraFare, const ValueKey('add-stop-cost')),
+          line(
+            'Additional time',
+            minutes <= 0 ? 'No extra time' : '+${formatDuration(minutes)}',
+            const ValueKey('add-stop-time'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey('add-stop-cancel'),
+          onPressed: () => Navigator.pop(c, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const ValueKey('add-stop-add'),
+          onPressed: () => Navigator.pop(c, true),
+          child: const Text('Add'),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
 }
 
 /// inDrive's band over a fixed-fare list while the fare is off the usual:
