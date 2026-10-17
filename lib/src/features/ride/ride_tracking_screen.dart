@@ -24,6 +24,7 @@ import '../../core/search_timer.dart';
 import '../../config.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
+import '../../data/push_service.dart';
 import '../../providers.dart';
 import '../../widgets/net_image.dart';
 import '../../widgets/ble_handshake_badge.dart';
@@ -796,6 +797,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           const SizedBox(height: 16),
           // The driver asking to hand the trip over (0199), or the new one coming.
           RiderHandoverCard(ride: r),
+          RiderHandoverPrompt(ride: r, pushes: PushService.instance?.received),
           if (r.hasDriver)
             Card(
               child: Column(

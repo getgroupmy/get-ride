@@ -1,3 +1,5 @@
+import 'dart:async';
+
 // Handing a trip over mid-way (migration 0199): the pure parts, where the
 // notifications open, and the driver's, new partner's, passenger's and
 // admin's cards (light and dark).
@@ -371,6 +373,64 @@ void main() {
           dark: dark,
         );
         expect(find.textContaining('Chong is on the way'), findsOneWidget);
+      });
+    });
+
+    group('the passenger is asked in a popup ($mode)', () {
+      testWidgets('the request opens a dialog; approving answers it', (tester) async {
+        final repo = await pump(
+          tester,
+          RiderHandoverPrompt(ride: _ride()),
+          handover: _h(TripHandoverStatus.awaitingRider, to: 'Chong'),
+          dark: dark,
+        );
+        expect(find.byKey(const ValueKey('rider-handover-dialog-h1')), findsOneWidget);
+        expect(find.textContaining('Chong would meet you'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('rider-handover-dialog-approve-h1')));
+        await tester.pumpAndSettle();
+        expect(repo.calls, ['rider h1 true']);
+      });
+
+      testWidgets('nothing waiting: no dialog', (tester) async {
+        await pump(tester, RiderHandoverPrompt(ride: _ride()), handover: _h(TripHandoverStatus.offered), dark: dark);
+        expect(find.byType(AlertDialog), findsNothing);
+      });
+
+      testWidgets('a request is seen without a live update: on its push, and every few seconds', (tester) async {
+        var reads = 0;
+        var list = <TripHandover>[];
+        final pushes = StreamController<Map<String, dynamic>>.broadcast();
+        addTearDown(pushes.close);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              tripHandoverRepositoryProvider.overrideWithValue(_FakeRepo()),
+              rideHandoversProvider.overrideWith((_, _) async {
+                reads++;
+                return list;
+              }),
+            ],
+            child: MaterialApp(
+              theme: dark ? ThemeData.dark() : ThemeData.light(),
+              home: Scaffold(body: RiderHandoverPrompt(ride: _ride(), pushes: pushes.stream)),
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(reads, 1);
+        expect(find.byType(AlertDialog), findsNothing);
+        // The driver asks; its push reaches the open app.
+        list = [_h(TripHandoverStatus.awaitingRider, nearby: true)];
+        pushes.add({'type': 'trip_handover_approval', 'request_id': _ride().id, 'handover_id': 'h1'});
+        await tester.pumpAndSettle();
+        expect(reads, 2);
+        expect(find.byKey(const ValueKey('rider-handover-dialog-h1')), findsOneWidget);
+        // Withdrawn meanwhile: the dialog closes on the next read.
+        list = [_h(TripHandoverStatus.cancelled)];
+        await tester.pump(riderHandoverRefresh);
+        await tester.pumpAndSettle();
+        expect(reads, 3);
+        expect(find.byType(AlertDialog), findsNothing);
       });
     });
 
