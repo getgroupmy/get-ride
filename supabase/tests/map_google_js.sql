@@ -26,17 +26,18 @@ insert into public.admin_access (profile_id, page, access_level) values
   ('00000000-0000-0000-0000-0000000204a1', 'admin-settings-maps', 'edit')
 on conflict do nothing;
 
--- The JavaScript map on the web, not elsewhere.
+-- The JavaScript map on the web (and the phones, 0213).
 select pg_temp.check((select v->'profiles'->'rider.web'->'tiles' = '{"light": "google_js", "dark": "google_js",
                          "satellite": "google_js", "traffic": "google"}'::jsonb
                         from (select public.map_config_clean('{"profiles": {"rider.web": {"tiles": {"light": "google_js",
                           "dark": "google_js", "satellite": "google_js", "traffic": "google"}}}}') v) s),
   'web: Google''s JavaScript map for every style, with Google traffic');
-select pg_temp.check((select v->'profiles'->'rider.android'->'tiles' = '{"light": "app", "dark": "app",
-                         "satellite": "app", "traffic": "app"}'::jsonb
+-- The phone apps have it too since 0213 (map_google_js_phones.sql).
+select pg_temp.check((select v->'profiles'->'rider.android'->'tiles' = '{"light": "google_js", "dark": "google_js",
+                         "satellite": "google_js", "traffic": "google"}'::jsonb
                         from (select public.map_config_clean('{"profiles": {"rider.android": {"tiles": {"light": "google_js",
                           "dark": "google_js", "satellite": "google_js", "traffic": "google"}}}}') v) s),
-  'not on the phone apps: as built');
+  'the phone apps too (0213)');
 select pg_temp.check((select v->'profiles'->'partner.web'->'tiles'->>'traffic' = 'app'
                         from (select public.map_config_clean('{"profiles": {"partner.web": {"tiles": {"light": "google_js",
                           "dark": "osm", "traffic": "google"}}}}') v) s),
