@@ -21,7 +21,7 @@ import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/features/ride/auto_accept.dart';
-import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmSwitch, addStopSteps;
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmSwitch, DemandNote, addStopSteps;
 import 'package:get_ride/src/features/ride/home_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
@@ -205,6 +205,38 @@ void main() {
     expect(bar, findsOneWidget);
     expect(tester.getRect(bar).bottom, lessThanOrEqualTo(860 - 48), reason: 'above the buttons');
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets("the home vehicle bar's (i) opens the fare details", (tester) async {
+    await _pump(tester, _Rides(), book: false);
+    await tester.tap(find.byKey(const ValueKey('vehicle-type-GET XL')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('vehicle-info-GET XL')));
+    await tester.pumpAndSettle();
+    final sheet = find.byKey(const ValueKey('fare-details-sheet'));
+    expect(find.descendant(of: sheet, matching: find.text('GET XL')), findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.text('Fares in the app:')), findsOneWidget);
+    expect(find.descendant(of: sheet, matching: find.byType(DemandNote)), findsNothing, reason: 'no high-fare note here');
+    expect(find.byKey(const ValueKey('fare-tax')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('fare-info-ok')));
+    await tester.pumpAndSettle();
+    expect(sheet, findsNothing);
+  });
+
+  testWidgets('all the way down, a short screen still shows the whole search bar', (tester) async {
+    await _pump(tester, _Rides(), book: false);
+    // A short phone, its navigation bar already taken off the bottom.
+    tester.view.physicalSize = const Size(400, 600);
+    for (var i = 0; i < 4; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    final bar = find.byKey(const ValueKey('home-search'));
+    expect(bar, findsOneWidget);
+    expect(tester.getRect(bar).bottom, lessThanOrEqualTo(600), reason: 'inside the sheet, not cut off');
+    // Dragged down, it stops there.
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(bar).bottom, lessThanOrEqualTo(600));
   });
 
   testWidgets('fare trend arrows stand before every fare, and leave the one the rider changes', (tester) async {
