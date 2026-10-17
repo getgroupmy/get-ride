@@ -39,6 +39,32 @@ const _creditByHost = <(String, String)>[
   ('thunderforest.com', '© Thunderforest © OpenStreetMap contributors'),
 ];
 
+/// Known tile hosts and the provider's name, shown beside the ⓘ button so
+/// the corner names the map on screen.
+const _brandByHost = <(String, String)>[
+  ('tile.openstreetmap.org', 'OpenStreetMap'),
+  ('arcgisonline.com', 'Esri'),
+  ('api.mapbox.com', 'Mapbox'),
+  ('hereapi.com', 'HERE'),
+  ('api.tomtom.com', 'TomTom'),
+  ('api.maptiler.com', 'MapTiler'),
+  ('basemaps.cartocdn.com', 'CARTO'),
+  ('stadiamaps.com', 'Stadia Maps'),
+  ('thunderforest.com', 'Thunderforest'),
+  ('google.com', 'Google'),
+  ('googleapis.com', 'Google'),
+  ('amazonaws.com', 'Amazon Location'),
+];
+
+/// The name of who draws the tiles at [url]; empty for a host not known.
+String mapBrandFor(String url) {
+  final host = Uri.tryParse(url)?.host ?? '';
+  for (final (h, brand) in _brandByHost) {
+    if (host == h || host.endsWith('.$h')) return brand;
+  }
+  return '';
+}
+
 bool isGoogleTiles(String url) => Uri.tryParse(url)?.host == 'tile.googleapis.com';
 
 /// The credit for tiles at [url]; [attribution] (sent with the tiles by
