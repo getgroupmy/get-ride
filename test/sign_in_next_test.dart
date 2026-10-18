@@ -57,6 +57,7 @@ class _QuietLive extends LiveTables {
 void main() {
   late SupabaseClient db;
   late GoRouter router;
+  late ProviderContainer container;
 
   Future<void> start(WidgetTester tester, String at) async {
     tester.view.devicePixelRatio = 1;
@@ -64,7 +65,7 @@ void main() {
     addTearDown(tester.view.reset);
     PendingSignInRoute.path = null;
     db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
-    final container = ProviderContainer(
+    container = ProviderContainer(
       retry: (_, _) => null,
       overrides: [
         supabaseProvider.overrideWithValue(db),
@@ -78,7 +79,6 @@ void main() {
         liveTablesProvider.overrideWith(_QuietLive.new),
       ],
     );
-    addTearDown(container.dispose);
     router = container.read(routerProvider);
     await tester.pumpWidget(
       UncontrolledProviderScope(container: container, child: MaterialApp.router(routerConfig: router)),
@@ -122,8 +122,10 @@ void main() {
     await _settle(tester, 12);
     expect(location().path, '/drive/statements');
     expect(PendingSignInRoute.path, isNull, reason: 'used once');
+    // Gone before the test ends, with the timers its live tables keep.
     await tester.pumpWidget(const SizedBox());
-    await tester.pump(const Duration(minutes: 1));
+    container.dispose();
+    await tester.pump(const Duration(minutes: 3));
   });
 
   test('a step that sends home after signing in goes to the page instead', () {
