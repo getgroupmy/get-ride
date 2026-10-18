@@ -21,7 +21,7 @@ final _rulesProvider = FutureProvider.autoDispose((ref) {
   ref.watchAdminLive('claude_access_rules');
   return ref.watch(securityRepositoryProvider).claudeRules();
 });
-final _myIpProvider = FutureProvider.autoDispose((ref) => lookupPublicIp());
+final _myIpsProvider = FutureProvider.autoDispose((ref) => lookupPublicIps());
 
 class AdminClaudeAccessScreen extends ConsumerStatefulWidget {
   const AdminClaudeAccessScreen({super.key});
@@ -35,7 +35,7 @@ class _ClaudeAccessState extends ConsumerState<AdminClaudeAccessScreen> {
 
   void _reload() {
     ref.invalidate(_rulesProvider);
-    ref.invalidate(_myIpProvider);
+    ref.invalidate(_myIpsProvider);
   }
 
   /// Runs a write and shows this page's own words for the errors it can hit.
@@ -71,7 +71,7 @@ class _ClaudeAccessState extends ConsumerState<AdminClaudeAccessScreen> {
   }
 
   Future<void> _delete(ClaudeAccessRule rule) async {
-    final what = rule.isSession ? 'session ${rule.value}' : 'office IP ${rule.value}';
+    final what = rule.isSession ? 'session ${rule.value}' : 'office rule ${rule.value}';
     if (!await confirm(context, 'Remove from the list', 'Remove $what? Supabase tools will ask for permission there again.',
         ok: 'Remove')) {
       return;
@@ -87,9 +87,9 @@ class _ClaudeAccessState extends ConsumerState<AdminClaudeAccessScreen> {
   Widget build(BuildContext context) {
     final canEdit = ref.watch(securityLevelProvider(_page)) == AccessLevel.edit;
     final rules = ref.watch(_rulesProvider);
-    final myIp = ref.watch(_myIpProvider);
-    final ip = myIp.value;
-    final office = isOfficeIp(ip, rules.value ?? const []);
+    final myIps = ref.watch(_myIpsProvider);
+    final ips = myIps.value ?? const <String>[];
+    final office = isOfficeDevice(ips, rules.value ?? const []);
     final mayEdit = canEdit && office;
     return AdminPage(
       title: 'Claude access',
@@ -110,22 +110,23 @@ class _ClaudeAccessState extends ConsumerState<AdminClaudeAccessScreen> {
               Card(
                 child: ListTile(
                   leading: Icon(office ? Icons.verified_user : Icons.lock_outline, color: office ? Colors.green : null),
-                  title: Text(myIp.isLoading ? 'Looking up…' : (ip ?? 'Unavailable')),
-                  subtitle: Text(myIp.isLoading
-                      ? "This device's IP"
+                  title: Text(myIps.isLoading ? 'Looking up…' : (ips.isEmpty ? 'Unavailable' : ips.join(' · '))),
+                  subtitle: Text(myIps.isLoading
+                      ? "This device's public addresses"
                       : office
-                          ? "This device's IP · an office IP, so this list can be changed from here"
-                          : ip == null
-                              ? "This device's IP could not be looked up · the list is read-only here"
-                              : "This device's IP · not an office IP, so the list is read-only here"),
+                          ? "This device's public addresses · one is an office address, so this list can be changed from here"
+                          : ips.isEmpty
+                              ? "This device's addresses could not be looked up · the list is read-only here"
+                              : "This device's public addresses · none is an office address, so the list is read-only here"),
                 ),
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 4),
-                child: Text('In a Claude cloud session on this list, and on a machine at an office IP on this list, '
-                    'Claude Code runs the Supabase tools without asking for permission each time. Anywhere else '
-                    'it asks as usual. Only an admin connected from an office IP can change the list, and the '
-                    'last office IP cannot be removed or disabled.'),
+                child: Text('In a Claude cloud session on this list, and on a machine whose public address is an '
+                    'office address or inside an office network on this list, Claude Code runs the Supabase tools '
+                    'without asking for permission each time. Anywhere else it asks as usual. Only an admin '
+                    'connected from an office address can change the list, and the last office rule cannot be '
+                    'removed or disabled. An office network is written as a CIDR, e.g. 2001:db8::/64.'),
               ),
               const SizedBox(height: 8),
               Wrap(spacing: 8, children: [
@@ -136,7 +137,7 @@ class _ClaudeAccessState extends ConsumerState<AdminClaudeAccessScreen> {
                   onSelected: (_) => setState(() => _kind = ClaudeRuleKind.session),
                 ),
                 ChoiceChip(
-                  label: Text('Office IPs (${counts.ips})'),
+                  label: Text('Office addresses (${counts.ips})'),
                   selected: _kind == ClaudeRuleKind.ip,
                   onSelected: (_) => setState(() => _kind = ClaudeRuleKind.ip),
                 ),
@@ -232,7 +233,7 @@ class _RuleDialogState extends State<_RuleDialog> {
           SegmentedButton<ClaudeRuleKind>(
             segments: const [
               ButtonSegment(value: ClaudeRuleKind.session, icon: Icon(Icons.smart_toy_outlined), label: Text('Claude session')),
-              ButtonSegment(value: ClaudeRuleKind.ip, icon: Icon(Icons.public), label: Text('Office IP')),
+              ButtonSegment(value: ClaudeRuleKind.ip, icon: Icon(Icons.public), label: Text('Office address')),
             ],
             selected: {_kind},
             // The kind of an existing entry stays: remove it and add the other.
@@ -244,8 +245,8 @@ class _RuleDialogState extends State<_RuleDialog> {
             autofocus: true,
             keyboardType: isSession ? TextInputType.url : TextInputType.text,
             decoration: InputDecoration(
-              labelText: isSession ? 'Session link or id' : 'IP address',
-              hintText: isSession ? 'https://claude.ai/code/session_…' : 'e.g. $defaultOfficeIp',
+              labelText: isSession ? 'Session link or id' : 'Address or network',
+              hintText: isSession ? 'https://claude.ai/code/session_…' : 'e.g. $defaultOfficeIp or 2001:db8::/64',
               errorText: _error,
             ),
             onChanged: (_) => setState(() => _error = null),

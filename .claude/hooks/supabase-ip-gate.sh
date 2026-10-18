@@ -3,7 +3,8 @@
 #
 # Supabase tool calls are approved without a permission prompt when either
 #   1. this is a Claude cloud session whose id is on the list, or
-#   2. this machine's public IP is one of the office IPs on the list.
+#   2. one of this machine's public addresses (IPv4, IPv6) is an office
+#      address or inside an office network (CIDR) on the list.
 # The list is Admin → Security & integrations → Claude Code access
 # (public.claude_access_rules, migration 0228), read with the project's
 # publishable key and cached for five minutes. When it cannot be fetched the
@@ -20,7 +21,7 @@
 # POSIX sh only, no jq: it also runs on developers' own machines.
 
 # Built-in fallback: the list as it stood when this file was last changed.
-FALLBACK_IPS="202.188.231.237"
+FALLBACK_IPS="202.188.231.237 2001:d08:1c01:6873::/64"
 FALLBACK_SESSIONS="
 01D5UkQNkT4wNjAS45j7F4ej
 01NDfeQQMcJvAnDpYN9Mwyb6
@@ -31,7 +32,7 @@ FALLBACK_SESSIONS="
 
 TMP="${TMPDIR:-/tmp}"
 RULES_CACHE="$TMP/claude-access-rules.cache"   # line 1: unix time written; rest: the JSON
-IP_CACHE="$TMP/claude-public-ip-cache"         # "<unix time> <ip>"
+IP_CACHE="$TMP/claude-public-ip-cache"         # "<unix time> <ipv4 or -> <ipv6 or ->"
 TTL=300
 now=$(date +%s)
 
@@ -91,23 +92,48 @@ if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ]; then
   exit 0
 fi
 
-# --- 2. Office IP ------------------------------------------------------------
-ip=""
+# --- 2. Office address or network -------------------------------------------
+# Address [$1] is rule [$2] itself, or inside the network it names. A network
+# needs python3 (its ipaddress module); without it only exact rules match.
+in_rule() {
+  [ "$1" = "$2" ] && return 0
+  case "$2" in */*) ;; *) return 1 ;; esac
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 - "$1" "$2" <<'PY' 2>/dev/null
+import ipaddress, sys
+try:
+    sys.exit(0 if ipaddress.ip_address(sys.argv[1]) in ipaddress.ip_network(sys.argv[2], strict=False) else 1)
+except Exception:
+    sys.exit(1)
+PY
+}
+
+# First answer among the given lookup services, else empty.
+lookup() {
+  for u in "$@"; do
+    r=$(curl -fsS --max-time 3 "$u" 2>/dev/null | tr -d '[:space:]')
+    [ -n "$r" ] && { printf '%s' "$r"; return; }
+  done
+}
+
+ip4=""; ip6=""
 if [ -r "$IP_CACHE" ]; then
-  read -r ts cached < "$IP_CACHE" 2>/dev/null
+  read -r ts c4 c6 < "$IP_CACHE" 2>/dev/null
   case "$ts" in
     ''|*[!0-9]*) ;;
-    *) [ $((now - ts)) -lt "$TTL" ] && ip="$cached" ;;
+    *) [ $((now - ts)) -lt "$TTL" ] && { ip4="$c4"; ip6="$c6"; } ;;
   esac
 fi
-if [ -z "$ip" ]; then
-  for u in https://api.ipify.org https://ifconfig.me/ip https://icanhazip.com; do
-    ip=$(curl -fsS --max-time 3 "$u" 2>/dev/null | tr -d '[:space:]')
-    [ -n "$ip" ] && break
-  done
-  [ -n "$ip" ] && printf '%s %s\n' "$now" "$ip" > "$IP_CACHE" 2>/dev/null
+if [ -z "$ip4$ip6" ]; then
+  ip4=$(lookup https://api.ipify.org https://ipv4.icanhazip.com)
+  ip6=$(lookup https://api64.ipify.org https://ipv6.icanhazip.com)
+  [ "$ip6" = "$ip4" ] && ip6=""
+  [ -n "$ip4$ip6" ] && printf '%s %s %s\n' "$now" "${ip4:--}" "${ip6:--}" > "$IP_CACHE" 2>/dev/null
 fi
-[ -n "$ip" ] && for o in $ips; do
-  [ "$ip" = "$o" ] && allow "Office IP $ip is on $source"
+for ip in $ip4 $ip6; do
+  [ "$ip" = "-" ] && continue
+  for o in $ips; do
+    in_rule "$ip" "$o" && allow "Address $ip is in office rule $o on $source"
+  done
 done
 exit 0

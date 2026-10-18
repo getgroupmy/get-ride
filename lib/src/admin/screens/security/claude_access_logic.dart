@@ -73,21 +73,89 @@ String? normalizeSessionId(String input) {
   return _sessionId.hasMatch(s) ? s : null;
 }
 
-final _ipv4 = RegExp(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$');
-final _ipv6Chars = RegExp(r'^[0-9a-fA-F:]+$');
-
-/// A plausible public address: four octets 0–255, or hex groups with colons.
-bool isValidIp(String s) {
+/// The bytes of an IPv4 (4) or IPv6 (16) address, or null when [s] is
+/// neither. IPv6 may use `::` and may end in a dotted IPv4.
+List<int>? parseIpBytes(String s) {
   final t = s.trim();
-  if (t.isEmpty || t.length > 45) return false;
-  final v4 = _ipv4.firstMatch(t);
-  if (v4 != null) {
-    for (var i = 1; i <= 4; i++) {
-      if (int.parse(v4.group(i)!) > 255) return false;
+  if (t.isEmpty || t.length > 45) return null;
+  if (!t.contains(':')) return _parseIpv4(t);
+  final zone = t.indexOf('%');
+  final body = zone < 0 ? t : t.substring(0, zone);
+  if (body.contains(':::')) return null;
+  final halves = body.split('::');
+  if (halves.length > 2) return null;
+  List<int>? groups(String part) {
+    if (part.isEmpty) return <int>[];
+    final out = <int>[];
+    final items = part.split(':');
+    for (var i = 0; i < items.length; i++) {
+      final g = items[i];
+      if (i == items.length - 1 && g.contains('.')) {
+        final v4 = _parseIpv4(g);
+        if (v4 == null) return null;
+        out.addAll([(v4[0] << 8) | v4[1], (v4[2] << 8) | v4[3]]);
+        continue;
+      }
+      if (g.isEmpty || g.length > 4 || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(g)) return null;
+      out.add(int.parse(g, radix: 16));
     }
-    return true;
+    return out;
   }
-  return t.contains(':') && _ipv6Chars.hasMatch(t) && !t.contains(':::');
+  final head = groups(halves[0]);
+  final tail = halves.length == 2 ? groups(halves[1]) : <int>[];
+  if (head == null || tail == null) return null;
+  final missing = 8 - head.length - tail.length;
+  if (halves.length == 2 ? missing < 1 : missing != 0) return null;
+  final all = [...head, ...List.filled(missing, 0), ...tail];
+  return [for (final g in all) ...[g >> 8, g & 0xff]];
+}
+
+List<int>? _parseIpv4(String t) {
+  final parts = t.split('.');
+  if (parts.length != 4) return null;
+  final out = <int>[];
+  for (final p in parts) {
+    if (p.isEmpty || p.length > 3 || !RegExp(r'^[0-9]+$').hasMatch(p)) return null;
+    final n = int.parse(p);
+    if (n > 255) return null;
+    out.add(n);
+  }
+  return out;
+}
+
+/// An address, or a network in CIDR form (`198.51.100.0/24`,
+/// `2001:db8::/64`): its bytes and prefix length. Null when it is neither.
+({List<int> bytes, int prefix})? parseIpOrNetwork(String s) {
+  final t = s.trim();
+  final slash = t.indexOf('/');
+  final bytes = parseIpBytes(slash < 0 ? t : t.substring(0, slash));
+  if (bytes == null) return null;
+  final max = bytes.length * 8;
+  if (slash < 0) return (bytes: bytes, prefix: max);
+  final p = t.substring(slash + 1);
+  if (p.isEmpty || p.length > 3 || !RegExp(r'^[0-9]+$').hasMatch(p)) return null;
+  final prefix = int.parse(p);
+  if (prefix > max) return null;
+  return (bytes: bytes, prefix: prefix);
+}
+
+/// A public address, or a network an office rule may name.
+bool isValidIp(String s) => parseIpOrNetwork(s) != null;
+
+/// Whether [ip] is [rule] itself or inside the network [rule] names. Never
+/// true across families (an IPv6 address is in no IPv4 network).
+bool ipInRule(String ip, String rule) {
+  final a = parseIpBytes(ip);
+  final r = parseIpOrNetwork(rule);
+  if (a == null || r == null || a.length != r.bytes.length) return false;
+  var bits = r.prefix;
+  for (var i = 0; i < a.length && bits > 0; i++) {
+    final take = bits >= 8 ? 8 : bits;
+    final mask = (0xff << (8 - take)) & 0xff;
+    if ((a[i] & mask) != (r.bytes[i] & mask)) return false;
+    bits -= take;
+  }
+  return true;
 }
 
 /// Row written by add/edit (value normalised, label trimmed, blank → null),
@@ -104,16 +172,20 @@ bool isValidIp(String s) {
       if (v == null) return (row: null, error: 'Paste the session link (claude.ai/code/session_…) or its id.');
     case ClaudeRuleKind.ip:
       v = value.trim();
-      if (!isValidIp(v)) return (row: null, error: 'Enter a public IP address, e.g. $defaultOfficeIp.');
+      if (!isValidIp(v)) return (row: null, error: 'Enter a public address or network, e.g. $defaultOfficeIp or 2001:db8::/64.');
   }
   final l = label?.trim() ?? '';
   return (row: {'kind': kind.name, 'value': v, 'label': l.isEmpty ? null : l}, error: null);
 }
 
-/// Whether [ip] is an enabled office IP: from there the page may be changed
-/// (the database checks the same on every write).
+/// Whether [ip] is inside an enabled office rule: from there the page may be
+/// changed (the database checks the same on every write).
 bool isOfficeIp(String? ip, Iterable<ClaudeAccessRule> rules) =>
-    ip != null && ip.isNotEmpty && rules.any((r) => r.kind == ClaudeRuleKind.ip && r.enabled && r.value == ip);
+    ip != null && ip.isNotEmpty && rules.any((r) => r.kind == ClaudeRuleKind.ip && r.enabled && ipInRule(ip, r.value));
+
+/// Whether any of a device's public addresses (IPv4 and IPv6, where it has
+/// both) is inside an enabled office rule.
+bool isOfficeDevice(Iterable<String> ips, Iterable<ClaudeAccessRule> rules) => ips.any((ip) => isOfficeIp(ip, rules));
 
 /// [kind] is null for both kinds.
 List<ClaudeAccessRule> filterClaudeRules(List<ClaudeAccessRule> rules, {String query = '', ClaudeRuleKind? kind}) {
@@ -142,7 +214,9 @@ String claudeRuleSubtitle(ClaudeAccessRule r) {
   final l = r.label?.trim() ?? '';
   final what = r.isSession
       ? 'Claude session · Supabase tools run without a prompt'
-      : 'Office IP · no prompt there, and this page may be changed from there';
+      : r.value.contains('/')
+          ? 'Office network · no prompt there, and this page may be changed from there'
+          : 'Office IP · no prompt there, and this page may be changed from there';
   final base = l.isEmpty ? what : l;
   return r.enabled ? base : '$base · disabled';
 }

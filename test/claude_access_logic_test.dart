@@ -26,16 +26,46 @@ void main() {
     });
   });
 
-  group('isValidIp', () {
-    test('IPv4 octets 0–255, IPv6 hex groups', () {
+  group('addresses and networks', () {
+    test('parses IPv4 and IPv6, with :: and an embedded IPv4', () {
+      expect(parseIpBytes('202.188.231.237'), [202, 188, 231, 237]);
+      expect(parseIpBytes('2001:db8::1'), [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+      expect(parseIpBytes('::ffff:192.0.2.1'), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 0, 2, 1]);
+      expect(parseIpBytes('::'), List.filled(16, 0));
+      expect(parseIpBytes('2001:d08:1c01:6873:613d:22a9:5c14:c146')?.length, 16);
+      expect(parseIpBytes('256.1.1.1'), isNull);
+      expect(parseIpBytes('1.2.3'), isNull);
+      expect(parseIpBytes('1:::2'), isNull);
+      expect(parseIpBytes('1::2::3'), isNull);
+      expect(parseIpBytes('1:2:3:4:5:6:7:8:9'), isNull);
+      expect(parseIpBytes('office'), isNull);
+    });
+
+    test('isValidIp takes an address or a CIDR network, within the family limits', () {
       expect(isValidIp('202.188.231.237'), isTrue);
-      expect(isValidIp(' 203.0.113.10 '), isTrue);
-      expect(isValidIp('2001:db8::1'), isTrue);
-      expect(isValidIp('256.1.1.1'), isFalse);
-      expect(isValidIp('1.2.3'), isFalse);
-      expect(isValidIp('office'), isFalse);
+      expect(isValidIp(' 203.0.113.0/24 '), isTrue);
+      expect(isValidIp('2001:d08:1c01:6873::/64'), isTrue);
+      expect(isValidIp('2001:db8::/128'), isTrue);
+      expect(isValidIp('203.0.113.0/33'), isFalse);
+      expect(isValidIp('2001:db8::/129'), isFalse);
+      expect(isValidIp('203.0.113.0/'), isFalse);
+      expect(isValidIp('203.0.113.0/x'), isFalse);
       expect(isValidIp(''), isFalse);
-      expect(isValidIp('1:::2'), isFalse);
+    });
+
+    test('ipInRule: exact, inside a network, outside it, never across families', () {
+      expect(ipInRule('202.188.231.237', '202.188.231.237'), isTrue);
+      expect(ipInRule('202.188.231.238', '202.188.231.237'), isFalse);
+      expect(ipInRule('198.51.100.77', '198.51.100.0/24'), isTrue);
+      expect(ipInRule('198.51.101.1', '198.51.100.0/24'), isFalse);
+      expect(ipInRule('198.51.100.77', '198.51.100.64/26'), isTrue);
+      expect(ipInRule('198.51.100.63', '198.51.100.64/26'), isFalse);
+      expect(ipInRule('2001:d08:1c01:6873:613d:22a9:5c14:c146', '2001:d08:1c01:6873::/64'), isTrue);
+      expect(ipInRule('2001:d08:1c01:6874::1', '2001:d08:1c01:6873::/64'), isFalse);
+      expect(ipInRule('2001:d08:1c01:6873::1', '2001:d08:1c01:6873::/64'), isTrue);
+      expect(ipInRule('::ffff:198.51.100.77', '198.51.100.0/24'), isFalse, reason: 'different families');
+      expect(ipInRule('198.51.100.77', '2001:db8::/32'), isFalse);
+      expect(ipInRule('garbage', '198.51.100.0/24'), isFalse);
     });
   });
 
@@ -50,24 +80,34 @@ void main() {
     test('blank label is null; a bad value is an error, not a row', () {
       expect(claudeRuleRow(kind: ClaudeRuleKind.ip, value: '203.0.113.10', label: '').row,
           {'kind': 'ip', 'value': '203.0.113.10', 'label': null});
-      expect(claudeRuleRow(kind: ClaudeRuleKind.ip, value: 'nope').error, contains('IP address'));
+      expect(claudeRuleRow(kind: ClaudeRuleKind.ip, value: 'nope').error, contains('address or network'));
+      expect(claudeRuleRow(kind: ClaudeRuleKind.ip, value: ' 2001:db8::/64 ').row?['value'], '2001:db8::/64');
       expect(claudeRuleRow(kind: ClaudeRuleKind.session, value: 'nope').error, contains('session link'));
     });
   });
 
-  group('isOfficeIp', () {
+  group('isOfficeIp / isOfficeDevice', () {
     final rules = [
       rule(ClaudeRuleKind.ip, '202.188.231.237'),
+      rule(ClaudeRuleKind.ip, '2001:d08:1c01:6873::/64'),
       rule(ClaudeRuleKind.ip, '203.0.113.10', enabled: false),
       rule(ClaudeRuleKind.session, '203.0.113.11'),
     ];
-    test('an enabled ip rule, and nothing else', () {
+    test('an enabled ip rule, by address or network, and nothing else', () {
       expect(isOfficeIp('202.188.231.237', rules), isTrue);
+      expect(isOfficeIp('2001:d08:1c01:6873:613d:22a9:5c14:c146', rules), isTrue, reason: 'inside the /64');
+      expect(isOfficeIp('2001:d08:1c01:6874::1', rules), isFalse, reason: 'next network over');
       expect(isOfficeIp('203.0.113.10', rules), isFalse, reason: 'disabled');
       expect(isOfficeIp('203.0.113.11', rules), isFalse, reason: 'a session, not an ip');
       expect(isOfficeIp('198.51.100.1', rules), isFalse);
       expect(isOfficeIp(null, rules), isFalse);
       expect(isOfficeIp('', rules), isFalse);
+    });
+    test('a dual-stack device is at the office if either address is', () {
+      expect(isOfficeDevice(['198.51.100.1', '2001:d08:1c01:6873::abcd'], rules), isTrue);
+      expect(isOfficeDevice(['202.188.231.237', '2001:db8::1'], rules), isTrue);
+      expect(isOfficeDevice(['198.51.100.1', '2001:db8::1'], rules), isFalse);
+      expect(isOfficeDevice(const [], rules), isFalse);
     });
   });
 
@@ -87,6 +127,7 @@ void main() {
     test('counts each kind', () => expect(countClaudeRules(rules), (sessions: 2, ips: 1)));
     test('subtitle is the label or what the rule does, with disabled marked', () {
       expect(claudeRuleSubtitle(rules[0]), 'Office');
+      expect(claudeRuleSubtitle(rule(ClaudeRuleKind.ip, '2001:db8::/64')), startsWith('Office network'));
       expect(claudeRuleSubtitle(rules[2]), contains('without a prompt'));
       expect(claudeRuleSubtitle(rules[2]), endsWith('· disabled'));
       expect(rules[1].sessionUrl, 'https://claude.ai/code/session_01D5UkQNkT4wNjAS45j7F4ej');
