@@ -37,6 +37,7 @@ import 'meter_leave_launcher.dart';
 import '../../data/meter_trip_sync.dart';
 import 'meter_providers.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/web_overlay_back.dart';
 
 // The console is deliberately not themed: a white screen on a windscreen
 // mount at night is a hazard, so the meter is always the dark instrument it
@@ -885,6 +886,8 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
               onPopWithResult: (_) => _stageNav.currentState?.maybePop(),
               child: Navigator(
                 key: _stageNav,
+                // On the web, Back closes a dialog in the stage first.
+                observers: webOverlayBackObservers() ?? const [],
                 pages: [MaterialPage(key: const ValueKey('console'), child: _scaffold(obd, printer))],
                 onDidRemovePage: (_) {},
               ),

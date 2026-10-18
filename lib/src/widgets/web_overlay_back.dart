@@ -1,7 +1,8 @@
 // Browser Back closes the open sheet, modal or side menu on the web
-// (core/overlay_back.dart): the browser's side of it, and the hooks
-// [showAppSheet], [showAppDialog], [showAppGeneralDialog] and the side
-// menus use. Off the web none of this does anything.
+// (core/overlay_back.dart): the browser's side of it, the navigator
+// observer that gives every popup route (sheets, dialogs, menus, pickers)
+// an entry, and the hook the side menus use. Off the web none of this does
+// anything.
 //
 // Flutter's web engine answers a browser Back by handing the router the
 // address of the entry it landed on (`pushRouteInformation`), never as a
@@ -88,43 +89,58 @@ class _BrowserHistory implements OverlayHistory {
   }
 }
 
-/// A sheet or modal route's entry: [wrap] the route's content (to find the
-/// route) and [track] the future its `show…` call returns.
-class OverlayRouteBack {
-  OverlayRouteBack() {
-    _entry = webOverlayBack.open(_close);
-  }
+/// The navigator observers that give every popup route (sheets, dialogs,
+/// dropdown and popup menus, date and time pickers, search pickers) its
+/// own browser history entry, on the web; null off it. One on the router
+/// covers its shells' navigators too (go_router hands them its observers).
+List<NavigatorObserver>? webOverlayBackObservers() => kIsWeb ? [WebOverlayBackObserver()] : null;
 
-  OverlayBackEntry? _entry;
-  Route<dynamic>? _route;
+/// Each open popup route's entry, whichever navigator it is on.
+final _routeEntries = Expando<OverlayBackEntry>('overlay back');
 
-  /// [child] as it is off the web; on it, under a lookup of its route.
-  Widget wrap(Widget child) => _entry == null ? child : _RouteLookup(back: this, child: child);
-
-  Future<T> track<T>(Future<T> shown) => _entry == null ? shown : shown.whenComplete(() => webOverlayBack.closed(_entry));
-
-  /// A Back: closes the route, and what was opened over it.
-  void _close() {
-    final r = _route;
-    final nav = r?.navigator;
-    if (r == null || nav == null || !r.isActive) return;
-    if (!r.isCurrent) nav.popUntil((x) => x == r);
-    // One that won't close now (unsaved changes) stays open: it gets an
-    // entry again before it is asked (and maybe opens its own question).
-    if (r.popDisposition == RoutePopDisposition.doNotPop) _entry = webOverlayBack.open(_close);
-    nav.maybePop();
-  }
-}
-
-class _RouteLookup extends StatelessWidget {
-  const _RouteLookup({required this.back, required this.child});
-
-  final OverlayRouteBack back;
-  final Widget child;
+/// Gives each popup route pushed on its navigator a browser history entry
+/// (core/overlay_back.dart): a Back closes the top one, so a menu open
+/// over a dialog closes first and the dialog with the next Back. Full
+/// pages ([PageRoute]) are left to the router.
+class WebOverlayBackObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => _track(route);
 
   @override
-  Widget build(BuildContext context) {
-    back._route ??= ModalRoute.of(context);
-    return child;
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _release(route);
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) => _release(route);
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    if (oldRoute != null) _release(oldRoute);
+    if (newRoute != null) _track(newRoute);
+  }
+
+  static void _track(Route<dynamic> route) {
+    if (route is! PopupRoute) return;
+    if (_routeEntries[route]?.isOpen ?? false) return;
+    _routeEntries[route] = webOverlayBack.open(() => _close(route));
+  }
+
+  static void _release(Route<dynamic> route) {
+    final e = _routeEntries[route];
+    if (e == null) return;
+    _routeEntries[route] = null;
+    webOverlayBack.closed(e);
+  }
+
+  /// A Back: closes [route], and what was opened over it.
+  static void _close(Route<dynamic> route) {
+    final nav = route.navigator;
+    if (nav == null || !route.isActive) return;
+    if (!route.isCurrent) nav.popUntil((x) => x == route);
+    // One that won't close now (unsaved changes) stays open: it gets an
+    // entry again before it is asked (and maybe opens its own question).
+    if (route.popDisposition == RoutePopDisposition.doNotPop) {
+      _routeEntries[route] = webOverlayBack.open(() => _close(route));
+    }
+    nav.maybePop();
   }
 }
