@@ -125,6 +125,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:vehicle-info.write-to-car', SurfaceKind.modal, 'Vehicle info · Write to car', 'lib/src/features/meter/vehicle_info_screen.dart'),
   SurfaceEntry('modal:vehicle-picker.hand-back', SurfaceKind.modal, 'Vehicle picker · Hand back', 'lib/src/features/partner/vehicle_picker.dart'),
   SurfaceEntry('modal:vehicle.confirm-vehicle-approvable', SurfaceKind.modal, 'Vehicle · Confirm vehicle approvable', 'lib/src/admin/screens/people/vehicle_screens.dart'),
+  SurfaceEntry('modal:vehicles.remove-draft', SurfaceKind.modal, 'Vehicles · Remove draft', 'lib/src/features/partner/vehicle_screens.dart'),
   SurfaceEntry('modal:wallet-qr.ask-amount', SurfaceKind.modal, 'Wallet qr · Amount', 'lib/src/features/wallet/wallet_qr_screens.dart'),
   SurfaceEntry('modal:wallet.open-recharge', SurfaceKind.modal, 'Wallet · Recharge', 'lib/src/features/wallet/wallet_screen.dart'),
   SurfaceEntry('page:admin-ev.profile-editor', SurfaceKind.page, 'Admin ev · Profile editor', 'lib/src/admin/screens/meterapp/ev_profiles_screen.dart'),

@@ -18,6 +18,7 @@ import '../../widgets/common.dart';
 import '../../widgets/loading_skeleton.dart';
 import '../../widgets/back_or_go_button.dart';
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/page_style_host.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 
@@ -53,13 +54,60 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
 
   Future<void> _open(String location) async {
     await context.push(location);
-    if (mounted) setState(() => _vehicles = _load());
+    if (mounted) _reload();
+  }
+
+  /// Reads the list again (a block body: setState must not be handed the
+  /// Future an arrow returning the assignment would give it).
+  void _reload() => setState(() {
+    _vehicles = _load();
+  });
+
+  /// Removes the draft [v] once the owner confirms. The server decides:
+  /// a vehicle submitted or put to use since can't be removed any more.
+  Future<void> _remove(Map<String, dynamic> v) async {
+    final plate = '${v['plate'] ?? ''}'.trim();
+    final ok = await showAppDialog<bool>(id: 'vehicles.remove-draft',
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(plate.isEmpty ? 'Remove this draft?' : 'Remove $plate?'),
+        content: const Text('This draft vehicle and what you entered for it will be removed. You can add it again later.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep')),
+          FilledButton(
+            key: const ValueKey('vehicle-remove-confirm'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(64, 40),
+              backgroundColor: Theme.of(c).colorScheme.error,
+              foregroundColor: Theme.of(c).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final removed = await ref.read(vehicleOnboardingRepositoryProvider).removeDraft('${v['id']}');
+      if (!mounted) return;
+      showInfo(
+        context,
+        removed
+            ? (plate.isEmpty ? 'Draft removed.' : '$plate removed.')
+            : "This vehicle can't be removed any more: it has been sent for review or is in use. "
+                  'Contact support if it should go.',
+      );
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+    if (mounted) _reload();
   }
 
   @override
   Widget build(BuildContext context) {
     // An admin's decision on a vehicle shows here at once.
-    ref.listenLive(const ['vehicle', 'vehicle_documents'], () => setState(() => _vehicles = _load()));
+    ref.listenLive(const ['vehicle', 'vehicle_documents'], _reload);
     return _scaffold(context);
   }
 
@@ -79,7 +127,7 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
                 title: 'Could not load your vehicles',
                 message: errorText(snap.error!),
                 action: FilledButton(
-                    onPressed: () => setState(() => _vehicles = _load()), child: const Text('Try again')),
+                    onPressed: _reload, child: const Text('Try again')),
               );
             }
             if (!snap.hasData) return const LoadingSkeletonPage();
@@ -126,7 +174,20 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
                                   ),
                           ],
                         ),
-                        trailing: const Icon(Icons.chevron_right),
+                        trailing: vehicleLooksLikeDraft(v)
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    key: ValueKey('vehicle-remove-${v['id']}'),
+                                    tooltip: 'Remove draft ${v['plate'] ?? ''}'.trim(),
+                                    icon: const Icon(Icons.delete_outline),
+                                    onPressed: () => _remove(v),
+                                  ),
+                                  const Icon(Icons.chevron_right),
+                                ],
+                              )
+                            : const Icon(Icons.chevron_right),
                         onTap: () => _open('/drive/vehicles/${v['id']}'),
                       ),
                     );

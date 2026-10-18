@@ -44,6 +44,17 @@ VehicleStep firstVehicleStep(Map<String, dynamic>? v) {
   return VehicleStep.done;
 }
 
+/// Whether [v] looks like a draft its owner may still remove (0229's
+/// "vehicle own draft delete"): never submitted, approved or permitted, the
+/// wizard not finished. The server checks the rest (no document sent, no
+/// driver, session or ride on it), so a delete can still come back empty.
+bool vehicleLooksLikeDraft(Map<String, dynamic> v) =>
+    (v['status'] ?? 'unapproved') == 'unapproved' &&
+    (v['permit'] ?? 'pending') == 'pending' &&
+    v['documents_ok'] != true &&
+    v['onboarding_step'] != 'done' &&
+    firstVehicleStep(v) != VehicleStep.done;
+
 /// The `vehicle` row created when a partner enters a new plate (Expo
 /// `createVehicleStub`). Status and permit are left to the table defaults
 /// (unapproved / pending), which is what the 0088 insert guard requires.
