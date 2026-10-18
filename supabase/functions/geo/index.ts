@@ -16,6 +16,9 @@
 // secrets (GOOGLE_MAP_API_KEY, GOOGLE_PLACES_API_KEY, GOOGLE_GEOCODING_API_KEY,
 // GOOGLE_DIRECTIONS_API_KEY), synced from GitHub by sync-map-keys.yml.
 //
+// Place search, reverse, routes, distances, details and address checks need a
+// signed-in user (they spend the keys); tiles and links don't.
+//
 // Deploy (the gateway checks for the project's key or a session):
 //   supabase functions deploy geo
 // ============================================================================
@@ -54,6 +57,23 @@ const iso3By = new Map(
   (countries as unknown as { cca2: string; cca3: string }[]).map((c) => [c.cca2.toLowerCase(), c.cca3]),
 );
 
+// Who a token belongs to, kept a minute per instance: a search asks often.
+const callers = new Map<string, { uid: string | null; at: number }>();
+
+async function callerOf(authorization: string | null): Promise<string | null> {
+  const token = /^Bearer\s+(\S+)$/i.exec(authorization ?? "")?.[1];
+  if (!token) return null;
+  const known = callers.get(token);
+  if (known && Date.now() - known.at < 60_000) return known.uid;
+  const { data, error } = await db.auth.getUser(token);
+  // Auth down is not remembered; a refused token (the anon key, an expired one) is, as nobody.
+  if (error && (error.status ?? 500) >= 500) throw error;
+  const uid = data?.user?.id ?? null;
+  if (callers.size > 5000) callers.clear();
+  callers.set(token, { uid, at: Date.now() });
+  return uid;
+}
+
 async function call(req: { url: string; method?: string; headers?: Record<string, string>; body?: string }) {
   const res = await fetch(req.url, {
     method: req.method ?? "GET",
@@ -91,8 +111,10 @@ Deno.serve(async (req) => {
       call,
       take: async (bucket, limit) => {
         const { data, error } = await db.rpc("geo_take", { p_bucket: bucket, p_limit: limit });
-        return error ? true : data === true;
+        // Fails closed: a limit that can't be counted refuses.
+        return !error && data === true;
       },
+      caller: () => callerOf(req.headers.get("Authorization")),
       count: async (provider, kind, ok, cached, detail) => {
         await db.rpc("geo_count", { p_provider: provider, p_kind: kind, p_ok: ok, p_cached: cached });
         if (!ok && detail) await logError(provider, kind, detail).catch(() => {});

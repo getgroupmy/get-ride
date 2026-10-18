@@ -29,6 +29,7 @@ import {
   type StatementData,
 } from "../_shared/partner_statement.ts";
 import { cleanLayout } from "../_shared/statement_layout.ts";
+import { callerCanEditHere, STATEMENT_PAGES } from "../_shared/admin_page.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -77,10 +78,8 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => null);
     if (body && typeof body === "object" && (body as { preview?: unknown }).preview === true) {
       const answer = await handlePreview(body, {
-        isAdmin: async () => {
-          const { data, error } = await user.rpc("caller_is_admin");
-          return !error && data === true;
-        },
+        // Edit access to Partner statements, not any admin.
+        isAdmin: async () => (await callerCanEditHere(auth, STATEMENT_PAGES).catch(() => false)) === true,
         company: async () => {
           const { data, error } = await user.rpc("partner_statement_config");
           if (error) throw error;

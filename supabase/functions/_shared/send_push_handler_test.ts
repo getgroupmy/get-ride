@@ -14,20 +14,34 @@ const ANON = "anon-key";
 const SERVICE = "service-role-key";
 const ADMIN_JWT = "admin.jwt.token";
 const USER_JWT = "user.jwt.token";
+const SUB_ADMIN_JWT = "subadmin.jwt.token";
+/** Who each token is, and the pages they may edit. */
+const USERS: Record<string, { id: string; edits: string[] }> = {
+  [ADMIN_JWT]: { id: "u-admin", edits: ["admin-settings-push-notification"] },
+  [USER_JWT]: { id: "u-user", edits: [] },
+  [SUB_ADMIN_JWT]: { id: "u-sub", edits: ["admin-settings-help"] },
+};
 const VAULT_SECRET = "vault-webhook-secret";
 
-/** PostgREST as the function sees it: two RPCs, judged by the bearer. */
+/** Auth and PostgREST as the function sees them, judged by the bearer. */
 function fakePostgrest(calls: string[]): typeof fetch {
   const answer = (input: string | URL | Request, init?: RequestInit): Response => {
     const url = String(input);
     const headers = new Headers(init?.headers);
     const auth = headers.get("Authorization");
-    calls.push(url.replace(`${URL_}/rest/v1/rpc/`, ""));
-    if (url.endsWith("/rpc/caller_is_admin")) {
+    calls.push(url.replace(`${URL_}/rest/v1/rpc/`, "").replace(`${URL_}/auth/v1/`, "auth:"));
+    if (url.endsWith("/auth/v1/user")) {
       if (headers.get("apikey") !== ANON) return new Response("bad apikey", { status: 401 });
-      if (auth === `Bearer ${ADMIN_JWT}`) return Response.json(true);
-      if (auth === `Bearer ${USER_JWT}` || auth === `Bearer ${ANON}`) return Response.json(false);
-      return Response.json({ code: "PGRST301", message: "JWT invalid" }, { status: 401 });
+      const user = USERS[(auth ?? "").replace(/^Bearer /, "")];
+      if (user) return Response.json({ id: user.id });
+      if (auth === `Bearer ${ANON}`) return Response.json({ msg: "missing sub claim" }, { status: 403 });
+      return Response.json({ msg: "invalid JWT" }, { status: 401 });
+    }
+    if (url.endsWith("/rpc/admin_can_edit")) {
+      if (auth !== `Bearer ${SERVICE}`) return new Response("forbidden", { status: 401 });
+      const { p_profile, p_page } = JSON.parse(String(init?.body));
+      const user = Object.values(USERS).find((u) => u.id === p_profile);
+      return Response.json(user?.edits.includes(p_page) ?? false);
     }
     if (url.endsWith("/rpc/push_webhook_secret_ok")) {
       if (auth !== `Bearer ${SERVICE}`) return new Response("forbidden", { status: 401 });
@@ -73,13 +87,20 @@ Deno.test("a signed-in user who is not an admin -> 403, nothing sent", async () 
   const res = await handleSendPush(post({ Authorization: `Bearer ${USER_JWT}` }), deps);
   assertEquals(res.status, 403);
   assertEquals(sent.length, 0);
-  assertEquals(calls, ["caller_is_admin"]);
+  assertEquals(calls, ["auth:user", "admin_can_edit"]);
 });
 
-Deno.test("the anon key alone -> 403, nothing sent", async () => {
+Deno.test("an admin of another page only -> 403, nothing sent", async () => {
+  const { sent, deps } = setup();
+  const res = await handleSendPush(post({ Authorization: `Bearer ${SUB_ADMIN_JWT}` }), deps);
+  assertEquals(res.status, 403);
+  assertEquals(sent.length, 0);
+});
+
+Deno.test("the anon key alone -> 401, nothing sent", async () => {
   const { sent, deps } = setup();
   const res = await handleSendPush(post({ Authorization: `Bearer ${ANON}` }), deps);
-  assertEquals(res.status, 403);
+  assertEquals(res.status, 401);
   assertEquals(sent.length, 0);
 });
 

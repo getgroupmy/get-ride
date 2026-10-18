@@ -6,14 +6,24 @@
 // The mobile client can only read its LAN/local IP (e.g. 192.168.x.x), which
 // reveals nothing about the ISP. This function reads the public/egress IP from
 // the request headers (set by Supabase's edge proxy) and resolves the ISP via a
-// free, no-key IP geolocation provider (ipwho.is, with ip-api.com as fallback).
+// free, no-key IP geolocation provider (ipwho.is, over HTTPS).
 //
-// Request:  POST (no body needed). An explicit IP can be passed as { ip }.
+// Only the caller's own address is looked up (an address in the body is
+// ignored), at most 30 times in 10 minutes per address, so it is no free
+// geolocation service for anyone else.
+//
+// Request:  POST (no body needed).
 // Response: { public_ip, isp_provider, isp_org, ip_city, ip_region, ip_country }
 //
-// Deploy:
-//   supabase functions deploy ip-lookup --no-verify-jwt
+// Deploy (the gateway checks for the project's key or a session):
+//   supabase functions deploy ip-lookup
 // ============================================================================
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -47,13 +57,15 @@ const EMPTY: IpInfo = {
   ip_country: null,
 };
 
-/** Extract the first public IP from proxy headers. */
+/**
+ * The caller's address from the proxy headers: Cloudflare's own first (a
+ * client cannot set it through Cloudflare), as request_client_ip (0137) does.
+ */
 function resolveCallerIp(req: Request): string | null {
   const candidates = [
-    req.headers.get("x-forwarded-for"),
-    req.headers.get("x-real-ip"),
     req.headers.get("cf-connecting-ip"),
-    req.headers.get("fly-client-ip"),
+    req.headers.get("x-real-ip"),
+    req.headers.get("x-forwarded-for"),
   ];
   for (const raw of candidates) {
     if (!raw) continue;
@@ -95,49 +107,15 @@ async function lookupIpWhoIs(ip: string): Promise<IpInfo | null> {
   }
 }
 
-/** Fallback provider: ip-api.com (free, HTTP only — used as best-effort). */
-async function lookupIpApi(ip: string): Promise<IpInfo | null> {
-  try {
-    const res = await fetch(
-      `http://ip-api.com/json/${encodeURIComponent(
-        ip
-      )}?fields=status,country,regionName,city,isp,org,query`
-    );
-    if (!res.ok) return null;
-    const d = await res.json();
-    if (d?.status !== "success") return null;
-    return {
-      public_ip: typeof d?.query === "string" ? d.query : ip,
-      isp_provider: d?.isp ?? null,
-      isp_org: d?.org ?? null,
-      ip_city: d?.city ?? null,
-      ip_region: d?.regionName ?? null,
-      ip_country: d?.country ?? null,
-    };
-  } catch {
-    return null;
-  }
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // Allow an explicit IP override in the body, else resolve from headers.
-  let bodyIp: string | null = null;
-  if (req.method === "POST") {
-    try {
-      const body = await req.json();
-      if (typeof body?.ip === "string" && body.ip.trim()) {
-        bodyIp = body.ip.trim();
-      }
-    } catch {
-      // no body — fine
-    }
-  }
+  if (req.method !== "POST" && req.method !== "GET") return json({ error: "method_not_allowed" }, 405);
+  await req.body?.cancel();
 
-  const ip = bodyIp ?? resolveCallerIp(req);
+  const ip = resolveCallerIp(req);
 
   if (!ip) {
     return json({ ...EMPTY }, 200);
@@ -147,7 +125,18 @@ Deno.serve(async (req: Request) => {
     return json({ ...EMPTY, public_ip: ip }, 200);
   }
 
-  const info = (await lookupIpWhoIs(ip)) ?? (await lookupIpApi(ip));
+  // Fails closed: when the limit can't be checked, nothing is looked up.
+  const { data: wait, error: rateErr } = await db.rpc("auth_rate_take", {
+    p_bucket: "ip_lookup",
+    p_key: ip,
+    p_limit: 30,
+    p_window: "10 minutes",
+  });
+  if (rateErr || typeof wait !== "number" || wait > 0) {
+    return json({ ...EMPTY, public_ip: ip }, 200);
+  }
+
+  const info = await lookupIpWhoIs(ip);
   if (!info) {
     return json({ ...EMPTY, public_ip: ip }, 200);
   }

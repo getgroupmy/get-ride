@@ -126,11 +126,22 @@ select pg_temp.refused(format('select public.gateway_key_heartbeat(%L)', (select
   'a removed gateway carrying on');
 reset role;
 
--- 5. Too many wrong codes slow pairing down ----------------------------------------------------
-insert into public.gateway_pair_failures (at) select now() from generate_series(1, 20);
+-- 5. Too many wrong codes slow pairing down (0220: per address, and for everyone) ---------------
+insert into public.gateway_pair_failures (at, ip) select now(), '198.51.100.7' from generate_series(1, 10);
 set local role anon;
 select pg_temp.as_anon();
+select set_config('request.headers', '{"cf-connecting-ip":"198.51.100.7"}', true);
 select pg_temp.refused($q$select public.gateway_pair('ABCDEFGH', 'phone-3')$q$, 'guessing past the limit');
+select set_config('request.headers', '{"cf-connecting-ip":"198.51.100.8"}', true);
+select pg_temp.check(public.gateway_pair('ABCDEFGH', 'phone-3')->>'error' = 'GATEWAY_PAIR_CODE',
+  'another address still pairs while one guesses');
+reset role;
+select pg_temp.check((select count(*) = 1 from public.gateway_pair_failures where ip = '198.51.100.8'),
+  'a wrong code is counted against its address');
+insert into public.gateway_pair_failures (at) select now() from generate_series(1, 500);
+set local role anon;
+select pg_temp.as_anon();
+select pg_temp.refused($q$select public.gateway_pair('ABCDEFGH', 'phone-3')$q$, 'guessing past the overall limit');
 reset role;
 
 select 'gateway_device_keys: all passed';

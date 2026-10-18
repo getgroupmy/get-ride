@@ -40,7 +40,10 @@
  *         (names only, never a key), so Admin → Settings → Maps doesn't call them missing.
  *
  * A provider is only asked for a role and device whose profile lists it.
- * 429 { error: "rate_limited" } past the per-address limit.
+ * 429 { error: "rate_limited" } past the per-address limit, or the per-user one.
+ * 401 { error: "sign_in_required" }: search, locate, reverse, route, distance,
+ * details and validate spend a provider key, so they need a signed-in user
+ * (profile's tiles and expand don't).
  */
 import {
   addressValidationRequest,
@@ -92,8 +95,13 @@ export interface GeoDeps {
   settings(): Promise<{ config: unknown; apiProviders: unknown }>;
   /** One provider request; the parsed JSON body, or throws. */
   call(req: HttpRequest): Promise<unknown>;
-  /** Counts a call against [bucket]'s minute; false when over [limit]. */
+  /** Counts a call against [bucket]'s minute; false when over [limit] or when it can't be counted. */
   take(bucket: string, limit: number): Promise<boolean>;
+  /**
+   * The signed-in caller's user id, or null (the anon key, a bad token).
+   * Asked only by the actions that spend a provider key.
+   */
+  caller(): Promise<string | null>;
   /** One call counted; a failed one with [detail], what went wrong, for Admin → Maps → Usage. */
   count(provider: string, kind: Kind | "tiles", ok: boolean, cached: boolean, detail?: string): Promise<void>;
   cacheGet(key: string): Promise<unknown | null>;
@@ -115,6 +123,8 @@ export interface GeoDeps {
 
 /** Proxied lookups per caller address per minute. */
 export const RATE_LIMIT = 120;
+/** Keyed lookups per signed-in user per minute: typing a search asks a few times a second at most. */
+export const USER_RATE_LIMIT = 60;
 
 export interface GeoAnswer {
   status: number;
@@ -122,6 +132,20 @@ export interface GeoAnswer {
 }
 
 const bad = (error: string, status = 400): GeoAnswer => ({ status, body: { error } });
+
+/**
+ * Whether a keyed lookup may go ahead: a signed-in user under their own
+ * limit, and their address under its own. The app falls back to
+ * OpenStreetMap when it is refused, so a page open without a sign-in (the
+ * shared ride) still finds its way.
+ */
+async function mayLookUp(deps: GeoDeps, ip: string): Promise<GeoAnswer | null> {
+  const uid = await deps.caller().catch(() => null);
+  if (!uid) return bad("sign_in_required", 401);
+  if (!(await deps.take(`user:${uid}`, USER_RATE_LIMIT))) return bad("rate_limited", 429);
+  if (!(await deps.take(`ip:${ip}`, RATE_LIMIT))) return bad("rate_limited", 429);
+  return null;
+}
 
 function coord(v: string | null, max: number): number | null {
   if (v == null || v.trim() === "") return null;
@@ -263,7 +287,8 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     if (!/^[A-Za-z0-9_-]{10,300}$/.test(id)) return bad("Give id.");
     const k = key("google", "search");
     if (!k) return bad("No key for that provider.", 503);
-    if (!(await deps.take(`ip:${ip}`, RATE_LIMIT))) return bad("rate_limited", 429);
+    const refusal = await mayLookUp(deps, ip);
+    if (refusal) return refusal;
     const session = sessionToken(params.get("session"));
     try {
       const body = await askGoogle(
@@ -287,7 +312,8 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     if (address.length < 5) return bad("Give address.");
     const k = resolveKey(apiProviders, keys.google_address) ?? deps.fallbackKey?.("google_address") ?? null;
     if (!k) return bad("No key for that provider.", 503);
-    if (!(await deps.take(`ip:${ip}`, RATE_LIMIT))) return bad("rate_limited", 429);
+    const refusal = await mayLookUp(deps, ip);
+    if (refusal) return refusal;
     try {
       const body = await deps.call(addressValidationRequest(address, countries[0] ?? "my", k));
       const checked = parseAddressValidation(body);
@@ -316,7 +342,8 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   }
   const k = key(provider, kind);
   if (!k) return bad("No key for that provider.", 503);
-  if (!(await deps.take(`ip:${ip}`, RATE_LIMIT))) return bad("rate_limited", 429);
+  const refusal = await mayLookUp(deps, ip);
+  if (refusal) return refusal;
 
   // Google: the newer API, the older one, or the newer first and the older
   // when it refuses (Admin → Settings → Maps, migration 0203).

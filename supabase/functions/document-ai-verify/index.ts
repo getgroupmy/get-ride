@@ -13,7 +13,9 @@
 // `documentModels.<provider>` (a vision model); `documentChecksEnabled:false`
 // switches the check off.
 //
-// Only signed-in users may call it. The images are sent to the provider and
+// Only partners (a partners row of their own) and admins may call it, each
+// held to a few checks an hour (doc_ai, auth_rate_take): every call spends
+// the operator's AI key on two images. The images are sent to the provider and
 // discarded: nothing is stored or logged here.
 //
 // Request (POST, Authorization: Bearer <user access token>):
@@ -35,6 +37,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import {
   bearerToken,
+  keyRefused,
   buildUserText,
   DEFAULT_VISION_MODELS,
   type InlineImage,
@@ -76,6 +79,9 @@ interface Config {
 }
 
 const PROVIDER_TIMEOUT_MS = 45_000;
+/** A partner checks a handful of documents, a couple of tries each. */
+const DOC_CHECKS_PER_HOUR = 10;
+const DOC_CHECKS_PER_HOUR_ADMIN = 60;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -91,7 +97,25 @@ Deno.serve(async (req: Request) => {
   // A signed-in user, not just anyone holding the public anon key.
   const token = bearerToken(req.headers.get("Authorization"));
   const { data: who } = token ? await admin.auth.getUser(token) : { data: { user: null } };
-  if (!who?.user) return json({ ok: false, error: "Sign in to check a document" }, 401);
+  const uid = who?.user?.id;
+  if (!uid) return json({ ok: false, error: "Sign in to check a document" }, 401);
+
+  // A partner checking their own documents, or an admin reviewing them.
+  const [{ data: partnerRow, error: partnerErr }, { data: adminRow, error: adminErr }] = await Promise.all([
+    admin.from("partners").select("id").eq("auth_user_id", uid).limit(1).maybeSingle(),
+    admin.from("admin_access").select("profile_id").eq("profile_id", uid).limit(1).maybeSingle(),
+  ]);
+  if (partnerErr || adminErr) return json({ ok: false, error: "unavailable" }, 503);
+  if (!partnerRow && !adminRow) return json({ ok: false, error: "partners_only" }, 403);
+  // Fails closed: when the limit can't be checked, no key is spent.
+  const { data: wait, error: rateErr } = await admin.rpc("auth_rate_take", {
+    p_bucket: "doc_ai",
+    p_key: uid,
+    p_limit: adminRow ? DOC_CHECKS_PER_HOUR_ADMIN : DOC_CHECKS_PER_HOUR,
+    p_window: "1 hour",
+  });
+  if (rateErr || typeof wait !== "number") return json({ ok: false, error: "unavailable" }, 503);
+  if (wait > 0) return json({ ok: false, error: "rate_limited", retry_after: wait }, 429);
 
   let body: { front?: unknown; back?: unknown; context?: unknown };
   try {
@@ -115,7 +139,10 @@ Deno.serve(async (req: Request) => {
     .select("value")
     .eq("key", "fare_ai_provider")
     .maybeSingle();
-  if (rowErr) return json({ ok: false, error: `Config read failed: ${rowErr.message}` }, 500);
+  if (rowErr) {
+    console.log(`[document-ai-verify] config read failed: ${rowErr.message}`);
+    return json({ ok: false, error: "config_unavailable" }, 500);
+  }
   const config = (row?.value ?? {}) as Config;
   if (config.documentChecksEnabled === false) return json({ ok: true, result: null, reason: "disabled" });
 
@@ -142,6 +169,9 @@ Deno.serve(async (req: Request) => {
   const usable = keys.filter((k) => !cooling.has(k.id));
   if (usable.length === 0) return json({ ok: true, result: null, reason: "keys_cooling_down" });
 
+  // The next key is tried only when this one was refused (401/403): any other
+  // failure (bad image, quota, timeout, an answer that doesn't parse) would
+  // repeat on every key, so the first one ends the check.
   const userText = buildUserText(ctx, images.length > 1);
   for (const k of usable) {
     const request = visionRequest(provider, model, k.key.trim(), userText, images);
@@ -154,14 +184,18 @@ Deno.serve(async (req: Request) => {
       });
       if (!res.ok) {
         console.log(`[document-ai-verify] ${provider} key ${k.label ?? k.id}: HTTP ${res.status}`);
-        continue;
+        await res.body?.cancel();
+        if (keyRefused(res.status)) continue;
+        break;
       }
       const text = responseText(provider, await res.json());
       const result = text ? normalizeResult(text, ctx, new Date()) : null;
       if (result) return json({ ok: true, result });
       console.log(`[document-ai-verify] ${provider} key ${k.label ?? k.id}: unparseable answer`);
+      break;
     } catch (e) {
       console.log(`[document-ai-verify] ${provider} key ${k.label ?? k.id}: ${e instanceof Error ? e.message : e}`);
+      break;
     }
   }
   return json({ ok: true, result: null, reason: "all_keys_failed" });

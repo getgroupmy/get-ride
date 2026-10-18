@@ -403,3 +403,11 @@ export function bearerToken(header: string | null): string | null {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? "");
   return m ? m[1] : null;
 }
+
+/**
+ * Whether a provider's HTTP status says the key itself was refused (so the
+ * next key may do better). Anything else would fail the same on every key.
+ */
+export function keyRefused(status: number): boolean {
+  return status === 401 || status === 403;
+}

@@ -15,6 +15,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { runKeyTest, testList } from "../_shared/key_test.ts";
+import { API_KEY_PAGES, callerCanEditHere } from "../_shared/admin_page.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -59,12 +60,10 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET" && req.method !== "POST") return reply({ error: "Method not allowed" }, 405);
 
-  const caller = createClient(url, Deno.env.get("SUPABASE_ANON_KEY") ?? "", {
-    global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data: isAdmin } = await caller.rpc("caller_is_admin");
-  if (isAdmin !== true) return reply({ error: "admin_only" }, 403);
+  // Edit access to API Keys, not any admin: a test spends the keys.
+  const canEdit = await callerCanEditHere(req.headers.get("Authorization"), API_KEY_PAGES).catch(() => false);
+  if (canEdit === null) return reply({ error: "not_signed_in" }, 401);
+  if (canEdit !== true) return reply({ error: "admin_only" }, 403);
 
   if (req.method === "GET") return reply({ tests: testList() });
 
