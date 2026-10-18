@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/ride_bidding.dart';
@@ -311,6 +312,41 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Ali'), findsNothing);
     });
+
+    for (final b in Brightness.values) {
+      testWidgets('landscape 915x412: the offer cards stand clear of the map buttons; Decline keeps the theme font '
+          '(${b.name})', (tester) async {
+        tester.view.physicalSize = const Size(915, 412);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final rows = StreamController<RideRequest>();
+        addTearDown(rows.close);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              rideRepositoryProvider.overrideWithValue(_FakeRides()),
+              rideStreamProvider.overrideWith((ref, id) => rows.stream),
+            ],
+            child: MaterialApp(theme: ThemeData(brightness: b), home: const RideTrackingScreen(requestId: 'r1')),
+          ),
+        );
+        rows.add(ride(offered: 25, partner: _other, partnerName: 'Ali'));
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        final card = tester.getRect(find.byKey(const ValueKey('ride-offer')));
+        for (final key in const ['map-type', 'map-recenter']) {
+          final button = tester.getRect(find.byKey(ValueKey(key)));
+          expect(card.overlaps(button), isFalse, reason: 'the offer card covers $key');
+          expect(card.right, lessThanOrEqualTo(button.left), reason: 'left of the map buttons');
+        }
+        final decline = find.byKey(const ValueKey('decline-offer'));
+        final label = tester.renderObject<RenderParagraph>(find.descendant(of: decline, matching: find.text('Decline')));
+        expect(label.text.style?.fontFamily, Theme.of(tester.element(decline)).textTheme.labelLarge?.fontFamily);
+        expect(label.text.style?.fontFamily, isNotNull);
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('on a phone the offer floats over the top of the map, not in the sheet', (tester) async {
       tester.view.physicalSize = const Size(400, 860);

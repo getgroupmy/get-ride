@@ -86,7 +86,12 @@ bool partnerCanDrive(Partner p) {
   return s == 'approved' || s.startsWith('permit-');
 }
 
+/// Below this height the wide driver panel scrolls as a whole instead of
+/// holding its settings fixed over the queue.
+const wideDriverPanelScrollBelow = 640.0;
+
 /// Driver mode: go online, see open requests live, accept one.
+
 class PartnerScreen extends ConsumerStatefulWidget {
   const PartnerScreen({super.key});
 
@@ -860,7 +865,26 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   ];
                 const offline = EmptyState(icon: Icons.local_taxi_outlined, title: 'Go online to receive ride requests');
                 if (wide) {
-                  final panel = Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)]);
+                  // Tall enough, the settings stand over the queue, which
+                  // takes the rest; short (a phone on its side, 915 × 412),
+                  // the whole panel scrolls, the queue a screenful below the
+                  // settings, so nothing overflows.
+                  final panel = LayoutBuilder(
+                    builder: (_, c) => c.maxHeight >= wideDriverPanelScrollBelow
+                        ? Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)])
+                        : CustomScrollView(
+                            key: const ValueKey('partner-panel-scroll'),
+                            slivers: [
+                              SliverList.list(children: head),
+                              SliverToBoxAdapter(
+                                child: SizedBox(
+                                  height: c.maxHeight,
+                                  child: _online ? _queue(p, wide: true) : offline,
+                                ),
+                              ),
+                            ],
+                          ),
+                  );
                   return Row(children: [
                     SizedBox(width: 520, child: panel),
                     const VerticalDivider(width: 1),

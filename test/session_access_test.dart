@@ -209,6 +209,46 @@ void main() {
     });
   }
 
+  for (final scale in [1.0, 1.3]) {
+    for (final b in Brightness.values) {
+      testWidgets('the key dialog scrolls in landscape 915x412 at ${scale}x text (${b.name})', (tester) async {
+        tester.view.physicalSize = const Size(915, 412);
+        tester.view.devicePixelRatio = 1;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpWidget(MaterialApp(
+          theme: ThemeData(brightness: b),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: Center(
+                child: TextButton(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => SessionKeyDialog(
+                      label: 'Claude cloud session',
+                      made: (key: 'a' * 64, expiresAt: _now.add(const Duration(days: 1))),
+                    ),
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        ));
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: 'no overflow');
+        await tester.ensureVisible(find.textContaining(sessionKeyEnvName));
+        await tester.pumpAndSettle();
+        expect(tester.getRect(find.text('Done')).bottom, lessThanOrEqualTo(412));
+        await tester.tap(find.text('Done'));
+        await tester.pumpAndSettle();
+        expect(find.byType(SessionKeyDialog), findsNothing);
+      });
+    }
+  }
+
   group('the card', () {
     testWidgets('lists the keys with their state; a full admin adds one and is shown the key once', (tester) async {
       tester.view.physicalSize = const Size(900, 4000);

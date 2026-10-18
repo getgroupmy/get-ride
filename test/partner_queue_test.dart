@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/partner_queue.dart';
@@ -96,10 +97,17 @@ void main() {
     });
     tearDown(() => open.close());
 
-    Future<void> pump(WidgetTester tester) async {
+    Future<void> pump(
+      WidgetTester tester, {
+      Size size = const Size(700, 1400),
+      double textScale = 1,
+      Brightness brightness = Brightness.light,
+    }) async {
       tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(700, 1400);
+      tester.view.physicalSize = size;
       addTearDown(tester.view.reset);
+      tester.platformDispatcher.textScaleFactorTestValue = textScale;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       final router = GoRouter(
         routes: [
           GoRoute(path: '/', builder: (_, _) => const PartnerScreen()),
@@ -123,7 +131,7 @@ void main() {
               (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false}),
             ]),
           ],
-          child: MaterialApp.router(routerConfig: router),
+          child: MaterialApp.router(theme: ThemeData(brightness: brightness), routerConfig: router),
         ),
       );
       await tester.pumpAndSettle();
@@ -152,6 +160,40 @@ void main() {
       await tester.pumpAndSettle();
       expect(rides.accepted, ['new']);
       expect(find.text('trip new'), findsOneWidget);
+    });
+
+    for (final scale in [1.0, 1.3]) {
+      for (final b in Brightness.values) {
+        testWidgets('online in landscape 915x412 at ${scale}x text: the panel scrolls, nothing overflows (${b.name})',
+            (tester) async {
+          await pump(tester, size: const Size(915, 412), textScale: scale, brightness: b);
+          open.add(const []);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: 'no RenderFlex overflow');
+          expect(find.byKey(const ValueKey('partner-panel-scroll')), findsOneWidget);
+          expect(find.text('You are online'), findsOneWidget);
+          // The wallet tiles at the end of the settings scroll into view.
+          final last = find.byKey(const ValueKey('queue-allow-offer'));
+          await tester.scrollUntilVisible(last, 100, scrollable: find.byType(Scrollable).first);
+          await tester.pumpAndSettle();
+          expect(tester.getRect(last).bottom, lessThanOrEqualTo(412));
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
+    testWidgets('Accept keeps the theme font (a ButtonStyle textStyle copied from the theme)', (tester) async {
+      await pump(tester);
+      open.add([_req('r1')]);
+      await tester.pumpAndSettle();
+      final accept = find.byKey(const ValueKey('request-alert-accept'));
+      expect(accept, findsOneWidget);
+      final label = tester.renderObject<RenderParagraph>(
+        find.descendant(of: accept, matching: find.textContaining('Accept for')),
+      );
+      final theme = Theme.of(tester.element(accept));
+      expect(label.text.style?.fontFamily, theme.textTheme.labelLarge?.fontFamily);
+      expect(label.text.style?.fontFamily, isNotNull);
     });
 
     testWidgets('without auto-accept nothing is taken', (tester) async {

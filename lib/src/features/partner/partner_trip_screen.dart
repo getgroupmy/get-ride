@@ -90,6 +90,10 @@ final tripPositionStreamProvider = Provider<Stream<TripFix> Function()>((ref) =>
 /// The trip screen's clock, for the running trip time. For tests.
 final tripClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
+/// From this screen height the trip sheet rests with the drop-off row in
+/// view; below it (a phone on its side), with the passenger's row.
+const tripRestAtDropMinHeight = 600.0;
+
 /// Driver view of an accepted trip: navigate, arrive, verify code, start, complete.
 class PartnerTripScreen extends ConsumerStatefulWidget {
   const PartnerTripScreen({super.key, required this.requestId});
@@ -681,6 +685,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         ? _ll(r.dropLat, r.dropLng)
         : _ll(r.pickupLat, r.pickupLng);
 
+    // An upright phone has the room to rest with the drop-off in view, over
+    // the button bar; on its side only the passenger's row fits.
+    final restAtDrop = MediaQuery.sizeOf(context).height >= tripRestAtDropMinHeight;
+    Widget restLine(bool on, Widget child) => on ? MapSheetRestLine(child: child) : child;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -695,9 +703,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         Card(
           child: Column(children: [
             // The sheet never rests lower than the passenger and their
-            // Message and Call (a phone on its side showed only the title).
-            MapSheetRestLine(
-              child: ListTile(
+            // Message and Call (a phone on its side showed only the title);
+            // on an upright phone, than the drop-off too ([restAtDrop]).
+            restLine(
+              !restAtDrop,
+              ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
               title: Text(r.passengerName),
               // Two pieces with their own icons and no separator, each kept
@@ -707,14 +717,30 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.person_outline, size: 16),
                     const SizedBox(width: 4),
+                    // Kept on one line: large text moves the whole piece
+                    // to the next row instead of breaking it.
                     Flexible(
-                      child: Text('${r.passengers} passenger${r.passengers == 1 ? '' : 's'}', key: const ValueKey('trip-pax')),
+                      child: Text(
+                        '${r.passengers} passenger${r.passengers == 1 ? '' : 's'}',
+                        key: const ValueKey('trip-pax'),
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ]),
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.payments_outlined, size: 16),
                     const SizedBox(width: 4),
-                    Flexible(child: Text(r.paymentMode, key: const ValueKey('trip-payment'))),
+                    Flexible(
+                      child: Text(
+                        r.paymentMode,
+                        key: const ValueKey('trip-payment'),
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ]),
                 ]),
                 if (r.isForOthers) Text('Booked by ${r.riderName ?? 'another rider'}'),
@@ -741,10 +767,14 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
               subtitle: r.pickupAddress == null ? null : Text(r.pickupAddress!, maxLines: 2),
             ),
             RideStopTiles(stops: r.stops, onNavigate: r.status.isOngoing ? (s) => _navigate(s.point) : null),
-            ListTile(
-              leading: Icon(Icons.location_on, color: Colors.red.shade700),
-              title: Text(r.dropLabel),
-              subtitle: r.dropAddress == null ? null : Text(r.dropAddress!, maxLines: 2),
+            restLine(
+              restAtDrop,
+              ListTile(
+                key: const ValueKey('trip-drop'),
+                leading: Icon(Icons.location_on, color: Colors.red.shade700),
+                title: Text(r.dropLabel),
+                subtitle: r.dropAddress == null ? null : Text(r.dropAddress!, maxLines: 2),
+              ),
             ),
             if (r.note != null) ListTile(leading: const Icon(Icons.notes), title: Text(r.note!)),
             const Divider(height: 1),

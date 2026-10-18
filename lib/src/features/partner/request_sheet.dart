@@ -387,7 +387,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     disabledForegroundColor: Colors.white70,
     minimumSize: Size.fromHeight(height),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    textStyle: const TextStyle(fontWeight: FontWeight.w700),
+    textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
   );
 
   /// The fare offers: the accent as a tint, so Accept stays the one to press.
@@ -398,7 +398,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
       foregroundColor: dark ? const Color(0xFF7FD0F2) : const Color(0xFF0E6E99),
       minimumSize: Size.fromHeight(height),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      textStyle: const TextStyle(fontWeight: FontWeight.w700),
+      textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
     );
   }
 

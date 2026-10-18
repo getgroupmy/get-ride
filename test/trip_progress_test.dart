@@ -189,7 +189,7 @@ void main() {
     late _FakeRides rides;
     late _Geo geo;
 
-    Future<void> pump(WidgetTester tester) async {
+    Future<void> pump(WidgetTester tester, {Brightness brightness = Brightness.light}) async {
       tester.view.physicalSize = const Size(1200, 1800);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -232,7 +232,7 @@ void main() {
             rideServicesProvider.overrideWith((ref) async => const []),
             serviceBoxNamesProvider.overrideWith((ref) async => const {}),
           ],
-          child: MaterialApp.router(routerConfig: router),
+          child: MaterialApp.router(theme: ThemeData(brightness: brightness), routerConfig: router),
         ),
       );
     }
@@ -469,6 +469,31 @@ void main() {
       await tester.pumpAndSettle();
       expect(content().pixels, 0);
     });
+
+    for (final b in Brightness.values) {
+      testWidgets('Head to pickup at 1.3x text: one-line pieces, and it rests with the drop-off above the buttons '
+          '(${b.name})', (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await pump(tester, brightness: b);
+        tester.view.physicalSize = const Size(412, 915);
+        rows.add(ride('accepted', extra: {'passengers': 1, 'payment_mode': 'Cash'}));
+        await tester.pump();
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(find.text('Head to pickup'), findsOneWidget);
+        for (final key in ['trip-pax', 'trip-payment']) {
+          final text = tester.widget<Text>(find.byKey(ValueKey(key)));
+          expect(text.maxLines, 1, reason: '$key is never broken across lines');
+          expect(text.softWrap, isFalse);
+        }
+        // At rest the drop-off row stands whole above the button bar.
+        final drop = tester.getRect(find.byKey(const ValueKey('trip-drop')));
+        expect(find.text('KL Sentral'), findsOneWidget);
+        expect(drop.bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('trip-footer'))).top + 1));
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('the sheet scrolls only once fully expanded, and only when more is below', (tester) async {
       await pump(tester);
