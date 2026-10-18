@@ -581,6 +581,7 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 key: const ValueKey('tariff-level'),
                 initialValue: _level,
                 decoration: const InputDecoration(labelText: 'Applies to'),

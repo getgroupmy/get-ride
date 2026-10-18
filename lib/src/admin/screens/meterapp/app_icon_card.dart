@@ -144,11 +144,12 @@ class _AppIconCardState extends ConsumerState<AppIconCard> {
                   children: [
                     Expanded(child: Text('Schedule (top wins)', style: t.textTheme.labelLarge)),
                     if (edit)
-                      TextButton(
+                      Flexible(
+                        child: TextButton(
                         key: const ValueKey('app-icon-reset'),
                         onPressed: () => _edit(c.copyWith(schedule: defaultIconSchedule)),
                         child: const Text('Standard schedule'),
-                      ),
+                      )),
                   ],
                 ),
                 for (final (i, w) in c.schedule.indexed)

@@ -339,21 +339,14 @@ class _RouteEditorState extends ConsumerState<_RouteEditor> {
                 color: t.colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 6),
-              Text(
-                r.direction.label.toUpperCase(),
-                style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.8),
-              ),
-              const Spacer(),
-              if (r.channel.transports.length > 1)
-                SegmentedButton<MessagingTransport>(
-                  key: ValueKey('messaging-transport-${r.channel.id}-${r.direction.id}'),
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                  segments: [for (final tr in r.channel.transports) ButtonSegment(value: tr, label: Text(tr.label))],
-                  selected: {r.transport},
-                  onSelectionChanged: edit ? (v) => _change(r.copyWith(transport: v.first)) : null,
+              Expanded(
+                child: Text(
+                  r.direction.label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.8),
                 ),
-              const SizedBox(width: 8),
+              ),
               Switch(
                 key: ValueKey('messaging-enabled-${r.channel.id}-${r.direction.id}'),
                 value: r.enabled,
@@ -361,6 +354,19 @@ class _RouteEditorState extends ConsumerState<_RouteEditor> {
               ),
             ],
           ),
+          // On its own line, full width: next to the label and the switch it
+          // ran off a phone's screen (and further with large text).
+          if (r.channel.transports.length > 1) ...[
+            const SizedBox(height: 6),
+            SegmentedButton<MessagingTransport>(
+              key: ValueKey('messaging-transport-${r.channel.id}-${r.direction.id}'),
+              showSelectedIcon: false,
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              segments: [for (final tr in r.channel.transports) ButtonSegment(value: tr, label: Text(tr.label))],
+              selected: {r.transport},
+              onSelectionChanged: edit ? (v) => _change(r.copyWith(transport: v.first)) : null,
+            ),
+          ],
           if (r.enabled) ...[
             const SizedBox(height: 6),
             if (r.transport == MessagingTransport.whatsapp)
@@ -592,6 +598,7 @@ class _QueueCardState extends ConsumerState<_QueueCard> {
             if (widget.canEdit) ...[
               const SizedBox(height: 8),
               DropdownButtonFormField<MessagingChannel>(
+                isExpanded: true,
                 initialValue: _channel,
                 decoration: const InputDecoration(labelText: 'Channel', isDense: true),
                 items: [

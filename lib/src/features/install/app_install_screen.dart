@@ -41,6 +41,7 @@ class AppInstallScreen extends ConsumerWidget {
                 AppInstallHeader(platform: platform),
                 const SizedBox(height: 24),
                 build.when(
+                  skipLoadingOnReload: true,
                   loading: () => const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Column(
                     children: [

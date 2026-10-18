@@ -261,7 +261,7 @@ class _ReplyView extends StatelessWidget {
                   )
                 : Row(
                     children: [
-                      Text('Was this helpful?', style: muted),
+                      Flexible(child: Text('Was this helpful?', style: muted)),
                       IconButton(
                         key: const ValueKey('help-helpful-yes'),
                         tooltip: 'Helpful',

@@ -151,13 +151,13 @@ class _HailDestinationScreenState extends ConsumerState<HailDestinationScreen> {
                                     key: const ValueKey('hail-route'),
                                   ),
                                 ),
-                                Text(
+                                Flexible(child: Text(
                                   estimate == null
                                       ? 'No estimate'
                                       : 'Est. ${widget.args.currency} ${estimate.toStringAsFixed(2)}',
                                   key: const ValueKey('hail-estimate'),
                                   style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                                ),
+                                )),
                               ],
                             ),
                             Text('The meter bills what it measures; this is a quote.', style: t.textTheme.bodySmall),

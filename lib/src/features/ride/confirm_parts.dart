@@ -226,16 +226,20 @@ class _EntranceSheetState extends State<_EntranceSheet> {
             onTap: () => _type(digit),
             child: SizedBox(
               height: 50,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(digit, style: TextStyle(fontSize: 24, height: 1.1, color: ink)),
-                  if (_letters[digit] != null)
-                    Text(
-                      _letters[digit]!,
-                      style: TextStyle(fontSize: 9, letterSpacing: 2, fontWeight: FontWeight.w600, color: ink),
-                    ),
-                ],
+              // Large phone text shrinks to the key instead of spilling out.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(digit, style: TextStyle(fontSize: 24, height: 1.1, color: ink)),
+                    if (_letters[digit] != null)
+                      Text(
+                        _letters[digit]!,
+                        style: TextStyle(fontSize: 9, letterSpacing: 2, fontWeight: FontWeight.w600, color: ink),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -642,10 +646,14 @@ class ConfirmServiceCard extends StatelessWidget {
                 children: [
                   Icon(Icons.person, size: 17, color: ink),
                   const SizedBox(width: 2),
-                  Text(
-                    etaMinutes == null ? '${service.seats}' : '${service.seats} • $etaMinutes min',
-                    key: ValueKey('service-eta-${service.name}'),
-                    style: t.textTheme.bodyMedium?.copyWith(color: ink, fontSize: 15),
+                  Flexible(
+                    child: Text(
+                      etaMinutes == null ? '${service.seats}' : '${service.seats} • $etaMinutes min',
+                      key: ValueKey('service-eta-${service.name}'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.bodyMedium?.copyWith(color: ink, fontSize: 15),
+                    ),
                   ),
                 ],
               ),
@@ -863,19 +871,23 @@ class ConfirmFareSection extends StatelessWidget {
     final center = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (trend != null && adjust == 0) ...[
-              FareTrendArrows(trend: trend!, size: 24),
-              const SizedBox(width: 6),
+        // A long fare in large text shrinks rather than running off the sheet.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (trend != null && adjust == 0) ...[
+                FareTrendArrows(trend: trend!, size: 24),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                money(recommended + adjust),
+                key: const ValueKey('confirm-fare'),
+                style: t.textTheme.headlineSmall?.copyWith(fontSize: 28, fontWeight: FontWeight.w600),
+              ),
             ],
-            Text(
-              money(recommended + adjust),
-              key: const ValueKey('confirm-fare'),
-              style: t.textTheme.headlineSmall?.copyWith(fontSize: 28, fontWeight: FontWeight.w600),
-            ),
-          ],
+          ),
         ),
         Text(
           adjust == 0 ? 'Recommended fare' : 'Recommended fare: ${money(recommended)}',
@@ -1774,7 +1786,15 @@ Future<bool> confirmAddStop(
     child: Row(
       children: [
         Expanded(child: Text(label, style: t.textTheme.bodyLarge)),
-        Text(value, key: key, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            value,
+            key: key,
+            textAlign: TextAlign.end,
+            style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
       ],
     ),
   );
@@ -1784,6 +1804,7 @@ Future<bool> confirmAddStop(
     barrierDismissible: false,
     builder: (c) => AlertDialog(
       key: const ValueKey('add-stop-confirm'),
+      scrollable: true,
       title: const Text('Add this stop?'),
       content: Column(
         mainAxisSize: MainAxisSize.min,

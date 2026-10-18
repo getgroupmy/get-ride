@@ -121,6 +121,10 @@ import 'data/map_profile_repository.dart' show mapProfileProvider;
 
 const brandAccent = Color(0xFF2DABE2);
 
+/// The largest text size the app takes from the phone's settings (Android
+/// font size, iOS Larger Text); every screen is checked to fit at it.
+const maxAppTextScale = 1.3;
+
 /// The app theme. Note that [FilledButton]s are full width by default
 /// (`Size.fromHeight`): one placed in a row or a list tile's `trailing` needs
 /// its own `minimumSize`. [colors] are the admin's overrides for this theme
@@ -853,28 +857,33 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       darkTheme: appTheme(Brightness.dark, colors: branding?.darkColors ?? const {}),
       themeMode: mode,
       routerConfig: router,
-      builder: (_, child) => AndroidNavBarInset(
-        child: SplashGate(
-          cached: widget.branding,
-          live: _branding?.latest,
-          child: UpdateGate(
-            child: PermissionGate(
-              location: () => router.routerDelegate.currentConfiguration.uri.path,
-              listenable: router.routerDelegate,
-              child: WebBuildGate(
+      // The phone's text size is honoured up to [maxAppTextScale]: beyond it
+      // rows of buttons and switches no longer fit a phone's width.
+      builder: (_, child) => MediaQuery.withClampedTextScaling(
+        maxScaleFactor: maxAppTextScale,
+        child: AndroidNavBarInset(
+          child: SplashGate(
+            cached: widget.branding,
+            live: _branding?.latest,
+            child: UpdateGate(
+              child: PermissionGate(
                 location: () => router.routerDelegate.currentConfiguration.uri.path,
-                child: VoiceProtectionHost(
-                  child: IncomingTransferListener(
-                    child: IncomingCallListener(
-                      child: RideCallListener(
-                        child: KeyboardDismissOnChange(
-                          listenable: router.routerDelegate,
-                          child: KeyboardDismissOnTap(
-                            child: PageStyleHost(
-                              styles: styles,
-                              location: () => router.routerDelegate.currentConfiguration.fullPath,
-                              listenable: router.routerDelegate,
-                              child: child ?? const SizedBox.shrink(),
+                listenable: router.routerDelegate,
+                child: WebBuildGate(
+                  location: () => router.routerDelegate.currentConfiguration.uri.path,
+                  child: VoiceProtectionHost(
+                    child: IncomingTransferListener(
+                      child: IncomingCallListener(
+                        child: RideCallListener(
+                          child: KeyboardDismissOnChange(
+                            listenable: router.routerDelegate,
+                            child: KeyboardDismissOnTap(
+                              child: PageStyleHost(
+                                styles: styles,
+                                location: () => router.routerDelegate.currentConfiguration.fullPath,
+                                listenable: router.routerDelegate,
+                                child: child ?? const SizedBox.shrink(),
+                              ),
                             ),
                           ),
                         ),

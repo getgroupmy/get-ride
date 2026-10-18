@@ -324,6 +324,7 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
               ),
               gap,
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 key: const ValueKey('help-edit-audience'),
                 initialValue: _audience,
                 decoration: const InputDecoration(labelText: 'For'),

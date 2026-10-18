@@ -1050,7 +1050,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(Icons.radar, size: 18),
                       SizedBox(width: 8),
-                      Text('Waiting for requests…', style: TextStyle(fontWeight: FontWeight.w600)),
+                      Flexible(
+                        child: Text(
+                          'Waiting for requests…',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ]),
                   ),
                 ),

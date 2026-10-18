@@ -192,6 +192,32 @@ void main() {
     await tester.pump(const Duration(minutes: 1));
   });
 
+  testWidgets('on a phone with large text, each switch and SMS / WhatsApp choice stays on screen', (tester) async {
+    tester.view.physicalSize = const Size(390, 4000);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          supabaseProvider.overrideWithValue(_db),
+          adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+          messagingRepositoryProvider.overrideWithValue(_FakeRepo([_device('g', ago: const Duration(seconds: 30))])),
+          messagingClockProvider.overrideWithValue(() => _now),
+        ],
+        child: const MaterialApp(home: AdminMessagingScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    for (final key in ['messaging-enabled-otp-inbound', 'messaging-transport-otp-inbound', 'messaging-enabled-otp-outbound']) {
+      final r = tester.getRect(find.byKey(ValueKey(key)));
+      expect(r.right, lessThanOrEqualTo(390), reason: '$key inside the screen');
+    }
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(minutes: 1));
+  });
+
   group('gateway outage', () {
     final otp = MessagingRoute(
       channel: MessagingChannel.otp,

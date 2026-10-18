@@ -676,7 +676,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         ),
         if (r.status == RideStatus.onTrip) ...[
           const SizedBox(height: 8),
-          Row(key: const ValueKey('trip-meter'), children: [
+          Wrap(key: const ValueKey('trip-meter'), crossAxisAlignment: WrapCrossAlignment.center, children: [
             const Icon(Icons.timer_outlined, size: 18),
             const SizedBox(width: 6),
             Text(formatTripElapsed(tripElapsed(startedAt: r.startedAt, firstSeen: _onTripSince, now: _now)),

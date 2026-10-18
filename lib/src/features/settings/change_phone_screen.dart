@@ -111,6 +111,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
                       SizedBox(
                         width: 110,
                         child: DropdownButtonFormField<String>(
+                          isExpanded: true,
                           initialValue: _dial,
                           items: [
                             for (final c in {..._dialCodes, _dial}) DropdownMenuItem(value: c, child: Text(c)),

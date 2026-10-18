@@ -284,6 +284,7 @@ class _BleSection extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
           child: Text(
             stats.when(
+              skipLoadingOnReload: true,
               data: (s) => s.describe(7),
               loading: () => 'Loading how trips started…',
               error: (_, _) => 'Couldn\u2019t load how trips started.',
@@ -382,6 +383,7 @@ class _SafetySection extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
           child: Text(
             summary.when(
+              skipLoadingOnReload: true,
               data: (s) => s.describe(7),
               loading: () => 'Loading trip safety…',
               error: (_, _) => 'Couldn\u2019t load trip safety.',

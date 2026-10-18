@@ -29,6 +29,7 @@ class ChangePinScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final hasPin = ref.watch(pinSetProvider);
     return hasPin.when(
+      skipLoadingOnReload: true,
       data: (v) => _ChangePinFlow(hasPin: v),
       loading: () => Scaffold(
         appBar: AppBar(),

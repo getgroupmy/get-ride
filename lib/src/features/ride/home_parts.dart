@@ -191,7 +191,8 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
     final style = SurfaceStyle.of(context, homeSurface);
     final radius = BorderRadius.circular(style.number('vehicleRadius'));
     return SizedBox(
-      height: style.number('vehicleBarHeight'),
+      // Taller by as much as the phone's larger text makes the name line.
+      height: style.number('vehicleBarHeight') + (MediaQuery.textScalerOf(context).scale(13) - 13) * 1.4,
       child: ListView.separated(
         key: const ValueKey('vehicle-type-bar'),
         scrollDirection: Axis.horizontal,

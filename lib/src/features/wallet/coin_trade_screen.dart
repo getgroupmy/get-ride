@@ -546,8 +546,8 @@ class _RateCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('1 GC', style: t.textTheme.labelLarge),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.end,
               children: [
                 Text(
                   formatCoinRate(market.ratePerGC, 'RM'),

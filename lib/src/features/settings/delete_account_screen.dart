@@ -140,6 +140,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   Widget _review(ThemeData t) {
     final check = ref.watch(accountDeletionCheckProvider);
     return check.when(
+      skipLoadingOnReload: true,
       loading: () => const Padding(
         padding: EdgeInsets.all(48),
         child: Center(child: CircularProgressIndicator()),

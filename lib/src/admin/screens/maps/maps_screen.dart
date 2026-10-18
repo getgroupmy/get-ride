@@ -908,7 +908,7 @@ class _KeyRow extends StatelessWidget {
                 Expanded(child: Text(slot.label, style: Theme.of(context).textTheme.titleSmall)),
                 Icon(icon, size: 18, color: color),
                 const SizedBox(width: 4),
-                Text(status, style: TextStyle(color: color)),
+                Flexible(child: Text(status, style: TextStyle(color: color))),
               ],
             ),
             const SizedBox(height: 8),

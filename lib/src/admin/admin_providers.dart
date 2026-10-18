@@ -7,16 +7,22 @@ import '../data/live_tables.dart';
 
 final adminRepositoryProvider = Provider((ref) => AdminRepository(ref.watch(supabaseProvider)));
 
-/// The signed-in user's admin grants; re-resolved on every auth change.
+/// The signed-in user's admin grants; re-resolved on every auth change and
+/// whenever access rules change (in the background: see AdminShell). A
+/// re-read that fails keeps the grants this account already had, so a
+/// dropped connection never turns an admin away mid-task.
 final adminAccessProvider = FutureProvider<AdminAccess>((ref) async {
   ref.watchLive('admin_access');
-  if (ref.watch(currentUserIdProvider) == null) return AdminAccess.none;
+  final uid = ref.watch(currentUserIdProvider);
+  if (uid == null) return AdminAccess.none;
   try {
-    return await ref.watch(adminRepositoryProvider).myAccess();
+    return _lastAccess[uid] = await ref.watch(adminRepositoryProvider).myAccess();
   } catch (_) {
-    return AdminAccess.none;
+    return _lastAccess[uid] ?? AdminAccess.none;
   }
 });
+
+final _lastAccess = <String, AdminAccess>{};
 
 /// Access to one admin module, for gating buttons in its screens.
 final moduleAccessProvider = Provider.family<AccessLevel, String>((ref, moduleId) {

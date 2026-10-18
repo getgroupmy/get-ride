@@ -92,7 +92,7 @@ class ServiceUnavailableSheet extends StatelessWidget {
     final t = Theme.of(context);
     final scheme = t.colorScheme;
     final copy = unavailableCopy(at, gap, region: region, block: block);
-    return Padding(
+    return SingleChildScrollView(child: Padding(
       key: const ValueKey('service-unavailable'),
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
       child: Column(
@@ -135,6 +135,6 @@ class ServiceUnavailableSheet extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ));
   }
 }

@@ -621,6 +621,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
       ]),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
+        isExpanded: true,
         initialValue: evIdCountries.contains(_idCountry) ? _idCountry : 'Other',
         decoration: const InputDecoration(labelText: 'Country of issue', border: OutlineInputBorder()),
         items: [for (final c in evIdCountries) DropdownMenuItem(value: c, child: Text(c))],

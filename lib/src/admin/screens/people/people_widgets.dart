@@ -1101,6 +1101,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
             if (f.requireInsuranceProvider) ...[
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: _insurers.any((e) => e.id == _insurerId) ? _insurerId : null,
                 decoration: const InputDecoration(labelText: 'Insurance provider'),
                 items: [
@@ -1180,7 +1181,8 @@ class _ActionNeeded extends StatelessWidget {
                 Icon(Icons.circle, size: 8, color: i.compulsory ? t.colorScheme.error : t.colorScheme.outline),
                 const SizedBox(width: 8),
                 Expanded(child: Text(i.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                Text(
+                const SizedBox(width: 8),
+                Flexible(child: Text(
                   switch (i.reason) {
                     DocIssueReason.missing => 'Not uploaded',
                     DocIssueReason.rejected => 'Rejected — re-upload',
@@ -1194,7 +1196,7 @@ class _ActionNeeded extends StatelessWidget {
                       DocIssueReason.expired => Colors.orange.shade800,
                     },
                   ),
-                ),
+                )),
               ]),
             ),
         ]),
