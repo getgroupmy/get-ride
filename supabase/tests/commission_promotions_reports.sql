@@ -172,8 +172,9 @@ select pg_temp.check((select rate = 0.05 and promotion_id is null from pg_temp.p
 select pg_temp.check((select rate = 0.03 from pg_temp.promo('2020-06-01 08:00+08')), 'Monday 08:00: mornings');
 select pg_temp.check((select rate = 0.15 from pg_temp.promo('2020-06-01 11:00+08')), 'Monday 11:00: nothing');
 select pg_temp.check((select rate = 0.15 from pg_temp.promo('2020-06-06 08:00+08')), 'Saturday 08:00: not a weekday');
-select pg_temp.check((select rate = 0.15 from pg_temp.promo('2020-06-01 08:00+08', 'Europe/London')),
-  '08:00 in Malaysia is 01:00 in London');
+select pg_temp.check((select rate = 0.04 and promotion_id = '00000000-0000-0000-0000-0000000224e8'
+                        from pg_temp.promo('2020-06-01 08:00+08', 'Europe/London')),
+  '08:00 in Malaysia is 01:00 in London: not the mornings, the nights (past midnight)');
 select pg_temp.check((select rate = 0.03 from pg_temp.promo('2020-06-01 15:00+08', 'Europe/London')),
   '15:00 in Malaysia is 08:00 in London');
 select pg_temp.check((select rate = 0.03 from pg_temp.promo('2020-06-01 08:00+08', 'Not/AZone')),
