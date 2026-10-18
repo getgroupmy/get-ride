@@ -19,8 +19,10 @@ begin
     raise exception 'FAILED: grants on the 0137 functions';
   end if;
   if has_table_privilege('anon', 'public.auth_rate_hits', 'select')
-     or has_table_privilege('authenticated', 'public.auth_rate_hits', 'insert') then
-    raise exception 'FAILED: auth_rate_hits must be closed to clients';
+     or has_table_privilege('authenticated', 'public.auth_rate_hits', 'insert')
+     or has_table_privilege('anon', 'public.auth_rate_counts', 'select')
+     or has_table_privilege('authenticated', 'public.auth_rate_counts', 'insert') then
+    raise exception 'FAILED: the rate limit tables must be closed to clients';
   end if;
 end
 $$;
@@ -47,8 +49,8 @@ begin
   if public.auth_rate_take('t137', null, 0, interval '10 minutes') <> 0 then
     raise exception 'FAILED: a request without an address is not limited';
   end if;
-  -- Tries that left the window no longer count.
-  update public.auth_rate_hits set at = now() - interval '11 minutes' where bucket = 't137';
+  -- Tries that left the window no longer count (0229: windows are fixed).
+  update public.auth_rate_counts set window_start = window_start - interval '10 minutes' where bucket = 't137';
   if public.auth_rate_take('t137', '203.0.113.9', 3, interval '10 minutes') <> 0 then
     raise exception 'FAILED: old tries should have left the window';
   end if;

@@ -222,6 +222,49 @@ void main() {
       expect(s.expire(t0.add(const Duration(seconds: 9))).count, 0);
     });
 
+    test('a report goes only when it says something new', () {
+      final t0 = DateTime.utc(2026, 10, 12, 9);
+      DateTime at(int s) => t0.add(Duration(seconds: s));
+      bool should({
+        required bool close,
+        bool? reported,
+        int? last,
+        required int now,
+        String status = 'arrived',
+        BleProofResult? answer,
+      }) => bleShouldReport(
+        close: close,
+        reported: reported,
+        lastReport: last == null ? null : at(last),
+        now: at(now),
+        status: status,
+        answer: answer,
+      );
+
+      expect(should(close: false, now: 0), isFalse, reason: 'nothing seen close yet');
+      expect(should(close: true, now: 0), isTrue, reason: 'first close sighting');
+      expect(should(close: true, reported: true, last: 0, now: 4), isFalse, reason: 'nothing changed');
+      expect(should(close: true, reported: true, last: 0, now: 24), isFalse);
+      expect(should(close: true, reported: true, last: 0, now: 25), isTrue, reason: 'keep-alive');
+      expect(should(close: false, reported: true, last: 0, now: 5), isTrue, reason: 'fell below the threshold');
+      expect(should(close: true, reported: false, last: 0, now: 5), isTrue, reason: 'back above it');
+      expect(should(close: false, reported: false, last: 0, now: 60), isFalse, reason: 'still not close: no keep-alive');
+      expect(should(close: false, reported: true, last: 0, now: 3), isFalse, reason: 'never closer than 4 s');
+      expect(should(close: true, last: 0, now: 4), isTrue, reason: 'one that didn\'t get through goes again');
+      expect(should(close: true, reported: true, last: 0, now: 60, answer: BleProofResult.matched), isFalse,
+          reason: 'matched: nothing more to say');
+      expect(should(close: false, reported: true, last: 0, now: 60, answer: BleProofResult.matched), isFalse,
+          reason: 'matched: not even a crossing');
+      expect(should(close: true, reported: true, last: 0, now: 240, answer: BleProofResult.matched), isTrue,
+          reason: 'matched: a slow keep-alive, for the start check');
+      expect(should(close: true, reported: true, last: 0, now: 60, answer: BleProofResult.started), isFalse);
+      expect(should(close: true, reported: true, last: 0, now: 60, answer: BleProofResult.waiting), isTrue);
+      for (final status in ['on_trip', 'completed', 'cancelled', 'searching']) {
+        expect(should(close: true, now: 0, status: status), isFalse, reason: '$status: past the pickup');
+      }
+      expect(should(close: true, now: 0, status: 'accepted'), isTrue);
+    });
+
     test('the driver counts down only where the report may start the trip', () {
       const auto = BleSettings(enabled: true, autostartNoPin: true);
       expect(bleNeedsCountdown(side: 'driver', status: 'arrived', settings: auto), isTrue);
@@ -639,6 +682,42 @@ void main() {
         async.flushMicrotasks();
         expect(e.phase.value, BleHandshakePhase.unavailable);
         expect(e.unavailableReason, 'Bluetooth is off.');
+        finish(async, e);
+      });
+    });
+
+    test('reports only on change: first sighting, keep-alive, threshold crossings; none after a match', () {
+      run((async, now) {
+        final e = engine(_ticket(), now);
+        e.start();
+        async.flushMicrotasks();
+        seePeer(async, 7);
+        expect(proofs, hasLength(1), reason: 'the first close sighting');
+        seePeer(async, 20);
+        expect(proofs, hasLength(1), reason: 'nothing new: no report every 4 s');
+        seePeer(async, 6);
+        expect(proofs, hasLength(2), reason: 'the keep-alive');
+        expect(proofs.last.seenFor, greaterThanOrEqualTo(bleSeenFor));
+
+        seePeer(async, 2, rssi: -90);
+        expect(proofs, hasLength(3), reason: 'fell below the threshold');
+        expect(proofs.last.seenFor, Duration.zero);
+        seePeer(async, 20, rssi: -90);
+        expect(proofs, hasLength(3), reason: 'still weak: nothing more');
+
+        answers.add(BleProofResult.matched);
+        seePeer(async, 7);
+        expect(proofs, hasLength(4), reason: 'back above it');
+        expect(e.phase.value, BleHandshakePhase.matched);
+        seePeer(async, 60);
+        expect(proofs, hasLength(4), reason: 'matched: no more reports');
+        seePeer(async, 180);
+        expect(proofs, hasLength(5), reason: 'matched: a keep-alive every 4 minutes');
+        expect(radio.stops, 0, reason: 'still on the air for the other phone');
+
+        e.updateStatus('accepted');
+        seePeer(async, 2);
+        expect(proofs, hasLength(6), reason: 'a new status asks again');
         finish(async, e);
       });
     });

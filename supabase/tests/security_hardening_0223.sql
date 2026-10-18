@@ -206,7 +206,7 @@ select pg_temp.refused($q$insert into public.user_sessions (user_id, event_type)
 select pg_temp.check(not (select is_emulator from public.device_registration_status('device-0223')),
   'a signed-out "emulator" row doesn''t mark the device');
 reset role;
-insert into public.auth_rate_hits (bucket, key) select 'telemetry_anon', '203.0.113.23' from generate_series(1, 120);
+select public.auth_rate_take('telemetry_anon', '203.0.113.23', 120, interval '1 hour') from generate_series(1, 120);
 set local role anon;
 select pg_temp.as_anon();
 select set_config('request.headers', '{"x-real-ip": "203.0.113.23"}', true);
@@ -227,15 +227,15 @@ set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000223c1');
 insert into ids select 'sos', public.sos_raise(null, 3.15, 101.71);
 reset role;
-insert into public.auth_rate_hits (bucket, key) select 'sos', '00000000-0000-0000-0000-0000000223c1' from generate_series(1, 3);
+select public.auth_rate_take('sos', '00000000-0000-0000-0000-0000000223c1', 3, interval '1 hour') from generate_series(1, 3);
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000223c1');
 select pg_temp.check(public.sos_raise(null, 3.16, 101.72) = (select id from ids where k = 'sos'),
   'pressing again within ten minutes still updates the alert');
 reset role;
 update public.safety_incidents set status = 'resolved' where id = (select id from ids where k = 'sos');
-insert into public.auth_rate_hits (bucket, key)
-select 'referral', '00000000-0000-0000-0000-0000000223c1' from generate_series(1, 10);
+select public.auth_rate_take('referral', '00000000-0000-0000-0000-0000000223c1', 10, interval '1 hour')
+  from generate_series(1, 10);
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000223c1');
 select pg_temp.refused($q$select public.sos_raise(null, 3.15, 101.71)$q$, 'a fourth new alert in an hour', '%RATE_LIMITED%');

@@ -116,9 +116,6 @@ class BleHandshakeServer {
   );
 }
 
-/// How often a qualifying sighting is reported again.
-const bleReportEvery = Duration(seconds: 4);
-
 /// How long to hold off after the server says "too many".
 const bleRateLimitBackoff = Duration(seconds: 30);
 
@@ -177,6 +174,12 @@ class BleHandshakeEngine {
   Timer? _refresh;
   Timer? _countdown;
   DateTime? _lastReport;
+  // What the last report the server took said (close or not); null before
+  // one, or after one that didn't get through.
+  bool? _reported;
+  // The server's last answer: 'matched' slows the reporting to a rare
+  // keep-alive, a started trip ends it (bleShouldReport).
+  BleProofResult? _answer;
   DateTime? _holdUntil;
   bool _reporting = false;
   bool _countedDown = false;
@@ -193,6 +196,8 @@ class BleHandshakeEngine {
   Future<void> start() async {
     if (_done || _running || !_live(_status)) return;
     _running = true;
+    _reported = null;
+    _answer = null;
     final got = await _fetchTicket();
     if (_done) return _halt(BleHandshakePhase.idle);
     if (got == _Fetch.offline) {
@@ -234,6 +239,8 @@ class BleHandshakeEngine {
     } else {
       // accepted → arrived: autostart may now apply; ask again.
       _lastReport = null;
+      _reported = null;
+      _answer = null;
     }
   }
 
@@ -339,11 +346,27 @@ class BleHandshakeEngine {
         (phase.value == BleHandshakePhase.nearby || phase.value == BleHandshakePhase.detectedOffline)) {
       phase.value = BleHandshakePhase.searching;
     }
-    if (!_seen.qualifies || _reporting || phase.value == BleHandshakePhase.countdown) return;
+    if (_reporting || phase.value == BleHandshakePhase.countdown) return;
     if (_holdUntil != null && now.isBefore(_holdUntil!)) return;
-    if (_lastReport != null && now.difference(_lastReport!) < bleReportEvery) return;
+    final close = _seen.qualifies;
+    // Gone out of sight altogether: nothing to say (the server's last
+    // "close" lapses by itself); a later close sighting is news again.
+    if (!close && peerRssi.value == null) {
+      if (_reported == true) _reported = false;
+      return;
+    }
+    if (!bleShouldReport(
+      close: close,
+      reported: _reported,
+      lastReport: _lastReport,
+      now: now,
+      status: _status,
+      answer: _answer,
+    )) {
+      return;
+    }
     final t = _ticket!;
-    if (!_countedDown && bleNeedsCountdown(side: t.side, status: _status, settings: t.settings)) {
+    if (close && !_countedDown && bleNeedsCountdown(side: t.side, status: _status, settings: t.settings)) {
       _startCountdown();
       return;
     }
@@ -366,7 +389,10 @@ class BleHandshakeEngine {
 
   Future<void> _report() async {
     final t = _ticket;
-    final rssi = _seen.averageRssi;
+    // Close: the run's average. No longer close: the signal as it is now.
+    final close = _seen.qualifies;
+    final rssi = close ? _seen.averageRssi : peerRssi.value;
+    final seenFor = close ? _seen.seenFor : Duration.zero;
     if (t == null || rssi == null || _reporting) return;
     _reporting = true;
     _lastReport = _now();
@@ -375,8 +401,10 @@ class BleHandshakeEngine {
       try {
         at = await _position();
       } catch (_) {}
-      final r = await server.proof(t.peerToken!, rssi, _seen.seenFor, at);
+      final r = await server.proof(t.peerToken!, rssi, seenFor, at);
       if (!_running) return;
+      _reported = close;
+      _answer = r;
       switch (r) {
         case BleProofResult.started:
           _done = true;
@@ -391,6 +419,8 @@ class BleHandshakeEngine {
           if (phase.value == BleHandshakePhase.detectedOffline) phase.value = BleHandshakePhase.nearby;
       }
     } catch (_) {
+      // Not taken: tried again after the gap, as if never sent.
+      _reported = null;
       // No signal: the other phone is here, but the server can't be asked.
       // Say so (it is not a match), and try again on a later tick.
       if (_running && !_disposed && _seen.qualifies && phase.value == BleHandshakePhase.nearby) {

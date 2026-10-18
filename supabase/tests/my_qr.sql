@@ -201,7 +201,7 @@ select count(*) from (select public.resolve_qr('Unknown' || lpad(i::text, 15, '0
 select pg_temp.check(public.resolve_qr((select token from qr where name = 'dan_now3'))->>'status' = 'rate_limited',
                      'too many unknown tokens: no lookups for a while');
 reset role;
-delete from public.auth_rate_hits where bucket like 'my_qr_miss%';
+delete from public.auth_rate_counts where bucket like 'my_qr_miss%';
 
 -- Anon: referral code only; nothing of a driver.
 set local role anon;
