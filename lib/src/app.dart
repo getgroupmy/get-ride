@@ -14,6 +14,7 @@ import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
+import 'core/launch_destination.dart' show AppLaunch;
 import 'core/auth_utils.dart' show PendingSignInRoute, ResyncPin, SignInPhone, signInLocation, signInNextPath, signInStepPhone, signInStepRedirect;
 import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
@@ -223,6 +224,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (schemeLink != null) return schemeLink;
       final signedIn = db.auth.currentSession != null;
       final loc = state.matchedLocation;
+      // The first app page of this run, for the launch-only rules.
+      if (signedIn) AppLaunch.note(loc);
       final onAuth = loc.startsWith('/login');
       // Diagnostics are for people who can't sign in, so they work either way.
       if (loc == '/diagnostics') return null;

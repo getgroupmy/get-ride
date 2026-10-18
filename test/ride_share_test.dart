@@ -159,6 +159,16 @@ void main() {
       return rides;
     }
 
+    testWidgets('an expired link on a desktop: Open GET.ride is centred, not full width', (tester) async {
+      await pump(tester, null, size: const Size(1366, 768));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('shared-ride-missing')), findsOneWidget);
+      final button = tester.getRect(find.byKey(const ValueKey('shared-ride-open-app')));
+      expect(button.width, lessThanOrEqualTo(320));
+      expect((button.center.dx - 683).abs(), lessThan(2), reason: 'centred');
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('shows the ride, the driver and the car, read-only', (tester) async {
       await pump(tester, _view());
       expect(find.text('Siti is on the way to the pickup'), findsOneWidget);

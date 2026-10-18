@@ -29,6 +29,25 @@ class LaunchPartnerConsole extends LaunchTarget {
   const LaunchPartnerConsole();
 }
 
+/// Where this run of the app first landed once signed in: the launch (a
+/// cold start, a reload, or the page after signing in). The partner
+/// console rule is for the launch only: a rider who reaches home later (the
+/// Ride tab, "Go to home", Book a ride) stays there.
+abstract final class AppLaunch {
+  static String? firstAppLocation;
+
+  /// Notes [path] as the launch page if it is the first app page (not a
+  /// sign-in or sign-up step) of this run.
+  static void note(String path) {
+    if (firstAppLocation != null) return;
+    if (path.startsWith('/login') || path.startsWith('/signup')) return;
+    firstAppLocation = path;
+  }
+
+  /// Whether this run started on home, so home is the launch landing.
+  static bool get startedHome => firstAppLocation == null || firstAppLocation == '/';
+}
+
 /// A tablet, as Expo's `useResponsive` decides it: the shortest side at
 /// least 600 logical pixels on a device, 768 in a browser.
 bool isTabletSize(double width, double height, {required bool web}) {

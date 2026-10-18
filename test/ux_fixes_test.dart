@@ -771,5 +771,27 @@ void _batch2() {
     expect(recent, hasLength(1));
     expect(recent.single.name, 'Suria KLCC');
   });
+
+  testWidgets('PIN and code fields open the number pad; a code offers the SMS', (tester) async {
+    final pin = TextEditingController(), code = TextEditingController();
+    addTearDown(pin.dispose);
+    addTearDown(code.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(children: [
+            CodeField(key: const ValueKey('pin'), controller: pin, length: 6, obscure: true),
+            CodeField(key: const ValueKey('code'), controller: code, length: 6),
+          ]),
+        ),
+      ),
+    );
+    TextField field(String k) =>
+        tester.widget<TextField>(find.descendant(of: find.byKey(ValueKey(k)), matching: find.byType(TextField)));
+    expect(field('pin').keyboardType, TextInputType.number);
+    expect(field('pin').obscureText, isTrue);
+    expect(field('code').keyboardType, TextInputType.number);
+    expect(field('code').autofillHints, contains(AutofillHints.oneTimeCode));
+  });
 }
 

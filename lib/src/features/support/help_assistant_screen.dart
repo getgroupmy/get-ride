@@ -34,12 +34,14 @@ class HelpAssistantScreen extends ConsumerStatefulWidget {
 
 class _HelpAssistantScreenState extends ConsumerState<HelpAssistantScreen> {
   final _text = TextEditingController();
+  final _inputFocus = FocusNode();
   final _scroll = ScrollController();
   final _turns = <_Turn>[];
 
   @override
   void dispose() {
     _text.dispose();
+    _inputFocus.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -142,7 +144,13 @@ class _HelpAssistantScreenState extends ConsumerState<HelpAssistantScreen> {
                         ),
                       )
                     else
-                      _ReplyView(turn: turn, onOpen: _open, onPick: _pick, onFeedback: (h) => _feedback(turn, h)),
+                      _ReplyView(
+                        turn: turn,
+                        onOpen: _open,
+                        onPick: _pick,
+                        onFeedback: (h) => _feedback(turn, h),
+                        onAskAgain: () => _inputFocus.requestFocus(),
+                      ),
                   ],
                 ],
               ),
@@ -157,6 +165,7 @@ class _HelpAssistantScreenState extends ConsumerState<HelpAssistantScreen> {
                       child: TextField(
                         key: const ValueKey('help-input'),
                         controller: _text,
+                        focusNode: _inputFocus,
                         minLines: 1,
                         maxLines: 4,
                         maxLength: 500,
@@ -187,12 +196,21 @@ class _HelpAssistantScreenState extends ConsumerState<HelpAssistantScreen> {
 /// The assistant's side of a turn: the words, the action, the choices and
 /// the feedback.
 class _ReplyView extends StatelessWidget {
-  const _ReplyView({required this.turn, required this.onOpen, required this.onPick, required this.onFeedback});
+  const _ReplyView({
+    required this.turn,
+    required this.onOpen,
+    required this.onPick,
+    required this.onFeedback,
+    required this.onAskAgain,
+  });
 
   final _Turn turn;
   final void Function(String route) onOpen;
   final void Function(HelpArticle article) onPick;
   final void Function(bool helpful) onFeedback;
+
+  /// Back to the question box, to ask in other words.
+  final VoidCallback onAskAgain;
 
   @override
   Widget build(BuildContext context) {
@@ -256,10 +274,38 @@ class _ReplyView extends StatelessWidget {
         if (r.kind == HelpReplyKind.answer)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: turn.helpful != null
+            child: turn.helpful == true
                 ? Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text('Thanks for your feedback.', key: const ValueKey('help-thanks'), style: muted),
+                  )
+                // Not helpful: a way on, not only thanks.
+                : turn.helpful == false
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Sorry that didn’t help. What next?', key: const ValueKey('help-thanks'), style: muted),
+                        const SizedBox(height: 6),
+                        Wrap(spacing: 8, runSpacing: 6, children: [
+                          FilledButton.tonalIcon(
+                            key: const ValueKey('help-not-helpful-support'),
+                            style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+                            icon: const Icon(Icons.support_agent),
+                            label: const Text('Chat with support'),
+                            onPressed: () => onOpen(helpSupportRoute),
+                          ),
+                          OutlinedButton.icon(
+                            key: const ValueKey('help-not-helpful-rephrase'),
+                            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+                            icon: const Icon(Icons.edit_outlined),
+                            label: const Text('Try asking differently'),
+                            onPressed: onAskAgain,
+                          ),
+                        ]),
+                      ],
+                    ),
                   )
                 : Row(
                     children: [

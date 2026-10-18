@@ -64,6 +64,7 @@ void main() {
           find.descendant(of: find.byKey(const ValueKey('change-phone-go')), matching: find.byType(FilledButton)),
         );
     expect(go().onPressed, isNull, reason: 'nothing typed');
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('new-phone'))).keyboardType, TextInputType.phone);
     await tester.enterText(find.byKey(const ValueKey('new-phone')), '123');
     await tester.pump();
     expect(go().onPressed, isNull, reason: 'too short');

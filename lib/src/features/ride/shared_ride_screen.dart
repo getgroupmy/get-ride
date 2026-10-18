@@ -135,10 +135,16 @@ class _SharedRideScreenState extends ConsumerState<SharedRideScreen> {
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 16),
-                          FilledButton(
-                            key: const ValueKey('shared-ride-open-app'),
-                            onPressed: () => GoRouter.maybeOf(context)?.go('/'),
-                            child: const Text('Open GET.ride'),
+                          // Its own width, centred, as on the verify and install pages.
+                          Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 320),
+                              child: FilledButton(
+                                key: const ValueKey('shared-ride-open-app'),
+                                onPressed: () => GoRouter.maybeOf(context)?.go('/'),
+                                child: const Text('Open GET.ride'),
+                              ),
+                            ),
                           ),
                         ],
                       ),
