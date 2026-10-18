@@ -14,7 +14,8 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
-import 'package:get_ride/src/app.dart' show appTheme, routerProvider, maxAppTextScale;
+import 'package:get_ride/src/app.dart'
+    show appTheme, routerProvider, maxAppTextScale;
 import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/app_permissions.dart';
 import 'package:get_ride/src/core/fare.dart';
@@ -31,14 +32,17 @@ import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
 import 'package:get_ride/src/core/vehicle_assignment.dart';
-import 'package:get_ride/src/features/partner/partner_trip_screen.dart' show tripFixProvider;
+import 'package:get_ride/src/features/partner/partner_trip_screen.dart'
+    show tripFixProvider;
 import 'package:get_ride/src/features/ride/book_for_sheet.dart';
-import 'package:get_ride/src/features/ride/confirm_parts.dart' show showPaymentSheet;
+import 'package:get_ride/src/features/ride/confirm_parts.dart'
+    show showPaymentSheet;
 import 'package:get_ride/src/features/ride/location_share_button.dart';
 import 'package:get_ride/src/features/ride/pickup_time_sheet.dart';
 import 'package:get_ride/src/features/ride/ride_tracking_screen.dart'
     show rideStreamProvider, riderPositionStreamProvider;
-import 'package:get_ride/src/features/ride/searching_parts.dart' show showSearchCancelSheet;
+import 'package:get_ride/src/features/ride/searching_parts.dart'
+    show showSearchCancelSheet;
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/admin/screens/session_access_card.dart';
 import 'package:get_ride/src/core/session_access.dart';
@@ -47,8 +51,10 @@ import 'package:get_ride/src/data/ev_order_repository.dart';
 import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/data/partner_onboarding_repository.dart';
 import 'package:get_ride/src/data/vehicle_onboarding_repository.dart';
-import 'package:get_ride/src/features/support/support_chat_screen.dart' show supportMessagesProvider;
-import 'package:get_ride/src/features/support/support_screen.dart' show ticketsProvider;
+import 'package:get_ride/src/features/support/support_chat_screen.dart'
+    show supportMessagesProvider;
+import 'package:get_ride/src/features/support/support_screen.dart'
+    show ticketsProvider;
 import 'package:get_ride/src/widgets/search_select.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:get_ride/src/data/models.dart';
@@ -63,7 +69,8 @@ import 'package:get_ride/src/features/auth/passkey_sign_in_button.dart';
 import 'package:get_ride/src/features/profile/emergency_contacts_screen.dart';
 import 'package:get_ride/src/features/auth/set_pin_screen.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
-import 'package:get_ride/src/features/partner/driver_wallet_pills.dart' show creditFloorProvider;
+import 'package:get_ride/src/features/partner/driver_wallet_pills.dart'
+    show creditFloorProvider;
 import 'package:get_ride/src/features/partner/partner_screen.dart';
 import 'package:get_ride/src/features/profile/referral_screen.dart';
 import 'package:get_ride/src/features/settings/change_pin_screen.dart';
@@ -100,10 +107,20 @@ SupabaseClient _client() => SupabaseClient(
       return http.Response('[]', 200, headers: json, request: req);
     }
     if (p.startsWith('/rest/v1/')) {
-      return http.Response('[]', 200, headers: {...json, 'content-range': '0-0/0'}, request: req);
+      return http.Response(
+        '[]',
+        200,
+        headers: {...json, 'content-range': '0-0/0'},
+        request: req,
+      );
     }
     if (p.startsWith('/auth/v1/')) {
-      return http.Response('{"error":"offline"}', 401, headers: json, request: req);
+      return http.Response(
+        '{"error":"offline"}',
+        401,
+        headers: json,
+        request: req,
+      );
     }
     return http.Response('{}', 404, headers: json, request: req);
   }),
@@ -117,8 +134,11 @@ final _dbIn = _client();
 final _dbOut = _client();
 
 Future<void> _signIn() async {
-  final exp = DateTime.now().add(const Duration(days: 30)).millisecondsSinceEpoch ~/ 1000;
-  String b64(Map<String, Object> m) => base64Url.encode(utf8.encode(jsonEncode(m))).replaceAll('=', '');
+  final exp =
+      DateTime.now().add(const Duration(days: 30)).millisecondsSinceEpoch ~/
+      1000;
+  String b64(Map<String, Object> m) =>
+      base64Url.encode(utf8.encode(jsonEncode(m))).replaceAll('=', '');
   final jwt =
       '${b64({'alg': 'HS256', 'typ': 'JWT'})}.${b64({'sub': 'me', 'exp': exp, 'role': 'authenticated', 'aud': 'authenticated'})}.sig';
   await _dbIn.auth.recoverSession(
@@ -175,7 +195,8 @@ class _FakeRides implements RideRepository {
   Future<RideRequest?> ongoingForRider() async => ongoing;
 
   @override
-  Future<List<RideRequest>> ridesOnTheGo() async => ongoing == null ? const [] : [ongoing!];
+  Future<List<RideRequest>> ridesOnTheGo() async =>
+      ongoing == null ? const [] : [ongoing!];
 
   @override
   Future<List<RideRequest>> history({int limit = 50}) async => past;
@@ -190,10 +211,12 @@ class _FakeRides implements RideRepository {
   Future<void> expireStaleOpen() async {}
 
   @override
-  Future<Map<String, double>> nearbyDrivers(double lat, double lng) async => const {};
+  Future<Map<String, double>> nearbyDrivers(double lat, double lng) async =>
+      const {};
 
   @override
-  Future<RideRequest?> fetch(String id) async => ongoing ?? (past.isEmpty ? null : past.first);
+  Future<RideRequest?> fetch(String id) async =>
+      ongoing ?? (past.isEmpty ? null : past.first);
 
   @override
   Future<double> claimRideReward(RideRequest r) async => 0;
@@ -202,14 +225,23 @@ class _FakeRides implements RideRepository {
   Future<FareCoinRedemption?> redeemFareCoins(RideRequest r) async => null;
 
   @override
-  Future<RequestViewers> viewers(String requestId) async => const RequestViewers();
+  Future<RequestViewers> viewers(String requestId) async =>
+      const RequestViewers();
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-const _eco = Place(name: 'Eco Majestic', address: 'Semenyih', point: LatLng(2.9300, 101.8300));
-const _klcc = Place(name: 'KLCC', address: 'Kuala Lumpur', point: LatLng(2.9400, 101.8400));
+const _eco = Place(
+  name: 'Eco Majestic',
+  address: 'Semenyih',
+  point: LatLng(2.9300, 101.8300),
+);
+const _klcc = Place(
+  name: 'KLCC',
+  address: 'Kuala Lumpur',
+  point: LatLng(2.9400, 101.8400),
+);
 
 /// Booking: no server, no bidding, a plain region.
 class _BookingRides implements RideRepository {
@@ -220,16 +252,23 @@ class _BookingRides implements RideRepository {
   Future<RideRequest?> ongoingForRider() async => null;
 
   @override
-  Future<bool> biddingEnabledFor(LatLng pickup, Future<AreaInfo?> Function() area) async => false;
+  Future<bool> biddingEnabledFor(
+    LatLng pickup,
+    Future<AreaInfo?> Function() area,
+  ) async => false;
 
   @override
-  Future<RegionPricing> pricingFor(LatLng pickup, Future<AreaInfo?> Function() area) async => RegionPricing.none;
+  Future<RegionPricing> pricingFor(
+    LatLng pickup,
+    Future<AreaInfo?> Function() area,
+  ) async => RegionPricing.none;
 
   @override
   Future<String?> publicIp() async => null;
 
   @override
-  Future<Map<String, double>> nearbyDrivers(double lat, double lng) async => const {};
+  Future<Map<String, double>> nearbyDrivers(double lat, double lng) async =>
+      const {};
 
   @override
   Future<void> expireStaleOpen() async {}
@@ -244,38 +283,50 @@ class _NoAi implements RouteEstimateRepository {
 }
 
 /// A ride the signed-in rider ("me") is on, with driver Ravi.
-RideRequest _tracked(String status, {Map<String, dynamic> extra = const {}}) => RideRequest({
-  'id': 'r1',
-  'rider_id': 'me',
-  'partner_id': 'driver',
-  'rider_name': 'Nur Aisyah',
-  'partner_name': 'Ravi Kumar',
-  'partner_phone': '+60198765432',
-  'vehicle_plate': 'WXY 1234',
-  'vehicle_model': 'Perodua Bezza',
-  'vehicle_color': 'Silver',
-  'status': status,
-  'service': 'Ride',
-  'fare': 23.5,
-  'ride_fare': 23.5,
-  'currency': 'MYR',
-  'payment_mode': 'Cash',
-  'pickup_name': 'Eco Majestic, Semenyih',
-  'drop_name': 'KLCC, Kuala Lumpur',
-  'pickup_lat': 2.93,
-  'pickup_lng': 101.83,
-  'drop_lat': 3.1579,
-  'drop_lng': 101.7116,
-  'distance_km': 31.2,
-  'created_at': '2026-10-17T08:12:00Z',
-  ...extra,
-});
+RideRequest _tracked(String status, {Map<String, dynamic> extra = const {}}) =>
+    RideRequest({
+      'id': 'r1',
+      'rider_id': 'me',
+      'partner_id': 'driver',
+      'rider_name': 'Nur Aisyah',
+      'partner_name': 'Ravi Kumar',
+      'partner_phone': '+60198765432',
+      'vehicle_plate': 'WXY 1234',
+      'vehicle_model': 'Perodua Bezza',
+      'vehicle_color': 'Silver',
+      'status': status,
+      'service': 'Ride',
+      'fare': 23.5,
+      'ride_fare': 23.5,
+      'currency': 'MYR',
+      'payment_mode': 'Cash',
+      'pickup_name': 'Eco Majestic, Semenyih',
+      'drop_name': 'KLCC, Kuala Lumpur',
+      'pickup_lat': 2.93,
+      'pickup_lng': 101.83,
+      'drop_lat': 3.1579,
+      'drop_lng': 101.7116,
+      'distance_km': 31.2,
+      'created_at': '2026-10-17T08:12:00Z',
+      ...extra,
+    });
 
 /// A ride the signed-in driver ("me") has taken.
 RideRequest _driving(String status, {Map<String, dynamic> extra = const {}}) =>
-    RideRequest({..._tracked(status).raw, 'rider_id': 'rider', 'partner_id': 'me', ...extra});
+    RideRequest({
+      ..._tracked(status).raw,
+      'rider_id': 'rider',
+      'partner_id': 'me',
+      ...extra,
+    });
 
-RideRequest _request(String id, String from, String to, double fare, {double km = 5}) => RideRequest({
+RideRequest _request(
+  String id,
+  String from,
+  String to,
+  double fare, {
+  double km = 5,
+}) => RideRequest({
   'id': id,
   'status': 'open',
   'service': 'Ride',
@@ -295,7 +346,12 @@ RideRequest _request(String id, String from, String to, double fare, {double km 
   'created_at': DateTime.now().toUtc().toIso8601String(),
 });
 
-final _approved = Partner({'id': 'p1', 'status': 'approved', 'name': 'Nur Aisyah', 'partner_type': 'eHailing'});
+final _approved = Partner({
+  'id': 'p1',
+  'status': 'approved',
+  'name': 'Nur Aisyah',
+  'partner_type': 'eHailing',
+});
 
 List<Override> _trackingOverrides(RideRequest ride) => [
   rideStreamProvider.overrideWith((ref, id) => Stream.value(ride)),
@@ -316,7 +372,11 @@ Future<void> _toConfirm(WidgetTester tester) async {
   for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
-  await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -300), warnIfMissed: false);
+  await tester.drag(
+    find.byKey(const ValueKey('map-sheet-handle')),
+    const Offset(0, -300),
+    warnIfMissed: false,
+  );
   for (var i = 0; i < 5; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
@@ -337,7 +397,8 @@ Widget _opener(Future<void> Function(BuildContext) open) => Scaffold(
   appBar: AppBar(title: const Text('Sheet host')),
   body: Center(
     child: Builder(
-      builder: (c) => FilledButton(onPressed: () => open(c), child: const Text('open')),
+      builder: (c) =>
+          FilledButton(onPressed: () => open(c), child: const Text('open')),
     ),
   ),
 );
@@ -366,18 +427,24 @@ Widget _dropdownHost() => Scaffold(
   body: ListView(
     padding: const EdgeInsets.all(16),
     children: [
-      TextFormField(decoration: const InputDecoration(labelText: 'Plate number')),
+      TextFormField(
+        decoration: const InputDecoration(labelText: 'Plate number'),
+      ),
       const SizedBox(height: 12),
       SearchableDropdownFormField<String>(
         key: const ValueKey('state'),
-        items: [for (final s in _states) DropdownMenuItem(value: s, child: Text(s))],
+        items: [
+          for (final s in _states) DropdownMenuItem(value: s, child: Text(s)),
+        ],
         initialValue: 'Selangor',
         decoration: const InputDecoration(labelText: 'State'),
         onChanged: (_) {},
       ),
       const SizedBox(height: 12),
       SearchableDropdownFormField<String>(
-        items: [for (final s in _states) DropdownMenuItem(value: s, child: Text(s))],
+        items: [
+          for (final s in _states) DropdownMenuItem(value: s, child: Text(s)),
+        ],
         decoration: const InputDecoration(labelText: 'Service area'),
         hint: const Text('Choose a state'),
         onChanged: (_) {},
@@ -401,17 +468,21 @@ class _FakeOnboarding extends PartnerOnboardingRepository {
   Future<OnboardingState> load() async => state;
 
   @override
-  Future<Map<String, dynamic>> patchPartner(OnboardingState s, Map<String, dynamic> patch) async => {
-    ...s.partner,
-    ...patch,
-  };
+  Future<Map<String, dynamic>> patchPartner(
+    OnboardingState s,
+    Map<String, dynamic> patch,
+  ) async => {...s.partner, ...patch};
 
   @override
-  Future<Map<String, dynamic>> patchProfile(Map<String, dynamic> patch) async => {...?state.profile, ...patch};
+  Future<Map<String, dynamic>> patchProfile(Map<String, dynamic> patch) async =>
+      {...?state.profile, ...patch};
 
   @override
-  Future<String> uploadAvatar(OnboardingState s, Uint8List bytes, String fileName) async =>
-      'https://example.com/$fileName';
+  Future<String> uploadAvatar(
+    OnboardingState s,
+    Uint8List bytes,
+    String fileName,
+  ) async => 'https://example.com/$fileName';
 }
 
 class _FakePeople extends PeopleRepository {
@@ -419,22 +490,33 @@ class _FakePeople extends PeopleRepository {
   final List<Map<String, dynamic>> uploads;
 
   @override
-  Future<GeoOptions> geoOptions({Iterable<ServiceArea> inUse = const []}) async => const GeoOptions(
+  Future<GeoOptions> geoOptions({
+    Iterable<ServiceArea> inUse = const [],
+  }) async => const GeoOptions(
     countries: ['Malaysia'],
     states: ['Malaysia|Selangor', 'Malaysia|Kuala Lumpur', 'Malaysia|Johor'],
-    cities: ['Malaysia|Selangor|Ampang', 'Malaysia|Selangor|Petaling Jaya', 'Malaysia|Kuala Lumpur|Kuala Lumpur'],
+    cities: [
+      'Malaysia|Selangor|Ampang',
+      'Malaysia|Selangor|Petaling Jaya',
+      'Malaysia|Kuala Lumpur|Kuala Lumpur',
+    ],
   );
 
   @override
-  Future<List<({String id, Map<String, dynamic> values})>> partnerTypes() async => [
+  Future<List<({String id, Map<String, dynamic> values})>>
+  partnerTypes() async => [
     (id: 't1', values: <String, dynamic>{'name': 'TEKSI'}),
     (id: 't2', values: <String, dynamic>{'name': 'E-HAILING'}),
   ];
 
   @override
-  Future<List<({String id, Map<String, dynamic> values})>> requiredDocuments() async => [
+  Future<List<({String id, Map<String, dynamic> values})>>
+  requiredDocuments() async => [
     (id: 'licence', values: <String, dynamic>{'name': 'Driving licence'}),
-    (id: 'ic', values: <String, dynamic>{'name': 'Identity card (front and back)'}),
+    (
+      id: 'ic',
+      values: <String, dynamic>{'name': 'Identity card (front and back)'},
+    ),
     (
       id: 'permit',
       values: <String, dynamic>{
@@ -452,12 +534,15 @@ class _FakePeople extends PeopleRepository {
   ];
 
   @override
-  Future<List<({String id, Map<String, dynamic> values})>> documentTypes() async => [
+  Future<List<({String id, Map<String, dynamic> values})>>
+  documentTypes() async => [
     (id: 'type-vehicle', values: <String, dynamic>{'name': 'Vehicle'}),
   ];
 
   @override
-  Future<List<Map<String, dynamic>>> providerDocuments(String partnerId) async => uploads;
+  Future<List<Map<String, dynamic>>> providerDocuments(
+    String partnerId,
+  ) async => uploads;
 }
 
 Map<String, dynamic> _partnerRow([Map<String, dynamic> extra = const {}]) => {
@@ -490,10 +575,15 @@ class _FakeVehicles extends VehicleOnboardingRepository {
   Future<Map<String, dynamic>?> vehicle(String id) async => existing;
 
   @override
-  Future<List<Map<String, dynamic>>> myVehicles(String partnerId) async => [?existing];
+  Future<List<Map<String, dynamic>>> myVehicles(String partnerId) async => [
+    ?existing,
+  ];
 
   @override
-  Future<Map<String, dynamic>> startWithPlate(String plate, Map<String, dynamic> partner) async => {
+  Future<Map<String, dynamic>> startWithPlate(
+    String plate,
+    Map<String, dynamic> partner,
+  ) async => {
     'id': 'v1',
     'plate': plate,
     'status': 'unapproved',
@@ -501,11 +591,18 @@ class _FakeVehicles extends VehicleOnboardingRepository {
   };
 
   @override
-  Future<Map<String, dynamic>> patch(Map<String, dynamic> v, Map<String, dynamic> patch) async => {...v, ...patch};
+  Future<Map<String, dynamic>> patch(
+    Map<String, dynamic> v,
+    Map<String, dynamic> patch,
+  ) async => {...v, ...patch};
 
   @override
-  Future<String> uploadPhoto(String vehicleId, String slot, Uint8List bytes, String fileName) async =>
-      'https://x/$slot';
+  Future<String> uploadPhoto(
+    String vehicleId,
+    String slot,
+    Uint8List bytes,
+    String fileName,
+  ) async => 'https://x/$slot';
 }
 
 class _QuietLive extends LiveTables {
@@ -521,12 +618,18 @@ List<Override> _wizardOverrides({
   partnerOnboardingRepositoryProvider.overrideWithValue(
     _FakeOnboarding(
       OnboardingState(
-        profile: {'id': 'me', 'name': 'Nur Aisyah binti Rahman', 'phone': '+60123456789'},
+        profile: {
+          'id': 'me',
+          'name': 'Nur Aisyah binti Rahman',
+          'phone': '+60123456789',
+        },
         partner: partnerRow ?? _partnerRow(),
       ),
     ),
   ),
-  vehicleOnboardingRepositoryProvider.overrideWithValue(_FakeVehicles(existing: vehicle)),
+  vehicleOnboardingRepositoryProvider.overrideWithValue(
+    _FakeVehicles(existing: vehicle),
+  ),
   peopleRepositoryProvider.overrideWithValue(_FakePeople(uploads: uploads)),
   liveTablesProvider.overrideWith(_QuietLive.new),
 ];
@@ -556,20 +659,50 @@ class _FakeEv implements EvOrderRepository {
             {'id': 'i1', 'name': 'Charcoal', 'enabled': true},
           ]),
           'accessories': jsonEncode([
-            {'id': 'a1', 'name': 'Wireless Charger', 'price': 450, 'enabled': true},
+            {
+              'id': 'a1',
+              'name': 'Wireless Charger',
+              'price': 450,
+              'enabled': true,
+            },
           ]),
         },
       ),
     ],
     advisors: [
-      (id: 'da1', values: <String, dynamic>{'name': 'Siti', 'daNumber': 'DA-0001', 'dealership': 'TEKSI KL'}),
+      (
+        id: 'da1',
+        values: <String, dynamic>{
+          'name': 'Siti',
+          'daNumber': 'DA-0001',
+          'dealership': 'TEKSI KL',
+        },
+      ),
     ],
     financeOptions: [
-      (id: 'cash', values: <String, dynamic>{'name': 'Full Cash', 'type': 'Cash', 'paymentMode': 'Full Balance'}),
-      (id: 'hp', values: <String, dynamic>{'name': 'HP 60m', 'type': 'Hire Purchase'}),
+      (
+        id: 'cash',
+        values: <String, dynamic>{
+          'name': 'Full Cash',
+          'type': 'Cash',
+          'paymentMode': 'Full Balance',
+        },
+      ),
+      (
+        id: 'hp',
+        values: <String, dynamic>{'name': 'HP 60m', 'type': 'Hire Purchase'},
+      ),
     ],
     fees: [
-      (id: 'f', values: <String, dynamic>{'country': 'Malaysia', 'currency': 'RM', 'amount': 3000, 'isDefault': true}),
+      (
+        id: 'f',
+        values: <String, dynamic>{
+          'country': 'Malaysia',
+          'currency': 'RM',
+          'amount': 3000,
+          'isDefault': true,
+        },
+      ),
     ],
     checklist: const ['Keys handed over', 'Charging cable'],
   );
@@ -577,7 +710,8 @@ class _FakeEv implements EvOrderRepository {
   @override
   Future<List<EvOrder>> myOrders() async => [
     ...stored,
-    for (final e in orders.entries) (id: e.key, values: e.value, createdAt: DateTime(2026)),
+    for (final e in orders.entries)
+      (id: e.key, values: e.value, createdAt: DateTime(2026)),
   ];
 
   @override
@@ -594,13 +728,21 @@ class _FakeEv implements EvOrderRepository {
   }
 
   @override
-  Future<Map<String, dynamic>> patch(String id, Map<String, dynamic> patch) async {
-    final base = orders[id] ?? {...?stored.where((o) => o.id == id).firstOrNull?.values};
+  Future<Map<String, dynamic>> patch(
+    String id,
+    Map<String, dynamic> patch,
+  ) async {
+    final base =
+        orders[id] ?? {...?stored.where((o) => o.id == id).firstOrNull?.values};
     return orders[id] = {...base, ...patch};
   }
 
   @override
-  Future<String> uploadIdImage(String orderId, Uint8List bytes, String ext) async => 'https://x/id.$ext';
+  Future<String> uploadIdImage(
+    String orderId,
+    Uint8List bytes,
+    String ext,
+  ) async => 'https://x/id.$ext';
 
   @override
   Future<String?> activeOrderId() async => active;
@@ -612,39 +754,64 @@ class _FakeEv implements EvOrderRepository {
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
-SupportTicket _ticket(String id, int n, String subject, String status, {String last = 'We are looking into it.'}) =>
-    SupportTicket({
-      'id': id,
-      'ticket_number': n,
-      'subject': subject,
-      'status': status,
-      'created_at': '2026-10-16T09:00:00Z',
-      'updated_at': '2026-10-17T10:30:00Z',
-      'last_message': last,
-    });
-
-SupportMessage _smsg(String id, String role, String body, int minute) => SupportMessage({
+SupportTicket _ticket(
+  String id,
+  int n,
+  String subject,
+  String status, {
+  String last = 'We are looking into it.',
+}) => SupportTicket({
   'id': id,
-  'ticket_id': 't1',
-  'sender_role': role,
-  'sender_name': role == 'user' ? 'Nur Aisyah' : 'Agent Farah',
-  'body': body,
-  'message': body,
-  'content': body,
-  'created_at': DateTime.now().subtract(Duration(minutes: 60 - minute)).toUtc().toIso8601String(),
+  'ticket_number': n,
+  'subject': subject,
+  'status': status,
+  'created_at': '2026-10-16T09:00:00Z',
+  'updated_at': '2026-10-17T10:30:00Z',
+  'last_message': last,
 });
+
+SupportMessage _smsg(String id, String role, String body, int minute) =>
+    SupportMessage({
+      'id': id,
+      'ticket_id': 't1',
+      'sender_role': role,
+      'sender_name': role == 'user' ? 'Nur Aisyah' : 'Agent Farah',
+      'body': body,
+      'message': body,
+      'content': body,
+      'created_at': DateTime.now()
+          .subtract(Duration(minutes: 60 - minute))
+          .toUtc()
+          .toIso8601String(),
+    });
 
 List<Override> _supportOverrides() => [
   ticketsProvider.overrideWith(
     (ref) async => [
       _ticket('t1', 1042, 'Charged twice for my ride', 'open'),
-      _ticket('t2', 1017, 'Driver did not arrive', 'resolved', last: 'Refunded RM12.00 to your wallet.'),
+      _ticket(
+        't2',
+        1017,
+        'Driver did not arrive',
+        'resolved',
+        last: 'Refunded RM12.00 to your wallet.',
+      ),
     ],
   ),
   supportMessagesProvider.overrideWith(
     (ref, id) => Stream.value([
-      _smsg('m1', 'user', 'Hi, I was charged twice for the ride to KLCC this morning.', 0),
-      _smsg('m2', 'agent', 'Sorry about that. Can you share the booking number?', 5),
+      _smsg(
+        'm1',
+        'user',
+        'Hi, I was charged twice for the ride to KLCC this morning.',
+        0,
+      ),
+      _smsg(
+        'm2',
+        'agent',
+        'Sorry about that. Can you share the booking number?',
+        5,
+      ),
       _smsg('m3', 'user', 'GR-1042, fare RM23.50.', 7),
       _smsg(
         'm4',
@@ -695,7 +862,9 @@ List<Override> _common({
   currentUserIdProvider.overrideWithValue('me'),
   tripHistoryRepositoryProvider.overrideWithValue(_FakeTripHistory(past)),
   rideRepositoryProvider.overrideWithValue(rides ?? _FakeRides()),
-  geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
+  geoServiceProvider.overrideWithValue(
+    GeoService(client: MockClient((_) async => http.Response('', 500))),
+  ),
   coinTradeQuoteProvider.overrideWith((ref) => Future.error('offline')),
   coinSettingsProvider.overrideWith((ref) async => null),
   serviceBoxNamesProvider.overrideWith((ref) async => const <String, String>{}),
@@ -708,14 +877,18 @@ List<Override> _common({
   ),
   recentPlacesProvider.overrideWith((ref) async => const [_eco, _klcc]),
   routeEstimateRepositoryProvider.overrideWithValue(_NoAi()),
-  displaySettingsBlobProvider.overrideWith((ref) async => const <String, dynamic>{}),
+  displaySettingsBlobProvider.overrideWith(
+    (ref) async => const <String, dynamic>{},
+  ),
   appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
   fareTariffsProvider.overrideWith((ref) async => const []),
   meterLaunchSessionProvider.overrideWithValue(null),
   profileProvider.overrideWith((ref) async => profile),
   partnerProvider.overrideWith((ref) async => partner),
   adminAccessProvider.overrideWith(
-    (ref) async => admin ? const AdminAccess([AdminGrant(page: '*', edit: true)]) : AdminAccess.none,
+    (ref) async => admin
+        ? const AdminAccess([AdminGrant(page: '*', edit: true)])
+        : AdminAccess.none,
   ),
   scheduledRidesConfigProvider.overrideWith((ref) async => sched),
   deviceBlockedProvider.overrideWith((ref) async => false),
@@ -724,10 +897,15 @@ List<Override> _common({
   openRequestsProvider.overrideWith((ref) => Stream.value(queue)),
   partnerTypeEntriesProvider.overrideWith(
     (ref) async => [
-      (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false}),
+      (
+        id: 'e',
+        values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false},
+      ),
     ],
   ),
-  assignableVehiclesProvider.overrideWith((ref) async => const <AssignableVehicle>[]),
+  assignableVehiclesProvider.overrideWith(
+    (ref) async => const <AssignableVehicle>[],
+  ),
   favouriteRiderIdsProvider.overrideWith((ref) async => const <String>{}),
   serviceDispatchConfigsProvider.overrideWith((ref) async => const {}),
   passkeyOfferedHereProvider.overrideWith((ref) async => false),
@@ -802,12 +980,20 @@ Future<void> _loadFonts() async {
     ]) {
       final file = File('$dir/$f');
       if (!file.existsSync()) continue;
-      loader.addFont(Future.value(ByteData.sublistView(file.readAsBytesSync())));
+      loader.addFont(
+        Future.value(ByteData.sublistView(file.readAsBytesSync())),
+      );
     }
     await loader.load();
   }
   final icons = FontLoader('MaterialIcons');
-  icons.addFont(Future.value(ByteData.sublistView(File('$dir/MaterialIcons-Regular.otf').readAsBytesSync())));
+  icons.addFont(
+    Future.value(
+      ByteData.sublistView(
+        File('$dir/MaterialIcons-Regular.otf').readAsBytesSync(),
+      ),
+    ),
+  );
   await icons.load();
 }
 
@@ -818,14 +1004,21 @@ ThemeData _theme(Brightness b) {
     filledButtonTheme: FilledButtonThemeData(
       style: style.copyWith(
         textStyle: const WidgetStatePropertyAll(
-          TextStyle(fontSize: 16, fontWeight: FontWeight.w600, fontFamily: 'Roboto'),
+          TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'Roboto',
+          ),
         ),
       ),
     ),
   );
 }
 
-double _frameW = _w, _frameTop = _top, _frameBottom = _bottom, _frameKeyboard = 0;
+double _frameW = _w,
+    _frameTop = _top,
+    _frameBottom = _bottom,
+    _frameKeyboard = 0;
 bool _frameSe = false;
 
 Widget _frame(Widget app, {required bool dark}) => RepaintBoundary(
@@ -865,7 +1058,11 @@ Widget _frame(Widget app, {required bool dark}) => RepaintBoundary(
               child: Center(
                 child: Text(
                   'keyboard',
-                  style: TextStyle(fontFamily: 'Roboto', color: Color(0xFF6B7280), fontSize: 24),
+                  style: TextStyle(
+                    fontFamily: 'Roboto',
+                    color: Color(0xFF6B7280),
+                    fontSize: 24,
+                  ),
                 ),
               ),
             ),
@@ -878,7 +1075,10 @@ Widget _frame(Widget app, {required bool dark}) => RepaintBoundary(
             child: Container(
               width: 126,
               height: 37,
-              decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(20)),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(20),
+              ),
             ),
           ),
         if (!_frameSe)
@@ -900,15 +1100,64 @@ Widget _frame(Widget app, {required bool dark}) => RepaintBoundary(
 );
 
 /// A device frame: logical size, scale, and the unsafe strips.
-typedef _Device = ({double w, double h, double dpr, double top, double bottom, bool island});
+typedef _Device = ({
+  double w,
+  double h,
+  double dpr,
+  double top,
+  double bottom,
+  bool island,
+});
 
-const _iphone15 = (w: 393.0, h: 852.0, dpr: 3.0, top: 59.0, bottom: 34.0, island: true);
-const _iphoneSe = (w: 375.0, h: 667.0, dpr: 2.0, top: 20.0, bottom: 0.0, island: false);
-const _iphone15Land = (w: 852.0, h: 393.0, dpr: 3.0, top: 0.0, bottom: 21.0, island: false);
-const _ipad = (w: 820.0, h: 1180.0, dpr: 2.0, top: 24.0, bottom: 20.0, island: false);
-const _ipadLand = (w: 1180.0, h: 820.0, dpr: 2.0, top: 24.0, bottom: 20.0, island: false);
+const _iphone15 = (
+  w: 393.0,
+  h: 852.0,
+  dpr: 3.0,
+  top: 59.0,
+  bottom: 34.0,
+  island: true,
+);
+const _iphoneSe = (
+  w: 375.0,
+  h: 667.0,
+  dpr: 2.0,
+  top: 20.0,
+  bottom: 0.0,
+  island: false,
+);
+const _iphone15Land = (
+  w: 852.0,
+  h: 393.0,
+  dpr: 3.0,
+  top: 0.0,
+  bottom: 21.0,
+  island: false,
+);
+const _ipad = (
+  w: 820.0,
+  h: 1180.0,
+  dpr: 2.0,
+  top: 24.0,
+  bottom: 20.0,
+  island: false,
+);
+const _ipadLand = (
+  w: 1180.0,
+  h: 820.0,
+  dpr: 2.0,
+  top: 24.0,
+  bottom: 20.0,
+  island: false,
+);
 // iPad Slide Over / narrow Split View: 320 pt wide, full height.
-const _slideOver = (w: 320.0, h: 1136.0, dpr: 2.0, top: 0.0, bottom: 20.0, island: false);
+const _slideOver = (
+  w: 320.0,
+  h: 1136.0,
+  dpr: 2.0,
+  top: 0.0,
+  bottom: 20.0,
+  island: false,
+);
 
 /// Renders the app at [route] (through the real router, bottom bar and side
 /// menu), or [screen] on its own, in an iPhone frame and writes `<name>.png`.
@@ -935,16 +1184,20 @@ Future<void> _shot(
   Duration step = const Duration(milliseconds: 100),
   Future<void> Function(WidgetTester)? act,
 }) async {
-  // Sweeps: DARK=1, XL=1 (text scale 1.3), SE=1, BOLD=1 (iOS Bold Text) force
+  // Sweeps: DARK=1, XL=1 (text scale 1.3), SE=1, LAND=1, BOLD=1 (iOS Bold Text) force
   // the setting on every screenshot.
   final env = Platform.environment;
   if (env['DARK'] == '1') dark = true;
   if (env['XL'] == '1') textScale = 1.35;
   if (env['SE'] == '1' && device == null) se = true;
+  // LAND=1 renders every phone screenshot in iPhone 15 landscape (allowed by
+  // Info.plist for every screen).
+  if (env['LAND'] == '1' && device == null) device = _iphone15Land;
   SharedPreferences.setMockInitialValues({});
   debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
   if (env['BOLD'] == '1') {
-    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(boldText: true);
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(boldText: true);
   }
   // iPhone SE (3rd gen): 375 x 667 at 2x, 20 pt status bar, no home indicator.
   final d = device ?? (se ? _iphoneSe : _iphone15);
@@ -956,13 +1209,28 @@ Future<void> _shot(
   tester.view.physicalSize = Size(w * dpr, h * dpr);
   tester.view.devicePixelRatio = dpr;
   // With the keyboard up, iOS reports no bottom padding (viewPadding keeps it).
-  tester.view.padding = FakeViewPadding(top: top * dpr, bottom: keyboard ? 0 : bottom * dpr);
-  tester.view.viewPadding = FakeViewPadding(top: top * dpr, bottom: bottom * dpr);
+  tester.view.padding = FakeViewPadding(
+    top: top * dpr,
+    bottom: keyboard ? 0 : bottom * dpr,
+  );
+  tester.view.viewPadding = FakeViewPadding(
+    top: top * dpr,
+    bottom: bottom * dpr,
+  );
   // The iOS keyboard (336 pt on an iPhone 15, 260 on an SE) is up.
-  _frameKeyboard = keyboard ? (se ? 260.0 : 336.0) : 0;
-  if (keyboard) tester.view.viewInsets = FakeViewPadding(bottom: _frameKeyboard * dpr);
+  _frameKeyboard = keyboard
+      ? (w > h
+            ? 200.0
+            : se
+            ? 260.0
+            : 336.0)
+      : 0;
+  if (keyboard)
+    tester.view.viewInsets = FakeViewPadding(bottom: _frameKeyboard * dpr);
   tester.platformDispatcher.textScaleFactorTestValue = textScale;
-  tester.platformDispatcher.platformBrightnessTestValue = dark ? Brightness.dark : Brightness.light;
+  tester.platformDispatcher.platformBrightnessTestValue = dark
+      ? Brightness.dark
+      : Brightness.light;
   addTearDown(() {
     tester.view.reset();
     tester.platformDispatcher.clearAllTestValues();
@@ -989,7 +1257,10 @@ Future<void> _shot(
     ],
   );
   addTearDown(container.dispose);
-  Widget clamp(Widget? child) => MediaQuery.withClampedTextScaling(maxScaleFactor: maxAppTextScale, child: child!);
+  Widget clamp(Widget? child) => MediaQuery.withClampedTextScaling(
+    maxScaleFactor: maxAppTextScale,
+    child: child!,
+  );
   try {
     final Widget app;
     if (route != null) {
@@ -1030,11 +1301,18 @@ Future<void> _shot(
       await tester.pump(step);
     }
     if (act != null) await act(tester);
-    await expectLater(find.byKey(const Key('frame')), matchesGoldenFile(Uri.file('$_outDir/$name.png')));
+    await expectLater(
+      find.byKey(const Key('frame')),
+      matchesGoldenFile(Uri.file('$_outDir/$name.png')),
+    );
     if (Platform.environment['AUDIT'] == '1') {
       final handle = tester.ensureSemantics();
       await tester.pump();
-      for (final g in [iOSTapTargetGuideline, labeledTapTargetGuideline, textContrastGuideline]) {
+      for (final g in [
+        iOSTapTargetGuideline,
+        labeledTapTargetGuideline,
+        textContrastGuideline,
+      ]) {
         final r = await g.evaluate(tester);
         if (!r.passed) {
           _audit.writeln('== $name :: ${g.description}');
@@ -1055,11 +1333,15 @@ Future<void> _shot(
       _log.writeln('  ! ${e.split('\n').take(3).join(' | ')}');
     }
     File('$_outDir/log.txt').writeAsStringSync(_log.toString());
-    if (_audit.isNotEmpty) File('$_outDir/audit.txt').writeAsStringSync(_audit.toString());
+    if (_audit.isNotEmpty)
+      File('$_outDir/audit.txt').writeAsStringSync(_audit.toString());
   }
 }
 
-Future<void> _probe(String name, Future<Object?> Function(ProviderContainer c) read) async {
+Future<void> _probe(
+  String name,
+  Future<Object?> Function(ProviderContainer c) read,
+) async {
   final c = ProviderContainer(
     overrides: _common(db: _dbIn, profile: _profile),
   );
@@ -1069,7 +1351,9 @@ Future<void> _probe(String name, Future<Object?> Function(ProviderContainer c) r
     print('PROBE $name -> OK ${v.runtimeType}');
   } catch (e, st) {
     // ignore: avoid_print
-    print('PROBE $name -> $e\n${st.toString().split('\n').take(12).join('\n')}');
+    print(
+      'PROBE $name -> $e\n${st.toString().split('\n').take(12).join('\n')}',
+    );
   } finally {
     c.dispose();
   }
@@ -1084,7 +1368,10 @@ void main() {
   if (Platform.environment['PROBE'] == '1') {
     test('probe', () async {
       await _signIn();
-      await _probe('emergencyContacts', (c) => c.read(emergencyContactsProvider.future));
+      await _probe(
+        'emergencyContacts',
+        (c) => c.read(emergencyContactsProvider.future),
+      );
     });
     return;
   }
@@ -1095,12 +1382,33 @@ void main() {
   });
 
   group('auth', () {
-    testWidgets('welcome', (t) => _shot(t, 'auth_welcome', route: '/login', signedIn: false));
-    testWidgets('welcome dark', (t) => _shot(t, 'auth_welcome_dark', route: '/login', signedIn: false, dark: true));
-    testWidgets('phone', (t) => _shot(t, 'auth_phone', route: '/login/phone', signedIn: false));
+    testWidgets(
+      'welcome',
+      (t) => _shot(t, 'auth_welcome', route: '/login', signedIn: false),
+    );
+    testWidgets(
+      'welcome dark',
+      (t) => _shot(
+        t,
+        'auth_welcome_dark',
+        route: '/login',
+        signedIn: false,
+        dark: true,
+      ),
+    );
+    testWidgets(
+      'phone',
+      (t) => _shot(t, 'auth_phone', route: '/login/phone', signedIn: false),
+    );
     testWidgets(
       'phone large text',
-      (t) => _shot(t, 'auth_phone_xl', route: '/login/phone', signedIn: false, textScale: 1.35),
+      (t) => _shot(
+        t,
+        'auth_phone_xl',
+        route: '/login/phone',
+        signedIn: false,
+        textScale: 1.35,
+      ),
     );
     testWidgets(
       'phone typing',
@@ -1117,24 +1425,68 @@ void main() {
         },
       ),
     );
-    testWidgets('otp', (t) => _shot(t, 'auth_otp', route: '/login/otp?phone=%2B60123456789', signedIn: false));
-    testWidgets('pin', (t) => _shot(t, 'auth_pin', route: '/login/pin?phone=%2B60123456789', signedIn: false));
+    testWidgets(
+      'otp',
+      (t) => _shot(
+        t,
+        'auth_otp',
+        route: '/login/otp?phone=%2B60123456789',
+        signedIn: false,
+      ),
+    );
+    testWidgets(
+      'pin',
+      (t) => _shot(
+        t,
+        'auth_pin',
+        route: '/login/pin?phone=%2B60123456789',
+        signedIn: false,
+      ),
+    );
     testWidgets(
       'pin dark',
-      (t) => _shot(t, 'auth_pin_dark', route: '/login/pin?phone=%2B60123456789', signedIn: false, dark: true),
+      (t) => _shot(
+        t,
+        'auth_pin_dark',
+        route: '/login/pin?phone=%2B60123456789',
+        signedIn: false,
+        dark: true,
+      ),
     );
-    testWidgets('closed', (t) => _shot(t, 'auth_closed', route: '/login/closed?phone=%2B60123456789', signedIn: false));
-    testWidgets('set pin', (t) => _shot(t, 'auth_set_pin', screen: const SetPinScreen()));
+    testWidgets(
+      'closed',
+      (t) => _shot(
+        t,
+        'auth_closed',
+        route: '/login/closed?phone=%2B60123456789',
+        signedIn: false,
+      ),
+    );
+    testWidgets(
+      'set pin',
+      (t) => _shot(t, 'auth_set_pin', screen: const SetPinScreen()),
+    );
     testWidgets(
       'set pin large text',
-      (t) => _shot(t, 'auth_set_pin_xl', screen: const SetPinScreen(), textScale: 1.35),
+      (t) => _shot(
+        t,
+        'auth_set_pin_xl',
+        screen: const SetPinScreen(),
+        textScale: 1.35,
+      ),
     );
   });
 
   group('rider', () {
     testWidgets('home', (t) => _shot(t, 'home', route: '/'));
-    testWidgets('home dark', (t) => _shot(t, 'home_dark', route: '/', dark: true));
-    testWidgets('home large text', (t) => _shot(t, 'home_xl', route: '/', textScale: 1.35));
+    testWidgets(
+      'home dark',
+      (t) => _shot(t, 'home_dark', route: '/', dark: true),
+    );
+    testWidgets(
+      'home large text',
+      (t) => _shot(t, 'home_xl', route: '/', textScale: 1.35),
+    );
     testWidgets(
       'home menu open',
       (t) => _shot(
@@ -1182,7 +1534,13 @@ void main() {
         past: [
           _ride('r1', 'completed'),
           _ride('r2', 'cancelled', fare: 12),
-          _ride('r3', 'completed', fare: 48.9, from: 'KLIA2', to: 'Bangsar South'),
+          _ride(
+            'r3',
+            'completed',
+            fare: 48.9,
+            from: 'KLIA2',
+            to: 'Bangsar South',
+          ),
         ],
       ),
     );
@@ -1196,34 +1554,104 @@ void main() {
         past: [_ride('r1', 'completed'), _ride('r2', 'cancelled', fare: 12)],
       ),
     );
-    testWidgets('trips scheduled', (t) => _shot(t, 'trips_scheduled', route: '/trips/scheduled'));
+    testWidgets(
+      'trips scheduled',
+      (t) => _shot(t, 'trips_scheduled', route: '/trips/scheduled'),
+    );
     testWidgets('wallet', (t) => _shot(t, 'wallet', route: '/wallet'));
-    testWidgets('wallet dark', (t) => _shot(t, 'wallet_dark', route: '/wallet', dark: true));
-    testWidgets('wallet large text', (t) => _shot(t, 'wallet_xl', route: '/wallet', textScale: 1.35));
-    testWidgets('wallet history', (t) => _shot(t, 'wallet_history', route: '/wallet/history'));
-    testWidgets('wallet trade', (t) => _shot(t, 'wallet_trade', route: '/wallet/trade'));
-    testWidgets('wallet receive', (t) => _shot(t, 'wallet_receive', route: '/wallet/receive'));
+    testWidgets(
+      'wallet dark',
+      (t) => _shot(t, 'wallet_dark', route: '/wallet', dark: true),
+    );
+    testWidgets(
+      'wallet large text',
+      (t) => _shot(t, 'wallet_xl', route: '/wallet', textScale: 1.35),
+    );
+    testWidgets(
+      'wallet history',
+      (t) => _shot(t, 'wallet_history', route: '/wallet/history'),
+    );
+    testWidgets(
+      'wallet trade',
+      (t) => _shot(t, 'wallet_trade', route: '/wallet/trade'),
+    );
+    testWidgets(
+      'wallet receive',
+      (t) => _shot(t, 'wallet_receive', route: '/wallet/receive'),
+    );
     testWidgets('account', (t) => _shot(t, 'account', route: '/account'));
-    testWidgets('account dark', (t) => _shot(t, 'account_dark', route: '/account', dark: true));
-    testWidgets('account large text', (t) => _shot(t, 'account_xl', route: '/account', textScale: 1.35));
-    testWidgets('profile', (t) => _shot(t, 'profile', route: '/account/profile'));
-    testWidgets('edit profile', (t) => _shot(t, 'profile_edit', route: '/account/edit'));
-    testWidgets('notifications', (t) => _shot(t, 'notifications', route: '/account/notifications'));
-    testWidgets('referral', (t) => _shot(t, 'referral', route: '/account/referral'));
-    testWidgets('my ride', (t) => _shot(t, 'my_ride', route: '/account/my-ride'));
+    testWidgets(
+      'account dark',
+      (t) => _shot(t, 'account_dark', route: '/account', dark: true),
+    );
+    testWidgets(
+      'account large text',
+      (t) => _shot(t, 'account_xl', route: '/account', textScale: 1.35),
+    );
+    testWidgets(
+      'profile',
+      (t) => _shot(t, 'profile', route: '/account/profile'),
+    );
+    testWidgets(
+      'edit profile',
+      (t) => _shot(t, 'profile_edit', route: '/account/edit'),
+    );
+    testWidgets(
+      'notifications',
+      (t) => _shot(t, 'notifications', route: '/account/notifications'),
+    );
+    testWidgets(
+      'referral',
+      (t) => _shot(t, 'referral', route: '/account/referral'),
+    );
+    testWidgets(
+      'my ride',
+      (t) => _shot(t, 'my_ride', route: '/account/my-ride'),
+    );
     testWidgets('my qr', (t) => _shot(t, 'my_qr', route: '/account/my-qr'));
     testWidgets('safety', (t) => _shot(t, 'safety', route: '/account/safety'));
-    testWidgets('emergency contacts', (t) => _shot(t, 'emergency', route: '/account/emergency'));
-    testWidgets('user guide', (t) => _shot(t, 'guide', route: '/account/guide'));
-    testWidgets('help assistant', (t) => _shot(t, 'help', route: '/account/help'));
-    testWidgets('settings', (t) => _shot(t, 'settings', route: '/account/settings'));
-    testWidgets('settings dark', (t) => _shot(t, 'settings_dark', route: '/account/settings', dark: true));
-    testWidgets('settings large text', (t) => _shot(t, 'settings_xl', route: '/account/settings', textScale: 1.35));
-    testWidgets('change phone', (t) => _shot(t, 'settings_phone', route: '/account/settings/phone'));
-    testWidgets('change pin', (t) => _shot(t, 'settings_pin', route: '/account/settings/pin'));
-    testWidgets('passkeys', (t) => _shot(t, 'settings_passkeys', route: '/account/settings/passkeys'));
+    testWidgets(
+      'emergency contacts',
+      (t) => _shot(t, 'emergency', route: '/account/emergency'),
+    );
+    testWidgets(
+      'user guide',
+      (t) => _shot(t, 'guide', route: '/account/guide'),
+    );
+    testWidgets(
+      'help assistant',
+      (t) => _shot(t, 'help', route: '/account/help'),
+    );
+    testWidgets(
+      'settings',
+      (t) => _shot(t, 'settings', route: '/account/settings'),
+    );
+    testWidgets(
+      'settings dark',
+      (t) => _shot(t, 'settings_dark', route: '/account/settings', dark: true),
+    );
+    testWidgets(
+      'settings large text',
+      (t) =>
+          _shot(t, 'settings_xl', route: '/account/settings', textScale: 1.35),
+    );
+    testWidgets(
+      'change phone',
+      (t) => _shot(t, 'settings_phone', route: '/account/settings/phone'),
+    );
+    testWidgets(
+      'change pin',
+      (t) => _shot(t, 'settings_pin', route: '/account/settings/pin'),
+    );
+    testWidgets(
+      'passkeys',
+      (t) => _shot(t, 'settings_passkeys', route: '/account/settings/passkeys'),
+    );
     testWidgets('ev order', (t) => _shot(t, 'ev', route: '/ev'));
-    testWidgets('diagnostics', (t) => _shot(t, 'diagnostics', route: '/diagnostics'));
+    testWidgets(
+      'diagnostics',
+      (t) => _shot(t, 'diagnostics', route: '/diagnostics'),
+    );
   });
 
   group('booking', () {
@@ -1256,7 +1684,10 @@ void main() {
         rides: _BookingRides(),
         act: (t) async {
           await _toConfirm(t);
-          await t.tap(find.byKey(const ValueKey('vehicle-info-Ride')), warnIfMissed: false);
+          await t.tap(
+            find.byKey(const ValueKey('vehicle-info-Ride')),
+            warnIfMissed: false,
+          );
           await _settle(t);
         },
       ),
@@ -1270,7 +1701,10 @@ void main() {
         rides: _BookingRides(),
         act: (t) async {
           await _toConfirm(t);
-          await t.tap(find.byKey(const ValueKey('fare-details')), warnIfMissed: false);
+          await t.tap(
+            find.byKey(const ValueKey('fare-details')),
+            warnIfMissed: false,
+          );
           await _settle(t);
         },
       ),
@@ -1284,7 +1718,10 @@ void main() {
         rides: _BookingRides(),
         act: (t) async {
           await _toConfirm(t);
-          await t.tap(find.byKey(const ValueKey('confirm-add-stop')), warnIfMissed: false);
+          await t.tap(
+            find.byKey(const ValueKey('confirm-add-stop')),
+            warnIfMissed: false,
+          );
           await _settle(t);
         },
       ),
@@ -1310,7 +1747,12 @@ void main() {
     for (final status in ['open', 'accepted', 'arrived', 'on_trip']) {
       testWidgets(
         'ride $status',
-        (t) => _shot(t, 'ride_$status', route: '/ride/r1', overrides: _trackingOverrides(_tracked(status))),
+        (t) => _shot(
+          t,
+          'ride_$status',
+          route: '/ride/r1',
+          overrides: _trackingOverrides(_tracked(status)),
+        ),
       );
     }
     testWidgets(
@@ -1349,7 +1791,9 @@ void main() {
         t,
         'ride_completed_due',
         route: '/ride/r1',
-        overrides: _trackingOverrides(_tracked('completed', extra: {'payment_status': 'due'})),
+        overrides: _trackingOverrides(
+          _tracked('completed', extra: {'payment_status': 'due'}),
+        ),
       ),
     );
     testWidgets(
@@ -1359,7 +1803,14 @@ void main() {
         'ride_completed_paid',
         route: '/ride/r1',
         overrides: _trackingOverrides(
-          _tracked('completed', extra: {'payment_status': 'paid', 'paid_method': 'cash', 'paid_amount': 23.5}),
+          _tracked(
+            'completed',
+            extra: {
+              'payment_status': 'paid',
+              'paid_method': 'cash',
+              'paid_amount': 23.5,
+            },
+          ),
         ),
       ),
     );
@@ -1369,7 +1820,12 @@ void main() {
         t,
         'ride_cancelled',
         route: '/ride/r1',
-        overrides: _trackingOverrides(_tracked('cancelled', extra: {'cancel_reason': 'Driver took too long'})),
+        overrides: _trackingOverrides(
+          _tracked(
+            'cancelled',
+            extra: {'cancel_reason': 'Driver took too long'},
+          ),
+        ),
       ),
     );
     testWidgets(
@@ -1399,10 +1855,26 @@ void main() {
       _request('q1', 'Pavilion KL', 'Mont Kiara', 18.5, km: 7.2),
       _request('q2', 'Bangsar Village', 'KL Sentral', 9, km: 3.1),
     ];
-    testWidgets('offline', (t) => _shot(t, 'drive_offline', route: '/drive', partner: _approved, queue: queue));
+    testWidgets(
+      'offline',
+      (t) => _shot(
+        t,
+        'drive_offline',
+        route: '/drive',
+        partner: _approved,
+        queue: queue,
+      ),
+    );
     testWidgets(
       'offline dark',
-      (t) => _shot(t, 'drive_offline_dark', route: '/drive', dark: true, partner: _approved, queue: queue),
+      (t) => _shot(
+        t,
+        'drive_offline_dark',
+        route: '/drive',
+        dark: true,
+        partner: _approved,
+        queue: queue,
+      ),
     );
     testWidgets(
       'online with queue',
@@ -1459,7 +1931,11 @@ void main() {
         act: (t) async {
           await t.tap(find.text('You are offline'), warnIfMissed: false);
           await _settle(t, 10);
-          await t.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -500), warnIfMissed: false);
+          await t.drag(
+            find.byKey(const ValueKey('map-sheet-handle')),
+            const Offset(0, -500),
+            warnIfMissed: false,
+          );
           await _settle(t);
         },
       ),
@@ -1475,7 +1951,11 @@ void main() {
         act: (t) async {
           await t.tap(find.text('You are offline'), warnIfMissed: false);
           await _settle(t, 10);
-          await t.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -500), warnIfMissed: false);
+          await t.drag(
+            find.byKey(const ValueKey('map-sheet-handle')),
+            const Offset(0, -500),
+            warnIfMissed: false,
+          );
           await _settle(t);
           await t.tap(find.text('Pavilion KL').first, warnIfMissed: false);
           await _settle(t);
@@ -1502,7 +1982,9 @@ void main() {
         route: '/drive/trip/r1',
         partner: _approved,
         overrides: [
-          ..._trackingOverrides(_driving('completed', extra: {'payment_status': 'due'})),
+          ..._trackingOverrides(
+            _driving('completed', extra: {'payment_status': 'due'}),
+          ),
         ],
       ),
     );
@@ -1548,20 +2030,51 @@ void main() {
     );
     testWidgets(
       'phone typing SE',
-      (t) => _shot(t, 'kb_phone_se', route: '/login/phone', signedIn: false, keyboard: true, se: true),
+      (t) => _shot(
+        t,
+        'kb_phone_se',
+        route: '/login/phone',
+        signedIn: false,
+        keyboard: true,
+        se: true,
+      ),
     );
     testWidgets(
       'otp',
-      (t) => _shot(t, 'kb_otp', route: '/login/otp?phone=%2B60123456789', signedIn: false, keyboard: true),
+      (t) => _shot(
+        t,
+        'kb_otp',
+        route: '/login/otp?phone=%2B60123456789',
+        signedIn: false,
+        keyboard: true,
+      ),
     );
     testWidgets(
       'otp SE',
-      (t) => _shot(t, 'kb_otp_se', route: '/login/otp?phone=%2B60123456789', signedIn: false, keyboard: true, se: true),
+      (t) => _shot(
+        t,
+        'kb_otp_se',
+        route: '/login/otp?phone=%2B60123456789',
+        signedIn: false,
+        keyboard: true,
+        se: true,
+      ),
     );
-    testWidgets('set pin', (t) => _shot(t, 'kb_set_pin', screen: const SetPinScreen(), keyboard: true));
+    testWidgets(
+      'set pin',
+      (t) =>
+          _shot(t, 'kb_set_pin', screen: const SetPinScreen(), keyboard: true),
+    );
     testWidgets(
       'set pin SE large text',
-      (t) => _shot(t, 'kb_set_pin_se_xl', screen: const SetPinScreen(), keyboard: true, se: true, textScale: 1.35),
+      (t) => _shot(
+        t,
+        'kb_set_pin_se_xl',
+        screen: const SetPinScreen(),
+        keyboard: true,
+        se: true,
+        textScale: 1.35,
+      ),
     );
     testWidgets(
       'help composer',
@@ -1572,7 +2085,10 @@ void main() {
         keyboard: true,
         act: (t) async {
           await t.tap(find.byType(TextField).first);
-          await t.enterText(find.byType(TextField).first, 'How do I pay with GET.coin?');
+          await t.enterText(
+            find.byType(TextField).first,
+            'How do I pay with GET.coin?',
+          );
           await _settle(t, 3);
         },
       ),
@@ -1592,7 +2108,13 @@ void main() {
     );
     testWidgets(
       'change phone SE',
-      (t) => _shot(t, 'kb_change_phone_se', route: '/account/settings/phone', keyboard: true, se: true),
+      (t) => _shot(
+        t,
+        'kb_change_phone_se',
+        route: '/account/settings/phone',
+        keyboard: true,
+        se: true,
+      ),
     );
   });
 
@@ -1602,21 +2124,40 @@ void main() {
       (t) => _shot(
         t,
         'sheet_pickup_time',
-        screen: _opener((c) => showPickupTimeSheet(c, const ScheduledRidesConfig(enabled: true))),
+        screen: _opener(
+          (c) =>
+              showPickupTimeSheet(c, const ScheduledRidesConfig(enabled: true)),
+        ),
         act: _tapOpen,
       ),
     );
     testWidgets(
       'book for',
-      (t) => _shot(t, 'sheet_book_for', screen: _opener((c) => showBookForSheet(c)), act: _tapOpen),
+      (t) => _shot(
+        t,
+        'sheet_book_for',
+        screen: _opener((c) => showBookForSheet(c)),
+        act: _tapOpen,
+      ),
     );
     testWidgets(
       'book for keyboard',
-      (t) => _shot(t, 'sheet_book_for_kb', keyboard: true, screen: _opener((c) => showBookForSheet(c)), act: _tapOpen),
+      (t) => _shot(
+        t,
+        'sheet_book_for_kb',
+        keyboard: true,
+        screen: _opener((c) => showBookForSheet(c)),
+        act: _tapOpen,
+      ),
     );
     testWidgets(
       'payment',
-      (t) => _shot(t, 'sheet_payment', screen: _opener((c) => showPaymentSheet(c, 'Cash')), act: _tapOpen),
+      (t) => _shot(
+        t,
+        'sheet_payment',
+        screen: _opener((c) => showPaymentSheet(c, 'Cash')),
+        act: _tapOpen,
+      ),
     );
     testWidgets(
       'payment dark',
@@ -1630,20 +2171,50 @@ void main() {
     );
     testWidgets(
       'search cancel',
-      (t) => _shot(t, 'sheet_search_cancel', screen: _opener((c) => showSearchCancelSheet(c)), act: _tapOpen),
+      (t) => _shot(
+        t,
+        'sheet_search_cancel',
+        screen: _opener((c) => showSearchCancelSheet(c)),
+        act: _tapOpen,
+      ),
     );
     testWidgets(
       'location share',
-      (t) =>
-          _shot(t, 'sheet_location_share', screen: _opener((c) => showLocationShareSheet(c, on: true)), act: _tapOpen),
+      (t) => _shot(
+        t,
+        'sheet_location_share',
+        screen: _opener((c) => showLocationShareSheet(c, on: true)),
+        act: _tapOpen,
+      ),
     );
-    testWidgets('welcome SE', (t) => _shot(t, 'auth_welcome_se', route: '/login', signedIn: false, se: true));
-    testWidgets('wallet SE', (t) => _shot(t, 'wallet_se', route: '/wallet', se: true));
+    testWidgets(
+      'welcome SE',
+      (t) => _shot(
+        t,
+        'auth_welcome_se',
+        route: '/login',
+        signedIn: false,
+        se: true,
+      ),
+    );
+    testWidgets(
+      'wallet SE',
+      (t) => _shot(t, 'wallet_se', route: '/wallet', se: true),
+    );
     testWidgets(
       'settings SE large text',
-      (t) => _shot(t, 'settings_se_xl', route: '/account/settings', se: true, textScale: 1.35),
+      (t) => _shot(
+        t,
+        'settings_se_xl',
+        route: '/account/settings',
+        se: true,
+        textScale: 1.35,
+      ),
     );
-    testWidgets('account SE', (t) => _shot(t, 'account_se', route: '/account', se: true));
+    testWidgets(
+      'account SE',
+      (t) => _shot(t, 'account_se', route: '/account', se: true),
+    );
   });
 
   group('admin', () {
@@ -1662,17 +2233,41 @@ void main() {
       'sub-admins',
       'settings',
     ]) {
-      testWidgets(r, (t) => _shot(t, 'admin_$r', route: '/admin/$r', admin: true));
+      testWidgets(
+        r,
+        (t) => _shot(t, 'admin_$r', route: '/admin/$r', admin: true),
+      );
     }
     testWidgets(
       'dashboard dark',
-      (t) => _shot(t, 'admin_dashboard_dark', route: '/admin/dashboard', admin: true, dark: true),
+      (t) => _shot(
+        t,
+        'admin_dashboard_dark',
+        route: '/admin/dashboard',
+        admin: true,
+        dark: true,
+      ),
     );
     testWidgets(
       'users large text',
-      (t) => _shot(t, 'admin_users_xl', route: '/admin/users', admin: true, textScale: 1.35),
+      (t) => _shot(
+        t,
+        'admin_users_xl',
+        route: '/admin/users',
+        admin: true,
+        textScale: 1.35,
+      ),
     );
-    testWidgets('rides SE', (t) => _shot(t, 'admin_rides_se', route: '/admin/rides', admin: true, se: true));
+    testWidgets(
+      'rides SE',
+      (t) => _shot(
+        t,
+        'admin_rides_se',
+        route: '/admin/rides',
+        admin: true,
+        se: true,
+      ),
+    );
     testWidgets(
       'drawer',
       (t) => _shot(
@@ -1681,7 +2276,11 @@ void main() {
         route: '/admin/dashboard',
         admin: true,
         act: (t) async {
-          final s = find.byType(Scaffold).evaluate().map((e) => e.widget as Scaffold).where((w) => w.drawer != null);
+          final s = find
+              .byType(Scaffold)
+              .evaluate()
+              .map((e) => e.widget as Scaffold)
+              .where((w) => w.drawer != null);
           if (s.isNotEmpty) {
             final state = t.state<ScaffoldState>(find.byWidget(s.first));
             state.openDrawer();
@@ -1707,17 +2306,36 @@ void main() {
       'site',
       'splash',
     ]) {
-      testWidgets('m $m', (t) => _shot(t, 'admin_m_${m.replaceAll('-', '_')}', route: '/admin/m/$m', admin: true));
+      testWidgets(
+        'm $m',
+        (t) => _shot(
+          t,
+          'admin_m_${m.replaceAll('-', '_')}',
+          route: '/admin/m/$m',
+          admin: true,
+        ),
+      );
     }
     testWidgets(
       'settings category',
-      (t) => _shot(t, 'admin_settings_vehicle_type', route: '/admin/settings/vehicle-type', admin: true),
+      (t) => _shot(
+        t,
+        'admin_settings_vehicle_type',
+        route: '/admin/settings/vehicle-type',
+        admin: true,
+      ),
     );
-    testWidgets('account with admin row', (t) => _shot(t, 'account_admin', route: '/account', admin: true));
+    testWidgets(
+      'account with admin row',
+      (t) => _shot(t, 'account_admin', route: '/account', admin: true),
+    );
   });
 
   group('picker', () {
-    testWidgets('dropdown closed', (t) => _shot(t, 'picker_closed', screen: _dropdownHost()));
+    testWidgets(
+      'dropdown closed',
+      (t) => _shot(t, 'picker_closed', screen: _dropdownHost()),
+    );
     testWidgets(
       'dropdown open',
       (t) => _shot(
@@ -1741,7 +2359,10 @@ void main() {
         act: (t) async {
           await t.tap(find.byKey(const ValueKey('state')));
           await _settle(t);
-          await t.enterText(find.byKey(const ValueKey('search-select-field')), 'sel');
+          await t.enterText(
+            find.byKey(const ValueKey('search-select-field')),
+            'sel',
+          );
           await _settle(t, 3);
         },
       ),
@@ -1799,7 +2420,12 @@ void main() {
                 'Hourly',
                 'Pet friendly',
               ])
-                (value: s, label: s, subtitle: 'Up to 4 passengers', leading: const Icon(Icons.local_taxi)),
+                (
+                  value: s,
+                  label: s,
+                  subtitle: 'Up to 4 passengers',
+                  leading: const Icon(Icons.local_taxi),
+                ),
             ],
           ),
         ),
@@ -1811,7 +2437,12 @@ void main() {
   group('wizards', () {
     testWidgets(
       'onboarding start',
-      (t) => _shot(t, 'wiz_onboarding_start', route: '/drive/onboarding', overrides: _wizardOverrides()),
+      (t) => _shot(
+        t,
+        'wiz_onboarding_start',
+        route: '/drive/onboarding',
+        overrides: _wizardOverrides(),
+      ),
     );
     testWidgets(
       'onboarding start large text',
@@ -1859,10 +2490,24 @@ void main() {
         'wiz_onboarding_submitted',
         route: '/drive/onboarding',
         overrides: _wizardOverrides(
-          partnerRow: _partnerRow({..._filledIn, 'documents_ok': true, 'status': 'pending'}),
+          partnerRow: _partnerRow({
+            ..._filledIn,
+            'documents_ok': true,
+            'status': 'pending',
+          }),
           uploads: [
-            {'id': 'd1', 'document_id': 'licence', 'status': 'pending', 'front_url': 'https://x/f.jpg'},
-            {'id': 'd2', 'document_id': 'ic', 'status': 'approved', 'front_url': 'https://x/f.jpg'},
+            {
+              'id': 'd1',
+              'document_id': 'licence',
+              'status': 'pending',
+              'front_url': 'https://x/f.jpg',
+            },
+            {
+              'id': 'd2',
+              'document_id': 'ic',
+              'status': 'approved',
+              'front_url': 'https://x/f.jpg',
+            },
             {
               'id': 'd3',
               'document_id': 'permit',
@@ -1903,7 +2548,9 @@ void main() {
         'wiz_vehicle_new',
         route: '/drive/vehicles/new',
         partner: _approved,
-        overrides: _wizardOverrides(partnerRow: _partnerRow({..._filledIn, 'status': 'approved'})),
+        overrides: _wizardOverrides(
+          partnerRow: _partnerRow({..._filledIn, 'status': 'approved'}),
+        ),
       ),
     );
     testWidgets(
@@ -1914,7 +2561,9 @@ void main() {
         route: '/drive/vehicles/new',
         partner: _approved,
         keyboard: true,
-        overrides: _wizardOverrides(partnerRow: _partnerRow({..._filledIn, 'status': 'approved'})),
+        overrides: _wizardOverrides(
+          partnerRow: _partnerRow({..._filledIn, 'status': 'approved'}),
+        ),
         act: (t) async {
           await t.tap(find.byType(TextField).first, warnIfMissed: false);
           await _settle(t, 3);
@@ -1930,13 +2579,23 @@ void main() {
         partner: _approved,
         overrides: _wizardOverrides(
           partnerRow: _partnerRow({..._filledIn, 'status': 'approved'}),
-          vehicle: {'id': 'v1', 'plate': 'WXY 1234', 'status': 'unapproved', 'permit': 'pending'},
+          vehicle: {
+            'id': 'v1',
+            'plate': 'WXY 1234',
+            'status': 'unapproved',
+            'permit': 'pending',
+          },
         ),
       ),
     );
     testWidgets(
       'ev order',
-      (t) => _shot(t, 'wiz_ev', route: '/ev', overrides: [evOrderRepositoryProvider.overrideWithValue(_FakeEv())]),
+      (t) => _shot(
+        t,
+        'wiz_ev',
+        route: '/ev',
+        overrides: [evOrderRepositoryProvider.overrideWithValue(_FakeEv())],
+      ),
     );
     testWidgets(
       'ev order dark',
@@ -1963,32 +2622,81 @@ void main() {
   group('support', () {
     testWidgets(
       'tickets',
-      (t) => _shot(t, 'support_tickets', route: '/account/support', overrides: _supportOverrides()),
+      (t) => _shot(
+        t,
+        'support_tickets',
+        route: '/account/support',
+        overrides: _supportOverrides(),
+      ),
     );
     testWidgets(
       'tickets dark',
-      (t) => _shot(t, 'support_tickets_dark', route: '/account/support', dark: true, overrides: _supportOverrides()),
+      (t) => _shot(
+        t,
+        'support_tickets_dark',
+        route: '/account/support',
+        dark: true,
+        overrides: _supportOverrides(),
+      ),
     );
-    testWidgets('chat', (t) => _shot(t, 'support_chat', route: '/account/support/t1', overrides: _supportOverrides()));
+    testWidgets(
+      'chat',
+      (t) => _shot(
+        t,
+        'support_chat',
+        route: '/account/support/t1',
+        overrides: _supportOverrides(),
+      ),
+    );
     testWidgets(
       'chat keyboard',
-      (t) => _shot(t, 'support_chat_kb', route: '/account/support/t1', keyboard: true, overrides: _supportOverrides()),
+      (t) => _shot(
+        t,
+        'support_chat_kb',
+        route: '/account/support/t1',
+        keyboard: true,
+        overrides: _supportOverrides(),
+      ),
     );
     testWidgets(
       'chat large text',
-      (t) => _shot(t, 'support_chat_xl', route: '/account/support/t1', textScale: 1.35, overrides: _supportOverrides()),
+      (t) => _shot(
+        t,
+        'support_chat_xl',
+        route: '/account/support/t1',
+        textScale: 1.35,
+        overrides: _supportOverrides(),
+      ),
     );
     testWidgets(
       'chat SE',
-      (t) => _shot(t, 'support_chat_se', route: '/account/support/t1', se: true, overrides: _supportOverrides()),
+      (t) => _shot(
+        t,
+        'support_chat_se',
+        route: '/account/support/t1',
+        se: true,
+        overrides: _supportOverrides(),
+      ),
     );
   });
 
   group('meter', () {
-    testWidgets('printer', (t) => _shot(t, 'meter_printer', route: '/meter/printer'));
-    testWidgets('reader', (t) => _shot(t, 'meter_reader', route: '/meter/reader'));
-    testWidgets('vehicle info', (t) => _shot(t, 'meter_vehicle', route: '/meter/vehicle'));
-    testWidgets('meter SE', (t) => _shot(t, 'meter_se', route: '/meter', se: true));
+    testWidgets(
+      'printer',
+      (t) => _shot(t, 'meter_printer', route: '/meter/printer'),
+    );
+    testWidgets(
+      'reader',
+      (t) => _shot(t, 'meter_reader', route: '/meter/reader'),
+    );
+    testWidgets(
+      'vehicle info',
+      (t) => _shot(t, 'meter_vehicle', route: '/meter/vehicle'),
+    );
+    testWidgets(
+      'meter SE',
+      (t) => _shot(t, 'meter_se', route: '/meter', se: true),
+    );
   });
 
   group('ipad', () {
@@ -1998,13 +2706,29 @@ void main() {
       ('slide', _slideOver),
       ('land', _iphone15Land),
     ]) {
-      testWidgets('$name home', (t) => _shot(t, '${name}_home', route: '/', device: dev));
+      testWidgets(
+        '$name home',
+        (t) => _shot(t, '${name}_home', route: '/', device: dev),
+      );
       testWidgets(
         '$name confirm',
-        (t) => _shot(t, '${name}_confirm', route: '/', device: dev, rides: _BookingRides(), act: _toConfirm),
+        (t) => _shot(
+          t,
+          '${name}_confirm',
+          route: '/',
+          device: dev,
+          rides: _BookingRides(),
+          act: _toConfirm,
+        ),
       );
-      testWidgets('$name wallet', (t) => _shot(t, '${name}_wallet', route: '/wallet', device: dev));
-      testWidgets('$name account', (t) => _shot(t, '${name}_account', route: '/account', device: dev));
+      testWidgets(
+        '$name wallet',
+        (t) => _shot(t, '${name}_wallet', route: '/wallet', device: dev),
+      );
+      testWidgets(
+        '$name account',
+        (t) => _shot(t, '${name}_account', route: '/account', device: dev),
+      );
       testWidgets(
         '$name drive online',
         (t) => _shot(
@@ -2030,9 +2754,35 @@ void main() {
           overrides: _trackingOverrides(_tracked('accepted')),
         ),
       );
-      testWidgets('$name admin', (t) => _shot(t, '${name}_admin', route: '/admin/dashboard', device: dev, admin: true));
-      testWidgets('$name settings', (t) => _shot(t, '${name}_settings', route: '/account/settings', device: dev));
-      testWidgets('$name welcome', (t) => _shot(t, '${name}_welcome', route: '/login', device: dev, signedIn: false));
+      testWidgets(
+        '$name admin',
+        (t) => _shot(
+          t,
+          '${name}_admin',
+          route: '/admin/dashboard',
+          device: dev,
+          admin: true,
+        ),
+      );
+      testWidgets(
+        '$name settings',
+        (t) => _shot(
+          t,
+          '${name}_settings',
+          route: '/account/settings',
+          device: dev,
+        ),
+      );
+      testWidgets(
+        '$name welcome',
+        (t) => _shot(
+          t,
+          '${name}_welcome',
+          route: '/login',
+          device: dev,
+          signedIn: false,
+        ),
+      );
       testWidgets(
         '$name trips',
         (t) => _shot(
@@ -2067,10 +2817,16 @@ void main() {
           'end_$name',
           route: route,
           admin: name.startsWith('admin'),
-          overrides: name == 'onboarding_docs' ? _wizardOverrides(partnerRow: _partnerRow(_filledIn)) : const [],
+          overrides: name == 'onboarding_docs'
+              ? _wizardOverrides(partnerRow: _partnerRow(_filledIn))
+              : const [],
           act: (t) async {
             for (var i = 0; i < 6; i++) {
-              await t.drag(find.byType(Scrollable).last, const Offset(0, -900), warnIfMissed: false);
+              await t.drag(
+                find.byType(Scrollable).last,
+                const Offset(0, -900),
+                warnIfMissed: false,
+              );
               await t.pump(const Duration(milliseconds: 100));
             }
             await _settle(t, 5);
@@ -2237,7 +2993,11 @@ void main() {
         route: '/login',
         signedIn: false,
         act: (t) async {
-          await t.drag(find.byType(PageView), const Offset(-400, 0), warnIfMissed: false);
+          await t.drag(
+            find.byType(PageView),
+            const Offset(-400, 0),
+            warnIfMissed: false,
+          );
           await _settle(t);
         },
       ),
@@ -2250,7 +3010,11 @@ void main() {
         route: '/account',
         act: (t) async {
           for (var i = 0; i < 6; i++) {
-            await t.drag(find.byType(Scrollable).last, const Offset(0, -900), warnIfMissed: false);
+            await t.drag(
+              find.byType(Scrollable).last,
+              const Offset(0, -900),
+              warnIfMissed: false,
+            );
             await t.pump(const Duration(milliseconds: 100));
           }
           await t.tap(find.text('Logout'), warnIfMissed: false);
@@ -2258,7 +3022,15 @@ void main() {
         },
       ),
     );
-    testWidgets('account delete', (t) => _shot(t, 'flow_delete', route: '/account/settings/delete', act: (t) async {}));
+    testWidgets(
+      'account delete',
+      (t) => _shot(
+        t,
+        'flow_delete',
+        route: '/account/settings/delete',
+        act: (t) async {},
+      ),
+    );
     testWidgets(
       'drive auto accept',
       (t) => _shot(
@@ -2269,7 +3041,11 @@ void main() {
         act: (t) async {
           await t.tap(find.text('You are offline'), warnIfMissed: false);
           await _settle(t, 10);
-          await t.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -600), warnIfMissed: false);
+          await t.drag(
+            find.byKey(const ValueKey('map-sheet-handle')),
+            const Offset(0, -600),
+            warnIfMissed: false,
+          );
           await _settle(t);
           await tapKey(t, 'auto-accept');
         },
@@ -2285,7 +3061,11 @@ void main() {
         act: (t) async {
           await t.tap(find.text('You are offline'), warnIfMissed: false);
           await _settle(t, 10);
-          await t.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -600), warnIfMissed: false);
+          await t.drag(
+            find.byKey(const ValueKey('map-sheet-handle')),
+            const Offset(0, -600),
+            warnIfMissed: false,
+          );
           await _settle(t);
           await tapKey(t, 'destination-add');
         },
@@ -2311,7 +3091,11 @@ void main() {
         route: '/ride/r1',
         overrides: _trackingOverrides(_tracked('accepted')),
         act: (t) async {
-          await t.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -500), warnIfMissed: false);
+          await t.drag(
+            find.byKey(const ValueKey('map-sheet-handle')),
+            const Offset(0, -500),
+            warnIfMissed: false,
+          );
           await _settle(t);
           await t.tap(find.textContaining('Cancel').last, warnIfMissed: false);
           await _settle(t);
@@ -2339,14 +3123,21 @@ void main() {
         route: '/ride/r1',
         overrides: _trackingOverrides(_tracked('open')),
         act: (t) async {
-          await t.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -500), warnIfMissed: false);
+          await t.drag(
+            find.byKey(const ValueKey('map-sheet-handle')),
+            const Offset(0, -500),
+            warnIfMissed: false,
+          );
           await _settle(t);
           await t.tap(find.textContaining('Cancel').last, warnIfMissed: false);
           await _settle(t);
         },
       ),
     );
-    testWidgets('wallet trade', (t) => _shot(t, 'flow_trade', route: '/wallet/trade'));
+    testWidgets(
+      'wallet trade',
+      (t) => _shot(t, 'flow_trade', route: '/wallet/trade'),
+    );
     testWidgets(
       'emergency add',
       (t) => _shot(
@@ -2420,7 +3211,13 @@ void main() {
     ]) {
       testWidgets(
         'commission $name',
-        (t) => _shot(t, 'req_commission_$name', route: '/admin/commission', admin: true, act: (t) => tapKey(t, tab)),
+        (t) => _shot(
+          t,
+          'req_commission_$name',
+          route: '/admin/commission',
+          admin: true,
+          act: (t) => tapKey(t, tab),
+        ),
       );
       testWidgets(
         'commission $name large text',
@@ -2465,7 +3262,10 @@ void main() {
         keyboard: true,
         act: (t) async {
           await tapKey(t, 'commission-add');
-          await t.tap(find.byType(SearchableDropdownFormField<String>).first, warnIfMissed: false);
+          await t.tap(
+            find.byType(SearchableDropdownFormField<String>).first,
+            warnIfMissed: false,
+          );
           await _settle(t);
         },
       ),
@@ -2519,7 +3319,11 @@ void main() {
           textScale: scale,
           overrides: [creditFloorProvider.overrideWith((ref) async => floor)],
           act: (t) async {
-            await t.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -600), warnIfMissed: false);
+            await t.drag(
+              find.byKey(const ValueKey('map-sheet-handle')),
+              const Offset(0, -600),
+              warnIfMissed: false,
+            );
             await _settle(t);
           },
         ),
@@ -2528,8 +3332,21 @@ void main() {
   });
 
   group('more', () {
-    for (final r in ['share/abc123', 'verify/abc123', 'install/ios', 'nowhere-at-all', 'q/driver/XYZ']) {
-      testWidgets(r, (t) => _shot(t, 'more_${r.replaceAll(RegExp('[^a-z]'), '_')}', route: '/$r'));
+    for (final r in [
+      'share/abc123',
+      'verify/abc123',
+      'install/ios',
+      'nowhere-at-all',
+      'q/driver/XYZ',
+    ]) {
+      testWidgets(
+        r,
+        (t) => _shot(
+          t,
+          'more_${r.replaceAll(RegExp('[^a-z]'), '_')}',
+          route: '/$r',
+        ),
+      );
     }
     for (final m in [
       'user-edit',
@@ -2562,26 +3379,60 @@ void main() {
       'app-icon',
       'claude-access',
     ]) {
-      testWidgets('m $m', (t) => _shot(t, 'more_m_${m.replaceAll('-', '_')}', route: '/admin/m/$m', admin: true));
+      testWidgets(
+        'm $m',
+        (t) => _shot(
+          t,
+          'more_m_${m.replaceAll('-', '_')}',
+          route: '/admin/m/$m',
+          admin: true,
+        ),
+      );
     }
     testWidgets(
       'm claude-access large text',
-      (t) => _shot(t, 'more_m_claude_access_xl', route: '/admin/m/claude-access', admin: true, textScale: 1.35),
+      (t) => _shot(
+        t,
+        'more_m_claude_access_xl',
+        route: '/admin/m/claude-access',
+        admin: true,
+        textScale: 1.35,
+      ),
     );
     testWidgets(
       'm claude-access SE',
-      (t) => _shot(t, 'more_m_claude_access_se', route: '/admin/m/claude-access', admin: true, se: true),
+      (t) => _shot(
+        t,
+        'more_m_claude_access_se',
+        route: '/admin/m/claude-access',
+        admin: true,
+        se: true,
+      ),
     );
     testWidgets(
       'm claude-access dark',
-      (t) => _shot(t, 'more_m_claude_access_dark', route: '/admin/m/claude-access', admin: true, dark: true),
+      (t) => _shot(
+        t,
+        'more_m_claude_access_dark',
+        route: '/admin/m/claude-access',
+        admin: true,
+        dark: true,
+      ),
     );
     testWidgets(
       'admin support chat',
-      (t) =>
-          _shot(t, 'more_admin_support_chat', route: '/admin/support/t1', admin: true, overrides: _supportOverrides()),
+      (t) => _shot(
+        t,
+        'more_admin_support_chat',
+        route: '/admin/support/t1',
+        admin: true,
+        overrides: _supportOverrides(),
+      ),
     );
-    testWidgets('admin push', (t) => _shot(t, 'more_admin_push', route: '/admin/push', admin: true));
+    testWidgets(
+      'admin push',
+      (t) => _shot(t, 'more_admin_push', route: '/admin/push', admin: true),
+    );
     testWidgets(
       'admin push keyboard',
       (t) => _shot(
@@ -2598,7 +3449,12 @@ void main() {
     );
     testWidgets(
       'drive scheduled',
-      (t) => _shot(t, 'more_drive_scheduled', route: '/drive/scheduled', partner: _approved),
+      (t) => _shot(
+        t,
+        'more_drive_scheduled',
+        route: '/drive/scheduled',
+        partner: _approved,
+      ),
     );
     testWidgets(
       'meter trip log',
@@ -2667,12 +3523,22 @@ void main() {
     const on = ScheduledRidesConfig(enabled: true, feeFixed: 2);
     testWidgets(
       'confirm now or later',
-      (t) => _shot(t, 'sched_confirm', route: '/', rides: _BookingRides(), sched: on, act: _toConfirm),
+      (t) => _shot(
+        t,
+        'sched_confirm',
+        route: '/',
+        rides: _BookingRides(),
+        sched: on,
+        act: _toConfirm,
+      ),
     );
     final rows = [
       ScheduledRide.fromRow({
         'id': 's1',
-        'pickup_at': DateTime.now().add(const Duration(hours: 5)).toUtc().toIso8601String(),
+        'pickup_at': DateTime.now()
+            .add(const Duration(hours: 5))
+            .toUtc()
+            .toIso8601String(),
         'status': 'open',
         'rider_id': 'me',
         'service': 'Ride',
@@ -2685,7 +3551,10 @@ void main() {
       }),
       ScheduledRide.fromRow({
         'id': 's2',
-        'pickup_at': DateTime.now().add(const Duration(days: 2)).toUtc().toIso8601String(),
+        'pickup_at': DateTime.now()
+            .add(const Duration(days: 2))
+            .toUtc()
+            .toIso8601String(),
         'status': 'accepted',
         'rider_id': 'me',
         'service': 'XL',
@@ -2749,8 +3618,10 @@ void main() {
       'name': 'Tengku Nur Aisyah Humaira binti Tengku Abdul Rahman Al-Haj',
       'display_id': 'GR-1048291',
     });
-    const from = 'Jalan Persiaran Eco Majestic Utama 3/12, Taman Eco Majestic Fasa 2B, Semenyih, Selangor';
-    const to = 'Suria KLCC Shopping Centre, Entrance 3 beside the aquarium, Kuala Lumpur City Centre';
+    const from =
+        'Jalan Persiaran Eco Majestic Utama 3/12, Taman Eco Majestic Fasa 2B, Semenyih, Selangor';
+    const to =
+        'Suria KLCC Shopping Centre, Entrance 3 beside the aquarium, Kuala Lumpur City Centre';
     final longRide = _tracked(
       'accepted',
       extra: {
@@ -2761,13 +3632,38 @@ void main() {
         'ride_fare': 1234.5,
       },
     );
-    testWidgets('long name account', (t) => _shot(t, 'edge_account', route: '/account', profile: longProfile));
+    testWidgets(
+      'long name account',
+      (t) => _shot(t, 'edge_account', route: '/account', profile: longProfile),
+    );
     testWidgets(
       'long name menu',
-      (t) => _shot(t, 'edge_menu', route: '/', profile: longProfile, act: (t) => tapKey(t, 'home-menu', 10)),
+      (t) => _shot(
+        t,
+        'edge_menu',
+        route: '/',
+        profile: longProfile,
+        act: (t) => tapKey(t, 'home-menu', 10),
+      ),
     );
-    testWidgets('long name profile', (t) => _shot(t, 'edge_profile', route: '/account/profile', profile: longProfile));
-    testWidgets('long name receive', (t) => _shot(t, 'edge_receive', route: '/wallet/receive', profile: longProfile));
+    testWidgets(
+      'long name profile',
+      (t) => _shot(
+        t,
+        'edge_profile',
+        route: '/account/profile',
+        profile: longProfile,
+      ),
+    );
+    testWidgets(
+      'long name receive',
+      (t) => _shot(
+        t,
+        'edge_receive',
+        route: '/wallet/receive',
+        profile: longProfile,
+      ),
+    );
     testWidgets(
       'long addresses trips',
       (t) => _shot(
@@ -2779,7 +3675,12 @@ void main() {
     );
     testWidgets(
       'long addresses ride',
-      (t) => _shot(t, 'edge_ride', route: '/ride/r1', overrides: _trackingOverrides(longRide)),
+      (t) => _shot(
+        t,
+        'edge_ride',
+        route: '/ride/r1',
+        overrides: _trackingOverrides(longRide),
+      ),
     );
     testWidgets(
       'long addresses ride up',
@@ -2789,7 +3690,11 @@ void main() {
         route: '/ride/r1',
         overrides: _trackingOverrides(longRide),
         act: (t) async {
-          await t.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -500), warnIfMissed: false);
+          await t.drag(
+            find.byKey(const ValueKey('map-sheet-handle')),
+            const Offset(0, -500),
+            warnIfMissed: false,
+          );
           await _settle(t);
         },
       ),
@@ -2831,7 +3736,9 @@ void main() {
         t,
         'edge_home_ongoing',
         route: '/',
-        rides: _FakeRides(ongoing: RideRequest({...longRide.raw, 'status': 'open'})),
+        rides: _FakeRides(
+          ongoing: RideRequest({...longRide.raw, 'status': 'open'}),
+        ),
       ),
     );
     testWidgets(
@@ -2872,7 +3779,9 @@ void main() {
         'edge_plate_empty',
         route: '/drive/vehicles/new',
         partner: _approved,
-        overrides: _wizardOverrides(partnerRow: _partnerRow({..._filledIn, 'status': 'approved'})),
+        overrides: _wizardOverrides(
+          partnerRow: _partnerRow({..._filledIn, 'status': 'approved'}),
+        ),
         act: (t) async {
           await t.tap(find.text('Continue'), warnIfMissed: false);
           await _settle(t);
@@ -2948,30 +3857,95 @@ void main() {
         'sa_empty',
         screen: host(),
         admin: true,
-        overrides: [sessionKeysProvider.overrideWith((ref) async => const <SessionKey>[])],
+        overrides: [
+          sessionKeysProvider.overrideWith((ref) async => const <SessionKey>[]),
+        ],
       ),
     );
-    testWidgets('keys', (t) => _shot(t, 'sa_keys', screen: host(), admin: true, overrides: keys));
+    testWidgets(
+      'keys',
+      (t) => _shot(t, 'sa_keys', screen: host(), admin: true, overrides: keys),
+    );
     testWidgets(
       'keys large text',
-      (t) => _shot(t, 'sa_keys_xl', screen: host(), admin: true, textScale: 1.35, overrides: keys),
+      (t) => _shot(
+        t,
+        'sa_keys_xl',
+        screen: host(),
+        admin: true,
+        textScale: 1.35,
+        overrides: keys,
+      ),
     );
-    testWidgets('keys SE', (t) => _shot(t, 'sa_keys_se', screen: host(), admin: true, se: true, overrides: keys));
-    testWidgets('keys dark', (t) => _shot(t, 'sa_keys_dark', screen: host(), admin: true, dark: true, overrides: keys));
+    testWidgets(
+      'keys SE',
+      (t) => _shot(
+        t,
+        'sa_keys_se',
+        screen: host(),
+        admin: true,
+        se: true,
+        overrides: keys,
+      ),
+    );
+    testWidgets(
+      'keys dark',
+      (t) => _shot(
+        t,
+        'sa_keys_dark',
+        screen: host(),
+        admin: true,
+        dark: true,
+        overrides: keys,
+      ),
+    );
   });
 
   group('partner', () {
-    testWidgets('drive (not a partner)', (t) => _shot(t, 'drive_none', route: '/drive'));
-    testWidgets('drive dark', (t) => _shot(t, 'drive_none_dark', route: '/drive', dark: true));
-    testWidgets('drive large text', (t) => _shot(t, 'drive_none_xl', route: '/drive', textScale: 1.35));
-    testWidgets('onboarding', (t) => _shot(t, 'drive_onboarding', route: '/drive/onboarding'));
-    testWidgets('vehicles', (t) => _shot(t, 'drive_vehicles', route: '/drive/vehicles'));
-    testWidgets('vehicle new', (t) => _shot(t, 'drive_vehicle_new', route: '/drive/vehicles/new'));
-    testWidgets('earnings', (t) => _shot(t, 'drive_earnings', route: '/drive/earnings'));
-    testWidgets('statements', (t) => _shot(t, 'drive_statements', route: '/drive/statements'));
-    testWidgets('history', (t) => _shot(t, 'drive_history', route: '/drive/history'));
-    testWidgets('permit', (t) => _shot(t, 'drive_permit', route: '/drive/permit'));
-    testWidgets('my ride code', (t) => _shot(t, 'drive_my_ride', route: '/drive/my-ride'));
+    testWidgets(
+      'drive (not a partner)',
+      (t) => _shot(t, 'drive_none', route: '/drive'),
+    );
+    testWidgets(
+      'drive dark',
+      (t) => _shot(t, 'drive_none_dark', route: '/drive', dark: true),
+    );
+    testWidgets(
+      'drive large text',
+      (t) => _shot(t, 'drive_none_xl', route: '/drive', textScale: 1.35),
+    );
+    testWidgets(
+      'onboarding',
+      (t) => _shot(t, 'drive_onboarding', route: '/drive/onboarding'),
+    );
+    testWidgets(
+      'vehicles',
+      (t) => _shot(t, 'drive_vehicles', route: '/drive/vehicles'),
+    );
+    testWidgets(
+      'vehicle new',
+      (t) => _shot(t, 'drive_vehicle_new', route: '/drive/vehicles/new'),
+    );
+    testWidgets(
+      'earnings',
+      (t) => _shot(t, 'drive_earnings', route: '/drive/earnings'),
+    );
+    testWidgets(
+      'statements',
+      (t) => _shot(t, 'drive_statements', route: '/drive/statements'),
+    );
+    testWidgets(
+      'history',
+      (t) => _shot(t, 'drive_history', route: '/drive/history'),
+    );
+    testWidgets(
+      'permit',
+      (t) => _shot(t, 'drive_permit', route: '/drive/permit'),
+    );
+    testWidgets(
+      'my ride code',
+      (t) => _shot(t, 'drive_my_ride', route: '/drive/my-ride'),
+    );
     testWidgets('meter', (t) => _shot(t, 'meter', route: '/meter'));
   });
 }
