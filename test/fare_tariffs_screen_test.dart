@@ -38,12 +38,15 @@ class _Geo extends GeoAdminRepository {
 }
 
 class _Admin extends AdminRepository {
-  _Admin() : super(_db);
+  _Admin({this.many = false}) : super(_db);
   final saved = <Map<String, dynamic>>[];
+  final bool many;
 
   @override
   Future<List<Map<String, dynamic>>> fareTariffs() async => [
     {'id': 't1', 'level': 'master', 'currency': 'MYR', 'base_fare': 4, 'per_km': 1},
+    if (many)
+      for (var i = 2; i < 10; i++) {'id': 't$i', 'level': 'country', 'country': 'Malaysia', 'currency': 'MYR', 'base_fare': i, 'per_km': 1},
   ];
 
   @override
@@ -78,6 +81,43 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text(item).last);
     await tester.pumpAndSettle();
+  }
+
+  for (final (size, scale) in const [(Size(1280, 768), 1.0), (Size(1280, 768), 1.3), (Size(360, 640), 1.3)]) {
+    testWidgets('the last card scrolls clear of Add tariff (${size.width.toInt()}x${size.height.toInt()} @$scale)', (tester) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            supabaseProvider.overrideWithValue(_db),
+            adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+            geoAdminRepositoryProvider.overrideWithValue(_Geo()),
+            adminRepositoryProvider.overrideWithValue(_Admin(many: true)),
+          ],
+          child: MaterialApp(
+            builder: (c, child) => MediaQuery(
+              data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
+            ),
+            home: const AdminFareTariffsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final scroll = tester.state<ScrollableState>(
+        find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first,
+      );
+      scroll.position.jumpTo(scroll.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      final fab = tester.getRect(find.byType(FloatingActionButton));
+      final cards = find.descendant(of: find.byType(ListView), matching: find.byType(Card));
+      final last = tester.getRect(cards.last);
+      expect(last.bottom, lessThanOrEqualTo(fab.top - 8), reason: 'the last card clear of the button');
+      // Let the live tables' disconnect timer run out.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(minutes: 1));
+    });
   }
 
   for (final brightness in Brightness.values) {

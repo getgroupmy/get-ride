@@ -111,7 +111,8 @@ class _AdminFareTariffsScreenState extends ConsumerState<AdminFareTariffsScreen>
             ..sort((a, b) => fareTariffLevels.indexOf(a.level).compareTo(fareTariffLevels.indexOf(b.level)));
           final names = {for (final t in types) t.id: t.name, for (final v in vehicles) v.id: v.name};
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
+            // The last card scrolls clear of Add tariff.
+            padding: EdgeInsets.fromLTRB(16, 16, 16, fabListBottomPadding(context)),
             children: [
               const Card(
                 child: ListTile(

@@ -11,6 +11,15 @@ import '../admin_shell.dart';
 import '../../widgets/page_style_host.dart';
 
 /// Standard admin page: title bar, optional actions, read-only banner.
+/// The room under a list for the floating button over its foot: the
+/// button (as tall as the text makes it) and its margin above and below,
+/// the home bar, and a gap, so the last row scrolls whole above it at any
+/// width or text size.
+double fabListBottomPadding(BuildContext context) {
+  final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 2.0);
+  return kFloatingActionButtonMargin * 2 + 56 * scale + MediaQuery.viewPaddingOf(context).bottom + 16;
+}
+
 class AdminPage extends ConsumerWidget {
   const AdminPage({
     super.key,
