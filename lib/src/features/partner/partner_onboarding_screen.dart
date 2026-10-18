@@ -316,20 +316,25 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       // Counted as the step on screen says: full on the last step.
       LinearProgressIndicator(value: ((reachedIndex + 1) / OnboardingStep.wizard.length).clamp(0.0, 1.0)),
       const SizedBox(height: 12),
-      Wrap(spacing: 8, runSpacing: 8, children: [
+      // The steps go in order (each opens once the one before is saved):
+      // finished steps and the current one are chips that open them; later
+      // steps are plain locked labels, not buttons.
+      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         for (final (i, step) in OnboardingStep.wizard.indexed)
-          ChoiceChip(
-            avatar: i < reachedIndex ? const Icon(Icons.check, size: 16) : null,
-            // Ticks only on finished steps; the open one is filled, no tick
-            // (the chip's own checkmark put one on the current step).
-            showCheckmark: false,
-            label: Text(step.label),
-            selected: step == showing,
-            // Finished steps can be reopened; later ones wait their turn.
-            onSelected: i <= reachedIndex && !_busy
-                ? (_) => setState(() => _viewing = step == reached ? null : step)
-                : null,
-          ),
+          if (i <= reachedIndex)
+            ChoiceChip(
+              key: ValueKey('onboarding-step-${step.key}'),
+              avatar: i < reachedIndex ? const Icon(Icons.check, size: 16) : null,
+              // Ticks only on finished steps; the open one is filled, no
+              // tick (the chip's own checkmark put one on the current step).
+              showCheckmark: false,
+              label: Text(step.label),
+              tooltip: i < reachedIndex ? 'Done: open to review' : 'Current step',
+              selected: step == showing,
+              onSelected: !_busy ? (_) => setState(() => _viewing = step == reached ? null : step) : null,
+            )
+          else
+            _LockedStep(key: ValueKey('onboarding-step-${step.key}'), label: step.label, next: i == reachedIndex + 1),
       ]),
     ]);
   }
@@ -517,5 +522,34 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       const SizedBox(height: 8),
       OutlinedButton(onPressed: () => context.go('/drive'), child: const Text('Back to Drive')),
     ]);
+  }
+}
+
+/// A step not reached yet: a plain muted label with a lock, not a chip, so
+/// it doesn't read as a button. The next one up says "Next".
+class _LockedStep extends StatelessWidget {
+  const _LockedStep({super.key, required this.label, required this.next});
+
+  final String label;
+  final bool next;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = mutedTextColor(t);
+    return Semantics(
+      container: true,
+      label: '$label, ${next ? 'next' : 'locked'}. Opens once the steps before it are done',
+      excludeSemantics: true,
+      child: Padding(
+        // About a chip's height, so the row lines up.
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.lock_outline, size: 14, color: muted),
+          const SizedBox(width: 4),
+          Text(next ? '$label · next' : label, style: t.textTheme.labelLarge?.copyWith(color: muted)),
+        ]),
+      ),
+    );
   }
 }

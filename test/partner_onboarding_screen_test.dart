@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
@@ -142,6 +143,55 @@ void main() {
     }
     expect(find.byIcon(Icons.check), findsNothing);
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('steps go in order: done and current steps are chips, later ones locked labels (${b.name})',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(
+        tester,
+        OnboardingState(profile: const {'profile_image': 'x.png'}, partner: _partner()),
+        brightness: b,
+      );
+      expect(find.text('Step 2 of 6'), findsOneWidget);
+      // Profile photo (done) and ID number (current) can be opened.
+      final chips = tester.widgetList<ChoiceChip>(find.byType(ChoiceChip)).toList();
+      expect(chips.map((c) => (c.label as Text).data), ['Profile photo', 'ID number']);
+      expect(chips.every((c) => c.onSelected != null), isTrue);
+      expect(chips.first.avatar, isA<Icon>(), reason: 'a finished step keeps its tick');
+      final done = tester.getSemantics(find.byKey(const ValueKey('onboarding-step-avatar'))).getSemanticsData();
+      expect(done.label, contains('Profile photo'));
+      expect(done.tooltip, 'Done: open to review');
+      expect(done.hasAction(SemanticsAction.tap), isTrue);
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('onboarding-step-id'))).getSemanticsData().tooltip,
+        'Current step',
+      );
+      // Later steps are not chips or buttons: a lock and a muted label.
+      for (final label in ['Address', 'Service area', 'Partner type', 'Documents']) {
+        expect(find.widgetWithText(ChoiceChip, label), findsNothing);
+      }
+      expect(find.text('Address · next'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      final locked = tester.getSemantics(find.byKey(const ValueKey('onboarding-step-address')));
+      expect(locked.label, contains('Address, next'));
+      expect(locked.getSemanticsData().hasAction(SemanticsAction.tap), isFalse);
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('onboarding-step-requirements'))).label,
+        startsWith('Documents, locked'),
+      );
+      await tester.tap(find.text('Address · next'));
+      await tester.pump();
+      expect(find.text('Your ID'), findsOneWidget, reason: 'a locked step does not open');
+
+      // A finished step reopens.
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Profile photo'));
+      await tester.pump();
+      expect(find.text('Add a profile photo'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+  }
 
   testWidgets('the profile photo comes from the avatar picker and is saved to both rows', (tester) async {
     final repo = await _pump(
