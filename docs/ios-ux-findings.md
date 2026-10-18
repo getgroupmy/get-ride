@@ -1,6 +1,6 @@
 # iOS UI/UX findings (tester session)
 
-Rendered from `claude/magical-fermat-6o8l12` (head 7ce750c) with
+Rendered from `claude/magical-fermat-6o8l12` (head f6a9bb2) with
 `test/ios_shots_test.dart`: iPhone 15 frame (393×852, TargetPlatform.iOS,
 59 pt / 34 pt safe areas), iPhone SE, iPhone landscape, iPad, iPad Slide
 Over; light and dark; text scale 1.0 and 1.3; keyboard up where it matters.
@@ -40,6 +40,7 @@ is updated on every push to the branch.
 | 30 | Add contact dialog | Plain Column in an AlertDialog: overflows 53 px on an iPhone SE with the keyboard up (Cancel lands on the Phone field), 1.2 px at text scale 1.3 | `emergency_contacts_screen.dart:65-67` | open |
 | 31 | Multi-field forms | No `textInputAction` next/done (Set PIN, Edit profile, Add vehicle, Add contact, Change phone, Add reader/printer, Add rate) | various | minor |
 | 32 | Map screens | No `SystemUiOverlayStyle` on app-bar-less screens (home, Drive, Welcome): status-bar text style follows the last AppBar | `home_screen.dart`, `partner_screen.dart`, `welcome_screen.dart` | verify on device |
+| 33 | Admin → Push | Segmented labels break words at default size: "Everyon / e", "Everywh / ere" | `push_screen.dart` | open |
 | 29 | Contacts picker | "Choose from contacts" exists only on the web; iOS has a permission-free CNContactPickerViewController | `emergency_contacts_screen.dart:32-38` | suggestion |
 
 Sweeps over every screen: dark mode, text scale 1.3, iPhone SE and iOS
