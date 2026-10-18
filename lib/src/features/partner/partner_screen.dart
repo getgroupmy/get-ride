@@ -1246,8 +1246,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       data: (list) {
         final (:alert, :sorted) = _queueOrder(list, wide: wide);
         if (alert == null && sorted.isEmpty) {
-          // A demo request is showing above: not "waiting" under it.
-          if (demoShown) return const SizedBox.shrink();
+          // A request showing (a demo one above, or a real one over the
+          // map on a desktop): not "waiting" beside it.
+          if (demoShown || list.any((r) => r.id == _alertId)) return const SizedBox.shrink();
           return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');
         }
         return ListView.builder(
@@ -1501,56 +1502,53 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               ].join(' · '),
             ),
           ),
+          // Facts, not choices: plain text to a screen reader (a Chip read
+          // as an unchecked checkbox on the web).
           Wrap(spacing: 6, runSpacing: 6, children: [
-            Chip(label: Text(r.paymentMode), visualDensity: VisualDensity.compact),
-            Chip(label: Text('${r.passengers} pax'), visualDensity: VisualDensity.compact),
-            if ((r.luggage ?? 0) > 0)
-              Chip(
-                label: Text('${r.luggage} ${r.luggage == 1 ? 'bag' : 'bags'}'),
-                visualDensity: VisualDensity.compact,
-              ),
-            if (r.stops.isNotEmpty)
-              Chip(
-                label: Text('${r.stops.length} stop${r.stops.length == 1 ? '' : 's'}'),
-                visualDensity: VisualDensity.compact,
-              ),
+            _InfoPill(r.paymentMode),
+            _InfoPill('${r.passengers} pax'),
+            if ((r.luggage ?? 0) > 0) _InfoPill('${r.luggage} ${r.luggage == 1 ? 'bag' : 'bags'}'),
+            if (r.stops.isNotEmpty) _InfoPill('${r.stops.length} stop${r.stops.length == 1 ? '' : 's'}'),
           ]),
           if (r.note != null) Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text('“${r.note}”', style: t.textTheme.bodySmall),
           ),
           const SizedBox(height: 10),
-          Row(children: [
-            Expanded(
-              child: OutlinedButton(
-                key: const ValueKey('request-alert-decline'),
-                onPressed: _accepting != null ? null : () => _dismissAlert(skipped: true),
-                child: const Text('Skip'),
-              ),
-            ),
-            if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[
-              const SizedBox(width: 8),
-              Expanded(
-                child: BusyButton.outlined(
-                  key: ValueKey('offer-${r.id}'),
-                  onPressed: _accepting != null ? null : () => _offer(r, partner),
-                  child: const Text('Offer price'),
-                ),
-              ),
-            ],
-            const SizedBox(width: 8),
-            Expanded(
-              child: BusyButton.filled(
-                key: const ValueKey('request-alert-accept'),
-                onPressed: _accepting != null ? null : () => _accept(r, partner),
-                child: _accepting == r.id
-                    ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text('Accept ${r.fareText(r.effectiveFare)}', textAlign: TextAlign.center),
-              ),
-            ),
-          ]),
+          // The phone's request sheet's own buttons: Accept for the fare,
+          // the fare offers where the rider takes them, and Skip.
+          RequestAnswerButtons(
+            request: r,
+            busy: _accepting != null,
+            onAccept: () => _accept(r, partner),
+            onSkip: () => _dismissAlert(skipped: true),
+            onOffer: canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)
+                ? (amount) => _offer(r, partner, preset: amount)
+                : null,
+          ),
         ]),
       ),
+    );
+  }
+}
+
+/// A fact about a request (cash, 1 pax) in a rounded outline: read as its
+/// text, not as a chip that could be ticked.
+class _InfoPill extends StatelessWidget {
+  const _InfoPill(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        border: Border.all(color: t.colorScheme.outline),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(text, style: t.textTheme.labelLarge),
     );
   }
 }

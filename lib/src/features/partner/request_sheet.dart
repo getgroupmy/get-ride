@@ -380,30 +380,6 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     );
   }
 
-  /// Accept, in the app's accent (the rider's "Find a driver" blue), white
-  /// on it in light and dark alike.
-  ButtonStyle _accent(BuildContext context, {double height = 52}) => FilledButton.styleFrom(
-    backgroundColor: accentFill,
-    foregroundColor: Colors.white,
-    disabledBackgroundColor: confirmAccent.withValues(alpha: 0.4),
-    disabledForegroundColor: Colors.white70,
-    minimumSize: Size.fromHeight(height),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    textStyle: const TextStyle(fontWeight: FontWeight.w700),
-  );
-
-  /// The fare offers: the accent as a tint, so Accept stays the one to press.
-  ButtonStyle _offerStyle(BuildContext context, {double height = 48}) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return FilledButton.styleFrom(
-      backgroundColor: confirmAccent.withValues(alpha: dark ? 0.22 : 0.14),
-      foregroundColor: dark ? const Color(0xFF7FD0F2) : const Color(0xFF0E6E99),
-      minimumSize: Size.fromHeight(height),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      textStyle: const TextStyle(fontWeight: FontWeight.w700),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -411,7 +387,6 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     final fare = r.effectiveFare;
     final muted = mutedTextColor(t);
     final offer = widget.onOffer;
-    final presets = fare == null ? const <double>[] : counterOfferPresets(fare);
     final off = widget.busy;
     final h = MediaQuery.sizeOf(context).height;
     final details = SingleChildScrollView(
@@ -498,55 +473,13 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     );
     final actions = Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        BusyButton.filled(
-          key: const ValueKey('request-alert-accept'),
-          style: _accent(context),
-          onPressed: off ? null : widget.onAccept,
-          child: Text('Accept for ${r.fareText(fare)}', style: const TextStyle(fontSize: 17)),
-        ),
-        if (offer != null && presets.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Text('Offer your fare', textAlign: TextAlign.center, style: t.textTheme.bodyMedium?.copyWith(color: muted)),
-          const SizedBox(height: 8),
-          Row(spacing: 8, children: [
-            for (var i = 0; i < presets.length; i++)
-              Expanded(
-                child: BusyButton.filled(
-                  key: ValueKey('request-offer-$i'),
-                  style: _offerStyle(context),
-                  onPressed: off ? null : () => offer(presets[i]),
-                  child: FittedBox(child: Text(r.fareText(presets[i]))),
-                ),
-              ),
-            SizedBox(
-              width: 56,
-              // Named for screen readers and on a long press (web tester #119).
-              child: Tooltip(
-                message: 'Offer another fare',
-                child: BusyButton.filled(
-                  key: const ValueKey('request-offer-custom'),
-                  style: _offerStyle(context).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.zero)),
-                  onPressed: off ? null : () => offer(null),
-                  child: const Icon(Icons.edit_outlined, size: 20),
-                ),
-              ),
-            ),
-          ]),
-        ],
-        const SizedBox(height: 12),
-        FilledButton(
-          key: const ValueKey('request-alert-decline'),
-          style: FilledButton.styleFrom(
-            backgroundColor: t.colorScheme.surfaceContainerHighest,
-            foregroundColor: t.colorScheme.onSurface,
-            minimumSize: const Size.fromHeight(50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          onPressed: off ? null : widget.onSkip,
-          child: const Text('Skip', style: TextStyle(fontSize: 17)),
-        ),
-      ]),
+      child: RequestAnswerButtons(
+        request: r,
+        busy: off,
+        onAccept: widget.onAccept,
+        onSkip: widget.onSkip,
+        onOffer: offer,
+      ),
     );
     final size = MediaQuery.sizeOf(context);
     // A phone on its side: map, details and buttons side by side, so the
@@ -590,5 +523,114 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
               ]),
       ),
     );
+  }
+}
+
+/// Accept, in the app's accent (the rider's "Find a driver" blue), white
+/// on it in light and dark alike.
+ButtonStyle _acceptStyle(BuildContext context, {double height = 52}) => FilledButton.styleFrom(
+  backgroundColor: accentFill,
+  foregroundColor: Colors.white,
+  disabledBackgroundColor: confirmAccent.withValues(alpha: 0.4),
+  disabledForegroundColor: Colors.white70,
+  minimumSize: Size.fromHeight(height),
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  textStyle: const TextStyle(fontWeight: FontWeight.w700),
+);
+
+/// The fare offers: the accent as a tint, so Accept stays the one to press.
+ButtonStyle _offerStyle(BuildContext context, {double height = 48}) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return FilledButton.styleFrom(
+    backgroundColor: confirmAccent.withValues(alpha: dark ? 0.22 : 0.14),
+    foregroundColor: dark ? const Color(0xFF7FD0F2) : const Color(0xFF0E6E99),
+    minimumSize: Size.fromHeight(height),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    textStyle: const TextStyle(fontWeight: FontWeight.w700),
+  );
+}
+
+/// Answering a request: Accept at the rider's fare, the fare offers (+ the
+/// presets and a pencil for another amount) where the rider takes offers,
+/// and Skip. The same on the phone's request sheet and the desktop's
+/// request over the map.
+class RequestAnswerButtons extends StatelessWidget {
+  const RequestAnswerButtons({
+    super.key,
+    required this.request,
+    required this.onAccept,
+    required this.onSkip,
+    this.onOffer,
+    this.busy = false,
+  });
+
+  final RideRequest request;
+  final Future<void> Function() onAccept;
+  final VoidCallback onSkip;
+
+  /// An offer of an amount, or null for one the driver types; null where
+  /// the rider takes no offers.
+  final Future<void> Function(double? amount)? onOffer;
+
+  /// Something is being answered: every button off.
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final r = request;
+    final fare = r.effectiveFare;
+    final muted = mutedTextColor(t);
+    final offer = onOffer;
+    final presets = fare == null ? const <double>[] : counterOfferPresets(fare);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      BusyButton.filled(
+        key: const ValueKey('request-alert-accept'),
+        style: _acceptStyle(context),
+        onPressed: busy ? null : onAccept,
+        child: Text('Accept for ${r.fareText(fare)}', style: const TextStyle(fontSize: 17)),
+      ),
+      if (offer != null && presets.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Text('Offer your fare', textAlign: TextAlign.center, style: t.textTheme.bodyMedium?.copyWith(color: muted)),
+        const SizedBox(height: 8),
+        Row(spacing: 8, children: [
+          for (var i = 0; i < presets.length; i++)
+            Expanded(
+              child: BusyButton.filled(
+                key: ValueKey('request-offer-$i'),
+                style: _offerStyle(context),
+                onPressed: busy ? null : () => offer(presets[i]),
+                child: FittedBox(child: Text(r.fareText(presets[i]))),
+              ),
+            ),
+          SizedBox(
+            width: 56,
+            // Named for screen readers and on a long press (web tester #119).
+            child: Tooltip(
+              message: 'Offer another fare',
+              child: BusyButton.filled(
+                key: const ValueKey('request-offer-custom'),
+                style: _offerStyle(context).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.zero)),
+                onPressed: busy ? null : () => offer(null),
+                child: const Icon(Icons.edit_outlined, size: 20),
+              ),
+            ),
+          ),
+        ]),
+      ],
+      const SizedBox(height: 12),
+      FilledButton(
+        key: const ValueKey('request-alert-decline'),
+        style: FilledButton.styleFrom(
+          backgroundColor: t.colorScheme.surfaceContainerHighest,
+          foregroundColor: t.colorScheme.onSurface,
+          minimumSize: const Size.fromHeight(50),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        onPressed: busy ? null : onSkip,
+        child: const Text('Skip', style: TextStyle(fontSize: 17)),
+      ),
+    ]);
   }
 }
