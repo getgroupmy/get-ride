@@ -379,7 +379,9 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     const lat = coord(params.get("lat"), 90), lng = coord(params.get("lng"), 180);
     if (lat == null || lng == null) return bad("Give lat and lng.");
     req = reverseRequest(provider, lat, lng, lang, k, amazonRegion);
-    ck = cacheKey(provider, kind, [lat, lng, lang]);
+    // The same ~11 m, the same answer: GPS jitter of a few metres between
+    // fixes would otherwise miss the cache on every call.
+    ck = cacheKey(provider, kind, [lat.toFixed(4), lng.toFixed(4), lang]);
     parse = (b) => ({ place: parseReverse(provider, b, lat, lng) });
   } else if (kind === "distance") {
     const point = (p: string) => {

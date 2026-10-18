@@ -120,9 +120,11 @@ void main() {
 
   test('without regions_at (before 0169) the rider app reads the tables the admin page saves to', () async {
     final asked = <String>[];
+    final selects = <String>[];
     final client = MockClient((req) async {
       final table = req.url.pathSegments.last;
       asked.add(table);
+      if (req.url.queryParameters['select'] case final s?) selects.add(s);
       if (table == 'regions_at') {
         return http.Response(
           jsonEncode({'code': 'PGRST202', 'message': 'Could not find the function public.regions_at'}),
@@ -147,6 +149,9 @@ void main() {
     expect(asked.toSet(), containsAll(['countries', 'states', 'cities', 'suburbs']));
     // One read serves a pickup's three checks.
     expect(asked.where((t) => t == 'countries'), hasLength(1));
+    // …and it never downloads the boundary shapes.
+    expect(selects, isNotEmpty);
+    expect(selects.where((s) => s.contains('geofence')), isEmpty);
   });
 
   test('with regions_at the server tests the boundaries and no table is read whole', () async {

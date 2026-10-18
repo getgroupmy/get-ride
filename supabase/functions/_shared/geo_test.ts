@@ -364,6 +364,19 @@ Deno.test("lookups: only providers the profile lists, Google never cached, other
   assert(log.includes("count here reverse true true"));
 });
 
+Deno.test("lookups: a reverse lookup a few metres away is the same cached answer", async () => {
+  const { d, log } = deps();
+  const at = (lat: string, lng: string) =>
+    handleGeo(q(`action=reverse&provider=here&role=rider&device=android&lat=${lat}&lng=${lng}`), "ip", d);
+  await at("3.10001", "101.60002");
+  // GPS jitter of a metre or two: the same ~11 m cell.
+  await at("3.10003", "101.60004");
+  assertEquals(log.filter((l) => l.startsWith("call revgeocode")).length, 1, "jitter came from the cache");
+  // Some 100 m away is a new lookup.
+  await at("3.1010", "101.6000");
+  assertEquals(log.filter((l) => l.startsWith("call revgeocode")).length, 2, "a new spot asks again");
+});
+
 Deno.test("lookups: a provider down, a missing key, the rate limit, bad input", async () => {
   const { d, log } = deps();
   const r = await handleGeo(q("action=route&provider=tomtom&role=partner&device=web&points=3.1,101.6;3.2,101.7"), "ip", d);
