@@ -244,6 +244,16 @@ const _klcc = Place(
 );
 
 /// Booking: no server, no bidding, a plain region.
+/// The booking fake with fare bidding on for the pickup region: the fare
+/// section, "Offer your fare" and auto-accept appear on the confirm step.
+class _BiddingRides extends _BookingRides {
+  @override
+  Future<bool> biddingEnabledFor(
+    LatLng pickup,
+    Future<AreaInfo?> Function() area,
+  ) async => true;
+}
+
 class _BookingRides implements RideRepository {
   @override
   Future<List<RideRequest>> ridesOnTheGo() async => const [];
@@ -3015,10 +3025,62 @@ void main() {
         t,
         'flow_fare_edit',
         route: '/',
-        rides: _BookingRides(),
+        rides: _BiddingRides(),
         act: (t) async {
           await _toConfirm(t);
           await tapKey(t, 'confirm-fare-edit');
+        },
+      ),
+    );
+    for (final (suffix, scale, se) in [
+      ('', 1.0, false),
+      ('_xl', 1.35, false),
+      ('_se', 1.0, true),
+    ]) {
+      testWidgets(
+        'confirm bidding$suffix',
+        (t) => _shot(
+          t,
+          'book_confirm_bidding$suffix',
+          route: '/',
+          rides: _BiddingRides(),
+          textScale: scale,
+          se: se,
+          act: _toConfirm,
+        ),
+      );
+      testWidgets(
+        'offer fare page$suffix',
+        (t) => _shot(
+          t,
+          'flow_offer_fare$suffix',
+          route: '/',
+          rides: _BiddingRides(),
+          textScale: scale,
+          se: se,
+          act: (t) async {
+            await _toConfirm(t);
+            await tapKey(t, 'confirm-fare-edit');
+          },
+        ),
+      );
+    }
+    testWidgets(
+      'offer fare page keyboard',
+      (t) => _shot(
+        t,
+        'flow_offer_fare_kb',
+        route: '/',
+        rides: _BiddingRides(),
+        keyboard: true,
+        act: (t) async {
+          await _toConfirm(t);
+          await tapKey(t, 'confirm-fare-edit');
+          await t.tap(
+            find.byKey(const ValueKey('offer-fare-field')),
+            warnIfMissed: false,
+          );
+          await _settle(t, 3);
         },
       ),
     );
@@ -3211,7 +3273,7 @@ void main() {
         route: '/ride/r1',
         overrides: _trackingOverrides(_tracked('accepted')),
         act: (t) async {
-          await t.tap(find.text('SOS'), warnIfMissed: false);
+          await t.tap(find.byTooltip('SOS · Emergency'), warnIfMissed: false);
           await _settle(t);
         },
       ),
