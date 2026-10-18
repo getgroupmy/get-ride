@@ -102,7 +102,8 @@ as $$
          end
     from (select public.commission_config() c) s;
 $$;
-revoke execute on function public.commission_credit_floor() from public, anon, authenticated;
+revoke execute on function public.commission_credit_floor() from public, anon;
+grant execute on function public.commission_credit_floor() to authenticated;
 
 create or replace function public.commission_credit_ok(p_uid uuid)
 returns boolean
@@ -115,7 +116,9 @@ as $$
       or coalesce((select balance from public.wallets where user_id = p_uid and wallet_type = 'get_credit'), 0) >= f
     from (select public.commission_credit_floor() f) s;
 $$;
-revoke execute on function public.commission_credit_ok(uuid) from public, anon, authenticated;
+-- The claim guard runs as the caller and asks this; it says only whether a driver may take work.
+revoke execute on function public.commission_credit_ok(uuid) from public, anon;
+grant execute on function public.commission_credit_ok(uuid) to authenticated;
 
 -- The signed-in driver's standing: may they take work, their balance, the floor.
 create or replace function public.partner_credit_status()
@@ -135,10 +138,10 @@ grant execute on function public.partner_credit_status() to authenticated;
 
 -- Offering on or taking a trip (the app sets partner_id) under the floor is refused.
 -- Admins and the server's own functions (handover, scheduled assignment) are not held up.
+-- Runs as the caller (not security definer), so current_user tells the apps apart.
 create or replace function public.ride_requests_guard_credit()
 returns trigger
 language plpgsql
-security definer
 set search_path = public
 as $$
 begin
