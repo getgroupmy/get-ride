@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/fare.dart';
+import 'package:get_ride/src/core/overlay_back.dart';
 import 'package:get_ride/src/core/region_pricing.dart';
 import 'package:get_ride/src/core/route_estimate.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
@@ -24,6 +25,7 @@ import 'package:get_ride/src/features/ride/auto_accept.dart';
 import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmSwitch, DemandNote, addStopSteps;
 import 'package:get_ride/src/features/ride/home_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/web_overlay_back.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -807,4 +809,55 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('on the web, browser Back steps back from the confirm step to the search, as its arrow does', (tester) async {
+    final history = _History();
+    final before = webOverlayBack;
+    addTearDown(() => webOverlayBack = before);
+    webOverlayBack = history.stack = OverlayBackStack(history, session: 'h');
+    await _pump(tester, _Rides());
+    expect(find.text('Find a driver'), findsOneWidget);
+    expect(history.stack.markers, hasLength(1));
+
+    // The browser's Back lands on the page's own entry.
+    expect(history.stack.onPop(null, '/'), isTrue);
+    await _settle(tester);
+    expect(find.text('Find a driver'), findsNothing);
+    expect(history.stack.markers, isEmpty);
+    expect(history.moves, isEmpty, reason: 'the Back already took the entry off');
+
+    // Left by the back arrow: its entry is taken off.
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -300));
+    await _settle(tester);
+    await tester.tap(find.text('KLCC').first);
+    await _settle(tester);
+    expect(history.stack.markers, hasLength(1));
+    await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 600));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('confirm-back')));
+    await _settle(tester);
+    expect(history.stack.markers, isEmpty);
+    expect(history.moves, [-1]);
+  });
+}
+
+/// The browser's history, as far as the confirm step's entry goes.
+class _History implements OverlayHistory {
+  late OverlayBackStack stack;
+  final moves = <int>[];
+
+  @override
+  String get page => '/';
+
+  @override
+  Future<void> push(String marker) async {}
+
+  @override
+  void go(int delta) {
+    moves.add(delta);
+    scheduleMicrotask(() => stack.onPop(null, '/'));
+  }
+
+  @override
+  Future<void> settled() async {}
 }
