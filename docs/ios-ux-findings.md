@@ -1,6 +1,6 @@
 # iOS UI/UX findings (tester session)
 
-Rendered from `claude/magical-fermat-6o8l12` (head 0e1f676) with
+Rendered from `claude/magical-fermat-6o8l12` (head 941ee6b) with
 `test/ios_shots_test.dart`: iPhone 15 frame (393×852, TargetPlatform.iOS,
 59 pt / 34 pt safe areas), iPhone SE, iPhone landscape, iPad, iPad Slide
 Over; light and dark; text scale 1.0 and 1.3; keyboard up where it matters.
