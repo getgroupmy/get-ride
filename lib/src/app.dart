@@ -596,7 +596,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     _startMessagingPresence();
     _startPushLocation();
     // Admin → Settings → Maps: this user's and device's tiles and lookups.
-    // The maps wait for them rather than show the app's own map first.
+    // The maps wait for them rather than show the app's own map first (on a
+    // first launch at most `mapProfileFirstWait`, then the app's own map).
     waitForMapProfile();
     ref.listenManual(mapProfileProvider, (_, _) {}, fireImmediately: true);
     // The home-screen icon: the admin's season or the passenger's choice.

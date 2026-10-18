@@ -1,6 +1,7 @@
 // Admin → Settings → Maps (migration 0200), as the app reads it: this user's
 // and this device's map profile from the `geo` function, kept on the device
 // for the next start, and lookups through `geo` for providers with keys.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -72,22 +73,45 @@ class MapProfileRepository {
 
 final mapProfileRepositoryProvider = Provider((ref) => MapProfileRepository(ref.watch(geoProxyProvider)));
 
+/// How long the `geo` profile is waited for before the one kept on the
+/// device, or [MapProfile.builtIn], stays.
+const mapProfileFetchTimeout = Duration(seconds: 4);
+
+/// On a first launch (nothing kept on the device) the maps wait blank at most
+/// this long for the `geo` profile, then draw the app's own map until it
+/// lands; most answers come sooner, so most first launches never see it.
+const mapProfileFirstWait = Duration(milliseconds: 800);
+
 /// This user's and device's map profile, kept live; the one kept on the
 /// device, else [MapProfile.builtIn], when `geo` can't be reached. Sets
 /// [activeMapProfile] for the tile layers and [GeoService] ([applyMapProfile]).
+/// Asked again only when the map settings change ([liveMapSettings]), not on
+/// every app_settings row.
 final mapProfileProvider = FutureProvider<MapProfile>((ref) async {
-  ref.watchLive('app_settings');
+  ref.watchLive(liveMapSettings);
   final role = mapRole(ref.watch(appModeProvider));
   final repo = ref.watch(mapProfileRepositoryProvider);
   // What this device had last time draws at once while the current one is
-  // asked for; the app's own map only when neither can be had.
+  // asked for; with nothing kept, the app's own map after a short wait.
   final kept = await repo.kept(role);
-  if (kept != null && mapProfileListenable.value == null) applyMapProfile(kept);
+  Timer? firstWait;
+  if (mapProfileListenable.value == null) {
+    if (kept != null) {
+      applyMapProfile(kept);
+    } else {
+      firstWait = Timer(mapProfileFirstWait, () {
+        if (mapProfileListenable.value == null) applyMapProfile(MapProfile.builtIn);
+      });
+      ref.onDispose(firstWait.cancel);
+    }
+  }
   MapProfile profile;
   try {
-    profile = await repo.fetch(role).timeout(const Duration(seconds: 8));
+    profile = await repo.fetch(role).timeout(mapProfileFetchTimeout);
   } catch (_) {
     profile = kept ?? MapProfile.builtIn;
+  } finally {
+    firstWait?.cancel();
   }
   applyMapProfile(profile);
   return profile;

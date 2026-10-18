@@ -279,6 +279,9 @@ MapProfile activeMapProfile = MapProfile.builtIn;
 final mapProfileListenable = ValueNotifier<MapProfile?>(MapProfile.builtIn);
 
 /// The maps wait (blank) until [applyMapProfile]: called once at app start.
+/// `mapProfileProvider` ends the wait at once with the profile kept on the
+/// device, or with [MapProfile.builtIn] after `mapProfileFirstWait` when
+/// nothing is kept (a first launch), and switches when `geo` answers.
 void waitForMapProfile() {
   if (identical(activeMapProfile, MapProfile.builtIn)) mapProfileListenable.value = null;
 }
