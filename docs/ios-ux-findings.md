@@ -33,6 +33,11 @@ is updated on every push to the branch.
 | 22 | iPad portrait wallet | Three 230 pt cards wrap 2 + 1 with 40 % of the width empty (same as #1) | `wallet_screen.dart:67-73` | open |
 | 23 | Promo sheet | "Apply" sits in the home-indicator zone (pads `viewInsets` only) | `confirm_parts.dart:1592` | open |
 | 24 | Side menu header | Long names truncate "Nur Aisyah binti Rah…" (`maxLines: 1`) | `side_menu_style.dart:150` | minor |
+| 25 | Accent buttons | White on `brandAccent` 0xFF2DABE2 is 2.6:1 (AA needs 4.5 / 3.0): Find a driver, Accept for RM…, Confirm time, Keep sharing, Done, Exit admin, Partner/Passenger Mode | `app.dart:122` | open |
+| 26 | Booking flow | Tap targets under 44 pt and unlabelled: vehicle ⓘ 22 pt no label, route card rows 23 pt, Entrance 24 pt, Add stop 32 pt, search Close 36 pt, payment × 40 pt unlabelled, keypad backspace unlabelled | `home_parts.dart:240`, `confirm_parts.dart:94-132,355` | open |
+| 27 | Icon buttons | No `tooltip:` (VoiceOver "button"): admin menu, refresh on Dashboard/Rides/Support/EV Orders, Set-PIN ×, ride-chat back, Messaging icons, one Current-trip app-bar icon | `admin_widgets.dart:37`, `dashboard_screen.dart:46`, … | open |
+| 28 | Muted text | Below AA on light surfaces: "Your ride, your way." 2.4, "Appearance" 2.4, "City" 2.5, admin captions 2.4, pickup-time wheel 2.5, "call 999." 1.9, request card "Cash · 1 pax" 1.9 | muted / onSurfaceVariant greys | open |
+| 29 | Contacts picker | "Choose from contacts" exists only on the web; iOS has a permission-free CNContactPickerViewController | `emergency_contacts_screen.dart:32-38` | suggestion |
 
 Checked and fine on iPhone: sign-in flow (welcome, phone, OTP with
 `oneTimeCode` autofill, PIN, set PIN, closed registrations), keyboard
@@ -55,4 +60,6 @@ SHOTS_DIR=/tmp/shots flutter test test/ios_shots_test.dart --update-goldens
 Groups: `auth`, `rider`, `booking`, `tracking`, `driver`, `keyboard`,
 `sheets`, `admin`, `picker`, `wizards`, `support`, `meter`, `ipad`,
 `scrolled`, `flows`, `partner`; pick one with `--name "^rider "`.
-`SHOTS_DIR/log.txt` lists overflows and exceptions per screenshot.
+`SHOTS_DIR/log.txt` lists overflows and exceptions per screenshot. With
+`AUDIT=1` it also runs the iOS tap-target, VoiceOver-label and WCAG contrast
+guidelines on every screenshot and writes `SHOTS_DIR/audit.txt`.
