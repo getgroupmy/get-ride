@@ -27,7 +27,7 @@ typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 /// submitted for an admin to review. A returning partner lands on the first
 /// step still missing; finished steps can be reopened from the header.
 class PartnerOnboardingScreen extends ConsumerStatefulWidget {
-  const PartnerOnboardingScreen({super.key, this.pickAvatar = pickAvatarImage, this.pickPhoto = pickImage});
+  const PartnerOnboardingScreen({super.key, this.pickAvatar = pickAvatarImage, this.pickPhoto = pickDocumentImage});
 
   /// The profile photo picker: camera or gallery on a phone, cut square
   /// (overridden in tests).
