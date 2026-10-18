@@ -36,8 +36,8 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly; 0e1f676 ("UX ba
 | 24 | Side menu header | Long names truncate "Nur Aisyah binti Rah…" (`maxLines: 1`) | `side_menu_style.dart:150` | fixed in 1bc4952 |
 | 25 | Accent buttons | White on `brandAccent` 0xFF2DABE2 is 2.6:1 (AA needs 4.5 / 3.0): Find a driver, Accept for RM…, Confirm time, Keep sharing, Done, Exit admin, Partner/Passenger Mode | `app.dart:122` | fixed in 1bc4952 |
 | 26 | Booking flow | Tap targets under 44 pt and unlabelled: vehicle ⓘ 22 pt no label, route card rows 23 pt, Entrance 24 pt, Add stop 32 pt, search Close 36 pt, payment × 40 pt unlabelled, keypad backspace unlabelled | `home_parts.dart:240`, `confirm_parts.dart:94-132,355` | partly fixed in 1bc4952 (route card rows 23 pt, Entrance 24 pt, Add stop 32 pt, welcome dots 32 pt remain) |
-| 27 | Icon buttons | No `tooltip:` (VoiceOver "button"): admin menu, refresh on Dashboard/Rides/Support/EV Orders, Set-PIN ×, ride-chat back, Messaging icons, one Current-trip app-bar icon | `admin_widgets.dart:37`, `dashboard_screen.dart:46`, … | partly fixed in 1bc4952 (one Current-trip app-bar icon still unlabelled) |
-| 28 | Muted text | Below AA on light surfaces: "Your ride, your way." 2.4, "Appearance" 2.4, "City" 2.5, admin captions 2.4, pickup-time wheel 2.5, "call 999." 1.9, request card "Cash · 1 pax" 1.9 | muted / onSurfaceVariant greys | open |
+| 27 | Icon buttons | No `tooltip:` (VoiceOver "button"): admin menu, refresh on Dashboard/Rides/Support/EV Orders, Set-PIN ×, ride-chat back, Messaging icons, one Current-trip app-bar icon | `admin_widgets.dart:37`, `dashboard_screen.dart:46`, … | partly fixed in 1bc4952 (compact `RideCallButton` still unlabelled: driver trip card, ride chat app bar, Current trip — `ride_call_screen.dart:487`) |
+| 28 | Muted text | Below AA on light surfaces (re-audited on 0e1f676): "Your ride, your way." 2.4, "City" 2.5, admin captions 2.4, request card "Cash · 1 pax" 1.9, pickup-time sheet captions < 1.8, meter TIME / WAITING 2.9, "Learn more" 4.05 | muted / onSurfaceVariant greys | open (Appearance, call 999 fixed) |
 | 30 | Add contact dialog | Plain Column in an AlertDialog: overflows 53 px on an iPhone SE with the keyboard up (Cancel lands on the Phone field), 1.2 px at text scale 1.3 | `emergency_contacts_screen.dart:65-67` | fixed in 1bc4952 |
 | 31 | Multi-field forms | No `textInputAction` next/done (Set PIN, Edit profile, Add vehicle, Add contact, Change phone, Add reader/printer, Add rate) | various | fixed in 0e1f676 (next/done across the forms) |
 | 32 | Map screens | No `SystemUiOverlayStyle` on app-bar-less screens (home, Drive, Welcome): status-bar text style follows the last AppBar | `home_screen.dart`, `partner_screen.dart`, `welcome_screen.dart` | verify on device |
@@ -58,6 +58,7 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly; 0e1f676 ("UX ba
 | 47 | Back swipe | `PopScope(canPop: false)` disables the iOS edge swipe on Offer your fare and in-app web pages (and wizard inner steps) | `offer_fare_screen.dart:133`, `in_app_page.dart:128` | open |
 | 48 | Landscape safe area | SOS pill (`left: 12`) under the Dynamic Island; right-hand map buttons, sheet titles / cards and the confirm back pill in the 59 pt side strips; pinned footers are inset correctly | `ride_sos.dart:112`, `ride_map.dart`, `map_sheet_layout.dart`, `home_screen.dart:1645` | open |
 | 49 | Change phone → Code | No `AutofillHints.oneTimeCode`, so iOS doesn't offer the SMS code above the keyboard (sign-in OTP has it) | `change_phone_screen.dart:140` | open |
+| 50 | Side menu scrim | VoiceOver lands on the scrim's unlabelled GestureDetector node under the "Close menu" Semantics (needs `excludeSemantics: true`) | `side_menu_host.dart:134-146` | open |
 | 29 | Contacts picker | "Choose from contacts" exists only on the web; iOS has a permission-free CNContactPickerViewController | `emergency_contacts_screen.dart:32-38` | suggestion |
 
 Sweeps over every screen: dark mode, text scale 1.3, iPhone SE and iOS
@@ -83,7 +84,7 @@ photos, microphone, Bluetooth and local network.
 SHOTS_DIR=/tmp/shots flutter test test/ios_shots_test.dart --update-goldens
 ```
 
-Sweep switches: `DARK=1`, `XL=1`, `SE=1`, `LAND=1` (iPhone landscape), `BOLD=1`;
+Sweep switches: `DARK=1`, `XL=1`, `SE=1`, `LAND=1` (iPhone landscape; the `ipad` group also covers iPad portrait / landscape, Slide Over and half Split View), `BOLD=1`;
 `FRAMES=n` pumps more frames, `DUMP=1` prints every Text with its rectangle.
 
 Groups: `auth`, `rider`, `booking`, `tracking`, `driver`, `keyboard`,
