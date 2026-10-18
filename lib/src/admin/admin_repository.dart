@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/commission_promotions.dart';
 import '../core/commission_settings.dart';
 import '../core/fare_tariff.dart' show fareTariffRowWithoutServices;
 import 'admin_access.dart';
@@ -396,6 +397,43 @@ class AdminRepository {
   Future<List<({String name, int trips})>> surchargeNamesSeen() async => [
         for (final r in await _db.rpc('statement_surcharge_names') as List)
           (name: '${(r as Map)['name']}', trips: (r['trips'] as num?)?.toInt() ?? 0),
+      ];
+
+  // ---- Commission promotions and reports (0224) ----
+  Future<List<CommissionPromotion>> commissionPromotions() async => [
+        for (final r in await _db.from('commission_promotions').select().order('starts_at', ascending: false) as List)
+          CommissionPromotion.fromRow(Map<String, dynamic>.from(r as Map)),
+      ];
+
+  Future<void> saveCommissionPromotion(CommissionPromotion p) {
+    final row = p.toRow()..remove('id');
+    return p.id == null
+        ? _db.from('commission_promotions').insert(row)
+        : _db.from('commission_promotions').update(row).eq('id', p.id!);
+  }
+
+  Future<void> deleteCommissionPromotion(String id) => _db.from('commission_promotions').delete().eq('id', id);
+
+  /// Service names seen on trips over the last year, for a promotion's service filter.
+  Future<List<({String name, int trips})>> commissionServiceNames() async => [
+        for (final r in await _db.rpc('commission_service_names') as List)
+          (name: '${(r as Map)['name']}', trips: (r['trips'] as num?)?.toInt() ?? 0),
+      ];
+
+  /// Commission charged in [from, to), grouped.
+  Future<List<CommissionReportRow>> commissionReport(DateTime from, DateTime to, CommissionReportGroup group) async => [
+        for (final r in await _db.rpc('admin_commission_report', params: {
+          'p_from': from.toUtc().toIso8601String(),
+          'p_to': to.toUtc().toIso8601String(),
+          'p_group': group.name,
+        }) as List)
+          CommissionReportRow.fromRow(Map<String, dynamic>.from(r as Map)),
+      ];
+
+  /// Drivers whose GET.credit is under the floor, lowest first.
+  Future<List<BelowCreditDriver>> driversBelowCredit() async => [
+        for (final r in await _db.rpc('admin_drivers_below_credit') as List)
+          BelowCreditDriver.fromRow(Map<String, dynamic>.from(r as Map)),
       ];
 
   /// People a per-user rule can be about: matched by name, phone, email or
