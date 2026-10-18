@@ -16,6 +16,7 @@ import '../../data/vehicle_onboarding_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/loading_skeleton.dart';
+import '../../widgets/back_or_go_button.dart';
 import '../../widgets/side_menu_host.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
@@ -380,7 +381,13 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
       );
     }
     final plate = '${_v?['plate'] ?? ''}';
-    return Scaffold(appBar: AppBar(title: Text(plate.isEmpty ? 'Add vehicle' : plate)), body: body);
+    return Scaffold(
+      appBar: AppBar(
+        leading: const BackOrGoButton(fallback: '/drive/vehicles'),
+        title: Text(plate.isEmpty ? 'Add vehicle' : plate),
+      ),
+      body: body,
+    );
   }
 
   Widget _header(VehicleStep reached, VehicleStep showing) {
@@ -391,7 +398,8 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
       Text(reached == VehicleStep.done ? 'All steps complete' : 'Step ${reachedIndex + 1} of ${steps.length}',
           style: t.textTheme.labelLarge),
       const SizedBox(height: 8),
-      LinearProgressIndicator(value: reachedIndex / steps.length),
+      // As the step line counts: full on the last step.
+      LinearProgressIndicator(value: ((reachedIndex + 1) / steps.length).clamp(0.0, 1.0)),
       const SizedBox(height: 12),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final (i, step) in steps.indexed)

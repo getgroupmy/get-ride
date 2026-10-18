@@ -30,6 +30,19 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   DialCountry _country = dialCountryFor(AppConfig.defaultDialCode);
   bool _busy = false;
 
+  /// Said under the field, not in a snackbar that would cover Next.
+  String? _numberError;
+
+  @override
+  void initState() {
+    super.initState();
+    _number.addListener(_clearError);
+  }
+
+  void _clearError() {
+    if (_numberError != null) setState(() => _numberError = null);
+  }
+
   @override
   void dispose() {
     _number.dispose();
@@ -46,7 +59,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
     }
     final phone = composePhone(_country.dialCode, _number.text);
     if (phone.length < 9) {
-      showInfo(context, 'Enter a valid phone number.');
+      setState(() => _numberError = 'Enter a valid phone number.');
       return;
     }
     setState(() => _busy = true);
@@ -132,7 +145,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   }
 
   Future<void> _pickCountry() async {
-    final picked = await showDialCountryPicker(context);
+    final picked = await showDialCountryPicker(context, selected: _country);
     if (picked != null && mounted) setState(() => _country = picked);
   }
 
@@ -160,7 +173,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
               IconButton(
                 key: const ValueKey('phone-diagnostics'),
                 tooltip: 'Connection diagnostics',
-                icon: Icon(Icons.medical_services_outlined, color: muted),
+                icon: Icon(Icons.network_check, color: muted),
                 onPressed: () => context.push('/diagnostics'),
               ),
             ]),
@@ -182,6 +195,15 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                     onPickCountry: _pickCountry,
                     onSubmitted: _continue,
                   ),
+                  if (_numberError != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                      child: Text(
+                        _numberError!,
+                        key: const ValueKey('phone-error'),
+                        style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.error),
+                      ),
+                    ),
                   if (blocked) ...[
                     const SizedBox(height: 16),
                     Card(
@@ -282,7 +304,7 @@ class _PhoneFieldState extends State<_PhoneField> {
             inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s-]')), const NoTrunkZeroFormatter()],
             style: t.textTheme.titleLarge,
             decoration: const InputDecoration(
-              hintText: '12 345 6789',
+              hintText: '123456789',
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,

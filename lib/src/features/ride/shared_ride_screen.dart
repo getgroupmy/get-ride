@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -111,12 +112,30 @@ class _SharedRideScreenState extends ConsumerState<SharedRideScreen> {
                 padding: const EdgeInsets.all(24),
                 child: !_loaded && !_failed
                     ? const CircularProgressIndicator()
-                    : Text(
-                        _failed && !_loaded
-                            ? "Couldn't load this ride. Check your connection."
-                            : 'This link has expired or is not valid.',
-                        key: const ValueKey('shared-ride-missing'),
-                        textAlign: TextAlign.center,
+                    // A way on into the app, not a dead end.
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _failed && !_loaded ? Icons.cloud_off : Icons.link_off,
+                            size: 48,
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _failed && !_loaded
+                                ? "Couldn't load this ride. Check your connection."
+                                : 'This link has expired or is not valid.',
+                            key: const ValueKey('shared-ride-missing'),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          FilledButton(
+                            key: const ValueKey('shared-ride-open-app'),
+                            onPressed: () => GoRouter.maybeOf(context)?.go('/'),
+                            child: const Text('Open GET.ride'),
+                          ),
+                        ],
                       ),
               ),
             ),

@@ -110,8 +110,10 @@ class RideSosFab extends StatelessWidget {
       (inset) => Stack(
         children: [
           Positioned(
+            // Above the map's credit in the same corner (its ⓘ stays
+            // tappable), which itself keeps clear of the home indicator.
             left: 12,
-            bottom: mapAttributionClearance + inset + 16,
+            bottom: inset + MediaQuery.paddingOf(context).bottom + mapCreditHeight + mapAttributionClearance,
             child: FloatingActionButton(
               key: const ValueKey('ride-sos'),
               heroTag: null,

@@ -104,7 +104,7 @@ class _PlaceSearchFieldState extends ConsumerState<PlaceSearchField> {
                 )
               : q.isEmpty
                   ? null
-                  : IconButton(icon: const Icon(Icons.close), onPressed: _clear),
+                  : IconButton(tooltip: 'Clear', icon: const Icon(Icons.close), onPressed: _clear),
         ),
         onChanged: _changed,
       ),

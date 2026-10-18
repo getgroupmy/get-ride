@@ -121,11 +121,36 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
     final emulators = emulatorAccounts(sessions);
     final datesActive = _from.isNotEmpty || _to.isNotEmpty;
 
+    // On a phone the bar keeps a readable title: a short one, and the three
+    // filters folded into one menu.
+    final narrow = MediaQuery.sizeOf(context).width < 600;
     return AdminPage(
-      title: 'Session & location history',
+      title: narrow ? 'Sessions' : 'Session & location history',
       page: _page,
       actions: [
-        if (links.isNotEmpty)
+        if (narrow)
+          PopupMenuButton<String>(
+            key: const ValueKey('session-filters'),
+            tooltip: 'Filters',
+            icon: Icon(_flaggedOnly || _showGuard || _showDates || datesActive ? Icons.filter_alt : Icons.filter_alt_outlined),
+            onSelected: (v) => setState(() {
+              switch (v) {
+                case 'flagged':
+                  _flaggedOnly = !_flaggedOnly;
+                case 'guard':
+                  _showGuard = !_showGuard;
+                case 'dates':
+                  _showDates = !_showDates;
+              }
+            }),
+            itemBuilder: (_) => [
+              if (links.isNotEmpty)
+                CheckedPopupMenuItem(value: 'flagged', checked: _flaggedOnly, child: const Text('Flagged accounts only')),
+              CheckedPopupMenuItem(value: 'guard', checked: _showGuard, child: const Text('Duplicate-account guard')),
+              CheckedPopupMenuItem(value: 'dates', checked: _showDates || datesActive, child: const Text('Filter by date')),
+            ],
+          ),
+        if (!narrow && links.isNotEmpty)
           IconButton(
             tooltip: 'Show flagged accounts only',
             isSelected: _flaggedOnly,
@@ -133,20 +158,22 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
             selectedIcon: const Icon(Icons.group),
             onPressed: () => setState(() => _flaggedOnly = !_flaggedOnly),
           ),
-        IconButton(
-          tooltip: 'Duplicate-account guard',
-          isSelected: _showGuard,
-          icon: const Icon(Icons.shield_outlined),
-          selectedIcon: const Icon(Icons.shield),
-          onPressed: () => setState(() => _showGuard = !_showGuard),
-        ),
-        IconButton(
-          tooltip: 'Filter by date',
-          isSelected: _showDates || datesActive,
-          icon: const Icon(Icons.calendar_today_outlined),
-          selectedIcon: const Icon(Icons.calendar_today),
-          onPressed: () => setState(() => _showDates = !_showDates),
-        ),
+        if (!narrow)
+          IconButton(
+            tooltip: 'Duplicate-account guard',
+            isSelected: _showGuard,
+            icon: const Icon(Icons.shield_outlined),
+            selectedIcon: const Icon(Icons.shield),
+            onPressed: () => setState(() => _showGuard = !_showGuard),
+          ),
+        if (!narrow)
+          IconButton(
+            tooltip: 'Filter by date',
+            isSelected: _showDates || datesActive,
+            icon: const Icon(Icons.calendar_today_outlined),
+            selectedIcon: const Icon(Icons.calendar_today),
+            onPressed: () => setState(() => _showDates = !_showDates),
+          ),
         BusyIconButton(
           tooltip: 'Export sessions (CSV)',
           icon: const Icon(Icons.download),

@@ -51,6 +51,18 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
   final _text = TextEditingController();
   bool _sending = false;
 
+  /// The ticket, once there is one: a new chat gets it with its first message.
+  late String? _ticketId = widget.ticketId == newSupportTicketId ? null : widget.ticketId;
+
+  /// The ticket to send to, opened now if this is a new chat.
+  Future<String> _ticket() async {
+    final id = _ticketId;
+    if (id != null) return id;
+    final ticket = await ref.read(accountRepositoryProvider).openTicket('Support request');
+    if (mounted) setState(() => _ticketId = ticket.id);
+    return ticket.id;
+  }
+
   /// Send while the box has text, the microphone while it hasn't.
   bool _hasText = false;
 
@@ -61,7 +73,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
       final has = _text.text.trim().isNotEmpty;
       if (has != _hasText) setState(() => _hasText = has);
     });
-    ref.read(accountRepositoryProvider).markTicketRead(widget.ticketId).catchError((_) {});
+    if (_ticketId != null) ref.read(accountRepositoryProvider).markTicketRead(_ticketId!).catchError((_) {});
   }
 
   @override
@@ -77,7 +89,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
     setState(() => _sending = true);
     try {
       final name = ref.read(profileProvider).value?.name;
-      await ref.read(accountRepositoryProvider).sendMessage(widget.ticketId, body, senderName: name);
+      await ref.read(accountRepositoryProvider).sendMessage(await _ticket(), body, senderName: name);
       _text.clear();
       ref.invalidate(ticketsProvider);
     } catch (e) {
@@ -110,7 +122,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
       final name = ref.read(profileProvider).value?.name;
       await ref
           .read(accountRepositoryProvider)
-          .sendAttachment(widget.ticketId, file.bytes, name: file.name, senderName: name);
+          .sendAttachment(await _ticket(), file.bytes, name: file.name, senderName: name);
       ref.invalidate(ticketsProvider);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -126,7 +138,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
       final name = ref.read(profileProvider).value?.name;
       await ref
           .read(accountRepositoryProvider)
-          .sendVoiceNote(widget.ticketId, clip.bytes, ext: clip.ext, duration: clip.duration, senderName: name);
+          .sendVoiceNote(await _ticket(), clip.bytes, ext: clip.ext, duration: clip.duration, senderName: name);
       ref.invalidate(ticketsProvider);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -195,7 +207,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
           onPressed: () => callSupport(
             context,
             ref,
-            ticketId: widget.ticketId,
+            ticketId: _ticketId,
             name: ref.read(profileProvider).value?.name,
           ),
         ),
@@ -206,7 +218,10 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
         child: Column(children: [
           Expanded(
             child: AsyncView(
-              value: ref.watch(supportMessagesProvider(widget.ticketId)),
+              // A new chat has nothing to read yet.
+              value: _ticketId == null
+                  ? const AsyncData(<SupportMessage>[])
+                  : ref.watch(supportMessagesProvider(_ticketId!)),
               data: (msgs) => msgs.isEmpty
                   ? const EmptyState(icon: Icons.forum_outlined, title: 'Say hello 👋',
                       message: 'Tell us what you need help with.')

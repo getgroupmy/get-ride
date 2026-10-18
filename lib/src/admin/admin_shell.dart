@@ -129,29 +129,32 @@ class AdminShell extends ConsumerWidget {
 
         return Scaffold(
           body: Row(children: [
-            NavigationRail(
-              extended: width >= 1200,
-              selectedIndex: current < 0 ? null : current,
-              onDestinationSelected: go,
-              labelType: width >= 1200 ? NavigationRailLabelType.none : NavigationRailLabelType.all,
-              leading: const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: _AdminTitle()),
-              trailing: Expanded(
-                child: Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: IconButton(
-                      tooltip: 'Exit admin',
-                      icon: const Icon(Icons.exit_to_app),
-                      onPressed: () => context.go('/account'),
+            // Every module: scrolls on a short window rather than overflowing.
+            ScrollableRail(
+              rail: NavigationRail(
+                extended: width >= 1200,
+                selectedIndex: current < 0 ? null : current,
+                onDestinationSelected: go,
+                labelType: width >= 1200 ? NavigationRailLabelType.none : NavigationRailLabelType.all,
+                leading: const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: _AdminTitle()),
+                trailing: Expanded(
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: IconButton(
+                        tooltip: 'Exit admin',
+                        icon: const Icon(Icons.exit_to_app),
+                        onPressed: () => context.go('/account'),
+                      ),
                     ),
                   ),
                 ),
+                destinations: [
+                  for (final n in items)
+                    NavigationRailDestination(icon: Icon(n.icon), label: Text(adminModules[n.module]!.label)),
+                ],
               ),
-              destinations: [
-                for (final n in items)
-                  NavigationRailDestination(icon: Icon(n.icon), label: Text(adminModules[n.module]!.label)),
-              ],
             ),
             const VerticalDivider(width: 1),
             Expanded(

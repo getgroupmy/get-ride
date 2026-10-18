@@ -97,7 +97,7 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
       title: 'Rides',
       module: 'rides',
       actions: [
-        IconButton(icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(adminRidesProvider(_group))),
+        IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(adminRidesProvider(_group))),
       ],
       body: Column(children: [
         FilterBar(

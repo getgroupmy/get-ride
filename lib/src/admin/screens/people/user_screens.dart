@@ -355,7 +355,7 @@ class _UserIdDocumentsScreenState extends ConsumerState<UserIdDocumentsScreen> {
                           title: Text('${row['name'] ?? row['phone'] ?? row['email'] ?? id.substring(0, 8)}'),
                           subtitle: Text([
                             if (row['ic'] != null) 'IC ${row['ic']}' else '${row['phone'] ?? ''}',
-                            'Updated ${dateText(row['updated_at']).split(' ').first}',
+                            'Updated ${dateText(row['updated_at']).split(',').first}',
                           ].join('\n')),
                           isThreeLine: true,
                           trailing: Chip(

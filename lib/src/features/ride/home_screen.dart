@@ -1490,6 +1490,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 leading: const Icon(Icons.touch_app),
                 title: Text('Tap the map to set the ${_pinTarget == _PinTarget.pickup ? 'pickup' : 'destination'}'),
                 trailing: IconButton(
+                  tooltip: 'Stop picking on the map',
                   icon: const Icon(Icons.close),
                   onPressed: () => setState(() => _pinTarget = _PinTarget.none),
                 ),
@@ -1811,13 +1812,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ])),
       );
     }
-    final navLift = footer == null && Theme.of(context).platform == TargetPlatform.android
-        ? MediaQuery.viewPaddingOf(context).bottom
-        : 0.0;
+    // Above Android's navigation bar and iPhone's home indicator alike, so
+    // the search bar is never under the system's swipe.
+    final navLift = footer == null ? MediaQuery.viewPaddingOf(context).bottom : 0.0;
     final screenHeight = MediaQuery.sizeOf(context).height;
     final navLiftFraction = screenHeight > 0 ? navLift / screenHeight : 0.0;
     if (!confirming) WidgetsBinding.instance.addPostFrameCallback((_) => _measureFold());
-    return Scaffold(
+    final page = Scaffold(
       body: calculating(PopScope(
         // Back on the confirm step leaves it, as its back arrow does.
         canPop: !confirming,
@@ -1842,6 +1843,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // The main screen's sheet starts fully down; the rider drags it up.
           initial: (confirming ? 0.55 : least) + navLiftFraction,
           hidden: _pinMoving,
+          // navLift above already keeps the sheet's foot clear of the system bar.
+          padBottom: false,
           footer: footer,
           // Over the foot of the sheet, only while it is all the way up.
           aboveFooter: footer == null
@@ -1859,6 +1862,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         }),
       )),
     );
+    // No app bar to set the status bar: its icons follow the theme.
+    return ThemedStatusBar(child: page);
   }
 }
 
@@ -2140,7 +2145,7 @@ class _WhoRiding extends StatelessWidget {
                   who == null ? 'Their name and phone go to the driver' : '${who.name} · ${who.phone}',
                   key: const ValueKey('book-for-who'),
                   style: t.textTheme.bodySmall,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/format.dart' show formatDateTime;
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
@@ -34,7 +35,7 @@ class AdminPage extends ConsumerWidget {
   Widget? _leading(BuildContext context) {
     if (Navigator.of(context).canPop()) return const BackButton();
     final scope = AdminDrawerScope.maybeOf(context);
-    return scope == null ? null : IconButton(icon: const Icon(Icons.menu), onPressed: scope.openDrawer);
+    return scope == null ? null : IconButton(tooltip: 'Menu', icon: const Icon(Icons.menu), onPressed: scope.openDrawer);
   }
 
   @override
@@ -65,8 +66,12 @@ class AdminPage extends ConsumerWidget {
 
 /// Coloured pill for a status value.
 class StatusChip extends StatelessWidget {
-  const StatusChip(this.status, {super.key});
+  const StatusChip(this.status, {super.key, this.label});
   final String? status;
+
+  /// The words shown, where the screen has its own for [status] (its list
+  /// filters'); else [labelFor] makes them.
+  final String? label;
 
   static Color colorFor(String s) {
     final v = s.toLowerCase();
@@ -79,6 +84,12 @@ class StatusChip extends StatelessWidget {
     return Colors.blueGrey;
   }
 
+  /// A stored status as words: "on_trip" → "On trip".
+  static String labelFor(String s) {
+    final words = s.replaceAll(RegExp(r'[_-]+'), ' ').trim();
+    return words.isEmpty ? s : '${words[0].toUpperCase()}${words.substring(1)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final s = (status == null || status!.isEmpty) ? '—' : status!;
@@ -86,7 +97,7 @@ class StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
-      child: Text(s, style: TextStyle(color: c, fontSize: 12, fontWeight: FontWeight.w600)),
+      child: Text(label ?? labelFor(s), style: TextStyle(color: c, fontSize: 12, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -191,7 +202,7 @@ Future<T?> showAdminSheet<T>(BuildContext context, {required String title, requi
           padding: const EdgeInsets.fromLTRB(20, 16, 8, 8),
           child: Row(children: [
             Expanded(child: Text(title, style: Theme.of(ctx).textTheme.titleLarge)),
-            IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+            IconButton(tooltip: 'Close', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
           ]),
         ),
         const Divider(height: 1),
@@ -220,11 +231,10 @@ Future<T?> showAdminSheet<T>(BuildContext context, {required String title, requi
   );
 }
 
+/// A stored timestamp in the app's usual form ("18 Oct 2026, 9:05 AM").
 String dateText(Object? iso) {
   if (iso == null) return '';
   final d = DateTime.tryParse('$iso');
   if (d == null) return '$iso';
-  final l = d.toLocal();
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${l.year}-${two(l.month)}-${two(l.day)} ${two(l.hour)}:${two(l.minute)}';
+  return formatDateTime(d);
 }

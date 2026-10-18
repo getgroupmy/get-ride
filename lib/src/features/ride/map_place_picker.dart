@@ -148,7 +148,12 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
                       ),
                     ],
                   ),
-                MapCreditLayer(satellite: ref.watch(mapSatelliteProvider)),
+                // Above the Done bar, so its ⓘ can be reached.
+                Padding(
+                  key: const ValueKey('map-picker-credit'),
+                  padding: const EdgeInsets.only(bottom: 80),
+                  child: MapCreditLayer(satellite: ref.watch(mapSatelliteProvider)),
+                ),
               ],
             ),
           ),

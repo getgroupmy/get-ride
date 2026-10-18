@@ -91,7 +91,7 @@ class _AdminSupportScreenState extends ConsumerState<AdminSupportScreen> {
     return AdminPage(
       title: 'Support',
       module: 'support',
-      actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(adminTicketsProvider))],
+      actions: [IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(adminTicketsProvider))],
       body: Column(children: [
         FilterBar(
           filters: const {
@@ -140,7 +140,7 @@ class _AdminSupportScreenState extends ConsumerState<AdminSupportScreen> {
                       label: Text('$unread'),
                       child: const Icon(Icons.forum_outlined),
                     ),
-                    title: Text('#${t['ticket_number'] ?? '—'} · ${t['subject'] ?? 'Support'}'),
+                    title: Text(ticketTitle(t)),
                     subtitle: Text(
                       [t['last_message'] ?? 'No messages', t['assigned_admin_name'] ?? 'unassigned'].join(' · '),
                       maxLines: 1,
@@ -262,10 +262,22 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
     final t = Theme.of(context);
     final canEdit = ref.watch(moduleAccessProvider('support')) == AccessLevel.edit;
     final ticket = _ticket;
+    final narrow = MediaQuery.sizeOf(context).width < 600;
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => context.go('/admin/support')),
-        title: Text(ticket == null ? 'Ticket' : '#${ticket['ticket_number'] ?? ''} · ${ticket['subject'] ?? 'Support'}'),
+        // The subject, with its number under it when it has one (never a
+        // lone "#").
+        title: ticket == null
+            ? const Text('Ticket')
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${ticket['subject'] ?? 'Support'}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if ('${ticket['ticket_number'] ?? ''}'.trim().isNotEmpty)
+                    Text('#${ticket['ticket_number']}', style: t.textTheme.labelMedium),
+                ],
+              ),
         actions: [
           if (canEdit && ticket != null && ticket['profile_id'] != null)
             BusyIconButton(
@@ -280,7 +292,15 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
                 agentName: _myName,
               ),
             ),
-          if (canEdit && ticket != null)
+          // On a phone the words would squeeze the title out: an icon.
+          if (canEdit && ticket != null && narrow)
+            BusyIconButton(
+              key: const ValueKey('ticket-assign'),
+              tooltip: ticket['assigned_admin_id'] == null ? 'Assign' : 'Reassign',
+              icon: const Icon(Icons.person_add_alt),
+              onPressed: () => _assign(ticket['assigned_admin_id'] as String?),
+            )
+          else if (canEdit && ticket != null)
             BusyButton.text(
               key: const ValueKey('ticket-assign'),
               icon: const Icon(Icons.person_add_alt),
@@ -383,6 +403,7 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
                   ),
                   const SizedBox(width: 8),
                   IconButton.filled(
+                    tooltip: 'Send',
                     onPressed: _sending ? null : _send,
                     icon: _sending ? const BusySpinner(size: 20) : const Icon(Icons.send),
                   ),
@@ -431,4 +452,12 @@ class _AdminMedia extends StatelessWidget {
     }
     return fallback;
   }
+}
+
+/// A ticket's line in the list: "#12 · Lost my phone", or just the subject
+/// when it has no number yet (never "#— ·").
+String ticketTitle(Map<String, dynamic> t) {
+  final no = '${t['ticket_number'] ?? ''}'.trim();
+  final subject = '${t['subject'] ?? 'Support'}';
+  return no.isEmpty ? subject : '#$no · $subject';
 }

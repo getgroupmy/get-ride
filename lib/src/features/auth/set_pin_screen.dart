@@ -44,18 +44,19 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   }
 
   Future<void> _save() async {
-    if (!isValidPin(_pin.text)) return showInfo(context, 'PIN must be 6 digits.');
-    if (_pin.text != _confirm.text) return showInfo(context, 'PINs do not match.');
-    final referral = normalizeReferralCode(_referral.text);
-    if (referral.isNotEmpty && !isPlausibleReferralCode(referral)) {
-      return showInfo(context, "That referral code wasn't found.");
-    }
+    // Checked in the order the fields stand: the name, the PINs, the code.
     final before = ref.read(profileProvider).value;
     final isNew = before?.name?.trim().isNotEmpty != true;
     final hasPhoto = before?.avatarUrl != null;
     if (isNew) {
       final problem = signupNameProblem(_name.text);
       if (problem != null) return showInfo(context, problem);
+    }
+    if (!isValidPin(_pin.text)) return showInfo(context, 'PIN must be 6 digits.');
+    if (_pin.text != _confirm.text) return showInfo(context, 'PINs do not match.');
+    final referral = normalizeReferralCode(_referral.text);
+    if (referral.isNotEmpty && !isPlausibleReferralCode(referral)) {
+      return showInfo(context, "That referral code wasn't found.");
     }
     setState(() => _busy = true);
     try {
@@ -115,7 +116,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Set your PIN'),
-        leading: BusyIconButton(icon: const Icon(Icons.close), onPressed: _busy ? null : _cancel),
+        leading: BusyIconButton(tooltip: 'Cancel', icon: const Icon(Icons.close), onPressed: _busy ? null : _cancel),
       ),
       body: SingleChildScrollView(
         child: ResponsiveCenter(
@@ -145,19 +146,40 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
               TextField(
                 key: const ValueKey('signup-name'),
                 controller: _name,
+                // The first field, so the keyboard is up for it.
+                autofocus: true,
+                textInputAction: TextInputAction.next,
                 textCapitalization: TextCapitalization.words,
                 maxLength: signupNameMaxLength,
-                decoration: const InputDecoration(labelText: 'Your name'),
+                // The limit still holds; a "0/50" under a name says nothing.
+                decoration: const InputDecoration(labelText: 'Your name', counterText: ''),
               ),
               const SizedBox(height: 16),
             ],
-            CodeField(controller: _pin, length: 6, obscure: true, label: 'New PIN'),
+            // Next goes down the form: PIN, confirm, referral code.
+            CodeField(
+              controller: _pin,
+              length: 6,
+              obscure: true,
+              autofocus: !needsName,
+              label: 'New PIN',
+              textInputAction: TextInputAction.next,
+            ),
             const SizedBox(height: 16),
-            CodeField(controller: _confirm, length: 6, obscure: true, autofocus: false, label: 'Confirm PIN'),
+            CodeField(
+              controller: _confirm,
+              length: 6,
+              obscure: true,
+              autofocus: false,
+              label: 'Confirm PIN',
+              textInputAction: TextInputAction.next,
+            ),
             const SizedBox(height: 16),
             TextField(
               key: const ValueKey('signup-referral'),
               controller: _referral,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _busy ? null : _save(),
               textCapitalization: TextCapitalization.characters,
               decoration: InputDecoration(
                 labelText: 'Referral code (optional)',

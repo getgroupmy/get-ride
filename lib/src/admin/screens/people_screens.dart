@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/account_deletion.dart';
+import '../../core/auth_utils.dart' show capitaliseName;
 import '../../core/partner_status.dart';
 import '../../data/account_deletion_repository.dart';
 import '../../widgets/busy.dart';
@@ -18,6 +19,7 @@ import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
 import 'people/account_deletion_section.dart';
 import 'people/people_data.dart';
+import 'people/people_logic.dart' show permitOptions, vehicleStatusOptions;
 import 'people/vehicle_screens.dart' show confirmVehicleApprovable;
 import 'security/sign_in_security_card.dart';
 import '../../data/live_tables.dart';
@@ -95,10 +97,11 @@ class _RecordCard extends ConsumerWidget {
               a.destructive
                   ? OutlinedButton(
                       key: ValueKey('quick-${a.next}-$id'),
+                      // 48 tall: a finger's target (Android's minimum).
                       style: OutlinedButton.styleFrom(
                         foregroundColor: c.error,
                         side: BorderSide(color: c.error.withValues(alpha: 0.6)),
-                        visualDensity: VisualDensity.compact,
+                        minimumSize: const Size(64, 48),
                       ),
                       onPressed: () => onAction(a),
                       child: Text(a.label),
@@ -106,10 +109,7 @@ class _RecordCard extends ConsumerWidget {
                   : FilledButton.tonal(
                       key: ValueKey('quick-${a.next}-$id'),
                       // Not the theme's full-width filled button.
-                      style: FilledButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        minimumSize: const Size(64, 36),
-                      ),
+                      style: FilledButton.styleFrom(minimumSize: const Size(64, 48)),
                       onPressed: () => onAction(a),
                       child: Text(a.label),
                     ),
@@ -338,10 +338,14 @@ class AdminUsersScreen extends ConsumerWidget {
       context,
       title: (u['name'] as String?)?.isNotEmpty == true ? u['name'] as String : 'User',
       builder: (ctx) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [_avatar(u['avatar_url'] ?? u['profile_image']), const SizedBox(width: 12), StatusChip(userStatus(u))]),
+        Row(children: [
+          _avatar(u['avatar_url'] ?? u['profile_image']),
+          const SizedBox(width: 12),
+          StatusChip(userStatus(u), label: userFilters[userStatus(u)]),
+        ]),
         const SizedBox(height: 12),
         DetailTable({
-          'ID': u['display_id'] ?? u['id'],
+          'ID': u['display_id'],
           'Phone': u['phone'],
           'Email': u['email'],
           'ID type': u['id_type'],
@@ -503,14 +507,22 @@ class AdminPartnersScreen extends ConsumerWidget {
         Row(children: [
           _avatar(p['avatar_url'] ?? p['image_front']),
           const SizedBox(width: 12),
-          StatusChip(p['status'] as String?),
+          // In the list filters' words, not the stored slugs.
+          StatusChip(
+            p['status'] as String?,
+            label: (vehicles ? vehicleStatusOptions : partnerFilters)['${p['status']}'],
+          ),
           const SizedBox(width: 8),
-          StatusChip('permit: ${p['permit'] ?? 'none'}'),
+          StatusChip(
+            'permit-${p['permit'] ?? 'none'}',
+            label: 'Permit: ${permitOptions['${p['permit'] ?? 'none'}'] ?? p['permit']}',
+          ),
         ]),
         const SizedBox(height: 12),
+        // The display ID or plate people use, never the database's UUID.
         DetailTable(vehicles
             ? {
-                'ID': p['display_id'] ?? p['id'],
+                'ID': p['display_id'] ?? p['plate'],
                 'Plate': p['plate'],
                 'Make / model': [p['make'], p['model'], p['year']].whereType<String>().join(' '),
                 'Colour': p['color'],
@@ -520,19 +532,22 @@ class AdminPartnersScreen extends ConsumerWidget {
                 'Owner': p['owner_name'],
                 'Owner phone': p['owner_phone'],
                 'Owner partner': p['owner_partner_display_id'],
-                'Partner types': (p['partner_types'] as List?)?.join(', '),
+                'Partner types': (p['partner_types'] as List?)?.map((e) => capitaliseName('$e')).join(', '),
                 'Service area': (p['service_cities'] as List?)?.join(', '),
                 'Onboarding step': p['onboarding_step'],
                 'Documents OK': p['documents_ok'] == true ? 'Yes' : 'No',
                 'Joined': dateText(p['joined_at']),
               }
             : {
-                'ID': p['display_id'] ?? p['id'],
+                'ID': p['display_id'],
                 'Phone': p['phone'],
                 'Email': p['email'],
                 'IC': p['ic'],
                 'Vehicle': [p['vehicle'], p['plate']].whereType<String>().join(' · '),
-                'Partner types': (p['partner_types'] as List?)?.join(', ') ?? p['partner_type'],
+                'Partner types': ((p['partner_types'] as List?)?.map((e) => '$e') ??
+                        [if (p['partner_type'] != null) '${p['partner_type']}'])
+                    .map(capitaliseName)
+                    .join(', '),
                 'Permit no.': p['permit_number'],
                 'Rating': p['rating'],
                 'Total rides': p['total_rides'],

@@ -4,6 +4,7 @@
 // or since revised (migration 0201). Nothing else about the driver.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/format.dart';
 import '../../core/partner_statement.dart';
@@ -53,11 +54,8 @@ class StatementVerifyScreen extends ConsumerWidget {
               ],
             ),
           );
-          String date(DateTime? d) {
-            if (d == null) return '—';
-            final l = d.toLocal();
-            return '${l.day}/${l.month}/${l.year}';
-          }
+          // The app's usual "13 Oct 2026", as the period reads.
+          String date(DateTime? d) => d == null ? '—' : DateFormat('d MMM yyyy').format(d.toLocal());
 
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 24),

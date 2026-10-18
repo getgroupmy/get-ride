@@ -13,6 +13,7 @@ import '../../core/partner_statement.dart';
 import '../../data/partner_statement_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/pdf_actions.dart';
+import '../../widgets/back_or_go_button.dart';
 import '../../widgets/page_style_host.dart';
 
 /// Hands a statement's PDF to share or download. Overridden in tests.
@@ -57,6 +58,7 @@ class StatementsScreen extends ConsumerWidget {
       length: StatementType.values.length,
       child: Scaffold(
         appBar: AppBar(
+          leading: const BackOrGoButton(fallback: '/drive'),
           title: const Text('Statements'),
           bottom: TabBar(
             key: const ValueKey('statements-tabs'),

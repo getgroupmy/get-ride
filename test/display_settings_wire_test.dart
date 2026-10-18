@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -87,6 +89,15 @@ void main() {
       expect(down.httpStatus, 500);
       final none = await checkBackend('', '');
       expect(none.reachable, isFalse);
+      final offline = await checkBackend(
+        'https://x',
+        'k',
+        client: MockClient((r) async => throw http.ClientException('Failed to fetch', r.url)),
+      );
+      expect(offline.errorName, connectionNetworkError, reason: 'never a (minified) type name');
+      expect(offline.summary, "Couldn't reach GET.ride. Check your connection and try again.");
+      expect(connectionErrorName(TimeoutException('x'), release: true), connectionTimedOut);
+      expect(connectionErrorName(const FormatException('x'), release: true), 'Error');
     });
 
     testWidgets('the failed popup shows the error and its details', (tester) async {
@@ -102,11 +113,15 @@ void main() {
       );
       await tester.tap(find.text('go'));
       await tester.pumpAndSettle();
-      expect(find.text('Not Connected to server'), findsOneWidget);
-      expect(find.text('HTTP 503'), findsOneWidget);
+      expect(find.text('Not connected to server'), findsOneWidget);
+      expect(find.text('GET.ride answered with an error. Try again in a moment.'), findsOneWidget);
+      expect(find.text('HTTP 503'), findsNothing, reason: 'technical detail stays folded away');
       await tester.tap(find.text('Show details'));
       await tester.pumpAndSettle();
       expect(find.text('x.supabase.co'), findsOneWidget);
+      expect(find.text('HTTP 503'), findsOneWidget);
+      await tester.ensureVisible(find.text('Continue'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('connection-failed')), findsNothing);

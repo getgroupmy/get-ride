@@ -20,6 +20,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../ride/driver_code_sheet.dart';
 import '../ride/scheduled_rides_screen.dart' show pickupLabel;
+import '../../widgets/back_or_go_button.dart';
 import '../../widgets/page_style_host.dart';
 
 class ScheduledJobsScreen extends ConsumerWidget {
@@ -39,6 +40,7 @@ class ScheduledJobsScreen extends ConsumerWidget {
       initialIndex: initialTab.clamp(0, 1),
       child: Scaffold(
         appBar: AppBar(
+          leading: const BackOrGoButton(fallback: '/drive'),
           title: const Text('Scheduled rides'),
           bottom: TabBar(
             tabs: [

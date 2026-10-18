@@ -465,8 +465,19 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
     'fee': TextEditingController(text: _show(widget.card?.bookingFee)),
   };
   String? _error;
+  final _errorKey = GlobalKey();
 
   static String _show(double? v) => v == null || v == 0 ? '' : v.toString();
+
+  /// Says what is wrong where it is seen: the message is scrolled into view
+  /// (on a phone it sits below the fold, and Save seemed to do nothing).
+  void _fail(String message) {
+    setState(() => _error = message);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c = _errorKey.currentContext;
+      if (c != null && c.mounted) Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 200));
+    });
+  }
 
   @override
   void dispose() {
@@ -485,10 +496,7 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
 
   void _save() {
     final values = {for (final k in _money.keys) k: _n(k)};
-    if (values.values.any((v) => v == null)) {
-      setState(() => _error = 'Charges are numbers of 0 or more.');
-      return;
-    }
+    if (values.values.any((v) => v == null)) return _fail('Charges are numbers of 0 or more.');
     final card = FareTariff(
       id: widget.card?.id,
       level: _level,
@@ -508,7 +516,7 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
       vehicleService: _vehicle,
     );
     final problem = fareTariffProblem(card);
-    if (problem != null) return setState(() => _error = problem);
+    if (problem != null) return _fail(problem);
     Navigator.pop(context, card);
   }
 
@@ -540,7 +548,12 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
         key: ValueKey('tariff-$k'),
         controller: _money[k],
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: InputDecoration(labelText: label, hintText: '0'),
+        // The field itself says so once Save found it wrong.
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: '0',
+          errorText: _error != null && _n(k) == null ? 'A number, 0 or more' : null,
+        ),
       ),
     );
     Widget place(int i, String k, RegionLevel level) {
@@ -671,6 +684,8 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
                   key: const ValueKey('tariff-error'),
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
+              // What [_fail] scrolls to.
+              SizedBox(key: _errorKey, height: 1),
             ],
           ),
         ),

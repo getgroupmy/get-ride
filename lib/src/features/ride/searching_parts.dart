@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/payment_types.dart' show paymentModeLabel;
 import '../../core/request_viewers.dart';
 import '../../core/ride_cancel.dart';
 import '../../core/search_stage.dart';
@@ -17,8 +18,8 @@ import '../../widgets/page_style_host.dart';
 // the two-step cancel sheet.
 
 /// The Accept key's colour, and the darker one its timer drains to.
-Color get offerAcceptColor => confirmAccent;
-Color get offerAcceptSpent => Color.lerp(confirmAccent, Colors.black, 0.28)!;
+Color get offerAcceptColor => accentFill;
+Color get offerAcceptSpent => Color.lerp(accentFill, Colors.black, 0.28)!;
 
 /// The grey of inDrive's secondary keys (Decline, Cancel request).
 Color searchGreyKey(BuildContext context) =>
@@ -238,7 +239,7 @@ class SearchFareStepper extends StatelessWidget {
             key: const ValueKey('search-fare-confirm'),
             onPressed: onConfirm,
             style: FilledButton.styleFrom(
-              backgroundColor: confirmAccent,
+              backgroundColor: accentFill,
               foregroundColor: Colors.white,
               disabledBackgroundColor: c.tray,
               disabledForegroundColor: t.colorScheme.onSurface.withValues(alpha: 0.35),
@@ -274,7 +275,7 @@ class SearchPaymentRow extends StatelessWidget {
               children: [
                 TextSpan(text: '$amount '),
                 TextSpan(
-                  text: mode,
+                  text: paymentModeLabel(mode),
                   style: TextStyle(color: t.colorScheme.onSurfaceVariant),
                 ),
               ],
@@ -987,7 +988,7 @@ class _SureCancelSheet extends StatelessWidget {
                 key: const ValueKey('cancel-keep-searching'),
                 onPressed: () => Navigator.pop(context, false),
                 style: FilledButton.styleFrom(
-                  backgroundColor: confirmAccent,
+                  backgroundColor: accentFill,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),

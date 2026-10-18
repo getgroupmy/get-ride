@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
@@ -30,7 +31,7 @@ Future<ConnectionCheck> checkBackend(String url, String anonKey, {http.Client? c
       reachable: false,
       url: url,
       hasKey: anonKey.isNotEmpty,
-      errorName: e is TimeoutException ? 'TimeoutError' : e.runtimeType.toString(),
+      errorName: connectionErrorName(e, release: kReleaseMode),
       errorMessage: e is TimeoutException ? 'The server did not answer within 5 seconds' : '$e',
       durationMs: watch.elapsedMilliseconds,
     );
@@ -38,6 +39,11 @@ Future<ConnectionCheck> checkBackend(String url, String anonKey, {http.Client? c
     if (client == null) c.close();
   }
 }
+
+/// Whether [router] is showing Connection diagnostics now: the launch popup
+/// stays away from it, and its Diagnose button doesn't open a second copy.
+bool onDiagnostics(GoRouter router) =>
+    router.routerDelegate.currentConfiguration.uri.path == '/diagnostics';
 
 /// The launch popup: "Connected", or "Not Connected to server" with the
 /// error and its details. Only its buttons (or back) close it.
@@ -88,15 +94,13 @@ class _ConnectionStatusDialogState extends State<ConnectionStatusDialog> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  ok ? 'Connected' : 'Not Connected to server',
+                  ok ? 'Connected' : 'Not connected to server',
                   textAlign: TextAlign.center,
                   style: t.textTheme.titleLarge,
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  ok
-                      ? 'Successfully connected to the server.'
-                      : "Couldn't reach the server. Some features may not work.",
+                  ok ? 'Successfully connected to the server.' : 'Some features may not work until it is back.',
                   textAlign: TextAlign.center,
                   style: t.textTheme.bodyMedium,
                 ),
@@ -118,9 +122,9 @@ class _ConnectionStatusDialogState extends State<ConnectionStatusDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Error', style: t.textTheme.labelMedium?.copyWith(color: color)),
+                        Text('What happened', style: t.textTheme.labelMedium?.copyWith(color: color)),
                         const SizedBox(height: 2),
-                        Text(c.error, maxLines: 3, overflow: TextOverflow.ellipsis, style: t.textTheme.bodySmall),
+                        Text(c.summary, key: const ValueKey('connection-summary'), style: t.textTheme.bodySmall),
                       ],
                     ),
                   ),
@@ -133,9 +137,18 @@ class _ConnectionStatusDialogState extends State<ConnectionStatusDialog> {
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 2),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(child: Text(k, style: t.textTheme.bodySmall)),
-                            Text(v, style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              flex: 2,
+                              child: Text(
+                                v,
+                                textAlign: TextAlign.end,
+                                style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -149,7 +162,9 @@ class _ConnectionStatusDialogState extends State<ConnectionStatusDialog> {
                           onPressed: () {
                             final router = GoRouter.maybeOf(context);
                             Navigator.of(context).pop();
-                            router?.push('/diagnostics');
+                            // Already there (opened by link): no second copy.
+                            if (router == null || onDiagnostics(router)) return;
+                            router.push('/diagnostics');
                           },
                           child: const Text('Diagnose'),
                         ),

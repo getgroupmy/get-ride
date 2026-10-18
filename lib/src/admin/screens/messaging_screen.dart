@@ -105,7 +105,8 @@ class AdminMessagingScreen extends ConsumerWidget {
                                 OutlinedButton.icon(
                                   key: const ValueKey('messaging-gateway-download'),
                                   icon: const Icon(Icons.download_outlined),
-                                  label: const Text('Download the Gateway app (Android)'),
+                                  // Short enough to stay on one line on a phone.
+                                  label: const Text('Gateway app (Android)'),
                                   onPressed: () =>
                                       launchUrl(Uri.parse(gatewayApkUrl), mode: LaunchMode.externalApplication),
                                 ),
@@ -348,10 +349,13 @@ class _RouteEditorState extends ConsumerState<_RouteEditor> {
                   style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.8),
                 ),
               ),
-              Switch(
-                key: ValueKey('messaging-enabled-${r.channel.id}-${r.direction.id}'),
-                value: r.enabled,
-                onChanged: edit ? (v) => _change(r.copyWith(enabled: v)) : null,
+              Semantics(
+                label: '${r.direction.label} on',
+                child: Switch(
+                  key: ValueKey('messaging-enabled-${r.channel.id}-${r.direction.id}'),
+                  value: r.enabled,
+                  onChanged: edit ? (v) => _change(r.copyWith(enabled: v)) : null,
+                ),
               ),
             ],
           ),

@@ -694,7 +694,7 @@ void main() {
     testWidgets('place search results: Autocomplete and each smart address option, saved ($mode)', (tester) async {
       final (repo, _) = await pump(tester, dark: dark);
       expect(find.byKey(const ValueKey('maps-search-results')), findsOneWidget);
-      await choose(tester, 'maps-google-search-text', 'Autocomplete (suggestions as the rider types)');
+      await choose(tester, 'maps-google-search-text', 'Autocomplete (as the rider types)');
       await choose(tester, 'maps-smart-address-normal', 'Combination: A, B and C');
       await tester.tap(find.byKey(const ValueKey('maps-save')));
       await tester.pumpAndSettle();
@@ -704,8 +704,8 @@ void main() {
 
     testWidgets("Google's look: hybrid satellite and terrain, saved ($mode)", (tester) async {
       final (repo, _) = await pump(tester, dark: dark);
-      await choose(tester, 'maps-google-satellite-satellite', 'Hybrid (satellite with roads and names)');
-      await choose(tester, 'maps-google-map-roadmap', 'Terrain (hills and relief)');
+      await choose(tester, 'maps-google-satellite-satellite', 'Hybrid (with roads)');
+      await choose(tester, 'maps-google-map-roadmap', 'Terrain (relief)');
       await tester.tap(find.byKey(const ValueKey('maps-save')));
       await tester.pumpAndSettle();
       expect([repo.saved.single.googleSatellite, repo.saved.single.googleMap], ['hybrid', 'terrain']);

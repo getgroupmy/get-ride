@@ -272,12 +272,14 @@ class _RidePaymentOverlayState extends ConsumerState<RidePaymentOverlay> {
             key: const ValueKey('payment-wallet-balance'),
             label: 'GET.wallet ${_money(wallet)}',
             enough: walletOk,
+            chosen: !bookedWithCash(r.paymentMode),
           ),
         if (coins != null && coinNeed != null)
           _BalanceLine(
             key: const ValueKey('payment-coin-balance'),
             label: 'GET.coin ${formatCoins(coins)}',
             enough: coinOk,
+            chosen: !bookedWithCash(r.paymentMode),
           ),
         const SizedBox(height: 16),
         if (cashFirst) ...[cash, const SizedBox(height: 8), payNow] else ...[payNow, const SizedBox(height: 8), cash],
@@ -397,22 +399,27 @@ class _RidePaymentOverlayState extends ConsumerState<RidePaymentOverlay> {
 }
 
 class _BalanceLine extends StatelessWidget {
-  const _BalanceLine({super.key, required this.label, required this.enough});
+  const _BalanceLine({super.key, required this.label, required this.enough, this.chosen = true});
   final String label;
   final bool enough;
+
+  /// Whether the ride was booked to be paid from this balance. A cash ride
+  /// only mentions a short balance in passing, not as a red failure.
+  final bool chosen;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final color = enough ? Colors.green : t.colorScheme.error;
+    final color = enough ? Colors.green : (chosen ? t.colorScheme.error : t.colorScheme.onSurfaceVariant);
+    final icon = enough ? Icons.check_circle_outline : (chosen ? Icons.remove_circle_outline : Icons.info_outline);
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Row(
         children: [
-          Icon(enough ? Icons.check_circle_outline : Icons.remove_circle_outline, size: 16, color: color),
+          Icon(icon, size: 16, color: color),
           const SizedBox(width: 6),
           Expanded(child: Text(label)),
-          Text(enough ? 'Enough' : 'Not enough', style: TextStyle(color: color)),
+          Text(enough ? 'Enough' : (chosen ? 'Not enough' : 'Top up to use'), style: TextStyle(color: color)),
         ],
       ),
     );

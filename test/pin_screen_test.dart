@@ -67,4 +67,21 @@ void main() {
     expect(find.byKey(const ValueKey('pin-sms-unlock')), findsNothing);
     expect(opened, isEmpty);
   });
+
+  testWidgets('Sign in waits for all six digits, and the field says what goes in', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [authRepositoryProvider.overrideWithValue(_FakeAuth(const PinSignInOk()))],
+        child: const MaterialApp(home: PinScreen(phone: '+60123456789')),
+      ),
+    );
+    FilledButton button() => tester.widget<FilledButton>(
+      find.descendant(of: find.byKey(const ValueKey('pin-sign-in')), matching: find.byType(FilledButton)),
+    );
+    expect(find.text('••••••'), findsOneWidget, reason: 'a hint in the empty field');
+    expect(button().onPressed, isNull);
+    await tester.enterText(find.byType(TextField), '123');
+    await tester.pump();
+    expect(button().onPressed, isNull, reason: 'three digits are not a PIN');
+  });
 }

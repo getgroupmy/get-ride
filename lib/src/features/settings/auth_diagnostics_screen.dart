@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../config.dart';
 import '../../core/auth_diagnostics.dart';
 import '../../core/auth_utils.dart';
+import '../../widgets/back_or_go_button.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../core/installed_app.dart';
@@ -100,6 +101,9 @@ class _AuthDiagnosticsScreenState extends State<AuthDiagnosticsScreen> {
     final t = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
+        // Opened by its address (a reload) there is nothing below: back goes
+        // home, which is sign-in when signed out.
+        leading: const BackOrGoButton(fallback: '/'),
         title: const Text('Connection diagnostics'),
         actions: [
           IconButton(
@@ -136,10 +140,15 @@ class _AuthDiagnosticsScreenState extends State<AuthDiagnosticsScreen> {
                 const SizedBox(height: 4),
                 Text('Sends one real SMS to the number you enter.', style: t.textTheme.bodySmall),
                 const SizedBox(height: 8),
-                TextField(
-                  controller: _phone,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Phone number with country code'),
+                // Its own node for screen readers: unwrapped, the field took
+                // in every line of the page above it.
+                Semantics(
+                  container: true,
+                  child: TextField(
+                    controller: _phone,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(labelText: 'Phone number with country code'),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 BusyButton.tonal(

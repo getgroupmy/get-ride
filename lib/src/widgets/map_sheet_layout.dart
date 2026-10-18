@@ -110,6 +110,7 @@ class MapSheetLayout extends StatefulWidget {
     this.footer,
     this.aboveFooter,
     this.front,
+    this.padBottom = true,
   });
 
   final Widget map;
@@ -149,6 +150,12 @@ class MapSheetLayout extends StatefulWidget {
   /// top edge rides it all the way up): the confirm screen's discount bar
   /// when the admin puts it in front. It should only fill what it draws.
   final Widget? front;
+
+  /// Room under the sheet's content for the home indicator or Android's
+  /// navigation bar (the bottom view padding) where no [footer] sits there,
+  /// so a last button (Done, a countdown) is never under the system's swipe.
+  /// Off where the page lifts its sheet itself (home's navLift).
+  final bool padBottom;
 
   /// How near [max] counts as up, for [aboveFooter].
   static const upSlack = 0.05;
@@ -590,6 +597,13 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                             ),
                           ),
                           if (widget.footer != null) SliverToBoxAdapter(child: SizedBox(height: _footerHeight + _aboveHeight)),
+                          if (widget.footer == null && widget.padBottom)
+                            SliverToBoxAdapter(
+                              child: SizedBox(
+                                key: const ValueKey('map-sheet-bottom-safe'),
+                                height: MediaQuery.viewPaddingOf(context).bottom,
+                              ),
+                            ),
                         ],
                       ),
                     ),

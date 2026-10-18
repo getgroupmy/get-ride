@@ -191,6 +191,7 @@ class AdminCommissionScreen extends ConsumerWidget {
                     _ActiveSwitch(key: ValueKey('commission-active-${r['id']}'), row: r, canEdit: canEdit),
                     if (canEdit)
                       BusyIconButton(
+                        tooltip: 'Delete rule',
                         icon: const Icon(Icons.delete_outline),
 
                         onPressed: () async {
@@ -580,6 +581,7 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
+              textInputAction: TextInputAction.next,
               controller: _rate,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'Rate (%)', suffixText: '%'),
@@ -595,11 +597,13 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
             const SizedBox(height: 12),
             TextField(
               key: const ValueKey('commission-priority'),
+              textInputAction: TextInputAction.next,
               controller: _priority,
               keyboardType: const TextInputType.numberWithOptions(signed: true),
               decoration: const InputDecoration(
                 labelText: 'Priority',
                 helperText: 'Higher wins between rules at the same level',
+                helperMaxLines: 2,
               ),
             ),
             const SizedBox(height: 12),

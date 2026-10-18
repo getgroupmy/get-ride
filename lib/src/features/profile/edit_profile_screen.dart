@@ -172,12 +172,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             ),
             const SizedBox(height: 8),
             TextField(
+              textInputAction: TextInputAction.next,
               controller: _name,
               textCapitalization: TextCapitalization.words,
               decoration: const InputDecoration(labelText: 'Full name'),
             ),
             const SizedBox(height: 16),
             TextField(
+              textInputAction: TextInputAction.next,
               controller: _email,
               keyboardType: TextInputType.emailAddress,
               decoration: const InputDecoration(labelText: 'Email (optional)'),
@@ -186,9 +188,22 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             TextField(
               enabled: false,
               controller: TextEditingController(text: p?.phone ?? ''),
-              decoration: const InputDecoration(labelText: 'Mobile number'),
+              decoration: const InputDecoration(
+                labelText: 'Mobile number',
+                helperText: 'Change it in Settings → Change phone number',
+                helperMaxLines: 2,
+              ),
             ),
-            const SizedBox(height: 24),
+            // The number is changed with an SMS check, on its own page.
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: TextButton(
+                key: const ValueKey('profile-change-phone'),
+                onPressed: () => context.push('/account/settings/phone'),
+                child: const Text('Change phone number'),
+              ),
+            ),
+            const SizedBox(height: 16),
             Text('Identity', style: t.textTheme.titleMedium),
             const SizedBox(height: 8),
             ListTile(
@@ -226,6 +241,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             const SizedBox(height: 12),
             TextField(
               key: const ValueKey('profile-id-number'),
+              textInputAction: TextInputAction.next,
               controller: _idNumber,
               textCapitalization: TextCapitalization.characters,
               autocorrect: false,

@@ -247,6 +247,7 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
   late String _audience = _a?.audience ?? 'all';
   late bool _active = _a?.active ?? true;
   String? _problem;
+  final _problemKey = GlobalKey();
 
   @override
   void dispose() {
@@ -273,7 +274,13 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
     );
     final problem = helpArticleProblem(article);
     if (problem != null) {
+      // On the field it is about, and the message brought into view (below
+      // the fold on a phone, Save seemed to do nothing).
       setState(() => _problem = problem);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final c = _problemKey.currentContext;
+        if (c != null && c.mounted) Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 200));
+      });
       return;
     }
     Navigator.pop(context, article);
@@ -293,7 +300,12 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
               TextField(
                 key: const ValueKey('help-edit-title'),
                 controller: _title,
-                decoration: const InputDecoration(labelText: 'Question', hintText: 'How do I cancel a ride?'),
+                decoration: InputDecoration(
+                  labelText: 'Question',
+                  hintText: 'How do I cancel a ride?',
+                  errorText: (_problem ?? '').contains('question') ? _problem : null,
+                  errorMaxLines: 2,
+                ),
               ),
               gap,
               TextField(
@@ -309,9 +321,11 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
                 controller: _answer,
                 minLines: 4,
                 maxLines: 12,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Answer',
                   helperText: 'Plain text; a blank line starts a paragraph',
+                  errorText: (_problem ?? '').contains('answer') ? _problem : null,
+                  errorMaxLines: 2,
                 ),
               ),
               gap,
@@ -376,6 +390,7 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
                   key: const ValueKey('help-edit-problem'),
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 ),
+              SizedBox(key: _problemKey, height: 1),
             ],
           ),
         ),

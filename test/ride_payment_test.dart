@@ -217,7 +217,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Enough'), findsOneWidget);
-      expect(find.text('Not enough'), findsOneWidget);
+      expect(find.text('Top up to use'), findsOneWidget, reason: 'a cash ride: the short balance is no failure');
 
       await tester.tap(find.byKey(const ValueKey('payment-pay-now')));
       await settle(tester);

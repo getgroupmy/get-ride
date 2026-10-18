@@ -34,11 +34,15 @@ class _UserGuideScreenState extends State<UserGuideScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(
-                  key: const ValueKey('guide-search'),
-                  controller: _query,
-                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search the guide'),
-                  onChanged: (_) => setState(() {}),
+                // Its own node for screen readers, not merged into the page's text.
+                Semantics(
+                  container: true,
+                  child: TextField(
+                    key: const ValueKey('guide-search'),
+                    controller: _query,
+                    decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search the guide'),
+                    onChanged: (_) => setState(() {}),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 if (sections.isEmpty)

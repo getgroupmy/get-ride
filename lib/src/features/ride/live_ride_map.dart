@@ -232,11 +232,13 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     _followCar();
   }
 
-  /// A bidder on an open request is not the rider's driver yet: no car.
+  /// A bidder on an open request is not the rider's driver yet: no car. Nor
+  /// once the ride is cancelled: the car (and its route) leave the map.
   LatLng? get _driver => _driverOf(widget);
 
-  static LatLng? _driverOf(LiveRideMap w) =>
-      w.driverAt ?? (w.ride.status == RideStatus.open ? null : _ll(w.ride.partnerLiveLat, w.ride.partnerLiveLng));
+  static LatLng? _driverOf(LiveRideMap w) => w.ride.status == RideStatus.cancelled
+      ? null
+      : w.driverAt ?? (w.ride.status == RideStatus.open ? null : _ll(w.ride.partnerLiveLat, w.ride.partnerLiveLng));
 
   LatLng? get _target => etaTarget(
     widget.ride.status,
@@ -332,7 +334,13 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
           me: _me,
           // inDrive's search: white rings pulse out of the pickup.
           extraLayers: [if (_searching) radarPulseLayer(_pickup!), if (walk != null) walkToPickupLayer(walk)],
-          extraMarkers: [if (waiting != null) passengerHereMarker(LatLng(waiting.lat, waiting.lng))],
+          extraMarkers: [
+            if (waiting != null)
+              passengerHereMarker(
+                LatLng(waiting.lat, waiting.lng),
+                label: driver == null || const Distance()(driver, LatLng(waiting.lat, waiting.lng)) > 40,
+              ),
+          ],
         ),
         MapBottomInset.listen(
           context,
@@ -425,8 +433,9 @@ class _Cam {
 }
 
 /// The passenger's own position on the driver's map: a person in a ring of
-/// the theme's colour, with "Passenger" under it.
-Marker passengerHereMarker(LatLng at) => Marker(
+/// the theme's colour, with "Passenger" under it unless [label] is off (the
+/// car on top of it: the car marker would cover the word).
+Marker passengerHereMarker(LatLng at, {bool label = true}) => Marker(
   point: at,
   width: 96,
   height: 76,
@@ -451,18 +460,19 @@ Marker passengerHereMarker(LatLng at) => Marker(
               ),
               child: Icon(Icons.person, size: 20, color: t.colorScheme.onPrimaryContainer),
             ),
-            const SizedBox(height: 2),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(color: t.colorScheme.surface, borderRadius: BorderRadius.circular(6)),
-              child: Text(
-                'Passenger',
-                maxLines: 1,
-                overflow: TextOverflow.fade,
-                softWrap: false,
-                style: t.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+            if (label) const SizedBox(height: 2),
+            if (label)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(color: t.colorScheme.surface, borderRadius: BorderRadius.circular(6)),
+                child: Text(
+                  'Passenger',
+                  maxLines: 1,
+                  overflow: TextOverflow.fade,
+                  softWrap: false,
+                  style: t.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
               ),
-            ),
           ],
         ),
       );

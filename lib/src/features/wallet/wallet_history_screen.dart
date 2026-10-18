@@ -43,7 +43,10 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Transaction history'),
+        // Left-aligned (iOS centres titles), so the month picker beside it
+        // doesn't cut it short.
+        centerTitle: false,
+        title: const Text('Transaction history', maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           PopupMenuButton<HistoryMonth>(
             key: const ValueKey('history-month'),

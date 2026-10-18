@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/pickup_slots.dart';
 import '../../core/scheduled_rides.dart';
-import 'confirm_parts.dart' show confirmAccent;
+import 'confirm_parts.dart' show accentFill;
 import '../../widgets/page_style_host.dart';
 
 /// The pickup sheet; null when it is closed without confirming.
@@ -234,7 +234,7 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
               child: FilledButton(
                 key: const ValueKey('pickup-confirm'),
                 style: FilledButton.styleFrom(
-                  backgroundColor: confirmAccent,
+                  backgroundColor: accentFill,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                   textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),

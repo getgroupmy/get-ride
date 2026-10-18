@@ -14,7 +14,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/ride_map.dart';
-import '../ride/confirm_parts.dart' show confirmAccent;
+import '../ride/confirm_parts.dart' show accentFill, confirmAccent;
 import '../../widgets/net_image.dart';
 import 'direct_booking_badge.dart';
 import 'my_ride_badges.dart';
@@ -366,7 +366,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
   /// Accept, in the app's accent (the rider's "Find a driver" blue), white
   /// on it in light and dark alike.
   ButtonStyle _accent(BuildContext context, {double height = 52}) => FilledButton.styleFrom(
-    backgroundColor: confirmAccent,
+    backgroundColor: accentFill,
     foregroundColor: Colors.white,
     disabledBackgroundColor: confirmAccent.withValues(alpha: 0.4),
     disabledForegroundColor: Colors.white70,
