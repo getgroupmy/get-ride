@@ -78,6 +78,10 @@ String errorText(Object e) => _isNoConnection(e) ? noConnectionMessage : _errorT
 
 String _errorText(Object e) => switch (e) {
       AuthException(:final message) => message,
+      // A database refusal named by code (GET_CREDIT_TOO_LOW) says it in its hint.
+      PostgrestException(:final message, :final hint)
+          when RegExp(r'^[A-Z][A-Z0-9_]+$').hasMatch(message) && (hint ?? '').trim().isNotEmpty =>
+        hint!.trim(),
       PostgrestException(:final message) => message,
       StateError(:final message) => message,
       _ => e.toString().replaceFirst('Exception: ', ''),
