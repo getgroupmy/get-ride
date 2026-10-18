@@ -29,6 +29,7 @@ import '../core/trip_start.dart';
 import 'geo_service.dart';
 import 'models.dart';
 import 'realtime_backup.dart';
+import 'realtime_hub.dart';
 import 'ride_cache.dart';
 import 'scheduled_ride_repository.dart';
 import '../core/ride_cache.dart';
@@ -1088,7 +1089,7 @@ class RideRepository {
   /// Live updates for a single request.
   Stream<RideRequest> watch(String id) {
     final controller = StreamController<RideRequest>();
-    RealtimeChannel? channel;
+    RealtimeListen? channel;
     RealtimeBackup? backup;
     RideStatus? shown;
     // The trip is on screen in the state it is in: the pushes about it
@@ -1129,22 +1130,20 @@ class RideRepository {
         }
       }
       if (controller.isClosed) return;
-      channel = _db
-          .channel('ride_request_${id}_${DateTime.now().microsecondsSinceEpoch}')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.update,
-            schema: 'public',
-            table: _table,
-            filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'id', value: id),
-            callback: (p) {
-              if (p.newRecord.isNotEmpty) emit(RideRequest(_withAside(p.newRecord)));
-            },
-          )
-          .subscribe(backup!.onStatus);
+      // Shared with every other stream on this ride (RealtimeHub).
+      channel = RealtimeHub.of(_db).listen(
+        table: _table,
+        event: PostgresChangeEvent.update,
+        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'id', value: id),
+        onChange: (p) {
+          if (p.newRecord.isNotEmpty) emit(RideRequest(_withAside(p.newRecord)));
+        },
+        onStatus: backup!.onStatus,
+      );
     };
     controller.onCancel = () async {
       backup?.dispose();
-      if (channel != null) await _db.removeChannel(channel!);
+      channel?.cancel();
       await controller.close();
     };
     return controller.stream;
@@ -1162,7 +1161,7 @@ class RideRepository {
   /// Live partner queue: emits the full open list whenever anything changes.
   Stream<List<RideRequest>> watchOpen() {
     final controller = StreamController<List<RideRequest>>();
-    RealtimeChannel? channel;
+    RealtimeListen? channel;
     Future<void> refresh() async {
       try {
         final list = await openRequests();
@@ -1178,19 +1177,11 @@ class RideRepository {
       // Back from the background, or an update dropped: the queue as it is
       // now, not as it was (and requests drop off as they age past expiry).
       backup = RealtimeBackup(refresh, every: const Duration(seconds: 10));
-      channel = _db
-          .channel('ride_requests_open_${DateTime.now().microsecondsSinceEpoch}')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: _table,
-            callback: (_) => refresh(),
-          )
-          .subscribe(backup!.onStatus);
+      channel = RealtimeHub.of(_db).listen(table: _table, onChange: (_) => refresh(), onStatus: backup!.onStatus);
     };
     controller.onCancel = () async {
       backup?.dispose();
-      if (channel != null) await _db.removeChannel(channel!);
+      channel?.cancel();
       await controller.close();
     };
     return controller.stream;

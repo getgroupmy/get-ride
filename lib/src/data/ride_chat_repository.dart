@@ -12,6 +12,7 @@ import '../core/ride_chat_outbox.dart';
 import '../core/support_media.dart' show fileExt;
 import '../providers.dart';
 import 'realtime_backup.dart';
+import 'realtime_hub.dart';
 import 'storage_links.dart' show cachedSignedLink;
 
 /// The rider ↔ driver chat of a ride (`ride_messages`, migration 0129). RLS
@@ -66,7 +67,7 @@ class RideChatRepository {
   /// tick moves.
   Stream<List<RideMessage>> watch(String requestId) {
     final controller = StreamController<List<RideMessage>>();
-    RealtimeChannel? channel;
+    RealtimeListen? channel;
     var loaded = false;
     Future<void> refresh() async {
       try {
@@ -95,20 +96,16 @@ class RideChatRepository {
         if (!loaded && cached.isNotEmpty && !controller.isClosed) controller.add(cached);
       });
       refresh();
-      channel = _db
-          .channel('ride_chat_${requestId}_${DateTime.now().microsecondsSinceEpoch}')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'ride_messages',
-            filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'request_id', value: requestId),
-            callback: (_) => refresh(),
-          )
-          .subscribe(backup!.onStatus);
+      channel = RealtimeHub.of(_db).listen(
+        table: 'ride_messages',
+        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'request_id', value: requestId),
+        onChange: (_) => refresh(),
+        onStatus: backup!.onStatus,
+      );
     };
     controller.onCancel = () async {
       backup?.dispose();
-      if (channel != null) await _db.removeChannel(channel!);
+      channel?.cancel();
       await controller.close();
     };
     return controller.stream;
