@@ -16,6 +16,7 @@ import '../../widgets/fare_trend_arrows.dart';
 import '../../core/ride_confirm.dart' show RideOptions;
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/map_sheet_layout.dart' show MapSheetReveal;
 import '../../widgets/shake.dart';
 import 'fare_offer_controls.dart';
@@ -626,7 +627,35 @@ class ConfirmServiceCard extends StatelessWidget {
     this.trend,
     this.fixed = false,
     this.onInfo,
+    this.uplift,
   });
+
+  /// What high demand adds to this fare ("+RM1", [demandUpliftLabel]),
+  /// shown under the price; null when it adds nothing.
+  final String? uplift;
+
+  /// The price, with the demand uplift under it.
+  Widget _withUplift(BuildContext context, Widget price) {
+    final u = uplift;
+    if (u == null) return price;
+    final t = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        price,
+        Semantics(
+          label: 'High demand, $u',
+          excludeSemantics: true,
+          child: Text(
+            u,
+            key: ValueKey('uplift-${service.name}'),
+            style: t.textTheme.labelSmall?.copyWith(color: mutedTextColor(t, background: ConfirmCardColors.of(context).card), fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
 
   /// The (i) on a chosen fixed fare: what it is priced on ([FareInfoSheet]).
   final VoidCallback? onInfo;
@@ -784,9 +813,12 @@ class ConfirmServiceCard extends StatelessWidget {
             nameArrows: fixed,
             trailing: Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: fixed
-                  ? Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600))
-                  : _price(price, t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600)),
+              child: _withUplift(
+                context,
+                fixed
+                    ? Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600))
+                    : _price(price, t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600)),
+              ),
             ),
           ),
         ),
@@ -815,7 +847,10 @@ class ConfirmServiceCard extends StatelessWidget {
                 info: true,
                 nameArrows: true,
                 onInfo: onInfo,
-                trailing: Padding(padding: const EdgeInsets.only(top: 2), child: Text(price, style: priceStyle)),
+                trailing: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: _withUplift(context, Text(price, style: priceStyle)),
+                ),
               ),
             ),
           ),
@@ -854,7 +889,10 @@ class ConfirmServiceCard extends StatelessWidget {
                       context,
                       info: true,
                       trailing: onEdit == null
-                          ? Padding(padding: const EdgeInsets.only(top: 4, right: 6), child: _price(price, priceStyle))
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 4, right: 6),
+                              child: _withUplift(context, _price(price, priceStyle)),
+                            )
                           : Material(
                               color: c.chip,
                               shape: const CircleBorder(),
@@ -1961,16 +1999,27 @@ Future<bool> confirmAddStop(
 /// in the discount bar's place, tucked under the sheet's top edge, opening
 /// [showDemandSheet].
 class DemandBanner extends StatelessWidget {
-  const DemandBanner({super.key, required this.trend, required this.onTap});
+  const DemandBanner({super.key, required this.trend, required this.onTap, this.tucked = true});
 
   final FareTrend trend;
   final VoidCallback onTap;
+
+  /// Its foot tucked under the sheet (alone); false when the promo bar
+  /// stands under it ([DemandPromoBars]).
+  final bool tucked;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final up = trend.direction == FareTrendDirection.up;
-    return Material(
+    // One button to a screen reader, named by what it says and does.
+    return Semantics(
+      container: true,
+      button: true,
+      label: '${demandHeadline(trend.direction).replaceAll(' — ', ', ')}. Fare details',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: Material(
       key: ValueKey(up ? 'high-demand' : 'low-demand'),
       color: t.colorScheme.surfaceContainerHigh,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -1978,7 +2027,7 @@ class DemandBanner extends StatelessWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 12, PromoBanner.tuck + 8),
+          padding: EdgeInsets.fromLTRB(16, 8, 12, tucked ? PromoBanner.tuck + 8 : 8),
           child: SizedBox(
             height: PromoBanner.visibleHeight - 16,
             child: Row(
@@ -1997,8 +2046,36 @@ class DemandBanner extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
   }
+}
+
+/// The demand band and the promo bar together, the band on top: while the
+/// fare is off the usual the promo code stays within reach.
+class DemandPromoBars extends StatelessWidget {
+  const DemandPromoBars({super.key, required this.trend, required this.onDemand, required this.onPromo});
+
+  final FareTrend trend;
+  final VoidCallback onDemand, onPromo;
+
+  /// How much taller the pair stands than the promo bar alone.
+  static const extraHeight = PromoBanner.visibleHeight + 1;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    key: const ValueKey('demand-promo-bars'),
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      DemandBanner(trend: trend, onTap: onDemand, tucked: false),
+      ColoredBox(
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
+        child: const Divider(height: 1, indent: 16, endIndent: 16),
+      ),
+      PromoBanner(onTap: onPromo),
+    ],
+  );
 }
 
 /// The trend as inDrive's details put it: the arrows, the headline and why.
@@ -2052,7 +2129,7 @@ Widget _okButton(BuildContext context) => SizedBox(
 
 /// The demand band's "Fare details" (inDrive's): why the fare is off the
 /// usual, and OK.
-Future<void> showDemandSheet(BuildContext context, FareTrend trend) => showAppSheet<void>(id: 'ride.demand-details',
+Future<void> showDemandSheet(BuildContext context, FareTrend trend, {double? factor}) => showAppSheet<void>(id: 'ride.demand-details',
   context: context,
   isScrollControlled: true,
   builder: (ctx) => SafeArea(
@@ -2064,6 +2141,15 @@ Future<void> showDemandSheet(BuildContext context, FareTrend trend) => showAppSh
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Fare details', style: Theme.of(ctx).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+          if (trend.direction == FareTrendDirection.up) ...[
+            const SizedBox(height: 12),
+            // How much higher, from the fare with and without the trend.
+            Text(
+              demandHigherLine(factor),
+              key: const ValueKey('demand-higher'),
+              style: Theme.of(ctx).textTheme.bodyLarge,
+            ),
+          ],
           const SizedBox(height: 20),
           DemandNote(trend: trend),
           const SizedBox(height: 28),

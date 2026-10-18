@@ -126,9 +126,11 @@ Future<ProviderContainer> _pump(
   bool book = true,
   RouteEstimateRepository? ai,
   Map<String, dynamic> display = const <String, dynamic>{},
+  Brightness brightness = Brightness.light,
+  Size size = const Size(400, 860),
 }) async {
   SharedPreferences.setMockInitialValues({});
-  tester.view.physicalSize = const Size(400, 860);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final container = ProviderContainer(
@@ -164,7 +166,7 @@ Future<ProviderContainer> _pump(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(theme: ThemeData(brightness: brightness), routerConfig: router),
     ),
   );
   for (var i = 0; i < 5; i++) {
@@ -249,6 +251,104 @@ void main() {
     expect(tester.getRect(bar).bottom, lessThanOrEqualTo(600));
   });
 
+  for (final b in Brightness.values) {
+    testWidgets('high demand: a labelled band that opens how much higher, the uplift by each price, the fare note '
+        '(${b.name})', (tester) async {
+      final handle = tester.ensureSemantics();
+      final ai = _SlowAi();
+      await _pump(tester, _Rides(), ai: ai, brightness: b);
+      ai.answer.complete((
+        estimate: const RouteEstimate(
+          distanceKm: 60,
+          durationMin: 90,
+          trend: FareTrend(direction: FareTrendDirection.up, fromFareRange: false, aiMin: 30, standardMin: 20),
+        ),
+        unavailable: false,
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      // The arrows are named.
+      expect(find.bySemanticsLabel(RegExp(r'High demand\. Heavy traffic')), findsWidgets);
+      // Each row: the uplift beside its price, from the fare with and
+      // without the traffic-aware basis.
+      for (final name in ['Teksi', 'GET XL']) {
+        final u = find.byKey(ValueKey('uplift-$name'));
+        expect(u, findsOneWidget);
+        expect(tester.widget<Text>(u).data, startsWith('+RM'));
+      }
+      expect(find.bySemanticsLabel(RegExp(r'High demand, \+RM')), findsWidgets);
+      // The fare line says it.
+      final note = tester.widget<Text>(find.byKey(const ValueKey('route-demand-note')));
+      expect(note.data, startsWith('Includes high demand +RM'));
+      expect(note.data, endsWith(tester.widget<Text>(find.byKey(const ValueKey('uplift-Teksi'))).data!.substring(1)));
+      // The band is a button with a label, opening how much higher.
+      expect(find.bySemanticsLabel('High demand, fare is higher. Fare details'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('high-demand')));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('demand-higher'))).data,
+        matches(RegExp(r'^Fares are \d+% higher right now because of demand')),
+      );
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+  }
+
+  for (final size in const [Size(360, 640), Size(844, 390)]) {
+    testWidgets('band and promo bar both fit a short or sideways phone (${size.width.round()}x${size.height.round()})',
+        (tester) async {
+      final ai = _SlowAi();
+      await _pump(tester, _Rides(), ai: ai, size: size);
+      ai.answer.complete((
+        estimate: const RouteEstimate(
+          distanceKm: 60,
+          durationMin: 90,
+          trend: FareTrend(direction: FareTrendDirection.up, fromFareRange: true),
+        ),
+        unavailable: false,
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(tester.takeException(), isNull);
+      final promo = find.byKey(const ValueKey('promo-banner'));
+      if (promo.evaluate().isNotEmpty) {
+        // Both bars on screen, the band above the promo code.
+        final band = tester.getRect(find.byKey(const ValueKey('high-demand')));
+        expect(band.top, greaterThanOrEqualTo(0));
+        expect(band.bottom, lessThanOrEqualTo(tester.getRect(promo).top + 1));
+        // Its visible top; the foot tucks under the sheet.
+        await tester.tapAt(tester.getRect(promo).topCenter + const Offset(0, 12));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(find.text('Promo code'), findsWidgets, reason: 'the promo code is still usable');
+      }
+    });
+  }
+
+  testWidgets('an up trend that does not raise the fare shows no uplift and no note', (tester) async {
+    final ai = _SlowAi();
+    await _pump(tester, _Rides(), ai: ai);
+    ai.answer.complete((
+      estimate: const RouteEstimate(
+        distanceKm: 1,
+        durationMin: 3,
+        trend: FareTrend(direction: FareTrendDirection.up, fromFareRange: true),
+      ),
+      unavailable: false,
+    ));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byKey(const ValueKey('fare-trend-up')), findsWidgets);
+    expect(find.byKey(const ValueKey('uplift-Teksi')), findsNothing, reason: 'no made-up uplift');
+    expect(find.byKey(const ValueKey('route-demand-note')), findsNothing);
+  });
+
   testWidgets('fare trend arrows stand before every fare, and leave the one the rider changes', (tester) async {
     final ai = _SlowAi();
     await _pump(tester, _Rides(bidding: true), ai: ai);
@@ -303,7 +403,10 @@ void main() {
       final band = find.byKey(ValueKey(up ? 'high-demand' : 'low-demand'));
       expect(band, findsOneWidget);
       expect(find.byKey(ValueKey(up ? 'low-demand' : 'high-demand')), findsNothing);
-      expect(find.byKey(const ValueKey('promo-banner')), findsNothing);
+      // The promo bar stays, under the band (130).
+      expect(find.byKey(const ValueKey('demand-promo-bars')), findsOneWidget);
+      expect(find.byKey(const ValueKey('promo-banner')), findsOneWidget);
+      expect(tester.getRect(band).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('promo-banner'))).top + 1));
       await tester.tap(band);
       for (var i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 100));
