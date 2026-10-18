@@ -2517,6 +2517,129 @@ void main() {
     }
   });
 
+  group('more', () {
+    for (final r in ['share/abc123', 'verify/abc123', 'install/ios', 'nowhere-at-all', 'q/driver/XYZ']) {
+      testWidgets(r, (t) => _shot(t, 'more_${r.replaceAll(RegExp('[^a-z]'), '_')}', route: '/$r'));
+    }
+    for (final m in [
+      'user-edit',
+      'partner-edit',
+      'vehicle-edit',
+      'partner-add',
+      'vehicle-add',
+      'help-articles',
+      'fare-ai',
+      'ip-access',
+      'api-keys',
+      'messaging',
+      'mock',
+      'service-settings',
+      'document-type',
+      'multi-gate-places',
+      'trace-fraud',
+      'ble-report',
+      'always-on',
+      'backend',
+      'user-id-documents',
+      'get-coin',
+      'ev-profiles',
+      'ev-vehicle-inventory',
+      'ev-finance-options',
+      'ev-order-fee',
+      'fare-ai-logs',
+      'assign-service',
+      'vehicle-make-model',
+      'app-icon',
+    ]) {
+      testWidgets('m $m', (t) => _shot(t, 'more_m_${m.replaceAll('-', '_')}', route: '/admin/m/$m', admin: true));
+    }
+    testWidgets(
+      'admin support chat',
+      (t) =>
+          _shot(t, 'more_admin_support_chat', route: '/admin/support/t1', admin: true, overrides: _supportOverrides()),
+    );
+    testWidgets('admin push', (t) => _shot(t, 'more_admin_push', route: '/admin/push', admin: true));
+    testWidgets(
+      'admin push keyboard',
+      (t) => _shot(
+        t,
+        'more_admin_push_kb',
+        route: '/admin/push',
+        admin: true,
+        keyboard: true,
+        act: (t) async {
+          await t.tap(find.byType(TextField).first, warnIfMissed: false);
+          await _settle(t, 3);
+        },
+      ),
+    );
+    testWidgets(
+      'drive scheduled',
+      (t) => _shot(t, 'more_drive_scheduled', route: '/drive/scheduled', partner: _approved),
+    );
+    testWidgets(
+      'meter trip log',
+      (t) => _shot(
+        t,
+        'more_meter_log',
+        route: '/meter',
+        act: (t) async {
+          await t.tap(find.text('Trip log'), warnIfMissed: false);
+          await _settle(t);
+        },
+      ),
+    );
+    testWidgets(
+      'meter settings',
+      (t) => _shot(
+        t,
+        'more_meter_settings',
+        route: '/meter',
+        act: (t) async {
+          await t.tap(find.text('Settings'), warnIfMissed: false);
+          await _settle(t);
+        },
+      ),
+    );
+    testWidgets(
+      'ride with offers',
+      (t) => _shot(
+        t,
+        'more_ride_offers',
+        route: '/ride/r1',
+        overrides: _trackingOverrides(
+          _tracked(
+            'open',
+            extra: {
+              'offers': [
+                {
+                  'partner_id': 'd1',
+                  'partner_name': 'Ravi Kumar',
+                  'amount': 26.0,
+                  'rating': 4.8,
+                  'vehicle': 'Perodua Bezza',
+                  'plate': 'WXY 1234',
+                  'eta_min': 4,
+                  'created_at': DateTime.now().toUtc().toIso8601String(),
+                },
+                {
+                  'partner_id': 'd2',
+                  'partner_name': 'Siti Nor',
+                  'amount': 23.5,
+                  'rating': 4.9,
+                  'vehicle': 'Proton Saga',
+                  'plate': 'VAB 8821',
+                  'eta_min': 7,
+                  'created_at': DateTime.now().toUtc().toIso8601String(),
+                },
+              ],
+            },
+          ),
+        ),
+      ),
+    );
+  });
+
   group('partner', () {
     testWidgets('drive (not a partner)', (t) => _shot(t, 'drive_none', route: '/drive'));
     testWidgets('drive dark', (t) => _shot(t, 'drive_none_dark', route: '/drive', dark: true));
