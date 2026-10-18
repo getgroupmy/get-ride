@@ -322,6 +322,7 @@ class _RateDialogState extends State<_RateDialog> {
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             DropdownButtonFormField<String>(
+              isExpanded: true,
               initialValue: _level,
               decoration: const InputDecoration(labelText: 'Level'),
               items: [for (final l in commissionLevels) DropdownMenuItem(value: l, child: Text(l))],

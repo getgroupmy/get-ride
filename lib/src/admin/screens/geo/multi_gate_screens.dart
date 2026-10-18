@@ -533,6 +533,7 @@ class _GateFormBodyState extends State<_GateFormBody> {
       OutlinedButton.icon(onPressed: _pickOnMap, icon: const Icon(Icons.my_location), label: const Text('Pick on map')),
       gap,
       DropdownButtonFormField<int>(
+        isExpanded: true,
         initialValue: f.displayPriority,
         decoration: const InputDecoration(labelText: 'Display priority', helperText: 'Lower number shows first to users.'),
         items: [for (var n = 1; n <= maxP; n++) DropdownMenuItem(value: n, child: Text('$n'))],

@@ -1101,6 +1101,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
             if (f.requireInsuranceProvider) ...[
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: _insurers.any((e) => e.id == _insurerId) ? _insurerId : null,
                 decoration: const InputDecoration(labelText: 'Insurance provider'),
                 items: [
