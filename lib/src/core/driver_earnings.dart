@@ -35,7 +35,13 @@ DateTime earningsPeriodStart(EarningsPeriod period, DateTime now) {
 
 /// The totals for a set of trips.
 class EarningsTotals {
-  const EarningsTotals({this.trips = 0, this.gross = 0, this.commission = 0, this.distanceKm = 0});
+  const EarningsTotals({
+    this.trips = 0,
+    this.gross = 0,
+    this.commission = 0,
+    this.platformFees = 0,
+    this.distanceKm = 0,
+  });
 
   final int trips;
 
@@ -44,15 +50,19 @@ class EarningsTotals {
 
   /// The platform commission charged on those trips.
   final double commission;
+
+  /// The platform's fees taken back from those trips (0189).
+  final double platformFees;
   final double distanceKm;
 
-  /// What the driver kept.
-  double get net => gross - commission;
+  /// What the driver kept, as the statement counts it.
+  double get net => gross - commission - platformFees;
 
   EarningsTotals add(TripReceipt r) => EarningsTotals(
     trips: trips + 1,
     gross: gross + r.gross,
     commission: commission + (r.commission ?? 0),
+    platformFees: platformFees + r.platformFees,
     distanceKm: distanceKm + (r.distanceKm ?? 0),
   );
 }

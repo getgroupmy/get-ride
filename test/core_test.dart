@@ -106,6 +106,33 @@ void main() {
     });
   });
 
+  group('resolveCommissionRule (as the server, 0216)', () {
+    final t0 = DateTime(2026, 1, 1);
+    test('priority wins between rules at the same level, then naming more parents, then the newest', () {
+      final rules = [
+        CommissionRule(id: 'a', level: 'state', rate: 0.12, state: 'Selangor', updatedAt: t0),
+        CommissionRule(id: 'b', level: 'state', rate: 0.11, state: 'Selangor', priority: 5, updatedAt: t0),
+        CommissionRule(id: 'c', level: 'state', rate: 0.10, state: 'Selangor', country: 'Malaysia', updatedAt: t0),
+      ];
+      expect(resolveCommissionRule(rules, geo: const Geo(country: 'Malaysia', state: 'Selangor'))?.id, 'b');
+      expect(resolveCommissionRule(rules.take(1).followedBy(rules.skip(2)).toList(),
+          geo: const Geo(country: 'Malaysia', state: 'Selangor'))?.id, 'c');
+      final newer = CommissionRule(id: 'd', level: 'state', rate: 0.09, state: 'Selangor', updatedAt: DateTime(2026, 6));
+      expect(resolveCommissionRule([rules.first, newer], geo: const Geo(state: 'Selangor'))?.id, 'd');
+    });
+
+    test("the geocoder's names match the region's", () {
+      const rules = [CommissionRule(level: 'city', rate: 0.08, city: 'Kajang', state: 'Selangor')];
+      expect(resolveCommissionRate(rules, geo: const Geo(state: 'Selangor', city: 'Kajang Municipal Council')), 0.08);
+      expect(resolveCommissionRate(rules, geo: const Geo(state: 'Johor', city: 'Kajang')), defaultCommissionRate,
+          reason: 'a parent that disagrees');
+    });
+
+    test('nothing matching is the built-in rate, with no rule', () {
+      expect(resolveCommissionRule(const [], geo: const Geo(city: 'Ipoh')), isNull);
+    });
+  });
+
   group('resolveCommissionRate', () {
     const rules = [
       CommissionRule(level: 'master', rate: 0.12),

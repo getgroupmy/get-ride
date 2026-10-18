@@ -9,7 +9,6 @@ import '../config.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../core/book_for.dart';
-import '../core/commission.dart';
 import '../core/driver_eta.dart';
 import '../core/request_viewers.dart';
 import '../core/ride_request_metadata.dart';
@@ -1009,8 +1008,9 @@ class RideRepository {
   Future<void> clearRiderLocation(String id) =>
       _db.from(_table).update({'user_live_lat': null, 'user_live_lng': null, 'user_live_at': null}).eq('id', id);
 
-  /// Completes the trip and charges the partner's commission through the
-  /// shared `wallet_charge_ride_commission` RPC (idempotent per ride).
+  /// Completes the trip. The database charges the partner's commission when
+  /// the trip turns completed, at the rate locked when they accepted (0174,
+  /// 0216).
   ///
   /// [charges] are the tolls and other charges the driver declared; they are
   /// stored with the completion and are not part of the commissionable fare.
@@ -1039,32 +1039,6 @@ class RideRepository {
         if (missing == null) rethrow;
         patch.remove(missing);
       }
-    }
-    final fare = earlyFare ?? r.effectiveFare ?? 0;
-    final uid = _uid;
-    if (fare <= 0 || uid == null) return;
-    try {
-      final rows = await _db
-          .from('commission_rates')
-          .select('level, country, state, city, suburb, user_id, rate, active')
-          .order('updated_at', ascending: false);
-      final rate = resolveCommissionRate(
-        rows.map(CommissionRule.fromRow).toList(),
-        userId: uid,
-        geo: Geo(
-          country: r.raw['country'] as String?,
-          state: r.raw['state'] as String?,
-          city: r.raw['city'] as String?,
-          suburb: r.raw['suburb'] as String?,
-        ),
-      );
-      if (rate <= 0 || rate >= 1) return;
-      await _db.rpc(
-        'wallet_charge_ride_commission',
-        params: {'p_ride': r.id, 'p_partner': uid, 'p_fare': fare, 'p_rate': rate},
-      );
-    } catch (_) {
-      // Commission is reconciled by the back office if this best-effort call fails.
     }
   }
 

@@ -1,7 +1,11 @@
-/// Commission-rate resolution, ported from the Expo app's
-/// `utils/commissionStore.ts` (`resolveCommissionRate`). Priority, highest
-/// first: user → suburb → city → state → country → master → default.
+/// Commission-rate resolution, kept in step with the database's
+/// `commission_resolve` (migration 0216): the most specific level wins
+/// (user → suburb → city → state → country → master), then the higher
+/// priority, then the rule naming more of its parents, then the newest.
+/// Places match as region names do (`placeNameMatches`, 0126).
 library;
+
+import 'ride_bidding.dart' show placeNameMatches;
 
 const defaultCommissionRate = 0.15;
 
@@ -15,6 +19,9 @@ class CommissionRule {
     this.city,
     this.suburb,
     this.userId,
+    this.id,
+    this.priority = 0,
+    this.updatedAt,
   });
 
   factory CommissionRule.fromRow(Map<String, dynamic> r) => CommissionRule(
@@ -26,12 +33,17 @@ class CommissionRule {
         city: r['city'] as String?,
         suburb: r['suburb'] as String?,
         userId: r['user_id'] as String?,
+        id: r['id'] as String?,
+        priority: (r['priority'] as num?)?.toInt() ?? 0,
+        updatedAt: DateTime.tryParse('${r['updated_at'] ?? ''}'),
       );
 
   final String level;
   final double rate;
   final bool active;
-  final String? country, state, city, suburb, userId;
+  final String? country, state, city, suburb, userId, id;
+  final int priority;
+  final DateTime? updatedAt;
 }
 
 class Geo {
@@ -44,48 +56,49 @@ String? _norm(String? v) {
   return t.isEmpty ? null : t;
 }
 
-bool _eqi(String? a, String? b) => (a ?? '').trim().toLowerCase() == (b ?? '').trim().toLowerCase();
-
-bool _parentsMatch(CommissionRule r, Geo g) {
-  if (r.country != null && g.country != null && !_eqi(r.country, g.country)) return false;
-  if (r.state != null && g.state != null && !_eqi(r.state, g.state)) return false;
-  if (r.city != null && g.city != null && !_eqi(r.city, g.city)) return false;
-  return true;
+/// A rule's place against the trip's: the same, or the region's name as
+/// whole words in the geocoder's.
+bool _place(String? rule, String? ride) {
+  final r = _norm(rule), p = _norm(ride);
+  return r != null && p != null && (r.toLowerCase() == p.toLowerCase() || placeNameMatches(r, p));
 }
 
-double resolveCommissionRate(List<CommissionRule> rules, {String? userId, Geo geo = const Geo()}) {
-  final active = rules.where((r) => r.active).toList();
-  CommissionRule? find(bool Function(CommissionRule) test) {
-    for (final r in active) {
-      if (test(r)) return r;
-    }
-    return null;
-  }
+/// A parent only counts when both the rule and the trip name it.
+bool _parent(String? rule, String? ride) => _norm(rule) == null || _norm(ride) == null || _place(rule, ride);
 
+const _rank = {'user': 6, 'suburb': 5, 'city': 4, 'state': 3, 'country': 2, 'master': 1};
+
+bool _applies(CommissionRule r, String? userId, Geo g) => switch (r.level) {
+      'user' => userId != null && r.userId == userId,
+      'suburb' => _place(r.suburb, g.suburb) && _parent(r.city, g.city) && _parent(r.state, g.state) &&
+          _parent(r.country, g.country),
+      'city' => _place(r.city, g.city) && _parent(r.state, g.state) && _parent(r.country, g.country),
+      'state' => _place(r.state, g.state) && _parent(r.country, g.country),
+      'country' => _place(r.country, g.country),
+      'master' => true,
+      _ => false,
+    };
+
+int _named(CommissionRule r) => [r.country, r.state, r.city].where((v) => v != null).length;
+
+/// The rule a trip by [userId] in [geo] is charged under; null for the
+/// built-in [defaultCommissionRate].
+CommissionRule? resolveCommissionRule(List<CommissionRule> rules, {String? userId, Geo geo = const Geo()}) {
   final uid = _norm(userId);
-  if (uid != null) {
-    final hit = find((r) => r.level == 'user' && r.userId == uid);
-    if (hit != null) return hit.rate;
-  }
-  final suburb = _norm(geo.suburb);
-  if (suburb != null) {
-    final hit = find((r) => r.level == 'suburb' && _eqi(r.suburb, suburb) && _parentsMatch(r, geo));
-    if (hit != null) return hit.rate;
-  }
-  final city = _norm(geo.city);
-  if (city != null) {
-    final hit = find((r) => r.level == 'city' && _eqi(r.city, city) && _parentsMatch(r, geo));
-    if (hit != null) return hit.rate;
-  }
-  final state = _norm(geo.state);
-  if (state != null) {
-    final hit = find((r) => r.level == 'state' && _eqi(r.state, state) && _parentsMatch(r, geo));
-    if (hit != null) return hit.rate;
-  }
-  final country = _norm(geo.country);
-  if (country != null) {
-    final hit = find((r) => r.level == 'country' && _eqi(r.country, country));
-    if (hit != null) return hit.rate;
-  }
-  return find((r) => r.level == 'master')?.rate ?? defaultCommissionRate;
+  final hits = rules.where((r) => r.active && _applies(r, uid, geo)).toList()
+    ..sort((a, b) {
+      int by(int x, int y) => y.compareTo(x);
+      final c = [
+        by(_rank[a.level] ?? 0, _rank[b.level] ?? 0),
+        by(a.priority, b.priority),
+        by(_named(a), _named(b)),
+        (b.updatedAt ?? DateTime(0)).compareTo(a.updatedAt ?? DateTime(0)),
+        (a.id ?? '').compareTo(b.id ?? ''),
+      ].firstWhere((v) => v != 0, orElse: () => 0);
+      return c;
+    });
+  return hits.firstOrNull;
 }
+
+double resolveCommissionRate(List<CommissionRule> rules, {String? userId, Geo geo = const Geo()}) =>
+    resolveCommissionRule(rules, userId: userId, geo: geo)?.rate ?? defaultCommissionRate;

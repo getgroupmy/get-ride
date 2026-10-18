@@ -262,4 +262,13 @@ void main() {
     expect(early.total, 9.4);
     expect(TripReceipt.fromRide(trip()).statusLabel, 'Completed');
   });
+
+  test('platform fees come off the driver\'s earnings as on the statement', () {
+    expect(platformFeesOf([
+      {'charge': 'fixed', 'value': 2.5, 'platform': true},
+      {'charge': 'fixed', 'value': 1, 'platform': false},
+      {'charge': 'percent', 'value': 10, 'platform': true},
+    ]), 2.5);
+    expect(platformFeesOf(null), 0);
+  });
 }

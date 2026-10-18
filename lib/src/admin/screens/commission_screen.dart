@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/commission.dart';
+import '../../core/format.dart' show formatDateTime;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
@@ -12,13 +13,59 @@ import '../profile_search.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
+import 'geo/geo_data.dart' show regionsProvider;
+import 'geo/geo_logic.dart' show RegionEntry, RegionLevel, regionNamesAt;
 
 final commissionRatesProvider = FutureProvider.autoDispose((ref) {
   ref.watchLive('commission_rates');
   return ref.watch(adminRepositoryProvider).commissionRates();
 });
 
+/// Every change to a rate (0216), newest first.
+final commissionHistoryProvider = FutureProvider.autoDispose((ref) {
+  ref.watchLive('commission_rates');
+  return ref.watch(adminRepositoryProvider).commissionHistory();
+});
+
+/// Completed trips never charged (0216); empty where the database doesn't
+/// have the list yet.
+final unchargedCommissionsProvider = FutureProvider.autoDispose((ref) async {
+  ref.watchLive('commission_rates');
+  try {
+    return await ref.watch(adminRepositoryProvider).unchargedCommissions();
+  } catch (_) {
+    return const <Map<String, dynamic>>[];
+  }
+});
+
 const commissionLevels = ['master', 'country', 'state', 'city', 'suburb', 'user'];
+
+String _pct(Object? rate) => '${(((rate as num?) ?? 0) * 100).toStringAsFixed(2)}%';
+
+/// One history row in words: "Added 12.00% · city (Kajang, Selangor)",
+/// "Changed rate 12.00% → 10.00%, priority 0 → 5", "Deleted …". Pure.
+String commissionHistoryLine(Map<String, dynamic> h) {
+  final before = h['old_row'] is Map ? Map<String, dynamic>.from(h['old_row'] as Map) : null;
+  final after = h['new_row'] is Map ? Map<String, dynamic>.from(h['new_row'] as Map) : null;
+  String rule(Map<String, dynamic> r) => '${_pct(r['rate'])} · ${r['level']} (${commissionScopeLabel(r)})';
+  switch (h['op']) {
+    case 'insert':
+      return after == null ? 'Added' : 'Added ${rule(after)}';
+    case 'delete':
+      return before == null ? 'Deleted' : 'Deleted ${rule(before)}';
+  }
+  if (before == null || after == null) return 'Changed';
+  final changes = <String>[
+    if (before['rate'] != after['rate']) 'rate ${_pct(before['rate'])} → ${_pct(after['rate'])}',
+    if (before['active'] != after['active']) after['active'] == true ? 'turned on' : 'turned off',
+    if ((before['priority'] ?? 0) != (after['priority'] ?? 0)) 'priority ${before['priority'] ?? 0} → ${after['priority'] ?? 0}',
+    if (before['level'] != after['level']) 'level ${before['level']} → ${after['level']}',
+    if (commissionScopeLabel(before) != commissionScopeLabel(after))
+      'scope ${commissionScopeLabel(before)} → ${commissionScopeLabel(after)}',
+    if ((before['note'] ?? '') != (after['note'] ?? '')) 'note "${after['note'] ?? ''}"',
+  ];
+  return changes.isEmpty ? 'Saved ${rule(after)} (no change)' : 'Changed ${rule(before)}: ${changes.join(', ')}';
+}
 
 /// Which geography fields a level needs (mirrors Expo `validateCommissionInput`).
 List<String> requiredScope(String level) => switch (level) {
@@ -59,11 +106,23 @@ class AdminCommissionScreen extends ConsumerWidget {
     return AdminPage(
       title: 'Commission rates',
       module: 'commission',
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _edit(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('Add rate'),
-      ),
+      actions: [
+        IconButton(
+          key: const ValueKey('commission-history'),
+          tooltip: 'Change history',
+          icon: const Icon(Icons.history),
+          onPressed: () => showAdminSheet<void>(context, title: 'Change history', builder: (_) => const _HistoryList()),
+        ),
+      ],
+      // Only for admins who may change rates.
+      floatingActionButton: canEdit
+          ? FloatingActionButton.extended(
+              key: const ValueKey('commission-add'),
+              onPressed: () => _edit(context, ref),
+              icon: const Icon(Icons.add),
+              label: const Text('Add rate'),
+            )
+          : null,
       body: AsyncView(
         value: ref.watch(commissionRatesProvider),
         onRetry: () => ref.invalidate(commissionRatesProvider),
@@ -76,16 +135,24 @@ class AdminCommissionScreen extends ConsumerWidget {
                 leading: const Icon(Icons.info_outline),
                 title: const Text('How rates are chosen'),
                 subtitle: Text('The most specific active rule wins: user → suburb → city → state → country → '
-                    'master. With no rules at all, ${(defaultCommissionRate * 100).toStringAsFixed(0)}% applies.'),
+                    'master. Between rules at the same level, the higher priority wins, then the one naming more '
+                    'of its parents, then the newest. Places are matched by the region map where a region has an '
+                    'outline, otherwise by name. The rate is locked when the driver accepts the trip. With no '
+                    'rules at all, ${(defaultCommissionRate * 100).toStringAsFixed(0)}% applies.'),
               ),
             ),
+            _UnchargedCard(canEdit: canEdit),
             if (sorted.isEmpty) const EmptyState(icon: Icons.percent, title: 'No commission rules yet'),
             for (final r in sorted)
               Card(
                 child: BusyListTile(
                   leading: CircleAvatar(child: Text('${r['level']}'.substring(0, 1).toUpperCase())),
-                  title: Text('${(((r['rate'] as num?) ?? 0) * 100).toStringAsFixed(2)}% · ${r['level']}'),
-                  subtitle: Text(commissionScopeLabel(r)),
+                  title: Text('${_pct(r['rate'])} · ${r['level']}'),
+                  subtitle: Text([
+                    commissionScopeLabel(r),
+                    if (((r['priority'] as num?) ?? 0) != 0) 'Priority ${r['priority']}',
+                    if ('${r['note'] ?? ''}'.trim().isNotEmpty) '${r['note']}'.trim(),
+                  ].join(' · ')),
                   trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                     _ActiveSwitch(key: ValueKey('commission-active-${r['id']}'), row: r, canEdit: canEdit),
                     if (canEdit)
@@ -108,6 +175,92 @@ class AdminCommissionScreen extends ConsumerWidget {
           ]);
         },
       ),
+    );
+  }
+}
+
+/// Completed trips whose commission was never charged (a failed charge is
+/// kept on the trip, 0216), with "Charge now". Hidden while there are none.
+class _UnchargedCard extends ConsumerWidget {
+  const _UnchargedCard({required this.canEdit});
+  final bool canEdit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final rows = ref.watch(unchargedCommissionsProvider).value ?? const <Map<String, dynamic>>[];
+    if (rows.isEmpty) return const SizedBox.shrink();
+    final t = Theme.of(context);
+    final failed = rows.where((r) => '${r['error'] ?? ''}'.isNotEmpty).length;
+    return Card(
+      key: const ValueKey('commission-uncharged'),
+      color: t.colorScheme.errorContainer,
+      child: ListTile(
+        leading: Icon(Icons.warning_amber_rounded, color: t.colorScheme.onErrorContainer),
+        title: Text(
+          '${rows.length} completed trip${rows.length == 1 ? '' : 's'} not charged commission',
+          style: TextStyle(color: t.colorScheme.onErrorContainer),
+        ),
+        subtitle: Text(
+          failed == 0 ? 'Charge them now at their locked or current rate.' : '$failed failed to charge; see the trip.',
+          style: TextStyle(color: t.colorScheme.onErrorContainer),
+        ),
+        trailing: canEdit
+            ? BusyIconButton(
+                key: const ValueKey('commission-charge-now'),
+                tooltip: 'Charge now',
+                icon: Icon(Icons.bolt, color: t.colorScheme.onErrorContainer),
+                onPressed: () async {
+                  final repo = ref.read(adminRepositoryProvider);
+                  ({int charged, int failed})? r;
+                  await runAdminAction(context, () async => r = await repo.chargeUnchargedCommissions());
+                  ref.invalidate(unchargedCommissionsProvider);
+                  if (r != null && context.mounted) {
+                    showInfo(context, '${r!.charged} charged${r!.failed > 0 ? ', ${r!.failed} failed again' : ''}.');
+                  }
+                },
+              )
+            : null,
+      ),
+    );
+  }
+}
+
+/// Every change to the rates, newest first.
+class _HistoryList extends ConsumerWidget {
+  const _HistoryList();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context);
+    return AsyncView(
+      value: ref.watch(commissionHistoryProvider),
+      onRetry: () => ref.invalidate(commissionHistoryProvider),
+      data: (rows) {
+        if (rows.isEmpty) return const EmptyState(icon: Icons.history, title: 'No changes recorded yet');
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final h in rows)
+              ListTile(
+                key: ValueKey('commission-history-${h['id']}'),
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(switch (h['op']) {
+                  'insert' => Icons.add_circle_outline,
+                  'delete' => Icons.delete_outline,
+                  _ => Icons.edit_outlined,
+                }),
+                title: Text(commissionHistoryLine(h)),
+                subtitle: Text(
+                  [
+                    formatDateTime(DateTime.tryParse('${h['changed_at']}')?.toLocal()),
+                    if (h['changed_by'] != null) 'by ${h['changed_by']}',
+                  ].join(' · '),
+                  style: t.textTheme.bodySmall,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -158,7 +311,7 @@ class _ActiveSwitchState extends ConsumerState<_ActiveSwitch> {
   }
 }
 
-class _RateDialog extends StatefulWidget {
+class _RateDialog extends ConsumerStatefulWidget {
   const _RateDialog({this.row, required this.searchPeople});
   final Map<String, dynamic>? row;
 
@@ -166,12 +319,14 @@ class _RateDialog extends StatefulWidget {
   final Future<List<Map<String, dynamic>>> Function(String query) searchPeople;
 
   @override
-  State<_RateDialog> createState() => _RateDialogState();
+  ConsumerState<_RateDialog> createState() => _RateDialogState();
 }
 
-class _RateDialogState extends State<_RateDialog> {
+class _RateDialogState extends ConsumerState<_RateDialog> {
   late String _level = (widget.row?['level'] as String?) ?? 'country';
   late bool _active = widget.row?['active'] != false;
+  late final _priority = TextEditingController(text: '${widget.row?['priority'] ?? 0}');
+  late final _note = TextEditingController(text: widget.row?['note'] as String?);
   late final _rate = TextEditingController(
     text: widget.row == null ? '' : (((widget.row!['rate'] as num?) ?? 0) * 100).toString(),
   );
@@ -192,6 +347,8 @@ class _RateDialogState extends State<_RateDialog> {
   void dispose() {
     _debounce?.cancel();
     _query.dispose();
+    _priority.dispose();
+    _note.dispose();
     super.dispose();
   }
 
@@ -300,8 +457,15 @@ class _RateDialogState extends State<_RateDialog> {
         return;
       }
     }
+    final priority = int.tryParse(_priority.text.trim());
+    if (priority == null) {
+      setState(() => _error = 'Priority must be a whole number (0 when unsure).');
+      return;
+    }
     final needed = requiredScope(_level).toSet();
     Navigator.pop(context, {
+      'priority': priority,
+      'note': _note.text.trim().isEmpty ? null : _note.text.trim(),
       'id': widget.row?['id'],
       'level': _level,
       'rate': double.parse((pct / 100).toStringAsFixed(4)),
@@ -312,9 +476,55 @@ class _RateDialogState extends State<_RateDialog> {
     });
   }
 
+  /// A place field: picked from Admin -> Country / States / Cities (so its
+  /// name is the one the server matches), typed where that level has none.
+  Widget _place(String k, List<RegionEntry> regions) {
+    const levels = {
+      'country': RegionLevel.country,
+      'state': RegionLevel.state,
+      'city': RegionLevel.city,
+      'suburb': RegionLevel.suburb,
+    };
+    final title = k[0].toUpperCase() + k.substring(1);
+    final options = regionNamesAt(
+      regions,
+      levels[k]!,
+      country: _fields['country']!.text,
+      state: _fields['state']!.text,
+      city: _fields['city']!.text,
+    );
+    final value = _fields[k]!.text.trim();
+    if (options.isEmpty) {
+      return TextField(
+        key: ValueKey('commission-$k'),
+        controller: _fields[k],
+        decoration: InputDecoration(labelText: title, helperText: 'Not on Country / States / Cities yet'),
+      );
+    }
+    final all = [...options, if (value.isNotEmpty && !options.any((o) => o.toLowerCase() == value.toLowerCase())) value];
+    final selected = all.where((o) => o.toLowerCase() == value.toLowerCase()).firstOrNull;
+    return DropdownButtonFormField<String>(
+      key: ValueKey('commission-$k-${_fields['country']!.text}/${_fields['state']!.text}/${_fields['city']!.text}'),
+      isExpanded: true,
+      initialValue: selected,
+      decoration: InputDecoration(labelText: title),
+      hint: Text('Choose a $k'),
+      items: [for (final o in all) DropdownMenuItem(value: o, child: Text(o, overflow: TextOverflow.ellipsis))],
+      onChanged: (v) => setState(() {
+        _fields[k]!.text = v ?? '';
+        // A new parent clears the places under it.
+        const order = ['country', 'state', 'city', 'suburb'];
+        for (final below in order.skip(order.indexOf(k) + 1)) {
+          _fields[below]!.clear();
+        }
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final needed = requiredScope(_level);
+    final regions = ref.watch(regionsProvider).value ?? const <RegionEntry>[];
     return AlertDialog(
       title: Text(widget.row == null ? 'Add commission rate' : 'Edit commission rate'),
       content: SizedBox(
@@ -336,18 +546,31 @@ class _RateDialogState extends State<_RateDialog> {
             ),
             for (final k in needed) ...[
               const SizedBox(height: 12),
-              if (k == 'user_id')
-                _personPicker(context)
-              else
-                TextField(
-                  controller: _fields[k],
-                  decoration: InputDecoration(labelText: k[0].toUpperCase() + k.substring(1)),
-                ),
+              if (k == 'user_id') _personPicker(context) else _place(k, regions),
             ],
             if (_level == 'user') ...[
               const SizedBox(height: 12),
               TextField(controller: _fields['user_label'], decoration: const InputDecoration(labelText: 'Label (optional)')),
             ],
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('commission-priority'),
+              controller: _priority,
+              keyboardType: const TextInputType.numberWithOptions(signed: true),
+              decoration: const InputDecoration(
+                labelText: 'Priority',
+                helperText: 'Higher wins between rules at the same level',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('commission-note'),
+              controller: _note,
+              decoration: const InputDecoration(
+                labelText: 'Note (optional)',
+                helperText: 'Why this rate; kept in the change history',
+              ),
+            ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Active'),
