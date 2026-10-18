@@ -1,6 +1,6 @@
 # iOS UI/UX findings (tester session)
 
-Rendered from `claude/magical-fermat-6o8l12` (head 1bc4952) with
+Rendered from `claude/magical-fermat-6o8l12` (head 0f316ce) with
 `test/ios_shots_test.dart`: iPhone 15 frame (393×852, TargetPlatform.iOS,
 59 pt / 34 pt safe areas), iPhone SE, iPhone landscape, iPad, iPad Slide
 Over; light and dark; text scale 1.0 and 1.3; keyboard up where it matters.
@@ -46,6 +46,7 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly, see the table.
 | 35 | Set PIN, Add vehicle | Validation shown as a SnackBar over the button instead of inline under the field | `set_pin_screen.dart:56`, `vehicle_screens.dart` | minor |
 | 36 | Trips list | Long addresses ellipsize at one line per row, cutting the area / city | `trip_history_view.dart` | open |
 | 37 | Driver request cards | Same one-line ellipsis on pickup and drop with long addresses | `partner_screen.dart` | open |
+| 38 | Session access card | Subtitle joins empty parts: "· · Ends 18 Nov…" when a key has no test number / scopes | `session_access_card.dart:101` | minor |
 | 29 | Contacts picker | "Choose from contacts" exists only on the web; iOS has a permission-free CNContactPickerViewController | `emergency_contacts_screen.dart:32-38` | suggestion |
 
 Sweeps over every screen: dark mode, text scale 1.3, iPhone SE and iOS
