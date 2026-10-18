@@ -11,6 +11,12 @@
 # other case the script prints nothing, so Claude Code asks as usual: it only
 # ever fails closed, and always exits 0.
 #
+# Scope: a local Claude Code CLI honours this hook's decision, so an office
+# machine gets no prompt. A Claude cloud session reads the list too, but the
+# Supabase connector there asks on writes from its own tool-permission setting
+# at claude.ai/customize/connectors, which no hook can override: set Execute
+# SQL / Apply Migration to Allowed there for cloud sessions to stop prompting.
+#
 # POSIX sh only, no jq: it also runs on developers' own machines.
 
 # Built-in fallback: the list as it stood when this file was last changed.

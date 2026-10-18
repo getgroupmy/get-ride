@@ -20,6 +20,7 @@ import {
   fromBase64,
   handle,
   lookupSession,
+  PhoneRelay,
   responseHeaders,
   SESSION_CACHE_MS,
   targetFrom,
@@ -269,4 +270,101 @@ Deno.test("the phone connects with its device key over a WebSocket, nothing else
   assertEquals(new URL(relayed[0].req.url).pathname, "/phone");
   assertEquals(relayed[0].req.headers.get("x-phone-label"), "Office gateway");
   assertEquals(relayed[0].req.headers.get("upgrade"), "websocket");
+});
+
+// ---------------------------------------------------------------------------
+// PhoneRelay: which socket a request goes to
+
+/** A phone's socket as the relay sees it. */
+class FakeSocket {
+  sent: string[] = [];
+  closed: string | null = null;
+  readyState: number;
+  constructor(readyState: number) {
+    this.readyState = readyState;
+  }
+  send(frame: string) {
+    if (this.readyState !== 1) throw new TypeError("Can't call WebSocket send() after close().");
+    this.sent.push(frame);
+  }
+  close(_code: number, reason: string) {
+    this.closed = reason;
+    this.readyState = 3;
+  }
+}
+
+function relayWith(sockets: FakeSocket[]) {
+  // The runtime's class, only ever constructed.
+  (globalThis as Record<string, unknown>).WebSocketRequestResponsePair ??= class {
+    constructor(_a: string, _b: string) {}
+  };
+  const ctx = { setWebSocketAutoResponse() {}, getWebSockets: () => sockets };
+  return new PhoneRelay(ctx, {});
+}
+
+const relayRequest = () =>
+  new Request("https://relay/relay", {
+    method: "GET",
+    headers: { "x-relay-target": "https://api.ipify.org/?format=json", "x-relay-phone-label": "Office" },
+  });
+
+Deno.test("a request goes to the phone's open socket, never a dead one left in the list", async () => {
+  const dead = new FakeSocket(3);
+  const live = new FakeSocket(1);
+  const relay = relayWith([dead, live]);
+  const answer = relay.relay(relayRequest());
+  assertEquals(live.sent.length, 2, "the head and the end frame");
+  const head = JSON.parse(live.sent[0]);
+  assertEquals(head.method, "GET");
+  assertEquals(head.url, "https://api.ipify.org/?format=json");
+  assertEquals(dead.closed, "stale");
+  // The phone answers.
+  relay.webSocketMessage(live, JSON.stringify({ id: head.id, status: 200, headers: [["content-type", "application/json"]] }));
+  relay.webSocketMessage(live, JSON.stringify({ id: head.id, chunk: btoa('{"ip":"1.2.3.4"}') }));
+  relay.webSocketMessage(live, JSON.stringify({ id: head.id, end: true }));
+  const res = await answer;
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("x-relay-phone"), "Office");
+  assertEquals(await res.text(), '{"ip":"1.2.3.4"}');
+});
+
+Deno.test("only a dead socket: the phone is offline, not a relay failure", async () => {
+  const dead = new FakeSocket(3);
+  const relay = relayWith([dead]);
+  const res = await relay.relay(relayRequest());
+  assertEquals(res.status, 503);
+  assertEquals((await res.json()).error, "PHONE_OFFLINE");
+  assertEquals(dead.closed, "stale");
+});
+
+Deno.test("a socket that dies on send is dropped and the session told to retry", async () => {
+  const flaky = new FakeSocket(1);
+  flaky.send = () => {
+    throw new TypeError("Can't call WebSocket send() after close().");
+  };
+  const relay = relayWith([flaky]);
+  const res = await relay.relay(relayRequest());
+  assertEquals(res.status, 503);
+  const body = await res.json();
+  assertEquals(body.error, "PHONE_OFFLINE");
+  assertStringIncludes(body.hint, "try again");
+  assertEquals(flaky.closed, "send failed");
+});
+
+Deno.test("an old connection closing while a newer one is up does not fail its requests", async () => {
+  const old = new FakeSocket(1);
+  const fresh = new FakeSocket(1);
+  const relay = relayWith([old, fresh]);
+  const answer = relay.relay(relayRequest());
+  assertEquals(fresh.sent.length, 2);
+  old.readyState = 3;
+  relay.webSocketClose(old);
+  const head = JSON.parse(fresh.sent[0]);
+  relay.webSocketMessage(fresh, JSON.stringify({ id: head.id, status: 204, headers: [] }));
+  assertEquals((await answer).status, 204);
+  // The last connection going does fail what is in flight.
+  const again = relay.relay(relayRequest());
+  fresh.readyState = 3;
+  relay.webSocketClose(fresh);
+  assertEquals((await again).status, 502);
 });

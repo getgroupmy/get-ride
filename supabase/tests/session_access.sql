@@ -1,5 +1,5 @@
 -- ============================================================================
--- Regression test for migration 0226: session access. A full admin gives a
+-- Regression test for migrations 0226 and 0230: session access. A full admin gives a
 -- test session a key scoped to one phone number; the session texts that
 -- number, reads what went out (sign-in codes in clear only with `codes`),
 -- reads what came in from it, and the relay learns which phone carries its
@@ -131,6 +131,31 @@ select pg_temp.refused(format('select public.session_key_send_sms(%L, %L)', (sel
   'an empty message');
 select pg_temp.refused($q$select public.session_key_send_sms('0000000000000000000000000000000000000000000000000000000000000000', 'x')$q$,
   'an unknown key');
+
+-- The key may come as the X-Session-Key header instead (0230): a cloud
+-- environment adds it as a network secret, so the session never holds it.
+select pg_temp.refused($q$select public.session_key_info()$q$, 'no key and no header');
+select set_config('request.headers', json_build_object('x-session-key', (select key from keys where name = 'full'))::text, true);
+do $$
+declare
+  r jsonb;
+begin
+  r := public.session_key_info();
+  if r->>'label' <> 'Cloud session' then raise exception 'FAILED: header key %', r; end if;
+  r := public.session_key_outbox(p_limit => 1);
+  if jsonb_array_length(r) <> 1 then raise exception 'FAILED: header key outbox %', r; end if;
+  if (public.session_key_proxy_check()->>'ok')::boolean is not true then raise exception 'FAILED: header key proxy'; end if;
+  -- An explicit key wins over the header.
+  if (public.session_key_info((select key from keys where name = 'sms')))->>'label' <> 'Sub only' then
+    raise exception 'FAILED: p_key should win over the header';
+  end if;
+end $$;
+select set_config('request.headers', '{"x-session-key": "not-a-key"}', true);
+select pg_temp.refused($q$select public.session_key_info()$q$, 'a wrong header key');
+select pg_temp.refused($q$select public.session_key_send_sms(p_body => 'hello')$q$, 'a wrong header key sending');
+select set_config('request.headers', 'not json', true);
+select pg_temp.refused($q$select public.session_key_info()$q$, 'an unreadable header');
+select set_config('request.headers', '', true);
 
 -- The sign-in hook queues a code for the test number, and the gateway hears
 -- back from it; another number's traffic is none of the session's business.
