@@ -187,6 +187,47 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
+  testWidgets('with a mouse: a drag on the handle, and a wheel over the handle or the footer, move the sheet', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Widget page() => MaterialApp(
+      home: Scaffold(
+        body: MapSheetLayout(
+          map: const SizedBox.expand(),
+          initial: 0.3,
+          min: 0.3,
+          sheet: Column(children: [for (var i = 0; i < 30; i++) ListTile(title: Text('row $i'))]),
+          footer: const SizedBox(key: ValueKey('footer'), height: 120, width: double.infinity),
+        ),
+      ),
+    );
+    await tester.pumpWidget(page());
+    final handle = find.byKey(const ValueKey('map-sheet-handle'));
+    final rest = tester.getTopLeft(handle).dy;
+
+    // A mouse drag on the handle, as a finger's.
+    await tester.dragFrom(tester.getCenter(handle), const Offset(0, -200), kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(handle).dy, lessThan(rest - 120), reason: 'dragged up by the mouse');
+    await tester.dragFrom(tester.getCenter(handle), const Offset(0, 400), kind: PointerDeviceKind.mouse);
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(handle).dy, closeTo(rest, 1));
+
+    // The wheel over the handle, then over the footer (most of a sheet at
+    // its lowest), raises it.
+    for (final over in [handle, find.byKey(const ValueKey('footer'))]) {
+      final before = tester.getTopLeft(handle).dy;
+      final p = TestPointer(2, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(p.hover(tester.getCenter(over)));
+      await tester.sendEventToBinding(p.scroll(const Offset(0, 120)));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(handle).dy, lessThan(before - 80), reason: 'over $over');
+      await tester.dragFrom(tester.getCenter(handle), const Offset(0, 400), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+    }
+  });
+
   testWidgets('the chosen item is scrolled whole above the pinned footer, and kept there', (tester) async {
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1;

@@ -504,11 +504,15 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// sheet, as a drag would, instead of scrolling its content; so does
   /// scrolling back up past the top of the content of a full sheet. Inside
   /// the scroll view, so it is offered the event before the content is.
-  Widget _wheelMovesSheet(Widget child, ScrollController scroll, double height) => Listener(
+  /// Also over the handle and the pinned footer (a collapsed sheet is
+  /// mostly those), where [scroll] is null and the sheet's own scroller is
+  /// asked.
+  Widget _wheelMovesSheet(Widget child, ScrollController? scroll, double height) => Listener(
     onPointerSignal: (e) {
       if (e is! PointerScrollEvent || widget.locked || !_sheet.isAttached || height <= 0) return;
+      final content = scroll ?? _scroll;
       final full = _sheet.size >= widget.max - 0.001;
-      final scrolled = scroll.hasClients && scroll.offset > 0;
+      final scrolled = content != null && content.hasClients && content.offset > 0;
       if (full && (e.scrollDelta.dy > 0 || scrolled)) return; // the content's to scroll
       GestureBinding.instance.pointerSignalResolver.register(e, (event) {
         _release();
@@ -597,23 +601,28 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                         physics: widget.locked ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
                         slivers: [
                           PinnedHeaderSliver(
-                            child: ColoredBox(
-                              key: const ValueKey('map-sheet-header'),
-                              color: fill,
-                              child: SizedBox(
-                                height: 22,
-                                child: Center(
-                                  child: Container(
-                                    key: const ValueKey('map-sheet-handle'),
-                                    width: 40,
-                                    height: 4,
-                                    decoration: BoxDecoration(
-                                      color: style.setColor('handleColor', t.brightness) ?? t.colorScheme.outlineVariant,
-                                      borderRadius: BorderRadius.circular(2),
+                            // A wheel over the handle moves the sheet too.
+                            child: _wheelMovesSheet(
+                              ColoredBox(
+                                key: const ValueKey('map-sheet-header'),
+                                color: fill,
+                                child: SizedBox(
+                                  height: 22,
+                                  child: Center(
+                                    child: Container(
+                                      key: const ValueKey('map-sheet-handle'),
+                                      width: 40,
+                                      height: 4,
+                                      decoration: BoxDecoration(
+                                        color: style.setColor('handleColor', t.brightness) ?? t.colorScheme.outlineVariant,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
+                              scroll,
+                              h,
                             ),
                           ),
                           if (widget.peek != null)
@@ -707,7 +716,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                     animation: _bounce,
                     builder: (_, child) =>
                         _bounce.value == 0 ? child! : Transform.translate(offset: Offset(0, _bounce.value), child: child),
-                    child: widget.footer!,
+                    // A wheel over the footer moves the sheet, as over the sheet.
+                    child: _wheelMovesSheet(widget.footer!, null, h),
                   ),
                 ),
               ),
