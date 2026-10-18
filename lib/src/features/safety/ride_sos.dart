@@ -8,12 +8,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/sos.dart';
 import '../../data/models.dart';
 import '../../data/safety_incident_repository.dart';
 import '../../widgets/common.dart';
+import '../../widgets/call_number.dart' show callNumber;
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 import '../profile/emergency_contacts_screen.dart';
@@ -70,7 +70,8 @@ Future<void> showRideSos(BuildContext context, WidgetRef ref, {String? driver, S
     return;
   }
   if (choice == 'call') {
-    await launchUrl(Uri(scheme: 'tel', path: emergencyNumber));
+    // With the number to copy where nothing here can call (a desktop browser).
+    await callNumber(context, emergencyNumber);
     return;
   }
   List<EmergencyContact> contacts;

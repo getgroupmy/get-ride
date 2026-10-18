@@ -31,6 +31,7 @@ import 'package:get_ride/src/features/ride/pickup_time_sheet.dart';
 import 'package:get_ride/src/features/ride/searching_parts.dart';
 import 'package:get_ride/src/widgets/common.dart' show EmptyState, contrastRatio, mutedTextColor;
 import 'package:get_ride/src/features/safety/ride_sos.dart' show RideSosFab;
+import 'package:get_ride/src/widgets/call_number.dart' show callNumber, canDialHere;
 import 'package:get_ride/src/widgets/map_sheet_layout.dart';
 import 'package:get_ride/src/widgets/search_select.dart';
 
@@ -643,6 +644,43 @@ void _sheets() {
     expect(placeSubtitle('KLCC', 'Kuala Lumpur City Centre, 50088 Kuala Lumpur'), 'Kuala Lumpur City Centre, 50088 Kuala Lumpur');
     expect(placeSubtitle('Eco Majestic', ''), isNull);
   });
+
+  test('a phone number is dialled only where it can place a call', () {
+    expect(canDialHere(web: false, platform: TargetPlatform.macOS), isTrue, reason: 'the apps');
+    expect(canDialHere(web: true, platform: TargetPlatform.android), isTrue, reason: "a phone's browser");
+    expect(canDialHere(web: true, platform: TargetPlatform.iOS), isTrue);
+    for (final p in const [TargetPlatform.windows, TargetPlatform.macOS, TargetPlatform.linux]) {
+      expect(canDialHere(web: true, platform: p), isFalse, reason: 'a desktop browser');
+    }
+  });
+
+  for (final b in Brightness.values) {
+    testWidgets('on a desktop browser Call shows the number with Copy, without dialling (${b.name})', (tester) async {
+      final tried = <Uri>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(brightness: b),
+          home: Scaffold(
+            body: Builder(
+              builder: (c) => TextButton(
+                onPressed: () => callNumber(c, '+60 12-345 6789', dials: false, launcher: (u) async {
+                  tried.add(u);
+                  return true;
+                }),
+                child: const Text('Call'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Call'));
+      await tester.pump();
+      expect(tried, isEmpty, reason: 'a desktop browser reports success with nothing happening');
+      expect(find.byKey(const ValueKey('call-fallback')), findsOneWidget);
+      expect(find.textContaining('+60 12-345 6789'), findsOneWidget);
+      expect(find.text('Copy'), findsOneWidget);
+    });
+  }
 
   test('the time wheels show fewer rows on a short screen', () {
     expect(pickupWheelRows(852), 5);
