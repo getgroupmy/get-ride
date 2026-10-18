@@ -112,7 +112,7 @@ class CoinTransferRepository {
         }
       }
 
-      backup = RealtimeBackup(reread);
+      backup = RealtimeBackup(reread, healthy: realtimeBackupSlowHealthyInterval);
 
       channel = _db
           .channel('coin_transfer_${column}_${value}_${DateTime.now().microsecondsSinceEpoch}')

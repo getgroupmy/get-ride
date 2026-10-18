@@ -18,6 +18,8 @@ class StorageImage extends StatefulWidget {
     this.frameBuilder,
     this.errorBuilder,
     this.loadingBuilder,
+    this.cacheWidth,
+    this.cacheHeight,
   });
 
   final String url;
@@ -27,6 +29,9 @@ class StorageImage extends StatefulWidget {
   final ImageFrameBuilder? frameBuilder;
   final ImageErrorWidgetBuilder? errorBuilder;
   final ImageLoadingBuilder? loadingBuilder;
+
+  /// The size to decode the picture at (see [Image.network]).
+  final int? cacheWidth, cacheHeight;
 
   @override
   State<StorageImage> createState() => _StorageImageState();
@@ -58,6 +63,8 @@ class _StorageImageState extends State<StorageImage> {
     frameBuilder: widget.frameBuilder,
     errorBuilder: widget.errorBuilder,
     loadingBuilder: widget.loadingBuilder,
+    cacheWidth: widget.cacheWidth,
+    cacheHeight: widget.cacheHeight,
   );
 
   @override

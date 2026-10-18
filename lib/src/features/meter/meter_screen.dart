@@ -321,6 +321,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     });
   }
 
+  /// Whether the GPS fix was fresh at the last idle tick that rebuilt.
+  bool? _idleFixFresh;
+
   MeterFix? get _freshFix {
     final f = _fix;
     if (f == null) return null;
@@ -330,7 +333,13 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   void _onTick() {
     if (!mounted) return;
     _checkHeld();
-    if (!_m.running) return setState(() {});
+    if (!_m.running) {
+      // Idle, the only thing the clock changes on screen is a GPS fix
+      // going stale: rebuild then, not every second.
+      final fresh = _freshFix != null;
+      if (fresh != _idleFixFresh) setState(() => _idleFixFresh = fresh);
+      return;
+    }
     // The card takes a sensor away at the source: a GPS-only card never
     // bills on the reader, an OBD-only card never on the phone's GPS.
     final sources = allowedMeterSources(_profile.sourceMode);

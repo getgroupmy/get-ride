@@ -580,10 +580,17 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
 
   /// Admin → Display Settings → Connection Status Popups: once per launch,
   /// tell the user whether the server answered. Shown once the router's
-  /// navigator exists, so after the splash.
+  /// navigator exists, so after the splash. The server is only pinged when
+  /// one of the popups is on.
   Future<void> _connectionPopup() async {
-    final check = await checkBackend(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey);
     final display = await ref.read(appDisplayProvider.future);
+    final check = await checkBackendForPopups(
+      AppConfig.supabaseUrl,
+      AppConfig.supabaseAnonKey,
+      connectedOn: display.connectedPopup,
+      failedOn: display.connectionFailedPopup,
+    );
+    if (check == null) return;
     final popup = connectionPopupFor(
       check,
       connectedOn: display.connectedPopup,

@@ -100,6 +100,21 @@ void main() {
       expect(connectionErrorName(const FormatException('x'), release: true), 'Error');
     });
 
+    test('no ping when both popups are off', () async {
+      var calls = 0;
+      final client = MockClient((_) async {
+        calls++;
+        return http.Response('{}', 200);
+      });
+      expect(connectionCheckWanted(connectedOn: false, failedOn: false), isFalse);
+      expect(connectionCheckWanted(connectedOn: false, failedOn: true), isTrue);
+      expect(await checkBackendForPopups('https://x', 'k', connectedOn: false, failedOn: false, client: client), isNull);
+      expect(calls, 0);
+      final check = await checkBackendForPopups('https://x', 'k', connectedOn: true, failedOn: false, client: client);
+      expect(check?.reachable, isTrue);
+      expect(calls, 1);
+    });
+
     testWidgets('the failed popup shows the error and its details', (tester) async {
       await tester.pumpWidget(
         MaterialApp(

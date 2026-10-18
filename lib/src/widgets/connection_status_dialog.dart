@@ -45,6 +45,19 @@ Future<ConnectionCheck> checkBackend(String url, String anonKey, {http.Client? c
 bool onDiagnostics(GoRouter router) =>
     router.routerDelegate.currentConfiguration.uri.path == '/diagnostics';
 
+/// [checkBackend], only when one of the launch popups is on: null (and no
+/// request) when the admin switched both off.
+Future<ConnectionCheck?> checkBackendForPopups(
+  String url,
+  String anonKey, {
+  required bool connectedOn,
+  required bool failedOn,
+  http.Client? client,
+}) async {
+  if (!connectionCheckWanted(connectedOn: connectedOn, failedOn: failedOn)) return null;
+  return checkBackend(url, anonKey, client: client);
+}
+
 /// The launch popup: "Connected", or "Not Connected to server" with the
 /// error and its details. Only its buttons (or back) close it.
 Future<void> showConnectionStatus(BuildContext context, ConnectionPopup popup, ConnectionCheck check) =>

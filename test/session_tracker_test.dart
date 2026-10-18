@@ -8,15 +8,21 @@ class _Sink implements SessionSink {
   final sessions = <Map<String, dynamic>>[];
   final locations = <Map<String, dynamic>>[];
   bool ipFails = false;
+  Completer<void>? ipGate;
 
   @override
   Future<IpInfo?> lookupIp() async {
+    await ipGate?.future;
     if (ipFails) throw Exception('not deployed');
     return const IpInfo(publicIp: '1.2.3.4', ispProvider: 'TM Net', country: 'Malaysia');
   }
 
   @override
-  Future<void> insertSession(Map<String, dynamic> row) async => sessions.add(row);
+  Future<void> insertSession(Map<String, dynamic> row) async => sessions.add(Map.of(row));
+
+  @override
+  Future<void> updateSession(String id, Map<String, dynamic> patch) async =>
+      sessions.firstWhere((r) => r['id'] == id).addAll(patch);
 
   @override
   Future<void> insertLocation(Map<String, dynamic> row) async => locations.add(row);
@@ -94,6 +100,24 @@ void main() {
     expect((row['raw'] as Map)['client'], 'flutter');
   });
 
+  test('the launch IP is looked up once, shared, and retried after a failure', () async {
+    final cache = LaunchIpCache();
+    var calls = 0;
+    Future<IpInfo?> lookup() async {
+      calls++;
+      return calls == 1 ? null : const IpInfo(publicIp: '5.6.7.8');
+    }
+
+    expect(await cache.get(lookup), isNull);
+    final a = cache.get(lookup), b = cache.get(lookup);
+    expect((await a)?.publicIp, '5.6.7.8');
+    expect((await b)?.publicIp, '5.6.7.8');
+    expect(calls, 2);
+    expect((await cache.get(lookup))?.publicIp, '5.6.7.8');
+    expect(calls, 2);
+    expect(cache.value?.publicIp, '5.6.7.8');
+  });
+
   group('SessionTracker', () {
     late _Sink sink;
     late _Location location;
@@ -124,10 +148,32 @@ void main() {
       await tracker.userChanged('u1', phone: '+601');
       await tracker.userChanged('u1', phone: '+601');
       await tracker.resumed();
+      await pumpEventQueue();
       expect(sink.sessions.map((r) => r['event_type']), ['app_launch', 'login', 'app_relaunch']);
       expect(sink.sessions.first['user_id'], isNull);
       expect(sink.sessions[1]['user_id'], 'u1');
       expect(sink.sessions[1]['public_ip'], '1.2.3.4');
+    });
+
+    test('signed in, the row is written before ip-lookup answers, then patched', () async {
+      sink.ipGate = Completer<void>();
+      await tracker.userChanged('u1', phone: '+601');
+      expect(sink.sessions.single['user_id'], 'u1');
+      expect(sink.sessions.single['public_ip'], isNull);
+      sink.ipGate!.complete();
+      await pumpEventQueue();
+      expect(sink.sessions.single['public_ip'], '1.2.3.4');
+      expect(sink.sessions.single['isp_provider'], 'TM Net');
+    });
+
+    test('signed out, the row waits for ip-lookup (no update allowed)', () async {
+      sink.ipGate = Completer<void>();
+      final launch = tracker.launched();
+      await pumpEventQueue();
+      expect(sink.sessions, isEmpty);
+      sink.ipGate!.complete();
+      await launch;
+      expect(sink.sessions.single['public_ip'], '1.2.3.4');
     });
 
     test('a resume before the launch is not logged', () async {

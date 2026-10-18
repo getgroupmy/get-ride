@@ -85,4 +85,37 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: StoredImage(id, width: 56, height: 40)));
     expect(find.byType(StorageImage), findsOneWidget);
   });
+
+  test('decode size: the box in device pixels, one side so the shape stays', () {
+    expect(imageDecodeSize(width: 100, height: 50, fit: BoxFit.contain, dpr: 3), (width: 300, height: null));
+    expect(imageDecodeSize(height: 40.2, fit: BoxFit.contain, dpr: 2), (width: null, height: 80));
+    expect(imageDecodeSize(width: 40, height: 40, fit: BoxFit.cover, dpr: 2.5), (width: 200, height: null));
+    expect(imageDecodeSize(width: 40, fit: BoxFit.cover, dpr: 2), (width: null, height: null));
+    expect(imageDecodeSize(width: 10, height: 20, fit: BoxFit.fill, dpr: 2), (width: 20, height: 40));
+    expect(imageDecodeSize(width: double.infinity, fit: BoxFit.contain, dpr: 2), (width: null, height: null));
+  });
+
+  testWidgets('a sized picture is decoded at its size, not in full', (tester) async {
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Center(child: NetImage('https://cdn.example/van.png', width: 56, height: 26, fit: BoxFit.contain)),
+      ),
+    );
+    final image = tester.widget<Image>(find.byType(Image)).image;
+    expect(image, isA<ResizeImage>());
+    expect((image as ResizeImage).width, 168);
+    expect(image.height, isNull);
+  });
+
+  testWidgets('an avatar is decoded at its size', (tester) async {
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      const MaterialApp(home: Center(child: NetAvatar(url: 'https://cdn.example/me.png', radius: 20))),
+    );
+    final image = tester.widget<Image>(find.byType(Image)).image as ResizeImage;
+    expect(image.width, 160);
+  });
 }

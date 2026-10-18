@@ -193,11 +193,12 @@ Stream<Map<String, dynamic>> watchCallRows(
     }
 
     // A call rings or hangs up within seconds: read it again often while
-    // realtime is down, and still fairly often while it is up.
+    // realtime is down. While it is up realtime delivers the ring, so only
+    // a slow safety net (these watchers stay open app-wide on every phone).
     backup = RealtimeBackup(
       () async => (await initial()).forEach(emit),
       every: const Duration(seconds: 3),
-      healthy: const Duration(seconds: 15),
+      healthy: realtimeBackupSlowHealthyInterval,
     );
 
     channel = db

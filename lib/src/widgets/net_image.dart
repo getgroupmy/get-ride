@@ -47,6 +47,33 @@ ImageFrameBuilder boneUntilPainted({double? width, double? height, bool circle =
     (context, child, frame, synchronous) =>
         synchronous || frame != null ? child : ImageBone(width: width, height: height, circle: circle, radius: radius);
 
+/// The size to decode a picture at for a [width] x [height] box drawn with
+/// [fit] at [dpr] device pixels per point, so a large photo is not held in
+/// memory at full size for a small box. One side only, so the picture keeps
+/// its shape: the box's width for most fits (or its height when only that is
+/// known); for [BoxFit.cover], whose picture's shape decides which side
+/// fills the box, twice the longer side, enough for pictures up to 2:1
+/// either way. Both for [BoxFit.fill], which stretches anyway. Null for a
+/// side left alone. The picture is never decoded larger than it is. Pure.
+({int? width, int? height}) imageDecodeSize({
+  double? width,
+  double? height,
+  required BoxFit fit,
+  required double dpr,
+}) {
+  int? px(double? v, [double times = 1]) => v == null || !v.isFinite || v <= 0 ? null : (v * dpr * times).round();
+  switch (fit) {
+    case BoxFit.fill:
+      return (width: px(width), height: px(height));
+    case BoxFit.cover:
+      if (width == null || height == null) return (width: null, height: null);
+      return (width: px(math.max(width, height), 2), height: null);
+    default:
+      if (px(width) != null) return (width: px(width), height: null);
+      return (width: null, height: px(height));
+  }
+}
+
 /// A network picture: the skeleton while it loads, [fallback] (the base
 /// icon) only if it fails.
 class NetImage extends StatelessWidget {
@@ -74,6 +101,12 @@ class NetImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final frame = boneUntilPainted(width: width, height: height, circle: circle, radius: radius);
     Widget error(BuildContext _, Object _, StackTrace? _) => fallback ?? SizedBox(width: width, height: height);
+    final decode = imageDecodeSize(
+      width: width,
+      height: height,
+      fit: fit,
+      dpr: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1,
+    );
     // A file in a private document bucket (a permit portrait, a vehicle
     // photo) opens through a signed link; anything else as it is.
     if (privateStorageRef(url) != null) {
@@ -85,6 +118,8 @@ class NetImage extends StatelessWidget {
         alignment: alignment,
         frameBuilder: frame,
         errorBuilder: error,
+        cacheWidth: decode.width,
+        cacheHeight: decode.height,
       );
     }
     // A stored file on the project's host loads through whichever address
@@ -97,6 +132,8 @@ class NetImage extends StatelessWidget {
       alignment: alignment,
       frameBuilder: frame,
       errorBuilder: error,
+      cacheWidth: decode.width,
+      cacheHeight: decode.height,
     );
   }
 }

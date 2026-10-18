@@ -37,6 +37,14 @@ import '../core/scheduled_rides.dart' show ScheduledRide;
 /// What "Find a driver" made: a ride now, or a booking for later.
 typedef Booked = ({RideRequest? now, ScheduledRide? later});
 
+/// Whether [row] is a request still `open` past [AppConfig.requestExpiry]:
+/// expired in all but its status. Pure.
+bool isStaleOpenRow(Map<String, dynamic> row, DateTime now) {
+  if (row['status'] != 'open') return false;
+  final created = DateTime.tryParse('${row['created_at'] ?? ''}');
+  return created != null && now.difference(created) > AppConfig.requestExpiry;
+}
+
 /// Ride booking + dispatch over `public.ride_requests`, mirroring the Expo
 /// app's `utils/rideRequestsStore.ts`. Partners are identified by their auth
 /// uid in `partner_id`, exactly as the Expo e-hailing screen does.
@@ -227,6 +235,34 @@ class RideRepository {
     return _withAside(row);
   }
 
+  /// [_readAside] for many rows: the aside rows of every open request not
+  /// read yet this session come back in one query.
+  Future<List<Map<String, dynamic>>> _readAsideAll(List<Map<String, dynamic>> rows) async {
+    final uid = _uid;
+    if (uid == null) return rows;
+    final ids = {
+      for (final r in rows)
+        if (r['status'] == 'open' && r['rider_id'] == uid && !_aside.containsKey('${r['id']}')) '${r['id']}',
+    }.toList();
+    if (ids.isNotEmpty) {
+      try {
+        final found = await _db.from('ride_request_private').select().inFilter('request_id', ids);
+        for (final id in ids) {
+          _aside[id] = const {};
+        }
+        for (final p in found) {
+          _aside['${p['request_id']}'] = p;
+        }
+      } catch (_) {
+        // A database before 0195 keeps everything on the row.
+        for (final id in ids) {
+          _aside[id] = const {};
+        }
+      }
+    }
+    return [for (final r in rows) _withAside(r)];
+  }
+
   /// The caller's public IP as the `ip-lookup` edge function sees it, or null.
   Future<String?> publicIp() async {
     try {
@@ -262,17 +298,24 @@ class RideRepository {
     final uid = _uid;
     if (uid == null) return const [];
     try {
-      await expireStaleOpen();
-      final rows = await _db
+      final all = await _db
           .from(_table)
           .select()
           .eq('rider_id', uid)
           .inFilter('status', riderOngoingStatuses)
           .order('created_at', ascending: false)
           .limit(20);
-      final merged = await Future.wait(rows.map(_readAside));
+      // A request past its search time is over even before it is marked so
+      // (here, after the read, or by the server's job within a minute).
+      final now = DateTime.now();
+      final rows = [
+        for (final r in all)
+          if (!isStaleOpenRow(r, now)) r,
+      ];
+      if (rows.length != all.length) unawaited(expireStaleOpen());
+      final merged = await _readAsideAll(rows);
       for (final row in merged) {
-        unawaited(_cache.save(row));
+        unawaited(_cache.saveSeen(row));
       }
       return merged.map(RideRequest.new).toList();
     } on PostgrestException {
@@ -305,7 +348,7 @@ class RideRepository {
           .order('created_at', ascending: false)
           .limit(1);
       if (rows.isEmpty) return null;
-      unawaited(_cache.save(rows.first));
+      unawaited(_cache.saveSeen(rows.first));
       return RideRequest(rows.first);
     } on PostgrestException {
       rethrow;
@@ -1054,7 +1097,7 @@ class RideRepository {
       if (controller.isClosed) return;
       controller.add(r);
       if (r.fromCache) return;
-      unawaited(_cache.save(r.raw));
+      unawaited(_cache.saveSeen(r.raw));
       if (r.status != shown) {
         shown = r.status;
         unawaited(ackRideNotifications(id));

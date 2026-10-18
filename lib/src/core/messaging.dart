@@ -61,11 +61,16 @@ enum MessagingTransport {
   static MessagingTransport? fromId(Object? id) => values.where((t) => t.id == id).firstOrNull;
 }
 
-/// How long a device counts as online after its last heartbeat.
+/// How long a gateway phone counts as online after its last heartbeat (the
+/// GET.ride Gateway app checks in every minute).
 const messagingOnlineWindow = Duration(minutes: 3);
 
-/// How often a device says it is here.
-const messagingHeartbeatEvery = Duration(minutes: 1);
+/// How often an admin's app install says it is here ([MessagingPresence]).
+const messagingHeartbeatEvery = Duration(minutes: 3);
+
+/// How long an app install counts as online after its last heartbeat: two
+/// heartbeats, so one late beat does not show it offline.
+const messagingAppOnlineWindow = Duration(minutes: 6);
 
 /// A device that can carry a channel (`messaging_devices`).
 class MessagingDevice {
@@ -95,7 +100,10 @@ class MessagingDevice {
   bool get isGateway => kind == 'gateway';
   bool can(String capability) => capabilities.contains(capability);
 
-  bool onlineAt(DateTime now) => lastSeenAt != null && now.difference(lastSeenAt!) <= messagingOnlineWindow;
+  /// How long after its last heartbeat this device still counts as online.
+  Duration get onlineWindow => isGateway ? messagingOnlineWindow : messagingAppOnlineWindow;
+
+  bool onlineAt(DateTime now) => lastSeenAt != null && now.difference(lastSeenAt!) <= onlineWindow;
 
   String get title {
     final l = label?.trim() ?? '';
