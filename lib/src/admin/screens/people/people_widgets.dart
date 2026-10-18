@@ -19,6 +19,7 @@ import '../../../widgets/net_image.dart';
 import '../../../data/live_tables.dart';
 import '../../../widgets/storage_image.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 /// Wide screens get a two-column form, phones one column.
 class FormColumns extends StatelessWidget {
@@ -383,16 +384,21 @@ class PartnerTypeField extends StatelessWidget {
   Widget build(BuildContext context) {
     final all = [...options, ...value.where((v) => !options.contains(v))];
     if (all.isEmpty) return const Text('No partner types configured (Settings → Partner Type).');
-    return Wrap(spacing: 8, runSpacing: 8, children: [
+    return ListSearchFilter(
+  count: all.length,
+  hint: 'Search partner types',
+  builder: (context, q) => Wrap(spacing: 8, runSpacing: 8, children: [
       for (final t in all)
-        FilterChip(
+        if (q.isEmpty || searchSelectMatches(t, q) || value.contains(t))
+          FilterChip(
           label: Text(t),
           selected: value.contains(t),
           onSelected: enabled
               ? (on) => onChanged(on ? [...value, t] : value.where((v) => v != t).toList())
               : null,
         ),
-    ]);
+    ]),
+);
   }
 }
 
@@ -1100,7 +1106,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
               ),
             if (f.requireInsuranceProvider) ...[
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
+              SearchableDropdownFormField<String>(
                 isExpanded: true,
                 initialValue: _insurers.any((e) => e.id == _insurerId) ? _insurerId : null,
                 decoration: const InputDecoration(labelText: 'Insurance provider'),

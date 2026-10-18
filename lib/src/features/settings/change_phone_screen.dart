@@ -8,6 +8,7 @@ import '../../core/phone_input.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/search_select.dart';
 
 const _dialCodes = ['+60', '+65', '+62', '+66', '+63', '+84', '+673', '+91', '+44', '+1'];
 
@@ -110,7 +111,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
                     children: [
                       SizedBox(
                         width: 110,
-                        child: DropdownButtonFormField<String>(
+                        child: SearchableDropdownFormField<String>(
                           isExpanded: true,
                           initialValue: _dial,
                           items: [

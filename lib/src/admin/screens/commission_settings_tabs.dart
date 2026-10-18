@@ -16,6 +16,7 @@ import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
+import '../../widgets/search_select.dart';
 
 /// The surcharges a meter hire carries, as the base names them (0219).
 const meterSurchargeNames = ['Airport surcharge', 'Bags & passengers'];
@@ -196,8 +197,10 @@ class _CommissionSettingsTabState extends ConsumerState<CommissionSettingsTab> {
                       padding: const EdgeInsets.all(8),
                       child: Text('No surcharges on trips in the last year.', style: TextStyle(color: muted)),
                     ),
-                  for (final e in names.entries)
-                    CheckboxListTile(
+                  ListSearchFilter(count: names.length, hint: 'Search surcharges', builder: (context, q) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+  for (final e in names.entries)
+    if (q.isEmpty || searchSelectMatches(e.key, q) || c.baseSurcharges.contains(e.key))
+      CheckboxListTile(
                       key: ValueKey('commission-base-${e.key}'),
                       contentPadding: EdgeInsets.zero,
                       value: c.baseSurcharges.contains(e.key),
@@ -205,6 +208,7 @@ class _CommissionSettingsTabState extends ConsumerState<CommissionSettingsTab> {
                       subtitle: e.value > 0 ? Text('${e.value} trips in the last year') : null,
                       onChanged: edit ? (v) => _toggleSurcharge(e.key, v ?? false) : null,
                     ),
+])),
                   if (widget.canEdit)
                     Row(
                       children: [
@@ -409,7 +413,7 @@ class _TierDialogState extends State<_TierDialog> {
                   decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. Gold driver'),
                   validator: (v) => (v ?? '').trim().isEmpty ? 'Give the tier a name' : null,
                 ),
-                DropdownButtonFormField<TierMetric>(
+                SearchableDropdownFormField<TierMetric>(
                   key: const ValueKey('tier-metric'),
                   isExpanded: true,
                   initialValue: _metric,

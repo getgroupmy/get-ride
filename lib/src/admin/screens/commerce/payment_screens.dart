@@ -9,7 +9,7 @@ import '../../widgets/admin_widgets.dart';
 import 'commerce_data.dart';
 import 'commerce_logic.dart';
 import 'commerce_widgets.dart';
-import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 // ===========================================================================
 // Payment Type (settings_entries / payment-type)
@@ -194,26 +194,21 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
 
   Future<void> _add(List<Entry> all) async {
     final counts = _counts(all);
-    final provider = await showAppDialog<GatewayProvider>(id: 'payment.add',
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('Choose a provider'),
-        children: [
-          for (final p in gatewayProviders)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, p),
-              child: ListTile(
-                leading: const Icon(Icons.credit_card),
-                title: Text(p.name),
-                subtitle: Text(p.description),
-                trailing: (counts[p.id] ?? 0) > 0
-                    ? Text('${counts[p.id]} account${counts[p.id] == 1 ? '' : 's'}')
-                    : const Icon(Icons.chevron_right),
-              ),
-            ),
-        ],
-      ),
+    final providerId = await showSearchPicker<String>(
+      context,
+      title: 'Choose a provider',
+      choices: [
+        for (final p in gatewayProviders)
+          (
+            value: p.id,
+            label: p.name,
+            subtitle: [p.description, if ((counts[p.id] ?? 0) > 0) '${counts[p.id]} account${counts[p.id] == 1 ? '' : 's'}']
+                .join(' · '),
+            leading: const Icon(Icons.credit_card),
+          ),
+      ],
     );
+    final provider = providerId == null ? null : gatewayProviders.firstWhere((p) => p.id == providerId);
     if (provider == null || !mounted) return;
     await _edit(all, form: GatewayForm(providerId: provider.id));
   }

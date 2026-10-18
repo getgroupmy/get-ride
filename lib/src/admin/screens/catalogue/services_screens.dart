@@ -10,6 +10,7 @@ import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
 import '../../../core/service_tree.dart' show serviceParentIds;
+import '../../../widgets/search_select.dart';
 
 /// Shared list for the two `displayPriority`-ordered service categories.
 class _PriorityList extends ConsumerStatefulWidget {
@@ -500,14 +501,19 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
         if (widget.serviceTypes.isEmpty)
           const Text('No record. Add services in Service Settings first.')
         else
-          Wrap(spacing: 8, runSpacing: 4, children: [
+          ListSearchFilter(
+            count: widget.serviceTypes.length,
+            hint: 'Search service types',
+            builder: (context, q) => Wrap(spacing: 8, runSpacing: 4, children: [
             for (final o in widget.serviceTypes)
-              FilterChip(
+              if (q.isEmpty || searchSelectMatches(o, q) || _serviceTypes.contains(o))
+                FilterChip(
                 label: Text(o),
                 selected: _serviceTypes.contains(o),
                 onSelected: (_) => setState(() => _serviceTypes = _toggle(_serviceTypes, o)),
               ),
           ]),
+          ),
         if (widget.parents.isNotEmpty) ...[
           const SectionLabel('Under'),
           const Padding(
@@ -517,15 +523,20 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
               'one off switches off everything under it.',
             ),
           ),
-          Wrap(spacing: 8, runSpacing: 4, children: [
+          ListSearchFilter(
+            count: widget.parents.length,
+            hint: 'Search services',
+            builder: (context, q) => Wrap(spacing: 8, runSpacing: 4, children: [
             for (final o in widget.parents)
-              FilterChip(
+              if (q.isEmpty || searchSelectMatches(o.name, q) || _parents.contains(o.id))
+                FilterChip(
                 key: ValueKey('vs-parent-${o.id}'),
                 label: Text(o.name),
                 selected: _parents.contains(o.id),
                 onSelected: (_) => setState(() => _parents = _toggle(_parents, o.id)),
               ),
           ]),
+          ),
         ],
         const SectionLabel('Fuel Type'),
         Wrap(spacing: 8, children: [

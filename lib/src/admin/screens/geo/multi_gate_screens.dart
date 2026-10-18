@@ -14,6 +14,7 @@ import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
 import 'place_search_field.dart';
+import '../../../widgets/search_select.dart';
 
 const multiGatePlacesPage = 'admin-settings-multi-gate-places';
 const multiGateGatesPage = 'admin-settings-multi-gate-place-gates';
@@ -125,8 +126,10 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
                   message: 'Search above or add one manually to get started.',
                 )
               else
-                for (final e in entries)
-                  Card(
+                ListSearchFilter(count: entries.length, hint: 'Search places', builder: (context, q) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+  for (final e in entries)
+    if (q.isEmpty || searchSelectMatches('${e.values['name'] ?? ''} ${e.values['address'] ?? ''}', q) || false)
+      Card(
                     child: ListTile(
                       leading: const Icon(Icons.apartment),
                       title: Text('${e.values['name'] ?? 'Place'}'),
@@ -162,6 +165,7 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
                       ]),
                     ),
                   ),
+])),
             ]),
           );
         },
@@ -532,7 +536,7 @@ class _GateFormBodyState extends State<_GateFormBody> {
       const SizedBox(height: 8),
       OutlinedButton.icon(onPressed: _pickOnMap, icon: const Icon(Icons.my_location), label: const Text('Pick on map')),
       gap,
-      DropdownButtonFormField<int>(
+      SearchableDropdownFormField<int>(
         isExpanded: true,
         initialValue: f.displayPriority,
         decoration: const InputDecoration(labelText: 'Display priority', helperText: 'Lower number shows first to users.'),

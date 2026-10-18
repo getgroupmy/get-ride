@@ -20,6 +20,7 @@ import '../security/security_data.dart' show securityRepositoryProvider;
 import 'maps_data.dart';
 import 'maps_logic.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 /// How the page's Test asks `geo` as a given role and device (overridden in
 /// tests).
@@ -249,7 +250,7 @@ class _DevicesTab extends ConsumerWidget {
                   style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
+                SearchableDropdownFormField<String>(
                   // Keyed by the value so Discard shows the stored choice again.
                   key: ValueKey('maps-google-search-${settings.googleSearch}'),
                   initialValue: settings.googleSearch,
@@ -265,7 +266,7 @@ class _DevicesTab extends ConsumerWidget {
                   onChanged: canEdit ? (v) => v == null ? null : onChanged(settings.copyWith(googleSearch: v)) : null,
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
+                SearchableDropdownFormField<String>(
                   key: ValueKey('maps-smart-address-${settings.smartAddress}'),
                   initialValue: settings.smartAddress,
                   isExpanded: true,
@@ -299,7 +300,7 @@ class _DevicesTab extends ConsumerWidget {
                   style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
+                SearchableDropdownFormField<String>(
                   // Keyed by the value so Discard shows the stored choice again.
                   key: ValueKey('maps-google-satellite-${settings.googleSatellite}'),
                   initialValue: settings.googleSatellite,
@@ -315,7 +316,7 @@ class _DevicesTab extends ConsumerWidget {
                   onChanged: canEdit ? (v) => v == null ? null : onChanged(settings.copyWith(googleSatellite: v)) : null,
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
+                SearchableDropdownFormField<String>(
                   key: ValueKey('maps-google-map-${settings.googleMap}'),
                   initialValue: settings.googleMap,
                   isExpanded: true,
@@ -524,7 +525,7 @@ class _Choice extends StatelessWidget {
   final ValueChanged<String> onChanged;
 
   @override
-  Widget build(BuildContext context) => DropdownButtonFormField<String>(
+  Widget build(BuildContext context) => SearchableDropdownFormField<String>(
     initialValue: value,
     isExpanded: true,
     decoration: InputDecoration(labelText: label, isDense: true),
@@ -573,7 +574,7 @@ class _Order extends StatelessWidget {
       slots.add(
         SizedBox(
           width: 240,
-          child: DropdownButtonFormField<String>(
+          child: SearchableDropdownFormField<String>(
             key: ValueKey('$id-$i'),
             initialValue: current,
             isExpanded: true,
@@ -679,7 +680,7 @@ class _KeysTab extends ConsumerWidget {
                     style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
+                  SearchableDropdownFormField<String>(
                     // Keyed by the value so Discard shows the stored choice again.
                     key: ValueKey('maps-google-api-${settings.googleApi}'),
                     initialValue: settings.googleApi,
@@ -714,7 +715,7 @@ class _KeysTab extends ConsumerWidget {
                     style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
+                  SearchableDropdownFormField<String>(
                     // Keyed by the value so Discard shows the stored choice again.
                     key: ValueKey('maps-amazon-region-${settings.amazonRegion}'),
                     initialValue: settings.amazonRegion,
@@ -912,7 +913,7 @@ class _KeyRow extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
+            SearchableDropdownFormField<String>(
               // Keyed by the value so a key just added (or Discard) shows.
               key: ValueKey('maps-key-${slot.id}-$current'),
               initialValue: current,

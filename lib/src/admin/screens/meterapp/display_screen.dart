@@ -21,6 +21,7 @@ import 'display_store.dart';
 import 'pick_image.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 const displayPage = 'admin-settings-display';
 
@@ -463,19 +464,20 @@ class _ServiceBoxCard extends ConsumerWidget {
             trailing: const Icon(Icons.arrow_drop_down),
             enabled: canEdit,
             onTap: () async {
-              final picked = await showAdminSheet<String>(
+              final picked = await showSearchPicker<String>(
                 context,
                 title: 'Choose Service',
-                builder: (ctx) => Column(children: [
-                  ListTile(title: const Text('Default'), onTap: () => Navigator.pop(ctx, '')),
-                  if (services.isEmpty) const ListTile(title: Text('No record. Add services in Service Settings.')),
+                selected: (cfg['serviceId'] as String?) ?? '',
+                choices: [
+                  (value: '', label: 'Default', subtitle: null, leading: null),
                   for (final svc in services)
-                    ListTile(
-                      title: Text('${(svc['values'] as Map?)?['name'] ?? 'Unnamed'}'),
-                      trailing: svc['id'] == cfg['serviceId'] ? const Icon(Icons.check) : null,
-                      onTap: () => Navigator.pop(ctx, svc['id'] as String),
+                    (
+                      value: svc['id'] as String,
+                      label: '${(svc['values'] as Map?)?['name'] ?? 'Unnamed'}',
+                      subtitle: null,
+                      leading: null,
                     ),
-                ]),
+                ],
               );
               if (picked != null) await patch({'serviceId': picked.isEmpty ? null : picked});
             },

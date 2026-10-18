@@ -16,6 +16,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/side_menu_host.dart';
 import 'ev_status_panel.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart';
 
 /// Everything the linked OBD-II reader can tell about the vehicle it is
 /// plugged into (Expo `app/vehicle-information.tsx`): identity (VIN,
@@ -757,7 +758,7 @@ class _WriteDialogState extends ConsumerState<_WriteDialog> {
             Text(a.warningBody),
             if (a.id == VehicleWriteId.setProtocol) ...[
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
+              SearchableDropdownFormField<String>(
                 initialValue: _protocol,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Protocol'),

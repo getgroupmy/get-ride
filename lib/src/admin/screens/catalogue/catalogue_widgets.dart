@@ -10,6 +10,7 @@ import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import '../../../widgets/in_app_page.dart';
 import '../../../widgets/net_image.dart';
+import '../../../widgets/search_select.dart';
 
 bool canEditPage(WidgetRef ref, String page) => ref.watch(pageAccessProvider(page)) == AccessLevel.edit;
 
@@ -187,7 +188,10 @@ class AllTokenChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final all = selected.contains(allToken);
-    return Wrap(spacing: 8, runSpacing: 4, children: [
+    return ListSearchFilter(
+  count: options.length,
+  hint: 'Search',
+  builder: (context, q) => Wrap(spacing: 8, runSpacing: 4, children: [
       FilterChip(
         label: const Text('All'),
         selected: all,
@@ -195,12 +199,14 @@ class AllTokenChips extends StatelessWidget {
       ),
       if (options.isEmpty) Padding(padding: const EdgeInsets.all(8), child: Text(emptyText)),
       for (final o in options.entries)
-        FilterChip(
+        if (q.isEmpty || searchSelectMatches(o.value, q) || selected.contains(o.key))
+          FilterChip(
           label: Text(o.value),
           selected: !all && selected.contains(o.key),
           onSelected: all ? null : (_) => onChanged(toggleWithAll(selected, o.key)),
         ),
-    ]);
+    ]),
+);
   }
 }
 

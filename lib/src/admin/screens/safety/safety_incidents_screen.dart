@@ -11,6 +11,7 @@ import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 /// Red across the top of every admin screen until each SOS is acknowledged.
 class SosAdminBanner extends ConsumerWidget {
@@ -75,7 +76,26 @@ class SafetyIncidentsScreen extends ConsumerWidget {
             ? const EmptyState(icon: Icons.verified_user_outlined, title: 'No SOS alerts')
             : ListView(
                 padding: const EdgeInsets.all(16),
-                children: [for (final i in all) _IncidentCard(incident: i)],
+                children: [
+                  ListSearchFilter(
+                    count: all.length,
+                    hint: 'Search name, phone, plate, place',
+                    builder: (context, q) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final i in all)
+                          if (q.isEmpty ||
+                              searchSelectMatches(
+                                [i.reporterName, i.reporterPhone, i.partnerName, i.plate, i.vehicle, i.pickupName, i.dropName]
+                                    .whereType<String>()
+                                    .join(' '),
+                                q,
+                              ))
+                            _IncidentCard(incident: i),
+                      ],
+                    ),
+                  ),
+                ],
               ),
       ),
     );

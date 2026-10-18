@@ -10,6 +10,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/loading_skeleton.dart';
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/search_select.dart';
 
 /// Book TEKSI EV (Expo `app/teksi-ev.tsx`): the customer's nine-step car
 /// order, from choosing a model to accepting the handover. The order is
@@ -445,14 +446,17 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
         _chips(evWheelOptions, _wheel, (w) => setState(() => _wheel = w)),
         if (vehicle.accessories.isNotEmpty) ...[
           _section('Accessories'),
-          for (final a in vehicle.accessories)
-            CheckboxListTile(
+          ListSearchFilter(count: vehicle.accessories.length, hint: 'Search accessories', builder: (context, q) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+  for (final a in vehicle.accessories)
+    if (q.isEmpty || searchSelectMatches(a.name, q) || _accessoryIds.contains(a.id))
+      CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(a.name),
               subtitle: a.price > 0 ? Text('+ ${evMoney(a.price)}') : null,
               value: _accessoryIds.contains(a.id),
               onChanged: (on) => setState(() => on == true ? _accessoryIds.add(a.id) : _accessoryIds.remove(a.id)),
             ),
+])),
         ],
       ],
       const SizedBox(height: 12),
@@ -620,7 +624,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
         ),
       ]),
       const SizedBox(height: 8),
-      DropdownButtonFormField<String>(
+      SearchableDropdownFormField<String>(
         isExpanded: true,
         initialValue: evIdCountries.contains(_idCountry) ? _idCountry : 'Other',
         decoration: const InputDecoration(labelText: 'Country of issue', border: OutlineInputBorder()),

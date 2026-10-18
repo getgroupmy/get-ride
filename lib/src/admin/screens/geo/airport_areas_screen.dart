@@ -12,6 +12,7 @@ import 'geo_data.dart';
 import 'geo_logic.dart';
 import 'place_search_field.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 const airportAreasPage = 'admin-settings-airport-areas';
 
@@ -99,22 +100,14 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
   }
 
   Future<void> _pickFilter(String label, List<String> options, String current, ValueChanged<String> onPick) async {
-    final picked = await showAppDialog<String>(id: 'airport-areas.pick-filter',
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text('Filter by $label'),
-        children: [
-          SimpleDialogOption(onPressed: () => Navigator.pop(ctx, ''), child: Text('All ${label.toLowerCase()}')),
-          for (final o in options)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, o),
-              child: Row(children: [
-                Expanded(child: Text(o)),
-                if (o == current) const Icon(Icons.check, size: 18),
-              ]),
-            ),
-        ],
-      ),
+    final picked = await showSearchPicker<String>(
+      context,
+      title: 'Filter by $label',
+      selected: current,
+      choices: [
+        (value: '', label: 'All ${label.toLowerCase()}', subtitle: null, leading: null),
+        for (final o in options) (value: o, label: o, subtitle: null, leading: null),
+      ],
     );
     if (picked != null) onPick(picked);
   }

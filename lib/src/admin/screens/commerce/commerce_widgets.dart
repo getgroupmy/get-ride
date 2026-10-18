@@ -11,6 +11,7 @@ import 'countries.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/storage_image.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 /// Opens [child] as a full-screen dialog on phones and a centred, capped
 /// dialog on wide screens.
@@ -243,37 +244,17 @@ class GatewayPickerField extends ConsumerWidget {
             return <SelectedGateway>[];
           });
           if (!context.mounted) return;
-          final result = await showDialog<({SelectedGateway? g})>(
-            context: context,
-            builder: (ctx) => SimpleDialog(
-              title: const Text('Select gateway account'),
-              children: [
-                SimpleDialogOption(
-                  onPressed: () => Navigator.pop(ctx, (g: null)),
-                  child: ListTile(
-                    leading: const Icon(Icons.block),
-                    title: const Text('None (skip)'),
-                    trailing: value == null ? const Icon(Icons.check) : null,
-                  ),
-                ),
-                if (accounts.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Text('No active gateway accounts. Add one in Payment Gateways first.'),
-                  ),
-                for (final a in accounts)
-                  SimpleDialogOption(
-                    onPressed: () => Navigator.pop(ctx, (g: a)),
-                    child: ListTile(
-                      leading: const Icon(Icons.credit_card),
-                      title: Text(a.providerName),
-                      subtitle: Text('${a.accountName} · ${a.mode}'),
-                      trailing: value?.id == a.id ? const Icon(Icons.check) : null,
-                    ),
-                  ),
-              ],
-            ),
+          final picked = await showSearchPicker<String>(
+            context,
+            title: 'Select gateway account',
+            selected: value?.id ?? '',
+            choices: [
+              (value: '', label: 'None (skip)', subtitle: null, leading: const Icon(Icons.block)),
+              for (final a in accounts)
+                (value: a.id, label: a.providerName, subtitle: '${a.accountName} · ${a.mode}', leading: const Icon(Icons.credit_card)),
+            ],
           );
+          final result = picked == null ? null : (g: picked.isEmpty ? null : accounts.firstWhere((a) => a.id == picked));
           if (result != null) onChanged(result.g);
         },
         child: InputDecorator(

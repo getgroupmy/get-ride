@@ -16,7 +16,7 @@ import 'commerce_widgets.dart';
 import 'countries.dart';
 import '../geo/geo_data.dart';
 import '../geo/geo_logic.dart';
-import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 final _decimal = [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))];
 
@@ -887,23 +887,22 @@ class _InventoryFormState extends State<_InventoryForm> {
       showInfo(context, 'Add a vehicle in EV Vehicle Details first.');
       return;
     }
-    final picked = await showAppDialog<String>(id: 'ev-catalog.pick-vehicle',
-      context: context,
-      builder: (ctx) => SimpleDialog(title: const Text('Select vehicle'), children: [
+    final picked = await showSearchPicker<String>(
+      context,
+      title: 'Select vehicle',
+      selected: _vehicleId,
+      choices: [
         for (final v in widget.vehicles)
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, v.id),
-            child: ListTile(
-              leading: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: StoredImage('${v.values['imageUri'] ?? ''}', width: 56, height: 40),
-              ),
-              title: Text('${v.values['make'] ?? ''} ${v.values['model'] ?? ''}'),
-              subtitle: Text('RM ${groupedNumber(toNum(v.values['price']))}'),
-              trailing: v.id == _vehicleId ? const Icon(Icons.check) : null,
+          (
+            value: v.id,
+            label: '${v.values['make'] ?? ''} ${v.values['model'] ?? ''}',
+            subtitle: 'RM ${groupedNumber(toNum(v.values['price']))}',
+            leading: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: StoredImage('${v.values['imageUri'] ?? ''}', width: 56, height: 40),
             ),
           ),
-      ]),
+      ],
     );
     if (picked == null) return;
     setState(() {
@@ -924,9 +923,13 @@ class _InventoryFormState extends State<_InventoryForm> {
       if (items.isEmpty)
         Text(_vehicle == null ? 'Select a vehicle first.' : 'None available.', style: Theme.of(context).textTheme.bodySmall)
       else
-        Wrap(spacing: 8, runSpacing: 8, children: [
+        ListSearchFilter(
+          count: items.length,
+          hint: 'Search $title',
+          builder: (context, q) => Wrap(spacing: 8, runSpacing: 8, children: [
           for (final c in items)
-            FilterChip(
+            if (q.isEmpty || searchSelectMatches('${c['name'] ?? ''} ${c['code'] ?? ''}', q) || selected.contains('${c['id']}'))
+              FilterChip(
               avatar: priced ? null : _swatch('${c['code'] ?? ''}'),
               label: Text(priced
                   ? '${c['name'] ?? ''}${toNum(c['price']) > 0 ? ' • RM ${groupedNumber(toNum(c['price']))}' : ''}'
@@ -938,6 +941,7 @@ class _InventoryFormState extends State<_InventoryForm> {
               }),
             ),
         ]),
+        ),
     ]);
   }
 

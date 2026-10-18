@@ -18,3 +18,15 @@ When you add one:
 
 `test/page_styles_test.dart` fails when the list is stale, a raw helper is used, or
 an id is reused.
+
+## Long lists can be searched
+
+Any list the user picks from that can get long gets a search box
+(`lib/src/widgets/search_select.dart`):
+
+- Dropdowns use `SearchableDropdownFormField` (same arguments as
+  `DropdownButtonFormField`; from 8 choices it opens a searchable list).
+- One-tap pick dialogs use `showSearchPicker(...)`.
+- Long chip, tick-box or record lists sit inside `ListSearchFilter`.
+
+`test/search_select_test.dart` fails when a plain `DropdownButtonFormField` is used.

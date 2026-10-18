@@ -3,6 +3,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/ride_bidding.dart' show BiddingRegion;
 import '../push_area.dart';
+import '../../widgets/search_select.dart';
 
 /// Picks where a broadcast goes: everywhere, a region from the admin's own
 /// Regions (country -> state -> city -> suburb), or a radius around a point
@@ -37,7 +38,7 @@ class PushAreaPicker extends StatelessWidget {
       ValueChanged<String> pick, {
       bool optional = true,
     }) {
-      return DropdownButtonFormField<String>(
+      return SearchableDropdownFormField<String>(
         key: ValueKey('push-area-$key'),
         initialValue: options.contains(value) ? value : '',
         isExpanded: true,

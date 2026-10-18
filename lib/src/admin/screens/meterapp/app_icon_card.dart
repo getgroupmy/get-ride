@@ -14,6 +14,7 @@ import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 class AppIconCard extends ConsumerStatefulWidget {
   const AppIconCard({super.key, required this.canEdit});
@@ -107,7 +108,7 @@ class _AppIconCardState extends ConsumerState<AppIconCard> {
                   onChanged: edit ? (v) => _edit(c.copyWith(automatic: v)) : null,
                 ),
                 if (!c.automatic)
-                  DropdownButtonFormField<String>(
+                  SearchableDropdownFormField<String>(
                     key: const ValueKey('app-icon-fixed'),
                     initialValue: c.fixedIcon,
                     isExpanded: true,
@@ -303,7 +304,7 @@ class _WindowDialogState extends State<_WindowDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            DropdownButtonFormField<String>(
+            SearchableDropdownFormField<String>(
               key: const ValueKey('app-icon-window-icon'),
               initialValue: _icon,
               isExpanded: true,
@@ -312,7 +313,7 @@ class _WindowDialogState extends State<_WindowDialog> {
               onChanged: (v) => setState(() => _icon = v ?? _icon),
             ),
             const SizedBox(height: 8),
-            DropdownButtonFormField<IconWindowKind>(
+            SearchableDropdownFormField<IconWindowKind>(
               key: const ValueKey('app-icon-window-kind'),
               initialValue: _kind,
               isExpanded: true,
