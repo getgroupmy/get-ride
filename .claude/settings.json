@@ -28,6 +28,17 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "mcp__Supabase__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/supabase-ip-gate.sh",
+            "timeout": 15,
+            "statusMessage": "Checking office IP for Supabase access..."
+          }
+        ]
+      },
+      {
         "matcher": "Bash|Grep",
         "hooks": [
           {
