@@ -17,6 +17,9 @@ import '../../widgets/page_style_host.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 
+/// The surcharges a meter hire carries, as the base names them (0219).
+const meterSurchargeNames = ['Airport surcharge', 'Bags & passengers'];
+
 final commissionConfigProvider = FutureProvider.autoDispose<CommissionConfig>((ref) {
   ref.watchLive('app_settings');
   return ref.watch(adminRepositoryProvider).commissionConfig();
@@ -97,7 +100,12 @@ class _CommissionSettingsTabState extends ConsumerState<CommissionSettingsTab> {
         final edit = widget.canEdit && !_saving;
         final seen = ref.watch(commissionSurchargeNamesProvider).value ?? const [];
         // Names ticked before but not on a trip this year stay listed, so they can be unticked.
-        final names = <String, int>{for (final n in c.baseSurcharges) n: 0, for (final n in seen) n.name: n.trips};
+        final names = <String, int>{
+          for (final n in c.baseSurcharges) n: 0,
+          // The meter's own charges, for meter / TEKSI hires (0219).
+          for (final n in meterSurchargeNames) n: 0,
+          for (final n in seen) n.name: n.trips,
+        };
         Widget heading(String text, [String? note]) => Padding(
           padding: const EdgeInsets.fromLTRB(4, 20, 4, 6),
           child: Column(
@@ -227,8 +235,10 @@ class _CommissionSettingsTabState extends ConsumerState<CommissionSettingsTab> {
                     contentPadding: EdgeInsets.zero,
                     value: c.meterCommission,
                     title: const Text('Charge commission on meter / TEKSI trips'),
-                    subtitle: const Text('Saved now. Meter trips are kept on the driver\'s phone today; they are '
-                        'charged once they are sent to GET.ride, which comes in the next update.'),
+                    subtitle: const Text('Each hire is sent from the driver\'s phone when it ends (or when '
+                        'they are next online) and charged then, at the rate for where it began, on the fare plus '
+                        'what is ticked above: "Tolls" for the meter\'s tolls & charges, "Airport surcharge" and '
+                        '"Bags & passengers". Hires sent while this is off are not charged later.'),
                     onChanged: edit ? (v) => _set(_draft!.copyWith(meterCommission: v)) : null,
                   ),
                 ],
