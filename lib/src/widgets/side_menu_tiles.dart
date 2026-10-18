@@ -65,10 +65,19 @@ IconData menuIcon(MenuEntry e) => (e.custom ? _expoIcons[e.iconName] : _builtInI
 /// rest on top.
 void openAppRoute(BuildContext context, String route) => openRoute(GoRouter.of(context), route);
 
-void openRoute(GoRouter router, String route) {
+void openRoute(GoRouter router, String route) => routeInShell(route) ? router.go(route) : router.push(route);
+
+/// The driver's pages inside the tabbed shell (beside the rail on a wide
+/// screen), under /drive; its other pages (a trip, the vehicles, sign-up)
+/// stand over the shell.
+const driveShellPages = ['/drive/permit', '/drive/my-ride', '/drive/scheduled', '/drive/earnings', '/drive/statements', '/drive/history'];
+
+/// Whether [route] is a page of the tabbed shell (gone to, not pushed).
+bool routeInShell(String route) {
   const shell = ['/', '/trips', '/wallet', '/drive', '/account'];
-  final inShell = shell.any((r) => route == r || (r != '/' && r != '/drive' && route.startsWith('$r/')));
-  inShell ? router.go(route) : router.push(route);
+  final path = Uri.parse(route).path;
+  if (shell.any((r) => path == r || (r != '/' && r != '/drive' && path.startsWith('$r/')))) return true;
+  return driveShellPages.any((r) => path == r || path.startsWith('$r/'));
 }
 
 /// Built-in rider rows whose service has no page yet.
