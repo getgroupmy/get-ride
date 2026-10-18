@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../core/dial_countries.dart';
+import 'page_style_host.dart';
 
 /// Opens the country picker (Expo's): search by name, ISO code or dial
 /// code. Null when it was dismissed.
-Future<DialCountry?> showDialCountryPicker(BuildContext context) => showModalBottomSheet<DialCountry>(
+Future<DialCountry?> showDialCountryPicker(BuildContext context) => showAppSheet<DialCountry>(id: 'dial-country-picker',
   context: context,
   isScrollControlled: true,
   showDragHandle: true,

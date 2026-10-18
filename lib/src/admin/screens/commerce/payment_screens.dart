@@ -9,6 +9,7 @@ import '../../widgets/admin_widgets.dart';
 import 'commerce_data.dart';
 import 'commerce_logic.dart';
 import 'commerce_widgets.dart';
+import '../../../widgets/page_style_host.dart';
 
 // ===========================================================================
 // Payment Type (settings_entries / payment-type)
@@ -193,7 +194,7 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
 
   Future<void> _add(List<Entry> all) async {
     final counts = _counts(all);
-    final provider = await showDialog<GatewayProvider>(
+    final provider = await showAppDialog<GatewayProvider>(id: 'payment.add',
       context: context,
       builder: (ctx) => SimpleDialog(
         title: const Text('Choose a provider'),

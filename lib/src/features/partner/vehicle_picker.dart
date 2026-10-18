@@ -6,6 +6,7 @@ import '../../core/vehicle_assignment.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/page_style_host.dart';
 
 /// The vehicle this driver is driving right now (Drive tab), with the
 /// picker to take one and the button to hand it back for a co-driver
@@ -21,7 +22,7 @@ class _CurrentVehicleCardState extends ConsumerState<CurrentVehicleCard> {
   bool _busy = false;
 
   Future<void> _pick(List<AssignableVehicle> list) async {
-    final picked = await showModalBottomSheet<AssignableVehicle>(
+    final picked = await showAppSheet<AssignableVehicle>(id: 'vehicle-picker.pick',
       context: context,
       isScrollControlled: true,
       builder: (_) => VehiclePickerSheet(vehicles: list),
@@ -31,7 +32,7 @@ class _CurrentVehicleCardState extends ConsumerState<CurrentVehicleCard> {
   }
 
   Future<void> _handBack(AssignableVehicle v) async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'vehicle-picker.hand-back',
       context: context,
       builder: (c) => AlertDialog(
         title: Text('Hand back ${v.plate}?'),

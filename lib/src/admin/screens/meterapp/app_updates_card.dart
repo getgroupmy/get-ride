@@ -15,6 +15,7 @@ import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
 import '../../widgets/admin_widgets.dart';
 import 'app_updates_logic.dart';
+import '../../../widgets/page_style_host.dart';
 
 final _appUpdateRowsProvider = FutureProvider.autoDispose<List<SettingEntry>>((ref) {
   ref.watchLive('settings_entries');
@@ -122,7 +123,7 @@ class _AppUpdatesFormState extends ConsumerState<_AppUpdatesForm> {
       }
     }
     if (_force && !forceUpdateOn(widget.rows)) {
-      final ok = await showDialog<bool>(
+      final ok = await showAppDialog<bool>(id: 'app-updates.save',
         context: context,
         builder: (c) => AlertDialog(
           title: const Text('Turn on Force update?'),

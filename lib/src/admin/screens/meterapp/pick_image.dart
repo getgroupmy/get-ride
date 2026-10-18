@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/image_crop.dart';
+import '../../../widgets/page_style_host.dart';
 
 /// One picked image: its bytes, file name and a content type guessed from the
 /// extension (the same guess the Expo `brandingStore` makes).
@@ -41,7 +42,7 @@ bool offersCamera({bool web = kIsWeb, TargetPlatform? platform}) {
 }
 
 /// "Take photo" / "Choose from gallery"; null when dismissed.
-Future<PhotoSource?> choosePhotoSource(BuildContext context) => showModalBottomSheet<PhotoSource>(
+Future<PhotoSource?> choosePhotoSource(BuildContext context) => showAppSheet<PhotoSource>(id: 'pick-image.offers-camera',
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(

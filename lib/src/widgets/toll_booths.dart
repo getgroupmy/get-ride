@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import '../config.dart';
 import '../core/format.dart';
 import '../core/route_estimate.dart';
+import 'page_style_host.dart';
 
 /// A toll mark on the map: its name in a pill above a toll badge (Expo's
 /// ride-confirm toll marker). Tapping it lists the booths.
@@ -51,7 +52,7 @@ Marker tollMarker(TollMark m, {VoidCallback? onTap}) => Marker(
 
 /// "Toll Booths on Route": each booth with its estimated charge and, where
 /// known, its position, and the total.
-Future<void> showTollBooths(BuildContext context, RouteEstimate e) => showModalBottomSheet<void>(
+Future<void> showTollBooths(BuildContext context, RouteEstimate e) => showAppSheet<void>(id: 'toll-booths.toll-marker',
   context: context,
   showDragHandle: true,
   isScrollControlled: true,

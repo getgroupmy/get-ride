@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../my_ride/my_ride_screen.dart' show MyRideScanScreen;
+import '../../widgets/page_style_host.dart';
 
 /// The code, or null when closed. The server works out which kind it is.
 Future<String?> askDriverCode(
@@ -11,7 +12,7 @@ Future<String?> askDriverCode(
   required String title,
   required String message,
   required String action,
-}) => showModalBottomSheet<String>(
+}) => showAppSheet<String>(id: 'driver-code.ask-driver-code',
   context: context,
   isScrollControlled: true,
   builder: (_) => _DriverCodeSheet(title: title, message: message, action: action),
@@ -45,7 +46,7 @@ class _DriverCodeSheetState extends State<_DriverCodeSheet> {
 
   Future<void> _scan() async {
     final raw = await Navigator.of(context)
-        .push<String>(MaterialPageRoute(builder: (_) => const MyRideScanScreen(), fullscreenDialog: true));
+        .push<String>(AppPageRoute(id: 'driver-code.scan', builder: (_) => const MyRideScanScreen(), fullscreenDialog: true));
     if (raw != null && mounted) _done(raw);
   }
 

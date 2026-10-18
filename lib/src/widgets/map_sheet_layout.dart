@@ -7,6 +7,8 @@ import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
+import 'page_style_host.dart';
+
 /// Every bottom sheet in the app: rounded top corners and a handle to drag
 /// it by (down to close; the tall ones also up to expand).
 const appBottomSheetTheme = BottomSheetThemeData(
@@ -512,6 +514,9 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 maxChildSize: widget.locked ? widget.min : widget.max,
                 builder: (context, scroll) {
                   _scroll = scroll;
+                  // App Page Settings for the page it is on.
+                  final style = SurfaceStyle.ofPage(context);
+                  final fill = style.setColor('mapSheetColor', t.brightness) ?? t.colorScheme.surface;
                   return NotificationListener<ScrollNotification>(
                   onNotification: _onScroll,
                   child: AnimatedBuilder(
@@ -519,8 +524,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                     builder: (_, child) => Transform.translate(offset: Offset(0, _bounce.value), child: child),
                     child: Material(
                       elevation: 8,
-                      color: t.colorScheme.surface,
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                      color: fill,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(style.number('mapSheetRadius'))),
                       clipBehavior: Clip.antiAlias,
                       // The handle is pinned to the sheet's top edge: it stays in
                       // view while the content scrolls under it, and dragging it
@@ -536,7 +541,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                           PinnedHeaderSliver(
                             child: ColoredBox(
                               key: const ValueKey('map-sheet-header'),
-                              color: t.colorScheme.surface,
+                              color: fill,
                               child: SizedBox(
                                 height: 22,
                                 child: Center(
@@ -545,7 +550,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                                     width: 40,
                                     height: 4,
                                     decoration: BoxDecoration(
-                                      color: t.colorScheme.outlineVariant,
+                                      color: style.setColor('handleColor', t.brightness) ?? t.colorScheme.outlineVariant,
                                       borderRadius: BorderRadius.circular(2),
                                     ),
                                   ),

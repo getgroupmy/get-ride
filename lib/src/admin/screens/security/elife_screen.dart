@@ -13,6 +13,7 @@ import 'api_keys_screens.dart' show apiKeysPage;
 import 'elife_logic.dart';
 import 'security_data.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/page_style_host.dart';
 
 const _page = 'admin-settings-api-elife';
 
@@ -107,7 +108,7 @@ class _ElifeState extends ConsumerState<AdminElifeScreen> {
     }
     if (!mounted) return;
     setState(() => _testing = false);
-    await showDialog<void>(
+    await showAppDialog<void>(id: 'elife.test',
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(result.ok ? 'Connection OK' : 'Connection failed'),

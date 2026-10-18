@@ -12,6 +12,7 @@ import 'commerce_data.dart';
 import 'commerce_logic.dart';
 import 'commerce_widgets.dart';
 import 'ev_orders.dart';
+import '../../../widgets/page_style_host.dart';
 
 Color _toneColor(BuildContext context, Object? status) => switch (evOrderStatusTone(status)) {
       EvOrderStatusTone.success => Colors.green,
@@ -159,7 +160,7 @@ class _OrderDetail extends ConsumerWidget {
       return <Entry>[];
     });
     if (!context.mounted) return;
-    final picked = await showDialog<Entry>(
+    final picked = await showAppDialog<Entry>(id: 'ev-orders.assign',
       context: context,
       builder: (ctx) => SimpleDialog(
         title: Text('Assign Delivery Advisor · ${advisors.length} configured'),

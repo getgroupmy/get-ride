@@ -13,6 +13,7 @@ import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
 import 'classic_paired_sheet.dart';
 import 'meter_providers.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Receipt printer settings (Expo `app/meter-printer.tsx`): the driver's
 /// saved mini thermal printers, which one receipts go to, a test print and a
@@ -81,7 +82,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
   }
 
   Future<void> _delete(SavedPrinter p) async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'printer.delete',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Remove printer?'),
@@ -101,7 +102,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
 
   Future<void> _add() async {
     final classic = printerTransportAvailability(classicPrinterTransport, currentPrinterPlatform);
-    final kind = await showModalBottomSheet<String>(
+    final kind = await showAppSheet<String>(id: 'printer.add',
       context: context,
       builder: (c) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -133,7 +134,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
     );
     if (kind == null || !mounted) return;
     final added = switch (kind) {
-      'wifi' => await showDialog<SavedPrinter>(context: context, builder: (_) => const _AddWifiPrinterDialog()),
+      'wifi' => await showAppDialog<SavedPrinter>(id: 'printer.add-2', context: context, builder: (_) => const _AddWifiPrinterDialog()),
       classicPrinterTransport => await _pickClassicPrinter(),
       _ => await _pickBlePrinter(),
     };
@@ -153,7 +154,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
   Future<SavedPrinter?> _pickBlePrinter() async {
     final readers = await ref.read(obdAdapterStoreProvider).load();
     if (!mounted) return null;
-    final d = await showModalBottomSheet<BleSighting>(
+    final d = await showAppSheet<BleSighting>(id: 'printer.pick-ble-printer',
       context: context,
       isScrollControlled: true,
       builder: (_) => BleScanSheet(
@@ -171,7 +172,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text(printerIsReaderMessage)));
       return null;
     }
-    return showDialog<SavedPrinter>(
+    return showAppDialog<SavedPrinter>(id: 'printer.pick-ble-printer-2',
       context: context,
       builder: (_) => _BluetoothPrinterDialog(deviceId: d.deviceId, deviceName: d.name, classic: false),
     );
@@ -180,13 +181,13 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
   Future<SavedPrinter?> _pickClassicPrinter() async {
     final readers = await ref.read(obdAdapterStoreProvider).load();
     if (!mounted) return null;
-    final d = await showModalBottomSheet<BondedBluetoothDevice>(
+    final d = await showAppSheet<BondedBluetoothDevice>(id: 'printer.pick-classic-printer',
       context: context,
       isScrollControlled: true,
       builder: (_) => ClassicPairedSheet(readers: readers),
     );
     if (d == null || !mounted) return null;
-    return showDialog<SavedPrinter>(
+    return showAppDialog<SavedPrinter>(id: 'printer.pick-classic-printer-2',
       context: context,
       builder: (_) => _BluetoothPrinterDialog(deviceId: d.address, deviceName: d.name, classic: true),
     );

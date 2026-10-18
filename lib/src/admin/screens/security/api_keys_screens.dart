@@ -11,6 +11,7 @@ import '../maps/maps_screen.dart' show GoogleJsCheck;
 import 'api_keys_logic.dart';
 import 'security_data.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/page_style_host.dart';
 
 /// Expo gates the provider, service and key screens (and Elife) on this key.
 const apiKeysPage = 'admin-settings-api-keys';
@@ -37,7 +38,7 @@ Future<bool> _mutate(BuildContext context, WidgetRef ref, List<ApiProviderDef> F
 
 Future<String?> _askText(BuildContext context, String title, String label, {String? hint}) async {
   final c = TextEditingController();
-  final v = await showDialog<String>(
+  final v = await showAppDialog<String>(id: 'api-keys.ask-text',
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(title),
@@ -437,7 +438,7 @@ class AdminApiKeysScreen extends ConsumerWidget {
     if (context.mounted) await _mutate(context, ref, (l) => removeKey(l, providerId, serviceId, k.id), success: 'Key removed');
   }
 
-  Future<void> _test(BuildContext context, List<ApiKeyEntry> keys, bool canSave) => showDialog<void>(
+  Future<void> _test(BuildContext context, List<ApiKeyEntry> keys, bool canSave) => showAppDialog<void>(id: 'api-keys.delete',
         context: context,
         builder: (_) => KeyTestDialog(providerId: providerId, serviceId: serviceId, keys: keys, canSave: canSave),
       );

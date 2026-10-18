@@ -21,6 +21,7 @@ import 'people/people_data.dart';
 import 'people/vehicle_screens.dart' show confirmVehicleApprovable;
 import 'security/sign_in_security_card.dart';
 import '../../data/live_tables.dart';
+import '../../widgets/page_style_host.dart';
 
 final adminUsersProvider = FutureProvider.autoDispose((ref) {
   ref.watchAdminLive('profiles');
@@ -226,7 +227,7 @@ Widget _statusPicker({
 /// Why a partner is being rejected or blocked, shown to them on the Drive
 /// tab. Optional; null when the admin cancels the change.
 Future<String?> _askStatusReason(BuildContext context, String status, String? current) =>
-    showDialog<String>(context: context, builder: (_) => _StatusReasonDialog(status: status, current: current));
+    showAppDialog<String>(id: 'people.ask-status-reason', context: context, builder: (_) => _StatusReasonDialog(status: status, current: current));
 
 /// The reason dialog. It owns its text controller, so the controller lives
 /// until the dialog has finished closing (disposing it as soon as the dialog

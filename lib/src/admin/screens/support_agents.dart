@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/material.dart';
 import '../../widgets/net_image.dart';
+import '../../widgets/page_style_host.dart';
 
 /// An admin who can handle support. [priority] is their `admin_access.support`
 /// tag: lowest first; untagged agents come after, by name.
@@ -43,7 +44,7 @@ Future<SupportAgent?> showSupportAgentPicker(
     for (final a in agents)
       if (a.id != meId) a,
   ];
-  return showDialog<SupportAgent>(
+  return showAppDialog<SupportAgent>(id: 'support-agents.show-support-agent-picker',
     context: context,
     builder: (c) => SimpleDialog(
       key: const ValueKey('support-agent-picker'),

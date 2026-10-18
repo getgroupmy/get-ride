@@ -14,6 +14,7 @@ import '../../../data/reliability_repository.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/loading_skeleton.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../widgets/page_style_host.dart';
 
 const bleReportPage = 'admin-ble-report';
 
@@ -519,7 +520,7 @@ class _TripsCard extends StatelessWidget {
   );
 }
 
-Future<void> _showTrip(BuildContext context, BleReportTrip trip) => showModalBottomSheet<void>(
+Future<void> _showTrip(BuildContext context, BleReportTrip trip) => showAppSheet<void>(id: 'ble-report.trips-card',
   context: context,
   showDragHandle: true,
   builder: (context) {

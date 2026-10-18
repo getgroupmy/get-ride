@@ -13,6 +13,7 @@ import '../../../providers.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../widgets/page_style_host.dart';
 
 class AppIconCard extends ConsumerStatefulWidget {
   const AppIconCard({super.key, required this.canEdit});
@@ -53,7 +54,7 @@ class _AppIconCardState extends ConsumerState<AppIconCard> {
 
   Future<void> _editWindow({int? index}) async {
     final c = _draft!;
-    final w = await showDialog<IconWindow>(
+    final w = await showAppDialog<IconWindow>(id: 'app-icon.edit-window',
       context: context,
       builder: (_) => _WindowDialog(window: index == null ? null : c.schedule[index]),
     );

@@ -11,6 +11,7 @@ import '../widgets/admin_widgets.dart';
 import 'geo/geo_data.dart';
 import 'geo/geo_logic.dart';
 import '../../data/live_tables.dart';
+import '../../widgets/page_style_host.dart';
 
 final fareTariffRowsProvider = FutureProvider.autoDispose((ref) {
   ref.watchLive('fare_tariffs');
@@ -56,7 +57,7 @@ class _AdminFareTariffsScreenState extends ConsumerState<AdminFareTariffsScreen>
   TariffFilter _filter = const TariffFilter();
 
   Future<void> _edit(FareTariff? card, {FareTariff? draft}) async {
-    final result = await showDialog<FareTariff>(
+    final result = await showAppDialog<FareTariff>(id: 'fare-tariffs.edit',
       context: context,
       builder: (_) => TariffDialog(card: card, draft: draft),
     );

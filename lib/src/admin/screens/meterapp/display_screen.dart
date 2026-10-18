@@ -20,6 +20,7 @@ import 'display_logic.dart';
 import 'display_store.dart';
 import 'pick_image.dart';
 import '../../../widgets/net_image.dart';
+import '../../../widgets/page_style_host.dart';
 
 const displayPage = 'admin-settings-display';
 
@@ -337,7 +338,7 @@ class _DisplayBody extends ConsumerWidget {
                   title: Text(label),
                   subtitle: const Text('Rename, hide, reorder, link pages or add custom entries'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                  onTap: () => Navigator.of(context).push(AppPageRoute(id: 'display.stepper',
                     builder: (_) => SideMenuEditorScreen(menu: menu),
                   )),
                 ),

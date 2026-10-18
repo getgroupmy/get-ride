@@ -19,6 +19,7 @@ import '../../widgets/admin_widgets.dart';
 import '../security/security_data.dart' show securityRepositoryProvider;
 import 'maps_data.dart';
 import 'maps_logic.dart';
+import '../../../widgets/page_style_host.dart';
 
 /// How the page's Test asks `geo` as a given role and device (overridden in
 /// tests).
@@ -420,7 +421,7 @@ class _DeviceCard extends StatelessWidget {
                   key: ValueKey('maps-test-$device'),
                   icon: const Icon(Icons.play_circle_outline),
                   label: const Text('Test'),
-                  onPressed: () => showDialog<void>(
+                  onPressed: () => showAppDialog<void>(id: 'maps.heading',
                     context: context,
                     builder: (_) => MapTestDialog(role: role, device: device, profile: profile),
                   ),
@@ -984,7 +985,7 @@ class _UsageTab extends ConsumerWidget {
                       ),
                       // Its failures, the latest 30 first.
                       onTap: r.failures > 0
-                          ? () => showDialog<void>(
+                          ? () => showAppDialog<void>(id: 'maps.usage-tab',
                               context: context,
                               builder: (_) => MapErrorsDialog(provider: r.provider, kind: r.kind),
                             )

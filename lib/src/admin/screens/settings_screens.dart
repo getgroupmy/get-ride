@@ -13,6 +13,7 @@ import '../admin_registry.dart';
 import '../admin_settings_models.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Looks up a category; unknown keys become a raw `settings_entries` editor.
 SettingsCategory categoryFor(String key) =>
@@ -136,7 +137,7 @@ class AdminCategoryScreen extends ConsumerWidget {
 
   Future<void> _edit(BuildContext context, WidgetRef ref, List<SettingEntry> all, [SettingEntry? entry]) async {
     final c = category;
-    final values = await showDialog<Map<String, dynamic>>(
+    final values = await showAppDialog<Map<String, dynamic>>(id: 'settings.edit',
       context: context,
       builder: (_) => c.isRaw ? _RawEditor(entry: entry) : _FieldEditor(category: c, entry: entry),
     );

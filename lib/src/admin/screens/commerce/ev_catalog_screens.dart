@@ -16,6 +16,7 @@ import 'commerce_widgets.dart';
 import 'countries.dart';
 import '../geo/geo_data.dart';
 import '../geo/geo_logic.dart';
+import '../../../widgets/page_style_host.dart';
 
 final _decimal = [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))];
 
@@ -886,7 +887,7 @@ class _InventoryFormState extends State<_InventoryForm> {
       showInfo(context, 'Add a vehicle in EV Vehicle Details first.');
       return;
     }
-    final picked = await showDialog<String>(
+    final picked = await showAppDialog<String>(id: 'ev-catalog.pick-vehicle',
       context: context,
       builder: (ctx) => SimpleDialog(title: const Text('Select vehicle'), children: [
         for (final v in widget.vehicles)

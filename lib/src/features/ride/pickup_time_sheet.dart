@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/pickup_slots.dart';
 import '../../core/scheduled_rides.dart';
 import 'confirm_parts.dart' show confirmAccent;
+import '../../widgets/page_style_host.dart';
 
 /// The pickup sheet; null when it is closed without confirming.
 Future<DateTime?> showPickupTimeSheet(
@@ -15,7 +16,7 @@ Future<DateTime?> showPickupTimeSheet(
   DateTime? initial,
   String? note,
   DateTime Function() clock = DateTime.now,
-}) => showModalBottomSheet<DateTime>(
+}) => showAppSheet<DateTime>(id: 'ride.pickup-time',
   context: context,
   isScrollControlled: true,
   builder: (_) => PickupTimeSheet(config: config, initial: initial, note: note, clock: clock),

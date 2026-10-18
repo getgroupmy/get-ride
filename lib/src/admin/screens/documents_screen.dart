@@ -10,6 +10,7 @@ import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
 import '../../data/live_tables.dart';
+import '../../widgets/page_style_host.dart';
 
 final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
   (ref, table) async {
@@ -218,7 +219,7 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
     final start = TextEditingController(text: v('start_date').split('T').first);
     final expiry = TextEditingController(text: v('expiry_date').split('T').first);
     var pwd = d['is_pwd'] == true;
-    final patch = await showDialog<Map<String, dynamic>>(
+    final patch = await showAppDialog<Map<String, dynamic>>(id: 'admin-documents.edit-details',
       context: sheet,
       builder: (c) => StatefulBuilder(
         builder: (c, set) {

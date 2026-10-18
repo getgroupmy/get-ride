@@ -9,6 +9,8 @@ import '../../core/fare.dart';
 import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/net_image.dart';
+import '../../core/page_styles.dart' show homeSurface;
+import '../../widgets/page_style_host.dart';
 
 /// Whether [uri] is a picture that loads over the network (and so shows a
 /// skeleton first). Pure.
@@ -156,7 +158,7 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
   static const infoBlue = VehicleTypeBar.infoBlue;
   static Color fillFor(Brightness b) => VehicleTypeBar.fillFor(b);
 
-  void _info(BuildContext context, RideService s) => showModalBottomSheet<void>(
+  void _info(BuildContext context, RideService s) => showAppSheet<void>(id: 'home.vehicle-description',
     context: context,
     showDragHandle: true,
     builder: (c) => SafeArea(
@@ -185,8 +187,11 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
     final muted = t.colorScheme.onSurfaceVariant;
     final dark = t.brightness == Brightness.dark;
     final onFill = dark ? Colors.white : t.colorScheme.onSurface;
+    // App Page Settings → Home → Vehicle bar.
+    final style = SurfaceStyle.of(context, homeSurface);
+    final radius = BorderRadius.circular(style.number('vehicleRadius'));
     return SizedBox(
-      height: 66,
+      height: style.number('vehicleBarHeight'),
       child: ListView.separated(
         key: const ValueKey('vehicle-type-bar'),
         scrollDirection: Axis.horizontal,
@@ -201,10 +206,10 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
           // with the name in full and the seats pushed to its right edge.
           return Material(
             key: ValueKey('vehicle-type-${s.name}'),
-            color: on ? fillFor(t.brightness) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
+            color: on ? style.color('vehicleSelected', t.brightness) ?? fillFor(t.brightness) : Colors.transparent,
+            borderRadius: radius,
             child: InkWell(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: radius,
               onTap: ready ? () => widget.onSelect(s) : null,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
@@ -218,7 +223,7 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
                           // Flush with the name's left edge, as inDrive's.
                           uriImage(
                             s.image,
-                            width: 56,
+                            width: style.number('vehicleImageWidth'),
                             height: 26,
                             alignment: Alignment.centerLeft,
                             fallback: Icon(Icons.directions_car, size: 24, color: fg),
@@ -231,7 +236,11 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
                               key: ValueKey('vehicle-info-${s.name}'),
                               radius: 18,
                               onTap: () => widget.onInfo != null ? widget.onInfo!(s) : _info(context, s),
-                              child: const Icon(Icons.info_outline, size: 22, color: infoBlue),
+                              child: Icon(
+                                Icons.info_outline,
+                                size: style.number('infoIconSize'),
+                                color: style.color('infoIcon', t.brightness) ?? infoBlue,
+                              ),
                             ),
                           ],
                         ],
@@ -243,7 +252,11 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
                             s.name,
                             maxLines: 1,
                             softWrap: false,
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: fg),
+                            style: TextStyle(
+                              fontSize: style.number('vehicleNameSize'),
+                              fontWeight: FontWeight.w500,
+                              color: fg,
+                            ),
                           ),
                           on ? const Spacer() : const SizedBox(width: 6),
                           if (on) const SizedBox(width: 12),
@@ -272,25 +285,31 @@ class HomeSearchPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    // App Page Settings → Home → Search bar.
+    final style = SurfaceStyle.of(context, homeSurface);
+    final radius = BorderRadius.circular(style.number('searchRadius'));
     return Material(
-      color: t.colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(28),
+      color: style.color('searchColor', t.brightness) ?? t.colorScheme.surfaceContainerHighest,
+      borderRadius: radius,
       child: InkWell(
         key: const ValueKey('home-search'),
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: radius,
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: EdgeInsets.symmetric(horizontal: 18, vertical: style.number('searchPadding')),
           child: Row(
             children: [
-              const Icon(Icons.search, size: 22),
+              Icon(Icons.search, size: style.number('searchIconSize')),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   'Where to & for how much?',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
+                  style: t.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    fontSize: style.number('searchFontSize'),
+                  ),
                 ),
               ),
             ],

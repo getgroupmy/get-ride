@@ -25,6 +25,7 @@ import '../widgets/admin_widgets.dart';
 import 'reliability_card.dart';
 import 'sms_fallback_card.dart';
 import 'sms_limits_card.dart';
+import '../../widgets/page_style_host.dart';
 
 const messagingPage = 'admin-settings-messaging';
 
@@ -451,7 +452,7 @@ class _DevicesCard extends ConsumerWidget {
 
   Future<void> _rename(BuildContext context, WidgetRef ref, MessagingDevice d) async {
     final c = TextEditingController(text: d.label ?? '');
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'messaging.rename',
       context: context,
       builder: (x) => AlertDialog(
         title: const Text('Device name'),
@@ -682,7 +683,7 @@ class _QueueCardState extends ConsumerState<_QueueCard> {
 /// until it is removed from Devices.
 Future<void> showGatewayPairingCode(BuildContext context, WidgetRef ref) async {
   final label = TextEditingController();
-  final name = await showDialog<String>(
+  final name = await showAppDialog<String>(id: 'messaging.show-gateway-pairing-code',
     context: context,
     builder: (c) => AlertDialog(
       title: const Text('Pair a gateway phone'),
@@ -708,7 +709,7 @@ Future<void> showGatewayPairingCode(BuildContext context, WidgetRef ref) async {
   final code = answer?['code'] as String?;
   if (!ok || code == null || !context.mounted) return;
   final expires = DateTime.tryParse('${answer?['expires_at']}')?.toLocal();
-  await showDialog<void>(
+  await showAppDialog<void>(id: 'messaging.show-gateway-pairing-code-2',
     context: context,
     builder: (c) {
       final t = Theme.of(c);

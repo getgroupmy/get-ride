@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/fare_offer.dart';
+import '../../widgets/page_style_host.dart';
 
 /// One −/+ press on the rider's offer: [onAdjust] with the new adjustment.
 /// Past the allowed range it calls [onLimit] (the confirm sheet shakes the
@@ -37,7 +38,7 @@ Future<void> editFareOffer(
   required String Function(double) money,
   required ValueChanged<double> onAdjust,
 }) async {
-  final fare = await showModalBottomSheet<double>(
+  final fare = await showAppSheet<double>(id: 'fare-offer-controls.edit-fare-offer',
     context: context,
     isScrollControlled: true,
     builder: (_) => FareOfferSheet(recommended: recommended, current: recommended + adjust, money: money),

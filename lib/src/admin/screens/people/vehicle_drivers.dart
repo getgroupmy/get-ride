@@ -9,6 +9,7 @@ import '../../../widgets/loading_skeleton.dart';
 import '../../widgets/admin_widgets.dart';
 import 'people_widgets.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/page_style_host.dart';
 
 final _vehicleDriversProvider = FutureProvider.autoDispose.family<List<VehicleDriver>, String>(
   (ref, id) {
@@ -50,7 +51,7 @@ class VehicleDriversSection extends ConsumerWidget {
                   icon: const Icon(Icons.person_add_alt),
                   label: const Text('Add driver'),
                   onPressed: () async {
-                    final added = await showDialog<bool>(
+                    final added = await showAppDialog<bool>(id: 'admin-vehicle.add-driver',
                       context: context,
                       builder: (_) => _AddDriverDialog(vehicleId: vehicleId),
                     );

@@ -11,6 +11,7 @@ import '../admin_providers.dart';
 import '../profile_search.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
+import '../../widgets/page_style_host.dart';
 
 final commissionRatesProvider = FutureProvider.autoDispose((ref) {
   ref.watchLive('commission_rates');
@@ -39,7 +40,7 @@ class AdminCommissionScreen extends ConsumerWidget {
   const AdminCommissionScreen({super.key});
 
   Future<void> _edit(BuildContext context, WidgetRef ref, [Map<String, dynamic>? row]) async {
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showAppDialog<Map<String, dynamic>>(id: 'commission.edit',
       context: context,
       builder: (_) => _RateDialog(row: row, searchPeople: ref.read(adminRepositoryProvider).searchPeople),
     );

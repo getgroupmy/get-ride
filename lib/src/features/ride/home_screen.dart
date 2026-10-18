@@ -69,6 +69,7 @@ import '../my_qr/direct_booking.dart';
 import '../../core/my_qr.dart' show QrBookingError;
 import '../../core/early_end.dart' show serviceTypeIds;
 import '../my_ride/my_ride_settings.dart';
+import '../../widgets/page_style_host.dart';
 
 enum _PinTarget { none, pickup, drop }
 
@@ -468,7 +469,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _showExpired(RideRequest r) {
     if (_expiredShownFor(r.id) || ModalRoute.of(context)?.isCurrent != true) return;
-    showDialog<void>(
+    showAppDialog<void>(id: 'home.show-expired',
       context: context,
       builder: (c) => AlertDialog(
         key: const ValueKey('home-request-expired'),
@@ -657,7 +658,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _routing = false;
     });
     if (ai != null && ai.unavailable && mounted) {
-      unawaited(showDialog<void>(
+      unawaited(showAppDialog<void>(id: 'home.update-route',
         context: context,
         builder: (c) => AlertDialog(
           key: const ValueKey('traffic-unavailable'),
@@ -928,7 +929,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _openOfferFare() async {
     final style = currencyStyles[_currency.trim().toUpperCase()];
     final r = await Navigator.of(context).push<OfferFareResult>(
-      MaterialPageRoute(
+      AppPageRoute(id: 'home.open-offer-fare',
         // Rebuilt on every change here: a stop added, removed or moved there
         // changes the route label and, once the route is worked out, the fare.
         builder: (_) => ValueListenableBuilder<int>(
@@ -1223,7 +1224,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// alert); rides for others are not held back by it.
   Future<void> _find() async {
     if (!_forOther && _scheduleAt == null && _ongoing != null) {
-      final open = await showDialog<bool>(
+      final open = await showAppDialog<bool>(id: 'home.find',
         context: context,
         builder: (c) => AlertDialog(
           key: const ValueKey('ride-in-progress'),
@@ -1261,7 +1262,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             regionServices: _boxServices(ref.watch(serviceBoxNamesProvider).value ?? const {}),
           )
         : const <ServiceBoxView>[];
-    void comingSoon(String body) => showDialog<void>(
+    void comingSoon(String body) => showAppDialog<void>(id: 'home.coming-soon',
           context: context,
           builder: (c) => AlertDialog(
             title: const Text('Coming Soon'),

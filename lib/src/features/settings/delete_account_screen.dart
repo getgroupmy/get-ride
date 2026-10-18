@@ -8,6 +8,7 @@ import '../../core/account_deletion.dart';
 import '../../data/account_deletion_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/page_style_host.dart';
 
 final accountDeletionCheckProvider = FutureProvider.autoDispose<AccountDeletionCheck>(
   (ref) => ref.watch(accountDeletionRepositoryProvider).check(),
@@ -96,7 +97,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
       setState(() => _error = problem);
       return;
     }
-    await showDialog<void>(
+    await showAppDialog<void>(id: 'delete-account.run',
       context: context,
       barrierDismissible: false,
       builder: (c) => AlertDialog(

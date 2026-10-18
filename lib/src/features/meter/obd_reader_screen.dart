@@ -19,6 +19,7 @@ import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
 import 'ev_capture_sheet.dart';
 import 'ev_status_panel.dart';
+import '../../widgets/page_style_host.dart';
 
 /// The MFi accessories paired with this iPhone. Overridden in tests.
 final mfiAccessoriesProvider = Provider<Future<List<MfiAccessory>> Function()>((_) => listMfiAccessories);
@@ -122,7 +123,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
   }
 
   Future<void> _delete(SavedObdAdapter a) async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'obd-reader.delete',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Remove reader?'),
@@ -143,7 +144,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
   }
 
   Future<void> _add() async {
-    final kind = await showModalBottomSheet<String>(
+    final kind = await showAppSheet<String>(id: 'obd-reader.add',
       context: context,
       builder: (c) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -173,7 +174,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
     );
     if (kind == null || !mounted) return;
     final added = switch (kind) {
-      'wifi' => await showDialog<SavedObdAdapter>(context: context, builder: (_) => const _AddWifiReaderDialog()),
+      'wifi' => await showAppDialog<SavedObdAdapter>(id: 'obd-reader.add-2', context: context, builder: (_) => const _AddWifiReaderDialog()),
       'mfi' => await _pickMfiReader(),
       _ => await _pickBleReader(),
     };
@@ -201,7 +202,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
     }
     if (!mounted) return null;
     final ordered = [...paired.where(isLikelyMfiReader), ...paired.where((a) => !isLikelyMfiReader(a))];
-    final picked = await showModalBottomSheet<MfiAccessory>(
+    final picked = await showAppSheet<MfiAccessory>(id: 'obd-reader.pick-mfi-reader',
       context: context,
       builder: (c) => SafeArea(
         child: Column(
@@ -240,7 +241,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
   }
 
   Future<SavedObdAdapter?> _pickBleReader() async {
-    final d = await showModalBottomSheet<BleSighting>(
+    final d = await showAppSheet<BleSighting>(id: 'obd-reader.pick-ble-reader',
       context: context,
       isScrollControlled: true,
       builder: (_) => BleScanSheet(

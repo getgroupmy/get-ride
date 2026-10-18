@@ -12,6 +12,7 @@ import '../../widgets/common.dart';
 import '../profile/emergency_contacts_screen.dart';
 import 'voice_protection_card.dart';
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Opens [uri] (overridden in tests).
 typedef UriLauncher = Future<bool> Function(Uri uri);
@@ -32,7 +33,7 @@ Future<void> sendSos(
   Future<({double lat, double lng})?> Function()? locate,
 }) async {
   if (contacts.isEmpty) {
-    final add = await showDialog<bool>(
+    final add = await showAppDialog<bool>(id: 'safety.no-emergency-contacts',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('No emergency contacts'),
@@ -51,7 +52,7 @@ Future<void> sendSos(
     return;
   }
   final names = contacts.map((c) => c.name).join(', ');
-  final ok = await showDialog<bool>(
+  final ok = await showAppDialog<bool>(id: 'safety.send-sos',
     context: context,
     builder: (c) => AlertDialog(
       title: const Text('Send Emergency SOS?'),

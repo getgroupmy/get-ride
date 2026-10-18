@@ -17,6 +17,7 @@ import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../widgets/page_style_host.dart';
 
 const evProfilesPage = 'admin-settings-ev-profiles';
 
@@ -42,7 +43,7 @@ class AdminEvProfilesScreen extends ConsumerWidget {
   const AdminEvProfilesScreen({super.key});
 
   Future<void> _open(BuildContext context, EvProfile? p) =>
-      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => EvProfileEditor(profile: p)));
+      Navigator.of(context).push(AppPageRoute<void>(id: 'admin-ev.profile-editor', builder: (_) => EvProfileEditor(profile: p)));
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -223,7 +224,7 @@ class _CapturesTab extends ConsumerWidget {
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () =>
                             Navigator.of(context)
-                                .push(MaterialPageRoute<void>(builder: (_) => ObdCaptureView(capture: c))),
+                                .push(AppPageRoute<void>(id: 'ev-profiles.captures-tab', builder: (_) => ObdCaptureView(capture: c))),
                       ),
                     ),
                 ],

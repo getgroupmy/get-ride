@@ -14,6 +14,7 @@ import '../../widgets/common.dart';
 import '../../widgets/map_credit.dart';
 import '../../widgets/map_tiles.dart';
 import 'place_search.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Opens the form for [place] (a new one when it has no id). True when it
 /// was saved or deleted. A saved place is edited in a sheet like the route
@@ -21,7 +22,7 @@ import 'place_search.dart';
 Future<bool> showSavedPlaceForm(BuildContext context, SavedPlace place, {LatLng? near}) async {
   final form = SavedPlaceForm(place: place, near: near);
   if (place.id != null && MediaQuery.sizeOf(context).width < 720) {
-    return await showModalBottomSheet<bool>(
+    return await showAppSheet<bool>(id: 'saved-place-form.show-saved-place-form',
           context: context,
           isScrollControlled: true,
           useSafeArea: true,
@@ -32,7 +33,7 @@ Future<bool> showSavedPlaceForm(BuildContext context, SavedPlace place, {LatLng?
         false;
   }
   return await Navigator.of(context).push<bool>(
-        MaterialPageRoute(fullscreenDialog: true, builder: (_) => form),
+        AppPageRoute(id: 'saved-place-form.show-saved-place-form-2', fullscreenDialog: true, builder: (_) => form),
       ) ??
       false;
 }
@@ -117,7 +118,7 @@ class _SavedPlaceFormState extends ConsumerState<SavedPlaceForm> {
   }
 
   Future<void> _delete() async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'saved-place-form.delete',
       context: context,
       builder: (c) => AlertDialog(
         title: Text('Delete ${_place.title}?'),

@@ -5,6 +5,7 @@ import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../admin_shell.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Standard admin page: title bar, optional actions, read-only banner.
 class AdminPage extends ConsumerWidget {
@@ -147,7 +148,7 @@ Future<bool> runAdminAction(BuildContext context, Future<void> Function() action
 }
 
 Future<bool> confirm(BuildContext context, String title, String message, {String ok = 'Confirm'}) async =>
-    await showDialog<bool>(
+    await showAppDialog<bool>(id: 'admin-widgets.confirm',
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(title),
@@ -198,7 +199,7 @@ Future<T?> showAdminSheet<T>(BuildContext context, {required String title, requi
       ]);
 
   if (MediaQuery.sizeOf(context).width >= 900) {
-    return showGeneralDialog<T>(
+    return showAppGeneralDialog<T>(id: 'admin.form-panel',
       context: context,
       barrierDismissible: true,
       barrierLabel: title,
@@ -211,7 +212,7 @@ Future<T?> showAdminSheet<T>(BuildContext context, {required String title, requi
       ),
     );
   }
-  return showModalBottomSheet<T>(
+  return showAppSheet<T>(id: 'admin.form-sheet',
     context: context,
     isScrollControlled: true,
     useSafeArea: true,

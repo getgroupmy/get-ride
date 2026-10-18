@@ -14,6 +14,7 @@ import 'people_logic.dart';
 import 'people_widgets.dart';
 import 'vehicle_drivers.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/page_style_host.dart';
 
 /// Whether a vehicle may be approved (Expo `runApprovalDocCheck`): only
 /// once every one of its documents is approved. Otherwise says why, offers
@@ -35,7 +36,7 @@ Future<bool> confirmVehicleApprovable(
   final msg = check?.blockMessage(plate) ??
       (check == null && !documentsOk ? '$plate has documents that still need review. Approve them first.' : null);
   if (msg == null) return true;
-  final review = await showDialog<bool>(
+  final review = await showAppDialog<bool>(id: 'vehicle.confirm-vehicle-approvable',
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(check != null && !check.hasAny ? 'No documents uploaded' : 'Documents not fully approved'),

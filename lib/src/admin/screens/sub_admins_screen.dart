@@ -12,6 +12,7 @@ import '../profile_search.dart';
 import '../sub_admin_grants.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
+import '../../widgets/page_style_host.dart';
 
 typedef _GrantsView = ({List<AdminGrant> grants, Map<String, Map<String, dynamic>> people});
 
@@ -51,7 +52,7 @@ class _AdminSubAdminsScreenState extends ConsumerState<AdminSubAdminsScreen> {
 
   Future<void> _edit(_GrantsView view, {String? profileId}) async {
     final saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
+      AppPageRoute(id: 'sub-admins.edit',
         fullscreenDialog: true,
         builder: (_) => GrantEditorScreen(
           allGrants: view.grants,

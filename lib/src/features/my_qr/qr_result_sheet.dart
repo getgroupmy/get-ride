@@ -27,6 +27,7 @@ import '../my_ride/my_ride_parts.dart'
     show FavouriteDriverTile, addFavouriteMessage, myRideUnavailableMessage, myRideWait;
 import '../my_ride/my_ride_screen.dart' show showAddFavouriteSheet;
 import 'direct_booking.dart';
+import '../../widgets/page_style_host.dart';
 
 /// A driver's code opened while signed out: where to come back to once
 /// signed in (the router sends the first signed-in landing there).
@@ -70,7 +71,7 @@ Future<void> openScannedGetQr(BuildContext context, WidgetRef ref, String raw) a
   }
 }
 
-Future<void> _sheet(BuildContext context, Widget Function(VoidCallback close) child) => showModalBottomSheet<void>(
+Future<void> _sheet(BuildContext context, Widget Function(VoidCallback close) child) => showAppSheet<void>(id: 'qr-result.open-scanned-get-qr',
   context: context,
   isScrollControlled: true,
   showDragHandle: true,

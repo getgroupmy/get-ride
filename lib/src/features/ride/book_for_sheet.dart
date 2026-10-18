@@ -3,12 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/book_for.dart';
 import '../profile/emergency_contacts_screen.dart' show contactPickerProvider;
+import '../../widgets/page_style_host.dart';
 
 /// "Someone else": the passenger's name and phone, typed (or picked from
 /// the contacts) in a modal rather than on the confirm sheet. Null when it
 /// is closed without Done.
 Future<BookedFor?> showBookForSheet(BuildContext context, {String name = '', String phone = ''}) =>
-    showModalBottomSheet<BookedFor>(
+    showAppSheet<BookedFor>(id: 'book-for.show-book-for-sheet',
       context: context,
       isScrollControlled: true,
       builder: (_) => _BookForSheet(name: name, phone: phone),

@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import 'confirm_parts.dart' show confirmAccent;
+import '../../widgets/page_style_host.dart';
 
 /// What the passenger chose on the first sheet.
 enum LocationShareChoice { keep, turnOff }
@@ -100,7 +101,7 @@ class LocationShareButton extends ConsumerWidget {
 /// "Smoother pickups with location sharing": keep (or start) sharing, or
 /// turn it off. Null when closed.
 Future<LocationShareChoice?> showLocationShareSheet(BuildContext context, {required bool on}) =>
-    showModalBottomSheet<LocationShareChoice>(
+    showAppSheet<LocationShareChoice>(id: 'location-share-button.show-location-share-sheet',
       context: context,
       isScrollControlled: true,
       builder: (c) {
@@ -170,7 +171,7 @@ Future<LocationShareChoice?> showLocationShareSheet(BuildContext context, {requi
 
 /// "Turn off location sharing for this ride only?": this ride, or every
 /// ride (the setting). Null when closed.
-Future<LocationOffScope?> showLocationOffScopeSheet(BuildContext context) => showModalBottomSheet<LocationOffScope>(
+Future<LocationOffScope?> showLocationOffScopeSheet(BuildContext context) => showAppSheet<LocationOffScope>(id: 'location-share-button.show-location-share-sheet-2',
   context: context,
   builder: (c) => SafeArea(
     child: Padding(

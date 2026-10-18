@@ -10,6 +10,7 @@ import '../../../data/safety_incident_repository.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../widgets/page_style_host.dart';
 
 /// Red across the top of every admin screen until each SOS is acknowledged.
 class SosAdminBanner extends ConsumerWidget {
@@ -58,7 +59,7 @@ class SosAdminBanner extends ConsumerWidget {
 }
 
 void openSafetyIncidents(BuildContext context) =>
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SafetyIncidentsScreen()));
+    Navigator.of(context).push(AppPageRoute<void>(id: 'safety-incidents.open-safety-incidents', builder: (_) => const SafetyIncidentsScreen()));
 
 class SafetyIncidentsScreen extends ConsumerWidget {
   const SafetyIncidentsScreen({super.key});
@@ -88,7 +89,7 @@ class _IncidentCard extends ConsumerWidget {
 
   Future<void> _resolve(BuildContext context, WidgetRef ref) async {
     final note = TextEditingController();
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'safety-incidents.resolve',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Resolve this SOS?'),

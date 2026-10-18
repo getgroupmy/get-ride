@@ -14,6 +14,7 @@ import '../../../widgets/in_app_page.dart';
 import '../../../widgets/net_image.dart';
 import '../../../data/live_tables.dart';
 import '../../../widgets/storage_image.dart';
+import '../../../widgets/page_style_host.dart';
 
 void _leave(BuildContext context) => context.canPop() ? context.pop(true) : context.go('/admin/users');
 
@@ -434,7 +435,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         k: TextEditingController(text: '${_row[k] ?? ''}'),
     };
     var docsOk = _row['documents_ok'] == true;
-    final save = await showDialog<bool>(
+    final save = await showAppDialog<bool>(id: 'user.edit',
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(

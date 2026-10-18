@@ -19,6 +19,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../auth/passkey/passkey.dart' as pk;
 import '../auth/passkey_sign_in_button.dart';
+import '../../widgets/page_style_host.dart';
 
 final _passkeysProvider = FutureProvider.autoDispose<List<Passkey>>(
   (ref) => ref.watch(authRepositoryProvider).passkeys(),
@@ -77,7 +78,7 @@ class _PasskeysScreenState extends ConsumerState<PasskeysScreen> {
   }
 
   Future<void> _remove(Passkey p) async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'passkeys.remove',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Remove this passkey?'),
@@ -225,7 +226,7 @@ Future<void> offerPasskeyOnce(BuildContext context, WidgetRef ref, String userId
   }
   await prefs.setBool(key, true);
   if (saved.isNotEmpty || !context.mounted) return;
-  final yes = await showModalBottomSheet<bool>(
+  final yes = await showAppSheet<bool>(id: 'passkeys.offer-passkey-once',
     context: context,
     showDragHandle: true,
     builder: (c) {

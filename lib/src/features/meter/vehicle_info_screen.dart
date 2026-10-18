@@ -15,6 +15,7 @@ import '../../data/vehicle_fuel_store.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/side_menu_host.dart';
 import 'ev_status_panel.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Everything the linked OBD-II reader can tell about the vehicle it is
 /// plugged into (Expo `app/vehicle-information.tsx`): identity (VIN,
@@ -116,7 +117,7 @@ class _VehicleInfoScreenState extends ConsumerState<VehicleInfoScreen> {
   }
 
   Future<void> _editFuel() async {
-    final saved = await showDialog<FuelProfile>(
+    final saved = await showAppDialog<FuelProfile>(id: 'vehicle-info.edit-fuel',
       context: context,
       builder: (_) => _FuelEditor(profile: _fuelProfile),
     );
@@ -597,7 +598,7 @@ class _WritesCardState extends ConsumerState<_WritesCard> {
       WriteContext(online: s.linked, simulated: false, speedKmh: s.telemetry['speed']);
 
   Future<void> _open(VehicleWriteAction action) async {
-    final changed = await showDialog<bool>(
+    final changed = await showAppDialog<bool>(id: 'vehicle-info.write-to-car',
       context: context,
       builder: (_) => _WriteDialog(action: action, send: widget.send),
     );

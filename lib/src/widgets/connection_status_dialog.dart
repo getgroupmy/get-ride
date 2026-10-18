@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 
 import '../core/connection_check.dart';
+import 'page_style_host.dart';
 
 /// Pings `/auth/v1/health` once, with a 5 s limit, as Expo does at launch.
 Future<ConnectionCheck> checkBackend(String url, String anonKey, {http.Client? client}) async {
@@ -41,7 +42,7 @@ Future<ConnectionCheck> checkBackend(String url, String anonKey, {http.Client? c
 /// The launch popup: "Connected", or "Not Connected to server" with the
 /// error and its details. Only its buttons (or back) close it.
 Future<void> showConnectionStatus(BuildContext context, ConnectionPopup popup, ConnectionCheck check) =>
-    showDialog<void>(
+    showAppDialog<void>(id: 'connection-status.show-connection-status',
       context: context,
       barrierDismissible: false,
       builder: (_) => ConnectionStatusDialog(popup: popup, check: check),

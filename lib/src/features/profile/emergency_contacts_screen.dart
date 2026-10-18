@@ -15,6 +15,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/dial_country_picker.dart';
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/page_style_host.dart';
 
 final emergencyContactsProvider = FutureProvider.autoDispose<List<EmergencyContact>>(
   (ref) => ref.watch(accountRepositoryProvider).emergencyContacts(),
@@ -58,7 +59,7 @@ class EmergencyContactsScreen extends ConsumerWidget {
     final name = TextEditingController(text: c?.name);
     final phone = TextEditingController(text: split.local);
     final pick = ref.read(contactPickerProvider);
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'emergency-contacts.edit',
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialog) => AlertDialog(
@@ -137,7 +138,7 @@ class EmergencyContactsScreen extends ConsumerWidget {
   }
 
   Future<void> _delete(BuildContext context, WidgetRef ref, EmergencyContact c) async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'emergency-contacts.delete',
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete contact?'),

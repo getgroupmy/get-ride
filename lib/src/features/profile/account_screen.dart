@@ -14,6 +14,7 @@ import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/net_image.dart';
+import '../../widgets/page_style_host.dart';
 
 /// The built-in rider menu items (Expo `MenuSideSheet`), on this app's
 /// screens; false for one with no screen here ("coming soon"). Expo's City,
@@ -60,7 +61,7 @@ bool riderMenuRowShows(String id, {bool scheduledRides = false}) => id != schedu
 
 /// Asks before signing out; true when the rider confirmed.
 Future<bool> confirmSignOut(BuildContext context) async {
-  final ok = await showDialog<bool>(
+  final ok = await showAppDialog<bool>(id: 'account.confirm-sign-out',
     context: context,
     builder: (c) => AlertDialog(
       title: const Text('Sign out?'),

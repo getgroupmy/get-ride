@@ -13,6 +13,7 @@ import '../../core/partner_statement.dart';
 import '../../data/partner_statement_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/pdf_actions.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Hands a statement's PDF to share or download. Overridden in tests.
 final statementPdfOpenerProvider =
@@ -347,7 +348,7 @@ class _PayoutAccountTile extends ConsumerWidget {
   }
 
   Future<void> _edit(BuildContext context, WidgetRef ref, PayoutAccount? a) async {
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(id: 'statements.edit',
       context: context,
       builder: (_) => _PayoutAccountDialog(current: a),
     );

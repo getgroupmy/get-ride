@@ -18,6 +18,7 @@ import '../../widgets/common.dart';
 import '../../widgets/image_share.dart';
 import '../my_qr/qr_result_sheet.dart' show showQrResultSheet;
 import 'wallet_screen.dart';
+import '../../widgets/page_style_host.dart';
 
 /// The account's own code (Expo `wallet-receive.tsx`, and `wallet-coin-qr.tsx`
 /// when [coin] is set). Whoever scans it in GET.ride sends GET.coin to this
@@ -58,7 +59,7 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
   }
 
   Future<void> _askAmount() async {
-    final v = await showDialog<double>(
+    final v = await showAppDialog<double>(id: 'wallet-qr.ask-amount',
       context: context,
       builder: (_) => _AmountDialog(initial: _amount),
     );
@@ -283,7 +284,7 @@ bool scannerTorchAvailable(MobileScannerState s) =>
     !(s.isInitialized && s.isRunning && s.torchState == TorchState.unavailable);
 
 /// The Scan & Pay help: what to point at and what happens next.
-Future<void> showScanPayHelp(BuildContext context) => showModalBottomSheet<void>(
+Future<void> showScanPayHelp(BuildContext context) => showAppSheet<void>(id: 'wallet-qr.scanner-torch-available',
   context: context,
   showDragHandle: true,
   isScrollControlled: true,

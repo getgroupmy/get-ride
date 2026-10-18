@@ -18,13 +18,14 @@ import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 import '../profile/emergency_contacts_screen.dart';
 import 'safety_screen.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Call [emergencyNumber], or alert the emergency contacts with the
 /// location (and, for a passenger, the driver and car). Any choice also
 /// alerts GET.ride's safety team about [rideId]; the other person on the
 /// ride is not told.
 Future<void> showRideSos(BuildContext context, WidgetRef ref, {String? driver, String? plate, String? rideId}) async {
-  final choice = await showModalBottomSheet<String>(
+  final choice = await showAppSheet<String>(id: 'ride-sos.show-ride-sos',
     context: context,
     builder: (c) => SafeArea(
       child: Column(

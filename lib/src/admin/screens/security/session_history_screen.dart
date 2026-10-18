@@ -14,6 +14,7 @@ import '../../widgets/admin_widgets.dart';
 import 'security_data.dart';
 import 'session_logic.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/page_style_host.dart';
 
 const _page = 'admin-session-history';
 
@@ -388,12 +389,12 @@ class _AccountDetailState extends ConsumerState<_AccountDetail> {
   }
 
   Future<void> _openTrail() async {
-    final rows = await showDialog<List<Map<String, dynamic>>>(
+    final rows = await showAppDialog<List<Map<String, dynamic>>>(id: 'session-history.open-trail',
       context: context,
       builder: (_) => _TrailOptionsDialog(user: widget.user),
     );
     if (rows == null || !mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(
+    await Navigator.of(context).push(AppPageRoute<void>(id: 'session-history.open-trail-2',
       builder: (_) => _TrailPage(title: widget.user.phone ?? '(no phone)', pings: rows),
     ));
   }

@@ -17,6 +17,7 @@ import '../my_qr/direct_booking.dart' show directBookingNamesProvider;
 import '../ride/confirm_parts.dart' show ConfirmSwitch;
 import '../ride/searching_parts.dart' show SearchBlock;
 import 'my_ride_settings.dart';
+import '../../widgets/page_style_host.dart';
 
 // ---- Rules ---------------------------------------------------------------------
 
@@ -231,7 +232,7 @@ Future<Set<String>?> showMyRidePicker(
   String title = 'Offer to your drivers',
   String doneLabel = 'Done',
   int taken = 0,
-}) => showModalBottomSheet<Set<String>>(
+}) => showAppSheet<Set<String>>(id: 'my-ride.show-my-ride-picker',
   context: context,
   isScrollControlled: true,
   showDragHandle: true,

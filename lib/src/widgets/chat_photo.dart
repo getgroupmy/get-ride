@@ -7,11 +7,12 @@ import 'package:flutter/material.dart';
 import '../data/photo_picker.dart';
 import 'net_image.dart';
 import 'storage_image.dart';
+import 'page_style_host.dart';
 
 /// Gallery or camera; straight to the gallery where there is no camera.
 Future<PhotoSource?> choosePhotoSource(BuildContext context, {required bool camera}) async {
   if (!camera) return PhotoSource.gallery;
-  return showModalBottomSheet<PhotoSource>(
+  return showAppSheet<PhotoSource>(id: 'chat-photo.choose-photo-source',
     context: context,
     showDragHandle: true,
     builder: (c) => SafeArea(
@@ -40,7 +41,7 @@ Future<PhotoSource?> choosePhotoSource(BuildContext context, {required bool came
 /// The photo about to be sent, with a caption field: the caption ('' for
 /// none) when sent, null when it was put back.
 Future<String?> confirmPhoto(BuildContext context, Uint8List bytes, {int maxCaption = 1000}) =>
-    showModalBottomSheet<String>(
+    showAppSheet<String>(id: 'chat-photo.confirm-photo',
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -119,7 +120,7 @@ class _PhotoConfirmState extends State<_PhotoConfirm> {
 /// A sent photo, full screen and zoomable.
 void openPhotoViewer(BuildContext context, String url, {String? caption}) {
   Navigator.of(context).push(
-    MaterialPageRoute<void>(
+    AppPageRoute<void>(id: 'chat-photo.open-photo-viewer',
       fullscreenDialog: true,
       builder: (c) {
         final t = Theme.of(c);

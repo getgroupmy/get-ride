@@ -13,12 +13,14 @@ import 'display_screen.dart';
 import 'ev_profiles_screen.dart';
 import 'meter_digital_screen.dart';
 import 'mock_screen.dart';
+import 'page_settings_screen.dart';
 import 'site_screen.dart';
 
 final meterappRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/meter-digital', builder: (_, _) => const AdminMeterDigitalScreen()),
   GoRoute(path: '/admin/m/display', builder: (_, _) => const AdminDisplaySettingsScreen()),
   GoRoute(path: '/admin/m/mock', builder: (_, _) => const AdminMockSettingsScreen()),
+  GoRoute(path: '/admin/m/page-settings', builder: (_, _) => const AdminPageSettingsScreen()),
   GoRoute(path: '/admin/m/site', builder: (_, _) => const AdminSiteSettingsScreen()),
   // App Icon and Splash Screen are sections of App Settings now; their old
   // addresses (bookmarks, the sub-admin page list) still land there.
@@ -64,6 +66,14 @@ const meterappEntries = <AdminScreenEntry>[
     // either keeps their access.
     pages: ['admin-settings-site', 'admin-settings-app-icon', 'admin-settings-splash'],
     icon: Icons.language,
+  ),
+  AdminScreenEntry(
+    section: 'Meter & app',
+    title: 'App Page Settings',
+    subtitle: 'Every page, sheet & modal: text sizes, curves, heights, icons & colours, live on every app',
+    path: '/admin/m/page-settings',
+    pages: [pageSettingsPage],
+    icon: Icons.palette_outlined,
   ),
   AdminScreenEntry(
     section: 'Meter & app',

@@ -10,6 +10,7 @@ import '../../data/models.dart';
 import '../../data/trip_handover_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/page_style_host.dart';
 
 class RiderHandoverCard extends ConsumerWidget {
   const RiderHandoverCard({super.key, required this.ride});
@@ -160,7 +161,7 @@ class _RiderHandoverPromptState extends ConsumerState<RiderHandoverPrompt> {
 
   Future<void> _ask(TripHandover h) async {
     final rideId = widget.ride.id;
-    await showDialog<void>(
+    await showAppDialog<void>(id: 'rider-handover.ask',
       context: context,
       builder: (_) => _HandoverAskDialog(rideId: rideId, handoverId: h.id),
     );

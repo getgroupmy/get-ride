@@ -6,9 +6,10 @@ import 'package:flutter/services.dart';
 import '../../core/ride_bidding.dart';
 import '../../data/models.dart';
 import '../../data/ride_repository.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Asks how much to counter-offer on [r]; answers the amount, or null.
-Future<double?> askCounterOffer(BuildContext context, RideRequest r) => showModalBottomSheet<double>(
+Future<double?> askCounterOffer(BuildContext context, RideRequest r) => showAppSheet<double>(id: 'driver.counter-offer',
   context: context,
   isScrollControlled: true,
   showDragHandle: true,

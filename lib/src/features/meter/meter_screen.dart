@@ -35,6 +35,7 @@ import 'hail_destination_screen.dart';
 import 'landscape_stage.dart';
 import 'meter_leave_launcher.dart';
 import 'meter_providers.dart';
+import '../../widgets/page_style_host.dart';
 
 // The console is deliberately not themed: a white screen on a windscreen
 // mount at night is a hazard, so the meter is always the dark instrument it
@@ -448,7 +449,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   /// and what the driver can do about it. Kept current while it is up.
   Future<void> _showGate() async {
     _gatePopupOpen = true;
-    final action = await showDialog<String>(
+    final action = await showAppDialog<String>(id: 'meter.show-gate',
       context: _stageContext,
       useRootNavigator: false,
       builder: (c) => ValueListenableBuilder<int>(
@@ -557,7 +558,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       if (fleet == null) {
         return _explain('Vehicle', 'Your vehicles could not be read, so the meter runs unassigned for now.');
       }
-      final picked = await showModalBottomSheet<AssignableVehicle>(
+      final picked = await showAppSheet<AssignableVehicle>(id: 'meter.choose-vehicle',
         context: _stageContext,
         isScrollControlled: true,
         backgroundColor: _panel,
@@ -590,7 +591,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       _m = pauseMeter(_m);
       _ending = true;
     });
-    final details = await showModalBottomSheet<MeterTripDetails>(
+    final details = await showAppSheet<MeterTripDetails>(id: 'meter.end',
       context: _stageContext,
       isDismissible: false,
       enableDrag: false,
@@ -686,7 +687,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     if (!mounted) return;
     final launcher = ref.read(meterLeaveLauncherProvider);
     final keys = resolveMeterLeave(_profile.leave, storePlatformFor(launcher.os));
-    final pick = await showDialog<MeterLeaveOption>(
+    final pick = await showAppDialog<MeterLeaveOption>(id: 'meter.offer-leave',
       context: _stageContext,
       useRootNavigator: false,
       builder: (c) => AlertDialog(
@@ -738,7 +739,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     }
   }
 
-  void _explain(String title, String message) => showDialog<void>(
+  void _explain(String title, String message) => showAppDialog<void>(id: 'meter.explain',
     context: _stageContext,
     useRootNavigator: false,
     builder: (c) => AlertDialog(
@@ -752,7 +753,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   /// is printed or the driver presses Done (Expo keeps the fare-due card
   /// until the receipt is handled); a receipt reopened from the log closes
   /// like any dialog.
-  Future<void> _showReceipt(MeterTrip trip, {bool finishing = false}) => showDialog<void>(
+  Future<void> _showReceipt(MeterTrip trip, {bool finishing = false}) => showAppDialog<void>(id: 'meter.explain-2',
     context: _stageContext,
     useRootNavigator: false,
     barrierDismissible: !finishing,
@@ -1419,7 +1420,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   }
 
   Future<void> _clearLog() async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'meter.clear-log',
       context: _stageContext,
       useRootNavigator: false,
       builder: (c) => AlertDialog(
@@ -1709,7 +1710,7 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
     if (!mounted) return;
     if (printer == null) {
       setState(() => _printing = false);
-      final choice = await showDialog<String>(
+      final choice = await showAppDialog<String>(id: 'meter.print',
         context: context,
         useRootNavigator: false,
         builder: (c) => AlertDialog(
@@ -1743,7 +1744,7 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
     if (!mounted) return;
     setState(() => _printing = false);
     if (error == null) return _printed('Receipt sent to ${printer.name}.');
-    final fallback = await showDialog<bool>(
+    final fallback = await showAppDialog<bool>(id: 'meter.print-2',
       context: context,
       useRootNavigator: false,
       builder: (c) => AlertDialog(

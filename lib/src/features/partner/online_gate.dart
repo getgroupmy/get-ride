@@ -13,6 +13,7 @@ import '../../core/app_permissions.dart';
 import '../../data/permission_probe.dart';
 import '../../data/permission_rules.dart';
 import '../permissions/permission_actions.dart';
+import '../../widgets/page_style_host.dart';
 
 /// How long a trip to Settings may take before going online is given up.
 const onlineSettingsWait = Duration(minutes: 2);
@@ -46,7 +47,7 @@ Future<bool> ensureOnlineReady(BuildContext context, WidgetRef ref) async {
     if (blocks.isEmpty) return true;
     final block = blocks.first;
     if (!context.mounted) return false;
-    final go = await showDialog<bool>(
+    final go = await showAppDialog<bool>(id: 'online-gate.ensure-online-ready',
       context: context,
       builder: (c) => OnlineBlockDialog(block: block),
     );
