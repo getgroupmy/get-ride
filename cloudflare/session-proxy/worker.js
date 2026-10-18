@@ -96,6 +96,9 @@ export const PHONE_TIMEOUT_MS = 60_000;
 /** The path the phone connects on. */
 export const PHONE_PATH = "/phone";
 
+/** A WebSocket's readyState while it can send (the standard OPEN). */
+export const WS_OPEN = 1;
+
 /**
  * The absolute URL a session asked for, from the path it called:
  * `/https://example.com/a?b=1` -> `https://example.com/a?b=1`. A path that
@@ -418,7 +421,7 @@ export class PhoneRelay {
     if (url.pathname === PHONE_PATH) return this.connectPhone(request);
     if (url.pathname === "/relay") return this.relay(request);
     if (url.pathname === "/status") {
-      return Response.json({ connected: this.ctx.getWebSockets().length > 0, pending: this.pending.size });
+      return Response.json({ connected: this.phone() !== null, pending: this.pending.size });
     }
     return refuse(404, "NOT_FOUND", "");
   }
@@ -439,9 +442,27 @@ export class PhoneRelay {
     return new Response(null, { status: 101, webSocket: client });
   }
 
+  /**
+   * The phone's live socket, or null. A socket the phone dropped without a
+   * close frame (mobile data gone, the app killed) stays in the list, closed,
+   * until the runtime notices; sending on it throws "send() after close()".
+   * So only an open socket counts, and a dead one is closed on sight.
+   */
   phone() {
     const sockets = this.ctx.getWebSockets();
-    return sockets.length ? sockets[sockets.length - 1] : null;
+    let live = null;
+    for (const ws of sockets) {
+      if (ws.readyState === WS_OPEN) {
+        live = ws; // the newest open one wins
+      } else {
+        try {
+          ws.close(1011, "stale");
+        } catch {
+          // Already gone.
+        }
+      }
+    }
+    return live;
   }
 
   /** A session's request: handed to the phone, answered as it streams back. */
@@ -482,7 +503,15 @@ export class PhoneRelay {
       }
       ws.send(JSON.stringify({ id, end: true }));
     } catch (e) {
-      this.finish(id, refuse(502, "PHONE_SEND_FAILED", String(e?.message ?? e)));
+      // The socket died between the pick and the send: drop it, so the next
+      // request sees the phone as offline (or its newer connection).
+      try {
+        ws.close(1011, "send failed");
+      } catch {
+        // Already gone.
+      }
+      this.finish(id, refuse(503, "PHONE_OFFLINE",
+        `The gateway phone's connection dropped (${String(e?.message ?? e)}). It reconnects by itself: try again in a few seconds.`));
     }
     return answer;
   }
@@ -558,16 +587,23 @@ export class PhoneRelay {
   }
 
   webSocketClose(ws) {
-    this.dropAll("The gateway phone disconnected.");
     try {
       ws.close(1000, "closed");
     } catch {
       // Already closed.
     }
+    // An old connection closing while a newer one is up (the phone
+    // reconnected) is not an outage for the requests on the newer one.
+    if (!this.phone()) this.dropAll("The gateway phone disconnected.");
   }
 
-  webSocketError() {
-    this.dropAll("The gateway phone's connection failed.");
+  webSocketError(ws) {
+    try {
+      ws.close(1011, "error");
+    } catch {
+      // Already closed.
+    }
+    if (!this.phone()) this.dropAll("The gateway phone's connection failed.");
   }
 
   dropAll(why) {
