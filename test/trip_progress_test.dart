@@ -480,12 +480,14 @@ void main() {
       final body = find.descendant(of: sheet, matching: find.byType(Material)).first;
       ScrollPosition content() =>
           tester.state<ScrollableState>(find.descendant(of: sheet, matching: find.byType(Scrollable)).first).position;
-      // From 45% to 92% of the body is ~200 px of travel: a 150 px drag
-      // only expands the sheet.
+      // At rest the passenger's row shows above the footer (its rest line),
+      // so the sheet has less travel left to 92%: a 60 px drag only
+      // expands it.
       final start = tester.getTopLeft(body).dy;
-      await tester.drag(find.text('Head to pickup'), const Offset(0, -150));
+      expect(start, greaterThan(56 + (480 - 56) * (1 - 0.92) + 60), reason: 'not already up');
+      await tester.drag(find.text('Head to pickup'), const Offset(0, -60));
       await tester.pumpAndSettle();
-      expect(tester.getTopLeft(body).dy, lessThan(start - 100));
+      expect(tester.getTopLeft(body).dy, lessThan(start - 30));
       expect(content().pixels, 0);
       await tester.drag(find.text('Head to pickup'), const Offset(0, -300));
       await tester.pumpAndSettle();
