@@ -8,9 +8,15 @@
 # The list is Admin → Security & integrations → Claude Code access
 # (public.claude_access_rules, migration 0228), read with the project's
 # publishable key and cached for five minutes. When it cannot be fetched the
-# last good copy is used, and failing that the built-in list below. In every
-# other case the script prints nothing, so Claude Code asks as usual: it only
-# ever fails closed, and always exits 0.
+# last good copy is used if it is under a day old, and failing that the
+# built-in list below. In every other case the script prints nothing, so
+# Claude Code asks as usual: it only ever fails closed, and always exits 0.
+#
+# Caches live in ${XDG_CACHE_HOME:-$HOME/.cache}/get-ride (directory 0700,
+# files 0600), never in a shared temp directory: a cache file, or that
+# directory, that is not owned by this user, is group- or world-writable, or
+# is a symlink is ignored (and replaced on the next write). Without a usable
+# directory nothing is cached and the list is fetched every time.
 #
 # Scope: a local Claude Code CLI honours this hook's decision, so an office
 # machine gets no prompt. A Claude cloud session reads the list too, but the
@@ -30,11 +36,53 @@ FALLBACK_SESSIONS="
 018jbhTQW6yVtn1tDDWjy2W1
 "
 
-TMP="${TMPDIR:-/tmp}"
-RULES_CACHE="$TMP/claude-access-rules.cache"   # line 1: unix time written; rest: the JSON
-IP_CACHE="$TMP/claude-public-ip-cache"         # "<unix time> <ipv4 or -> <ipv6 or ->"
-TTL=300
+TTL=300            # a cache younger than this (seconds) is used without fetching
+STALE_MAX=86400    # when fetching fails, a list cache up to a day old still counts
 now=$(date +%s)
+umask 077
+
+# Whether [$1] (a file or directory) is safe to trust: not a symlink, owned by
+# this user, and writable by nobody else. find(1) rather than stat(1), whose
+# flags differ between GNU (Linux) and BSD (macOS); these primaries are POSIX.
+own_private() {
+  [ -e "$1" ] && [ ! -L "$1" ] || return 1
+  [ -n "$(find "$1" -prune -user "$(id -u)" ! -perm -020 ! -perm -002 2>/dev/null)" ]
+}
+
+CACHE_DIR=""
+if [ -n "${XDG_CACHE_HOME:-}" ]; then
+  base="$XDG_CACHE_HOME"
+elif [ -n "${HOME:-}" ]; then
+  base="$HOME/.cache"
+else
+  base=""
+fi
+if [ -n "$base" ]; then
+  mkdir -p "$base/get-ride" 2>/dev/null && chmod 700 "$base/get-ride" 2>/dev/null
+  own_private "$base/get-ride" && CACHE_DIR="$base/get-ride"
+fi
+RULES_CACHE="${CACHE_DIR:+$CACHE_DIR/claude-access-rules.cache}"   # line 1: unix time written; rest: the JSON
+IP_CACHE="${CACHE_DIR:+$CACHE_DIR/claude-public-ip.cache}"         # "<unix time> <ipv4 or -> <ipv6 or ->"
+
+# A cache file that may be read: set, safe, and readable.
+cache_ok() { [ -n "$1" ] && own_private "$1" && [ -r "$1" ]; }
+
+# Seconds since unix time [$1] when it is one and not in the future; else empty.
+age_of() {
+  case "$1" in
+    ''|*[!0-9]*) return ;;
+  esac
+  [ "$1" -le "$now" ] && echo $((now - $1))
+}
+
+# Writes stdin to cache file [$1] (0600), replacing whatever is there.
+cache_write() {
+  [ -n "$1" ] || { cat >/dev/null; return; }
+  tmp="$1.$$"
+  if ! { cat > "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$1"; } 2>/dev/null; then
+    rm -f "$tmp" 2>/dev/null
+  fi
+}
 
 allow() {
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"%s"}}\n' "$1"
@@ -54,22 +102,22 @@ if [ -z "$key" ] && [ -r "$config" ]; then
 fi
 
 rules=""
-if [ -r "$RULES_CACHE" ]; then
-  ts=$(sed -n 1p "$RULES_CACHE")
-  case "$ts" in
-    ''|*[!0-9]*) ;;
-    *) [ $((now - ts)) -lt "$TTL" ] && rules=$(sed 1d "$RULES_CACHE") ;;
-  esac
+cached=""; cached_age=""
+if cache_ok "$RULES_CACHE"; then
+  cached_age=$(age_of "$(sed -n 1p "$RULES_CACHE")")
+  [ -n "$cached_age" ] && cached=$(sed 1d "$RULES_CACHE")
+  case "$cached" in "["*) ;; *) cached=""; cached_age="" ;; esac
 fi
+[ -n "$cached" ] && [ "$cached_age" -lt "$TTL" ] && rules="$cached"
 if [ -z "$rules" ] && [ -n "$url" ] && [ -n "$key" ]; then
   fetched=$(curl -fsS --max-time 4 -H "apikey: $key" -H "Authorization: Bearer $key" \
     "$url/rest/v1/claude_access_rules?select=kind,value&enabled=is.true" 2>/dev/null)
   case "$fetched" in
-    "["*) rules="$fetched"; { echo "$now"; echo "$rules"; } > "$RULES_CACHE" 2>/dev/null ;;
+    "["*) rules="$fetched"; { echo "$now"; echo "$rules"; } | cache_write "$RULES_CACHE" ;;
   esac
 fi
-if [ -z "$rules" ] && [ -r "$RULES_CACHE" ]; then
-  rules=$(sed 1d "$RULES_CACHE")   # a stale copy beats none
+if [ -z "$rules" ] && [ -n "$cached" ] && [ "$cached_age" -lt "$STALE_MAX" ]; then
+  rules="$cached"   # a stale copy beats none, up to STALE_MAX old
 fi
 
 if [ -n "$rules" ]; then
@@ -117,18 +165,16 @@ lookup() {
 }
 
 ip4=""; ip6=""
-if [ -r "$IP_CACHE" ]; then
+if cache_ok "$IP_CACHE"; then
   read -r ts c4 c6 < "$IP_CACHE" 2>/dev/null
-  case "$ts" in
-    ''|*[!0-9]*) ;;
-    *) [ $((now - ts)) -lt "$TTL" ] && { ip4="$c4"; ip6="$c6"; } ;;
-  esac
+  a=$(age_of "$ts")
+  [ -n "$a" ] && [ "$a" -lt "$TTL" ] && { ip4="$c4"; ip6="$c6"; }
 fi
 if [ -z "$ip4$ip6" ]; then
   ip4=$(lookup https://api.ipify.org https://ipv4.icanhazip.com)
   ip6=$(lookup https://api64.ipify.org https://ipv6.icanhazip.com)
   [ "$ip6" = "$ip4" ] && ip6=""
-  [ -n "$ip4$ip6" ] && printf '%s %s %s\n' "$now" "${ip4:--}" "${ip6:--}" > "$IP_CACHE" 2>/dev/null
+  [ -n "$ip4$ip6" ] && printf '%s %s %s\n' "$now" "${ip4:--}" "${ip6:--}" | cache_write "$IP_CACHE"
 fi
 for ip in $ip4 $ip6; do
   [ "$ip" = "-" ] && continue
