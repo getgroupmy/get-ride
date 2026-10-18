@@ -772,6 +772,7 @@ List<Override> _common({
 ];
 
 final _log = StringBuffer();
+final _audit = StringBuffer();
 
 Future<void> _loadFonts() async {
   const dir = '/opt/flutter/bin/cache/artifacts/material_fonts';
@@ -831,23 +832,24 @@ Widget _frame(Widget app, {required bool dark}) => RepaintBoundary(
       children: [
         app,
         // The unsafe zones, tinted so content under them shows up.
-        IgnorePointer(
-          child: Column(
-            children: [
-              SizedBox(
-                height: _frameTop,
-                width: double.infinity,
-                child: const ColoredBox(color: Color(0x33FF0000)),
-              ),
-              const Spacer(),
-              SizedBox(
-                height: _frameBottom,
-                width: double.infinity,
-                child: const ColoredBox(color: Color(0x33FF0000)),
-              ),
-            ],
+        if (Platform.environment['AUDIT'] != '1')
+          IgnorePointer(
+            child: Column(
+              children: [
+                SizedBox(
+                  height: _frameTop,
+                  width: double.infinity,
+                  child: const ColoredBox(color: Color(0x33FF0000)),
+                ),
+                const Spacer(),
+                SizedBox(
+                  height: _frameBottom,
+                  width: double.infinity,
+                  child: const ColoredBox(color: Color(0x33FF0000)),
+                ),
+              ],
+            ),
           ),
-        ),
         if (_frameKeyboard > 0)
           Positioned(
             left: 0,
@@ -1015,6 +1017,18 @@ Future<void> _shot(
     }
     if (act != null) await act(tester);
     await expectLater(find.byKey(const Key('frame')), matchesGoldenFile(Uri.file('$_outDir/$name.png')));
+    if (Platform.environment['AUDIT'] == '1') {
+      final handle = tester.ensureSemantics();
+      await tester.pump();
+      for (final g in [iOSTapTargetGuideline, labeledTapTargetGuideline, textContrastGuideline]) {
+        final r = await g.evaluate(tester);
+        if (!r.passed) {
+          _audit.writeln('== $name :: ${g.description}');
+          _audit.writeln(r.reason);
+        }
+      }
+      handle.dispose();
+    }
   } catch (e) {
     errors.add('TEST ERROR: $e');
   } finally {
@@ -1027,6 +1041,7 @@ Future<void> _shot(
       _log.writeln('  ! ${e.split('\n').take(3).join(' | ')}');
     }
     File('$_outDir/log.txt').writeAsStringSync(_log.toString());
+    if (_audit.isNotEmpty) File('$_outDir/audit.txt').writeAsStringSync(_audit.toString());
   }
 }
 
