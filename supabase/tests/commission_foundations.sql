@@ -69,8 +69,10 @@ insert into public.commission_rates (id, level, rate, note) values
   ('00000000-0000-0000-0000-0000000216f2', 'state', 0.12, null);
 update public.commission_rates set state = 'Selangor', country = 'Malaysia'
  where id = '00000000-0000-0000-0000-0000000216f2';
-insert into public.commission_rates (id, level, state, country, rate, priority) values
-  ('00000000-0000-0000-0000-0000000216f3', 'state', 'Selangor', 'Malaysia', 0.11, 5);
+-- One rate per exact place; an overlapping one (no country named) with a
+-- higher priority beats the one naming more parents.
+insert into public.commission_rates (id, level, state, rate, priority) values
+  ('00000000-0000-0000-0000-0000000216f3', 'state', 'Selangor', 0.11, 5);
 insert into public.commission_rates (id, level, city, state, country, rate) values
   ('00000000-0000-0000-0000-0000000216f4', 'city', 'Kajang', 'Selangor', 'Malaysia', 0.08);
 insert into public.commission_rates (id, level, user_id, user_label, rate) values
@@ -110,7 +112,7 @@ reset role;
 select pg_temp.check(
   (select rate = 0.11 and rule_id = '00000000-0000-0000-0000-0000000216f3'
      from public.commission_resolve(null, null, null, 'Malaysia', 'Selangor', 'Petaling Jaya', null)),
-  'of two Selangor rates, the higher priority wins');
+  'of two Selangor rates, the higher priority wins over more named parents');
 select pg_temp.check(
   (select rate = 0.08 from public.commission_resolve(null, null, null, 'Malaysia', 'Selangor', 'Kajang Municipal Council', null)),
   'the geocoder''s "Kajang Municipal Council" matches the Kajang rate');
