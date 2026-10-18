@@ -101,6 +101,74 @@ void main() {
     expect(phone.sent, hasLength(1), reason: 'sent once');
   });
 
+  group('asking for new SMS', () {
+    /// Calls the timer's [GatewayEngine.poll] once a second for [seconds],
+    /// returning the seconds (from now) at which a round asked the server.
+    Future<List<int>> run(int seconds) async {
+      final at = <int>[];
+      for (var s = 1; s <= seconds; s++) {
+        now = now.add(const Duration(seconds: 1));
+        final before = server.claims;
+        await engine.poll();
+        if (server.claims > before) at.add(s);
+      }
+      return at;
+    }
+
+    List<int> gaps(List<int> at) => [for (var i = 1; i < at.length; i++) at[i] - at[i - 1]];
+
+    test('every 5 s for the first quiet minute, then 10 s, then every 15 s', () async {
+      await engine.start();
+      expect(server.claims, 1);
+      final at = await run(300);
+      final g = gaps(at);
+      // The first minute at 5 s, the second at 10 s, then 15 s.
+      expect(at.first, 5);
+      expect(g.where((d) => d == 5).length, inInclusiveRange(10, 12));
+      expect(g.where((d) => d == 10).length, inInclusiveRange(5, 6));
+      expect(g.every((d) => d == 5 || d == 10 || d == 15), isTrue, reason: '$g');
+      expect(g.sublist(g.length - 5), everyElement(15));
+      // Five quiet minutes: about 35 asks, where every 5 s would be 60.
+      expect(at.length, lessThan(40));
+      // Still says it is here once a minute.
+      expect(server.heartbeats.length, greaterThanOrEqualTo(5));
+    });
+
+    test('a sign-in code queued while quiet goes out within 15 s, and polling is fast again after', () async {
+      await engine.start();
+      await run(600); // long quiet: the slowest interval
+      expect(engine.pollInterval, const Duration(seconds: 15));
+      for (var offset = 0; offset < 15; offset++) {
+        // Wherever in the interval the code is queued.
+        await run(offset);
+        server.queue.add(SmsJob(id: 'otp-$offset', channel: 'otp', to: '+60123456789', body: 'Your code is 1'));
+        var waited = 0;
+        while (phone.sent.length <= offset) {
+          await run(1);
+          waited++;
+          expect(waited, lessThanOrEqualTo(15), reason: 'queued at offset $offset');
+        }
+        // Work makes it fast again: the next ask is 5 s later.
+        expect(engine.pollInterval, const Duration(seconds: 5));
+        expect(await run(5), [5]);
+        await run(600); // and quiet again
+      }
+    });
+
+    test('a received SMS is handed over at once, not at the next round', () async {
+      await engine.start();
+      await run(600);
+      final claims = server.claims;
+      now = now.add(const Duration(seconds: 1));
+      phone.receive(IncomingSms(id: 'r1', from: '+60188888888', body: 'Hi', at: now));
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+      expect(server.received.map((s) => s.id), ['r1']);
+      expect(server.claims, claims + 1);
+      expect(engine.pollInterval, const Duration(seconds: 5));
+    });
+  });
+
   test('a refusal (not an admin) stops the gateway and says why', () async {
     server.failWith = Exception('PostgrestException(message: GATEWAY_NEEDS_ADMIN, code: 42501)');
     await engine.start();

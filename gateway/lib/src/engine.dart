@@ -2,7 +2,8 @@
 //   - says the phone is here (a heartbeat every minute), so the admin page
 //     shows it online and the server knows which device row it is;
 //   - asks every few seconds for the SMS routed to it, sends each from the
-//     chosen SIM and reports how it went;
+//     chosen SIM and reports how it went (every 5 s while there is work and
+//     for a minute after, easing to every 15 s when quiet: `pollAfter`);
 //   - hands every SMS the phone receives to the server, and only then drops
 //     it from the phone's own queue, so nothing received is lost to a
 //     dropped connection.
@@ -63,6 +64,7 @@ class GatewayEngine extends ChangeNotifier {
     required this.config,
     this.appVersion,
     this.pollEvery = const Duration(seconds: 5),
+    this.pollQuietMax = const Duration(seconds: 15),
     this.heartbeatEvery = const Duration(minutes: 1),
     this.schedule = true,
     this.relayUrl = defaultRelayUrl,
@@ -75,7 +77,11 @@ class GatewayEngine extends ChangeNotifier {
   final SmsPlatform platform;
   final GatewayConfig Function() config;
   final String? appVersion;
+  /// How often to ask for new SMS while busy, and at most how long to wait
+  /// once quiet (`pollAfter`): the second is the longest a sign-in code
+  /// can wait for this phone.
   final Duration pollEvery;
+  final Duration pollQuietMax;
   final Duration heartbeatEvery;
 
   /// Where the shared internet connects (empty: never shared).
@@ -117,6 +123,14 @@ class GatewayEngine extends ChangeNotifier {
   DateTime? _retryAt;
   DateTime? _lastHeartbeat;
 
+  /// When an SMS last came to be sent or was received (or the gateway
+  /// started): how quiet it is, for [pollAfter].
+  DateTime _lastWork = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// When the timer's next round is due (rounds the phone starts itself,
+  /// such as on a received SMS, do not wait for it).
+  DateTime? _nextPoll;
+
   /// Received SMS not yet accepted by the server, by the phone's id.
   final _inbound = <String, IncomingSms>{};
 
@@ -132,6 +146,8 @@ class GatewayEngine extends ChangeNotifier {
     _failures = 0;
     _retryAt = null;
     _lastHeartbeat = null;
+    _lastWork = _now();
+    _nextPoll = null;
     _setState(GatewayState.starting);
     _info('Gateway started.');
     await _safe(() => platform.startService('Starting…'));
@@ -142,7 +158,7 @@ class GatewayEngine extends ChangeNotifier {
     for (final sms in await _safeValue(platform.pending, const <IncomingSms>[])) {
       _inbound.putIfAbsent(sms.id, () => sms);
     }
-    if (schedule) _timer = Timer.periodic(pollEvery, (_) => unawaited(tick()));
+    if (schedule) _timer = Timer.periodic(_timerEvery, (_) => unawaited(poll()));
     await tick();
   }
 
@@ -221,6 +237,21 @@ class GatewayEngine extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The timer's resolution: fine enough that a due round is never late by
+  /// much, while a round only runs when [poll] says it is due.
+  Duration get _timerEvery => pollEvery < const Duration(seconds: 1) ? pollEvery : const Duration(seconds: 1);
+
+  /// How long the next timed round waits, as quiet as it is now.
+  Duration get pollInterval => pollAfter(_now().difference(_lastWork), every: pollEvery, max: pollQuietMax);
+
+  /// A timed round: runs [tick] once the interval since the last round has
+  /// passed ([pollAfter]: 5 s while busy, easing to 15 s when quiet).
+  Future<void> poll() async {
+    final due = _nextPoll;
+    if (due != null && _now().isBefore(due)) return;
+    await tick();
+  }
+
   /// One round: heartbeat when due, then received SMS, unsent reports and
   /// new jobs. Rounds never overlap.
   Future<void> tick() async {
@@ -244,6 +275,7 @@ class GatewayEngine extends ChangeNotifier {
       await _flushReports(device);
       await _sendJobs(device);
       _recovered();
+      _nextPoll = _now().add(pollInterval);
     } catch (e) {
       final refusal = gatewayRefusal(e);
       if (refusal != null) {
@@ -261,6 +293,7 @@ class GatewayEngine extends ChangeNotifier {
     for (final sms in _inbound.values.toList()) {
       await backend.receive(device, sms);
       _inbound.remove(sms.id);
+      _lastWork = _now();
       stats.received++;
       log.add(GatewayLogEntry(_now(), GatewayLogKind.received, 'SMS from ${maskPhone(sms.from)}'));
       await _safe(() => platform.acknowledge([sms.id]));
@@ -278,6 +311,7 @@ class GatewayEngine extends ChangeNotifier {
   Future<void> _sendJobs(String device) async {
     final jobs = await backend.claim(device);
     if (jobs.isEmpty) return;
+    _lastWork = _now();
     final sub = config().subscriptionId;
     for (final job in jobs) {
       final result = await platform.send(job.to, job.body, subscriptionId: sub);

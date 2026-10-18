@@ -120,6 +120,29 @@ String jobSummary(SmsJob j) {
   return '$what to ${maskPhone(j.to)}';
 }
 
+/// How long a quiet gateway waits between asks for new SMS, by how long it
+/// has been since the last one came in ([quiet]): [every] (5 s) for the
+/// first minute, twice that for the next, then [max] (15 s). Work resets
+/// it, so a burst of sign-ins and resends is served at full speed.
+///
+/// Nothing tells the phone an SMS is queued (no push, no realtime: the
+/// paired phone has no account session to subscribe with), so this is also
+/// the longest a sign-in code waits for the phone: [max] is kept low for
+/// that, not raised to a minute. Pure.
+Duration pollAfter(
+  Duration quiet, {
+  Duration every = const Duration(seconds: 5),
+  Duration max = const Duration(seconds: 15),
+}) {
+  final d = quiet < const Duration(minutes: 1)
+      ? every
+      : quiet < const Duration(minutes: 2)
+      ? every * 2
+      : max;
+  if (d > max) return max < every ? every : max;
+  return d < every ? every : d;
+}
+
 /// How long to wait before talking to the server again after [failures]
 /// failures in a row: 5 s, doubling, at most two minutes.
 Duration backoffAfter(int failures) {
