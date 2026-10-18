@@ -37,6 +37,12 @@ import 'road_info_layers.dart';
   return (center: fitted.center, zoom: fitted.zoom);
 }
 
+/// The least zoom at which one copy of the world spans a map [width] wide
+/// (256 px a tile), so flutter_map never draws it, and the pins on it,
+/// twice side by side. 0 for an unbounded or empty width.
+double worldOnceZoom(double width) =>
+    width.isFinite && width > 256 ? math.log(width / 256) / math.ln2 + 0.05 : 0;
+
 /// How far up from the map's bottom edge (or the sheet over it) the
 /// bottom-right map buttons start. The OpenStreetMap credit sits bottom
 /// left, so the buttons only keep a margin rather than clearing it.
@@ -376,9 +382,13 @@ class _RideMapState extends State<RideMap> {
             top: widget.fitTop,
             pointZoom: widget.pointZoom,
           );
+          final minZoom = worldOnceZoom(constraints.maxWidth);
           return MapOptions(
             initialCenter: start.center,
-            initialZoom: start.zoom,
+            initialZoom: math.max(start.zoom, minZoom),
+            // Never so far out that the world shows twice across the map, its
+            // pins and labels with it (a wide, short map framing a ride).
+            minZoom: minZoom,
             // North stays up: two fingers pinch and pan but never turn the
             // map (a trip map that follows the car still turns it itself).
             interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
