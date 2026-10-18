@@ -2407,7 +2407,7 @@ void main() {
   });
 
   group('requested', () {
-    for (final (tab, name) in [('commission-tab-settings', 'settings'), ('commission-tab-tiers', 'tiers')]) {
+    for (final (tab, name) in [('commission-tab-settings', 'settings'), ('commission-tab-tiers', 'tiers'), ('commission-tab-promotions', 'promotions'), ('commission-tab-reports', 'reports')]) {
       testWidgets(
         'commission $name',
         (t) => _shot(t, 'req_commission_$name', route: '/admin/commission', admin: true, act: (t) => tapKey(t, tab)),
