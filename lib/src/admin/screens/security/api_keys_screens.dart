@@ -12,6 +12,7 @@ import 'api_keys_logic.dart';
 import 'security_data.dart';
 import '../../../data/live_tables.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 /// Expo gates the provider, service and key screens (and Elife) on this key.
 const apiKeysPage = 'admin-settings-api-keys';
@@ -343,6 +344,7 @@ class _BulkKeyDialogState extends State<_BulkKeyDialog> {
   final _label = TextEditingController();
   final _value = TextEditingController();
   final _selected = <String>{};
+  String _serviceQuery = '';
   String? _error;
 
   @override
@@ -377,9 +379,20 @@ class _BulkKeyDialogState extends State<_BulkKeyDialog> {
               child: Text(allSelected ? 'Clear all' : 'Select all'),
             ),
           ),
+          if (services.length >= kSearchSelectFrom)
+            TextField(
+              key: const ValueKey('list-search'),
+              decoration: const InputDecoration(
+                hintText: 'Search services',
+                prefixIcon: Icon(Icons.search),
+                isDense: true,
+              ),
+              onChanged: (v) => setState(() => _serviceQuery = v.trim()),
+            ),
           Flexible(
             child: ListView(shrinkWrap: true, children: [
               for (final s in services)
+                if (_serviceQuery.isEmpty || searchSelectMatches(s.name, _serviceQuery) || _selected.contains(s.id))
                 CheckboxListTile(
                   dense: true,
                   value: _selected.contains(s.id),
@@ -748,7 +761,7 @@ class _KeyTestDialogState extends ConsumerState<KeyTestDialog> {
             else if (test == null)
               const Text('There is no test for this provider yet.', key: ValueKey('key-test-none'))
             else ...[
-              DropdownButtonFormField<String>(
+              SearchableDropdownFormField<String>(
                 key: const ValueKey('key-test-pick'),
                 initialValue: test.id,
                 isExpanded: true,
@@ -771,7 +784,7 @@ class _KeyTestDialogState extends ConsumerState<KeyTestDialog> {
               if (test.browser)
                 GoogleJsCheck(key: ValueKey('key-test-js-${widget.keys.single.id}'), apiKey: widget.keys.single.value)
               else ...[
-                DropdownButtonFormField<KeySendAs>(
+                SearchableDropdownFormField<KeySendAs>(
                   key: const ValueKey('key-test-as'),
                   initialValue: as,
                   isExpanded: true,

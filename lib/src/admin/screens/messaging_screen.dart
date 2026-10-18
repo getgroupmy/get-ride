@@ -26,6 +26,7 @@ import 'reliability_card.dart';
 import 'sms_fallback_card.dart';
 import 'sms_limits_card.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart';
 
 const messagingPage = 'admin-settings-messaging';
 
@@ -597,7 +598,7 @@ class _QueueCardState extends ConsumerState<_QueueCard> {
             Text('SMS queue', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             if (widget.canEdit) ...[
               const SizedBox(height: 8),
-              DropdownButtonFormField<MessagingChannel>(
+              SearchableDropdownFormField<MessagingChannel>(
                 isExpanded: true,
                 initialValue: _channel,
                 decoration: const InputDecoration(labelText: 'Channel', isDense: true),

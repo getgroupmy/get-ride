@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/ble.dart';
+import '../../widgets/search_select.dart';
 
 /// Scans for Bluetooth LE devices and returns the one the driver taps (the
 /// add-reader and add-printer sheets). A BLE dongle or mini printer never
@@ -130,14 +131,17 @@ class _BleScanSheetState extends ConsumerState<BleScanSheet> {
                     ),
                   ))
                 : ListView(children: [
-                    for (final d in readers)
-                      ListTile(
+                    ListSearchFilter(count: readers.length, hint: 'Search by name', builder: (context, q) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+  for (final d in readers)
+    if (q.isEmpty || searchSelectMatches('${d.name ?? ''} ${d.deviceId}', q) || false)
+      ListTile(
                         leading: const Icon(Icons.bluetooth),
                         title: Text((d.name ?? '').isEmpty ? 'Unnamed device' : d.name!),
                         subtitle: Text(d.deviceId),
                         trailing: d.rssi == null ? null : Text('${d.rssi} dBm'),
                         onTap: () => Navigator.pop(context, d),
                       ),
+])),
                   ]),
           ),
         ]),

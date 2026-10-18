@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 import '../../widgets/net_image.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart';
 
 /// An admin who can handle support. [priority] is their `admin_access.support`
 /// tag: lowest first; untagged agents come after, by name.
@@ -61,7 +62,12 @@ Future<SupportAgent?> showSupportAgentPicker(
         if (others.isEmpty)
           const ListTile(title: Text('No other support agents found.'))
         else
+          ListSearchFilter(
+            count: others.length,
+            hint: 'Search agents',
+            builder: (context, q) => Column(mainAxisSize: MainAxisSize.min, children: [
           for (final a in others)
+            if (q.isEmpty || searchSelectMatches(a.name, q))
             ListTile(
               key: ValueKey('assign-${a.id}'),
               leading: NetAvatar(url: a.avatarUrl, fallback: Text(a.name.characters.first.toUpperCase())),
@@ -70,6 +76,8 @@ Future<SupportAgent?> showSupportAgentPicker(
               trailing: currentId == a.id ? const Icon(Icons.check) : null,
               onTap: () => Navigator.pop(c, a),
             ),
+            ]),
+          ),
       ],
     ),
   );

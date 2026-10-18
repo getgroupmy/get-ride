@@ -18,6 +18,7 @@ import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 const evProfilesPage = 'admin-settings-ev-profiles';
 
@@ -120,8 +121,10 @@ class _ProfilesTab extends ConsumerWidget {
                       subtitle: Text('Start one from a capture a driver sent for their car.'),
                     ),
                   ),
-                for (final p in list)
-                  Card(
+                ListSearchFilter(count: list.length, hint: 'Search profiles (make, model)', builder: (context, q) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+  for (final p in list)
+    if (q.isEmpty || searchSelectMatches('${p.title} ${p.make} ${p.model}', q) || false)
+      Card(
                     child: ListTile(
                       key: ValueKey('ev-profile-${p.id}'),
                       leading: Icon(
@@ -141,6 +144,7 @@ class _ProfilesTab extends ConsumerWidget {
                       onTap: () => onOpen(p),
                     ),
                   ),
+])),
               ],
             ),
           ),
@@ -590,7 +594,7 @@ class _EvProfileEditorState extends ConsumerState<EvProfileEditor> {
               children: [
                 SizedBox(
                   width: 200,
-                  child: DropdownButtonFormField<String>(
+                  child: SearchableDropdownFormField<String>(
                     key: ValueKey('ev-signal-key-$i'),
                     initialValue: evSignalKeys.contains(r.key) ? r.key : null,
                     isExpanded: true,

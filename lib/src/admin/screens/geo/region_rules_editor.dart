@@ -9,6 +9,7 @@ import '../../../core/region_rules.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 IconData ruleKindIcon(RuleKind k) => switch (k) {
   RuleKind.availability => Icons.schedule,
@@ -302,7 +303,10 @@ class _RegionRuleDialogState extends ConsumerState<RegionRuleDialog> {
                 ),
               ],
               label('Services'),
-              Wrap(
+              ListSearchFilter(
+                count: types.length + vehicles.length,
+                hint: 'Search services',
+                builder: (context, q) => Wrap(
                 spacing: 8,
                 runSpacing: 4,
                 children: [
@@ -313,7 +317,8 @@ class _RegionRuleDialogState extends ConsumerState<RegionRuleDialog> {
                     onSelected: (_) => setState(() => _r = _r.copyWith(target: RuleTarget.everything)),
                   ),
                   for (final c in types)
-                    FilterChip(
+                    if (q.isEmpty || searchSelectMatches(c.name, q) || r.target.categories.contains(c.id))
+                      FilterChip(
                       key: ValueKey('rule-type-${c.id}'),
                       avatar: const Icon(Icons.category_outlined, size: 16),
                       label: Text(c.name),
@@ -329,7 +334,8 @@ class _RegionRuleDialogState extends ConsumerState<RegionRuleDialog> {
                       }),
                     ),
                   for (final v in vehicles)
-                    FilterChip(
+                    if (q.isEmpty || searchSelectMatches(v.name, q) || r.target.vehicleTypes.contains(v.id))
+                      FilterChip(
                       key: ValueKey('rule-vehicle-${v.id}'),
                       avatar: const Icon(Icons.directions_car_outlined, size: 16),
                       label: Text(v.name),
@@ -345,6 +351,7 @@ class _RegionRuleDialogState extends ConsumerState<RegionRuleDialog> {
                       }),
                     ),
                 ],
+              ),
               ),
               Text(
                 'A service type (Car, Bike, …) covers every vehicle in it; a vehicle (Ride, Premium, …) just that one.',

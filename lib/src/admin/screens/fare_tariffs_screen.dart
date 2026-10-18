@@ -12,6 +12,7 @@ import 'geo/geo_data.dart';
 import 'geo/geo_logic.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart';
 
 final fareTariffRowsProvider = FutureProvider.autoDispose((ref) {
   ref.watchLive('fare_tariffs');
@@ -157,8 +158,10 @@ class _AdminFareTariffsScreenState extends ConsumerState<AdminFareTariffsScreen>
                   message: 'Every booking is quoted on the built-in TEKSI tariff in ringgit. Pick a place and a '
                       'service above and set a fare, or add a card.',
                 ),
-              for (final c in cards)
-                Card(
+              ListSearchFilter(count: cards.length, hint: 'Search tariffs (place, service, label)', builder: (context, q) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+  for (final c in cards)
+    if (q.isEmpty || searchSelectMatches('${c.scope} ${tariffServiceLabel(c, names)} ${c.label ?? ''}', q) || false)
+      Card(
                   key: ValueKey('tariff-${c.id}'),
                   child: BusyListTile(
                     leading: CircleAvatar(child: Text(c.level.substring(0, 1).toUpperCase())),
@@ -188,6 +191,7 @@ class _AdminFareTariffsScreenState extends ConsumerState<AdminFareTariffsScreen>
                     onTap: canEdit ? () => _edit(c) : null,
                   ),
                 ),
+])),
             ],
           );
         },
@@ -218,7 +222,7 @@ Widget _namePicker({
 }) {
   final all = [...options, if (value.isNotEmpty && !options.any((o) => o.toLowerCase() == value.toLowerCase())) value];
   final selected = all.firstWhere((o) => o.toLowerCase() == value.toLowerCase(), orElse: () => _anyValue);
-  return DropdownButtonFormField<String>(
+  return SearchableDropdownFormField<String>(
     key: key,
     isExpanded: true,
     initialValue: selected,
@@ -285,7 +289,7 @@ class _FilterCard extends StatelessWidget {
                 ),
               ),
             cell(
-              DropdownButtonFormField<String>(
+              SearchableDropdownFormField<String>(
                 key: const ValueKey('tariff-filter-type'),
                 isExpanded: true,
                 initialValue: types.any((t) => t.id == f.serviceType) ? f.serviceType : _anyValue,
@@ -580,7 +584,7 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              DropdownButtonFormField<String>(
+              SearchableDropdownFormField<String>(
                 isExpanded: true,
                 key: const ValueKey('tariff-level'),
                 initialValue: _level,
@@ -596,7 +600,7 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
               if (depth >= 3) place(2, 'city', RegionLevel.city),
               if (depth >= 4) place(3, 'suburb', RegionLevel.suburb),
               gap(
-                DropdownButtonFormField<String>(
+                SearchableDropdownFormField<String>(
                   key: const ValueKey('tariff-service-type'),
                   isExpanded: true,
                   initialValue: type?.id ?? _anyValue,
@@ -614,7 +618,7 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
                 ),
               ),
               gap(
-                DropdownButtonFormField<String>(
+                SearchableDropdownFormField<String>(
                   key: ValueKey('tariff-vehicle-${_serviceType ?? ''}'),
                   isExpanded: true,
                   initialValue: inType.any((v) => v.id == _vehicle) ? _vehicle : _anyValue,

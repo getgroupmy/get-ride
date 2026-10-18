@@ -12,7 +12,7 @@ import 'commerce_data.dart';
 import 'commerce_logic.dart';
 import 'commerce_widgets.dart';
 import 'ev_orders.dart';
-import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 Color _toneColor(BuildContext context, Object? status) => switch (evOrderStatusTone(status)) {
       EvOrderStatusTone.success => Colors.green,
@@ -160,31 +160,26 @@ class _OrderDetail extends ConsumerWidget {
       return <Entry>[];
     });
     if (!context.mounted) return;
-    final picked = await showAppDialog<Entry>(id: 'ev-orders.assign',
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text('Assign Delivery Advisor · ${advisors.length} configured'),
-        children: [
-          if (advisors.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('No DAs configured. Add advisors in Settings → TEKSI EV → Delivery Advisors.'),
-            ),
-          for (final a in advisors)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, a),
-              child: ListTile(
-                leading: const Icon(Icons.how_to_reg_outlined),
-                title: Text(_str(a.values['name'], 'Advisor')),
-                subtitle: Text('${_str(a.values['dealership'], '')} · ${_str(a.values['city'], '')}, ${_str(a.values['country'], '')}\n'
-                    '${_str(a.values['daNumber'], a.id)} · ${_str(a.values['contact'], '')}'),
-                isThreeLine: true,
-                trailing: v['advisorId'] == a.id ? const Icon(Icons.check) : null,
-              ),
-            ),
-        ],
-      ),
+    if (advisors.isEmpty) {
+      showInfo(context, 'No DAs configured. Add advisors in Settings → TEKSI EV → Delivery Advisors.');
+      return;
+    }
+    final pickedId = await showSearchPicker<String>(
+      context,
+      title: 'Assign Delivery Advisor · ${advisors.length} configured',
+      selected: v['advisorId'] as String?,
+      choices: [
+        for (final a in advisors)
+          (
+            value: a.id,
+            label: _str(a.values['name'], 'Advisor'),
+            subtitle: '${_str(a.values['dealership'], '')} · ${_str(a.values['city'], '')}, ${_str(a.values['country'], '')}\n'
+                '${_str(a.values['daNumber'], a.id)} · ${_str(a.values['contact'], '')}',
+            leading: const Icon(Icons.how_to_reg_outlined),
+          ),
+      ],
     );
+    final picked = pickedId == null ? null : advisors.firstWhere((a) => a.id == pickedId);
     if (picked == null || !context.mounted) return;
     await _patch(context, ref, advisorAssignmentPatch(picked.id, picked.values, DateTime.now()),
         success: '${_str(picked.values['name'], 'Advisor')} has been assigned to this order.');

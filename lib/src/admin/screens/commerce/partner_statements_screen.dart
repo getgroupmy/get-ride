@@ -17,6 +17,7 @@ import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../../widgets/page_style_host.dart';
 import 'statement_layout_tab.dart';
+import '../../../widgets/search_select.dart';
 
 /// The `admin_access` page these settings sit under.
 const statementsPage = 'admin-settings-partner-statements';
@@ -222,14 +223,17 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
                   padding: const EdgeInsets.all(8),
                   child: Text('No surcharges on trips in the last year.', style: TextStyle(color: muted)),
                 ),
-              for (final e in names.entries)
-                CheckboxListTile(
+              ListSearchFilter(count: names.length, hint: 'Search surcharges', builder: (context, q) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+  for (final e in names.entries)
+    if (q.isEmpty || searchSelectMatches(e.key, q) || s.earningSurcharges.contains(e.key))
+      CheckboxListTile(
                   key: ValueKey('statements-surcharge-${e.key}'),
                   value: s.earningSurcharges.contains(e.key),
                   title: Text(e.key),
                   subtitle: e.value > 0 ? Text('${e.value} trips in the last year') : null,
                   onChanged: widget.canEdit ? (v) => _toggle(e.key, v ?? false) : null,
                 ),
+])),
               if (widget.canEdit)
                 Row(
                   children: [

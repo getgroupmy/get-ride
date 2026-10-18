@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/widgets/search_select.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/maps/maps_data.dart';
@@ -481,6 +482,12 @@ void main() {
     await tester.ensureVisible(find.byKey(ValueKey(key)));
     await tester.tap(find.byKey(ValueKey(key)));
     await tester.pumpAndSettle();
+    // A long list opens with a search box: type the choice, as a user would.
+    final search = find.byKey(const ValueKey('search-select-field'));
+    if (search.evaluate().isNotEmpty) {
+      await tester.enterText(search, label);
+      await tester.pumpAndSettle();
+    }
     await tester.tap(find.text(label).last);
     await tester.pumpAndSettle();
   }
@@ -800,10 +807,11 @@ void main() {
   testWidgets('read-only without edit access', (tester) async {
     await pump(tester, edit: false);
     expect(find.byKey(const ValueKey('maps-copy-android')), findsNothing);
-    final field = tester.widget<DropdownButtonFormField<String>>(
+    final field = tester.widget<SearchableDropdownFormField<String>>(
       find.descendant(
         of: find.byKey(const ValueKey('maps-tile-android-light')),
-        matching: find.byType(DropdownButtonFormField<String>),
+        matching: find.byType(SearchableDropdownFormField<String>),
+        matchRoot: true,
       ),
     );
     expect(field.onChanged, isNull);

@@ -16,6 +16,7 @@ import '../../widgets/page_style_host.dart';
 import 'commission_settings_tabs.dart';
 import 'geo/geo_data.dart' show regionsProvider;
 import 'geo/geo_logic.dart' show RegionEntry, RegionLevel, regionNamesAt;
+import '../../widgets/search_select.dart';
 
 final commissionRatesProvider = FutureProvider.autoDispose((ref) {
   ref.watchLive('commission_rates');
@@ -523,7 +524,7 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
     }
     final all = [...options, if (value.isNotEmpty && !options.any((o) => o.toLowerCase() == value.toLowerCase())) value];
     final selected = all.where((o) => o.toLowerCase() == value.toLowerCase()).firstOrNull;
-    return DropdownButtonFormField<String>(
+    return SearchableDropdownFormField<String>(
       key: ValueKey('commission-$k-${_fields['country']!.text}/${_fields['state']!.text}/${_fields['city']!.text}'),
       isExpanded: true,
       initialValue: selected,
@@ -551,7 +552,7 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
         width: 420,
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            DropdownButtonFormField<String>(
+            SearchableDropdownFormField<String>(
               isExpanded: true,
               initialValue: _level,
               decoration: const InputDecoration(labelText: 'Level'),

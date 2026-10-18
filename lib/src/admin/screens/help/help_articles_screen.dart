@@ -12,6 +12,7 @@ import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../../data/live_tables.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/search_select.dart';
 
 const helpArticlesPage = 'admin-settings-help-articles';
 
@@ -323,7 +324,7 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
                 ),
               ),
               gap,
-              DropdownButtonFormField<String>(
+              SearchableDropdownFormField<String>(
                 isExpanded: true,
                 key: const ValueKey('help-edit-audience'),
                 initialValue: _audience,

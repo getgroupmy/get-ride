@@ -9,6 +9,7 @@ import '../../data/messaging_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../widgets/admin_widgets.dart';
+import '../../widgets/search_select.dart';
 
 final smsFallbackProvider = FutureProvider.autoDispose((ref) {
   ref.watchLive('sms_fallback_settings');
@@ -123,7 +124,7 @@ class _FormState extends ConsumerState<_Form> {
           children: [
             SizedBox(
               width: 220,
-              child: DropdownButtonFormField<int>(
+              child: SearchableDropdownFormField<int>(
                 key: const ValueKey('sms-fallback-wait'),
                 isExpanded: true,
                 initialValue: _draft.afterSeconds,
@@ -134,7 +135,7 @@ class _FormState extends ConsumerState<_Form> {
             ),
             SizedBox(
               width: 220,
-              child: DropdownButtonFormField<String>(
+              child: SearchableDropdownFormField<String>(
                 key: const ValueKey('sms-fallback-channel'),
                 isExpanded: true,
                 initialValue: _draft.channel,

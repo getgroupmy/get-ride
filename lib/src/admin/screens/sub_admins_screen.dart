@@ -13,6 +13,7 @@ import '../sub_admin_grants.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart';
 
 typedef _GrantsView = ({List<AdminGrant> grants, Map<String, Map<String, dynamic>> people});
 
@@ -133,7 +134,7 @@ class _AdminSubAdminsScreenState extends ConsumerState<AdminSubAdminsScreen> {
                     ),
                   ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 320),
-                    child: DropdownButtonFormField<String?>(
+                    child: SearchableDropdownFormField<String?>(
                       key: const ValueKey('sub-admin-page-filter'),
                       initialValue: _page,
                       isExpanded: true,

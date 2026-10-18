@@ -9,6 +9,7 @@ import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
+import '../../../widgets/search_select.dart';
 
 const _listPage = 'admin-settings-assign-service';
 const _detailPage = 'admin-settings-assign-service-page';
@@ -39,29 +40,28 @@ class _AssignServiceScreenState extends ConsumerState<AssignServiceScreen> {
     }
     if (!mounted) return;
     final current = sources[featureId];
-    final picked = await showAdminSheet<({String? id})>(
+    if (docs.isEmpty) {
+      showInfo(context, 'No active required documents. Add them in Required Documents first.');
+      return;
+    }
+    // The selected document's uploaded image is the data source; '' clears it.
+    final choice = await showSearchPicker<String>(
       context,
       title: 'Choose document for $label',
-      builder: (ctx) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('The selected document’s uploaded image will be used as the data source.'),
-        const SizedBox(height: 12),
-        if (docs.isEmpty) const Text('No active required documents. Add them in Required Documents first.'),
+      selected: current,
+      choices: [
         if (current != null)
-          ListTile(
-            leading: const Icon(Icons.close),
-            title: const Text('Clear current selection'),
-            onTap: () => Navigator.pop(ctx, (id: null)),
-          ),
+          (value: '', label: 'Clear current selection', subtitle: null, leading: const Icon(Icons.close)),
         for (final d in docs)
-          ListTile(
+          (
+            value: d.id,
+            label: str(d.values['name']).isEmpty ? 'Untitled document' : str(d.values['name']),
+            subtitle: str(d.values['description']).isEmpty ? null : str(d.values['description']),
             leading: Icon(d.id == current ? Icons.check_circle : Icons.description_outlined),
-            title: Text(str(d.values['name']).isEmpty ? 'Untitled document' : str(d.values['name'])),
-            subtitle: str(d.values['description']).isEmpty ? null : Text(str(d.values['description'])),
-            selected: d.id == current,
-            onTap: () => Navigator.pop(ctx, (id: d.id)),
           ),
-      ]),
+      ],
     );
+    final picked = choice == null ? null : (id: choice.isEmpty ? null : choice);
     if (picked == null || !mounted) return;
     await runAdminAction(context, () => AssignmentStore.setDocSource(featureId, picked.id));
     ref.invalidate(documentSourcesProvider);

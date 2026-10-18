@@ -12,6 +12,7 @@ import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
 import 'safety_incidents_screen.dart';
+import '../../../widgets/search_select.dart';
 
 final sosOpsConfigProvider = FutureProvider.autoDispose<SosOpsConfig>((ref) {
   ref.watchLive('app_settings');
@@ -142,12 +143,16 @@ class _SosOpsCardState extends ConsumerState<SosOpsCard> {
                 if (sorted.isEmpty)
                   Text('No admins found.', style: t.textTheme.bodySmall)
                 else
-                  Wrap(
+                  ListSearchFilter(
+                    count: sorted.length,
+                    hint: 'Search admins',
+                    builder: (context, q) => Wrap(
                     spacing: 8,
                     runSpacing: 4,
                     children: [
                       for (final a in sorted)
-                        FilterChip(
+                        if (q.isEmpty || searchSelectMatches(a.value, q) || _onCall.contains(a.key))
+                          FilterChip(
                           key: ValueKey('sos-ops-oncall-${a.key}'),
                           label: Text(a.value),
                           selected: _onCall.contains(a.key),
@@ -156,6 +161,7 @@ class _SosOpsCardState extends ConsumerState<SosOpsCard> {
                               : null,
                         ),
                     ],
+                  ),
                   ),
                 const SizedBox(height: 12),
                 SwitchListTile(

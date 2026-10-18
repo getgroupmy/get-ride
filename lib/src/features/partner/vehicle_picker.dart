@@ -7,6 +7,7 @@ import '../../data/vehicle_assignment_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart';
 
 /// The vehicle this driver is driving right now (Drive tab), with the
 /// picker to take one and the button to hand it back for a co-driver
@@ -137,8 +138,10 @@ class VehiclePickerSheet extends StatelessWidget {
               title: Text('Choose a vehicle', style: t.textTheme.titleMedium),
               subtitle: const Text('Only one driver can use a vehicle at a time.'),
             ),
-            for (final v in vehicles)
-              ListTile(
+            ListSearchFilter(count: vehicles.length, hint: 'Search plate or model', builder: (context, q) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+  for (final v in vehicles)
+    if (q.isEmpty || searchSelectMatches('${v.plate} ${v.title}', q) || v.inUseByMe)
+      ListTile(
                 key: ValueKey('pick-${v.id}'),
                 enabled: v.selectable,
                 leading: Icon(
@@ -155,6 +158,7 @@ class VehiclePickerSheet extends StatelessWidget {
                 ),
                 onTap: v.selectable ? () => Navigator.pop(context, v) : null,
               ),
+])),
             ListTile(
               leading: const Icon(Icons.add),
               title: const Text('My vehicles'),
