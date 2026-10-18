@@ -103,6 +103,9 @@ class _Seams {
   /// The image share fails for a passing reason.
   var shareFails = false;
 
+  /// The download fails.
+  var saveFails = false;
+
   List<Override> get overrides => [
     fileSharingAvailableProvider.overrideWithValue(fileShare),
     imageSharerProvider.overrideWithValue((i) async {
@@ -112,7 +115,7 @@ class _Seams {
     }),
     imageSaverProvider.overrideWithValue((i) async {
       saved.add(i);
-      return const ImageSaveResult(ImageSaveOutcome.downloaded);
+      return ImageSaveResult(saveFails ? ImageSaveOutcome.failed : ImageSaveOutcome.downloaded);
     }),
     textSharerProvider.overrideWithValue((t, {subject, origin}) async {
       texts.add(t);
@@ -162,7 +165,7 @@ void main() {
     });
 
     test('what a save tells the rider', () {
-      expect(imageSaveMessage(const ImageSaveResult(ImageSaveOutcome.downloaded)), 'Image downloaded');
+      expect(imageSaveMessage(const ImageSaveResult(ImageSaveOutcome.downloaded)), 'Image saved to your downloads');
       expect(
         imageSaveMessage(const ImageSaveResult(ImageSaveOutcome.savedToFile, path: '/d/x.png')),
         contains('/d/x.png'),
@@ -266,7 +269,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('wallet-qr-save')));
         await tester.pumpAndSettle();
         expect(seams.saved.single.fileName, 'getride-wallet-qr.png');
-        expect(find.text('Image downloaded'), findsOneWidget);
+        expect(find.text('Image saved to your downloads'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }
@@ -389,6 +392,73 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    for (final brightness in Brightness.values) {
+      testWidgets('web: Share card copies the invite where images cannot be shared; Download says it saved '
+          '(${brightness.name})', (tester) async {
+        _tall(tester);
+        final copied = <String>[];
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') copied.add((call.arguments as Map)['text'] as String);
+          return null;
+        });
+        addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+        final seams = _Seams()..fileShare = false;
+        await tester.pumpWidget(
+          _app(
+            const ReferralScreen(),
+            seams,
+            brightness: brightness,
+            more: [referralRepositoryProvider.overrideWithValue(_FakeReferrals())],
+          ),
+        );
+        await tester.pumpAndSettle();
+        final code = referralCodeFor(userId: _me);
+        await tester.ensureVisible(find.byKey(const ValueKey('referral-card-share')));
+        await tester.tap(find.byKey(const ValueKey('referral-card-share')));
+        await tester.pumpAndSettle();
+        expect(seams.shared, isEmpty);
+        expect(copied.single, referralMessage(code, referralLink(code)));
+        expect(find.text(copiedForPasting), findsOneWidget);
+
+        ScaffoldMessenger.of(tester.element(find.byKey(const ValueKey('referral-card-save')))).clearSnackBars();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('referral-card-save')));
+        await tester.pumpAndSettle();
+        expect(seams.saved.single.fileName, referralCardFileName(code));
+        expect(find.text('Image saved to your downloads'), findsOneWidget);
+
+        // A download that fails says so.
+        ScaffoldMessenger.of(tester.element(find.byKey(const ValueKey('referral-card-save')))).clearSnackBars();
+        seams.saveFails = true;
+        await tester.pumpWidget(
+          _app(
+            const ReferralScreen(),
+            seams,
+            brightness: brightness,
+            more: [referralRepositoryProvider.overrideWithValue(_FakeReferrals())],
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(const ValueKey('referral-card-save')));
+        await tester.tap(find.byKey(const ValueKey('referral-card-save')));
+        await tester.pumpAndSettle();
+        expect(find.text("Couldn't save the image. Try Share instead."), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('a card that could not be drawn says so instead of nothing', (tester) async {
+      _tall(tester);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ShareSaveImageButtons(keyPrefix: 'x', image: (_) async => null),
+        ),
+      ));
+      await tester.tap(find.byKey(const ValueKey('x-share')));
+      await tester.pumpAndSettle();
+      expect(find.text(imageNotReadyMessage), findsOneWidget);
+    });
 
     testWidgets('with no share sheet the invite is copied, and it says so', (tester) async {
       _tall(tester);

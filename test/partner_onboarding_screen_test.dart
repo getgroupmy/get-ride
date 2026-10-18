@@ -6,8 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/admin/screens/people/people_logic.dart';
+import 'package:get_ride/src/core/partner_onboarding.dart';
 import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/data/partner_onboarding_repository.dart';
+import 'package:get_ride/src/features/partner/driver_permit_screen.dart' show permitDocumentsRoute;
 import 'package:get_ride/src/features/partner/partner_onboarding_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/providers.dart';
@@ -131,6 +133,7 @@ Future<_FakeOnboarding> _pump(
 }
 
 void main() {
+  startStepTests();
   testWidgets('a new partner starts at the profile photo', (tester) async {
     await _pump(tester, OnboardingState(profile: const {}, partner: _partner()));
     expect(find.text('Step 1 of 6'), findsOneWidget);
@@ -295,6 +298,47 @@ void main() {
       final ctx = tester.element(note);
       expect(tester.widget<Text>(note).style?.color, Theme.of(ctx).colorScheme.error);
       expect(find.textContaining('old note'), findsNothing, reason: 'only a rejection shows its note');
+    });
+  }
+}
+
+void startStepTests() {
+  test('"Update documents" opens on Documents unless an earlier step is still missing', () {
+    expect(onboardingStepFromQuery('requirements'), OnboardingStep.requirements);
+    expect(onboardingStepFromQuery('nope'), isNull);
+    expect(onboardingStepFromQuery(null), isNull);
+    expect(onboardingStartStep(OnboardingStep.done, OnboardingStep.requirements), OnboardingStep.requirements);
+    expect(onboardingStartStep(OnboardingStep.requirements, OnboardingStep.requirements), OnboardingStep.requirements);
+    expect(onboardingStartStep(OnboardingStep.id, OnboardingStep.requirements), OnboardingStep.id,
+        reason: 'the steps go in order: the missing ID comes first');
+    expect(permitDocumentsRoute, '/drive/onboarding?step=requirements');
+  });
+
+  for (final b in Brightness.values) {
+    testWidgets('a submitted partner sent for their documents lands on the Documents step (${b.name})',
+        (tester) async {
+      await _pump(
+        tester,
+        OnboardingState(profile: const {}, partner: _partner({..._filledIn, 'documents_ok': true})),
+        brightness: b,
+        screen: const PartnerOnboardingScreen(startAt: OnboardingStep.requirements),
+      );
+      await tester.pump();
+      expect(find.text('Upload your documents'), findsOneWidget);
+      final docs = tester.widget<ChoiceChip>(find.byKey(const ValueKey('onboarding-step-requirements')));
+      expect(docs.selected, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('with the ID still missing it opens there instead (${b.name})', (tester) async {
+      await _pump(
+        tester,
+        OnboardingState(profile: const {'profile_image': 'x.png'}, partner: _partner()),
+        brightness: b,
+        screen: const PartnerOnboardingScreen(startAt: OnboardingStep.requirements),
+      );
+      expect(find.text('Your ID'), findsOneWidget);
+      expect(find.text('Upload your documents'), findsNothing);
     });
   }
 }

@@ -464,7 +464,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
           // Driver mode's pages, under the driver menu.
-          GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
+          GoRoute(
+            path: '/drive/onboarding',
+            builder: (_, s) => PartnerOnboardingScreen(startAt: onboardingStepFromQuery(s.uri.queryParameters['step'])),
+          ),
           GoRoute(
             path: '/drive/demo',
             builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),

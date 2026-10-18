@@ -89,6 +89,9 @@ final imageSharerProvider = Provider<Future<bool> Function(ShareableImage image)
 /// a browser only with the Web Share API for files. Overridden in tests.
 final fileSharingAvailableProvider = Provider<bool>((ref) => canShareFiles());
 
+/// Said when the picture could not be drawn (nothing on screen to take).
+const imageNotReadyMessage = "Couldn't make the image. Please try again.";
+
 /// Said when Share copied the text instead of sharing the image, because
 /// this browser can't share files at all.
 const copiedForPasting = 'Copied. Paste it in WhatsApp or any app.';
@@ -247,7 +250,10 @@ class ShareSaveImageButtons extends ConsumerWidget {
                     }
                     try {
                       final img = await image(shareOriginOf(bc));
-                      if (img == null) return;
+                      if (img == null) {
+                        if (context.mounted) showInfo(context, imageNotReadyMessage);
+                        return;
+                      }
                       final copied = await ref.read(imageSharerProvider)(img);
                       if (copied && context.mounted) {
                         showInfo(context, img.text == null ? 'Saved the image' : 'Saved the image. $copiedForSharing');
@@ -269,7 +275,10 @@ class ShareSaveImageButtons extends ConsumerWidget {
                     ImageSaveResult result;
                     try {
                       final img = await image(shareOriginOf(bc));
-                      if (img == null) return;
+                      if (img == null) {
+                        if (context.mounted) showInfo(context, imageNotReadyMessage);
+                        return;
+                      }
                       result = await ref.read(imageSaverProvider)(img);
                     } catch (_) {
                       result = const ImageSaveResult(ImageSaveOutcome.failed);

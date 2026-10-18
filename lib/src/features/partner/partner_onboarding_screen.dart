@@ -22,12 +22,40 @@ import '../../widgets/net_image.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 
+/// Where the form opens when asked for [wanted]: there when the partner has
+/// reached it (or finished), else the first step still missing ([reached]),
+/// which has to be done first. Pure.
+OnboardingStep onboardingStartStep(OnboardingStep reached, OnboardingStep wanted) {
+  if (wanted == OnboardingStep.done) return reached;
+  final r = reached == OnboardingStep.done ? OnboardingStep.wizard.length : OnboardingStep.wizard.indexOf(reached);
+  return OnboardingStep.wizard.indexOf(wanted) <= r ? wanted : reached;
+}
+
+/// The step a `/drive/onboarding?step=<key>` address asks for, by its stored
+/// key ('requirements' for the documents); null for none or an unknown one.
+OnboardingStep? onboardingStepFromQuery(String? key) {
+  for (final s in OnboardingStep.wizard) {
+    if (s.key == key) return s;
+  }
+  return null;
+}
+
 /// Becoming a partner (Expo `app/partner-onboarding.tsx`): profile photo,
 /// ID, address, service area, partner type and the required documents, then
 /// submitted for an admin to review. A returning partner lands on the first
 /// step still missing; finished steps can be reopened from the header.
 class PartnerOnboardingScreen extends ConsumerStatefulWidget {
-  const PartnerOnboardingScreen({super.key, this.pickAvatar = pickAvatarImage, this.pickPhoto = pickImage});
+  const PartnerOnboardingScreen({
+    super.key,
+    this.pickAvatar = pickAvatarImage,
+    this.pickPhoto = pickImage,
+    this.startAt,
+  });
+
+  /// The step to open on ("Update documents" asks for the documents), when
+  /// it is reachable; an earlier step still missing comes first, as the
+  /// steps go in order ([onboardingStartStep]).
+  final OnboardingStep? startAt;
 
   /// The profile photo picker: camera or gallery on a phone, cut square
   /// (overridden in tests).
@@ -101,6 +129,12 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       if (!mounted) return;
       setState(() {
         _s = s;
+        // Opened for one step (`?step=`): there, unless an earlier one is
+        // still missing. Only on the first load.
+        if (_viewing == null && widget.startAt != null) {
+          final start = onboardingStartStep(s.step, widget.startAt!);
+          _viewing = start == s.step ? null : start;
+        }
         _ic.text = '${s.partner['ic'] ?? s.profile?['ic'] ?? ''}';
         _address.text = '${s.partner['address'] ?? s.profile?['address'] ?? ''}';
         _area = area;
