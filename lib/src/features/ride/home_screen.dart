@@ -94,8 +94,9 @@ final nearbyDriversProvider = FutureProvider.autoDispose.family<Map<String, doub
 /// at, with the pickup in the middle and the nearby streets around it.
 const homeStreetZoom = 17.0;
 
-/// How long the confirm screen waits for the AI fare estimate.
-const aiEstimateTimeout = Duration(seconds: 30);
+/// How long the AI fare estimate is waited for (PERF-33: was 30 s). The
+/// standard tariff's fare shows meanwhile; past this it stays.
+const aiEstimateTimeout = Duration(seconds: 5);
 
 /// A point of a trip GET.ride can't serve ([UnavailableAt]; [stop] is the
 /// stop's index when it is a stop).
@@ -693,18 +694,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         .timeout(aiEstimateTimeout, onTimeout: () => null);
     final r = await ref.read(geoServiceProvider).route(a.point, b.point, via: via);
     if (!mounted || seq != _routeSeq) return;
-    setState(() => _route = r);
-    onRouted?.call();
-    // Both before the fare shows (Expo's "Calculating fare" overlay stays up
-    // through the AI estimate): the fare is never shown, or booked, on the
-    // map route only to change a moment later.
-    final ai = await aiFuture;
-    if (!mounted || seq != _routeSeq) return;
+    // The standard tariff's fare shows (and can be booked) as soon as the
+    // route is in (PERF-33); the AI's takes its place when it comes.
     setState(() {
-      // Only an estimate through every stop prices this trip.
-      _ai = estimateCoversStops(ai?.estimate, via.length) ? ai?.estimate : null;
+      _route = r;
       _routing = false;
     });
+    onRouted?.call();
+    final ai = await aiFuture;
+    if (!mounted || seq != _routeSeq) return;
+    // Only an estimate through every stop prices this trip.
+    final estimate = estimateCoversStops(ai?.estimate, via.length) ? ai?.estimate : null;
+    if (estimate != null) _swapInAi(seq, estimate);
     if (ai != null && ai.unavailable && mounted) {
       unawaited(showAppDialog<void>(id: 'home.update-route',
         context: context,
@@ -716,6 +717,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ));
     }
+  }
+
+  /// Set from the tap on "Find a driver" until that booking is done: the
+  /// fare booked is the one the rider saw when they tapped.
+  bool _fareHeld = false;
+
+  /// An AI estimate that came while [_fareHeld], for after.
+  ({int seq, RouteEstimate estimate})? _heldAi;
+
+  /// The AI's fare in place of the tariff's on route [seq] — not while a
+  /// booking is under way (held until it is done), and not over an offer
+  /// the rider has already set themselves.
+  void _swapInAi(int seq, RouteEstimate estimate) {
+    if (!mounted || seq != _routeSeq || _adjust != 0) return;
+    if (_fareHeld) {
+      _heldAi = (seq: seq, estimate: estimate);
+      return;
+    }
+    setState(() => _ai = estimate);
   }
 
   ({double distanceKm, double durationMin})? get _basis {
@@ -1030,6 +1050,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _book() async {
+    _fareHeld = true;
+    try {
+      await _bookShown();
+    } finally {
+      _fareHeld = false;
+      final held = _heldAi;
+      _heldAi = null;
+      if (held != null) _swapInAi(held.seq, held.estimate);
+    }
+  }
+
+  Future<void> _bookShown() async {
     final a = _pickup, b = _drop, r = _basis;
     if (a == null || b == null || r == null) return;
     final forWhom = _forOther ? bookedFor(_otherName.text, _otherPhone.text) : null;
