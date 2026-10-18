@@ -44,6 +44,7 @@ class OfferFareScreen extends StatefulWidget {
     this.onOptions,
     this.optionsOn = false,
     this.payments = builtInPayments,
+    this.onChanged,
   });
 
   final double recommended;
@@ -65,6 +66,10 @@ class OfferFareScreen extends StatefulWidget {
   final VoidCallback? onRoute, onAddStop;
   final void Function(BuildContext context)? onOptions;
   final bool optionsOn;
+
+  /// What the page holds, as it changes: the result when it is left by the
+  /// iOS edge swipe (or the system Back), which pops it with no value.
+  final ValueChanged<OfferFareResult>? onChanged;
 
   @override
   State<OfferFareScreen> createState() => _OfferFareScreenState();
@@ -92,6 +97,21 @@ class _OfferFareScreenState extends State<OfferFareScreen> {
       _fare.text = widget.current.round().toString();
     }
   }
+
+  @override
+  void initState() {
+    super.initState();
+    _fare.addListener(_report);
+  }
+
+  /// Every change reported as it is made ([OfferFareScreen.onChanged]).
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _report();
+  }
+
+  void _report() => widget.onChanged?.call(_result());
 
   @override
   void dispose() {
@@ -130,240 +150,237 @@ class _OfferFareScreenState extends State<OfferFareScreen> {
     final problem = _problem;
     final shown = _typed ?? widget.recommended;
     final big = t.textTheme.displayMedium?.copyWith(fontSize: 64, fontWeight: FontWeight.w800, height: 1.1);
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.pop(context, _result());
-      },
-      child: Scaffold(
-        key: const ValueKey('offer-fare-screen'),
-        backgroundColor: colours.ground,
-        appBar: AppBar(
-          backgroundColor: colours.card,
-          surfaceTintColor: Colors.transparent,
-          centerTitle: true,
-          leading: IconButton(
-            key: const ValueKey('offer-fare-back'),
-            tooltip: 'Back',
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.pop(context, _result()),
-          ),
-          title: Text('Offer your fare', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+    // No PopScope: one that held the page to pop it with a result also
+    // turned off iOS's edge swipe back. The changes are reported as they
+    // are made ([OfferFareScreen.onChanged]) instead.
+    return Scaffold(
+      key: const ValueKey('offer-fare-screen'),
+      backgroundColor: colours.ground,
+      appBar: AppBar(
+        backgroundColor: colours.card,
+        surfaceTintColor: Colors.transparent,
+        centerTitle: true,
+        leading: IconButton(
+          key: const ValueKey('offer-fare-back'),
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context, _result()),
         ),
-        body: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            // The fare, typed straight in: the currency grey, the amount
-            // black, over a hairline; the recommended fare (or what's wrong)
-            // below.
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: colours.card,
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('You can change the recommended fare', style: t.textTheme.bodyLarge?.copyWith(color: muted)),
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border(bottom: BorderSide(color: t.colorScheme.outlineVariant)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text('${widget.currencyLabel} ', style: big?.copyWith(color: muted)),
-                        Expanded(
-                          child: TextField(
-                            key: const ValueKey('offer-fare-field'),
-                            controller: _fare,
-                            autofocus: true,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(5),
-                            ],
-                            style: big?.copyWith(color: ink),
-                            cursorColor: ink,
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              filled: false,
-                              isDense: true,
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                            onChanged: (_) => setState(() {}),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    _fare.text.isNotEmpty && problem != null
-                        ? problem
-                        : 'Recommended fare: ${widget.money(widget.recommended)}',
-                    key: const ValueKey('offer-fare-note'),
-                    style: t.textTheme.bodyLarge?.copyWith(
-                      color: _fare.text.isNotEmpty && problem != null ? t.colorScheme.error : ink,
-                    ),
-                  ),
-                ],
-              ),
+        title: Text('Offer your fare', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+      ),
+      body: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          // The fare, typed straight in: the currency grey, the amount
+          // black, over a hairline; the recommended fare (or what's wrong)
+          // below.
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: colours.card,
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
             ),
-            _card(
-              context,
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.info_outline, color: ink),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(
-                        "Fare doesn't include state entry tax, tolls, or parking fees",
-                        style: t.textTheme.bodyLarge,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            _card(
-              context,
-              Column(
-                children: [
-                  ListTile(
-                    key: const ValueKey('offer-fare-payment'),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    leading: Icon(
-                      paymentLook(paymentChoiceFor(_payment, widget.payments).kind).$1,
-                      color: const Color(0xFF6BBF2A),
-                    ),
-                    title: Text(
-                      paymentChoiceFor(_payment, widget.payments).label,
-                      style: t.textTheme.bodyLarge,
-                    ),
-                    trailing: Icon(Icons.chevron_right, color: muted),
-                    onTap: () async {
-                      final p = await showPaymentSheet(context, _payment, payments: widget.payments);
-                      if (p != null && mounted) setState(() => _payment = p);
-                    },
-                  ),
-                  ListTile(
-                    contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
-                    leading: const AutoAcceptIcon(),
-                    title: Text(
-                      'Automatically accept the nearest driver for ${widget.money(shown)}',
-                      style: t.textTheme.bodyLarge,
-                    ),
-                    trailing: ConfirmSwitch(
-                      key: const ValueKey('offer-fare-auto-accept'),
-                      value: _autoAccept,
-                      onChanged: (v) => setState(() => _autoAccept = v),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            _card(
-              context,
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Column(
-                  children: [
-                    ListTile(
-                      leading: Icon(Icons.emoji_people, color: ink),
-                      title: Text(
-                        widget.pickupName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.textTheme.bodyLarge,
-                      ),
-                      trailing: ActionChip(
-                        key: const ValueKey('offer-fare-entrance'),
-                        label: Text(_entrance.isEmpty ? 'Entrance' : 'Entrance $_entrance'),
-                        shape: const StadiumBorder(),
-                        side: BorderSide.none,
-                        backgroundColor: t.colorScheme.surfaceContainerHighest,
-                        onPressed: () async {
-                          final v = await showEntranceSheet(context, _entrance);
-                          if (v != null && mounted) setState(() => _entrance = v);
-                        },
-                      ),
-                    ),
-                    ListTile(
-                      leading: Icon(Icons.flag, color: ink),
-                      title: Text(
-                        widget.routeLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.textTheme.bodyLarge,
-                      ),
-                      onTap: widget.onRoute,
-                      trailing: widget.onAddStop == null
-                          ? null
-                          : IconButton(
-                              key: const ValueKey('offer-fare-add-stop'),
-                              tooltip: 'Add another stop',
-                              icon: Icon(Icons.add, color: ink, size: 28),
-                              onPressed: widget.onAddStop,
-                            ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-        bottomNavigationBar: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 56,
-                    child: FilledButton(
-                      key: const ValueKey('offer-fare-find'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: accentFill,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                        textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
-                      onPressed: problem == null ? () => Navigator.pop(context, _result(find: true)) : null,
-                      child: const Text('Find a driver'),
-                    ),
+                Text('You can change the recommended fare', style: t.textTheme.bodyLarge?.copyWith(color: muted)),
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border(bottom: BorderSide(color: t.colorScheme.outlineVariant)),
                   ),
-                ),
-                if (widget.onOptions != null) ...[
-                  const SizedBox(width: 12),
-                  SizedBox.square(
-                    dimension: 56,
-                    child: Material(
-                      color: confirmAccent,
-                      borderRadius: BorderRadius.circular(16),
-                      child: InkWell(
-                        key: const ValueKey('offer-fare-options'),
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () => widget.onOptions!(context),
-                        child: Badge(
-                          isLabelVisible: widget.optionsOn,
-                          smallSize: 8,
-                          child: const Icon(Icons.tune, color: Colors.white),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text('${widget.currencyLabel} ', style: big?.copyWith(color: muted)),
+                      Expanded(
+                        child: TextField(
+                          key: const ValueKey('offer-fare-field'),
+                          controller: _fare,
+                          autofocus: true,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(5),
+                          ],
+                          style: big?.copyWith(color: ink),
+                          cursorColor: ink,
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            filled: false,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          onChanged: (_) => setState(() {}),
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _fare.text.isNotEmpty && problem != null
+                      ? problem
+                      : 'Recommended fare: ${widget.money(widget.recommended)}',
+                  key: const ValueKey('offer-fare-note'),
+                  style: t.textTheme.bodyLarge?.copyWith(
+                    color: _fare.text.isNotEmpty && problem != null ? t.colorScheme.error : ink,
+                  ),
+                ),
               ],
             ),
+          ),
+          _card(
+            context,
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, color: ink),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      "Fare doesn't include state entry tax, tolls, or parking fees",
+                      style: t.textTheme.bodyLarge,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _card(
+            context,
+            Column(
+              children: [
+                ListTile(
+                  key: const ValueKey('offer-fare-payment'),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  leading: Icon(
+                    paymentLook(paymentChoiceFor(_payment, widget.payments).kind).$1,
+                    color: const Color(0xFF6BBF2A),
+                  ),
+                  title: Text(
+                    paymentChoiceFor(_payment, widget.payments).label,
+                    style: t.textTheme.bodyLarge,
+                  ),
+                  trailing: Icon(Icons.chevron_right, color: muted),
+                  onTap: () async {
+                    final p = await showPaymentSheet(context, _payment, payments: widget.payments);
+                    if (p != null && mounted) setState(() => _payment = p);
+                  },
+                ),
+                ListTile(
+                  contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+                  leading: const AutoAcceptIcon(),
+                  title: Text(
+                    'Automatically accept the nearest driver for ${widget.money(shown)}',
+                    style: t.textTheme.bodyLarge,
+                  ),
+                  trailing: ConfirmSwitch(
+                    key: const ValueKey('offer-fare-auto-accept'),
+                    value: _autoAccept,
+                    onChanged: (v) => setState(() => _autoAccept = v),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _card(
+            context,
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: Icon(Icons.emoji_people, color: ink),
+                    title: Text(
+                      widget.pickupName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.bodyLarge,
+                    ),
+                    trailing: ActionChip(
+                      key: const ValueKey('offer-fare-entrance'),
+                      label: Text(_entrance.isEmpty ? 'Entrance' : 'Entrance $_entrance'),
+                      shape: const StadiumBorder(),
+                      side: BorderSide.none,
+                      backgroundColor: t.colorScheme.surfaceContainerHighest,
+                      onPressed: () async {
+                        final v = await showEntranceSheet(context, _entrance);
+                        if (v != null && mounted) setState(() => _entrance = v);
+                      },
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.flag, color: ink),
+                    title: Text(
+                      widget.routeLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.bodyLarge,
+                    ),
+                    onTap: widget.onRoute,
+                    trailing: widget.onAddStop == null
+                        ? null
+                        : IconButton(
+                            key: const ValueKey('offer-fare-add-stop'),
+                            tooltip: 'Add another stop',
+                            icon: Icon(Icons.add, color: ink, size: 28),
+                            onPressed: widget.onAddStop,
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 56,
+                  child: FilledButton(
+                    key: const ValueKey('offer-fare-find'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: accentFill,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                    ),
+                    onPressed: problem == null ? () => Navigator.pop(context, _result(find: true)) : null,
+                    child: const Text('Find a driver'),
+                  ),
+                ),
+              ),
+              if (widget.onOptions != null) ...[
+                const SizedBox(width: 12),
+                SizedBox.square(
+                  dimension: 56,
+                  child: Material(
+                    color: confirmAccent,
+                    borderRadius: BorderRadius.circular(16),
+                    child: InkWell(
+                      key: const ValueKey('offer-fare-options'),
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => widget.onOptions!(context),
+                      child: Badge(
+                        isLabelVisible: widget.optionsOn,
+                        smallSize: 8,
+                        child: const Icon(Icons.tune, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

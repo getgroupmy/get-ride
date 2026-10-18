@@ -101,19 +101,27 @@ class ConfirmAddressCard extends StatelessWidget {
               children: [
                 const _Mark(Icons.emoji_people, 'pickup'),
                 Expanded(
-                  child: InkWell(
-                    key: const ValueKey('confirm-pickup'),
+                  // Read as "From: <place>", a button, not the bare name.
+                  child: Semantics(
+                    container: true,
+                    button: true,
+                    label: 'From: ${pickup?.name ?? 'Set pickup'}',
                     onTap: onPickup,
-                    // 44 tall at least: a finger-sized target.
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 44),
-                      child: Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: Text(
-                          pickup?.name ?? 'Set pickup',
-                          style: text,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                    excludeSemantics: true,
+                    child: InkWell(
+                      key: const ValueKey('confirm-pickup'),
+                      onTap: onPickup,
+                      // 44 tall at least: a finger-sized target.
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 44),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text(
+                            pickup?.name ?? 'Set pickup',
+                            style: text,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
                     ),
@@ -151,27 +159,36 @@ class ConfirmAddressCard extends StatelessWidget {
               children: [
                 const _Mark(Icons.flag, 'drop'),
                 Expanded(
-                  child: InkWell(
-                    key: const ValueKey('confirm-drop'),
+                  child: Semantics(
+                    container: true,
+                    button: true,
+                    label: stops.isEmpty
+                        ? 'To: ${drop.name}${duration.isEmpty ? '' : ', $duration'}'
+                        : 'Route: ${stops.length + 1} stops${duration.isEmpty ? '' : ', $duration'}',
                     onTap: stops.isEmpty ? onDrop : onStops,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 44),
-                      child: Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(text: stops.isEmpty ? drop.name : '${stops.length + 1} route stops'),
-                              if (duration.isNotEmpty)
-                                TextSpan(
-                                  text: '  $duration',
-                                  style: TextStyle(color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w400),
-                                ),
-                            ],
+                    excludeSemantics: true,
+                    child: InkWell(
+                      key: const ValueKey('confirm-drop'),
+                      onTap: stops.isEmpty ? onDrop : onStops,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 44),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(text: stops.isEmpty ? drop.name : '${stops.length + 1} route stops'),
+                                if (duration.isNotEmpty)
+                                  TextSpan(
+                                    text: '  $duration',
+                                    style: TextStyle(color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w400),
+                                  ),
+                              ],
+                            ),
+                            style: text,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          style: text,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
@@ -181,17 +198,25 @@ class ConfirmAddressCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Tooltip(
                     message: 'Add another stop',
-                    child: InkResponse(
-                      key: const ValueKey('confirm-add-stop'),
+                    excludeFromSemantics: true,
+                    child: Semantics(
+                      container: true,
+                      button: true,
+                      label: 'Add stop',
                       onTap: onAddStop,
-                      child: SizedBox.square(
-                        dimension: 44,
-                        child: Center(
-                          child: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: const BoxDecoration(color: confirmAccent, shape: BoxShape.circle),
-                            child: const Icon(Icons.add, color: Colors.white, size: 20),
+                      excludeSemantics: true,
+                      child: InkResponse(
+                        key: const ValueKey('confirm-add-stop'),
+                        onTap: onAddStop,
+                        child: SizedBox.square(
+                          dimension: 44,
+                          child: Center(
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: const BoxDecoration(color: confirmAccent, shape: BoxShape.circle),
+                              child: const Icon(Icons.add, color: Colors.white, size: 20),
+                            ),
                           ),
                         ),
                       ),

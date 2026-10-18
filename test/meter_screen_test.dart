@@ -241,6 +241,9 @@ void main() {
       app: MaterialApp.router(routerConfig: router),
     );
     expect(find.text('NO DESTINATION'), findsOneWidget);
+    // SET is a finger-sized target, and so is the vehicle chip's tap area.
+    expect(tester.getSize(find.byKey(const ValueKey('meter-destination'))).height, greaterThanOrEqualTo(44));
+    expect(tester.getSize(find.byKey(const ValueKey('meter-plate'))).height, greaterThanOrEqualTo(44));
     await tester.tap(find.byKey(const ValueKey('meter-destination')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('PICK KL SENTRAL'));

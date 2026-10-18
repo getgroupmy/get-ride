@@ -964,7 +964,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// books straight away.
   Future<void> _openOfferFare() async {
     final style = currencyStyles[_currency.trim().toUpperCase()];
-    final r = await Navigator.of(context).push<OfferFareResult>(
+    // What the page holds as it changes: kept when it is left by the iOS
+    // edge swipe, which pops it with no result.
+    OfferFareResult? latest;
+    final pushed = await Navigator.of(context).push<OfferFareResult>(
       AppPageRoute(id: 'home.open-offer-fare',
         // Rebuilt on every change here: a stop added, removed or moved there
         // changes the route label and, once the route is worked out, the fare.
@@ -992,10 +995,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onChanged: (o) => setState(() => _options = o),
               note: _note,
             ),
+            onChanged: (v) => latest = v,
           ),
         ),
       ),
     );
+    final r = pushed ?? latest;
     if (r == null || !mounted) return;
     setState(() {
       if (r.fare != null) _adjust = r.fare! - _recommendedFor(_service);

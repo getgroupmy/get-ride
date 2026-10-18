@@ -3,6 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsAction;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme, routerProvider;
@@ -519,6 +520,15 @@ void main() {
         ),
       ),
     );
+    // The tappable node carries the name (VoiceOver read a bare "button").
+    final semantics = tester.ensureSemantics();
+    await tester.pump();
+    final node = tester.getSemantics(find.byKey(const ValueKey('ride-call')));
+    expect(node.label, 'Call ${forMak.passengerName}');
+    expect(node.flagsCollection.isButton, isTrue);
+    expect(node.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
+    expect(node.getSemanticsData().hasAction(SemanticsAction.longPress), isTrue);
+    semantics.dispose();
     await tester.tap(find.byKey(const ValueKey('ride-call')));
     await tester.pump();
     expect(calls.single.toString(), 'tel:+60111222333', reason: 'the person at the pickup, not the booker');

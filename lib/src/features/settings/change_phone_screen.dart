@@ -154,6 +154,8 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
                     enabled: !_busy,
                     autofocus: true,
                     keyboardType: TextInputType.number,
+                    // iOS offers the code from the SMS above the keyboard.
+                    autofillHints: const [AutofillHints.oneTimeCode],
                     maxLength: 6,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: const InputDecoration(labelText: 'Code'),

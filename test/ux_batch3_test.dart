@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/fare.dart' show RideService;
 import 'package:get_ride/src/core/payment_types.dart';
+import 'package:get_ride/src/data/geo_service.dart' show Place;
+import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:get_ride/src/data/device_access.dart' show deviceBlockedProvider;
 import 'package:get_ride/src/features/auth/otp_screen.dart';
 import 'package:get_ride/src/features/auth/phone_screen.dart';
@@ -548,6 +550,32 @@ void _sheets() {
     await tester.ensureVisible(msg);
     await tester.pumpAndSettle();
     expectOnScreen(tester, msg, keyboard: 260 + 64);
+  });
+
+  testWidgets('the route card rows are named for a screen reader', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ConfirmAddressCard(
+            pickup: const Place(name: 'Eco Majestic', address: 'Semenyih', point: LatLng(2.93, 101.83)),
+            drop: const Place(name: 'KLCC', address: 'Kuala Lumpur', point: LatLng(3.15, 101.71)),
+            stops: const [],
+            duration: '~25 min',
+            entrance: '',
+            onPickup: () {},
+            onDrop: () {},
+            onEntrance: () {},
+            onStops: () {},
+            onAddStop: () {},
+          ),
+        ),
+      ),
+    );
+    expect(tester.getSemantics(find.byKey(const ValueKey('confirm-pickup'))).label, 'From: Eco Majestic');
+    expect(tester.getSemantics(find.byKey(const ValueKey('confirm-drop'))).label, 'To: KLCC, ~25 min');
+    expect(tester.getSemantics(find.byKey(const ValueKey('confirm-add-stop'))).label, 'Add stop');
+    semantics.dispose();
   });
 
   test('the time wheels show fewer rows on a short screen', () {

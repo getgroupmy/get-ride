@@ -784,6 +784,25 @@ void main() {
     expect(tester.widget<Text>(find.byKey(const ValueKey('confirm-fare'))).data, contains('$typed'));
   });
 
+  testWidgets('Offer your fare leaves by the iOS edge swipe, and its fare still comes back', (tester) async {
+    await _pump(tester, _Rides(bidding: true));
+    await tester.tap(find.byKey(const ValueKey('fare-edit')));
+    await tester.pumpAndSettle();
+    final page = find.byKey(const ValueKey('offer-fare-screen'));
+    final route = ModalRoute.of(tester.element(page))!;
+    // Nothing holds the page: the swipe back is on.
+    expect(route.popDisposition, RoutePopDisposition.pop);
+    final recommended = tester.widget<Text>(find.byKey(const ValueKey('offer-fare-note'))).data!;
+    final typed = (double.parse(recommended.replaceAll(RegExp(r'[^0-9.]'), '')) + 3).round();
+    await tester.enterText(find.byKey(const ValueKey('offer-fare-field')), '$typed');
+    await tester.pump();
+    // Left as the swipe (or the system Back) leaves it: popped with no value.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(page, findsNothing);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('confirm-fare'))).data, contains('$typed'));
+  });
+
   testWidgets('Offer your fare follows a stop added there: the route and the recommended fare', (tester) async {
     await _pump(tester, _Rides(bidding: true));
     await tester.tap(find.byKey(const ValueKey('fare-edit')));
