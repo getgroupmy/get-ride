@@ -73,6 +73,9 @@ void main() {
         'Request to api.example.com failed: timeout');
     expect(proxyLogLine({'state': 'error', 'reason': 'refused'}), contains('refused'));
     expect(proxyLogLine({'state': 'mobile', 'available': false}), contains('down'));
+    expect(proxyLogLine({'state': 'mobile', 'available': false}), contains('refused'));
+    expect(proxyLogLine({'state': 'mobile', 'available': false, 'mobileDataOnly': true}), contains('refused'));
+    expect(proxyLogLine({'state': 'mobile', 'available': false, 'mobileDataOnly': false}), contains('default route'));
     expect(proxyLogLine({'state': 'connecting'}), isNull);
   });
 

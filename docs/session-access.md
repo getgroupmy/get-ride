@@ -51,7 +51,8 @@ codes; any admin sees the list, with when each key was last used.
 3. For internet through the phone, on the gateway phone open the GET.ride
    Gateway app and turn on **Share this phone's internet** (the gateway must
    be online; "Mobile data only" keeps shared requests on the SIM even when
-   the phone is on Wi-Fi).
+   the phone is on Wi-Fi, and refuses them while there is no mobile data
+   rather than sending them over Wi-Fi).
 4. The session's environment must be allowed to reach the backend and the
    relay. In a Claude Code cloud environment the network policy is set per
    environment (the cloud environment menu in the session's title bar →
@@ -139,6 +140,17 @@ connected (503: on the phone, the gateway must be online with "Share this
 phone's internet" on). A request body may be up to 20 MB; the phone has 60 s
 to start answering.
 
+Only the public internet is reached: never the phone itself, the Wi-Fi
+network it sits on or the carrier's own network. The relay refuses a target
+that is plainly not public with 403 `TARGET_NOT_PUBLIC` (localhost and
+`.local` / `.internal` / `.lan`-style names, one-label names, and loopback,
+private, link-local, carrier-grade NAT, multicast and other reserved IP
+literals in any spelling, IPv6 and IPv4-mapped forms included), and one
+carrying a user name or password with 400 `TARGET_USERINFO`. The phone
+checks again (`TargetGuard.kt`) on every address its DNS returns and on the
+address it connects to, so a public name that resolves to a private address
+fails there, as a 502 `PHONE_ERROR` naming the address.
+
 Everything the session sends through the phone leaves from that SIM, on the
 phone's data plan: keep it to the test.
 
@@ -163,5 +175,7 @@ phone's data plan: keep it to the test.
 - **Phone** (`gateway/android/.../ProxyClient.kt`, driven by
   `gateway/lib/src/engine.dart`): the gateway app dials the relay with its
   device key while "Share this phone's internet" is on, performs each request
-  over mobile data (OkHttp bound to the cellular network when there is one)
-  and streams the answer back. The switch is on the gateway's home screen.
+  over mobile data (OkHttp bound to the cellular network; with "Mobile data
+  only" on and no mobile network, the request is refused, never sent over
+  Wi-Fi), only to public addresses (`TargetGuard.kt`, unit tested by
+  `TargetGuardTest.kt`), and streams the answer back. The switch is on the gateway's home screen.

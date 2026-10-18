@@ -9,10 +9,12 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import okhttp3.Dns
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -28,8 +30,15 @@ import org.json.JSONObject
  * proxy.getride.my (cloudflare/session-proxy/worker.js, which documents the
  * frames). The phone dials in with its device key and keeps the socket
  * open; each request the relay hands it is performed here, over mobile
- * data when there is any (so a request leaves from the SIM, not the
- * office Wi-Fi), and streamed back in chunks.
+ * data (so a request leaves from the SIM, not the office Wi-Fi; with
+ * "Mobile data only" on and no mobile data, it is refused rather than sent
+ * over Wi-Fi), and streamed back in chunks.
+ *
+ * Only the public internet is reached: never this phone, its Wi-Fi network
+ * or the carrier's own (TargetGuard, checked on the URL, on every address
+ * the DNS returns, and on the address connected to). Redirects are not
+ * followed here: the session sees the 3xx and asks again, through the same
+ * checks.
  *
  * Lives as long as the gateway's service does; `start` is idempotent for
  * the same settings, so the Dart loop can call it every round.
@@ -53,7 +62,7 @@ class ProxyClient(private val app: Context, private val onEvent: (Map<String, An
     private var url = ""
     private var key = ""
     private var label = ""
-    private var mobileDataOnly = true
+    @Volatile private var mobileDataOnly = true
     private var socket: WebSocket? = null
     private var failures = 0
     private var reconnect: Runnable? = null
@@ -219,7 +228,12 @@ class ProxyClient(private val app: Context, private val onEvent: (Map<String, An
         }
         var status: Int? = null
         try {
-            val builder = Request.Builder().url(p.url)
+            val target = p.url.toHttpUrlOrNull() ?: throw TargetGuard.Refused("Not an http(s) URL.")
+            TargetGuard.urlRefusal(target.scheme, target.username, target.password, target.host)
+                ?.let { throw TargetGuard.Refused(it) }
+            val network = cellular
+            TargetGuard.networkRefusal(mobileDataOnly, network != null)?.let { throw IOException(it) }
+            val builder = Request.Builder().url(target)
             for ((name, value) in p.headers) {
                 try {
                     builder.addHeader(name, value)
@@ -235,7 +249,7 @@ class ProxyClient(private val app: Context, private val onEvent: (Map<String, An
                 else -> null
             }
             builder.method(p.method, body)
-            val client = clientFor(cellular?.takeIf { mobileDataOnly })
+            val client = clientFor(network?.takeIf { mobileDataOnly })
             client.newCall(builder.build()).execute().use { res ->
                 if (p.aborted) return
                 status = res.code
@@ -273,20 +287,20 @@ class ProxyClient(private val app: Context, private val onEvent: (Map<String, An
 
     /**
      * The client a request goes out through: bound to the mobile network
-     * when one is up and wanted, else the phone's default route.
+     * when one is given (mobile data only is on; [perform] refuses before
+     * this when there is none), else the phone's default route. Either way
+     * it only reaches public addresses (TargetGuard.guard).
      */
     private fun clientFor(network: Network?): OkHttpClient {
         val b = OkHttpClient.Builder()
-            .followRedirects(false)
-            .followSslRedirects(false)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
         if (network != null) {
             b.socketFactory(network.socketFactory)
-            b.dns(object : Dns {
-                override fun lookup(hostname: String) = network.getAllByName(hostname).toList()
-            })
+            TargetGuard.guard(b) { h -> network.getAllByName(h).toList() }
+        } else {
+            TargetGuard.guard(b) { h -> Dns.SYSTEM.lookup(h) }
         }
         return b.build()
     }
@@ -300,12 +314,12 @@ class ProxyClient(private val app: Context, private val onEvent: (Map<String, An
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 cellular = network
-                emit("mobile", "available" to true)
+                emit("mobile", "available" to true, "mobileDataOnly" to mobileDataOnly)
             }
 
             override fun onLost(network: Network) {
                 if (cellular == network) cellular = null
-                emit("mobile", "available" to false)
+                emit("mobile", "available" to false, "mobileDataOnly" to mobileDataOnly)
             }
         }
         try {
@@ -318,7 +332,8 @@ class ProxyClient(private val app: Context, private val onEvent: (Map<String, An
             )
             cellularCallback = callback
         } catch (_: Exception) {
-            // Not allowed on this phone: requests take the default route.
+            // Not allowed on this phone: with mobile data only on, shared
+            // requests are refused; with it off they take the default route.
         }
     }
 

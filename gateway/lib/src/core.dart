@@ -246,7 +246,9 @@ String? proxyLogLine(Map<String, Object?> event) {
     case 'mobile':
       return event['available'] == true
           ? 'Mobile data is up: shared requests use it.'
-          : 'Mobile data is down: shared requests take the phone\'s default route.';
+          : event['mobileDataOnly'] == false
+          ? 'Mobile data is down: shared requests take the phone\'s default route.'
+          : 'Mobile data is down: shared requests are refused until it is back (mobile data only).';
     default:
       return null;
   }
