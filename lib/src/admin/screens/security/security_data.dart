@@ -17,6 +17,7 @@ import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import 'api_keys_logic.dart';
+import 'claude_access_logic.dart';
 import 'elife_logic.dart';
 import 'fare_ai_logic.dart';
 import 'fraud_detection.dart';
@@ -195,6 +196,29 @@ class SecurityRepository {
       _db.from('ip_access_rules').update({...row, 'updated_at': _now}).eq('id', id).select(_ipCols).single();
 
   Future<void> deleteIpRule(String id) => _db.from('ip_access_rules').delete().eq('id', id);
+
+  // ---- Claude Code access (0228) ------------------------------------------
+
+  static const _claudeCols = 'id, kind, value, label, enabled, created_at, updated_at';
+
+  Future<List<ClaudeAccessRule>> claudeRules() async {
+    final rows = await _db.from('claude_access_rules').select(_claudeCols).order('kind').order('created_at', ascending: false);
+    return rows.map(ClaudeAccessRule.fromRow).toList();
+  }
+
+  // Each write reads its row back, so a write the policies refuse (not an
+  // admin, not at the office) fails instead of quietly changing nothing.
+  Future<void> addClaudeRule(Map<String, dynamic> row) =>
+      _db.from('claude_access_rules').insert(row).select(_claudeCols).single();
+
+  Future<void> updateClaudeRule(String id, Map<String, dynamic> row) =>
+      _db.from('claude_access_rules').update(row).eq('id', id).select(_claudeCols).single();
+
+  Future<void> setClaudeRuleEnabled(String id, bool enabled) =>
+      _db.from('claude_access_rules').update({'enabled': enabled}).eq('id', id).select('id').single();
+
+  Future<void> deleteClaudeRule(String id) =>
+      _db.from('claude_access_rules').delete().eq('id', id).select('id').single();
 
   /// Rule type for an IP (blacklist wins); null when unknown/unmatched or the
   /// query fails — fail open, as in Expo.
