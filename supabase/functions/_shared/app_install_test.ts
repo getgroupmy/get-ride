@@ -5,7 +5,15 @@
  */
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 
-import { appBuildFrom, itmsServicesUrl, manifestPlist, platformOf, releaseApiUrl } from "./app_install.ts";
+import {
+  abiOf,
+  appBuildFrom,
+  itmsServicesUrl,
+  manifestPlist,
+  pickApk,
+  platformOf,
+  releaseApiUrl,
+} from "./app_install.ts";
 
 const MANIFEST = "https://x.supabase.co/functions/v1/app-install?platform=ios&format=manifest";
 
@@ -101,4 +109,77 @@ Deno.test("the manifest escapes what it is given", () => {
     MANIFEST,
   );
   assertStringIncludes(manifestPlist(b)!, "1.0 &lt;&quot;&amp;&quot;&gt;");
+});
+
+const asset = (name: string, size: number) => ({
+  name,
+  size,
+  browser_download_url: `https://github.com/getgroupmy/get-ride/releases/download/android-latest/${name}`,
+  updated_at: "2026-10-18T06:00:00Z",
+});
+const dl = (name: string) => `https://github.com/getgroupmy/get-ride/releases/download/android-latest/${name}`;
+const split = {
+  assets: [
+    asset("getride.apk", 154_000_000),
+    asset("getride-arm64-v8a.apk", 57_000_000),
+    asset("getride-armeabi-v7a.apk", 52_000_000),
+    asset("build.json", 300),
+  ],
+};
+
+Deno.test("a phone gets its own processor's APK: 64-bit unless it says it is 32-bit", () => {
+  const b = appBuildFrom("android", split, { version: "1.5.0", build: "120", size: 154_000_000 }, MANIFEST);
+  assertEquals(b.abi, "arm64-v8a");
+  assertEquals(b.download_url, dl("getride-arm64-v8a.apk"));
+  assertEquals(b.install_url, b.download_url);
+  assertEquals(b.size, 57_000_000, "the split's own size, not build.json's universal one");
+  assertEquals(b.apks?.map((a) => a.abi), ["arm64-v8a", "armeabi-v7a", "universal"]);
+  assertEquals(b.apks?.[2], { abi: "universal", url: dl("getride.apk"), size: 154_000_000 });
+
+  const old = appBuildFrom("android", split, {}, MANIFEST, abiOf("armeabi-v7a"));
+  assertEquals(old.abi, "armeabi-v7a");
+  assertEquals(old.install_url, dl("getride-armeabi-v7a.apk"));
+  assertEquals(old.size, 52_000_000);
+
+  const any = appBuildFrom("android", split, {}, MANIFEST, abiOf("universal"));
+  assertEquals(any.install_url, dl("getride.apk"));
+});
+
+Deno.test("a missing split falls back to the universal APK", () => {
+  const no32 = { assets: split.assets.filter((a) => a.name !== "getride-armeabi-v7a.apk") };
+  const b = appBuildFrom("android", no32, { size: 154_000_000 }, MANIFEST, "armeabi-v7a");
+  assertEquals(b.abi, "universal");
+  assertEquals(b.install_url, dl("getride.apk"));
+  assertEquals(b.size, 154_000_000);
+  // A release from before the split: the universal APK, as always.
+  assertEquals(appBuildFrom("android", release("getride.apk"), {}, MANIFEST).abi, "universal");
+});
+
+Deno.test("no universal APK: the phone's split, or for a phone that said nothing, any split", () => {
+  const only32 = { assets: [asset("getride-armeabi-v7a.apk", 52_000_000)] };
+  assertEquals(appBuildFrom("android", only32, {}, MANIFEST).install_url, dl("getride-armeabi-v7a.apk"));
+  assertEquals(appBuildFrom("android", only32, {}, MANIFEST, "armeabi-v7a").abi, "armeabi-v7a");
+  const only64 = { assets: [asset("getride-arm64-v8a.apk", 57_000_000)] };
+  assertEquals(
+    appBuildFrom("android", only64, {}, MANIFEST, "armeabi-v7a"),
+    { available: false, platform: "android" },
+    "a 32-bit phone is never handed a 64-bit-only APK",
+  );
+});
+
+Deno.test("the abi a request names", () => {
+  assertEquals(abiOf("arm64-v8a"), "arm64-v8a");
+  assertEquals(abiOf("ARM64"), "arm64-v8a");
+  assertEquals(abiOf("armeabi-v7a"), "armeabi-v7a");
+  assertEquals(abiOf("universal"), "universal");
+  assertEquals(abiOf("x86"), null);
+  assertEquals(abiOf(null), null);
+  assertEquals(pickApk([], null), null);
+});
+
+Deno.test("an iPhone build has no APKs", () => {
+  const b = appBuildFrom("ios", { assets: [...release("getride.ipa").assets, ...split.assets] }, {}, MANIFEST, "arm64-v8a");
+  assertEquals(b.apks, undefined);
+  assertEquals(b.abi, undefined);
+  assertStringIncludes(b.download_url!, "getride.ipa");
 });

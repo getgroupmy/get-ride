@@ -175,6 +175,7 @@ this (public) repository, replaced by the next run
 | Release | Asset | Installs on |
 | --- | --- | --- |
 | `android-latest` | `getride.apk`, same key and version code as the Play bundle | any Android phone. It is signed with the upload key, not Play's app signing key, so remove a Play-installed copy first |
+| `android-latest` | `getride-arm64-v8a.apk` / `getride-armeabi-v7a.apk`: the same build for one processor each (about a third of the universal APK), same key and version code. What app-install hands a phone: 64-bit unless it says it is 32-bit only, the universal `getride.apk` when a split is missing | the phone the install page, Admin → App Release or the update button picked it for; the install page also links the other one ("Older phone?") |
 | `android-latest` | `getride.aab`, the bundle Play takes, for a hand upload in the Play Console (Admin → App Release → Download .aab) | no phone: download only, so no install link or QR |
 | `ios-latest` | `getride.ipa`, Ad Hoc signed | only the iPhones registered in the Ad Hoc profile |
 
