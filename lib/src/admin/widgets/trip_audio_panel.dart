@@ -78,7 +78,7 @@ class _TripAudioPanelState extends ConsumerState<TripAudioPanel> {
     try {
       final url = await _repo.signedUrl(r.mediaUrl!);
       if (!mounted) return;
-      await openInApp(context, url, title: 'Trip recording');
+      await openStoredFile(context, url, title: 'Trip recording');
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open: $e')));
     } finally {

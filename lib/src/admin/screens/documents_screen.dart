@@ -168,7 +168,7 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
               OutlinedButton.icon(
                 icon: const Icon(Icons.visibility_outlined),
                 label: Text(label),
-                onPressed: () => openInApp(context, d[key] as String),
+                onPressed: () => openStoredFile(context, d[key] as String),
               ),
         ]),
         if (ai != null) ...[
