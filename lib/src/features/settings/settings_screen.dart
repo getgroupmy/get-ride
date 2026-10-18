@@ -59,7 +59,8 @@ class SettingsScreen extends ConsumerWidget {
             const AppIconTile(),
             // Admin → App Settings → Permissions can hide it (0196).
             if (ref.watch(permissionRulesProvider).value?.showPermissionsCard ?? true) const PermissionsCard(),
-            const VoiceProtectionCard(),
+            // The switch alone here; the whole story is on the Safety page.
+            const VoiceProtectionCard(compact: true),
             const NavigationAppCard(),
             Card(
               child: ListTile(

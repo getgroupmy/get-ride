@@ -20,6 +20,7 @@ import 'package:get_ride/src/features/support/support_chat_screen.dart';
 import 'package:get_ride/src/features/support/support_screen.dart' show ticketsProvider;
 import 'package:get_ride/src/providers.dart' show accountRepositoryProvider, profileProvider;
 import 'package:get_ride/src/widgets/loading_skeleton.dart';
+import 'package:get_ride/src/widgets/scroll_fade.dart';
 import 'package:get_ride/src/core/dial_countries.dart';
 import 'package:get_ride/src/core/fare.dart' show RideService;
 import 'package:get_ride/src/core/landscape_stage.dart';
@@ -538,6 +539,33 @@ void _landscapeKeyboard() {
       expect(find.byKey(const ValueKey('loading-skeleton')), findsOneWidget);
       expect(tester.takeException(), isNull, reason: 'the loading rows in a space under one row high');
       await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final b in Brightness.values) {
+    testWidgets('the vehicle row at 317 wide fades at its end while there is more (${b.name})', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(317, 700);
+      addTearDown(tester.view.reset);
+      const services = [
+        RideService('Car', '', 1, 4),
+        RideService('Bike', '', 0.6, 1),
+        RideService('Comfort', '', 1.3, 4),
+        RideService('XL', '', 1.6, 6),
+        RideService('Premium', '', 2, 4),
+      ];
+      await tester.pumpWidget(
+        _app(appTheme(b), Scaffold(body: VehicleTypeBar(services: services, selected: services.first, onSelect: (_) {}))),
+      );
+      await tester.pumpAndSettle();
+      final fade = tester.state<HorizontalScrollFadeState>(find.byType(HorizontalScrollFade));
+      expect(fade.fadesEnd, isTrue, reason: 'Premium is cut off: the row says it goes on');
+      expect(fade.fadesStart, isFalse);
+      await tester.drag(find.byKey(const ValueKey('vehicle-type-bar')), const Offset(-2000, 0));
+      await tester.pumpAndSettle();
+      expect(fade.fadesEnd, isFalse, reason: 'at the end nothing more to show');
+      expect(fade.fadesStart, isTrue);
       expect(tester.takeException(), isNull);
     });
   }

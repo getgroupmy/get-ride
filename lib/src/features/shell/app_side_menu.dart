@@ -65,6 +65,15 @@ class _AppSideMenuHostState extends State<AppSideMenuHost> {
   );
 }
 
+/// The line above Log out (the rider's) and Sign out (the driver's).
+class SideMenuLogoutDivider extends StatelessWidget {
+  const SideMenuLogoutDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const Divider(key: ValueKey('menu-logout-divider'), height: 17, indent: 16, endIndent: 16);
+}
+
 /// The rider side menu (Expo `MenuSideSheet`): the admin's rider menu,
 /// then the driver mode button.
 class RiderSideMenu extends ConsumerWidget {
@@ -84,7 +93,9 @@ class RiderSideMenu extends ConsumerWidget {
       onProfile: profile.comingSoon ? showComingSoon : SideMenuPanel.editProfile,
       rows: [
         for (final e in resolveSideMenu(blob, 'user'))
-          if (riderMenuRowShows(e.id, scheduledRides: scheduled))
+          if (riderMenuRowShows(e.id, scheduledRides: scheduled)) ...[
+            // Log out set apart from the pages above it.
+            if (e.id == 'logout') const SideMenuLogoutDivider(),
             SideMenuTile(
               entry: e,
               plain: true,
@@ -93,6 +104,7 @@ class RiderSideMenu extends ConsumerWidget {
               beforeOpen: close,
               builtIn: (c, id) => riderMenuAction(c, ref, id, beforeOpen: close),
             ),
+          ],
       ],
       modeLabel: mode?.label,
       modeKey: const ValueKey('menu-partner-mode'),
@@ -133,7 +145,8 @@ class PartnerSideMenu extends ConsumerWidget {
             hasMyRideCode: hasCode,
             scheduledRides: scheduled,
             approved: approved,
-          ))
+          )) ...[
+            if (e.id == 'sign-out') const SideMenuLogoutDivider(),
             SideMenuTile(
               entry: e,
               plain: true,
@@ -141,6 +154,7 @@ class PartnerSideMenu extends ConsumerWidget {
               beforeOpen: close,
               builtIn: (c, id) => partnerMenuAction(c, ref, id, close: close),
             ),
+          ],
       ],
       modeLabel: mode?.label,
       modeKey: const ValueKey('menu-passenger-mode'),

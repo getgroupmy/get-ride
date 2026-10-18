@@ -10,6 +10,7 @@ import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/common.dart' show inkOn, mutedTextColor;
 import '../../widgets/net_image.dart';
+import '../../widgets/scroll_fade.dart';
 import '../../core/page_styles.dart' show homeSurface;
 import '../../core/smart_address.dart' show placeSubtitle;
 import '../../widgets/page_style_host.dart';
@@ -202,7 +203,10 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
     return SizedBox(
       // Taller by as much as the phone's larger text makes the name line.
       height: style.number('vehicleBarHeight') + (MediaQuery.textScalerOf(context).scale(13) - 13) * 1.4,
-      child: ListView.separated(
+      // Its far edge fades while there are more vehicles to scroll to (at
+      // 317 wide the last was cut to "F…" with no sign the row goes on).
+      child: HorizontalScrollFade(
+        child: ListView.separated(
         key: const ValueKey('vehicle-type-bar'),
         scrollDirection: Axis.horizontal,
         itemCount: services.length,
@@ -310,6 +314,7 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
             ),
           );
         },
+        ),
       ),
     );
   }
