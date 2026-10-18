@@ -4,7 +4,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show DeviceOrientation;
+import 'package:flutter/services.dart' show DeviceOrientation, SystemChannels;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -97,8 +97,16 @@ class _Seams {
   final qrs = <({String data, Color color, String? caption})>[];
   var torches = 0;
 
+  /// False: a browser with no Web Share for files.
+  var fileShare = true;
+
+  /// The image share fails for a passing reason.
+  var shareFails = false;
+
   List<Override> get overrides => [
+    fileSharingAvailableProvider.overrideWithValue(fileShare),
     imageSharerProvider.overrideWithValue((i) async {
+      if (shareFails) throw Exception('busy');
       shared.add(i);
       return false;
     }),
@@ -262,6 +270,41 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    for (final brightness in Brightness.values) {
+      for (final coin in [false, true]) {
+        testWidgets('${coin ? 'GET.coin' : 'Receive'}: a browser that cannot share images copies the account number '
+            '(${brightness.name})', (tester) async {
+          _tall(tester);
+          final copied = <String>[];
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'Clipboard.setData') copied.add((call.arguments as Map)['text'] as String);
+            return null;
+          });
+          addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+          final seams = _Seams()..fileShare = false;
+          await tester.pumpWidget(_app(ReceiveQrScreen(coin: coin), seams, brightness: brightness));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const ValueKey('wallet-qr-share')));
+          await tester.pumpAndSettle();
+          expect(seams.shared, isEmpty, reason: 'no image share is tried where it can never work');
+          expect(copied.single, contains('Account no. ${walletAccountNumber(_me)}'));
+          expect(find.text(copiedForPasting), findsOneWidget);
+          expect(find.textContaining('Please try again'), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
+    testWidgets('a passing share failure still says try again', (tester) async {
+      _tall(tester);
+      final seams = _Seams()..shareFails = true;
+      await tester.pumpWidget(_app(const ReceiveQrScreen(), seams));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('wallet-qr-share')));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't share the image. Please try again."), findsOneWidget);
+    });
 
     testWidgets('an amount code shares with its amount, and not once it has expired', (tester) async {
       _tall(tester);

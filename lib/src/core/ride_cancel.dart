@@ -86,6 +86,36 @@ String? cancelReasonLabel(String? stored) {
   return s;
 }
 
+/// Who ended a cancelled ride, from the row: `cancel_requested_by` when it
+/// is set ('rider' or 'partner'), else the reason's own list (a reason only
+/// a rider or only a driver can pick). Null when nothing says (the system,
+/// an admin, a skipped reason).
+String? cancelledBy(RideRequest r) {
+  final by = r.cancelRequestedBy;
+  if (by == 'rider' || by == 'partner') return by;
+  final s = r.cancelReason?.trim() ?? '';
+  if (s.isEmpty || s == otherCancelReason) return null;
+  bool inList(List<CancelReason> l) => l.any((c) => c.id == s);
+  if (inList(_all) || inList(searchCancelReasons)) return 'rider';
+  if (inList(driverCancelReasons)) return 'partner';
+  return null;
+}
+
+/// A cancelled ride's line in the trip list, for the rider ([asRider]) or
+/// the driver: "Cancelled by you · Drivers are too far away", "Cancelled
+/// by driver · Passenger no-show", "Cancelled · Account deleted", or just
+/// "Cancelled". Null for a ride not cancelled.
+String? cancelledLine(RideRequest r, {required bool asRider}) {
+  if (r.status != RideStatus.cancelled) return null;
+  final who = switch (cancelledBy(r)) {
+    'rider' => asRider ? 'Cancelled by you' : 'Cancelled by passenger',
+    'partner' => asRider ? 'Cancelled by driver' : 'Cancelled by you',
+    _ => 'Cancelled',
+  };
+  final why = cancelReasonLabel(r.cancelReason);
+  return why == null || r.cancelReason?.trim() == otherCancelReason ? who : '$who · $why';
+}
+
 /// True when the rider's pending cancellation request has just been
 /// declined: it was there, now it is gone, and the ride carries on.
 bool riderCancelDeclined(RideRequest? before, RideRequest after) {

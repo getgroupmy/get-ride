@@ -9,6 +9,10 @@ import 'package:get_ride/src/providers.dart';
 import 'package:get_ride/src/features/shell/app_side_menu.dart';
 import 'package:get_ride/src/widgets/side_menu_host.dart';
 import 'package:go_router/go_router.dart';
+import 'package:get_ride/src/admin/admin_access.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
+
+import 'text_contrast.dart';
 
 class _Page extends StatelessWidget {
   const _Page();
@@ -155,6 +159,7 @@ void main() {
   });
 
   routerTests();
+  narrowContrastTests();
 
   testWidgets("the panel: profile with stars, plain rows, driver mode, social links", (tester) async {
     tester.view.physicalSize = const Size(400, 900);
@@ -201,6 +206,51 @@ void main() {
     expect(find.text('drive'), findsOneWidget);
     expect(find.byType(RiderSideMenu), findsNothing);
   });
+}
+
+/// At 360 px, light and dark: every word in the user and driver menus
+/// (an admin's, so the Admin panel button shows) reads on the panel.
+void narrowContrastTests() {
+  for (final b in Brightness.values) {
+    testWidgets('home and drive menus read at 360 px (${b.name})', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final router = GoRouter(
+        routes: [
+          ShellRoute(
+            builder: (_, state, child) => AppSideMenuHost(location: state.uri.path, child: child),
+            routes: [
+              GoRoute(path: '/', builder: (_, _) => const _Page()),
+              GoRoute(path: '/drive', builder: (_, _) => const _Page()),
+            ],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            profileProvider.overrideWith((ref) async => Profile({'id': 'u1', 'name': 'Kabeer', 'rider_rating': 4.8})),
+            adminAccessProvider.overrideWith((ref) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+            displaySettingsBlobProvider.overrideWith((ref) async => const <String, dynamic>{}),
+          ],
+          child: MaterialApp.router(theme: appTheme(b), routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      for (final (path, menu) in [('/', RiderSideMenu), ('/drive', PartnerSideMenu)]) {
+        router.go(path);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('side-menu-button')));
+        await tester.pumpAndSettle();
+        expect(find.byType(menu), findsOneWidget);
+        expect(find.byKey(const ValueKey('menu-admin')), findsOneWidget);
+        expect(unreadableTexts(tester, find.byType(menu)), isEmpty, reason: '$menu at 360 px');
+        await tester.tapAt(const Offset(350, 400));
+        await tester.pumpAndSettle();
+      }
+    });
+  }
 }
 
 /// The app's nesting: the side menu around the tab shell and the pages

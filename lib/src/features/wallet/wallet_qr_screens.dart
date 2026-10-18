@@ -218,6 +218,14 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
                 ShareSaveImageButtons(
                   keyPrefix: 'wallet-qr',
                   enabled: !expired,
+                  // A browser that can't share images: the account number
+                  // and the words to go with it, copied for pasting.
+                  copyInstead: walletQrShareText(
+                    coin: widget.coin,
+                    userId: userId,
+                    name: name,
+                    amountLabel: _amount == null ? null : formatMoney(_amount),
+                  ),
                   image: (origin) async => ShareableImage(
                     png: await ref.read(qrPngRendererProvider)(
                       payload,

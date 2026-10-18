@@ -9,11 +9,20 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart' show showSearchPicker;
 
 /// One month of this account's ledger, newest first.
 final walletHistoryProvider = FutureProvider.autoDispose.family<List<WalletTransaction>, HistoryMonth>(
   (ref, m) => ref.watch(accountRepositoryProvider).walletTransactions(from: m.start, to: m.end, limit: 1000),
 );
+
+/// When the account's first wallet transaction was made, for "Older…".
+final walletFirstTxProvider = FutureProvider.autoDispose<DateTime?>(
+  (ref) => ref.watch(accountRepositoryProvider).firstWalletTransactionAt(),
+);
+
+/// The month menu's last entry: opens the older months.
+const _olderEntry = HistoryMonth(0, 0, 'Older…');
 
 /// Full wallet history (Expo `app/wallet-history.tsx`): wallet tabs, category
 /// chips and a month picker over the last six months, grouped by day, with a
@@ -29,7 +38,33 @@ class WalletHistoryScreen extends ConsumerStatefulWidget {
 }
 
 class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
-  late final _months = historyMonths(widget.now ?? DateTime.now());
+  DateTime get _now => widget.now ?? DateTime.now();
+  late final _months = historyMonths(_now);
+
+  /// "Older…": a searchable list of the months before the menu's six, back
+  /// to the account's first transaction; each is read as any month is.
+  Future<void> _pickOlder() async {
+    DateTime? first;
+    try {
+      first = await ref.read(walletFirstTxProvider.future);
+    } catch (_) {
+      if (mounted) showInfo(context, "Couldn't load older months. Please try again.");
+      return;
+    }
+    if (!mounted) return;
+    final older = olderHistoryMonths(_now, first);
+    if (older.isEmpty) {
+      showInfo(context, 'There are no older transactions.');
+      return;
+    }
+    final m = await showSearchPicker<HistoryMonth>(
+      context,
+      title: 'Choose a month',
+      selected: older.contains(_month) ? _month : null,
+      choices: [for (final m in older) (value: m, label: m.label, subtitle: null, leading: null)],
+    );
+    if (m != null && mounted) setState(() => _month = m);
+  }
   late var _month = _months.first;
   final _monthMenu = GlobalKey<PopupMenuButtonState<HistoryMonth>>(debugLabel: 'history-month');
   String? _wallet;
@@ -74,8 +109,19 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
                       key: _monthMenu,
                       tooltip: 'Month',
                       initialValue: _month,
-                      onSelected: (m) => setState(() => _month = m),
-                      itemBuilder: (_) => [for (final m in _months) PopupMenuItem(value: m, child: Text(m.label))],
+                      onSelected: (m) => m == _olderEntry ? _pickOlder() : setState(() => _month = m),
+                      itemBuilder: (_) => [
+                        for (final m in _months) PopupMenuItem(value: m, child: Text(m.label)),
+                        // An older month picked earlier stays in the list.
+                        if (!_months.contains(_month)) PopupMenuItem(value: _month, child: Text(_month.label)),
+                        if (ref.read(walletFirstTxProvider).value == null ||
+                            olderHistoryMonths(_now, ref.read(walletFirstTxProvider).value).isNotEmpty)
+                          const PopupMenuItem(
+                            key: ValueKey('history-month-older'),
+                            value: _olderEntry,
+                            child: Text('Older…'),
+                          ),
+                      ],
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(minHeight: 48),
                         child: Row(

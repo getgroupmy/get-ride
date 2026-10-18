@@ -182,4 +182,60 @@ void main() {
       handle.dispose();
     });
   }
+
+  test('older months run back to the first transaction, after the six in the menu', () {
+    final now = DateTime(2026, 5, 20);
+    expect(olderHistoryMonths(now, null), isEmpty);
+    expect(olderHistoryMonths(now, DateTime(2026, 1, 3)), isEmpty, reason: 'within the six shown');
+    final older = olderHistoryMonths(now, DateTime(2024, 11, 3));
+    expect(older.first, const HistoryMonth(2025, 11, ''));
+    expect(older.first.label, 'November 2025');
+    expect(older.last, const HistoryMonth(2024, 11, ''));
+    expect(older, hasLength(13));
+  });
+
+  for (final b in Brightness.values) {
+    testWidgets('"Older…" picks a month before the last six, back to the first transaction (${b.name})',
+        (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(412, 915);
+      addTearDown(tester.view.reset);
+      final now = DateTime(2026, 5, 20);
+      final asked = <HistoryMonth>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            partnerProvider.overrideWith((ref) async => null),
+            walletFirstTxProvider.overrideWith((ref) async => DateTime(2024, 11, 3)),
+            walletHistoryProvider.overrideWith((ref, m) async {
+              asked.add(m);
+              return const [];
+            }),
+          ],
+          child: MaterialApp(theme: ThemeData(brightness: b), home: WalletHistoryScreen(now: now)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('history-month')));
+      await tester.pumpAndSettle();
+      expect(find.text('Older…'), findsOneWidget);
+      await tester.tap(find.text('Older…'));
+      await tester.pumpAndSettle();
+      expect(find.text('Choose a month'), findsWidgets);
+      expect(find.text('November 2025'), findsWidgets);
+      expect(find.text('October 2024'), findsNothing, reason: 'nothing before the first transaction');
+      // Searchable: a long list.
+      await tester.enterText(find.byType(TextField).last, 'January 2025');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('January 2025').last);
+      await tester.pumpAndSettle();
+      expect(asked.last, const HistoryMonth(2025, 1, ''));
+      expect(find.text('January 2025'), findsOneWidget, reason: 'the menu button names the month');
+      // It stays in the menu, above "Older…".
+      await tester.tap(find.byKey(const ValueKey('history-month')));
+      await tester.pumpAndSettle();
+      expect(find.text('January 2025'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

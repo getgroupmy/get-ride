@@ -9,6 +9,7 @@ import 'package:get_ride/src/core/trip_history.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/trip_history_repository.dart';
 import 'package:get_ride/src/features/partner/partner_trip_history_screen.dart';
+import 'package:get_ride/src/features/ride/trip_history_view.dart' show tripStatusLine;
 import 'package:get_ride/src/features/ride/trips_screen.dart';
 import 'package:get_ride/src/data/app_connection.dart';
 import 'package:get_ride/src/widgets/offline_strip.dart';
@@ -154,6 +155,69 @@ void main() {
     expect(find.text('Cancelled · Not charged'), findsOneWidget);
     expect(find.byKey(const ValueKey('trip-fare-booked1')), findsOneWidget, reason: 'a billed trip keeps its fare');
   });
+
+  test('a cancelled trip says who cancelled and why', () {
+    RideRequest c({String? by, String? reason, String status = 'cancelled'}) => RideRequest({
+      ..._ride('x', rider: 'me', partner: 'd', status: status).raw,
+      'cancel_requested_by': ?by,
+      'cancel_reason': ?reason,
+    });
+    // A rider's own reason, from the search sheet: theirs, with the reason.
+    expect(tripStatusLine(c(reason: 'drivers_too_far'), asRider: true),
+        'Cancelled by you · Drivers are too far away · Not charged');
+    expect(tripStatusLine(c(reason: 'drivers_too_far'), asRider: false),
+        'Cancelled by passenger · Drivers are too far away · Not charged');
+    // The driver cancelled.
+    expect(tripStatusLine(c(by: 'partner', reason: 'passenger_no_show'), asRider: true),
+        'Cancelled by driver · Passenger no-show · Not charged');
+    expect(tripStatusLine(c(by: 'partner'), asRider: false), 'Cancelled by you · Not charged');
+    // An agreed request from the rider.
+    expect(tripStatusLine(c(by: 'rider', reason: 'changed_plans'), asRider: true),
+        'Cancelled by you · Changed my plans · Not charged');
+    // The system or an admin: the stored words, nobody named.
+    expect(tripStatusLine(c(reason: 'Account deleted'), asRider: true), 'Cancelled · Account deleted · Not charged');
+    expect(tripStatusLine(c(reason: 'other'), asRider: true), 'Cancelled · Not charged');
+    expect(tripStatusLine(c(), asRider: true), 'Cancelled · Not charged');
+    // Nobody took it.
+    expect(tripStatusLine(c(status: 'expired'), asRider: true), 'No driver found · Not charged');
+    expect(tripStatusLine(_ride('y', rider: 'me'), asRider: true), 'Completed');
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('Cancelled filter rows tell rider- from driver-cancelled at 1.3x (${dark ? 'dark' : 'light'})',
+        (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(375, 900);
+      addTearDown(tester.view.reset);
+      final cancelled = [
+        _ride('mine', rider: 'me', status: 'cancelled', day: 9)..raw['cancel_reason'] = 'drivers_too_far',
+        _ride('theirs', rider: 'me', partner: 'd', status: 'cancelled', day: 8)
+          ..raw['cancel_requested_by'] = 'partner'
+          ..raw['cancel_reason'] = 'vehicle_issue',
+      ];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [tripHistoryRepositoryProvider.overrideWithValue(_Fake(cancelled))],
+          child: MaterialApp(
+            theme: dark ? ThemeData.dark() : ThemeData.light(),
+            builder: (c, child) => MediaQuery(
+              data: MediaQuery.of(c).copyWith(textScaler: const TextScaler.linear(1.3)),
+              child: child!,
+            ),
+            home: const TripsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Cancelled by you · Drivers are too far away · Not charged'), findsOneWidget);
+      expect(find.text('Cancelled by driver · Vehicle issue · Not charged'), findsOneWidget);
+      for (final id in ['mine', 'theirs']) {
+        final line = tester.widget<Text>(find.byKey(ValueKey('trip-status-$id')));
+        expect(line.maxLines, greaterThanOrEqualTo(2), reason: 'it may wrap at large text rather than be cut at once');
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('nothing on a side says so', (tester) async {
     final fake = _Fake([_ride('booked1', rider: 'me')]);

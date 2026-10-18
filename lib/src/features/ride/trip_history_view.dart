@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/format.dart' show formatMoney;
 import '../../core/region_time.dart';
+import '../../core/ride_cancel.dart' show cancelledLine;
 import '../../core/trip_history.dart';
 import '../../data/models.dart';
 import '../../data/trip_history_repository.dart';
@@ -154,9 +155,13 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    // Who cancelled and why ("Cancelled by you · Drivers are
+                    // too far away"), wrapping at large text.
                     Text(
-                      tripListFare(r) == notChargedLabel ? '${r.status.label} · $notChargedLabel' : r.status.label,
+                      tripStatusLine(r, asRider: !partner),
                       key: ValueKey('trip-status-${r.id}'),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -189,6 +194,14 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
       ],
     );
   }
+}
+
+/// A trip row's status line: the status (for a cancelled ride, who
+/// cancelled and why, [cancelledLine]), then "Not charged" where the fare
+/// was never billed.
+String tripStatusLine(RideRequest r, {required bool asRider}) {
+  final status = cancelledLine(r, asRider: asRider) ?? r.status.label;
+  return tripListFare(r) == notChargedLabel ? '$status · $notChargedLabel' : status;
 }
 
 /// What a cancelled or expired trip's row shows for its fare.

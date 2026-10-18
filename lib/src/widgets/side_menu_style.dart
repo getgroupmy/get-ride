@@ -23,6 +23,11 @@ abstract final class SideMenuStyle {
   /// A row the admin menu has open.
   static const selected = Color(0xFF333333);
 
+  /// [button] as words or an outline on the panel: the bright accent on
+  /// the charcoal panel, [buttonFill] on the white one, where the bright
+  /// accent reads at only about 2.6:1.
+  static Color outlineOn(Brightness b) => b == Brightness.dark ? button : buttonFill;
+
   /// Share of the screen the panel takes, at most [maxWidth].
   static const widthFraction = 0.8;
   static const maxWidth = 360.0;

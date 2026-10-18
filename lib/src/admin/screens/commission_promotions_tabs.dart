@@ -87,7 +87,7 @@ class CommissionPromotionsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t);
     final now = DateTime.now().toUtc();
     return AsyncView(
       value: ref.watch(commissionPromotionsProvider),
@@ -165,7 +165,7 @@ class _PromotionCard extends ConsumerWidget {
     final (bg, fg) = switch (status) {
       'Running' => (cs.primaryContainer, cs.onPrimaryContainer),
       'Scheduled' => (cs.tertiaryContainer, cs.onTertiaryContainer),
-      _ => (cs.surfaceContainerHighest, cs.onSurfaceVariant),
+      _ => (cs.surfaceContainerHighest, mutedTextColor(t, background: cs.surfaceContainerHighest)),
     };
     return Card(
       child: ListTile(
@@ -191,7 +191,7 @@ class _PromotionCard extends ConsumerWidget {
             '${formatDateTime(p.startsAt)} – ${formatDateTime(p.endsAt)}',
             if (p.note.isNotEmpty) p.note,
           ].join('\n'),
-          style: TextStyle(color: cs.onSurfaceVariant),
+          style: TextStyle(color: mutedTextColor(t, background: cardSurfaceColor(t))),
         ),
         isThreeLine: true,
         onTap: canEdit ? onEdit : null,
@@ -376,7 +376,8 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    // On the dialog's own tinted surface.
+    final muted = mutedTextColor(t, background: t.dialogTheme.backgroundColor ?? t.colorScheme.surfaceContainerHigh);
     final regions = ref.watch(regionsProvider).value ?? const <RegionEntry>[];
     final seen = ref.watch(commissionServiceNamesProvider).value ?? const [];
     final services = <String, int>{
@@ -614,7 +615,7 @@ class _CommissionReportsTabState extends ConsumerState<CommissionReportsTab> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t);
     final q = _query;
     final report = ref.watch(commissionReportProvider(q));
     final below = ref.watch(driversBelowCreditProvider);
@@ -725,7 +726,7 @@ class _CommissionReportsTabState extends ConsumerState<CommissionReportsTab> {
                                     subtitle: Text(
                                       [d.displayId ?? d.uid, if (d.phone != null) d.phone!,
                                         'limit ${formatMoney(d.floor)}'].join(' · '),
-                                      style: TextStyle(color: muted),
+                                      style: TextStyle(color: mutedTextColor(t, background: cardSurfaceColor(t))),
                                     ),
                                     trailing: Text(
                                       formatMoney(d.balance),
@@ -754,7 +755,8 @@ class _ReportView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    // Its lines sit on the report's card.
+    final muted = mutedTextColor(t, background: cardSurfaceColor(t));
     final total = rows.fold<double>(0, (s, r) => s + r.commission);
     final trips = rows.fold<int>(0, (s, r) => s + r.trips);
     final meter = rows.fold<int>(0, (s, r) => s + r.meterTrips);

@@ -17,6 +17,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
+import 'text_contrast.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
@@ -101,10 +102,16 @@ final _regions = [
   RegionEntry(id: 'b', values: {'country': 'Malaysia', 'state': 'Selangor', 'city': 'Bangi'}),
 ];
 
-Future<(_Admin, List<String>)> _pump(WidgetTester tester, {Brightness brightness = Brightness.light, bool edit = true}) async {
+Future<(_Admin, List<String>)> _pump(
+  WidgetTester tester, {
+  Brightness brightness = Brightness.light,
+  bool edit = true,
+  Size size = const Size(900, 2000),
+  Map<String, String> colors = const {},
+}) async {
   final admin = _Admin();
   final exported = <String>[];
-  await tester.binding.setSurfaceSize(const Size(900, 2000));
+  await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     ProviderScope(
@@ -119,7 +126,7 @@ Future<(_Admin, List<String>)> _pump(WidgetTester tester, {Brightness brightness
           return CsvShareOutcome.downloaded;
         }),
       ],
-      child: MaterialApp(theme: appTheme(brightness), home: const AdminCommissionScreen()),
+      child: MaterialApp(theme: appTheme(brightness, colors: colors), home: const AdminCommissionScreen()),
     ),
   );
   await tester.pumpAndSettle();
@@ -276,6 +283,28 @@ void main() {
     });
 
     group('Admin → Commission → Promotions and Reports (${b.name})', () {
+      for (final faint in [false, true]) {
+        testWidgets('promotions read at 360 px${faint ? ', with a faint admin grey' : ''} (${b.name})', (tester) async {
+          await _pump(
+            tester,
+            brightness: b,
+            size: const Size(360, 2000),
+            colors: faint ? {'textSecondary': b == Brightness.light ? '#C8C8C8' : '#4A4A4A'} : const {},
+          );
+          await tester.ensureVisible(find.byKey(const ValueKey('commission-tab-promotions')));
+          await tester.pumpAndSettle();
+          await _openTab(tester, 'commission-tab-promotions');
+          expect(find.text('Raya week'), findsOneWidget);
+          expect(unreadableTexts(tester, find.byType(Scaffold).first), isEmpty);
+          // (A faint admin grey also fades every field label app-wide: the
+          // dialog is checked with the theme's own colours.)
+          if (faint) return;
+          await tester.tap(find.byKey(const ValueKey('commission-promo-add')));
+          await tester.pumpAndSettle();
+          expect(unreadableTexts(tester, find.byType(AlertDialog)), isEmpty, reason: 'the add dialog');
+        });
+      }
+
       testWidgets('promotions: listed, added with a place, a service and days, turned off, deleted', (tester) async {
         final (admin, _) = await _pump(tester, brightness: b);
         await _openTab(tester, 'commission-tab-promotions');

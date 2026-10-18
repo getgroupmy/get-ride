@@ -130,8 +130,14 @@ class AdminCommissionScreen extends ConsumerWidget {
       child: AdminPage(
       title: 'Commission',
       module: 'commission',
-      bottom: const TabBar(
-        tabs: [
+      bottom: TabBar(
+        // The tabs not open, muted but readable on the bar (an admin's
+        // faint "secondary text" colour would not be).
+        unselectedLabelColor: mutedTextColor(
+          Theme.of(context),
+          background: Theme.of(context).appBarTheme.backgroundColor ?? Theme.of(context).colorScheme.surface,
+        ),
+        tabs: const [
           Tab(key: ValueKey('commission-tab-rates'), text: 'Rates'),
           Tab(key: ValueKey('commission-tab-settings'), text: 'Settings'),
           Tab(key: ValueKey('commission-tab-tiers'), text: 'Tiers'),
