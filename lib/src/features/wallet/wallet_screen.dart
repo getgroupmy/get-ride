@@ -13,6 +13,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/offline_strip.dart';
 
 final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>((ref) {
   ref.watchLive('wallets');
@@ -51,7 +52,7 @@ class WalletScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Wallet')),
-      body: RefreshIndicator(
+      body: OfflineStrip.over(RefreshIndicator(
         onRefresh: refresh,
         child: ListView(
           children: [
@@ -235,7 +236,7 @@ class WalletScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 }

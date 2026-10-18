@@ -7,6 +7,7 @@ import '../../core/inbox.dart';
 import '../../data/notifications_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart' show openAppRoute;
+import '../../widgets/offline_strip.dart';
 
 /// Side menu -> Notifications: what this account was sent, newest first, for
 /// the mode the app is in plus the account's own business (inboxFor). A tap
@@ -53,7 +54,7 @@ class NotificationsScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: AsyncView<List<InboxItem>>(
+      body: OfflineStrip.over(AsyncView<List<InboxItem>>(
         value: value,
         onRetry: () => ref.invalidate(notificationsProvider),
         data: (_) => items.isEmpty
@@ -99,7 +100,7 @@ class NotificationsScreen extends ConsumerWidget {
                   },
                 ),
               ),
-      ),
+      )),
     );
   }
 }

@@ -27,6 +27,7 @@ import 'core/auth_utils.dart'
         signInStepPhone,
         signInStepRedirect;
 import 'core/connection_check.dart';
+import 'data/app_connection.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/push_logic.dart';
@@ -650,6 +651,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       failedOn: display.connectionFailedPopup,
     );
     if (check == null) return;
+    // What the check found also tells the offline strip (OfflineStrip).
+    if (mounted) ref.read(appOfflineProvider.notifier).reachable(check.reachable);
     final popup = connectionPopupFor(
       check,
       connectedOn: display.connectedPopup,

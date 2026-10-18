@@ -10,6 +10,8 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/trip_history_repository.dart';
 import 'package:get_ride/src/features/partner/partner_trip_history_screen.dart';
 import 'package:get_ride/src/features/ride/trips_screen.dart';
+import 'package:get_ride/src/data/app_connection.dart';
+import 'package:get_ride/src/widgets/offline_strip.dart';
 
 /// One person's requests on both sides, and the reads made.
 class _Fake implements TripHistoryRepository {
@@ -74,11 +76,14 @@ void main() {
     _ride('drove2', rider: 'other', partner: 'me', status: 'expired', day: 6),
   ];
 
-  Future<_Fake> pump(WidgetTester tester, Widget screen, {ThemeData? theme}) async {
+  Future<_Fake> pump(WidgetTester tester, Widget screen, {ThemeData? theme, bool offline = false}) async {
     final fake = _Fake(rows);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [tripHistoryRepositoryProvider.overrideWithValue(fake)],
+        overrides: [
+          tripHistoryRepositoryProvider.overrideWithValue(fake),
+          if (offline) appOfflineProvider.overrideWith(_Offline.new),
+        ],
         child: MaterialApp(theme: theme, home: screen),
       ),
     );
@@ -112,6 +117,14 @@ void main() {
       expect(find.byKey(const ValueKey('trip-drove2')), findsOneWidget);
       expect(find.byKey(const ValueKey('trip-booked1')), findsNothing);
       expect(find.text('Trip history'), findsOneWidget);
+    });
+  }
+
+  for (final dark in [false, true]) {
+    testWidgets('offline, Trips says the list is the saved one (${dark ? 'dark' : 'light'})', (tester) async {
+      await pump(tester, const TripsScreen(), theme: dark ? ThemeData.dark() : ThemeData.light(), offline: true);
+      expect(find.text(offlineStripText), findsOneWidget);
+      expect(find.byKey(const ValueKey('trip-booked1')), findsOneWidget, reason: 'the saved list still shows');
     });
   }
 
@@ -179,4 +192,9 @@ void main() {
     await tester.scrollUntilVisible(find.byKey(ValueKey('trip-r${many.length - 1}')), 400, scrollable: list);
     expect(find.byKey(const ValueKey('trip-history-more')), findsNothing);
   });
+}
+
+class _Offline extends AppOffline {
+  @override
+  bool build() => true;
 }
