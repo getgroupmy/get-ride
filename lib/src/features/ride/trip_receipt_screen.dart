@@ -231,6 +231,10 @@ class _ReceiptBody extends StatelessWidget {
                           rc.commissionLabel,
                           rc.commission == null ? 'Not charged yet' : '−${formatMoney(rc.commission, rc.currency)}',
                         ),
+                        if (rc.platformFees > 0) ...[
+                          const SizedBox(height: 4),
+                          _row(t, 'Platform fees', '−${formatMoney(rc.platformFees, rc.currency)}'),
+                        ],
                         const SizedBox(height: 4),
                         KeyedSubtree(
                           key: const ValueKey('receipt-earnings'),

@@ -43,6 +43,7 @@ class TripReceipt {
     this.asDriver = false,
     this.commission,
     this.commissionRate,
+    this.platformFees = 0,
     this.endedEarly = false,
     this.timezone,
   });
@@ -87,13 +88,21 @@ class TripReceipt {
   final double? commission;
   final double? commissionRate;
 
+  /// Fixed charges the passenger paid that go to the platform (a scheduling
+  /// or late-cancel fee, 0189): taken back from the driver as commission is.
+  final double platformFees;
+
   /// What the passenger owed the driver: every charge, before any GET.coin
   /// (coins paid towards the fare are credited to the driver's GET.wallet).
   double get gross => charged ? lines.where((l) => l.amount > 0).fold(0, (s, l) => s + l.amount) : 0;
 
-  /// What the driver keeps: [gross] less the commission. Tolls and other
-  /// charges pass through untouched; only the fare is commissioned.
-  double get earnings => gross - (commission ?? 0);
+  /// What the driver keeps: [gross] less the commission and the platform's
+  /// fees, as the statement counts it (`ride_net_earnings`, 0199). Tolls and
+  /// other charges pass through untouched; only the fare is commissioned.
+  double get earnings {
+    final v = gross - (commission ?? 0) - platformFees;
+    return v < 0 ? 0 : v;
+  }
 
   /// "Commission (15%)", or plain "Commission" without a stored rate.
   String get commissionLabel {
@@ -165,6 +174,7 @@ class TripReceipt {
       asDriver: asDriver,
       commission: asDriver ? r.commissionAmount : null,
       commissionRate: asDriver ? r.commissionRate : null,
+      platformFees: asDriver ? platformFeesOf(r.raw['charges']) : 0,
       timezone: r.timezone,
     );
   }
@@ -200,6 +210,7 @@ class TripReceipt {
       b.writeln('$totalLabel: ${formatMoney(total, currency)}');
       if (asDriver) {
         if (commission != null) b.writeln('$commissionLabel: −${formatMoney(commission, currency)}');
+        if (platformFees > 0) b.writeln('Platform fees: −${formatMoney(platformFees, currency)}');
         b.writeln('You earn: ${formatMoney(earnings, currency)}');
       }
     } else {
@@ -219,4 +230,17 @@ List<LatLng> receiptRoute(RideRequest r) {
     for (final s in r.stops) s.point,
     LatLng(r.dropLat!, r.dropLng!),
   ];
+}
+
+/// The fixed charges on a ride that go to the platform (`platform: true`),
+/// summed as `ride_net_earnings` does (0199). Pure.
+double platformFeesOf(Object? charges) {
+  if (charges is! List) return 0;
+  var sum = 0.0;
+  for (final c in charges) {
+    if (c is! Map || c['platform'] != true || c['charge'] != 'fixed') continue;
+    final v = c['value'];
+    if (v is num && v > 0) sum += (v * 100).round() / 100;
+  }
+  return sum;
 }

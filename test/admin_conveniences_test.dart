@@ -9,6 +9,8 @@ import 'package:get_ride/src/admin/admin_settings_models.dart';
 import 'package:get_ride/src/admin/profile_search.dart';
 import 'package:get_ride/src/admin/saved_push.dart';
 import 'package:get_ride/src/admin/screens/commission_screen.dart';
+import 'package:get_ride/src/admin/screens/geo/geo_data.dart';
+import 'package:get_ride/src/admin/screens/geo/geo_logic.dart';
 import 'package:get_ride/src/admin/screens/push_screen.dart';
 import 'package:get_ride/src/admin/screens/settings_screens.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
@@ -22,6 +24,17 @@ import 'quiet_live.dart';
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
 const _personId = '11111111-2222-3333-4444-555555555555';
+
+class _Geo extends GeoAdminRepository {
+  _Geo() : super(_db);
+
+  @override
+  Future<List<RegionEntry>> regions() async => [
+    RegionEntry(id: 'my', values: {'country': 'Malaysia'}),
+    RegionEntry(id: 'sel', values: {'country': 'Malaysia', 'state': 'Selangor'}),
+    RegionEntry(id: 'kl', values: {'country': 'Malaysia', 'state': 'Kuala Lumpur'}),
+  ];
+}
 
 class _Admin extends AdminRepository {
   _Admin() : super(_db);
@@ -99,6 +112,31 @@ class _Admin extends AdminRepository {
   @override
   Future<void> saveCommissionRate(Map<String, dynamic> row) async => rateWrites.add(row);
 
+  var uncharged = <Map<String, dynamic>>[];
+  var chargeCalls = 0;
+
+  @override
+  Future<List<Map<String, dynamic>>> unchargedCommissions() async => uncharged;
+
+  @override
+  Future<({int charged, int failed})> chargeUnchargedCommissions() async {
+    chargeCalls++;
+    final n = uncharged.length;
+    uncharged = [];
+    return (charged: n, failed: 0);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> commissionHistory({int limit = 100}) async => [
+    {
+      'id': 'h1',
+      'op': 'update',
+      'changed_at': '2026-10-18T02:00:00Z',
+      'old_row': {'level': 'master', 'rate': 0.15, 'active': true, 'priority': 0},
+      'new_row': {'level': 'master', 'rate': 0.12, 'active': true, 'priority': 0},
+    },
+  ];
+
   @override
   Future<List<Map<String, dynamic>>> searchPeople(String query, {int limit = 20}) async {
     searches.add(query);
@@ -126,6 +164,7 @@ Future<_Admin> _pump(
         ...quietLiveOverrides,
         adminAccessProvider.overrideWith((_) async => AdminAccess([AdminGrant(page: '*', edit: edit)])),
         adminRepositoryProvider.overrideWithValue(admin),
+        geoAdminRepositoryProvider.overrideWithValue(_Geo()),
       ],
       child: MaterialApp(theme: appTheme(brightness), home: home),
     ),
@@ -409,6 +448,100 @@ void main() {
       expect(row['user_id'], _personId);
       expect(row['user_label'], 'Aisyah Rahman');
       expect(row['rate'], 0.1);
+    });
+
+    testWidgets('only admins who may edit see Add rate', (tester) async {
+      await _pump(tester, const AdminCommissionScreen(), edit: false);
+      expect(find.byKey(const ValueKey('commission-add')), findsNothing);
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('a state rate is picked from the regions, with a priority and a note (${b.name})', (tester) async {
+        final admin = await _pump(tester, const AdminCommissionScreen(), brightness: b);
+        await tester.tap(find.byKey(const ValueKey('commission-add')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('country').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('state').last);
+        await tester.pumpAndSettle();
+        await tester.enterText(find.widgetWithText(TextField, 'Rate (%)'), '12');
+        await tester.tap(find.text('Choose a country'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Malaysia').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Choose a state'));
+        await tester.pumpAndSettle();
+        expect(find.text('Kuala Lumpur'), findsWidgets, reason: 'the states under Malaysia are offered');
+        await tester.tap(find.text('Selangor').last);
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const ValueKey('commission-priority')), '5');
+        await tester.enterText(find.byKey(const ValueKey('commission-note')), 'Launch promo');
+        await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+        await tester.pumpAndSettle();
+        final row = admin.rateWrites.single;
+        expect(row['level'], 'state');
+        expect(row['country'], 'Malaysia');
+        expect(row['state'], 'Selangor');
+        expect(row['priority'], 5);
+        expect(row['note'], 'Launch promo');
+        expect(row['rate'], 0.12);
+      });
+    }
+
+    testWidgets('uncharged trips are listed and charged with one tap', (tester) async {
+      final admin = _Admin()
+        ..uncharged = [
+          {'ride_id': 'x1', 'partner_id': 'd1', 'fare': 20, 'completed_at': '2026-10-18T01:00:00Z', 'error': null},
+          {'ride_id': 'x2', 'partner_id': 'd1', 'fare': 30, 'completed_at': '2026-10-18T01:00:00Z', 'error': 'boom'},
+        ];
+      await tester.binding.setSurfaceSize(const Size(1000, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            supabaseProvider.overrideWithValue(_db),
+            ...quietLiveOverrides,
+            adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+            adminRepositoryProvider.overrideWithValue(admin),
+            geoAdminRepositoryProvider.overrideWithValue(_Geo()),
+          ],
+          child: MaterialApp(theme: appTheme(Brightness.light), home: const AdminCommissionScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('2 completed trips not charged commission'), findsOneWidget);
+      expect(find.text('1 failed to charge; see the trip.'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('commission-charge-now')));
+      await tester.pumpAndSettle();
+      expect(admin.chargeCalls, 1);
+      expect(find.byKey(const ValueKey('commission-uncharged')), findsNothing);
+    });
+
+    testWidgets('the change history says what changed', (tester) async {
+      await _pump(tester, const AdminCommissionScreen());
+      await tester.tap(find.byKey(const ValueKey('commission-history')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('rate 15.00% → 12.00%'), findsOneWidget);
+    });
+
+    test('history lines', () {
+      expect(
+        commissionHistoryLine({
+          'op': 'insert',
+          'new_row': {'level': 'city', 'rate': 0.08, 'city': 'Kajang', 'state': 'Selangor', 'country': 'Malaysia'},
+        }),
+        'Added 8.00% · city (Kajang, Selangor, Malaysia)',
+      );
+      expect(
+        commissionHistoryLine({
+          'op': 'update',
+          'old_row': {'level': 'master', 'rate': 0.15, 'active': true},
+          'new_row': {'level': 'master', 'rate': 0.15, 'active': false, 'priority': 2, 'note': 'paused'},
+        }),
+        'Changed 15.00% · master (Platform default): turned off, priority 0 → 2, note "paused"',
+      );
+      expect(commissionHistoryLine({'op': 'delete', 'old_row': {'level': 'master', 'rate': 0.1}}),
+          'Deleted 10.00% · master (Platform default)');
     });
   });
 }

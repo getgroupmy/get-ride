@@ -354,6 +354,23 @@ class AdminRepository {
   Future<void> setCommissionRateActive(String id, bool active) =>
       _updateOne('commission_rates', id, {'active': active, 'updated_at': _now});
 
+  /// Every change to the rates, newest first (0216): who, when, before and
+  /// after.
+  Future<List<Map<String, dynamic>>> commissionHistory({int limit = 100}) async => List<Map<String, dynamic>>.from(
+        await _db.from('commission_rate_history').select().order('changed_at', ascending: false).limit(limit),
+      );
+
+  /// Completed trips whose commission was never charged (0216).
+  Future<List<Map<String, dynamic>>> unchargedCommissions() async =>
+      List<Map<String, dynamic>>.from(await _db.rpc('admin_uncharged_commissions') as List);
+
+  /// Charges every completed trip still uncharged; answers how many were
+  /// charged and how many failed again.
+  Future<({int charged, int failed})> chargeUnchargedCommissions() async {
+    final r = Map<String, dynamic>.from(await _db.rpc('admin_charge_uncharged_commissions') as Map);
+    return (charged: (r['charged'] as num?)?.toInt() ?? 0, failed: (r['failed'] as num?)?.toInt() ?? 0);
+  }
+
   /// People a per-user rule can be about: matched by name, phone, email or
   /// account id, or exactly by profile id. The term is sanitised before it
   /// reaches the `.or()` filter (see `profile_search.dart`).
