@@ -76,7 +76,7 @@ alter table public.commission_rate_history enable row level security;
 drop policy if exists "commission_rate_history admin read" on public.commission_rate_history;
 create policy "commission_rate_history admin read"
   on public.commission_rate_history for select to authenticated
-  using (public.caller_is_admin());
+  using ((select public.caller_is_admin()));
 revoke all on public.commission_rate_history from anon;
 grant select on public.commission_rate_history to authenticated;
 
@@ -129,17 +129,17 @@ drop policy if exists "commission_rates admin delete" on public.commission_rates
 
 create policy "commission_rates read"
   on public.commission_rates for select to authenticated
-  using (level <> 'user' or user_id = auth.uid() or public.caller_is_admin());
+  using (level <> 'user' or user_id = (select auth.uid()) or (select public.caller_is_admin()));
 create policy "commission_rates admin insert"
   on public.commission_rates for insert to authenticated
-  with check (public.commission_caller_can_edit());
+  with check ((select public.commission_caller_can_edit()));
 create policy "commission_rates admin update"
   on public.commission_rates for update to authenticated
-  using (public.commission_caller_can_edit())
-  with check (public.commission_caller_can_edit());
+  using ((select public.commission_caller_can_edit()))
+  with check ((select public.commission_caller_can_edit()));
 create policy "commission_rates admin delete"
   on public.commission_rates for delete to authenticated
-  using (public.commission_caller_can_edit());
+  using ((select public.commission_caller_can_edit()));
 
 revoke all on public.commission_rates from anon;
 grant select, insert, update, delete on public.commission_rates to authenticated;
