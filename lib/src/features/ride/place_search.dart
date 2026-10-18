@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -52,6 +53,7 @@ Future<PlacePick?> showPlaceSearch(
   bool routeEnds = false,
   bool startOnFrom = false,
   PlaceSearchMode mode = PlaceSearchMode.route,
+  ValueListenable<RouteSheetEnds>? live,
 }) {
   final wide = MediaQuery.sizeOf(context).width >= 720;
   final body = _PlaceSearch(
@@ -64,6 +66,7 @@ Future<PlacePick?> showPlaceSearch(
     routeEnds: routeEnds,
     startOnFrom: startOnFrom,
     mode: mode,
+    live: live,
   );
   if (wide) {
     return showAppDialog<PlacePick>(id: 'place-search.show-place-search',
@@ -83,6 +86,20 @@ Future<PlacePick?> showPlaceSearch(
     backgroundColor: routeSheetBackground(Theme.of(context)),
     builder: (c) => Theme(data: routeSheetTheme(Theme.of(c)), child: body),
   );
+}
+
+/// The pickup and the rider's current place as the home screen has them
+/// now: an open route sheet follows them (an address that arrives after it
+/// opened fills its From and its Current location row).
+typedef RouteSheetEnds = ({Place? from, Place? current});
+
+/// The Current location row's second line: the short label the From row
+/// shows, then the full address when it says more.
+String currentPlaceSubtitle(Place p) {
+  final name = p.name.trim(), address = p.address.trim();
+  if (name.isEmpty || isCoordinateLabel(name)) return address;
+  if (address.isEmpty || address == name) return name;
+  return '$name\n$address';
 }
 
 /// The route sheet's page: white by day.
@@ -125,6 +142,7 @@ class _PlaceSearch extends ConsumerStatefulWidget {
     this.routeEnds = false,
     this.startOnFrom = false,
     this.mode = PlaceSearchMode.route,
+    this.live,
   });
   final String title;
   final LatLng? near;
@@ -147,11 +165,38 @@ class _PlaceSearch extends ConsumerStatefulWidget {
   final bool startOnFrom;
   final PlaceSearchMode mode;
 
+  /// Later values of [from] and [current], while the sheet is open.
+  final ValueListenable<RouteSheetEnds>? live;
+
   @override
   ConsumerState<_PlaceSearch> createState() => _PlaceSearchState();
 }
 
 class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
+  /// The From and the current place: as the sheet opened, or newer from
+  /// [_PlaceSearch.live] once they arrive (the reverse-geocoded address).
+  Place? get _from => widget.live?.value.from ?? widget.from;
+  Place? get _current => widget.live?.value.current ?? widget.current;
+
+  void _liveChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.live?.addListener(_liveChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _PlaceSearch old) {
+    super.didUpdateWidget(old);
+    if (old.live != widget.live) {
+      old.live?.removeListener(_liveChanged);
+      widget.live?.addListener(_liveChanged);
+    }
+  }
+
   final _query = TextEditingController();
   final _focus = FocusNode();
   Timer? _debounce;
@@ -178,7 +223,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   late bool _editFrom = widget.startOnFrom && _ends;
 
   /// From over To, as the route sheet shows them.
-  bool get _ends => _route && (widget.routeEnds || widget.from != null);
+  bool get _ends => _route && (widget.routeEnds || _from != null);
 
   GateUsage? get _usage => _editFrom ? GateUsage.pickup : widget.usage;
 
@@ -361,6 +406,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
 
   @override
   void dispose() {
+    widget.live?.removeListener(_liveChanged);
     _debounce?.cancel();
     _query.dispose();
     _focus.dispose();
@@ -433,7 +479,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
 
   /// The map picker (inDrive's): the place chosen there, handed straight back.
   Future<void> _onMap() async {
-    final p = await pickPlaceOnMap(context, start: widget.current?.point ?? widget.near, me: widget.near);
+    final p = await pickPlaceOnMap(context, start: _current?.point ?? widget.near, me: widget.near);
     if (p != null && mounted) _done(PlacePick.place(p));
   }
 
@@ -490,7 +536,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    smart.clean ? shortArea(p, homeRegion: areaRegion(widget.current)) : p.address,
+                    smart.clean ? shortArea(p, homeRegion: areaRegion(_current)) : p.address,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
@@ -702,7 +748,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             leading: const Icon(Icons.history),
             title: Text('Recent: ${r.place!.name}', maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(
-              smart.clean ? shortArea(r.place!, homeRegion: areaRegion(widget.current)) : r.place!.address,
+              smart.clean ? shortArea(r.place!, homeRegion: areaRegion(_current)) : r.place!.address,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -770,7 +816,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             key: const ValueKey('place-search-from'),
             icon: Icons.emoji_people,
             label: 'From',
-            value: widget.from?.name,
+            value: _from?.name,
             onTap: _changeFrom,
           ),
         if (_ends) const SizedBox(height: 12),
@@ -853,20 +899,26 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   }
 
   List<Widget> _suggested(ThemeData t) => [
-    if (widget.current != null)
+    if (_current != null)
       ListTile(
         leading: const Icon(Icons.my_location),
+        key: const ValueKey('place-search-current'),
         title: const Text('Current location'),
+        // The same short label as the From row, the full address under it.
         // Bare coordinates until the address arrives say nothing to a rider.
-        subtitle: isCoordinateLabel(widget.current!.address)
+        subtitle: isCoordinateLabel(_current!.address)
             ? null
-            : Text(widget.current!.address, maxLines: 1, overflow: TextOverflow.ellipsis),
-        onTap: () => _done(PlacePick.place(widget.current!)),
+            : Text(
+                currentPlaceSubtitle(_current!),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+        onTap: () => _done(PlacePick.place(_current!)),
       ),
     // Choosing on the map is the pin button in the search field.
     ...switch (ref.watch(recentPlacesProvider).value ?? const <Place>[]) {
       final List<Place> recent when recent.isNotEmpty => [
-        if (widget.current != null) const Divider(),
+        if (_current != null) const Divider(),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           child: Text('Recent', style: t.textTheme.titleSmall),

@@ -126,5 +126,42 @@ void main() {
     expect(find.byKey(const ValueKey('place-search-map-row')), findsOneWidget);
     expect(find.text('KLCC'), findsOneWidget);
   });
+
+  testWidgets('an open route sheet fills From and Current location when the address arrives', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 1000);
+    addTearDown(tester.view.reset);
+    final live = ValueNotifier<RouteSheetEnds>((from: null, current: null));
+    addTearDown(live.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [recentPlacesProvider.overrideWith((ref) async => const <Place>[])],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => showPlaceSearch(context, title: 'Enter your route', routeEnds: true, live: live),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('place-search-current')), findsNothing);
+    const here = Place(
+      name: 'Jalan Damansara',
+      address: 'Jalan Damansara, Bukit Damansara, 50490 Kuala Lumpur',
+      point: LatLng(3.15, 101.66),
+    );
+    live.value = (from: here, current: here);
+    await tester.pump();
+    expect(find.descendant(of: find.byKey(const ValueKey('place-search-from')), matching: find.text('Jalan Damansara')),
+        findsOneWidget);
+    expect(find.byKey(const ValueKey('place-search-current')), findsOneWidget);
+    expect(currentPlaceSubtitle(here), startsWith('Jalan Damansara\n'), reason: 'the same short label first');
+  });
 }
 

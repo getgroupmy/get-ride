@@ -59,6 +59,8 @@ import 'package:get_ride/src/core/side_menu.dart' show MenuEntry;
 import 'package:get_ride/src/features/profile/account_screen.dart' show riderMenuAction;
 import 'package:get_ride/src/widgets/side_menu_tiles.dart' show SideMenuTile;
 import 'package:go_router/go_router.dart';
+import 'package:get_ride/src/features/ride/scheduled_rides_screen.dart' show pickupLabel;
+import 'package:get_ride/src/features/safety/voice_protection_card.dart' show privacyLinkColor;
 import 'package:get_ride/src/features/partner/partner_screen.dart' show driverSheetRest;
 import 'package:get_ride/src/features/ride/home_screen.dart' show homePillAtTop;
 import 'package:get_ride/src/core/vehicle_info.dart' show WriteTarget;
@@ -792,6 +794,17 @@ void _batch2() {
     expect(field('pin').obscureText, isTrue);
     expect(field('code').keyboardType, TextInputType.number);
     expect(field('code').autofillHints, contains(AutofillHints.oneTimeCode));
+  });
+
+  test('pickup times read the 12-hour way everywhere, upcoming card included', () {
+    expect(pickupLabel(DateTime(2026, 10, 18, 17, 14)), 'Sun 18 Oct, 5:14 PM');
+  });
+
+  test('the Privacy Notice link reads as a link in both themes', () {
+    for (final b in Brightness.values) {
+      final t = ThemeData(brightness: b);
+      expect(contrastRatio(privacyLinkColor(t), t.colorScheme.surfaceContainerLow), greaterThanOrEqualTo(4.5), reason: b.name);
+    }
   });
 }
 

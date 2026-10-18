@@ -139,9 +139,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _panelKey = GlobalKey();
   final _foldKey = GlobalKey();
 
+  /// The pickup and current place for an open route sheet: an address that
+  /// arrives after it opened still fills its From and Current location.
+  final _routeEnds = ValueNotifier<RouteSheetEnds>((from: null, current: null));
+
+  void _syncRouteEnds() {
+    final now = (from: _pickup, current: _here);
+    if (_routeEnds.value != now) _routeEnds.value = now;
+  }
+
   /// How tall the sheet must be, all the way down, to show everything to
-  /// the foot of the search bar: its handle, the vehicle bar (when shown)
-  /// and the bar itself. 0 until measured.
+  /// the foot of the search bar: its handle, the vehicle bar (when shown),
+  /// the bar itself and an upcoming ride's card under it. 0 until measured.
   double _foldHeight = 0;
 
   /// Measures [_foldHeight] after a frame; a change sets the sheet's least
@@ -418,6 +427,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _routeEnds.dispose();
     _changes.dispose();
     _carsTimer?.cancel();
     _lifecycle?.dispose();
@@ -751,6 +761,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _choose(_PinTarget target) async {
     final pickup = target == _PinTarget.pickup;
     // One route sheet for both ends: From over To, opened on the one tapped.
+    _syncRouteEnds();
     final pick = await showPlaceSearch(
       context,
       title: 'Enter your route',
@@ -761,6 +772,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       to: _drop,
       routeEnds: true,
       startOnFrom: pickup,
+      live: _routeEnds,
     );
     if (pick == null || !mounted) return;
     // The route's "From", changed in the same dialog: the pickup.
@@ -1300,18 +1312,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           title: Text(_pickup?.name ?? 'Set pickup'),
           onTap: () => _choose(_PinTarget.pickup),
         ),
+      // The fold reaches the foot of the upcoming-ride card too, so the
+      // sheet all the way down shows it whole, clear of the home indicator.
       KeyedSubtree(
         key: _foldKey,
-        child: sections.searchBar
-            ? HomeSearchPill(onTap: whereTo)
-            : ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.location_on, color: Colors.red.shade700),
-                title: const Text('Where to?'),
-                onTap: whereTo,
-              ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            sections.searchBar
+                ? HomeSearchPill(onTap: whereTo)
+                : ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.location_on, color: Colors.red.shade700),
+                    title: const Text('Where to?'),
+                    onTap: whereTo,
+                  ),
+            const UpcomingRideCard(),
+          ],
+        ),
       ),
-      const UpcomingRideCard(),
       // Under the search bar only with the sheet up: all the way down it
       // would peek out below it.
       if (recent.isNotEmpty) ...[
@@ -1341,6 +1361,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // An open route sheet follows the pickup and the current place.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncRouteEnds();
+    });
     ref.listenLive(liveRegionTables, _regionsChanged);
     // The ride card follows its ride: a ride that is cancelled, expires or
     // ends (on this device or anywhere else) leaves the home screen, and one
