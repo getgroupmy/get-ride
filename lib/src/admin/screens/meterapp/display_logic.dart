@@ -64,7 +64,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   ('wallet', 'Wallet'),
   (myQrMenuItemId, 'My QR'), // GET.Referral / GET.me / GET.now (0161); this app's own
   ('trip-history', 'Trip history'),
-  (scheduledRidesMenuItemId, 'Scheduled Request'), // this app's own; the Expo menu skips it
+  (scheduledRidesMenuItemId, 'Scheduled rides'), // this app's own; the Expo menu skips it
   ('vehicle', 'Vehicle'),
   (vehicleInfoMenuItemId, 'Vehicle information'),
   ('documents', 'Documents'),

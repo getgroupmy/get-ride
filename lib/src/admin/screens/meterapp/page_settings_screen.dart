@@ -631,6 +631,8 @@ class _Controls extends StatelessWidget {
                 max: token.max,
                 divisions: ((token.max - token.min) / token.step).round(),
                 label: v.toStringAsFixed(digits),
+                // Read out as "Corner radius, 12 px", not a bare percentage.
+                semanticFormatterCallback: (n) => '${token.label}, ${n.toStringAsFixed(digits)} ${token.unit}'.trim(),
                 onChanged: enabled ? (n) => onSet(key, double.parse(n.toStringAsFixed(digits))) : null,
               ),
               Text('${v.toStringAsFixed(digits)} ${token.unit} · ${_origin(key, kind)}'),

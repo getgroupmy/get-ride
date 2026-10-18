@@ -147,7 +147,10 @@ void main() {
           rideRepositoryProvider.overrideWithValue(rides),
           geoServiceProvider.overrideWithValue(geo),
           rideSharerProvider.overrideWithValue((text) async => sent.add(text)),
-          sharedRideDialerProvider.overrideWithValue((n) async => dialled.add(n)),
+          sharedRideDialerProvider.overrideWithValue((n) async {
+            dialled.add(n);
+            return true;
+          }),
         ],
         child: const MaterialApp(home: SharedRideScreen(token: _token)),
       ));

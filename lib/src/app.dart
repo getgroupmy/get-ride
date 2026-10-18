@@ -14,7 +14,7 @@ import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
-import 'core/auth_utils.dart' show ResyncPin, signInStepRedirect;
+import 'core/auth_utils.dart' show PendingSignInRoute, ResyncPin, signInLocation, signInNextPath, signInStepRedirect;
 import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
@@ -112,6 +112,7 @@ import 'widgets/connection_status_dialog.dart';
 import 'widgets/android_nav_bar_inset.dart';
 import 'widgets/keyboard_dismiss.dart';
 import 'widgets/page_style_host.dart';
+import 'widgets/route_title.dart';
 import 'core/page_styles.dart' show PageStyles;
 import 'data/page_styles_repository.dart' show pageStylesProvider;
 import 'data/device_details.dart';
@@ -234,7 +235,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       // carried into sign-up, a driver's code asks to sign in first. Both
       // /q/<kind>/<token> and the app-link form /<kind>/<token>.
       if (isQrLinkLocation(loc)) return null;
-      if (!signedIn && !onAuth) return '/login';
+      // A deep link opened signed out: kept, and opened once signed in.
+      if (!signedIn && !onAuth) {
+        PendingSignInRoute.path = signInNextPath(state.uri.toString());
+        return signInLocation(state.uri.toString());
+      }
+      if (!signedIn && loc == '/login') {
+        final next = signInNextPath(state.uri.queryParameters['next']);
+        if (next != null) PendingSignInRoute.path = next;
+      }
       // A sign-in step reloaded without its phone starts again from the number.
       if (!signedIn) {
         final step = signInStepRedirect(loc, state.uri.queryParameters, resyncPin: ResyncPin.value);
@@ -246,6 +255,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       // Signed in after opening a driver's code: back to that code.
       if (signedIn && (onAuth || loc == '/') && PendingQrLink.path != null) return PendingQrLink.take();
+      if (signedIn && (onAuth || loc == '/') && PendingSignInRoute.path != null) return PendingSignInRoute.take();
       if (signedIn && onAuth) return '/';
       return null;
     },
@@ -898,7 +908,12 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
                                 styles: styles,
                                 location: () => router.routerDelegate.currentConfiguration.fullPath,
                                 listenable: router.routerDelegate,
-                                child: child ?? const SizedBox.shrink(),
+                                // The browser tab names the page ("Trips · GET.ride").
+                                child: RouteTitle(
+                                  location: () => router.routerDelegate.currentConfiguration.uri.path,
+                                  listenable: router.routerDelegate,
+                                  child: child ?? const SizedBox.shrink(),
+                                ),
                               ),
                             ),
                           ),

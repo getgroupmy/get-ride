@@ -328,6 +328,17 @@ void main() {
       expect(find.text('Closing in 5s'), findsOneWidget);
     });
 
+    testWidgets('a ride opened already cancelled stays, with the reason and Book another ride', (tester) async {
+      final (_, rows, _) = await pump(tester);
+      rows.add(ride('cancelled', askedBy: 'partner', reason: 'passenger_no_show'));
+      await settle(tester);
+      expect(find.textContaining('Closing in'), findsNothing, reason: 'no countdown home');
+      expect(find.byKey(const ValueKey('ride-cancel-reason')), findsOneWidget);
+      expect(find.byKey(const ValueKey('ride-book-again')), findsOneWidget);
+      await tester.pump(const Duration(seconds: 10));
+      expect(find.byKey(const ValueKey('ride-book-again')), findsOneWidget, reason: 'still on the page');
+    });
+
     testWidgets("the driver's request to cancel is a popup the passenger answers", (tester) async {
       final (rides, rows, _) = await pump(tester);
       rows.add(ride('arrived', askedBy: 'partner'));

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
+import '../../core/region_time.dart' show formatInZone;
 import '../../data/models.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -10,6 +11,14 @@ import '../admin_filters.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
+
+/// A row's second line, as the rider's trip list words it: when (in the
+/// trip's region), then who: "12 Mar 2026, 3:15 PM · Rider Aisyah · Driver Ali".
+String adminRideSubtitle(RideRequest r) => [
+      formatInZone(r.createdAt, r.timezone),
+      'Rider ${(r.riderName ?? '').trim().isEmpty ? 'unknown' : r.riderName!.trim()}',
+      if ((r.partnerName ?? '').trim().isNotEmpty) 'Driver ${r.partnerName!.trim()}',
+    ].join(' · ');
 
 final adminRidesProvider = FutureProvider.autoDispose.family<List<RideRequest>, String>((ref, group) async {
   ref.watchAdminLive('ride_requests');
@@ -136,11 +145,7 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
                   final r = list[i];
                   return ListTile(
                     title: Text('${r.pickupLabel} → ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text([
-                      dateText(r.raw['created_at']),
-                      r.riderName ?? 'rider',
-                      if (r.partnerName != null) 'driver ${r.partnerName}',
-                    ].join(' · ')),
+                    subtitle: Text(adminRideSubtitle(r)),
                     trailing: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,

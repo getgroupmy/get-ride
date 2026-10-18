@@ -90,16 +90,26 @@ class _Seams {
   final shared = <ShareableImage>[];
   final saved = <ShareableImage>[];
   final texts = <String>[];
+
+  /// The text sharer's answer: true when it fell back to the clipboard (a
+  /// desktop browser without Web Share).
+  var textCopied = false;
   final qrs = <({String data, Color color, String? caption})>[];
   var torches = 0;
 
   List<Override> get overrides => [
-    imageSharerProvider.overrideWithValue((i) async => shared.add(i)),
+    imageSharerProvider.overrideWithValue((i) async {
+      shared.add(i);
+      return false;
+    }),
     imageSaverProvider.overrideWithValue((i) async {
       saved.add(i);
       return const ImageSaveResult(ImageSaveOutcome.downloaded);
     }),
-    textSharerProvider.overrideWithValue((t, {subject, origin}) async => texts.add(t)),
+    textSharerProvider.overrideWithValue((t, {subject, origin}) async {
+      texts.add(t);
+      return textCopied;
+    }),
     qrPngRendererProvider.overrideWithValue((data, {color = Colors.black, caption}) async {
       qrs.add((data: data, color: color, caption: caption));
       return _png;
@@ -330,6 +340,19 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    testWidgets('with no share sheet the invite is copied, and it says so', (tester) async {
+      _tall(tester);
+      final seams = _Seams()..textCopied = true;
+      await tester.pumpWidget(
+        _app(const ReferralScreen(), seams, more: [referralRepositoryProvider.overrideWithValue(_FakeReferrals())]),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('referral-share-invite')));
+      await tester.pump();
+      expect(seams.texts, hasLength(1));
+      expect(find.text('Invite copied, paste it to a friend'), findsOneWidget);
+    });
   });
 
   group('scan & pay', () {

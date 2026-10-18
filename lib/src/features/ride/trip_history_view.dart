@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/format.dart' show formatMoney;
 import '../../core/region_time.dart';
 import '../../core/trip_history.dart';
 import '../../data/models.dart';
@@ -141,17 +142,22 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
                 leading: Icon(partner ? Icons.drive_eta : Icons.local_taxi),
                 // Pickup and drop-off on lines of their own, so a phone shows
                 // where the trip went, not just where it began.
-                title: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
+                title: Text(r.pickupLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('→ ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text('→ ${r.dropLabel}', maxLines: 2, overflow: TextOverflow.ellipsis),
                     Text(formatInZone(r.createdAt, r.timezone), maxLines: 1, overflow: TextOverflow.ellipsis),
                     Text(r.status.label),
                   ],
                 ),
                 isThreeLine: true,
-                trailing: Text(r.fareText(r.effectiveFare)),
+                trailing: Text(
+                  tripListFare(r),
+                  style: r.status.isFinished && r.status != RideStatus.completed
+                      ? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)
+                      : null,
+                ),
                 onTap: () => context.push(tripHistoryRoute(widget.role, r)),
               ),
             ),
@@ -168,4 +174,12 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
       ],
     );
   }
+}
+
+/// The amount a trip row shows: the fare with two decimals on every row
+/// (RM4.00, RM57.00), or "Not charged" for a trip that was cancelled or
+/// expired, whose quoted fare was never billed.
+String tripListFare(RideRequest r) {
+  if (r.status == RideStatus.cancelled || r.status == RideStatus.expired) return 'Not charged';
+  return formatMoney(r.effectiveFare, r.currency);
 }

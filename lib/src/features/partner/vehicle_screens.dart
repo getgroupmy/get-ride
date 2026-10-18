@@ -160,6 +160,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   VehicleStep? _viewing;
 
   final _plate = TextEditingController();
+  String? _plateError;
   final _year = TextEditingController();
   final _color = TextEditingController();
   final _ownerName = TextEditingController();
@@ -269,7 +270,8 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
 
   Future<void> _savePlate() async {
     final plate = normalizePlate(_plate.text);
-    if (plate.isEmpty) return showError(context, 'Please enter the plate number.');
+    setState(() => _plateError = plate.isEmpty ? 'Enter the plate number' : null);
+    if (plate.isEmpty) return;
     await _save(() => _repo.startWithPlate(plate, _ctx!.partner));
   }
 
@@ -431,13 +433,22 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   Widget _continue(BusyAction? onPressed, {String label = 'Save and continue'}) =>
       BusyButton.filled(onPressed: _busy ? null : onPressed, child: Text(label));
 
-  Widget _field(TextEditingController c, String label, {TextInputType? keyboard, List<TextInputFormatter>? formatters}) =>
+  Widget _field(
+    TextEditingController c,
+    String label, {
+    TextInputType? keyboard,
+    List<TextInputFormatter>? formatters,
+    TextInputAction action = TextInputAction.next,
+    ValueChanged<String>? onSubmitted,
+  }) =>
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: TextField(
           controller: c,
           enabled: !_busy,
           keyboardType: keyboard,
+          textInputAction: action,
+          onSubmitted: onSubmitted,
           inputFormatters: formatters,
           decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
         ),
@@ -452,7 +463,15 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
                 controller: _plate,
                 enabled: !_busy,
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(labelText: 'Plate number', border: OutlineInputBorder()),
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  labelText: 'Plate number',
+                  border: const OutlineInputBorder(),
+                  errorText: _plateError,
+                ),
+                onChanged: (_) {
+                  if (_plateError != null) setState(() => _plateError = null);
+                },
                 onSubmitted: (_) => _savePlate(),
               ),
               const SizedBox(height: 16),
@@ -475,7 +494,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(4),
               ]),
-              _field(_color, 'Colour'),
+              _field(_color, 'Colour', action: TextInputAction.done, onSubmitted: (_) => _saveYearColor()),
               _continue(_saveYearColor),
             ],
           ),
@@ -540,7 +559,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
           const SizedBox(height: 16),
           _field(_ownerName, "Owner's name"),
           _field(_ownerPhone, "Owner's phone", keyboard: TextInputType.phone),
-          _field(_ownerIc, "Owner's ID number"),
+          _field(_ownerIc, "Owner's ID number", action: TextInputAction.done),
           _continue(_saveOwner, label: _ownVehicle == null ? 'Select an option to continue' : 'Save and continue'),
         ],
       );

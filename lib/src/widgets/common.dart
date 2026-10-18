@@ -27,6 +27,24 @@ class ResponsiveCenter extends StatelessWidget {
       );
 }
 
+/// Secondary text that still reads (4.5:1) on the page: the theme's
+/// onSurfaceVariant, unless an admin colour or a light grey would fail on
+/// [background] (the theme's surface by default); then a grey that passes,
+/// #6B7280 in light mode and #B4BAC4 in dark.
+Color mutedTextColor(ThemeData t, {Color? background}) {
+  final c = t.colorScheme.onSurfaceVariant;
+  final bg = background ?? t.colorScheme.surface;
+  if (contrastRatio(c, bg) >= 4.5) return c;
+  return t.brightness == Brightness.light ? const Color(0xFF6B7280) : const Color(0xFFB4BAC4);
+}
+
+/// WCAG contrast ratio between two opaque colours (1 to 21).
+double contrastRatio(Color a, Color b) {
+  final la = a.computeLuminance(), lb = b.computeLuminance();
+  final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+  return (hi + 0.05) / (lo + 0.05);
+}
+
 /// Large single-field numeric code input (OTP / PIN).
 class CodeField extends StatelessWidget {
   const CodeField({
@@ -38,6 +56,9 @@ class CodeField extends StatelessWidget {
     this.autofocus = true,
     this.label,
     this.textInputAction,
+    this.errorText,
+    this.focusNode,
+    this.onChanged,
   });
   final TextEditingController controller;
   final int length;
@@ -49,11 +70,19 @@ class CodeField extends StatelessWidget {
   /// The keyboard's action key (Next to the following field of a form).
   final TextInputAction? textInputAction;
 
+  /// Why the code can't be used, under the field (a PIN that doesn't match).
+  final String? errorText;
+  final FocusNode? focusNode;
+
+  /// Every change, besides [onCompleted] once all digits are in.
+  final ValueChanged<String>? onChanged;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     return TextField(
         controller: controller,
+        focusNode: focusNode,
         autofocus: autofocus,
         obscureText: obscure,
         keyboardType: TextInputType.number,
@@ -67,12 +96,15 @@ class CodeField extends StatelessWidget {
         decoration: InputDecoration(
           counterText: '',
           labelText: label,
+          errorText: errorText,
+          errorMaxLines: 2,
           hintText: obscure ? '•' * length : '$length-digit code',
           hintStyle: obscure
               ? t.textTheme.headlineMedium?.copyWith(letterSpacing: 12, color: t.colorScheme.outline)
               : t.textTheme.titleMedium?.copyWith(color: t.colorScheme.outline),
         ),
         onChanged: (v) {
+          onChanged?.call(v);
           if (v.length == length) onCompleted?.call(v);
         },
       );
@@ -163,10 +195,14 @@ Future<void> showGoOfflineToBook(BuildContext context) => showNotice(
 
 /// Loading / error / data switch for a Riverpod [AsyncValue].
 class AsyncView<T> extends StatelessWidget {
-  const AsyncView({super.key, required this.value, required this.data, this.onRetry});
+  const AsyncView({super.key, required this.value, required this.data, this.onRetry, this.errorTitle});
   final AsyncValue<T> value;
   final Widget Function(T data) data;
   final VoidCallback? onRetry;
+
+  /// Said instead of "Something went wrong" and the error's own words
+  /// ("Couldn't load the report"); the raw error stays under details.
+  final String? errorTitle;
 
   @override
   Widget build(BuildContext context) => value.when(
@@ -177,8 +213,8 @@ class AsyncView<T> extends StatelessWidget {
         loading: () => const LoadingSkeletonPage(),
         error: (e, _) => EmptyState(
           icon: Icons.cloud_off,
-          title: 'Something went wrong',
-          message: errorText(e),
+          title: errorTitle ?? 'Something went wrong',
+          message: errorTitle == null ? errorText(e) : null,
           details: errorDetails(e),
           action: onRetry == null ? null : TextButton(onPressed: onRetry, child: const Text('Retry')),
         ),

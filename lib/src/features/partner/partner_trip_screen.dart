@@ -677,12 +677,22 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
               title: Text(r.passengerName),
-              // The pieces wrap whole, the separator with what follows it,
-              // so a line never ends on a dangling "·".
+              // Two pieces with their own icons and no separator, each kept
+              // whole, so large text wraps them cleanly onto two lines.
               subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Wrap(spacing: 4, children: [
-                  Text('${r.passengers} passenger${r.passengers == 1 ? '' : 's'}'),
-                  Text('· ${r.paymentMode}'),
+                Wrap(spacing: 12, runSpacing: 2, children: [
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.person_outline, size: 16),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text('${r.passengers} passenger${r.passengers == 1 ? '' : 's'}', key: const ValueKey('trip-pax')),
+                    ),
+                  ]),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.payments_outlined, size: 16),
+                    const SizedBox(width: 4),
+                    Flexible(child: Text(r.paymentMode, key: const ValueKey('trip-payment'))),
+                  ]),
                 ]),
                 if (r.isForOthers) Text('Booked by ${r.riderName ?? 'another rider'}'),
               ]),

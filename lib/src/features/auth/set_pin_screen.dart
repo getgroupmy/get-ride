@@ -29,6 +29,8 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   final _name = TextEditingController();
   late final _referral = TextEditingController(text: PendingReferral.code ?? '');
   bool _busy = false;
+  String? _pinError;
+  String? _confirmError;
 
   /// Expo `role-selection`: where a brand-new account lands. Either mode
   /// stays a tap away later.
@@ -52,8 +54,14 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
       final problem = signupNameProblem(_name.text);
       if (problem != null) return showInfo(context, problem);
     }
-    if (!isValidPin(_pin.text)) return showInfo(context, 'PIN must be 6 digits.');
-    if (_pin.text != _confirm.text) return showInfo(context, 'PINs do not match.');
+    // The PIN problems sit under their own field.
+    final pinError = isValidPin(_pin.text) ? null : 'PIN must be 6 digits';
+    final confirmError = pinError == null && _pin.text != _confirm.text ? "PINs don't match" : null;
+    setState(() {
+      _pinError = pinError;
+      _confirmError = confirmError;
+    });
+    if (pinError != null || confirmError != null) return;
     final referral = normalizeReferralCode(_referral.text);
     if (referral.isNotEmpty && !isPlausibleReferralCode(referral)) {
       return showInfo(context, "That referral code wasn't found.");
@@ -164,6 +172,10 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
               autofocus: !needsName,
               label: 'New PIN',
               textInputAction: TextInputAction.next,
+              errorText: _pinError,
+              onChanged: (_) {
+                if (_pinError != null) setState(() => _pinError = null);
+              },
             ),
             const SizedBox(height: 16),
             CodeField(
@@ -173,6 +185,10 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
               autofocus: false,
               label: 'Confirm PIN',
               textInputAction: TextInputAction.next,
+              errorText: _confirmError,
+              onChanged: (_) {
+                if (_confirmError != null) setState(() => _confirmError = null);
+              },
             ),
             const SizedBox(height: 16),
             TextField(

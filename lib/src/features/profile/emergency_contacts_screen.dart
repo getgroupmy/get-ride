@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_native_contact_picker/flutter_native_contact_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../config.dart';
 import '../../core/contact_phone.dart';
@@ -12,6 +11,7 @@ import '../../platform/web_contacts.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/call_number.dart';
 import '../../widgets/common.dart';
 import '../../widgets/dial_country_picker.dart';
 import '../../widgets/side_menu_host.dart';
@@ -48,6 +48,20 @@ final contactPickerProvider = Provider<Future<PickedContact?> Function()?>((ref)
   };
 });
 
+/// Why an emergency contact can't be saved yet: a name is needed, and a
+/// phone number of at least 6 digits. Nulls when it's fine.
+({String? name, String? phone}) emergencyContactErrors(String name, String phone) {
+  final digits = phone.replaceAll(RegExp(r'\D'), '');
+  return (
+    name: name.trim().isEmpty ? 'Enter a name' : null,
+    phone: digits.isEmpty
+        ? 'Enter a phone number'
+        : digits.length < 6
+            ? 'Enter a full phone number'
+            : null,
+  );
+}
+
 class EmergencyContactsScreen extends ConsumerWidget {
   const EmergencyContactsScreen({super.key});
 
@@ -59,81 +73,103 @@ class EmergencyContactsScreen extends ConsumerWidget {
     final name = TextEditingController(text: c?.name);
     final phone = TextEditingController(text: split.local);
     final pick = ref.read(contactPickerProvider);
+    String? nameError;
+    String? phoneError;
     final ok = await showAppDialog<bool>(id: 'emergency-contacts.edit',
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialog) => AlertDialog(
-          // Scrolls under a keyboard on a small phone or at large text,
-          // with Cancel and Save kept in view.
-          scrollable: true,
-          title: Text(c == null ? 'Add contact' : 'Edit contact'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            if (pick != null)
-              Align(
-                alignment: Alignment.centerRight,
-                child: BusyButton.text(
-                  key: const ValueKey('contact-pick'),
-                  icon: const Icon(Icons.contacts_outlined),
-                  child: const Text('Contacts'),
-                  onPressed: () async {
-                    try {
-                      final p = await pick();
-                      if (p == null) return;
-                      if (p.name != null) name.text = p.name!;
-                      if (p.phone != null) {
-                        final picked = splitContactPhone(p.phone, defaultDialCode: country.dialCode);
-                        setDialog(() => country = picked.country);
-                        phone.text = picked.local;
-                      } else if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(content: Text('The selected contact has no phone number.')),
-                        );
+        builder: (ctx, setDialog) {
+          // Save checks both fields in place: the dialog stays open with the
+          // reason under the field instead of closing without saving.
+          void save() {
+            final errors = emergencyContactErrors(name.text, phone.text);
+            setDialog(() {
+              nameError = errors.name;
+              phoneError = errors.phone;
+            });
+            if (errors.name == null && errors.phone == null) Navigator.pop(ctx, true);
+          }
+          return AlertDialog(
+            // Scrolls under a keyboard on a small phone or at large text,
+            // with Cancel and Save kept in view.
+            scrollable: true,
+            title: Text(c == null ? 'Add contact' : 'Edit contact'),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (pick != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: BusyButton.text(
+                    key: const ValueKey('contact-pick'),
+                    icon: const Icon(Icons.contacts_outlined),
+                    child: const Text('Contacts'),
+                    onPressed: () async {
+                      try {
+                        final p = await pick();
+                        if (p == null) return;
+                        if (p.name != null) name.text = p.name!;
+                        if (p.phone != null) {
+                          final picked = splitContactPhone(p.phone, defaultDialCode: country.dialCode);
+                          setDialog(() => country = picked.country);
+                          phone.text = picked.local;
+                        } else if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('The selected contact has no phone number.')),
+                          );
+                        }
+                      } catch (_) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text("Couldn't open your contacts. Please try again.")),
+                          );
+                        }
                       }
-                    } catch (_) {
-                      if (ctx.mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(content: Text("Couldn't open your contacts. Please try again.")),
-                        );
-                      }
-                    }
-                  },
+                    },
+                  ),
                 ),
-              ),
-            TextField(
-              controller: name,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-            const SizedBox(height: 12),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              DialCountryButton(
-                key: const ValueKey('contact-dial-country'),
-                country: country,
-                height: 56,
-                onPressed: () async {
-                  final picked = await showDialCountryPicker(ctx, selected: country);
-                  if (picked != null) setDialog(() => country = picked);
+              TextField(
+                key: const ValueKey('contact-name'),
+                controller: name,
+                textInputAction: TextInputAction.next,
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(labelText: 'Name', errorText: nameError),
+                onChanged: (_) {
+                  if (nameError != null) setDialog(() => nameError = null);
                 },
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('contact-phone'),
-                  controller: phone,
-                  keyboardType: TextInputType.phone,
-                  textInputAction: TextInputAction.done,
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s+()-]'))],
-                  decoration: const InputDecoration(labelText: 'Phone'),
-                  onSubmitted: (_) => Navigator.pop(ctx, true),
+              const SizedBox(height: 12),
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                DialCountryButton(
+                  key: const ValueKey('contact-dial-country'),
+                  country: country,
+                  height: 56,
+                  onPressed: () async {
+                    final picked = await showDialCountryPicker(ctx, selected: country);
+                    if (picked != null) setDialog(() => country = picked);
+                  },
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('contact-phone'),
+                    controller: phone,
+                    keyboardType: TextInputType.phone,
+                    textInputAction: TextInputAction.done,
+                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s+()-]'))],
+                    decoration: InputDecoration(labelText: 'Phone', errorText: phoneError, errorMaxLines: 2),
+                    onChanged: (_) {
+                      if (phoneError != null) setDialog(() => phoneError = null);
+                    },
+                    onSubmitted: (_) => save(),
+                  ),
+                ),
+              ]),
             ]),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
-          ],
-        ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(key: const ValueKey('contact-save'), onPressed: save, child: const Text('Save')),
+            ],
+          );
+        },
       ),
     );
     final number = composeContactPhone(country.dialCode, phone.text);
@@ -211,7 +247,7 @@ class EmergencyContactsScreen extends ConsumerWidget {
                             IconButton(
                               tooltip: 'Call ${c.name}',
                               icon: const Icon(Icons.call_outlined),
-                              onPressed: () => launchUrl(Uri(scheme: 'tel', path: c.phone)),
+                              onPressed: () => callNumber(context, c.phone),
                             ),
                             BusyIconButton(
                               key: ValueKey('contact-delete-${c.id}'),

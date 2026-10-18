@@ -104,6 +104,7 @@ class SafetyScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final contacts = ref.watch(emergencyContactsProvider);
+    final noContacts = contacts.hasValue && (contacts.value ?? const []).isEmpty;
     return Scaffold(
       appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Safety')),
       body: ListView(
@@ -134,24 +135,41 @@ class SafetyScreen extends ConsumerWidget {
                 ),
                 const VoiceProtectionCard(),
                 const SizedBox(height: 16),
+                // No contacts: greyed, with the reason under it; a tap
+                // still offers to add one.
                 BusyButton.filled(
                   key: const ValueKey('safety-sos'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 56),
-                    backgroundColor: t.colorScheme.error,
-                    foregroundColor: t.colorScheme.onError,
-                  ),
+                  style: noContacts
+                      ? FilledButton.styleFrom(
+                          minimumSize: const Size(0, 56),
+                          backgroundColor: t.colorScheme.surfaceContainerHighest,
+                          foregroundColor: t.colorScheme.onSurfaceVariant,
+                        )
+                      : FilledButton.styleFrom(
+                          minimumSize: const Size(0, 56),
+                          backgroundColor: t.colorScheme.error,
+                          foregroundColor: t.colorScheme.onError,
+                        ),
                   icon: const Icon(Icons.sos),
                   onPressed: contacts.isLoading
                       ? null
                       : () => sendSos(context, contacts.value ?? const [], launch: launch, locate: locate),
                   child: const Text('Emergency SOS'),
                 ),
+                if (noContacts) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Add a contact to enable',
+                    key: const ValueKey('safety-sos-needs-contact'),
+                    textAlign: TextAlign.center,
+                    style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 Text(
                   'In immediate danger, call $emergencyNumber.',
                   textAlign: TextAlign.center,
-                  style: t.textTheme.bodySmall,
+                  style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
                 ),
               ],
             ),

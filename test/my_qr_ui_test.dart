@@ -321,7 +321,7 @@ Future<GoRouter> _app(
         myRideSettingsStoreProvider.overrideWithValue(_MemoryStore()),
         referralRepositoryProvider.overrideWithValue(referrals ?? _FakeReferrals()),
         qrPngRendererProvider.overrideWithValue((data, {color = Colors.black, caption}) async => _png),
-        imageSharerProvider.overrideWithValue((i) async {}),
+        imageSharerProvider.overrideWithValue((i) async => false),
         scannerTorchProvider.overrideWithValue((_) async {}),
         myRideScanViewProvider.overrideWithValue(
           (controller, onCode) => Center(

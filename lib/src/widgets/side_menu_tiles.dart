@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../core/inbox.dart' show inboxBadgeText;
 import '../core/side_menu.dart';
 import '../data/notifications_repository.dart' show unreadNotificationsProvider;
+import 'common.dart' show mutedTextColor;
 import 'side_menu_style.dart';
 import 'page_style_host.dart';
 
@@ -145,7 +146,7 @@ class SideMenuTile extends StatelessWidget {
       leading: Icon(menuIcon(entry), color: color),
       title: Text(entry.label, style: color == null ? null : TextStyle(color: color)),
       trailing: entry.comingSoon
-          ? const Chip(label: Text('Soon'))
+          ? Chip(label: Text('Soon', style: TextStyle(color: mutedTextColor(Theme.of(context)))))
           : _counts
           ? const Row(
               mainAxisSize: MainAxisSize.min,

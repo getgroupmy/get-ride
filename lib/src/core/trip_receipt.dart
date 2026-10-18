@@ -185,10 +185,12 @@ class TripReceipt {
     ('Status', statusLabel),
     if (date != null) ('Date', formatInZone(date, timezone)),
     if (service != null) ('Service', service!),
-    if (startedAt != null) ('Picked up', formatInZone(startedAt, timezone, pattern: 'h:mm a')),
-    if (endedAt != null) ('Dropped off', formatInZone(endedAt, timezone, pattern: 'h:mm a')),
-    if (tripMinutes != null) ('Trip time', formatDuration(tripMinutes)),
-    if (distanceKm != null) ('Distance', formatDistance(distanceKm)),
+    // A cancelled trip never ran: no pick-up time, and the distance is
+    // the one that was planned.
+    if (charged && startedAt != null) ('Picked up', formatInZone(startedAt, timezone, pattern: 'h:mm a')),
+    if (charged && endedAt != null) ('Dropped off', formatInZone(endedAt, timezone, pattern: 'h:mm a')),
+    if (charged && tripMinutes != null) ('Trip time', formatDuration(tripMinutes)),
+    if (distanceKm != null) (charged ? 'Distance' : 'Planned distance', formatDistance(distanceKm)),
     if (counterpart != null && counterpart!.trim().isNotEmpty) (counterpartLabel ?? 'Driver', counterpart!.trim()),
     if (vehicle != null) ('Vehicle', vehicle!),
     if (paymentMode != null) ('Payment', paymentMode!),

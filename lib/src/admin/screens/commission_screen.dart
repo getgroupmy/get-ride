@@ -43,6 +43,13 @@ final unchargedCommissionsProvider = FutureProvider.autoDispose((ref) async {
 
 const commissionLevels = ['master', 'country', 'state', 'city', 'suburb', 'user'];
 
+/// A commission level in words: `master` → "Master", `user` → "One person".
+String commissionLevelLabel(Object? level) => switch ('$level') {
+      'user' => 'One person',
+      '' || 'null' => 'Unknown',
+      final l => '${l[0].toUpperCase()}${l.substring(1)}',
+    };
+
 String _pct(Object? rate) => '${(((rate as num?) ?? 0) * 100).toStringAsFixed(2)}%';
 
 /// One history row in words: "Added 12.00% · city (Kajang, Selangor)",
@@ -181,7 +188,7 @@ class AdminCommissionScreen extends ConsumerWidget {
               Card(
                 child: BusyListTile(
                   leading: CircleAvatar(child: Text('${r['level']}'.substring(0, 1).toUpperCase())),
-                  title: Text('${_pct(r['rate'])} · ${r['level']}'),
+                  title: Text('${_pct(r['rate'])} · ${commissionLevelLabel(r['level'])}', maxLines: 2, overflow: TextOverflow.ellipsis),
                   subtitle: Text([
                     commissionScopeLabel(r),
                     if (((r['priority'] as num?) ?? 0) != 0) 'Priority ${r['priority']}',
@@ -539,7 +546,12 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
       return TextField(
         key: ValueKey('commission-$k'),
         controller: _fields[k],
-        decoration: InputDecoration(labelText: title, helperText: 'Not on Country / States / Cities yet'),
+        textInputAction: TextInputAction.next,
+        decoration: InputDecoration(
+          labelText: title,
+          helperText: 'Not on Country / States / Cities yet',
+          helperMaxLines: 2,
+        ),
       );
     }
     final all = [...options, if (value.isNotEmpty && !options.any((o) => o.toLowerCase() == value.toLowerCase())) value];
@@ -573,14 +585,16 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             SearchableDropdownFormField<String>(
+              key: const ValueKey('commission-level'),
               isExpanded: true,
               initialValue: _level,
               decoration: const InputDecoration(labelText: 'Level'),
-              items: [for (final l in commissionLevels) DropdownMenuItem(value: l, child: Text(l))],
+              items: [for (final l in commissionLevels) DropdownMenuItem(value: l, child: Text(commissionLevelLabel(l)))],
               onChanged: (v) => setState(() => _level = v ?? _level),
             ),
             const SizedBox(height: 12),
             TextField(
+              key: const ValueKey('commission-rate'),
               textInputAction: TextInputAction.next,
               controller: _rate,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -592,7 +606,11 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
             ],
             if (_level == 'user') ...[
               const SizedBox(height: 12),
-              TextField(controller: _fields['user_label'], decoration: const InputDecoration(labelText: 'Label (optional)')),
+              TextField(
+                controller: _fields['user_label'],
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(labelText: 'Label (optional)'),
+              ),
             ],
             const SizedBox(height: 12),
             TextField(
@@ -610,9 +628,11 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
             TextField(
               key: const ValueKey('commission-note'),
               controller: _note,
+              textInputAction: TextInputAction.done,
               decoration: const InputDecoration(
                 labelText: 'Note (optional)',
                 helperText: 'Why this rate; kept in the change history',
+                helperMaxLines: 2,
               ),
             ),
             SwitchListTile(
@@ -625,9 +645,17 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
           ]),
         ),
       ),
+      // Cancel and Save side by side, as on the other dialogs: Save keeps
+      // its own width rather than the theme's full-width button, which
+      // stacked them.
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(onPressed: _save, child: const Text('Save')),
+        FilledButton(
+          key: const ValueKey('commission-save'),
+          style: FilledButton.styleFrom(minimumSize: const Size(64, 44)),
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
       ],
     );
   }

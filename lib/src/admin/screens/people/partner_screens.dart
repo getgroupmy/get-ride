@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/auth_utils.dart' show capitaliseName;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
@@ -364,6 +365,21 @@ class _PartnerAddScreenState extends ConsumerState<PartnerAddScreen> {
 
 // ---- Edit partner ----------------------------------------------------------
 
+/// The partner's display number (GR-…), from the row or its profile; null
+/// when neither has one.
+String? partnerDisplayId(Map<String, dynamic> p) {
+  for (final k in const ['display_id', 'profile_display_id']) {
+    final v = '${p[k] ?? ''}'.trim();
+    if (v.isNotEmpty) return v;
+  }
+  final profile = p['profiles'];
+  if (profile is Map) {
+    final v = '${profile['display_id'] ?? ''}'.trim();
+    if (v.isNotEmpty) return v;
+  }
+  return null;
+}
+
 final _partnerProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?, String>(
     (ref, id) => ref.watch(peopleRepositoryProvider).partner(id));
 
@@ -477,11 +493,15 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
                     CircleAvatar(child: Text(name.isEmpty ? '?' : name[0].toUpperCase())),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text('$name • ${p['display_id'] ?? p['id']}', style: Theme.of(context).textTheme.titleMedium),
+                      // The GR-… number people quote, never the row's UUID.
+                      child: Text(
+                        [if (name.isNotEmpty) name, ?partnerDisplayId(p)].join(' • '),
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                     ),
                   ]),
                   const SizedBox(height: 8),
-                  Wrap(spacing: 6, runSpacing: 6, children: [for (final t in _types) Chip(label: Text(t))]),
+                  Wrap(spacing: 6, runSpacing: 6, children: [for (final t in _types) Chip(label: Text(capitaliseName(t)))]),
                   Text([p['phone'], p['email'], if (p['ic'] != null) 'IC ${p['ic']}'].whereType<Object>().join(' • ')),
                 ]),
               ),

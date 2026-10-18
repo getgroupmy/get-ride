@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/format.dart';
 import '../../core/partner_statement.dart';
 import '../../data/partner_statement_repository.dart';
+import '../../providers.dart' show partnerProvider;
 import '../../widgets/common.dart';
 import '../../widgets/pdf_actions.dart';
 import '../../widgets/back_or_go_button.dart';
@@ -216,6 +217,16 @@ class _PeriodListState extends ConsumerState<_PeriodList> with AutomaticKeepAliv
     final t = Theme.of(context);
     if (_periods.isEmpty && _loading) return const Center(child: CircularProgressIndicator());
     if (_periods.isEmpty && _error != null) {
+      // Not approved yet: there is nothing to load, so no error and no retry.
+      final partner = ref.watch(partnerProvider).value;
+      if (partner != null && !partner.approved) {
+        return const EmptyState(
+          key: ValueKey('statements-not-approved'),
+          icon: Icons.description_outlined,
+          title: 'No statements yet',
+          message: 'Statements start from your first week as an approved driver.',
+        );
+      }
       return EmptyState(
         icon: Icons.cloud_off_outlined,
         title: 'Couldn\'t load your statements',
@@ -255,10 +266,14 @@ class _PeriodListState extends ConsumerState<_PeriodList> with AutomaticKeepAliv
             child: Card(
               child: ListTile(
                 key: ValueKey('statement-${p.type.name}-${isoDate(p.start)}'),
-                title: Row(
+                // The period on up to two lines, its status beside it or,
+                // with no room, under it.
+                title: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Flexible(child: Text(p.label, overflow: TextOverflow.ellipsis)),
-                    const SizedBox(width: 8),
+                    Text(p.label, maxLines: 2, overflow: TextOverflow.ellipsis),
                     _StatusChip(p.status),
                   ],
                 ),

@@ -8,6 +8,7 @@ import '../../core/ev_wizard.dart';
 import '../../data/ev_order_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/loading_skeleton.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/search_select.dart';
@@ -487,7 +488,17 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
     final hex = code.replaceFirst('#', '');
     final value = int.tryParse(hex.length == 6 ? 'FF$hex' : '', radix: 16);
     if (value == null) return null;
-    return CircleAvatar(backgroundColor: Color(value), radius: 8);
+    // A 1 px outline, so a black swatch shows on the dark theme and a white
+    // one on the light.
+    return Container(
+      width: 16,
+      height: 16,
+      decoration: BoxDecoration(
+        color: Color(value),
+        shape: BoxShape.circle,
+        border: Border.all(color: Theme.of(context).colorScheme.outline, width: 1),
+      ),
+    );
   }
 
   Widget _chips(List<String> options, String selected, ValueChanged<String> onPick) => Wrap(
@@ -499,6 +510,9 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
       );
 
   // ---- 3. Order fee -----------------------------------------------------------
+
+  /// Under the order fee, above Place order.
+  static const evPlaceOrderNote = 'Place the order to continue; the next steps are delivery details.';
 
   List<Widget> _depositStep(EvCatalog c) {
     final v = _order;
@@ -539,6 +553,13 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
       const SizedBox(height: 8),
       _Facts({'Vehicle total': evMoney(total), 'Order fee': evMoney(fee.amount, fee.currency)}),
       const SizedBox(height: 16),
+      // Placing the order comes before the last steps: say so.
+      Text(
+        evPlaceOrderNote,
+        key: const ValueKey('ev-place-order-note'),
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: mutedTextColor(Theme.of(context))),
+      ),
+      const SizedBox(height: 8),
       BusyButton.filled(
         onPressed: _busy ? null : () => _placeOrder(c),
         icon: const Icon(Icons.check),

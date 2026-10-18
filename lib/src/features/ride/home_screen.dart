@@ -1104,7 +1104,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           context,
           title: 'Ride scheduled',
           message:
-              'Pickup ${pickupLabel(later.pickupAt)}'
+              'Pickup ${pickupLabel(confirmedPickupAt(later, scheduleAt))}'
               '${later.bookedForName == null ? '' : ' for ${later.bookedForName}'}. '
               "We'll find your driver before then and let you know.",
         );
@@ -1603,7 +1603,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-      if (confirming)
+      // On a wide screen Back heads the panel instead (see below).
+      if (confirming && !wide)
         aboveSheet(
           (inset) => Positioned(
             left: 16 + layout.back.$1,
@@ -1806,7 +1807,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (wide) {
       return Scaffold(
         body: calculating(Row(children: [
-          SizedBox(width: 420, child: SafeArea(child: SingleChildScrollView(child: panel))),
+          SizedBox(
+            width: 420,
+            child: SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Back at the head of the fare panel, not adrift on the map.
+                  if (confirming)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                      child: Row(children: [
+                        IconButton(
+                          key: const ValueKey('confirm-back'),
+                          tooltip: 'Back',
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: _leaveConfirm,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'Choose your ride',
+                            style: Theme.of(context).textTheme.titleMedium,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ]),
+                    ),
+                  Expanded(child: SingleChildScrollView(child: panel)),
+                ],
+              ),
+            ),
+          ),
           const VerticalDivider(width: 1),
           Expanded(child: map),
         ])),
@@ -1830,6 +1863,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // however tall the screen (a fixed share of a short one cut it).
           final fold = !confirming && _foldHeight > 0 && box.maxHeight > 0 ? _foldHeight / box.maxHeight : 0.0;
           final least = math.min(0.6, math.max(0.22, fold));
+          // A phone on its side (844 × 390): the confirm sheet starts lower,
+          // so the map and the pickup above it keep their room.
+          final landscapePhone = box.maxWidth > box.maxHeight && box.maxHeight < 500;
+          final confirmMin = landscapePhone ? 0.4 : 0.5;
+          final confirmStart = landscapePhone ? 0.4 : 0.55;
           return MapSheetLayout(
           map: map,
           // Android's own buttons (three-button navigation, drawn over the
@@ -1839,9 +1877,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             key: _panelKey,
             child: navLift > 0 ? Padding(padding: EdgeInsets.only(bottom: navLift), child: panel) : panel,
           ),
-          min: (confirming ? 0.5 : least) + navLiftFraction,
+          min: (confirming ? confirmMin : least) + navLiftFraction,
           // The main screen's sheet starts fully down; the rider drags it up.
-          initial: (confirming ? 0.55 : least) + navLiftFraction,
+          initial: (confirming ? confirmStart : least) + navLiftFraction,
           hidden: _pinMoving,
           // navLift above already keeps the sheet's foot clear of the system bar.
           padBottom: false,

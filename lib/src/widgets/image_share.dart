@@ -40,25 +40,32 @@ Rect? shareOriginOf(BuildContext context) {
   return box.localToGlobal(Offset.zero) & box.size;
 }
 
+/// Said when sharing fell back to the clipboard.
+const copiedForSharing = 'Copied — paste it anywhere';
+
 /// Opens the system share sheet with plain text; on a platform without
-/// one the text goes on the clipboard. Overridden in tests.
-final textSharerProvider = Provider<Future<void> Function(String text, {String? subject, Rect? origin})>(
+/// one (a browser with no Web Share) the text goes on the clipboard and the
+/// answer is true, so the caller can say so. Overridden in tests.
+final textSharerProvider = Provider<Future<bool> Function(String text, {String? subject, Rect? origin})>(
   (ref) => (text, {subject, origin}) async {
     try {
-      await SharePlus.instance.share(ShareParams(text: text, subject: subject, sharePositionOrigin: origin));
+      final r = await SharePlus.instance.share(ShareParams(text: text, subject: subject, sharePositionOrigin: origin));
+      if (r.status != ShareResultStatus.unavailable) return false;
     } catch (_) {
-      await Clipboard.setData(ClipboardData(text: text));
+      // No share sheet at all: the clipboard below.
     }
+    await Clipboard.setData(ClipboardData(text: text));
+    return true;
   },
 );
 
 /// Opens the system share sheet with an image (and its text). Where the
 /// platform cannot share files the image is saved instead and the text
-/// copied. Overridden in tests.
-final imageSharerProvider = Provider<Future<void> Function(ShareableImage image)>(
+/// copied; the answer is then true. Overridden in tests.
+final imageSharerProvider = Provider<Future<bool> Function(ShareableImage image)>(
   (ref) => (image) async {
     try {
-      await SharePlus.instance.share(
+      final r = await SharePlus.instance.share(
         ShareParams(
           files: [image.file],
           fileNameOverrides: [image.fileName],
@@ -67,10 +74,13 @@ final imageSharerProvider = Provider<Future<void> Function(ShareableImage image)
           sharePositionOrigin: image.origin,
         ),
       );
+      if (r.status != ShareResultStatus.unavailable) return false;
     } catch (_) {
-      await saveImageDefault(image);
-      if (image.text != null) await Clipboard.setData(ClipboardData(text: image.text!));
+      // No share sheet at all: saved and copied below.
     }
+    await saveImageDefault(image);
+    if (image.text != null) await Clipboard.setData(ClipboardData(text: image.text!));
+    return true;
   },
 );
 
@@ -208,7 +218,11 @@ class ShareSaveImageButtons extends ConsumerWidget {
                 : () async {
                     try {
                       final img = await image(shareOriginOf(bc));
-                      if (img != null) await ref.read(imageSharerProvider)(img);
+                      if (img == null) return;
+                      final copied = await ref.read(imageSharerProvider)(img);
+                      if (copied && context.mounted) {
+                        showInfo(context, img.text == null ? 'Saved the image' : 'Saved the image. $copiedForSharing');
+                      }
                     } catch (_) {
                       if (context.mounted) showInfo(context, "Couldn't share the image. Please try again.");
                     }

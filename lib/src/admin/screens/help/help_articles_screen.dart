@@ -274,11 +274,12 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
     );
     final problem = helpArticleProblem(article);
     if (problem != null) {
-      // On the field it is about, and the message brought into view (below
+      // On the field it is about, and that field brought into view (below
       // the fold on a phone, Save seemed to do nothing).
       setState(() => _problem = problem);
+      final field = helpProblemField(problem);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final c = _problemKey.currentContext;
+        final c = (field == null ? _problemKey : _fieldKeys[field]!).currentContext;
         if (c != null && c.mounted) Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 200));
       });
       return;
@@ -286,9 +287,12 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
     Navigator.pop(context, article);
   }
 
+  final _fieldKeys = {'question': GlobalKey(), 'answer': GlobalKey()};
+
   @override
   Widget build(BuildContext context) {
     const gap = SizedBox(height: 12);
+    final field = _problem == null ? null : helpProblemField(_problem!);
     return AlertDialog(
       title: Text(_a == null || _a.id.isEmpty ? 'New article' : 'Edit article'),
       content: SizedBox(
@@ -297,14 +301,17 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                key: const ValueKey('help-edit-title'),
-                controller: _title,
-                decoration: InputDecoration(
-                  labelText: 'Question',
-                  hintText: 'How do I cancel a ride?',
-                  errorText: (_problem ?? '').contains('question') ? _problem : null,
-                  errorMaxLines: 2,
+              KeyedSubtree(
+                key: _fieldKeys['question'],
+                child: TextField(
+                  key: const ValueKey('help-edit-title'),
+                  controller: _title,
+                  decoration: InputDecoration(
+                    labelText: 'Question',
+                    hintText: 'How do I cancel a ride?',
+                    errorText: field == 'question' ? _problem : null,
+                    errorMaxLines: 2,
+                  ),
                 ),
               ),
               gap,
@@ -316,16 +323,19 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
                 decoration: const InputDecoration(labelText: 'Other ways to ask it', helperText: 'One per line'),
               ),
               gap,
-              TextField(
-                key: const ValueKey('help-edit-answer'),
-                controller: _answer,
-                minLines: 4,
-                maxLines: 12,
-                decoration: InputDecoration(
-                  labelText: 'Answer',
-                  helperText: 'Plain text; a blank line starts a paragraph',
-                  errorText: (_problem ?? '').contains('answer') ? _problem : null,
-                  errorMaxLines: 2,
+              KeyedSubtree(
+                key: _fieldKeys['answer'],
+                child: TextField(
+                  key: const ValueKey('help-edit-answer'),
+                  controller: _answer,
+                  minLines: 4,
+                  maxLines: 12,
+                  decoration: InputDecoration(
+                    labelText: 'Answer',
+                    helperText: 'Plain text; a blank line starts a paragraph',
+                    errorText: field == 'answer' ? _problem : null,
+                    errorMaxLines: 2,
+                  ),
                 ),
               ),
               gap,
@@ -335,6 +345,7 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
                 decoration: const InputDecoration(
                   labelText: 'Keywords',
                   helperText: 'Comma separated, Malay too (batal, tambang…)',
+                  helperMaxLines: 2,
                 ),
               ),
               gap,
@@ -384,7 +395,8 @@ class _HelpArticleDialogState extends State<HelpArticleDialog> {
                 value: _active,
                 onChanged: (v) => setState(() => _active = v),
               ),
-              if (_problem != null)
+              // Said once: under its field, or here when it has none.
+              if (_problem != null && field == null)
                 Text(
                   _problem!,
                   key: const ValueKey('help-edit-problem'),

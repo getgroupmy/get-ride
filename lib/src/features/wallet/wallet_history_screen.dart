@@ -43,29 +43,9 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        // Left-aligned (iOS centres titles), so the month picker beside it
-        // doesn't cut it short.
-        centerTitle: false,
+        // The title has the bar to itself; the month is picked under it,
+        // so neither is cut short on a narrow phone or at large text.
         title: const Text('Transaction history', maxLines: 1, overflow: TextOverflow.ellipsis),
-        actions: [
-          PopupMenuButton<HistoryMonth>(
-            key: const ValueKey('history-month'),
-            tooltip: 'Month',
-            initialValue: _month,
-            onSelected: (m) => setState(() => _month = m),
-            itemBuilder: (_) => [for (final m in _months) PopupMenuItem(value: m, child: Text(m.label))],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(_month.label, style: t.textTheme.labelLarge),
-                  const Icon(Icons.arrow_drop_down),
-                ],
-              ),
-            ),
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(walletHistoryProvider(_month).future),
@@ -77,38 +57,55 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (final w in <String?>[null, ...wallets])
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(w == null ? 'All' : walletTypeLabel(w)),
-                              selected: _wallet == w,
-                              onSelected: (_) => setState(() => _wallet = w),
-                            ),
-                          ),
-                      ],
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: PopupMenuButton<HistoryMonth>(
+                      key: const ValueKey('history-month'),
+                      tooltip: 'Month',
+                      initialValue: _month,
+                      onSelected: (m) => setState(() => _month = m),
+                      itemBuilder: (_) => [for (final m in _months) PopupMenuItem(value: m, child: Text(m.label))],
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.calendar_month_outlined, size: 20),
+                            const SizedBox(width: 8),
+                            Text(_month.label, style: t.textTheme.titleSmall),
+                            const Icon(Icons.arrow_drop_down),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  // Two named rows of chips that wrap, so none hides past
+                  // the edge and the two "All"s read as two filters.
+                  _FilterRow(
+                    label: 'Wallet',
+                    chips: [
+                      for (final w in <String?>[null, ...wallets])
+                        ChoiceChip(
+                          key: ValueKey('history-wallet-${w ?? 'all'}'),
+                          label: Text(w == null ? 'All' : walletTypeLabel(w)),
+                          selected: _wallet == w,
+                          onSelected: (_) => setState(() => _wallet = w),
+                        ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        for (final c in <WalletTxCategory?>[null, ...WalletTxCategory.values])
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: FilterChip(
-                              label: Text(c?.label ?? 'All'),
-                              selected: _category == c,
-                              onSelected: (_) => setState(() => _category = c),
-                            ),
-                          ),
-                      ],
-                    ),
+                  _FilterRow(
+                    label: 'Type',
+                    chips: [
+                      for (final c in <WalletTxCategory?>[null, ...WalletTxCategory.values])
+                        FilterChip(
+                          key: ValueKey('history-type-${c?.name ?? 'all'}'),
+                          label: Text(c?.label ?? 'All'),
+                          selected: _category == c,
+                          onSelected: (_) => setState(() => _category = c),
+                        ),
+                    ],
                   ),
                   const SizedBox(height: 12),
                   AsyncView(
@@ -142,8 +139,18 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
                               ),
                             ),
                           ],
-                          const SizedBox(height: 16),
-                          Center(child: Text('END OF HISTORY', style: t.textTheme.labelSmall)),
+                          // Said only under a long month, where the end is
+                          // worth saying.
+                          if (rows.length > walletHistoryPage) ...[
+                            const SizedBox(height: 16),
+                            Center(
+                              child: Text(
+                                'End of history',
+                                key: const ValueKey('history-end'),
+                                style: t.textTheme.labelSmall?.copyWith(color: mutedTextColor(t)),
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 24),
                         ],
                       );
@@ -163,6 +170,39 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(child: _HistoryDetails(tx: tx)),
+    );
+  }
+}
+
+/// About a page's worth of rows: below it there is no "End of history".
+const walletHistoryPage = 20;
+
+/// A transaction's status as its row says it: nothing for a success
+/// (`completed`, `success`), else the word capitalised ("Pending").
+String? walletStatusLabel(String? status) {
+  final s = (status ?? '').trim().toLowerCase();
+  if (s.isEmpty || s == 'completed' || s == 'success' || s == 'succeeded') return null;
+  final words = s.replaceAll(RegExp(r'[_-]+'), ' ');
+  return '${words[0].toUpperCase()}${words.substring(1)}';
+}
+
+/// "Wallet" / "Type" and the chips after it, wrapping.
+class _FilterRow extends StatelessWidget {
+  const _FilterRow({required this.label, required this.chips});
+  final String label;
+  final List<Widget> chips;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(label, style: t.textTheme.labelLarge?.copyWith(color: mutedTextColor(t))),
+        ...chips,
+      ],
     );
   }
 }
@@ -200,9 +240,19 @@ class _HistoryRow extends StatelessWidget {
           ],
         ],
       ),
-      subtitle: Text(
-        '${walletTypeLabel(tx.walletType)} · ${formatTime(tx.createdAt)}'
-        '${tx.status != null && tx.status != 'completed' ? ' · ${tx.status}' : ''}',
+      // The status only when it isn't a success, in words and its colour.
+      subtitle: Text.rich(
+        TextSpan(children: [
+          TextSpan(text: '${walletTypeLabel(tx.walletType)} · ${formatTime(tx.createdAt)}'),
+          if (walletStatusLabel(tx.status) case final s?)
+            TextSpan(
+              text: ' · $s',
+              style: TextStyle(
+                color: s == 'Failed' ? t.colorScheme.error : t.colorScheme.tertiary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+        ]),
       ),
       trailing: Text(
         walletAmountText(tx.walletType, tx.amount),

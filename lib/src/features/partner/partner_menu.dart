@@ -28,18 +28,26 @@ Future<void> showPartnerMenu(BuildContext context) => showAppSheet<void>(id: 'dr
 /// Whether a driver menu row shows now: Vehicle information only while an
 /// OBD-II reader is linked, My Ride code only where the driver has a code
 /// (none on a database without My Ride, or while it loads), Scheduled
-/// Request only while scheduled rides are on.
+/// rides only while scheduled rides are on. Before an admin approves the
+/// partner ([approved] false) the pages that need an approved driver
+/// (Earnings, Trip history, Scheduled rides, My Ride code) stay out of the
+/// menu; Dashboard, Vehicle and Documents, which the application uses, stay.
 bool partnerMenuRowShows(
   String id, {
   required bool obdLinked,
   required bool hasMyRideCode,
   bool scheduledRides = false,
+  bool approved = true,
 }) => switch (id) {
+  _ when !approved && partnerRowsAfterApproval.contains(id) => false,
   vehicleInfoMenuItemId => obdLinked,
   myRideCodeMenuItemId => hasMyRideCode,
   scheduledRidesMenuItemId => scheduledRides,
   _ => true,
 };
+
+/// Driver menu rows that wait for the admin's approval.
+const partnerRowsAfterApproval = {'earnings', 'trip-history', scheduledRidesMenuItemId, myRideCodeMenuItemId};
 
 /// Built-in driver items on this app's screens; false for one with no
 /// screen here ("coming soon"). Expo's Earnings, Trip history, Vehicle and
@@ -106,9 +114,17 @@ class PartnerMenuSheet extends ConsumerWidget {
     final linked = ref.watch(obdSessionProvider).linked;
     final hasCode = ref.watch(myRideCodeProvider).value != null;
     final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
+    final approved = ref.watch(partnerProvider).value?.approved ?? true;
     final menu = [
       for (final e in resolveSideMenu(blob, 'partner'))
-        if (partnerMenuRowShows(e.id, obdLinked: linked, hasMyRideCode: hasCode, scheduledRides: scheduled)) e,
+        if (partnerMenuRowShows(
+          e.id,
+          obdLinked: linked,
+          hasMyRideCode: hasCode,
+          scheduledRides: scheduled,
+          approved: approved,
+        ))
+          e,
     ];
     final mode = sideMenuModeButton(blob, 'partner');
     final nav = GoRouter.of(context);

@@ -100,7 +100,7 @@ class _HelpAssistantScreenState extends ConsumerState<HelpAssistantScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final viewer = ref.watch(helpViewerProvider);
+    final starters = ref.watch(helpStarterViewerProvider);
     return Scaffold(
       appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Help assistant')),
       body: ResponsiveCenter(
@@ -124,8 +124,8 @@ class _HelpAssistantScreenState extends ConsumerState<HelpAssistantScreen> {
                   if (_turns.isEmpty)
                     _Chips(
                       key: const ValueKey('help-starters'),
-                      labels: helpStarterQuestions(viewer),
-                      onTap: (i) => _ask(helpStarterQuestions(viewer)[i]),
+                      labels: helpStarterQuestions(starters),
+                      onTap: (i) => _ask(helpStarterQuestions(starters)[i]),
                     ),
                   for (final turn in _turns) ...[
                     _Bubble(mine: true, child: Text(turn.question)),

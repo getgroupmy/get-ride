@@ -52,6 +52,19 @@ OnboardingStep firstIncompleteStep(Map<String, dynamic>? profile, Map<String, dy
   return OnboardingStep.done;
 }
 
+/// Where an unfinished application stands: "Step 3 of 6 · Address", and the
+/// share done (2 of 6 steps behind it). Null once every step is done.
+({int step, int of, String label, double done})? onboardingProgress(
+  Map<String, dynamic>? profile,
+  Map<String, dynamic>? partner,
+) {
+  final s = firstIncompleteStep(profile, partner);
+  if (s == OnboardingStep.done) return null;
+  final i = OnboardingStep.wizard.indexOf(s);
+  final of = OnboardingStep.wizard.length;
+  return (step: i + 1, of: of, label: s.label, done: i / of);
+}
+
 /// Whether the partner row belongs to someone who has committed to being a
 /// partner (Expo `isActivePartner`). Opening the wizard creates a stub row,
 /// so the row existing proves nothing; picking a partner type does.

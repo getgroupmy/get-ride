@@ -111,3 +111,21 @@ final helpViewerProvider = Provider<String>((ref) {
   if (ref.watch(partnerProvider).value != null) return 'partner';
   return 'rider';
 });
+
+/// Whose starter questions the help assistant offers: a partner's only
+/// once the partner is approved (status `approved`); a rider and a partner
+/// still applying get the riders'. Admins keep theirs.
+String helpStarterViewer({required bool isAdmin, String? partnerStatus, required bool isPartner}) {
+  if (isAdmin) return 'admin';
+  if (isPartner && partnerStatus == 'approved') return 'partner';
+  return 'rider';
+}
+
+final helpStarterViewerProvider = Provider<String>((ref) {
+  final partner = ref.watch(partnerProvider).value;
+  return helpStarterViewer(
+    isAdmin: ref.watch(adminAccessProvider).value?.isAdmin ?? false,
+    isPartner: partner != null,
+    partnerStatus: partner?.status,
+  );
+});

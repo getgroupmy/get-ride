@@ -118,11 +118,16 @@ class ReferralScreen extends ConsumerWidget {
                             style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
                             icon: const Icon(Icons.send),
                             label: const Text('Share invite'),
-                            onPressed: () => ref.read(textSharerProvider)(
-                              referralMessage(code, link),
-                              subject: 'Join me on GET.ride',
-                              origin: shareOriginOf(bc),
-                            ),
+                            onPressed: () async {
+                              final copied = await ref.read(textSharerProvider)(
+                                referralMessage(code, link),
+                                subject: 'Join me on GET.ride',
+                                origin: shareOriginOf(bc),
+                              );
+                              // No share sheet here (a desktop browser): it went
+                              // on the clipboard instead.
+                              if (copied && context.mounted) showInfo(context, 'Invite copied, paste it to a friend');
+                            },
                           ),
                         ),
                       ],

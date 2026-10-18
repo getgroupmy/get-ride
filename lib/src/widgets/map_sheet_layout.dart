@@ -95,6 +95,16 @@ class MapFocusShift extends InheritedWidget {
 /// is dragged up to expand rather than scrolled inside a fixed panel. The
 /// map's buttons and credit ride above the sheet ([MapBottomInset]) until
 /// it covers more than all but [mapMinFraction] of the screen.
+/// What can drag a map sheet: touch, a stylus, a mouse and a trackpad.
+const mapSheetDragDevices = {
+  PointerDeviceKind.touch,
+  PointerDeviceKind.stylus,
+  PointerDeviceKind.invertedStylus,
+  PointerDeviceKind.mouse,
+  PointerDeviceKind.trackpad,
+  PointerDeviceKind.unknown,
+};
+
 class MapSheetLayout extends StatefulWidget {
   const MapSheetLayout({
     super.key,
@@ -513,7 +523,11 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 _settledDown(n.extent);
                 return false;
               },
-              child: DraggableScrollableSheet(
+              // A mouse and a trackpad drag the sheet too (the web and
+              // desktop), not only a finger.
+              child: ScrollConfiguration(
+                behavior: ScrollConfiguration.of(context).copyWith(dragDevices: mapSheetDragDevices),
+                child: DraggableScrollableSheet(
                 key: const ValueKey('map-sheet'),
                 controller: _sheet,
                 initialChildSize: widget.locked ? widget.min : widget.initial,
@@ -610,6 +624,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                   ),
                 );
                 },
+              ),
               ),
             ),
             ),

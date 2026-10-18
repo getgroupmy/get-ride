@@ -336,6 +336,13 @@ class Partner {
   double? get rating => _d(raw['rating']);
   String? get status => raw['status'] as String?;
   String? get avatarUrl => raw['avatar_url'] as String?;
+
+  /// An admin has approved the account (`approved`, or a permit status):
+  /// it can take work. Mirrors `partnerStatusView(...).canDrive`.
+  bool get approved {
+    final s = (status ?? '').trim();
+    return s == 'approved' || s.startsWith('permit-');
+  }
 }
 
 class WalletBalance {

@@ -183,12 +183,20 @@ class DetailTable extends StatelessWidget {
     return Column(children: [
       for (final e in rows.entries)
         if (e.value != null && '${e.value}'.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(width: 140, child: Text(e.key, style: t.textTheme.bodySmall)),
-              Expanded(child: SelectableText('${e.value}')),
-            ]),
+          // Read out as "Fare, RM12.00": selectable text alone is not in
+          // the screen reader's tree.
+          Semantics(
+            container: true,
+            label: e.key,
+            value: '${e.value}',
+            excludeSemantics: true,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(width: 140, child: Text(e.key, style: t.textTheme.bodySmall)),
+                Expanded(child: SelectableText('${e.value}')),
+              ]),
+            ),
           ),
     ]);
   }
@@ -232,6 +240,22 @@ Future<T?> showAdminSheet<T>(BuildContext context, {required String title, requi
 }
 
 /// A stored timestamp in the app's usual form ("18 Oct 2026, 9:05 AM").
+/// A data key as words: `sharedDevices` / `shared_devices` → "Shared
+/// devices", `ipAddress` → "IP address", `deviceIds` → "Device IDs".
+String humanKey(String key) {
+  final spaced = key
+      .replaceAllMapped(RegExp(r'([a-z0-9])([A-Z])'), (m) => '${m[1]} ${m[2]}')
+      .replaceAll(RegExp(r'[_\-.]+'), ' ')
+      .trim()
+      .toLowerCase();
+  if (spaced.isEmpty) return key;
+  const acronyms = {'id': 'ID', 'ids': 'IDs', 'ip': 'IP', 'ips': 'IPs', 'sim': 'SIM', 'os': 'OS', 'gps': 'GPS', 'url': 'URL'};
+  final words = [for (final w in spaced.split(RegExp(r'\s+'))) acronyms[w] ?? w];
+  final first = words.first;
+  words[0] = acronyms.containsValue(first) ? first : '${first[0].toUpperCase()}${first.substring(1)}';
+  return words.join(' ');
+}
+
 String dateText(Object? iso) {
   if (iso == null) return '';
   final d = DateTime.tryParse('$iso');

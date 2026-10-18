@@ -17,7 +17,7 @@ import 'driver_code_sheet.dart';
 import '../../widgets/page_style_host.dart';
 
 /// "Tue 14 Oct, 18:30".
-String pickupLabel(DateTime at) => DateFormat('EEE d MMM, HH:mm').format(at);
+String pickupLabel(DateTime at) => DateFormat('EEE d MMM, h:mm a').format(at);
 
 /// Home: the soonest booking still to come; opens the bookings page.
 class UpcomingRideCard extends ConsumerWidget {

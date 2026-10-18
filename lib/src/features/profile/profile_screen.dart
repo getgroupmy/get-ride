@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/contact_phone.dart' show formatPhoneDisplay;
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -124,7 +125,7 @@ class _ProfileBody extends ConsumerWidget {
           ),
         const SizedBox(height: 12),
         section('Account', [
-          row(Icons.phone_iphone, 'Phone number', shown(p?.phone)),
+          row(Icons.phone_iphone, 'Phone number', shown(formatPhoneDisplay(p?.phone))),
           row(Icons.mail_outline, 'Email', shown(p?.email)),
         ]),
         section('Identity', [

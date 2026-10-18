@@ -21,18 +21,28 @@ class DialCountryButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final double height;
 
+  /// What a screen reader says: "Country code +60, Malaysia", not the flag.
+  static String semanticsLabelFor(DialCountry c) => 'Country code ${c.dialCode}, ${c.name}';
+
   @override
-  Widget build(BuildContext context) => OutlinedButton(
-    style: OutlinedButton.styleFrom(minimumSize: Size(0, height), padding: const EdgeInsets.symmetric(horizontal: 12)),
-    onPressed: onPressed,
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(country.flag, style: const TextStyle(fontSize: 20)),
-        const SizedBox(width: 6),
-        Text(country.dialCode),
-        const Icon(Icons.arrow_drop_down),
-      ],
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    enabled: onPressed != null,
+    label: semanticsLabelFor(country),
+    excludeSemantics: true,
+    onTap: onPressed,
+    child: OutlinedButton(
+      style: OutlinedButton.styleFrom(minimumSize: Size(0, height), padding: const EdgeInsets.symmetric(horizontal: 12)),
+      onPressed: onPressed,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(country.flag, style: const TextStyle(fontSize: 20)),
+          const SizedBox(width: 6),
+          Text(country.dialCode),
+          const Icon(Icons.arrow_drop_down),
+        ],
+      ),
     ),
   );
 }

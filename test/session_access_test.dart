@@ -139,6 +139,21 @@ void main() {
           'Used 2× · last 3 d ago');
     });
 
+    test('the row subtitle leaves out empty parts instead of a dangling " · "', () {
+      String ends(DateTime d) => 'soon';
+      final bare = SessionKey(
+        id: 'z',
+        label: 'Bare',
+        testPhone: '',
+        scopes: const [],
+        createdAt: _now,
+        expiresAt: _now.add(const Duration(days: 30)),
+      );
+      expect(sessionKeySubtitle(bare, _now, ends), 'Ends soon · Never used');
+      expect(sessionKeySubtitle(_key('f'), _now, ends), startsWith('+60123456789 · '));
+      expect(sessionKeySubtitle(_key('f'), _now, ends), isNot(contains('·  ·')));
+    });
+
     test('lasts a chosen number of hours, a day by default', () {
       expect(sessionKeyHoursChoices, contains(sessionKeyDefaultHours));
       expect(sessionKeyHoursLabel(8), '8 h');

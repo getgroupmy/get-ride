@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin/admin_providers.dart';
+import '../../core/contact_phone.dart' show formatPhoneDisplay;
 import '../../core/referral.dart';
 import '../../admin/screens/meterapp/display_logic.dart' show inviteFriendsMenuItemId, scheduledRidesMenuItemId;
 import '../../core/side_menu.dart';
@@ -137,7 +138,10 @@ class RiderMenu extends ConsumerWidget {
             // large text has no room for both.
             subtitle: Wrap(
               spacing: 12,
-              children: [for (final s in [p?.phone, p?.displayId].whereType<String>()) Text(s)],
+              children: [
+                for (final s in [p?.phone == null ? null : formatPhoneDisplay(p!.phone), p?.displayId].whereType<String>())
+                  Text(s),
+              ],
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => go('/account/profile'),

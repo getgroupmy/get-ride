@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/avatar.dart';
+import '../../core/contact_phone.dart';
 import '../../core/profile_identity.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
@@ -33,6 +34,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   bool _busy = false;
   bool _uploading = false;
   bool _uploadingId = false;
+  String? _emailError;
+  String? _idError;
 
   @override
   void dispose() {
@@ -45,10 +48,13 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   Future<void> _save() async {
     final email = _email.text.trim();
-    if (email.isNotEmpty && !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-      showInfo(context, 'Enter a valid email address.');
-      return;
-    }
+    // Both are checked every time, so a bad ID shows even when the email
+    // is fine; the reason sits under its field.
+    setState(() {
+      _emailError = profileEmailProblem(email);
+      _idError = idNumberProblem(_idNumber.text);
+    });
+    if (_emailError != null || _idError != null) return;
     setState(() => _busy = true);
     try {
       await ref.read(accountRepositoryProvider).updateProfile(
@@ -179,20 +185,22 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             ),
             const SizedBox(height: 16),
             TextField(
+              key: const ValueKey('profile-email'),
               textInputAction: TextInputAction.next,
               controller: _email,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email (optional)'),
+              autocorrect: false,
+              decoration: InputDecoration(labelText: 'Email (optional)', errorText: _emailError),
+              onChanged: (_) {
+                if (_emailError != null) setState(() => _emailError = null);
+              },
             ),
             const SizedBox(height: 16),
             TextField(
               enabled: false,
-              controller: TextEditingController(text: p?.phone ?? ''),
-              decoration: const InputDecoration(
-                labelText: 'Mobile number',
-                helperText: 'Change it in Settings → Change phone number',
-                helperMaxLines: 2,
-              ),
+              key: const ValueKey('profile-phone'),
+              controller: TextEditingController(text: formatPhoneDisplay(p?.phone)),
+              decoration: const InputDecoration(labelText: 'Mobile number'),
             ),
             // The number is changed with an SMS check, on its own page.
             Align(
@@ -245,12 +253,21 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
               controller: _idNumber,
               textCapitalization: TextCapitalization.characters,
               autocorrect: false,
-              decoration: const InputDecoration(labelText: 'Passport / ID number', hintText: 'As printed on your ID'),
+              decoration: InputDecoration(
+                labelText: 'Passport / ID number',
+                hintText: 'As printed on your ID',
+                errorText: _idError,
+                errorMaxLines: 2,
+              ),
+              onChanged: (_) {
+                if (_idError != null) setState(() => _idError = null);
+              },
             ),
             const SizedBox(height: 16),
             TextField(
               key: const ValueKey('profile-address'),
               controller: _address,
+              textInputAction: TextInputAction.newline,
               minLines: 2,
               maxLines: 4,
               decoration: const InputDecoration(labelText: 'Address', hintText: 'As printed on your ID'),

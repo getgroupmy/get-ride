@@ -78,6 +78,8 @@ class DriverPermitScreen extends ConsumerWidget {
                 onRetry: () => ref.invalidate(driverPermitProvider),
                 data: (p) => _PermitBody(
                   permit: p,
+                  // Unknown (still loading) counts as approved, as before.
+                  approved: ref.watch(partnerProvider).value?.approved ?? true,
                   plate: ref.watch(currentPlateProvider).value,
                   today: today ?? DateTime.now(),
                 ),
@@ -91,8 +93,12 @@ class DriverPermitScreen extends ConsumerWidget {
 }
 
 class _PermitBody extends StatelessWidget {
-  const _PermitBody({required this.permit, required this.plate, required this.today});
+  const _PermitBody({required this.permit, required this.plate, required this.today, this.approved = true});
   final DriverPermit permit;
+
+  /// An admin has approved the partner. Before that there is no permit to
+  /// show nor a pickup to start: only the way to the documents.
+  final bool approved;
   final String? plate;
   final DateTime today;
 
@@ -102,6 +108,47 @@ class _PermitBody extends StatelessWidget {
     final p = permit;
     final days = daysToExpiry(p, today);
     final block = permitStartBlock(p, today: today, vehiclePlate: plate);
+    if (!approved) {
+      return Column(
+        key: const ValueKey('permit-not-approved'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Card(
+            color: t.colorScheme.secondaryContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    Icon(Icons.upload_file, color: t.colorScheme.onSecondaryContainer),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        p.hasDocument ? 'Your permit is waiting for approval' : 'No taxi driver permit uploaded',
+                        style: t.textTheme.titleMedium?.copyWith(color: t.colorScheme.onSecondaryContainer),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Your permit shows here, with Start pickup, once an admin approves your partner account.',
+                    style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSecondaryContainer),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    key: const ValueKey('permit-update-documents'),
+                    icon: const Icon(Icons.upload_file),
+                    onPressed: () => context.push('/drive/onboarding'),
+                    label: const Text('Update documents'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

@@ -133,6 +133,9 @@ class _IconChoice extends StatelessWidget {
       button: true,
       selected: selected,
       label: icon.name,
+      // The name once: not again from the caption or the picture.
+      excludeSemantics: true,
+      onTap: onTap,
       child: InkWell(
         key: ValueKey('app-icon-${icon.id}'),
         borderRadius: BorderRadius.circular(16),
@@ -189,6 +192,7 @@ class _Preview extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Image.asset(
         icon.preview(dark: dark),
+        excludeFromSemantics: true,
         width: size,
         height: size,
         fit: BoxFit.cover,

@@ -67,15 +67,27 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     _load();
   }
 
+  /// Set once loading has taken 10 s: the page offers Retry.
+  bool _slow = false;
+  Timer? _slowTimer;
+
   @override
   void dispose() {
+    _slowTimer?.cancel();
     _ic.dispose();
     _address.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
-    setState(() => _loadError = null);
+    setState(() {
+      _loadError = null;
+      _slow = false;
+    });
+    _slowTimer?.cancel();
+    _slowTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted && _s == null && _loadError == null) setState(() => _slow = true);
+    });
     try {
       final s = await _repo.load();
       final people = ref.read(peopleRepositoryProvider);
@@ -245,7 +257,30 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         action: BusyButton.filled(onPressed: _load, child: const Text('Try again')),
       );
     } else if (s == null) {
-      body = const LoadingSkeletonPage();
+      // Said in words, and after 10 s a way to try again.
+      body = Column(children: [
+        const Expanded(child: LoadingSkeletonPage()),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(
+              'Loading your application…',
+              key: const ValueKey('onboarding-loading'),
+              textAlign: TextAlign.center,
+              style: TextStyle(color: mutedTextColor(Theme.of(context))),
+            ),
+            if (_slow) ...[
+              const SizedBox(height: 8),
+              Text(
+                'This is taking longer than usual.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: mutedTextColor(Theme.of(context))),
+              ),
+              TextButton(key: const ValueKey('onboarding-retry'), onPressed: _load, child: const Text('Retry')),
+            ],
+          ]),
+        ),
+      ]);
     } else {
       final step = _viewing ?? s.step;
       body = ResponsiveCenter(

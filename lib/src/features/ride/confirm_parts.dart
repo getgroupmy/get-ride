@@ -42,7 +42,13 @@ class _Mark extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(right: 12),
-    child: Icon(icon, key: ValueKey('confirm-mark-$id'), size: 24, color: Theme.of(context).colorScheme.onSurface),
+    child: Icon(
+      icon,
+      key: ValueKey('confirm-mark-$id'),
+      size: 24,
+      color: Theme.of(context).colorScheme.onSurface,
+      semanticLabel: id == 'pickup' ? 'Pickup' : 'Drop-off',
+    ),
   );
 }
 
@@ -86,23 +92,30 @@ class ConfirmAddressCard extends StatelessWidget {
       color: t.colorScheme.surface.withValues(alpha: 0.95),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+        padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const _Mark(Icons.emoji_people, 'pickup'),
                 Expanded(
                   child: InkWell(
                     key: const ValueKey('confirm-pickup'),
                     onTap: onPickup,
-                    child: Text(
-                      pickup?.name ?? 'Set pickup',
-                      style: text,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    // 44 tall at least: a finger-sized target.
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 44),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          pickup?.name ?? 'Set pickup',
+                          style: text,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -111,43 +124,56 @@ class ConfirmAddressCard extends StatelessWidget {
                   key: const ValueKey('confirm-entrance'),
                   borderRadius: BorderRadius.circular(8),
                   onTap: onEntrance,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: t.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      entrance.isEmpty ? 'Entrance' : 'Entrance $entrance',
-                      style: t.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+                  // The chip stays small; the target around it is 44 high.
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+                    child: Center(
+                      widthFactor: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: t.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          entrance.isEmpty ? 'Entrance' : 'Entrance $entrance',
+                          style: t.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 2),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const _Mark(Icons.flag, 'drop'),
                 Expanded(
                   child: InkWell(
                     key: const ValueKey('confirm-drop'),
                     onTap: stops.isEmpty ? onDrop : onStops,
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(text: stops.isEmpty ? drop.name : '${stops.length + 1} route stops'),
-                          if (duration.isNotEmpty)
-                            TextSpan(
-                              text: '  $duration',
-                              style: TextStyle(color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w400),
-                            ),
-                        ],
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 44),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: stops.isEmpty ? drop.name : '${stops.length + 1} route stops'),
+                              if (duration.isNotEmpty)
+                                TextSpan(
+                                  text: '  $duration',
+                                  style: TextStyle(color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w400),
+                                ),
+                            ],
+                          ),
+                          style: text,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      style: text,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
@@ -158,11 +184,16 @@ class ConfirmAddressCard extends StatelessWidget {
                     child: InkResponse(
                       key: const ValueKey('confirm-add-stop'),
                       onTap: onAddStop,
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: const BoxDecoration(color: confirmAccent, shape: BoxShape.circle),
-                        child: const Icon(Icons.add, color: Colors.white, size: 20),
+                      child: SizedBox.square(
+                        dimension: 44,
+                        child: Center(
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: const BoxDecoration(color: confirmAccent, shape: BoxShape.circle),
+                            child: const Icon(Icons.add, color: Colors.white, size: 20),
+                          ),
+                        ),
                       ),
                     ),
                   ),

@@ -6,7 +6,7 @@
     "background_color": "#ffffff",
     "theme_color": "#2DABE2",
     "description": "GET.ride — book a ride, drive and manage your wallet.",
-    "orientation": "portrait-primary",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

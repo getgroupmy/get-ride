@@ -131,16 +131,18 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                         onTap: () => unawaited(
                           _pages.animateToPage(i, duration: const Duration(milliseconds: 400), curve: Curves.easeInOut),
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            margin: const EdgeInsets.all(8),
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: i == _page ? t.colorScheme.onSurface : t.colorScheme.outlineVariant,
+                        // A 44 × 44 target around the 8 pt dot.
+                        child: SizedBox.square(
+                          dimension: 44,
+                          child: Center(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: i == _page ? t.colorScheme.onSurface : t.colorScheme.outlineVariant,
+                              ),
                             ),
                           ),
                         ),
@@ -270,7 +272,7 @@ class _SlideView extends StatelessWidget {
             if (slide == _slides.first)
               Text(
                 'Your ride, your way.',
-                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
               ),
           ],
         )),

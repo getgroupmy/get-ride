@@ -111,7 +111,7 @@ class _AdminFareTariffsScreenState extends ConsumerState<AdminFareTariffsScreen>
             ..sort((a, b) => fareTariffLevels.indexOf(a.level).compareTo(fareTariffLevels.indexOf(b.level)));
           final names = {for (final t in types) t.id: t.name, for (final v in vehicles) v.id: v.name};
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
             children: [
               const Card(
                 child: ListTile(
@@ -219,6 +219,7 @@ Widget _namePicker({
   required String value,
   required List<String> options,
   required ValueChanged<String> onChanged,
+  String? errorText,
 }) {
   final all = [...options, if (value.isNotEmpty && !options.any((o) => o.toLowerCase() == value.toLowerCase())) value];
   final selected = all.firstWhere((o) => o.toLowerCase() == value.toLowerCase(), orElse: () => _anyValue);
@@ -226,7 +227,7 @@ Widget _namePicker({
     key: key,
     isExpanded: true,
     initialValue: selected,
-    decoration: InputDecoration(labelText: label),
+    decoration: InputDecoration(labelText: label, errorText: errorText),
     items: [
       DropdownMenuItem(value: _anyValue, child: Text(anyLabel)),
       for (final o in all) DropdownMenuItem(value: o, child: Text(o, overflow: TextOverflow.ellipsis)),
@@ -467,14 +468,23 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
   String? _error;
   final _errorKey = GlobalKey();
 
+  /// The place field a missing name belongs to ("Enter the country."):
+  /// the message goes under that field, which is scrolled to.
+  String? _placeError;
+  final _placeKeys = {for (final k in const ['country', 'state', 'city', 'suburb']) k: GlobalKey()};
+
   static String _show(double? v) => v == null || v == 0 ? '' : v.toString();
 
   /// Says what is wrong where it is seen: the message is scrolled into view
   /// (on a phone it sits below the fold, and Save seemed to do nothing).
   void _fail(String message) {
-    setState(() => _error = message);
+    final place = RegExp(r'^Enter the (country|state|city|suburb)\.$').firstMatch(message)?.group(1);
+    setState(() {
+      _error = message;
+      _placeError = place;
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final c = _errorKey.currentContext;
+      final c = (place == null ? _errorKey : _placeKeys[place]!).currentContext;
       if (c != null && c.mounted) Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 200));
     });
   }
@@ -524,6 +534,10 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
   /// currency (Country information) onto a card that has no charges yet.
   void _pick(String k, String v, List<RegionEntry> regions) => setState(() {
     _place[k] = v;
+    if (_placeError == k) {
+      _placeError = null;
+      _error = null;
+    }
     const order = ['country', 'state', 'city', 'suburb'];
     for (final below in order.skip(order.indexOf(k) + 1)) {
       _place[below] = '';
@@ -565,25 +579,37 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
         city: _place['city']!,
       );
       final title = k[0].toUpperCase() + k.substring(1);
+      final error = _placeError == k ? 'Enter the $k' : null;
       // A place not on Country / States / Cities yet can still be typed.
       if (options.isEmpty) {
-        return gap(
-          TextFormField(
-            key: ValueKey('tariff-$k'),
-            initialValue: _place[k],
-            decoration: InputDecoration(labelText: title, helperText: 'Not on Country / States / Cities yet'),
-            onChanged: (v) => _place[k] = v,
+        return KeyedSubtree(
+          key: _placeKeys[k],
+          child: gap(
+            TextFormField(
+              key: ValueKey('tariff-$k'),
+              initialValue: _place[k],
+              decoration: InputDecoration(
+                labelText: title,
+                helperText: 'Not on Country / States / Cities yet',
+                errorText: error,
+              ),
+              onChanged: (v) => _place[k] = v,
+            ),
           ),
         );
       }
-      return gap(
-        _namePicker(
-          key: ValueKey('tariff-$k-${_place.values.take(i).join('/')}'),
-          label: title,
-          anyLabel: 'Choose a ${k == 'country' ? 'country' : k}',
-          value: _place[k]!,
-          options: options,
-          onChanged: (v) => _pick(k, v, regions),
+      return KeyedSubtree(
+        key: _placeKeys[k],
+        child: gap(
+          _namePicker(
+            key: ValueKey('tariff-$k-${_place.values.take(i).join('/')}'),
+            label: title,
+            anyLabel: 'Choose a ${k == 'country' ? 'country' : k}',
+            value: _place[k]!,
+            options: options,
+            onChanged: (v) => _pick(k, v, regions),
+            errorText: error,
+          ),
         ),
       );
     }
@@ -604,7 +630,10 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
                 decoration: const InputDecoration(labelText: 'Applies to'),
                 items: [
                   for (final l in fareTariffLevels)
-                    DropdownMenuItem(value: l, child: Text(l == 'master' ? 'Everywhere (master)' : l)),
+                    DropdownMenuItem(
+                      value: l,
+                      child: Text(l == 'master' ? 'Everywhere (master)' : '${l[0].toUpperCase()}${l.substring(1)}'),
+                    ),
                 ],
                 onChanged: (v) => setState(() => _level = v ?? _level),
               ),
@@ -678,7 +707,8 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
                 value: _active,
                 onChanged: (v) => setState(() => _active = v),
               ),
-              if (_error != null)
+              // A missing place is said under its own field instead.
+              if (_error != null && _placeError == null)
                 Text(
                   _error!,
                   key: const ValueKey('tariff-error'),
@@ -692,7 +722,12 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(key: const ValueKey('tariff-save'), onPressed: _save, child: const Text('Save')),
+        FilledButton(
+          key: const ValueKey('tariff-save'),
+          style: FilledButton.styleFrom(minimumSize: const Size(64, 44)),
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
       ],
     );
   }

@@ -417,9 +417,9 @@ void main() {
       final admin = await _pump(tester, const AdminCommissionScreen(), brightness: Brightness.dark);
       await tester.tap(find.text('Add rate'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('country').last);
+      await tester.tap(find.byKey(const ValueKey('commission-level')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('user').last);
+      await tester.tap(find.text('One person').last);
       await tester.pumpAndSettle();
       await tester.enterText(find.widgetWithText(TextField, 'Rate (%)'), '10');
 
@@ -460,9 +460,9 @@ void main() {
         final admin = await _pump(tester, const AdminCommissionScreen(), brightness: b);
         await tester.tap(find.byKey(const ValueKey('commission-add')));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('country').last);
+        await tester.tap(find.byKey(const ValueKey('commission-level')));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('state').last);
+        await tester.tap(find.text('State').last);
         await tester.pumpAndSettle();
         await tester.enterText(find.widgetWithText(TextField, 'Rate (%)'), '12');
         await tester.tap(find.text('Choose a country'));

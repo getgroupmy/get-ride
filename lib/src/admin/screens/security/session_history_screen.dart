@@ -449,7 +449,13 @@ class _AccountDetailState extends ConsumerState<_AccountDetail> {
               ),
             ),
             const SizedBox(height: 4),
-            Text('Last known location · ${_fmt(u.lastPingAt)}', style: t.textTheme.bodySmall),
+            Text(
+              [
+                'Last known location',
+                if (_fmt(u.lastPingAt).isNotEmpty) _fmt(u.lastPingAt),
+              ].join(' · '),
+              style: t.textTheme.bodySmall,
+            ),
             const SizedBox(height: 12),
           ],
           if (widget.link != null)
@@ -544,8 +550,15 @@ class _SessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String or(Object? v) => _s(v) ?? '—';
-    final ipLoc = [s['ip_city'], s['ip_region'], s['ip_country']].map(_s).whereType<String>().join(', ');
+    // A field the session didn't record is left out, not shown as "—".
+    String? or(Object? v) => _s(v);
+    String? joined(List<Object?> parts, String sep) {
+      final out = parts.map(_s).whereType<String>().join(sep);
+      return out.isEmpty ? null : out;
+    }
+
+    final ipLoc = joined([s['ip_city'], s['ip_region'], s['ip_country']], ', ');
+    final build = _s(s['app_build_version']);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -557,21 +570,21 @@ class _SessionCard extends StatelessWidget {
           ]),
           const SizedBox(height: 8),
           DetailTable({
-            'Device': '${_s(s['device_brand']) ?? _s(s['device_manufacturer']) ?? '?'} ${_s(s['device_model_name']) ?? ''}'.trim(),
+            'Device': joined([_s(s['device_brand']) ?? _s(s['device_manufacturer']), s['device_model_name']], ' '),
             'Model ID': or(s['device_model_id']),
-            'OS': '${_s(s['os_name']) ?? '?'}${_s(s['os_version']) != null ? ' ${s['os_version']}' : ''}',
-            'Network': '${_s(s['network_type']) ?? '?'}${_s(s['network_operator']) != null ? ' · ${s['network_operator']}' : ''}',
+            'OS': joined([s['os_name'], s['os_version']], ' '),
+            'Network': joined([s['network_type'], s['network_operator']], ' · '),
             'Connection': or(s['connection_type']),
             'ISP / Provider': or(s['isp_provider']),
             'ISP Org': or(s['isp_org']),
-            'IP Location': ipLoc.isEmpty ? '—' : ipLoc,
+            'IP Location': ipLoc,
             'Mobile Operator': or(s['mobile_operator_name']),
-            'MCC / MNC': formatPlmn(_s(s['mobile_country_code']), _s(s['mobile_network_code'])) ?? '—',
+            'MCC / MNC': formatPlmn(_s(s['mobile_country_code']), _s(s['mobile_network_code'])),
             'SIM Type': or(s['cellular_generation']),
             'SIM Serial (ICCID)': or(s['iccid']),
             'Local IP': or(s['ip_address']),
             'Public IP': or(s['public_ip']),
-            'App': '${_s(s['app_version']) ?? '?'}${_s(s['app_build_version']) != null ? ' (${s['app_build_version']})' : ''}',
+            'App': joined([s['app_version'], if (build != null) '($build)'], ' '),
             'Device ID': or(s['device_id']),
           }),
         ]),

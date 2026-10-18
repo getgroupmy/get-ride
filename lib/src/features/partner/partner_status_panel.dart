@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/partner_onboarding.dart' show onboardingProgress;
 import '../../core/partner_status.dart';
 import '../../data/models.dart';
 import '../../data/partner_onboarding_repository.dart';
@@ -71,12 +72,15 @@ class PartnerStatusPanel extends ConsumerWidget {
       label: const Text('Contact support'),
       onPressed: () => context.push('/account/support'),
     );
+    final progress = v.kind == PartnerStatusKind.incomplete
+        ? onboardingProgress(ref.watch(profileProvider).value?.raw, partner.raw)
+        : null;
     final actions = <Widget>[
       switch (v.kind) {
         PartnerStatusKind.incomplete => FilledButton(
           style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
           onPressed: onOpenApplication,
-          child: const Text('Continue'),
+          child: Text(progress == null ? 'Continue' : 'Continue: ${progress.label}'),
         ),
         PartnerStatusKind.blocked => support,
         PartnerStatusKind.rejected || PartnerStatusKind.docsNeeded => FilledButton.icon(
@@ -119,6 +123,26 @@ class PartnerStatusPanel extends ConsumerWidget {
                 textAlign: TextAlign.center,
                 style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
               ),
+              // Where the application stands, not just a bare Continue.
+              if (progress != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Step ${progress.step} of ${progress.of} · ${progress.label}',
+                  key: const ValueKey('partner-onboarding-progress'),
+                  textAlign: TextAlign.center,
+                  style: t.textTheme.labelLarge,
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress.done,
+                    minHeight: 6,
+                    semanticsLabel: 'Partner application',
+                    semanticsValue: 'Step ${progress.step} of ${progress.of}',
+                  ),
+                ),
+              ],
               if (v.reason != null) ...[
                 const SizedBox(height: 16),
                 Card(

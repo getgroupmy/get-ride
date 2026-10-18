@@ -94,8 +94,8 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
               children: [
                 Text(
                   widget.coin
-                      ? 'Scan to send GET.coin to ${(name ?? 'me').toUpperCase()}'
-                      : (name ?? 'My code').toUpperCase(),
+                      ? 'Scan to send GET.coin to ${name ?? 'me'}'
+                      : name ?? 'My code',
                   textAlign: TextAlign.center,
                   style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
@@ -164,7 +164,20 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
                 Card(
                   child: ListTile(
                     title: Text(widget.coin ? 'Wallet ID' : 'Account no.'),
-                    subtitle: SelectableText(widget.coin ? userId : walletAccountNumber(userId)),
+                    // One line in a small monospace face, never broken
+                    // mid-ID; Copy gives the whole of it.
+                    subtitle: Text(
+                      widget.coin ? userId : walletAccountNumber(userId),
+                      key: const ValueKey('wallet-id'),
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                        fontFamilyFallback: const ['Menlo', 'Courier New', 'Courier'],
+                        color: mutedTextColor(t),
+                      ),
+                    ),
                     trailing: IconButton(
                       tooltip: 'Copy',
                       icon: const Icon(Icons.copy),
