@@ -303,6 +303,7 @@ function deps(over: Partial<GeoDeps> = {}) {
       return Promise.reject(new Error("down"));
     },
     take: () => Promise.resolve(true),
+    caller: () => Promise.resolve("u1"),
     count: (p, k, ok, cached) => {
       log.push(`count ${p} ${k} ${ok} ${cached}`);
       return Promise.resolve();
@@ -375,6 +376,23 @@ Deno.test("lookups: a provider down, a missing key, the rate limit, bad input", 
 
   const limited = deps({ take: () => Promise.resolve(false) }).d;
   assertEquals((await handleGeo(q("action=search&provider=here&role=partner&device=web&q=klcc"), "ip", limited)).status, 429);
+  // 0220 review: a key is spent for a signed-in user only, each held to their own limit.
+  const anon = deps({ caller: () => Promise.resolve(null) });
+  for (const a of [
+    "action=search&provider=here&role=partner&device=web&q=klcc",
+    "action=reverse&provider=here&role=rider&device=android&lat=3.1&lng=101.6",
+  ]) {
+    const r = await handleGeo(q(a), "ip", anon.d);
+    assertEquals(r.status, 401);
+    assertEquals(r.body, { error: "sign_in_required" });
+  }
+  assertEquals(anon.log.filter((l) => l.startsWith("call")), [], "nothing was asked of a provider");
+  assertEquals((await handleGeo(q("action=profile&role=rider&device=web"), "ip", anon.d)).status, 200,
+    "the map's tiles need no sign-in");
+  const buckets: string[] = [];
+  const perUser = deps({ take: (b) => { buckets.push(b); return Promise.resolve(!b.startsWith("user:")); } }).d;
+  assertEquals((await handleGeo(q("action=search&provider=here&role=partner&device=web&q=klcc"), "ip", perUser)).status, 429);
+  assertEquals(buckets, ["user:u1"]);
 });
 
 Deno.test("Google API choice: newer then older (default), newer only, older only", async () => {

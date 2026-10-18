@@ -49,9 +49,9 @@ begin
   end if;
 end $$;
 grant execute on function pg_temp.as_user(uuid), pg_temp.check(boolean, text), pg_temp.refused(text, text)
-  to authenticated;
+  to anon, authenticated;
 create temp table ids (k text primary key, id uuid);
-grant all on ids to authenticated;
+grant all on ids to anon, authenticated;
 
 -- 1. The rider books for Mum ---------------------------------------------------------------
 set local role authenticated;
@@ -125,6 +125,28 @@ select pg_temp.check((select rider_name = 'Siti Aminah binti Ali' and rider_phon
                              and booked_for_name = 'Mum' and booked_for_phone = '+60130000195' and otp is null
                         from public.ride_requests where id = (select id from ids where k = 'mum')),
   'the accepted driver gets the details back, not the code');
+-- 0220: nor the share link, nor the code through the shared page.
+select pg_temp.check((select share_token is null from public.ride_requests where id = (select id from ids where k = 'mum')),
+  'the share link stays off the accepted row');
+select pg_temp.check((select v->>'passenger' = 'Mum' and v->>'otp' is null
+                        from (select public.ride_share_view((select id from ids where k = 'token')) v) s),
+  'the driver opening the shared page does not see the code');
+reset role;
+update public.ride_requests set share_token = gen_random_uuid() where id = (select id from ids where k = 'mum');
+select pg_temp.check((select share_token is null from public.ride_requests where id = (select id from ids where k = 'mum')),
+  'a share link written onto the row is dropped');
+set local role anon;
+select set_config('request.jwt.claims', '{"role":"anon"}', true);
+select set_config('request.jwt.claim.sub', '', true);
+select pg_temp.check((select v->>'otp' = '4821'
+                        from (select public.ride_share_view((select id from ids where k = 'token')) v) s),
+  'Mum still sees her code on the shared page');
+reset role;
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000195a1');
+select pg_temp.check(public.ride_share_link((select id from ids where k = 'mum')) = (select id from ids where k = 'token'),
+  'the rider gets the same link after acceptance');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000195b1');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000195b2');
 select pg_temp.check(not exists (select 1 from public.ride_requests where id = (select id from ids where k = 'mum')),
   'other drivers no longer see it');

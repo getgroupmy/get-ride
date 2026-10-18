@@ -48,6 +48,7 @@
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { callerCanEdit, FARE_AI_PAGES } from "../_shared/admin_page.ts";
 
 import {
   buildPrompt,
@@ -429,7 +430,12 @@ Deno.serve(async (req: Request) => {
     p_limit: ROUTE_ESTIMATES_PER_WINDOW,
     p_window: ROUTE_ESTIMATE_WINDOW,
   });
-  if (!rateErr && typeof wait === "number" && wait > 0) {
+  // Fails closed: when the limit can't be checked, no key is spent.
+  if (rateErr || typeof wait !== "number") {
+    console.error("ai-route-proxy: rate limit check failed", rateErr?.message ?? "no answer");
+    return json({ ok: false, error: "unavailable" }, 503);
+  }
+  if (wait > 0) {
     return json({ ok: false, error: "rate_limited", retry_after: wait }, 429);
   }
 
@@ -457,7 +463,8 @@ Deno.serve(async (req: Request) => {
     .eq("key", "fare_ai_provider")
     .maybeSingle();
   if (settingsErr) {
-    return json({ ok: false, error: `Config read failed: ${settingsErr.message}` }, 500);
+    console.error("ai-route-proxy: config read failed", settingsErr.message);
+    return json({ ok: false, error: "config_unavailable" }, 500);
   }
 
   const config = (settingsRow?.value ?? {}) as FareAIConfig;
@@ -607,13 +614,13 @@ async function runTest(
   destination: LatLng,
   stops: LatLng[],
 ): Promise<Response> {
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  if (!anonKey) return json({ ok: false, error: "Function is missing the anon key" }, 500);
-  const caller = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
-  });
-  const { data: isAdmin } = await caller.rpc("caller_is_admin");
-  if (isAdmin !== true) return json({ ok: false, error: "admin_only" }, 403);
+  // Edit access to Fare AI, not any admin: a test spends the provider key.
+  const canEdit = await callerCanEdit({
+    url: supabaseUrl,
+    anonKey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  }, req.headers.get("Authorization"), FARE_AI_PAGES).catch(() => false);
+  if (canEdit !== true) return json({ ok: false, error: "admin_only" }, 403);
 
   const raw = (draft ?? config.request) as FareAIRequest | undefined;
   if (raw && typeof raw.promptTemplate === "string") {

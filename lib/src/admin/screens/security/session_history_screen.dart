@@ -180,7 +180,7 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
                   color: Colors.orange,
                   text: "IP geolocation is unavailable — the ip-lookup edge function is not reachable, so Public IP, "
                       "ISP Org and IP Location won't be recorded on new sessions. Deploy it with "
-                      "`supabase functions deploy ip-lookup --no-verify-jwt`.",
+                      "`supabase functions deploy ip-lookup`.",
                 ),
               if (links.isNotEmpty)
                 _Banner(
