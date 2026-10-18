@@ -1,8 +1,8 @@
 -- ============================================================================
--- Regression test for migration 0228: Admin -> Security & integrations ->
+-- Regression test for migrations 0228 and 0232: Admin -> Security & integrations ->
 -- Claude Code access. Anyone reads the list (the hook uses the publishable
 -- key); only an admin with EDIT on the page, connected from an enabled office
--- IP, changes it; the last enabled office IP stays.
+-- address or network (0232), changes it; the last enabled office rule stays.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/claude_access_rules.sql
 --
@@ -66,6 +66,9 @@ grant execute on function pg_temp.as_user(uuid), pg_temp.as_anon(), pg_temp.from
 select pg_temp.check(
   (select count(*) from public.claude_access_rules where kind = 'ip' and enabled and value = '202.188.231.237') = 1,
   'the office IP is seeded');
+select pg_temp.check(
+  (select count(*) from public.claude_access_rules where kind = 'ip' and enabled and value = '2001:d08:1c01:6873::/64') = 1,
+  'the office IPv6 network is seeded (0232)');
 select pg_temp.check(
   (select count(*) from public.claude_access_rules where kind = 'session' and enabled) >= 5,
   'the approved sessions are seeded');
@@ -134,28 +137,34 @@ select pg_temp.check(
   not exists (select 1 from public.claude_access_rules where value = 'test000000000000000000a1'),
   'an editor at the office removes a session');
 
--- 6. The last enabled office IP stays ----------------------------------------------------------------------
+-- 6. The last enabled office rule stays ------------------------------------------------------------------
+-- Two office rules are seeded (IPv4 address, IPv6 network); with the network
+-- off, the address is the last one.
+update public.claude_access_rules set enabled = false where kind = 'ip' and value = '2001:d08:1c01:6873::/64';
+select pg_temp.check(
+  (select count(*) from public.claude_access_rules where kind = 'ip' and enabled) = 1,
+  'the IPv6 network can be disabled while the IPv4 address stays');
 do $$
 begin
   update public.claude_access_rules set enabled = false where kind = 'ip' and value = '202.188.231.237';
-  raise exception 'FAILED: the last office IP was disabled';
+  raise exception 'FAILED: the last office rule was disabled';
 exception when check_violation then null;
 end $$;
 do $$
 begin
   delete from public.claude_access_rules where kind = 'ip' and value = '202.188.231.237';
-  raise exception 'FAILED: the last office IP was removed';
+  raise exception 'FAILED: the last office rule was removed';
 exception when check_violation then null;
 end $$;
 select pg_temp.check(
   (select enabled from public.claude_access_rules where kind = 'ip' and value = '202.188.231.237'),
   'the office IP is still enabled');
 
--- 7. With a second office IP the first can go; the caller is then no longer at the office ----------
+-- 7. With a second office rule the first can go; the caller is then no longer at the office --------
 insert into public.claude_access_rules (kind, value, label) values ('ip', '203.0.113.10', 'Second office');
 update public.claude_access_rules set enabled = false where kind = 'ip' and value = '202.188.231.237';
 select pg_temp.check(
-  (select count(*) from public.claude_access_rules where kind = 'ip' and enabled) = 1,
+  (select string_agg(value, ',') from public.claude_access_rules where kind = 'ip' and enabled) = '203.0.113.10',
   'the first office IP is disabled once a second one exists');
 select pg_temp.refused(
   $q$update public.claude_access_rules set enabled = true where kind = 'ip' and value = '202.188.231.237'$q$,
@@ -168,9 +177,10 @@ select pg_temp.refused(
   'a full admin at a disabled office IP re-enabling it');
 select pg_temp.from_ip('203.0.113.10');
 update public.claude_access_rules set enabled = true where kind = 'ip' and value = '202.188.231.237';
+update public.claude_access_rules set enabled = true where kind = 'ip' and value = '2001:d08:1c01:6873::/64';
 select pg_temp.check(
-  (select count(*) from public.claude_access_rules where kind = 'ip' and enabled) = 2,
-  'a full admin at the second office re-enables the first');
+  (select count(*) from public.claude_access_rules where kind = 'ip' and enabled) = 3,
+  'a full admin at the second office re-enables the others');
 
 -- 9. A duplicate is refused by the unique key, not silently merged ----------------------------------------
 do $$
@@ -179,6 +189,40 @@ begin
   raise exception 'FAILED: a duplicate office IP was accepted';
 exception when unique_violation then null;
 end $$;
+
+-- 10. A network rule matches every address inside it, and nothing outside (0232) --------------------------
+select pg_temp.as_user('00000000-0000-0000-0000-0000000228a1');
+select pg_temp.from_ip('2001:d08:1c01:6873:613d:22a9:5c14:c146');
+insert into public.claude_access_rules (kind, value, label) values ('session', 'ipv6office000000000000a1', 'From the office over IPv6');
+select pg_temp.check(
+  exists (select 1 from public.claude_access_rules where value = 'ipv6office000000000000a1'),
+  'an editor inside the office IPv6 network adds a session');
+select pg_temp.from_ip('2001:d08:1c01:6874::1');
+select pg_temp.refused(
+  $q$insert into public.claude_access_rules (kind, value) values ('session', 'ipv6outside0000000000a1')$q$,
+  'an editor one network over adding a session');
+select pg_temp.from_ip('203.0.113.10');
+insert into public.claude_access_rules (kind, value, label) values ('ip', '198.51.100.0/24', 'Test IPv4 network');
+select pg_temp.from_ip('198.51.100.77');
+update public.claude_access_rules set label = 'From the IPv4 network' where value = 'ipv6office000000000000a1';
+select pg_temp.check(
+  (select label from public.claude_access_rules where value = 'ipv6office000000000000a1') = 'From the IPv4 network',
+  'an editor inside an IPv4 network rule edits');
+select pg_temp.from_ip('198.51.101.1');
+select pg_temp.refused(
+  $q$update public.claude_access_rules set label = 'x' where value = 'ipv6office000000000000a1'$q$,
+  'an editor just outside the IPv4 network editing');
+
+-- 11. An office rule must be an address or network ----------------------------------------------------------
+select pg_temp.from_ip('203.0.113.10');
+do $$
+begin
+  insert into public.claude_access_rules (kind, value) values ('ip', 'not-an-address');
+  raise exception 'FAILED: a non-address office rule was accepted';
+exception when check_violation then null;
+end $$;
+select pg_temp.check(public.claude_access_is_inet('2001:db8::/48') and not public.claude_access_is_inet('office'),
+  'claude_access_is_inet tells networks from words');
 
 rollback;
 

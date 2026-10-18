@@ -10070,8 +10070,28 @@ drop trigger if exists trg_claude_access_rules_updated_at on public.claude_acces
 create trigger trg_claude_access_rules_updated_at before update on public.claude_access_rules
   for each row execute function public.set_updated_at();
 
--- True when the request comes from an enabled office IP. A direct database
--- session (no JWT: psql, migrations, seeds) counts as the office.
+-- A text that Postgres reads as an address or network.
+create or replace function public.claude_access_is_inet(p text)
+returns boolean
+language plpgsql
+immutable
+as $$
+begin
+  perform p::inet;
+  return true;
+exception when others then
+  return false;
+end;
+$$;
+revoke execute on function public.claude_access_is_inet(text) from public;
+grant execute on function public.claude_access_is_inet(text) to anon, authenticated;
+
+alter table public.claude_access_rules drop constraint if exists claude_access_rules_ip_value_check;
+alter table public.claude_access_rules add constraint claude_access_rules_ip_value_check
+  check (kind <> 'ip' or public.claude_access_is_inet(value));
+
+-- True when the request comes from an enabled office address or network. A
+-- direct database session (no JWT: psql, migrations, seeds) counts.
 create or replace function public.claude_access_from_office()
 returns boolean
 language plpgsql
@@ -10086,12 +10106,14 @@ begin
     return true;
   end if;
   v_ip := public.request_client_ip();
-  if v_ip is null then
+  if v_ip is null or not public.claude_access_is_inet(v_ip) then
     return false;
   end if;
   return exists (
     select 1 from public.claude_access_rules
-     where kind = 'ip' and enabled and value = v_ip);
+     where kind = 'ip' and enabled
+       and public.claude_access_is_inet(value)
+       and v_ip::inet <<= value::inet);
 end;
 $$;
 revoke execute on function public.claude_access_from_office() from public;
@@ -10164,6 +10186,9 @@ insert into public.claude_access_rules (kind, value, label) values
   ('session', '01LUamzNaqHsLrMn92xVqEzH', null),
   ('session', '017V7sMCRzpsywneJ3Sw3wHz', null),
   ('session', '018jbhTQW6yVtn1tDDWjy2W1', null)
+on conflict (kind, value) do nothing;
+insert into public.claude_access_rules (kind, value, label) values
+  ('ip', '2001:d08:1c01:6873::/64', 'Office IPv6 network')
 on conflict (kind, value) do nothing;
 
 -- The admin page follows changes live (pattern from 0102).

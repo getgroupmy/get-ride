@@ -445,6 +445,29 @@ Future<String?> lookupPublicIp({Duration cap = publicIpLookupCap, http.Client? c
   });
 }
 
+/// This device's public addresses: the IPv4 one, and the IPv6 one where it
+/// has both. The Claude Code access page compares every one with the office
+/// rules, since a dual-stack browser reaches the backend over IPv6.
+Future<List<String>> lookupPublicIps() async {
+  final found = <String>[];
+  for (final urls in const [
+    ['https://api.ipify.org?format=json', 'https://ipv4.icanhazip.com'],
+    ['https://api64.ipify.org?format=json', 'https://ipv6.icanhazip.com'],
+  ]) {
+    for (final url in urls) {
+      try {
+        final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
+        final ip = parsePublicIp(res.body);
+        if (ip != null) {
+          if (!found.contains(ip)) found.add(ip);
+          break;
+        }
+      } catch (_) {}
+    }
+  }
+  return found;
+}
+
 /// Saves a CSV through the platform save dialog (a download on web); falls
 /// back to the clipboard where saving isn't supported.
 Future<void> exportCsv(BuildContext context, String filename, String csv) async {
