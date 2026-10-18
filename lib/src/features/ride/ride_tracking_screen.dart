@@ -811,7 +811,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         ),
       ],
       SearchBlock(child: SearchPaymentRow(amount: money(r.effectiveFare ?? current), mode: r.paymentMode)),
-      SearchBlock(child: SearchRouteCard(ride: r)),
+      // The sheet never rests lower than the drop-off: at 390x844 it sat
+      // behind the pinned Cancel request (or rests all the way up where it
+      // can't fit).
+      MapSheetRestLine(child: SearchBlock(child: SearchRouteCard(ride: r))),
       const SizedBox(height: 12),
       // On a phone it is pinned under the sheet instead ([_cancelFooter]).
       if (widget.wide) ?_cancelAction(r),
