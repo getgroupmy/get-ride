@@ -204,7 +204,7 @@ void main() {
       final repo = await pump(tester, _FakeRepo());
       expect(find.textContaining('Fixed rate'), findsOneWidget);
       expect(find.text('RM0.1000'), findsOneWidget);
-      expect(find.byKey(const ValueKey('coin-rate-chart')), findsOneWidget);
+      expect(find.byKey(const ValueKey('coin-rate-chart')), findsNothing, reason: 'a fixed rate is a flat line: no chart');
 
       await tester.tap(find.text('50'));
       await tester.pump();

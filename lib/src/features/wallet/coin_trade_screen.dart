@@ -584,11 +584,15 @@ class _RateCard extends StatelessWidget {
                 ),
               ],
             ],
-            const SizedBox(height: 8),
-            _RateSparkline(
-              rates: chartRates(history, market.ratePerGC),
-              color: change > 0 ? Colors.green : (change < 0 ? t.colorScheme.error : t.colorScheme.outline),
-            ),
+            // A fixed rate is a flat line: no chart then, the words below say it.
+            if (s.marketEnabled) ...[
+              const SizedBox(height: 8),
+              _RateSparkline(
+                key: const ValueKey('coin-rate-sparkline'),
+                rates: chartRates(history, market.ratePerGC),
+                color: change > 0 ? Colors.green : (change < 0 ? t.colorScheme.error : t.colorScheme.outline),
+              ),
+            ],
             const SizedBox(height: 4),
             if (!s.marketEnabled)
               const Text('Fixed rate — set by admin, market pricing is off.')
@@ -652,7 +656,7 @@ class _PriceTile extends StatelessWidget {
 
 /// The recorded GET.coin rates as a line (Expo `RateSparkline`).
 class _RateSparkline extends StatelessWidget {
-  const _RateSparkline({required this.rates, required this.color});
+  const _RateSparkline({super.key, required this.rates, required this.color});
   final List<double> rates;
   final Color color;
 

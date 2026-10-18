@@ -43,6 +43,7 @@ class _CancelledCountdownState extends State<CancelledCountdown> with SingleTick
             child: LinearProgressIndicator(
               value: 1 - _c.value,
               minHeight: 6,
+              semanticsLabel: '${widget.label ?? 'Closing'} in ${left}s',
               color: t.colorScheme.error,
               backgroundColor: t.colorScheme.errorContainer,
             ),

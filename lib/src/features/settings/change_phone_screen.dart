@@ -11,6 +11,11 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/dial_country_picker.dart';
 
+/// Whether [local] (after [dialCode]) is a number Send code can go with:
+/// at least 9 characters composed, as the sign-in page checks.
+bool changePhoneNumberReady(String dialCode, String local) =>
+    local.trim().isNotEmpty && composePhone(dialCode, local).length >= 9;
+
 /// Moves the signed-in account to a new phone number (Expo
 /// `app/change-number.tsx`): the number is checked against other accounts,
 /// Supabase Auth texts a code to it, and the change only takes effect once
@@ -37,7 +42,12 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
     super.dispose();
   }
 
+  /// A whole number is typed (as the sign-in page asks: 9 or more
+  /// characters with its dial code), so Send code can go.
+  bool get _numberReady => changePhoneNumberReady(_country.dialCode, _number.text);
+
   Future<void> _send() async {
+    if (!_numberReady) return;
     final phone = composePhone(_country.dialCode, _number.text);
     final auth = ref.read(authRepositoryProvider);
     final current = ref.read(profileProvider).value?.phone;
@@ -129,6 +139,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
                           keyboardType: TextInputType.phone,
                           inputFormatters: [FilteringTextInputFormatter.digitsOnly, const NoTrunkZeroFormatter()],
                           decoration: const InputDecoration(labelText: 'New phone number'),
+                          onChanged: (_) => setState(() {}),
                           onSubmitted: (_) => _send(),
                         ),
                       ),
@@ -166,7 +177,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
                 const SizedBox(height: 16),
                 BusyButton.filled(
                   key: const ValueKey('change-phone-go'),
-                  onPressed: _busy || (sent != null && _code.text.trim().length != 6)
+                  onPressed: _busy || (sent != null && _code.text.trim().length != 6) || (sent == null && !_numberReady)
                       ? null
                       : (sent == null ? _send : _confirm),
                   child: _busy

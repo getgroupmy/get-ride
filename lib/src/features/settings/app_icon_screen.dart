@@ -93,8 +93,8 @@ class AppIconScreen extends ConsumerWidget {
               title: const Text('Automatic'),
               subtitle: Text(
                 config.automatic
-                    ? 'Changes with festivals, seasons and sales. Now: ${appIconById(automatic)!.name}.'
-                    : 'The icon GET.ride chooses: ${appIconById(automatic)!.name}.',
+                    ? 'Changes with festivals, seasons and sales. Now: ${endSentence(appIconById(automatic)!.name)}'
+                    : 'The icon GET.ride chooses: ${endSentence(appIconById(automatic)!.name)}',
               ),
               trailing: selected == automaticAppIcon
                   ? Icon(Icons.check_circle, color: t.colorScheme.primary)
@@ -153,14 +153,21 @@ class _IconChoice extends StatelessWidget {
                 child: _Preview(icon: icon, size: 64),
               ),
               const SizedBox(height: 6),
-              Text(
-                icon.name,
-                maxLines: 2,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                style: t.textTheme.bodySmall?.copyWith(
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                  color: selected ? t.colorScheme.primary : t.colorScheme.onSurface,
+              // Always two lines high, so the tiles of a row line up
+              // whether a name takes one line or two.
+              SizedBox(
+                height: MediaQuery.textScalerOf(context).scale(2 * 12 * 1.4),
+                child: Text(
+                  icon.name,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.textTheme.bodySmall?.copyWith(
+                    fontSize: 12,
+                    height: 1.4,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                    color: selected ? t.colorScheme.primary : t.colorScheme.onSurface,
+                  ),
                 ),
               ),
             ],
@@ -169,6 +176,12 @@ class _IconChoice extends StatelessWidget {
       ),
     );
   }
+}
+
+/// [text] ending a sentence: one full stop, never two ("G." stays "G.").
+String endSentence(String text) {
+  final t = text.trim();
+  return RegExp(r'[.!?]$').hasMatch(t) ? t : '$t.';
 }
 
 /// The icon as the home screen shows it in the app's current mode.

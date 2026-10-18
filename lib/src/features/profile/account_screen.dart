@@ -18,17 +18,16 @@ import '../../widgets/net_image.dart';
 import '../../widgets/page_style_host.dart';
 
 /// The built-in rider menu items (Expo `MenuSideSheet`), on this app's
-/// screens; false for one with no screen here ("coming soon"). Expo's City,
-/// Freight and Notifications only went home. [beforeOpen] runs first.
+/// screens; false for one with no screen here ("coming soon"). Expo's City
+/// and Freight only went home: here they say "coming soon" (a rider sent to
+/// "/" on a desktop could land on the Drive page). [beforeOpen] runs first.
 bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallback? beforeOpen}) {
   const routes = {
     'teksi-ev': '/ev',
-    'city': '/',
     'request-history': '/trips',
     'scheduled-rides': '/trips/scheduled',
     'my-ride': '/account/my-ride',
     'my-qr': '/account/my-qr',
-    'freight': '/',
     'wallet': '/wallet',
     'notifications': '/account/notifications',
     'safety': '/account/safety',

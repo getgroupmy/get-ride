@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/format.dart' show formatDateTime;
+import '../../widgets/back_or_go_button.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
@@ -34,6 +36,11 @@ class AdminPage extends ConsumerWidget {
 
   Widget? _leading(BuildContext context) {
     if (Navigator.of(context).canPop()) return const BackButton();
+    // A page reached from Settings (every /admin/m/… page and the
+    // settings categories), not a destination of its own: Back to
+    // Settings, not the menu.
+    final path = GoRouter.maybeOf(context)?.routeInformationProvider.value.uri.path ?? '';
+    if (adminPageUnderSettings(path)) return const BackOrGoButton(fallback: '/admin/settings');
     final scope = AdminDrawerScope.maybeOf(context);
     return scope == null ? null : IconButton(tooltip: 'Menu', icon: const Icon(Icons.menu), onPressed: scope.openDrawer);
   }
@@ -255,6 +262,11 @@ String humanKey(String key) {
   words[0] = acronyms.containsValue(first) ? first : '${first[0].toUpperCase()}${first.substring(1)}';
   return words.join(' ');
 }
+
+/// Whether the admin page at [path] is reached from Settings rather than
+/// being a menu destination: `/admin/m/…` and `/admin/settings/<category>`.
+bool adminPageUnderSettings(String path) =>
+    path.startsWith('/admin/m/') || path.startsWith('/admin/settings/');
 
 String dateText(Object? iso) {
   if (iso == null) return '';

@@ -209,10 +209,13 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'serviceEnabled': true,
       'registrationEnabled': true,
       'signInLogo': true,
-      'userMockEnabled': true,
-      'partnerMockEnabled': true,
-      'riderTripSimEnabled': true,
-      'partnerDriveSimEnabled': true,
+      // Off unless stored on, as the apps read them (DemoSettings): a
+      // default of on showed mocks as running when they weren't, and a save
+      // or a reset would have switched them on for real.
+      'userMockEnabled': false,
+      'partnerMockEnabled': false,
+      'riderTripSimEnabled': false,
+      'partnerDriveSimEnabled': false,
       'showAiTollBooths': true,
       'showAiTollCharges': true,
       'connectedPopupEnabled': true,

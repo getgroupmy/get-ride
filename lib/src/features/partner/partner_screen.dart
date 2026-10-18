@@ -67,6 +67,15 @@ final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
 );
 
 /// Partners whose record lets them take jobs.
+/// The driver home sheet's lowest height, as a share of [screenHeight]:
+/// 20%, or on a short screen enough for the online switch card (128 px),
+/// at most half.
+double driverSheetRest(double screenHeight) {
+  if (screenHeight <= 0) return 0.2;
+  final needed = 128 / screenHeight;
+  return needed <= 0.2 ? 0.2 : (needed >= 0.5 ? 0.5 : needed);
+}
+
 bool partnerCanDrive(Partner p) {
   final s = p.status ?? '';
   return s == 'approved' || s.startsWith('permit-');
@@ -744,8 +753,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         onChanged: _toggle,
                         secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
                         title: Text(_online ? 'You are online' : 'You are offline'),
+                        // One line: on a phone on its side the card must fit
+                        // the sheet's lowest height.
                         subtitle: Text(
                           [p.name, p.vehicle, p.plate].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
@@ -829,11 +842,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 final queue = _queueOrder(open, wide: false);
                 // The new request is the sheet up from the bottom, not a card here.
                 final floating = queue.sorted;
+                // Fully down (just the online switch) until the driver drags
+                // it up; on a short screen (a phone on its side) low enough
+                // still holds the whole switch card, so the map buttons
+                // stand clear above it.
+                final rest = driverSheetRest(MediaQuery.sizeOf(context).height);
                 return MapSheetLayout(
-                  // Fully down (just the online switch) until the driver
-                  // drags it up.
-                  initial: 0.2,
-                  min: 0.2,
+                  initial: rest,
+                  min: rest,
                   locked: floating.isNotEmpty,
                   map: Stack(children: [
                     Positioned.fill(child: map),

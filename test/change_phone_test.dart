@@ -58,10 +58,28 @@ void main() {
     return auth;
   }
 
+  testWidgets('Send code waits for a whole number', (tester) async {
+    final auth = await pump(tester, _FakeAuth());
+    FilledButton go() => tester.widget<FilledButton>(
+          find.descendant(of: find.byKey(const ValueKey('change-phone-go')), matching: find.byType(FilledButton)),
+        );
+    expect(go().onPressed, isNull, reason: 'nothing typed');
+    await tester.enterText(find.byKey(const ValueKey('new-phone')), '123');
+    await tester.pump();
+    expect(go().onPressed, isNull, reason: 'too short');
+    await tester.enterText(find.byKey(const ValueKey('new-phone')), '129999999');
+    await tester.pump();
+    expect(go().onPressed, isNotNull);
+    expect(auth.calls, isEmpty);
+    expect(changePhoneNumberReady('+60', ''), isFalse);
+    expect(changePhoneNumberReady('+60', '129999999'), isTrue);
+  });
+
   testWidgets('sends a code to the new number and confirms it', (tester) async {
     final auth = await pump(tester, _FakeAuth());
     expect(find.text('Current number: +60123456789'), findsOneWidget);
     await tester.enterText(find.byKey(const ValueKey('new-phone')), '0129999999');
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('change-phone-go')));
     await tester.pumpAndSettle();
     expect(auth.calls, ['lookup +60129999999', 'request +60129999999']);
@@ -78,6 +96,7 @@ void main() {
   testWidgets('a number held by another account is refused before any code is sent', (tester) async {
     final auth = await pump(tester, _FakeAuth(taken: true));
     await tester.enterText(find.byKey(const ValueKey('new-phone')), '129999999');
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('change-phone-go')));
     await tester.pumpAndSettle();
     expect(find.text('This number is already linked to another account.'), findsOneWidget);
@@ -87,6 +106,7 @@ void main() {
   testWidgets('a wrong code is shown and the number is unchanged', (tester) async {
     final auth = await pump(tester, _FakeAuth(badCode: true));
     await tester.enterText(find.byKey(const ValueKey('new-phone')), '129999999');
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('change-phone-go')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('change-code')), '000000');

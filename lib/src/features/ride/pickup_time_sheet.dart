@@ -169,8 +169,10 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
                     },
                     child: Row(
                       children: [
+                        // 2:1:1:1, so the day column holds its words without
+                        // a wide empty gap beside them.
                         Expanded(
-                          flex: 5,
+                          flex: 4,
                           child: _Wheel(
                             key: const ValueKey('pickup-day-wheel'),
                             label: 'Day',

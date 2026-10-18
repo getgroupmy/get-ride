@@ -98,6 +98,10 @@ const aiEstimateTimeout = Duration(seconds: 30);
 /// stop's index when it is a stop).
 typedef TripGap = ({UnavailableAt at, int stop, CoverageGap gap, String? region, RegionBlock block});
 
+/// Whether the pickup box stands at the top of the map instead of above the
+/// pin: on a phone on its side, where the map above the sheet is too short.
+bool homePillAtTop(Size size) => size.width > size.height && size.height < 500;
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -1381,6 +1385,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ? tollMarks(ai, [for (final p in _route?.points ?? const <LatLng>[]) (lat: p.latitude, lng: p.longitude)])
         : const <TollMark>[];
     final showPill = sections.addressBar && _drop == null && _pinTarget == _PinTarget.none;
+    // A phone on its side (844 × 390): the pickup box sits at the top, not
+    // above the pin, where the short map cut it off.
+    final pillAtTop = homePillAtTop(MediaQuery.sizeOf(context));
     // A destination chosen: the confirm step (Expo ride-confirm).
     final confirming = _drop != null;
     final layout = ConfirmLayout.fromSettings(blob);
@@ -1463,7 +1470,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 for (final c in _cars) demoCarMarker(c, serviceIndex),
                 // The pickup box stands 5 px above the pickup pin and moves with
                 // it; it hides while the pin is lifted, until it lands.
-                if (showPill && _pickup != null && !_pinMoving)
+                if (showPill && _pickup != null && !_pinMoving && !pillAtTop)
                   labelAbovePin(
                     _pickup!.point,
                     PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup)),
@@ -1499,8 +1506,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
       // With no pickup on the map yet there is no pin to stand on: the box
-      // waits at the top until there is.
-      if (showPill && _pickup == null)
+      // waits at the top until there is. A phone on its side keeps it there
+      // too, beside the menu button: above the pin it ran off the top.
+      if (showPill && (_pickup == null || (pillAtTop && !_pinMoving)))
         Positioned(
           top: 16 + math.max(0, mapLayout.pillOffset),
           left: 72,

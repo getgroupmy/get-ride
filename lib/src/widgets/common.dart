@@ -80,7 +80,12 @@ class CodeField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    return TextField(
+    // No caret over the placeholder dots until the first digit: in their
+    // middle it read as three digits already typed.
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: controller,
+      builder: (context, value, _) => TextField(
+        showCursor: !obscure || value.text.isNotEmpty,
         controller: controller,
         focusNode: focusNode,
         autofocus: autofocus,
@@ -107,7 +112,8 @@ class CodeField extends StatelessWidget {
           onChanged?.call(v);
           if (v.length == length) onCompleted?.call(v);
         },
-      );
+      ),
+    );
   }
 }
 

@@ -77,6 +77,26 @@ void main() {
       expect(button.onPressed, isNotNull);
     });
 
+    for (final dark in [false, true]) {
+      testWidgets('on a 360x640 phone at large text the delete button is in view (${dark ? 'dark' : 'light'})',
+          (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(360, 640);
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          MediaQuery(
+            data: const MediaQueryData(size: Size(360, 640), textScaler: TextScaler.linear(1.3)),
+            child: host(const AccountDeletionCheck(bookings: 2), theme: dark ? ThemeData.dark() : null),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final r = tester.getRect(find.byKey(const ValueKey('delete-continue')));
+        expect(r.bottom, lessThanOrEqualTo(640), reason: 'pinned, not below the fold');
+        expect(find.byKey(const ValueKey('delete-continue')).hitTestable(), findsOneWidget);
+      });
+    }
+
     testWidgets('not during a ride, in dark mode too', (tester) async {
       await tester.pumpWidget(host(const AccountDeletionCheck(activeRide: true), theme: ThemeData.dark()));
       await tester.pumpAndSettle();

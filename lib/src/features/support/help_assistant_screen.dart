@@ -65,6 +65,8 @@ class _HelpAssistantScreenState extends ConsumerState<HelpAssistantScreen> {
     final q = question.trim();
     if (q.isEmpty) return;
     final turn = _Turn(q);
+    // The keyboard goes down, so the answer and its suggestions show.
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _turns.add(turn);
       _text.clear();

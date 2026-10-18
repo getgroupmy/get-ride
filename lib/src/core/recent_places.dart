@@ -8,10 +8,15 @@ import 'package:latlong2/latlong.dart';
 import '../data/geo_service.dart';
 import '../data/models.dart';
 
+/// [address] reduced for comparing: lower case, only letters and digits,
+/// so "KLCC, 156, Jalan Ampang" and "KLCC 156 Jalan  Ampang." match.
+String recentAddressKey(String address) => address.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+
 /// The rider's last [max] distinct drop-offs, newest first. Only trips this
 /// rider booked count (a partner's jobs are other people's destinations), and
 /// two drops within about 50 m are the same place, as are two of the same
-/// name within about 500 m (KLCC's different entrances).
+/// name or the same address (punctuation aside) within 5 km (KLCC's
+/// different entrances, an address written twice). The newest is kept.
 List<Place> recentPlaces(List<RideRequest> rides, {required String? riderId, required int max}) {
   if (riderId == null || max <= 0) return const [];
   final epoch = DateTime.fromMillisecondsSinceEpoch(0);
@@ -31,7 +36,9 @@ List<Place> recentPlaces(List<RideRequest> rides, {required String? riderId, req
     );
     final same = out.any((p) {
       final m = distance.as(LengthUnit.Meter, p.point, place.point);
-      return m <= 50 || (m <= 500 && p.name.trim().toLowerCase() == place.name.trim().toLowerCase());
+      final sameName = p.name.trim().toLowerCase() == place.name.trim().toLowerCase();
+      final sameAddress = recentAddressKey(p.address).isNotEmpty && recentAddressKey(p.address) == recentAddressKey(place.address);
+      return m <= 50 || (sameName && m <= 5000) || (sameAddress && m <= 5000);
     });
     if (same) continue;
     out.add(place);

@@ -117,8 +117,10 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
                                     visualDensity: VisualDensity.compact,
                                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   )
+                                // Not submitted yet: a draft, resumed from its next step.
                                 : Chip(
-                                    label: Text('Incomplete: ${step.label}'),
+                                    key: ValueKey('vehicle-draft-${v['id']}'),
+                                    label: Text('Draft · next: ${step.label}'),
                                     visualDensity: VisualDensity.compact,
                                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   ),
@@ -397,16 +399,26 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
     final steps = VehicleStep.wizard;
     final reachedIndex = reached == VehicleStep.done ? steps.length : steps.indexOf(reached);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(reached == VehicleStep.done ? 'All steps complete' : 'Step ${reachedIndex + 1} of ${steps.length}',
-          style: t.textTheme.labelLarge),
+      // Said once, by the bar below.
+      ExcludeSemantics(
+        child: Text(reached == VehicleStep.done ? 'All steps complete' : 'Step ${reachedIndex + 1} of ${steps.length}',
+            style: t.textTheme.labelLarge),
+      ),
       const SizedBox(height: 8),
       // As the step line counts: full on the last step.
-      LinearProgressIndicator(value: ((reachedIndex + 1) / steps.length).clamp(0.0, 1.0)),
+      // Read as "Step 1 of 6", with the share done as its value.
+      LinearProgressIndicator(
+        value: ((reachedIndex + 1) / steps.length).clamp(0.0, 1.0),
+        semanticsLabel: reached == VehicleStep.done ? 'All steps complete' : 'Step ${reachedIndex + 1} of ${steps.length}',
+        semanticsValue: '${(((reachedIndex + 1) / steps.length).clamp(0.0, 1.0) * 100).round()}%',
+      ),
       const SizedBox(height: 12),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final (i, step) in steps.indexed)
           ChoiceChip(
             avatar: i < reachedIndex ? const Icon(Icons.check, size: 16) : null,
+            // Ticks only on finished steps; the open one is filled, no tick.
+            showCheckmark: false,
             label: Text(step.label),
             selected: step == showing,
             // The plate is fixed once the vehicle exists; other finished

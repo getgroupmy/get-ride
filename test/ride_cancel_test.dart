@@ -334,6 +334,7 @@ void main() {
       await settle(tester);
       expect(find.textContaining('Closing in'), findsNothing, reason: 'no countdown home');
       expect(find.byKey(const ValueKey('ride-cancel-reason')), findsOneWidget);
+      expect(find.byKey(const ValueKey('ride-not-charged')), findsOneWidget, reason: 'not its quote as a price');
       expect(find.byKey(const ValueKey('ride-book-again')), findsOneWidget);
       await tester.pump(const Duration(seconds: 10));
       expect(find.byKey(const ValueKey('ride-book-again')), findsOneWidget, reason: 'still on the page');

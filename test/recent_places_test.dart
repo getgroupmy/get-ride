@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/saved_places.dart' show SavedPlaceKind;
+import 'package:get_ride/src/features/ride/saved_place_form.dart' show savedPlaceSearchTitle;
 import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/recent_places.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
@@ -91,4 +93,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(picked?.place?.name, 'KLCC');
   });
+
+  testWidgets("Add Home's address search shows the map and recent places before typing", (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 1000);
+    addTearDown(tester.view.reset);
+    const klcc = Place(name: 'KLCC', address: 'Kuala Lumpur City Centre', point: LatLng(3.1579, 101.7123));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          recentPlacesProvider.overrideWith((ref) async => const [klcc]),
+        ],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => showPlaceSearch(
+                  context,
+                  title: savedPlaceSearchTitle(SavedPlaceKind.home),
+                  mode: PlaceSearchMode.address,
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Home address'), findsOneWidget);
+    expect(find.byKey(const ValueKey('place-search-map-row')), findsOneWidget);
+    expect(find.text('KLCC'), findsOneWidget);
+  });
 }
+

@@ -227,11 +227,20 @@ class _PeriodListState extends ConsumerState<_PeriodList> with AutomaticKeepAliv
           message: 'Statements start from your first week as an approved driver.',
         );
       }
-      return EmptyState(
-        icon: Icons.cloud_off_outlined,
-        title: 'Couldn\'t load your statements',
-        message: errorText(_error!),
-        action: FilledButton(onPressed: () => _load(reset: true), child: const Text('Try again')),
+      // In the same column as the tabs and the language switch above.
+      return ResponsiveCenter(
+        maxWidth: 760,
+        child: EmptyState(
+          key: const ValueKey('statements-error'),
+          icon: Icons.cloud_off_outlined,
+          title: 'Couldn\'t load your statements',
+          message: errorText(_error!),
+          action: FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            onPressed: () => _load(reset: true),
+            child: const Text('Try again'),
+          ),
+        ),
       );
     }
     if (_periods.isEmpty) {

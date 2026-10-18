@@ -51,9 +51,7 @@ class _PinScreenState extends ConsumerState<PinScreen> {
           await auth.sendOtp(widget.phone, createUser: false);
           if (!mounted) return;
           ResyncPin.value = pin;
-          context.push(
-            Uri(path: '/login/otp', queryParameters: {'phone': widget.phone, 'next': 'resync'}).toString(),
-          );
+          context.push(signInStepPath('/login/otp', widget.phone, {'next': 'resync'}));
         } catch (e) {
           if (mounted) showError(context, e);
         }
@@ -74,7 +72,7 @@ class _PinScreenState extends ConsumerState<PinScreen> {
     try {
       await ref.read(authRepositoryProvider).sendOtp(widget.phone, createUser: false);
       if (!mounted) return;
-      context.push(Uri(path: '/login/otp', queryParameters: {'phone': widget.phone, 'next': next}).toString());
+      context.push(signInStepPath('/login/otp', widget.phone, {'next': next}));
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {

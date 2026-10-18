@@ -490,7 +490,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    smart.clean ? shortArea(p) : p.address,
+                    smart.clean ? shortArea(p, homeRegion: areaRegion(widget.current)) : p.address,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
@@ -702,7 +702,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             leading: const Icon(Icons.history),
             title: Text('Recent: ${r.place!.name}', maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(
-              smart.clean ? shortArea(r.place!) : r.place!.address,
+              smart.clean ? shortArea(r.place!, homeRegion: areaRegion(widget.current)) : r.place!.address,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -816,6 +816,17 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             children: [
               if (_route && _tab == _Tab.saved) ..._savedList(t),
               if (_route && _tab == _Tab.suggested) ..._suggested(t),
+              // An address for a saved place, before typing: the map, and
+              // the places already been to.
+              if (!_route && !typing) ...[
+                ListTile(
+                  key: const ValueKey('place-search-map-row'),
+                  leading: const Icon(Icons.map_outlined),
+                  title: const Text('Choose on map'),
+                  onTap: _onMap,
+                ),
+                ..._suggested(t),
+              ],
               if (typing && (!_route || _tab == _Tab.results))
                 ...() {
                   final shown = collapseAirports<Place>(

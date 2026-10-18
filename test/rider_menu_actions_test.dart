@@ -60,12 +60,10 @@ void main() {
   group('built-in actions (no admin settings)', () {
     const expected = {
       'teksi-ev': '/ev',
-      'city': '/',
       'request-history': '/trips',
       'scheduled-rides': '/trips/scheduled',
       myRideMenuItemId: '/account/my-ride',
       myQrMenuItemId: '/account/my-qr',
-      'freight': '/',
       'wallet': '/wallet',
       'notifications': '/account/notifications',
       'safety': '/account/safety',
@@ -103,8 +101,17 @@ void main() {
       expect(auth.signOuts, 0);
     });
 
+    // City and Freight have no page yet: "coming soon", never a jump to
+    // home (or, on a desktop, to Drive).
+    for (final id in ['city', 'freight']) {
+      testWidgets('$id says coming soon', (tester) async {
+        final (_, soon) = await tap(tester, id);
+        expect(soon, isTrue);
+      });
+    }
+
     test('every default user item is covered', () {
-      expect({...expected.keys, 'logout'}, {for (final d in defaultUserMenuItems) d.$1});
+      expect({...expected.keys, 'city', 'freight', 'logout'}, {for (final d in defaultUserMenuItems) d.$1});
     });
   });
 
@@ -124,8 +131,8 @@ void main() {
       expect(ids, isNot(contains('user-guide')));
     });
 
-    testWidgets("City follows the admin's link to Home", (tester) async {
-      expect((await tap(tester, 'city', settings: live)).$1, '/');
+    testWidgets("City linked home by the admin still says coming soon", (tester) async {
+      expect((await tap(tester, 'city', settings: live)).$2, isTrue);
     });
 
     testWidgets("Settings follows the admin's link (Expo /settings) to this app's settings", (tester) async {

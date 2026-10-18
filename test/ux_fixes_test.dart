@@ -13,7 +13,6 @@ import 'package:get_ride/src/admin/widgets/admin_widgets.dart' show StatusChip;
 import 'package:get_ride/src/core/app_permissions.dart';
 import 'package:get_ride/src/core/auth_utils.dart';
 import 'package:get_ride/src/core/payment_types.dart';
-import 'package:get_ride/src/core/smart_address.dart' show isCoordinateLabel;
 import 'package:get_ride/src/features/shell/app_side_menu.dart' show AppSideMenuHost;
 import 'package:get_ride/src/features/settings/permissions_card.dart';
 import 'package:get_ride/src/widgets/app_build_widgets.dart' show appBuildMissing;
@@ -21,7 +20,7 @@ import 'package:get_ride/src/widgets/common.dart';
 import 'package:get_ride/src/admin/screens/commission_screen.dart' show commissionLevelLabel;
 import 'package:get_ride/src/admin/screens/people/partner_screens.dart' show partnerDisplayId;
 import 'package:get_ride/src/admin/screens/rides_screen.dart' show adminRideSubtitle;
-import 'package:get_ride/src/admin/widgets/admin_widgets.dart' show DetailTable, humanKey;
+import 'package:get_ride/src/admin/widgets/admin_widgets.dart' show DetailTable, adminPageUnderSettings, humanKey;
 import 'package:get_ride/src/core/contact_phone.dart' show formatPhoneDisplay;
 import 'package:get_ride/src/core/dial_countries.dart' show dialCountries;
 import 'package:get_ride/src/core/help_article.dart' show helpProblemField;
@@ -29,7 +28,9 @@ import 'package:get_ride/src/core/inbox.dart';
 import 'package:get_ride/src/core/partner_onboarding.dart' show onboardingProgress;
 import 'package:get_ride/src/core/partner_statement.dart' show EarningsBucket, StatementTotals;
 import 'package:get_ride/src/core/profile_identity.dart' show idNumberProblem, profileEmailProblem;
-import 'package:get_ride/src/core/recent_places.dart' show recentPlaces;
+import 'package:get_ride/src/core/recent_places.dart' show recentAddressKey, recentPlaces;
+import 'package:get_ride/src/core/saved_places.dart' show SavedPlaceKind;
+import 'package:get_ride/src/core/smart_address.dart' show areaRegion, isCoordinateLabel, placesFirst, shortArea;
 import 'package:get_ride/src/core/scheduled_rides.dart' show ScheduledRide, confirmedPickupAt;
 import 'package:get_ride/src/core/trip_receipt.dart' show TripReceipt;
 import 'package:get_ride/src/data/geo_service.dart' show Place;
@@ -40,12 +41,28 @@ import 'package:get_ride/src/features/notifications/notifications_screen.dart' s
 import 'package:get_ride/src/features/partner/earnings_chart.dart';
 import 'package:get_ride/src/features/partner/partner_menu.dart' show partnerMenuRowShows, partnerRowsAfterApproval;
 import 'package:get_ride/src/features/profile/emergency_contacts_screen.dart';
-import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmAddressCard;
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmAddressCard, NowLaterButton;
+import 'package:get_ride/src/features/ride/saved_place_form.dart' show savedPlaceSearchTitle;
+import 'package:get_ride/src/features/settings/app_icon_screen.dart' show endSentence;
 import 'package:get_ride/src/features/ride/trip_history_view.dart' show tripListFare;
 import 'package:get_ride/src/features/wallet/wallet_history_screen.dart' show walletStatusLabel;
 import 'package:get_ride/src/widgets/dial_country_picker.dart' show DialCountryButton;
 import 'package:get_ride/src/widgets/route_title.dart' show pageTitleFor;
 import 'package:latlong2/latlong.dart' show LatLng;
+import 'package:get_ride/src/admin/screens/catalogue/catalogue_logic.dart' show sentenceCaseLabel;
+import 'package:get_ride/src/admin/screens/meterapp/display_logic.dart'
+    show anyMockEnabled, displayBool, mergeDisplaySettings, mockKeys;
+import 'package:get_ride/src/admin/screens/people/people_widgets.dart'
+    show MakeModel, compareMakeModel, imageSlotSemanticsLabel, makeModelKind;
+import 'package:get_ride/src/core/demo_mode.dart' show DemoSettings;
+import 'package:get_ride/src/core/side_menu.dart' show MenuEntry;
+import 'package:get_ride/src/features/profile/account_screen.dart' show riderMenuAction;
+import 'package:get_ride/src/widgets/side_menu_tiles.dart' show SideMenuTile;
+import 'package:go_router/go_router.dart';
+import 'package:get_ride/src/features/partner/partner_screen.dart' show driverSheetRest;
+import 'package:get_ride/src/features/ride/home_screen.dart' show homePillAtTop;
+import 'package:get_ride/src/core/vehicle_info.dart' show WriteTarget;
+import 'package:get_ride/src/features/meter/vehicle_info_screen.dart' show writeTargetCaption;
 
 const _sizes = [Size(412, 915), Size(360, 640), Size(320, 640)];
 
@@ -164,10 +181,25 @@ void main() {
     // A resync's PIN lives only in memory: after a reload, back to the PIN.
     expect(
       signInStepRedirect('/login/otp', const {'phone': '+60123456789', 'next': 'resync'}),
-      '/login/pin?phone=%2B60123456789',
+      '/login/pin',
     );
     expect(signInStepRedirect('/login/otp', const {'phone': '+6012', 'next': 'resync'}, resyncPin: '123456'), isNull);
     expect(signInStepRedirect('/login/phone', const {}), isNull);
+  });
+
+  test('the phone number never goes in a sign-in address; memory carries it', () {
+    addTearDown(() => SignInPhone.value = null);
+    final pin = signInStepPath('/login/pin', '+60123456789');
+    expect(pin, '/login/pin');
+    expect(SignInPhone.value, '+60123456789');
+    final otp = signInStepPath('/login/otp', '+60123456789', {'next': 'set-pin', 'new': '1'});
+    expect(otp, isNot(contains('phone')));
+    expect(otp, isNot(contains('60123456789')));
+    expect(signInStepPhone(const {}), '+60123456789');
+    expect(signInStepRedirect('/login/pin', const {}, phone: SignInPhone.value), isNull);
+    // A reload empties memory: back to the number page.
+    SignInPhone.value = null;
+    expect(signInStepRedirect('/login/pin', const {}, phone: SignInPhone.value), '/login/phone');
   });
 
   test('stored values read as the booking sheet says them', () {
@@ -328,6 +360,39 @@ void _batch2() {
           expect(find.textContaining('3 times'), findsOneWidget, reason: 'read out in words');
         });
 
+        testWidgets('the book row keeps "Find a driver" whole beside Later and two buttons ($at)', (tester) async {
+          await _at(tester, size);
+          await tester.pumpWidget(
+            _app(
+              Scaffold(
+                body: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(children: [
+                    const SizedBox.square(dimension: 48),
+                    const SizedBox(width: 8),
+                    const SizedBox.square(dimension: 48),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: NowLaterButton(onNow: () async {}, pickLater: () async => null, onLater: (_) async {}),
+                    ),
+                  ]),
+                ),
+              ),
+              b: b,
+              scale: scale,
+            ),
+          );
+          expect(tester.takeException(), isNull);
+          // Later gives way (its icon alone) so the main button keeps the
+          // room; the test font is wider than the app's, so widths are compared.
+          final row = tester.getSize(find.byKey(const ValueKey('book-now-later'))).width;
+          final now = tester.getSize(find.byKey(const ValueKey('book-now'))).width;
+          final later = tester.getSize(find.byKey(const ValueKey('book-later'))).width;
+          expect(now, greaterThan(row * 0.6));
+          expect(later, lessThanOrEqualTo(64));
+          expect(find.text('Later'), findsNothing);
+        });
+
         testWidgets('a detail table reads out as "label, value" ($at)', (tester) async {
           await _at(tester, size);
           final handle = tester.ensureSemantics();
@@ -450,9 +515,9 @@ void _batch2() {
 
   test('recent places: the same place twice is listed once', () {
     final rides = [
-      _ride({'rider_id': 'me', 'drop_name': 'KLCC', 'drop_lat': 3.15790, 'drop_lng': 101.71160, 'created_at': '2026-10-03T00:00:00Z'}),
-      _ride({'rider_id': 'me', 'drop_name': 'KLCC', 'drop_lat': 3.15900, 'drop_lng': 101.71300, 'created_at': '2026-10-02T00:00:00Z'}),
-      _ride({'rider_id': 'me', 'drop_name': 'Pavilion', 'drop_lat': 3.1490, 'drop_lng': 101.7130, 'created_at': '2026-10-01T00:00:00Z'}),
+      _ride({'rider_id': 'me', 'drop_name': 'KLCC', 'drop_address': 'Kuala Lumpur City Centre', 'drop_lat': 3.15790, 'drop_lng': 101.71160, 'created_at': '2026-10-03T00:00:00Z'}),
+      _ride({'rider_id': 'me', 'drop_name': 'KLCC', 'drop_address': 'Jalan Ampang, Kuala Lumpur', 'drop_lat': 3.15900, 'drop_lng': 101.71300, 'created_at': '2026-10-02T00:00:00Z'}),
+      _ride({'rider_id': 'me', 'drop_name': 'Pavilion', 'drop_address': 'Bukit Bintang', 'drop_lat': 3.1490, 'drop_lng': 101.7130, 'created_at': '2026-10-01T00:00:00Z'}),
     ];
     expect([for (final p in recentPlaces(rides, riderId: 'me', max: 8)) p.name], ['KLCC', 'Pavilion']);
   });
@@ -579,4 +644,132 @@ void _batch2() {
     );
     expect(find.text('METER'), findsOneWidget);
   });
+
+  test('Add Home searches for the "Home address"', () {
+    expect(savedPlaceSearchTitle(SavedPlaceKind.home), 'Home address');
+    expect(savedPlaceSearchTitle(SavedPlaceKind.work), 'Work address');
+    expect(savedPlaceSearchTitle(SavedPlaceKind.other), 'Enter address');
+  });
+
+  test("search subtitles drop the rider's own state; recent names are listed once", () {
+    const p = Place(name: 'KLIA', address: 'KLIA, 64000 Sepang, Selangor, Malaysia', point: LatLng(2.74, 101.7));
+    const here = Place(name: 'Home', address: 'Jalan 1, 43500 Semenyih, Selangor, Malaysia', point: LatLng(2.9, 101.8));
+    expect(areaRegion(here), 'Selangor');
+    expect(shortArea(p), 'Sepang, Selangor');
+    expect(shortArea(p, homeRegion: 'Selangor'), 'Sepang');
+    expect(shortArea(p, homeRegion: 'Johor'), 'Sepang, Selangor');
+    final rows = placesFirst('klcc', const [], recent: const [
+      Place(name: 'KLCC', address: 'Kuala Lumpur', point: LatLng(3.1579, 101.7116)),
+      Place(name: 'KLCC', address: 'Kuala Lumpur', point: LatLng(3.1700, 101.7300)),
+    ]);
+    expect(rows.top.where((r) => r.recent), hasLength(1));
+  });
+
+  test('a sentence ends with one full stop', () {
+    expect(endSentence('G.'), 'G.');
+    expect(endSentence('Raya'), 'Raya.');
+  });
+
+  for (final route in [null, '/']) {
+    testWidgets('City is "coming soon", never a jump home or to Drive (route $route)', (tester) async {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => Scaffold(
+              body: Consumer(
+                builder: (context, ref, _) => SideMenuTile(
+                  entry: MenuEntry(id: 'city', label: 'City', custom: false, route: route, overridden: route != null),
+                  builtIn: (c, id) => riderMenuAction(c, ref, id),
+                ),
+              ),
+            ),
+          ),
+          GoRoute(path: '/drive', builder: (_, _) => const Text('DRIVE')),
+        ],
+      );
+      await tester.pumpWidget(ProviderScope(child: MaterialApp.router(routerConfig: router)));
+      await tester.tap(find.text('City'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('menu-coming-soon')), findsOneWidget);
+      expect(find.text('DRIVE'), findsNothing);
+    });
+  }
+
+  test('vehicle wizard words: photo slots, model kinds, A to Z', () {
+    expect(imageSlotSemanticsLabel('Front', hasImage: false, enabled: true), 'Front photo, tap to upload');
+    expect(imageSlotSemanticsLabel('Front', hasImage: true, enabled: true), 'Front photo, tap to replace');
+    expect(makeModelKind('car', 'petrol'), 'Car · Petrol');
+    expect(makeModelKind('car', 'ev'), 'Car · Electric');
+    expect(makeModelKind('', 'ev'), 'Electric');
+    MakeModel m(String make, String model) =>
+        (vehicleType: 'car', energyType: 'petrol', make: make, model: model, yearFrom: '', yearTo: '');
+    final list = [m('Toyota', 'Vios'), m('perodua', 'Myvi'), m('Proton', 'X50'), m('Perodua', 'Axia')]
+      ..sort(compareMakeModel);
+    expect([for (final x in list) '${x.make} ${x.model}'], ['Perodua Axia', 'perodua Myvi', 'Proton X50', 'Toyota Vios']);
+  });
+
+  test('admin labels in sentence case; Settings pages get Back', () {
+    expect(sentenceCaseLabel('Cost Per Km'), 'Cost per km');
+    expect(sentenceCaseLabel('Max Bid Amount Offer Screen'), 'Max bid amount offer screen');
+    expect(sentenceCaseLabel('Max ETA'), 'Max ETA');
+    expect(adminPageUnderSettings('/admin/m/service-settings'), isTrue);
+    expect(adminPageUnderSettings('/admin/settings/vehicle'), isTrue);
+    expect(adminPageUnderSettings('/admin/settings'), isFalse);
+    expect(adminPageUnderSettings('/admin/users'), isFalse);
+  });
+
+  test('mocks read off unless stored on, in the admin and the apps alike', () {
+    final none = mergeDisplaySettings(const {});
+    for (final k in mockKeys) {
+      expect(displayBool(none, k), isFalse, reason: k);
+    }
+    expect(anyMockEnabled(none), isFalse);
+    final apps = DemoSettings.fromSettings(const {});
+    expect([apps.riderOffers, apps.riderTripSim, apps.partnerRequests, apps.partnerDriveSim], everyElement(isFalse));
+    final stored = {for (final k in mockKeys) k: true};
+    final on = mergeDisplaySettings(stored);
+    for (final k in mockKeys) {
+      expect(displayBool(on, k), isTrue, reason: k);
+    }
+    expect(anyMockEnabled(on), isTrue);
+    final appsOn = DemoSettings.fromSettings(stored);
+    expect([appsOn.riderOffers, appsOn.riderTripSim, appsOn.partnerRequests, appsOn.partnerDriveSim], everyElement(isTrue));
+  });
+
+  testWidgets('a PIN field shows no caret over its dots until a digit is typed', (tester) async {
+    final c = TextEditingController();
+    addTearDown(c.dispose);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: CodeField(controller: c, length: 6, obscure: true))));
+    expect(tester.widget<TextField>(find.byType(TextField)).showCursor, isFalse);
+    c.text = '1';
+    await tester.pump();
+    expect(tester.widget<TextField>(find.byType(TextField)).showCursor, isTrue);
+  });
+
+  test('a vehicle write says where it goes as a caption', () {
+    expect(writeTargetCaption(WriteTarget.vehicle), "On the car's ECU");
+    expect(writeTargetCaption(WriteTarget.adapter), 'On the OBD-II reader');
+  });
+
+  test('a phone on its side (844x390) keeps the switch card and the pickup box in view', () {
+    expect(driverSheetRest(915), 0.2);
+    expect(driverSheetRest(390) * 390, greaterThanOrEqualTo(128));
+    expect(driverSheetRest(100), 0.5);
+    expect(homePillAtTop(const Size(844, 390)), isTrue);
+    expect(homePillAtTop(const Size(390, 844)), isFalse);
+    expect(homePillAtTop(const Size(1366, 768)), isFalse);
+  });
+
+  test('a recent place written twice with different punctuation is listed once, the newest kept', () {
+    expect(recentAddressKey('KLCC, 156, Jalan Ampang'), recentAddressKey('KLCC 156 Jalan  Ampang.'));
+    final rides = [
+      _ride({'rider_id': 'me', 'drop_name': 'Suria KLCC', 'drop_address': 'KLCC, 156, Jalan Ampang', 'drop_lat': 3.1579, 'drop_lng': 101.7116, 'created_at': '2026-10-03T00:00:00Z'}),
+      _ride({'rider_id': 'me', 'drop_name': 'KLCC Park', 'drop_address': 'KLCC 156 Jalan Ampang', 'drop_lat': 3.1620, 'drop_lng': 101.7160, 'created_at': '2026-10-02T00:00:00Z'}),
+    ];
+    final recent = recentPlaces(rides, riderId: 'me', max: 8);
+    expect(recent, hasLength(1));
+    expect(recent.single.name, 'Suria KLCC');
+  });
 }
+

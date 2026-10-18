@@ -47,8 +47,10 @@ bool isCoordinateLabel(String label) => RegExp(r'^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\
 /// Option A's second line: [p]'s area without its name, house number,
 /// postcode or country ("Kuala Lumpur International Airport (KLIA), 64000
 /// Sepang, Selangor, Malaysia" → "Sepang, Selangor"). The address as it is
-/// when nothing is left.
-String shortArea(Place p) {
+/// when nothing is left. With [homeRegion] (the rider's own state, e.g.
+/// "Selangor") a trailing state that is the same is dropped too, where
+/// something is left before it.
+String shortArea(Place p, {String? homeRegion}) {
   final name = p.name.trim().toLowerCase();
   final parts = <String>[];
   for (var part in p.address.split(',')) {
@@ -59,7 +61,17 @@ String shortArea(Place p) {
     parts.add(part);
   }
   if (parts.isEmpty) return p.address;
+  final home = (homeRegion ?? '').trim().toLowerCase();
+  if (home.isNotEmpty && parts.length > 1 && parts.last.toLowerCase() == home) parts.removeLast();
   return parts.length <= 2 ? parts.join(', ') : parts.sublist(parts.length - 2).join(', ');
+}
+
+/// The state (or other last area part) of [p]: "Selangor" for "…, 64000
+/// Sepang, Selangor, Malaysia"; null when there is none.
+String? areaRegion(Place? p) {
+  if (p == null) return null;
+  final parts = shortArea(p).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+  return parts.length < 2 ? null : parts.last;
 }
 
 const _addressTypes = {
@@ -137,9 +149,14 @@ class SmartRow {
     for (final s in saved)
       if (matches('${s.title} ${s.name} ${s.address}')) s,
   ];
+  final recentNames = <String>{};
   final recentHits = [
     for (final r in recent)
-      if (matches('${r.name} ${r.address}') && !savedHits.any((s) => near(s.point, r.point))) r,
+      // One row per place name: "Recent: KLCC" twice says nothing more.
+      if (matches('${r.name} ${r.address}') &&
+          !savedHits.any((s) => near(s.point, r.point)) &&
+          recentNames.add(r.name.trim().toLowerCase()))
+        r,
   ];
   bool shown(Place p) =>
       !p.pending && (savedHits.any((s) => near(s.point, p.point)) || recentHits.any((r) => near(r.point, p.point)));

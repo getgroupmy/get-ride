@@ -13,10 +13,15 @@ import '../../core/vehicle_scan.dart';
 import '../../data/obd/obd_session.dart';
 import '../../data/vehicle_fuel_store.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/side_menu_host.dart';
 import 'ev_status_panel.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart';
+
+/// Where a write goes, said as a caption: "On the car's ECU", "On the
+/// OBD-II reader".
+String writeTargetCaption(WriteTarget t) => t == WriteTarget.vehicle ? "On the car's ECU" : 'On the OBD-II reader';
 
 /// Everything the linked OBD-II reader can tell about the vehicle it is
 /// plugged into (Expo `app/vehicle-information.tsx`): identity (VIN,
@@ -640,11 +645,16 @@ class _WritesCardState extends ConsumerState<_WritesCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(a.description),
+                      // What it writes to, as a caption (a chip read like a button).
+                      Text(
+                        writeTargetCaption(a.target),
+                        key: ValueKey('write-target-${a.id.id}'),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: mutedTextColor(Theme.of(context))),
+                      ),
                       if (avail.reason case final reason? when !offline)
                         Text(reason, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                     ],
                   ),
-                  trailing: Chip(label: Text(a.target == WriteTarget.vehicle ? 'ECU' : 'Reader')),
                   onTap: avail.allowed ? () => _open(a) : null,
                 );
               },

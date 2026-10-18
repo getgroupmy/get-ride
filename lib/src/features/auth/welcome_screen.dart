@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -202,8 +203,24 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
         ),
       ),
     );
-    // No app bar to set the status bar: its icons follow the theme.
-    return ThemedStatusBar(child: page);
+    // No app bar to set the status bar: its icons follow the theme. The
+    // Left and Right keys move the slides (a keyboard on the web/desktop).
+    return ThemedStatusBar(
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.arrowRight): () => _slideBy(1),
+          const SingleActivator(LogicalKeyboardKey.arrowLeft): () => _slideBy(-1),
+        },
+        child: Focus(autofocus: true, child: page),
+      ),
+    );
+  }
+
+  /// The next (1) or previous (-1) slide, if there is one.
+  void _slideBy(int step) {
+    final to = _page + step;
+    if (to < 0 || to >= _slides.length || !_pages.hasClients) return;
+    unawaited(_pages.animateToPage(to, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut));
   }
 }
 

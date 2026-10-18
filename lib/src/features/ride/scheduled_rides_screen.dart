@@ -84,12 +84,17 @@ class ScheduledRidesList extends ConsumerWidget {
           for (final r in all.reversed)
             if (!r.upcoming) r,
         ];
+        // Near the top, as Trips and Wallet history have theirs.
         if (all.isEmpty) {
-          return const EmptyState(
-            key: ValueKey('scheduled-empty'),
-            icon: Icons.event_outlined,
-            title: 'No scheduled rides',
-            message: 'On the booking screen, tap Later to book a ride ahead.',
+          return ListView(
+            children: const [
+              EmptyState(
+                key: ValueKey('scheduled-empty'),
+                icon: Icons.event_outlined,
+                title: 'No scheduled rides',
+                message: 'On the booking screen, tap Later to book a ride ahead.',
+              ),
+            ],
           );
         }
         return RefreshIndicator(

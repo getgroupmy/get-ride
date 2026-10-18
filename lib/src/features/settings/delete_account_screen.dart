@@ -126,6 +126,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             onPressed: _busy ? null : () => _step == _Step.review ? context.pop() : _go(_Step.review),
           ),
         ),
+        bottomNavigationBar: _reviewActions(t),
         body: SingleChildScrollView(
           child: ResponsiveCenter(
             maxWidth: 480,
@@ -195,15 +196,47 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
               ),
             ),
           if (_error != null) Text(_error!, style: TextStyle(color: t.colorScheme.error)),
-          const SizedBox(height: 8),
-          FilledButton(
-            key: const ValueKey('delete-continue'),
-            style: FilledButton.styleFrom(backgroundColor: t.colorScheme.error, foregroundColor: t.colorScheme.onError),
-            onPressed: c.activeRide || _busy ? null : _start,
-            child: const Text('Delete my account'),
-          ),
-          TextButton(onPressed: _busy ? null : () => context.pop(), child: const Text('Keep my account')),
         ],
+      ),
+    );
+  }
+
+  /// Delete and Keep, pinned under the page so a small phone never has to
+  /// find them below the fold.
+  Widget? _reviewActions(ThemeData t) {
+    final c = ref.watch(accountDeletionCheckProvider).value;
+    if (_step != _Step.review || c == null) return null;
+    return Material(
+      color: t.colorScheme.surface,
+      elevation: 4,
+      child: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 8),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+          child: Center(
+            heightFactor: 1,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 432),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton(
+                    key: const ValueKey('delete-continue'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: t.colorScheme.error,
+                      foregroundColor: t.colorScheme.onError,
+                    ),
+                    onPressed: c.activeRide || _busy ? null : _start,
+                    child: const Text('Delete my account'),
+                  ),
+                  TextButton(onPressed: _busy ? null : () => context.pop(), child: const Text('Keep my account')),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

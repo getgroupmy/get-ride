@@ -982,10 +982,17 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   subtitle: Text(
                     '${formatDistance(r.distanceKm)} · ${formatDuration(r.durationMin)} · ${paymentModeLabel(r.paymentMode)}',
                   ),
-                  trailing: Text(
-                    r.fareText(r.effectiveFare),
-                    style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                  ),
+                  // A cancelled ride was never charged: not its quote as a price.
+                  trailing: r.status == RideStatus.cancelled || r.status == RideStatus.expired
+                      ? Text(
+                          'Not charged',
+                          key: const ValueKey('ride-not-charged'),
+                          style: t.textTheme.titleSmall?.copyWith(color: mutedTextColor(t)),
+                        )
+                      : Text(
+                          r.fareText(r.effectiveFare),
+                          style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                        ),
                 ),
               ],
             ),

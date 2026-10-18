@@ -2193,42 +2193,69 @@ class _NowLaterButtonState extends State<NowLaterButton> {
     // is the secondary one (a Now|Later switch read as a toggle, not a go).
     final nowBusy = _busy && !_later;
     final laterBusy = _busy && _later;
-    return SizedBox(
-      key: const ValueKey('book-now-later'),
-      height: 56,
-      child: Row(
-        children: [
-          Expanded(
-            child: FilledButton.icon(
-              key: const ValueKey('book-now'),
-              style: FilledButton.styleFrom(
-                backgroundColor: accentFill,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(0, 56),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+    // Narrow (a 360 phone with the payment and options buttons beside it):
+    // Later shrinks to its icon so "Find a driver" is read whole.
+    return LayoutBuilder(builder: (context, box) {
+      final compact = box.maxWidth < MediaQuery.textScalerOf(context).scale(nowLaterCompactWidth);
+      final laterOnPressed = widget.pickLater == null || _busy ? null : () => _run(true);
+      return SizedBox(
+        key: const ValueKey('book-now-later'),
+        height: 56,
+        child: Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                key: const ValueKey('book-now'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: accentFill,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(0, 56),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                onPressed: widget.onNow == null || _busy ? null : () => _run(false),
+                icon: nowBusy ? const BusySpinner(size: 20, color: Colors.white) : const Icon(Icons.bolt),
+                label: Text(widget.label, maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
-              onPressed: widget.onNow == null || _busy ? null : () => _run(false),
-              icon: nowBusy ? const BusySpinner(size: 20, color: Colors.white) : const Icon(Icons.bolt),
-              label: Text(widget.label, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            key: const ValueKey('book-later'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(0, 56),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            onPressed: widget.pickLater == null || _busy ? null : () => _run(true),
-            icon: laterBusy ? const BusySpinner(size: 20) : const Icon(Icons.event),
-            label: const Text('Later'),
-          ),
-        ],
-      ),
-    );
+            const SizedBox(width: 8),
+            if (compact)
+              Tooltip(
+                message: 'Later',
+                child: OutlinedButton(
+                  key: const ValueKey('book-later'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(56, 56),
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: laterOnPressed,
+                  child: laterBusy
+                      ? const BusySpinner(size: 20)
+                      : const Icon(Icons.event, semanticLabel: 'Later'),
+                ),
+              )
+            else
+              OutlinedButton.icon(
+                key: const ValueKey('book-later'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 56),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                onPressed: laterOnPressed,
+                icon: laterBusy ? const BusySpinner(size: 20) : const Icon(Icons.event),
+                label: const Text('Later'),
+              ),
+          ],
+        ),
+      );
+    });
   }
 }
+
+/// Below this width (at text scale 1) the book-now row shows Later as its
+/// icon alone.
+const nowLaterCompactWidth = 300.0;

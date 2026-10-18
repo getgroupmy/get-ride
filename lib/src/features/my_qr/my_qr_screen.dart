@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/my_qr.dart';
+import '../../core/referral.dart' show referralCodeFor, referralLink;
 import '../../data/my_qr_repository.dart';
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
 import '../../providers.dart';
@@ -177,7 +178,13 @@ class _MyQrScreenState extends ConsumerState<MyQrScreen> {
   @override
   Widget build(BuildContext context) {
     final codes = ref.watch(myQrCodesProvider);
-    final isPartner = ref.watch(partnerProvider).value != null;
+    // GET.me and GET.now are a working driver's: a rider, or a partner
+    // still applying, sees Referral alone.
+    final isPartner = ref.watch(partnerProvider).value?.approved ?? false;
+    final profile = ref.watch(profileProvider).value;
+    final invite = profile == null
+        ? null
+        : referralCodeFor(userId: profile.id, explicitCode: profile.referralCode);
     final kinds = qrKindsFor(isPartner: isPartner);
     final now = ref.watch(myQrClockProvider)();
     final available = codes.value != null || codes.isLoading || codes.hasError;
@@ -199,6 +206,7 @@ class _MyQrScreenState extends ConsumerState<MyQrScreen> {
         onGenerate: (replaces) => _generate(k, replaces: replaces),
         onExpire: _expire,
         onReuse: _reuse,
+        inviteCode: k == QrKind.referral ? invite : null,
       ),
     );
     final appBar = AppBar(
@@ -255,9 +263,14 @@ class _KindPanel extends StatelessWidget {
     required this.onGenerate,
     required this.onExpire,
     required this.onReuse,
+    this.inviteCode,
   });
 
   final QrKind kind;
+
+  /// The account's referral code, on the Referral page: shown as a QR when
+  /// no personal code is active.
+  final String? inviteCode;
   final List<PersonalQr> codes;
   final DateTime now;
   final bool busy;
@@ -301,6 +314,9 @@ class _KindPanel extends StatelessWidget {
                     onExpire: () => onExpire(active),
                     onRegenerate: () => onGenerate(true),
                   )
+                else if (inviteCode != null)
+                  // The account's invite code already exists: shown at once.
+                  _InviteCode(code: inviteCode!, busy: busy, onGenerate: () => onGenerate(false))
                 else
                   _NoCode(kind: kind, busy: busy, onGenerate: () => onGenerate(false)),
                 if (history.isNotEmpty) ...[
@@ -484,6 +500,65 @@ class _CodeRow extends StatelessWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The rider's referral invite as a QR, before any personal code was
+/// made: the code every account has, with a way to make one that expires.
+class _InviteCode extends StatelessWidget {
+  const _InviteCode({required this.code, required this.busy, required this.onGenerate});
+
+  final String code;
+  final bool busy;
+  final VoidCallback onGenerate;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Card(
+      key: const ValueKey('my-qr-invite'),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                // Dark on white in both themes, so every scanner reads it.
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                child: QrImageView(
+                  data: referralLink(code),
+                  size: 200,
+                  backgroundColor: Colors.white,
+                  eyeStyle: QrEyeStyle(eyeShape: QrEyeShape.square, color: myQrColor(QrKind.referral)),
+                  dataModuleStyle: QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: myQrColor(QrKind.referral),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text('Your invite code', textAlign: TextAlign.center, style: t.textTheme.titleMedium),
+            SelectableText(
+              code,
+              key: const ValueKey('my-qr-invite-code'),
+              textAlign: TextAlign.center,
+              style: t.textTheme.headlineSmall?.copyWith(letterSpacing: 2),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              key: ValueKey('my-qr-generate-${QrKind.referral.wire}'),
+              onPressed: busy ? null : onGenerate,
+              icon: const Icon(Icons.timer_outlined),
+              label: const Text('Make a code that expires'),
+            ),
+          ],
+        ),
       ),
     );
   }

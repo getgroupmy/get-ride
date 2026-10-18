@@ -71,6 +71,9 @@ void openRoute(GoRouter router, String route) {
   inShell ? router.go(route) : router.push(route);
 }
 
+/// Built-in rider rows whose service has no page yet.
+const homeLinkedComingSoon = {'city', 'freight'};
+
 Future<void> showComingSoon(BuildContext context) => showAppDialog<void>(id: 'side-menu-tiles.open-route',
   context: context,
   builder: (c) => AlertDialog(
@@ -111,6 +114,12 @@ class SideMenuTile extends StatelessWidget {
       return;
     }
     final route = entry.route;
+    // A built-in service with no page yet, linked home (Expo's City and
+    // Freight): "coming soon", not a jump to home (or, on a desktop, Drive).
+    if (route == '/' && !entry.custom && homeLinkedComingSoon.contains(entry.id)) {
+      showComingSoon(context);
+      return;
+    }
     if (route != null) {
       final router = GoRouter.of(context);
       beforeOpen?.call();

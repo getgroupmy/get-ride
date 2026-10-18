@@ -14,7 +14,7 @@ import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
-import 'core/auth_utils.dart' show PendingSignInRoute, ResyncPin, signInLocation, signInNextPath, signInStepRedirect;
+import 'core/auth_utils.dart' show PendingSignInRoute, ResyncPin, SignInPhone, signInLocation, signInNextPath, signInStepPhone, signInStepRedirect;
 import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
@@ -246,7 +246,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       // A sign-in step reloaded without its phone starts again from the number.
       if (!signedIn) {
-        final step = signInStepRedirect(loc, state.uri.queryParameters, resyncPin: ResyncPin.value);
+        final step = signInStepRedirect(
+          loc,
+          state.uri.queryParameters,
+          resyncPin: ResyncPin.value,
+          phone: SignInPhone.value,
+        );
         if (step != null) return step;
       }
       // A fresh OTP session still has to choose a PIN before entering the app.
@@ -269,7 +274,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'otp',
             builder: (_, s) => OtpScreen(
-              phone: s.uri.queryParameters['phone'] ?? '',
+              phone: signInStepPhone(s.uri.queryParameters),
               next: s.uri.queryParameters['next'] ?? 'set-pin',
               pin: ResyncPin.value,
               createUser: s.uri.queryParameters['new'] == '1',
@@ -277,11 +282,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: 'pin',
-            builder: (_, s) => PinScreen(phone: s.uri.queryParameters['phone'] ?? ''),
+            builder: (_, s) => PinScreen(phone: signInStepPhone(s.uri.queryParameters)),
           ),
           GoRoute(
             path: 'closed',
-            builder: (_, s) => RegistrationClosedScreen(phone: s.uri.queryParameters['phone'] ?? ''),
+            builder: (_, s) => RegistrationClosedScreen(phone: signInStepPhone(s.uri.queryParameters)),
           ),
           GoRoute(path: 'set-pin', builder: (_, _) => const SetPinScreen()),
         ],
@@ -356,6 +361,9 @@ final routerProvider = Provider<GoRouter>((ref) {
                         routes: [GoRoute(path: 'settings', builder: (_, _) => const MyRideSettingsScreen())],
                       ),
                       GoRoute(path: 'my-qr', builder: (_, _) => const MyQrScreen()),
+                      // The permissions page became a card in Settings: old
+                      // links land there.
+                      GoRoute(path: 'permissions', redirect: (_, _) => '/account/settings'),
                       GoRoute(path: 'safety', builder: (_, _) => const SafetyScreen()),
                       GoRoute(path: 'emergency', builder: (_, _) => const EmergencyContactsScreen()),
                       GoRoute(path: 'guide', builder: (_, _) => const UserGuideScreen()),
