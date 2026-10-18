@@ -48,6 +48,7 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly, see the table.
 | 37 | Driver request cards | Same one-line ellipsis on pickup and drop with long addresses | `partner_screen.dart` | open |
 | 38 | Session access card | Subtitle joins empty parts: "· · Ends 18 Nov…" when a key has no test number / scopes | `session_access_card.dart:101` | minor |
 | 39 | Home with upcoming ride | "Upcoming ride" card below the search bar is cut off under the home indicator at the sheet's resting height | `home_screen.dart` fold | open |
+| 40 | Admin → Claude Code access | Title truncates to "Claude Code acce…" at text scale 1.3 next to the menu + refresh icons (same pattern as #16) | `claude_access_screen.dart` app bar | minor |
 | 29 | Contacts picker | "Choose from contacts" exists only on the web; iOS has a permission-free CNContactPickerViewController | `emergency_contacts_screen.dart:32-38` | suggestion |
 
 Sweeps over every screen: dark mode, text scale 1.3, iPhone SE and iOS
