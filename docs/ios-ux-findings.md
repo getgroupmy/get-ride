@@ -1,17 +1,17 @@
 # iOS UI/UX findings (tester session)
 
-Rendered from `claude/magical-fermat-6o8l12` (head 2697b39) with
+Rendered from `claude/magical-fermat-6o8l12` (head 0e1f676) with
 `test/ios_shots_test.dart`: iPhone 15 frame (393×852, TargetPlatform.iOS,
 59 pt / 34 pt safe areas), iPhone SE, iPhone landscape, iPad, iPad Slide
 Over; light and dark; text scale 1.0 and 1.3; keyboard up where it matters.
 All items were sent to the fixing session as they were found. Status column
 is updated on every push to the branch. Verified against 1bc4952 ("UX fixes
-from the web, iOS and Android test rounds"): 24 fixed, 2 partly, see the table.
+from the web, iOS and Android test rounds"): 24 fixed, 2 partly; 0e1f676 ("UX batch 2") fixed 11 more, see the table.
 
 | # | Screen | Finding | Where | Status |
 | --- | --- | --- | --- | --- |
 | 1 | Wallet | Balance cards fixed at 230 pt in a `Wrap`: one per row, right half of the phone empty; balance wraps at large text | `wallet_screen.dart:67-73` | fixed in 1bc4952 |
-| 2 | Wallet → history | Title truncates to "Transaction histo…" next to the month picker (iOS centres titles) | `wallet_history_screen.dart:46` | open |
+| 2 | Wallet → history | Title truncates to "Transaction histo…" next to the month picker (iOS centres titles) | `wallet_history_screen.dart:46` | fixed in 0e1f676 |
 | 3 | Settings → Appearance | "System" segment breaks into "Syste / m" at text scale 1.3 | `settings_screen.dart:40-44` | fixed in 1bc4952 |
 | 4 | Home | Pickup pill ellipsizes "Set pickup locati…" at scale 1.3 and at 320 pt | `home_parts.dart:494` | fixed in 1bc4952 |
 | 5 | Home | Collapsed sheet's search bar sits in the home-indicator zone (`navLift` is Android-only) | `home_screen.dart:1814-1816` | fixed in 1bc4952 |
@@ -20,9 +20,9 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly, see the table.
 | 8 | Wallet quick actions | "GET.coin QR" tile grows taller than its siblings at large text | `wallet_screen.dart` ~113 | fixed in 1bc4952 |
 | 9 | Ride tracking, driver trip | SOS pill covers the OpenStreetMap credit and its ⓘ | `ride_tracking_screen.dart:1040-1045`, `map_credit.dart:67` | fixed in 1bc4952 |
 | 10 | Driver online | Floating request cards run under the map-type / recenter buttons (SE with 2 requests, iPhone 15 with 3+) | `partner_screen.dart` queue column | fixed in 1bc4952 |
-| 11 | Ride sheet | Resting height adds no bottom inset: "Done" (completed) and "Closing in 4s" (cancelled) under the home indicator | `map_sheet_layout.dart:617` | open |
+| 11 | Ride sheet | Resting height adds no bottom inset: "Done" (completed) and "Closing in 4s" (cancelled) under the home indicator | `map_sheet_layout.dart:617` | fixed in 0e1f676 |
 | 12 | Confirm step | "Their name and phone go to the d…" ellipsized at large text | `confirm_parts.dart` book-for row | fixed in 1bc4952 |
-| 13 | Driver trip sheet | "1 passenger ·" / "Cash" wraps at large text | `partner_trip_screen.dart` | open |
+| 13 | Driver trip sheet | "1 passenger ·" / "Cash" wraps at large text | `partner_trip_screen.dart` | fixed in 0e1f676 |
 | 14 | Trip complete card | Cash booking shows a red "GET.wallet RM0.00 … Not enough" line | `ride_payment_overlay.dart` | UX note |
 | 15 | Admin → Dashboard | Tiles overflow (RenderFlex 11 px, 31 px at large text, 34 px at 320 pt, 54 px iPad landscape) | `dashboard_screen.dart:52-78` | fixed in 1bc4952 |
 | 16 | Admin → Session History | Title truncates to "Session &…" behind four action icons | `session_history_screen.dart` | fixed in 1bc4952 |
@@ -39,16 +39,16 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly, see the table.
 | 27 | Icon buttons | No `tooltip:` (VoiceOver "button"): admin menu, refresh on Dashboard/Rides/Support/EV Orders, Set-PIN ×, ride-chat back, Messaging icons, one Current-trip app-bar icon | `admin_widgets.dart:37`, `dashboard_screen.dart:46`, … | partly fixed in 1bc4952 (one Current-trip app-bar icon still unlabelled) |
 | 28 | Muted text | Below AA on light surfaces: "Your ride, your way." 2.4, "Appearance" 2.4, "City" 2.5, admin captions 2.4, pickup-time wheel 2.5, "call 999." 1.9, request card "Cash · 1 pax" 1.9 | muted / onSurfaceVariant greys | open |
 | 30 | Add contact dialog | Plain Column in an AlertDialog: overflows 53 px on an iPhone SE with the keyboard up (Cancel lands on the Phone field), 1.2 px at text scale 1.3 | `emergency_contacts_screen.dart:65-67` | fixed in 1bc4952 |
-| 31 | Multi-field forms | No `textInputAction` next/done (Set PIN, Edit profile, Add vehicle, Add contact, Change phone, Add reader/printer, Add rate) | various | minor |
+| 31 | Multi-field forms | No `textInputAction` next/done (Set PIN, Edit profile, Add vehicle, Add contact, Change phone, Add reader/printer, Add rate) | various | fixed in 0e1f676 (next/done across the forms) |
 | 32 | Map screens | No `SystemUiOverlayStyle` on app-bar-less screens (home, Drive, Welcome): status-bar text style follows the last AppBar | `home_screen.dart`, `partner_screen.dart`, `welcome_screen.dart` | verify on device |
 | 33 | Admin → Push | Segmented labels break words at default size: "Everyon / e", "Everywh / ere" | `push_screen.dart` | fixed in 1bc4952 |
-| 34 | Add contact dialog | Save with an empty name or phone closes the dialog silently, nothing saved | `emergency_contacts_screen.dart:75-81` | open |
-| 35 | Set PIN, Add vehicle | Validation shown as a SnackBar over the button instead of inline under the field | `set_pin_screen.dart:56`, `vehicle_screens.dart` | minor |
-| 36 | Trips list | Long addresses ellipsize at one line per row, cutting the area / city | `trip_history_view.dart` | open |
-| 37 | Driver request cards | Same one-line ellipsis on pickup and drop with long addresses | `partner_screen.dart` | open |
-| 38 | Session access card | Subtitle joins empty parts: "· · Ends 18 Nov…" when a key has no test number / scopes | `session_access_card.dart:101` | minor |
-| 39 | Home with upcoming ride | "Upcoming ride" card below the search bar is cut off under the home indicator at the sheet's resting height | `home_screen.dart` fold | open |
-| 40 | Admin → Claude Code access | Title truncates to "Claude Code acce…" at text scale 1.3 next to the menu + refresh icons (same pattern as #16) | `claude_access_screen.dart` app bar | minor |
+| 34 | Add contact dialog | Save with an empty name or phone closes the dialog silently, nothing saved | `emergency_contacts_screen.dart:75-81` | fixed in 0e1f676 |
+| 35 | Set PIN, Add vehicle | Validation shown as a SnackBar over the button instead of inline under the field | `set_pin_screen.dart:56`, `vehicle_screens.dart` | fixed in 0e1f676 |
+| 36 | Trips list | Long addresses ellipsize at one line per row, cutting the area / city | `trip_history_view.dart` | fixed in 0e1f676 |
+| 37 | Driver request cards | Same one-line ellipsis on pickup and drop with long addresses | `partner_screen.dart` | fixed in 0e1f676 |
+| 38 | Session access card | Subtitle joins empty parts: "· · Ends 18 Nov…" when a key has no test number / scopes | `session_access_card.dart:101` | fixed in 0e1f676 |
+| 39 | Home with upcoming ride | "Upcoming ride" card below the search bar is cut off under the home indicator at the sheet's resting height | `home_screen.dart` fold | fixed in 0e1f676 |
+| 40 | Admin → Claude Code access | Title truncates to "Claude Code acce…" at text scale 1.3 next to the menu + refresh icons (same pattern as #16) | `claude_access_screen.dart` app bar | fixed in 0e1f676 |
 | 41 | Landscape sheets | Fixed Columns overflow the 393 pt viewport, last rows/buttons unreachable: Payment 72 px, Choose date and time 76 px, Who's riding 10 px (189 px with keyboard; 23 px on SE + 1.3 portrait), Cancel reasons 124 px, Location sharing 90 px | `confirm_parts.dart:1030`, `pickup_time_sheet.dart:19`, `book_for_sheet.dart:50`, `searching_parts.dart` ~918, `location_share_button.dart:103` | open |
 | 42 | Landscape confirm step | Back pill overlaps the route card's second row (map strip above the 55 % sheet is ~110 pt) | `home_screen.dart:1645` | open |
 | 43 | Landscape ride / driver sheets | Resting height shows only the handle and a title cut under the pinned footer ("Driver on the way" / "Waiting for passenger" / "Completed") | `map_sheet_layout.dart`, `home_screen.dart:1878` | open |

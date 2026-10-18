@@ -3242,7 +3242,10 @@ void main() {
         'flow_my_qr_generate',
         route: '/account/my-qr',
         act: (t) async {
-          await t.tap(find.text('Generate'), warnIfMissed: false);
+          await t.tap(
+            find.text('Make a code that expires'),
+            warnIfMissed: false,
+          );
           await _settle(t);
         },
       ),
