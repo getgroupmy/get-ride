@@ -422,6 +422,32 @@ void _splitTests() {
       );
     });
 
+    test('new clients always name the processor; iPhone needs none', () {
+      expect(appInstallQuery('android', const []), {'platform': 'android', 'abi': abiArm64});
+      expect(appInstallQuery('android', _phone32), {'platform': 'android', 'abi': abiArm32});
+      expect(appInstallQuery('android', _phone64), {'platform': 'android', 'abi': abiArm64});
+      expect(appInstallQuery('android', const ['x86_64']), {'platform': 'android', 'abi': abiUniversal});
+      expect(appInstallQuery('ios', _phone64), {'platform': 'ios'});
+    });
+
+    test('an old-client answer (universal picked, APKs listed) is re-picked for this phone', () {
+      final old = AppBuild.fromJson('android', {
+        'available': true,
+        'installable': true,
+        'abi': 'universal',
+        'download_url': '$_dl/getride.apk',
+        'install_url': '$_dl/getride.apk',
+        'apks': [
+          {'abi': 'arm64-v8a', 'url': '$_dl/getride-arm64-v8a.apk'},
+          {'abi': 'armeabi-v7a', 'url': '$_dl/getride-armeabi-v7a.apk'},
+          {'abi': 'universal', 'url': '$_dl/getride.apk'},
+        ],
+      });
+      expect(old.installUrl, '$_dl/getride.apk');
+      expect(old.forDevice(_phone32).installUrl, '$_dl/getride-armeabi-v7a.apk');
+      expect(old.forDevice(const []).installUrl, '$_dl/getride-arm64-v8a.apk');
+    });
+
     test('the update link: the universal APK becomes the phone\'s own; anything else stays', () {
       const universal = '$_dl/getride.apk';
       expect(isUniversalApkLink(universal), isTrue);

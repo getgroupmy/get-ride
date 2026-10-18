@@ -19,12 +19,16 @@ import 'common.dart' show BrandMark;
 import 'net_image.dart';
 import 'page_style_host.dart';
 
-/// The latest published build for a platform ('ios' / 'android').
+/// The latest published build for a platform ('ios' / 'android'). Android
+/// always names this device's processor (`abi`, 64-bit when it can't tell):
+/// app-install answers a request without one with the universal APK, which
+/// is what old app builds keep getting.
 final appBuildProvider = FutureProvider.autoDispose.family<AppBuild, String>((ref, platform) async {
+  final abis = platform == 'android' ? await ref.watch(deviceAbisProvider.future) : const <String>[];
   final res = await ref
       .watch(supabaseProvider)
       .functions
-      .invoke('app-install', method: HttpMethod.get, queryParameters: {'platform': platform});
+      .invoke('app-install', method: HttpMethod.get, queryParameters: appInstallQuery(platform, abis));
   return AppBuild.fromJson(platform, res.data);
 });
 

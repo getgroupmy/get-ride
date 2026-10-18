@@ -37,12 +37,12 @@ final updateLinkResolverProvider = Provider<UpdateLinkResolver>(
   (ref) => (url) async {
     if (currentPlatformKey() != 'android' || !isUniversalApkLink(url)) return url;
     try {
+      final abis = await readDeviceAbis();
       final res = await ref
           .read(supabaseProvider)
           .functions
-          .invoke('app-install', method: HttpMethod.get, queryParameters: {'platform': 'android'})
+          .invoke('app-install', method: HttpMethod.get, queryParameters: appInstallQuery('android', abis))
           .timeout(const Duration(seconds: 8));
-      final abis = await readDeviceAbis();
       return updateApkLink(url, AppBuild.fromJson('android', res.data), abis);
     } catch (_) {
       return url;

@@ -11,10 +11,11 @@
  * Android also gets one APK per processor (getride-arm64-v8a.apk,
  * getride-armeabi-v7a.apk), a third of the size of the universal
  * getride.apk, which stays for old links and as the fallback. A phone is
- * handed the one it runs: 64-bit by default, 32-bit when it says it is a
- * 32-bit-only phone (`?abi=armeabi-v7a`), the universal one when its split
- * is missing (`pickApk`). Every APK is listed in `apks` so the app can pick
- * for itself.
+ * handed the one it names (`?abi=arm64-v8a` / `?abi=armeabi-v7a`; new
+ * clients send DEFAULT_ABI when they can't tell), the universal one when
+ * its split is missing or when it names none: old clients get exactly what
+ * they got before the split (`pickApk`). Every APK is listed in `apks` so
+ * the app can pick for itself.
  *
  * This module holds the decisions and imports nothing, so it is tested
  * without a server (`app_install_test.ts`).
@@ -34,7 +35,7 @@ export const SPLIT_APKS: Record<string, string> = {
   "armeabi-v7a": "getride-armeabi-v7a.apk",
 };
 export const UNIVERSAL_ABI = "universal";
-/** What a phone that says nothing about itself gets: nearly every phone is 64-bit. */
+/** What a new client asks for when it can't tell: nearly every phone is 64-bit. */
 export const DEFAULT_ABI = "arm64-v8a";
 
 export const DEFAULT_BUILDS_REPOSITORY = "getgroupmy/get-ride";
@@ -96,14 +97,18 @@ export function abiOf(raw: unknown): string | null {
 }
 
 /**
- * The APK to hand a phone that runs [abi] (null: unknown, so 64-bit): its
- * own split, else the universal APK, else (a phone that said nothing) any
- * split there is. Null when nothing installable is published.
+ * The APK to hand a phone that runs [abi]: its own split, else the
+ * universal APK. A request that names no ABI (an old app build, an old
+ * cached install page) gets the universal APK exactly as before the split,
+ * so a 32-bit phone on an old build is never handed a 64-bit-only APK; only
+ * when there is no universal APK at all, whatever split there is. New
+ * clients always send `?abi=` (DEFAULT_ABI when they can't tell). Null when
+ * nothing installable is published.
  */
 export function pickApk(apks: AppApk[], abi: string | null): AppApk | null {
   const by = (a: string) => apks.find((x) => x.abi === a);
-  const want = abi ?? DEFAULT_ABI;
-  return by(want) ?? by(UNIVERSAL_ABI) ?? (abi == null ? apks[0] : undefined) ?? null;
+  if (abi == null) return by(UNIVERSAL_ABI) ?? apks[0] ?? null;
+  return by(abi) ?? by(UNIVERSAL_ABI) ?? null;
 }
 
 export interface AppBuild {

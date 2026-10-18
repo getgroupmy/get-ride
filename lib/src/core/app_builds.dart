@@ -60,6 +60,14 @@ AppApk? pickApk(List<AppApk> apks, List<String> deviceAbis) {
   return null;
 }
 
+/// The app-install query for [platform]: Android always names the processor
+/// to hand out ([wantedApkAbi], 64-bit when [deviceAbis] can't tell), since a
+/// request without `abi` gets the universal APK (what old clients get).
+Map<String, String> appInstallQuery(String platform, List<String> deviceAbis) => {
+  'platform': platform,
+  if (platform == 'android') 'abi': wantedApkAbi(deviceAbis),
+};
+
 /// What a web page can tell of the phone it runs on: the ABIs, best first,
 /// or none when it can't say (most Android browsers no longer name the
 /// processor). [bitness] / [architecture] are `navigator.userAgentData`'s

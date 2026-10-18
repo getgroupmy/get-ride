@@ -127,22 +127,31 @@ const split = {
   ],
 };
 
-Deno.test("a phone gets its own processor's APK: 64-bit unless it says it is 32-bit", () => {
+Deno.test("an old client (no ?abi=) gets the universal APK exactly as before the split", () => {
   const b = appBuildFrom("android", split, { version: "1.5.0", build: "120", size: 154_000_000 }, MANIFEST);
+  assertEquals(b.abi, "universal");
+  assertEquals(b.download_url, dl("getride.apk"));
+  assertEquals(b.install_url, dl("getride.apk"));
+  assertEquals(b.size, 154_000_000);
+  assertEquals(b.apks?.map((a) => a.abi), ["arm64-v8a", "armeabi-v7a", "universal"], "listed for new clients");
+  assertEquals(b.apks?.[2], { abi: "universal", url: dl("getride.apk"), size: 154_000_000 });
+  assertEquals(appBuildFrom("android", split, {}, MANIFEST, abiOf(null)).install_url, dl("getride.apk"));
+  assertEquals(appBuildFrom("android", split, {}, MANIFEST, abiOf("x86")).install_url, dl("getride.apk"));
+});
+
+Deno.test("a new client gets the processor it names", () => {
+  const b = appBuildFrom("android", split, { size: 154_000_000 }, MANIFEST, abiOf("arm64-v8a"));
   assertEquals(b.abi, "arm64-v8a");
   assertEquals(b.download_url, dl("getride-arm64-v8a.apk"));
   assertEquals(b.install_url, b.download_url);
   assertEquals(b.size, 57_000_000, "the split's own size, not build.json's universal one");
-  assertEquals(b.apks?.map((a) => a.abi), ["arm64-v8a", "armeabi-v7a", "universal"]);
-  assertEquals(b.apks?.[2], { abi: "universal", url: dl("getride.apk"), size: 154_000_000 });
 
   const old = appBuildFrom("android", split, {}, MANIFEST, abiOf("armeabi-v7a"));
   assertEquals(old.abi, "armeabi-v7a");
   assertEquals(old.install_url, dl("getride-armeabi-v7a.apk"));
   assertEquals(old.size, 52_000_000);
 
-  const any = appBuildFrom("android", split, {}, MANIFEST, abiOf("universal"));
-  assertEquals(any.install_url, dl("getride.apk"));
+  assertEquals(appBuildFrom("android", split, {}, MANIFEST, abiOf("universal")).install_url, dl("getride.apk"));
 });
 
 Deno.test("a missing split falls back to the universal APK", () => {
@@ -152,13 +161,18 @@ Deno.test("a missing split falls back to the universal APK", () => {
   assertEquals(b.install_url, dl("getride.apk"));
   assertEquals(b.size, 154_000_000);
   // A release from before the split: the universal APK, as always.
-  assertEquals(appBuildFrom("android", release("getride.apk"), {}, MANIFEST).abi, "universal");
+  assertEquals(appBuildFrom("android", release("getride.apk"), {}, MANIFEST, "arm64-v8a").abi, "universal");
 });
 
-Deno.test("no universal APK: the phone's split, or for a phone that said nothing, any split", () => {
+Deno.test("no universal APK: the named split only; a request naming none gets what there is", () => {
   const only32 = { assets: [asset("getride-armeabi-v7a.apk", 52_000_000)] };
   assertEquals(appBuildFrom("android", only32, {}, MANIFEST).install_url, dl("getride-armeabi-v7a.apk"));
   assertEquals(appBuildFrom("android", only32, {}, MANIFEST, "armeabi-v7a").abi, "armeabi-v7a");
+  assertEquals(
+    appBuildFrom("android", only32, {}, MANIFEST, "arm64-v8a"),
+    { available: false, platform: "android" },
+    "a split is only handed to the processor that asked for it",
+  );
   const only64 = { assets: [asset("getride-arm64-v8a.apk", 57_000_000)] };
   assertEquals(
     appBuildFrom("android", only64, {}, MANIFEST, "armeabi-v7a"),

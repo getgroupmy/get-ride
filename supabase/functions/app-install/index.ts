@@ -5,10 +5,11 @@
 // (Admin → App Release, and the public getride.my/install/<platform> page).
 //
 // Request:  GET ?platform=ios|android                  -> AppBuild (JSON)
-//           GET ?platform=android&abi=armeabi-v7a      -> the same, with the
-//               32-bit APK as download_url / install_url (default 64-bit;
-//               the universal APK when that split is missing). `apks` lists
-//               every APK either way.
+//           GET ?platform=android&abi=arm64-v8a|armeabi-v7a
+//               -> the same, with that processor's APK as download_url /
+//               install_url (the universal APK when that split is missing).
+//               Without ?abi= (old clients) they stay the universal
+//               getride.apk, as before the split. `apks` lists every APK.
 //           GET ?platform=ios&format=manifest          -> itms-services manifest
 //
 // Reads the rolling GitHub release `ios-latest` / `android-latest` that the
