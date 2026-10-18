@@ -43,6 +43,8 @@
 -- 13. support_messages: who sent it (role, id, name) is the server's.
 -- 14. voice_protection_recordings: the owner's phone answers an upload request
 --     with a file in its own folder, and nothing else.
+-- 15. A ride that was taken keeps its driver: from the apps partner_id is
+--     cleared only while the request is open.
 -- ============================================================================
 
 -- ---- 1. Which admin pages write what ---------------------------------------------------------------
@@ -1433,5 +1435,51 @@ begin
   end if;
 end;
 $transfer$;
+
+-- ---- 15. The driver stays on a live ride ----------------------------------------------------------
+-- From the apps a ride's driver is
+-- cleared only while it is still open (a rider turning a bid down, a driver
+-- taking theirs back); once taken, a rider could otherwise drop the driver
+-- (and the fare and commission records with them) by writing partner_id
+-- null. A driver cancelling a booked ride back to the pool is the server's
+-- own step (ride_requests_scheduled_reopen, after this guard).
+create or replace function public.ride_requests_guard_partner_claim()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if current_user not in ('anon', 'authenticated') or public.caller_is_admin() then
+    return new;
+  end if;
+  if tg_op = 'INSERT' then
+    if new.partner_id is not null or new.offered_fare is not null then
+      raise exception 'RIDE_PARTNER_SERVER_ONLY' using errcode = '42501',
+        hint = 'A new request is offered to drivers; it can''t name one.';
+    end if;
+    return new;
+  end if;
+  if new.partner_id is null and old.partner_id is not null and old.status is distinct from 'open' then
+    raise exception 'RIDE_DRIVER_KEPT' using errcode = '42501',
+      hint = 'A ride that was taken keeps its driver; cancel it instead.';
+  end if;
+  if new.partner_id is not null and new.partner_id is distinct from old.partner_id then
+    if new.partner_id is distinct from auth.uid() then
+      raise exception 'RIDE_CLAIM_SELF_ONLY' using errcode = '42501',
+        hint = 'A driver takes or bids on a ride for themselves only.';
+    end if;
+    if not public.caller_is_approved_partner() then
+      raise exception 'RIDE_CLAIM_REQUIRES_APPROVED_PARTNER' using errcode = '42501',
+        hint = 'Only partners approved by an administrator can accept or bid on rides.';
+    end if;
+    if new.partner_id = coalesce(new.rider_id, old.rider_id) then
+      raise exception 'RIDE_CLAIM_OWN_RIDE' using errcode = '42501',
+        hint = 'You can''t take a ride you booked.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.ride_requests_guard_partner_claim() from public, anon, authenticated;
 
 notify pgrst, 'reload schema';

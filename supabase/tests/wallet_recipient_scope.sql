@@ -52,9 +52,15 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000222a1');
 select pg_temp.check(pg_temp.error_of($q$select public.wallet_request_coin_transfer(
   '00000000-0000-0000-0000-0000000222a1', 5, null, '+60129990222')$q$) = 'insufficient_coins',
   'a known number, no coins: insufficient');
+-- Since 0223 a direct transfer is the server's only (the app asks with a request).
+select pg_temp.check(pg_temp.error_of($q$select public.wallet_transfer_coins(
+  '00000000-0000-0000-0000-0000000222a1', 5, null, '+60120000000')$q$) like '%permission denied%',
+  'the app can''t move coins directly');
+reset role;
 select pg_temp.check(pg_temp.error_of($q$select public.wallet_transfer_coins(
   '00000000-0000-0000-0000-0000000222a1', 5, null, '+60120000000')$q$) = 'insufficient_coins',
   'an unknown number, no coins: the same answer');
+set local role authenticated;
 
 -- 2. A funded sender reaches a person, by the masked name only ---------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000222a2');
@@ -66,15 +72,12 @@ reset role;
 select pg_temp.check((select to_user_id = '00000000-0000-0000-0000-0000000222b1' from public.wallet_transfer_requests
                        where id = ((select v->>'request_id' from vals where k = 'req'))::uuid),
   'the request goes to the rider''s account');
-set local role authenticated;
-select pg_temp.as_user('00000000-0000-0000-0000-0000000222a2');
+-- Direct transfers run as the server (0223), still on the sender's claims.
 insert into vals select 'driver', public.wallet_transfer_coins('00000000-0000-0000-0000-0000000222a2', 5, null, '+60129990333');
 reset role;
 select pg_temp.check((select balance = 5 from public.wallets
                        where user_id = '00000000-0000-0000-0000-0000000222b2' and wallet_type = 'get_coin'),
   'a driver found by their partner record is paid on their own account');
-set local role authenticated;
-select pg_temp.as_user('00000000-0000-0000-0000-0000000222a2');
 select pg_temp.check(pg_temp.error_of(format($q$select public.wallet_transfer_coins(
   '00000000-0000-0000-0000-0000000222a2', 1, %L)$q$,
   (select id from public.partners where auth_user_id = '00000000-0000-0000-0000-0000000222b2'))) = 'recipient_not_found',
@@ -86,7 +89,7 @@ insert into public.auth_rate_hits (bucket, key)
 select 'phone_resolve', '00000000-0000-0000-0000-0000000222a2' from generate_series(1, 20);
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000222a2');
-select pg_temp.check(pg_temp.error_of($q$select public.wallet_transfer_coins(
+select pg_temp.check(pg_temp.error_of($q$select public.wallet_request_coin_transfer(
   '00000000-0000-0000-0000-0000000222a2', 1, null, '+60129990222')$q$) like 'RATE_LIMITED:%',
   'the 21st number in 10 minutes waits');
 reset role;

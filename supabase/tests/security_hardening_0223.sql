@@ -335,5 +335,14 @@ select pg_temp.check((select bool_and(prosrc like '%r.rider_id is null and not p
                          and proname in ('wallet_award_ride_coins', 'wallet_redeem_fare_coins')),
   'a ride with no rider pays no coins to whoever asks');
 
+-- 15. A ride that was taken keeps its driver ----------------------------------------------------
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000223c1');
+select pg_temp.refused($q$update public.ride_requests set partner_id = null
+  where id = '00000000-0000-0000-0000-0000000223a2'$q$, 'the rider dropping the driver of an accepted ride', '%RIDE_DRIVER_KEPT%');
+reset role;
+select pg_temp.check((select partner_id = '00000000-0000-0000-0000-0000000223d1' from public.ride_requests
+                       where id = '00000000-0000-0000-0000-0000000223a2'), 'the driver is still on it');
+
 select 'security_hardening_0223: all passed';
 rollback;
