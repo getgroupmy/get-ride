@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Tests for .claude/hooks/supabase-ip-gate.sh: where it keeps its caches, which
-# cache files it trusts, and how old a stale list may be. curl is replaced by
-# a stub, so nothing goes to the network.
+# cache files it trusts, how old a stale list may be, and how wide an office
+# network may be. curl is replaced by a stub, so nothing goes to the network.
 #
 #   sh scripts/supabase_ip_gate_test.sh        (also: bash, dash, zsh -o shwordsplit)
 #
@@ -55,7 +55,7 @@ mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
 dir="$work/home/.cache/get-ride"
 cache="$dir/claude-access-rules.cache"
 ipcache="$dir/claude-public-ip.cache"
-listed='[{"kind":"session","value":"cachedonly00000000000a1"},{"kind":"ip","value":"203.0.113.10"},{"kind":"ip","value":"2001:db8:5::/64"}]'
+listed='[{"kind":"session","value":"cachedonly00000000000a1"},{"kind":"ip","value":"203.0.113.10"},{"kind":"ip","value":"2001:db8:5::/64"},{"kind":"ip","value":"198.51.0.0/16"},{"kind":"ip","value":"::/0"},{"kind":"ip","value":"::/48"}]'
 now=$(date +%s)
 REMOTE=true
 
@@ -154,6 +154,15 @@ if command -v python3 >/dev/null 2>&1; then
   reset
   FAKE_RULES="$listed" FAKE_IP4=192.0.2.1 FAKE_IP6=2001:db8:5::77 run
   expect_allow "an address inside an office /64 is allowed"
+  reset
+  FAKE_RULES="$listed" FAKE_IP4=198.51.7.7 run
+  expect_ask "a /16 office rule is too wide to match"
+  reset
+  FAKE_RULES="$listed" FAKE_IP4=192.0.2.1 FAKE_IP6=2001:db8:6::1 run
+  expect_ask "::/0 is too wide to match"
+  reset
+  FAKE_RULES="$listed" FAKE_IP4=192.0.2.1 FAKE_IP6=::ffff:192.0.2.1 run
+  expect_ask "a /48 over the IPv4-mapped range is too wide to match"
 else
   echo "skipped: network rules (no python3)"
 fi

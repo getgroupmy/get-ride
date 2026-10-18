@@ -18,6 +18,10 @@
 # is a symlink is ignored (and replaced on the next write). Without a usable
 # directory nothing is cached and the list is fetched every time.
 #
+# An office network wider than /24 (IPv4) or /48 (IPv6; /120 inside the
+# IPv4-mapped ::ffff:0:0/96) never matches here, as the database refuses one
+# (migration 0233).
+#
 # Scope: a local Claude Code CLI honours this hook's decision, so an office
 # machine gets no prompt. A Claude cloud session reads the list too, but the
 # Supabase connector there asks on writes from its own tool-permission setting
@@ -146,11 +150,20 @@ fi
 in_rule() {
   [ "$1" = "$2" ] && return 0
   case "$2" in */*) ;; *) return 1 ;; esac
+  # Too wide to be an office (0233): IPv4 below /24, IPv6 below /48.
+  bits="${2##*/}"
+  case "$bits" in ''|*[!0-9]*) return 1 ;; esac
+  case "$2" in *:*) min=48 ;; *) min=24 ;; esac
+  [ "$bits" -ge "$min" ] || return 1
   command -v python3 >/dev/null 2>&1 || return 1
   python3 - "$1" "$2" <<'PY' 2>/dev/null
 import ipaddress, sys
 try:
-    sys.exit(0 if ipaddress.ip_address(sys.argv[1]) in ipaddress.ip_network(sys.argv[2], strict=False) else 1)
+    net = ipaddress.ip_network(sys.argv[2], strict=False)
+    # The IPv4-mapped range counts as IPv4: /24 there is ::ffff:a.b.c.0/120.
+    if net.version == 6 and net.overlaps(ipaddress.ip_network("::ffff:0:0/96")) and net.prefixlen < 120:
+        sys.exit(1)
+    sys.exit(0 if ipaddress.ip_address(sys.argv[1]) in net else 1)
 except Exception:
     sys.exit(1)
 PY
