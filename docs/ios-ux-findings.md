@@ -6,7 +6,7 @@ Rendered from `claude/magical-fermat-6o8l12` (head 1bc4952) with
 Over; light and dark; text scale 1.0 and 1.3; keyboard up where it matters.
 All items were sent to the fixing session as they were found. Status column
 is updated on every push to the branch. Verified against 1bc4952 ("UX fixes
-from the web, iOS and Android test rounds"): 21 fixed, see the table.
+from the web, iOS and Android test rounds"): 24 fixed, 2 partly, see the table.
 
 | # | Screen | Finding | Where | Status |
 | --- | --- | --- | --- | --- |
@@ -34,14 +34,14 @@ from the web, iOS and Android test rounds"): 21 fixed, see the table.
 | 22 | iPad portrait wallet | Three 230 pt cards wrap 2 + 1 with 40 % of the width empty (same as #1) | `wallet_screen.dart:67-73` | fixed in 1bc4952 |
 | 23 | Promo sheet | "Apply" sits in the home-indicator zone (pads `viewInsets` only) | `confirm_parts.dart:1592` | fixed in 1bc4952 |
 | 24 | Side menu header | Long names truncate "Nur Aisyah binti Rah…" (`maxLines: 1`) | `side_menu_style.dart:150` | fixed in 1bc4952 |
-| 25 | Accent buttons | White on `brandAccent` 0xFF2DABE2 is 2.6:1 (AA needs 4.5 / 3.0): Find a driver, Accept for RM…, Confirm time, Keep sharing, Done, Exit admin, Partner/Passenger Mode | `app.dart:122` | open |
-| 26 | Booking flow | Tap targets under 44 pt and unlabelled: vehicle ⓘ 22 pt no label, route card rows 23 pt, Entrance 24 pt, Add stop 32 pt, search Close 36 pt, payment × 40 pt unlabelled, keypad backspace unlabelled | `home_parts.dart:240`, `confirm_parts.dart:94-132,355` | open |
-| 27 | Icon buttons | No `tooltip:` (VoiceOver "button"): admin menu, refresh on Dashboard/Rides/Support/EV Orders, Set-PIN ×, ride-chat back, Messaging icons, one Current-trip app-bar icon | `admin_widgets.dart:37`, `dashboard_screen.dart:46`, … | open |
+| 25 | Accent buttons | White on `brandAccent` 0xFF2DABE2 is 2.6:1 (AA needs 4.5 / 3.0): Find a driver, Accept for RM…, Confirm time, Keep sharing, Done, Exit admin, Partner/Passenger Mode | `app.dart:122` | fixed in 1bc4952 |
+| 26 | Booking flow | Tap targets under 44 pt and unlabelled: vehicle ⓘ 22 pt no label, route card rows 23 pt, Entrance 24 pt, Add stop 32 pt, search Close 36 pt, payment × 40 pt unlabelled, keypad backspace unlabelled | `home_parts.dart:240`, `confirm_parts.dart:94-132,355` | partly fixed in 1bc4952 (route card rows 23 pt, Entrance 24 pt, Add stop 32 pt, welcome dots 32 pt remain) |
+| 27 | Icon buttons | No `tooltip:` (VoiceOver "button"): admin menu, refresh on Dashboard/Rides/Support/EV Orders, Set-PIN ×, ride-chat back, Messaging icons, one Current-trip app-bar icon | `admin_widgets.dart:37`, `dashboard_screen.dart:46`, … | partly fixed in 1bc4952 (one Current-trip app-bar icon still unlabelled) |
 | 28 | Muted text | Below AA on light surfaces: "Your ride, your way." 2.4, "Appearance" 2.4, "City" 2.5, admin captions 2.4, pickup-time wheel 2.5, "call 999." 1.9, request card "Cash · 1 pax" 1.9 | muted / onSurfaceVariant greys | open |
-| 30 | Add contact dialog | Plain Column in an AlertDialog: overflows 53 px on an iPhone SE with the keyboard up (Cancel lands on the Phone field), 1.2 px at text scale 1.3 | `emergency_contacts_screen.dart:65-67` | open |
+| 30 | Add contact dialog | Plain Column in an AlertDialog: overflows 53 px on an iPhone SE with the keyboard up (Cancel lands on the Phone field), 1.2 px at text scale 1.3 | `emergency_contacts_screen.dart:65-67` | fixed in 1bc4952 |
 | 31 | Multi-field forms | No `textInputAction` next/done (Set PIN, Edit profile, Add vehicle, Add contact, Change phone, Add reader/printer, Add rate) | various | minor |
 | 32 | Map screens | No `SystemUiOverlayStyle` on app-bar-less screens (home, Drive, Welcome): status-bar text style follows the last AppBar | `home_screen.dart`, `partner_screen.dart`, `welcome_screen.dart` | verify on device |
-| 33 | Admin → Push | Segmented labels break words at default size: "Everyon / e", "Everywh / ere" | `push_screen.dart` | open |
+| 33 | Admin → Push | Segmented labels break words at default size: "Everyon / e", "Everywh / ere" | `push_screen.dart` | fixed in 1bc4952 |
 | 29 | Contacts picker | "Choose from contacts" exists only on the web; iOS has a permission-free CNContactPickerViewController | `emergency_contacts_screen.dart:32-38` | suggestion |
 
 Sweeps over every screen: dark mode, text scale 1.3, iPhone SE and iOS
