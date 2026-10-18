@@ -41,7 +41,7 @@ import '../ride/ride_call_screen.dart' show RideCallButton;
 import '../ride/ride_chat_screen.dart' show RideChatBadge;
 import '../../widgets/ble_handshake_badge.dart';
 import '../../widgets/offline_ride_banner.dart';
-import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
+import '../ride/ride_tracking_screen.dart' show SteadyRide, rideStreamProvider;
 import '../safety/ride_sos.dart';
 import '../safety/voice_protection_controller.dart';
 import 'trip_handover_panel.dart';
@@ -110,6 +110,13 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   LatLng? _legFrom;
   DateTime? _legAt;
   Timer? _tick;
+
+  /// Bumped each second of the trip clock, and by the pay-and-close
+  /// countdown: only their text rebuilds.
+  final _clockTicks = ValueNotifier<int>(0);
+
+  /// Bumped on each GPS fix: only the map and the distance driven rebuild.
+  final _gpsTicks = ValueNotifier<int>(0);
   RideStatus? _status;
   // Set when the driver approves the passenger's cancel here, so the end of
   // the ride isn't announced back to them.
@@ -221,7 +228,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     _legAt = _me == null ? null : _onTripSince;
     _tick?.cancel();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (mounted) _clockTicks.value++;
     });
   }
 
@@ -261,20 +268,20 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   void _onPosition(TripFix p) {
     if (!mounted) return;
     final now = _now;
-    setState(() {
-      _me = p.at;
-      _heading = p.heading;
-      // Only the trip itself counts toward the distance driven.
-      if (_status == RideStatus.onTrip) {
-        if (_legFrom != null && _legAt != null) {
-          _metres += tripLegMetres(_legFrom!, p.at, now.difference(_legAt!), accuracy: p.accuracy);
-        }
-        if (p.accuracy == null || p.accuracy! <= tripFixMaxAccuracyMetres) {
-          _legFrom = p.at;
-          _legAt = now;
-        }
+    _me = p.at;
+    _heading = p.heading;
+    // Only the trip itself counts toward the distance driven.
+    if (_status == RideStatus.onTrip) {
+      if (_legFrom != null && _legAt != null) {
+        _metres += tripLegMetres(_legFrom!, p.at, now.difference(_legAt!), accuracy: p.accuracy);
       }
-    });
+      if (p.accuracy == null || p.accuracy! <= tripFixMaxAccuracyMetres) {
+        _legFrom = p.at;
+        _legAt = now;
+      }
+    }
+    // The map's car and the distance driven, not the screen.
+    _gpsTicks.value++;
     // Share the driver's live position with the rider at most every 5 s.
     if (now.difference(_lastPublish) < const Duration(seconds: 5)) return;
     _lastPublish = now;
@@ -296,7 +303,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     _closeIn = paymentDoneClose.inSeconds;
     _closeTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return t.cancel();
-      setState(() => _closeIn = _closeIn! - 1);
+      _closeIn = _closeIn! - 1;
+      _clockTicks.value++;
       if (_closeIn! <= 0) {
         t.cancel();
         context.go('/drive');
@@ -310,6 +318,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     _gps?.cancel();
     _tick?.cancel();
     _closeTimer?.cancel();
+    _clockTicks.dispose();
+    _gpsTicks.dispose();
     // Leaving the trip screen always files whatever was recorded — after the
     // unmount, since a provider can't change while the tree is being torn down.
     unawaited(Future.microtask(_voice.stopTrip));
@@ -518,7 +528,9 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ride = ref.watch(rideStreamProvider(widget.requestId));
+    // The car's position on the row moves every few seconds: only the map
+    // follows it ([SteadyRide]).
+    final ride = ref.watch(rideStreamProvider(widget.requestId).select(SteadyRide.new)).value;
     // While the trip is on there is no way back off this screen: the ride
     // ends by completing it (or cancelling before pickup), not by leaving,
     // or by handing it over (migration 0199).
@@ -573,12 +585,20 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           // SOS floats on the map for the whole trip, as for the passenger.
           final map = Stack(children: [
             Positioned.fill(
-              child: LiveRideMap(
-                ride: r,
-                partner: true,
-                driverAt: _me,
-                driverHeading: _heading,
-                now: ref.read(tripClockProvider),
+              child: Consumer(
+                builder: (_, ref, _) {
+                  final live = ref.watch(rideStreamProvider(widget.requestId)).value ?? r;
+                  return ValueListenableBuilder(
+                    valueListenable: _gpsTicks,
+                    builder: (_, _, _) => LiveRideMap(
+                      ride: live,
+                      partner: true,
+                      driverAt: _me,
+                      driverHeading: _heading,
+                      now: ref.read(tripClockProvider),
+                    ),
+                  );
+                },
               ),
             ),
             if (r.status.isOngoing && r.status != RideStatus.open)
@@ -727,12 +747,20 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           Wrap(key: const ValueKey('trip-meter'), crossAxisAlignment: WrapCrossAlignment.center, children: [
             const Icon(Icons.timer_outlined, size: 18),
             const SizedBox(width: 6),
-            Text(formatTripElapsed(tripElapsed(startedAt: r.startedAt, firstSeen: _onTripSince, now: _now)),
-                style: t.textTheme.titleMedium),
+            ValueListenableBuilder(
+              valueListenable: _clockTicks,
+              builder: (_, _, _) => Text(
+                  formatTripElapsed(tripElapsed(startedAt: r.startedAt, firstSeen: _onTripSince, now: _now)),
+                  style: t.textTheme.titleMedium),
+            ),
             const SizedBox(width: 16),
             const Icon(Icons.route_outlined, size: 18),
             const SizedBox(width: 6),
-            Text('${(_metres / 1000).toStringAsFixed(1)} km driven', style: t.textTheme.titleMedium),
+            ValueListenableBuilder(
+              valueListenable: _gpsTicks,
+              builder: (_, _, _) =>
+                  Text('${(_metres / 1000).toStringAsFixed(1)} km driven', style: t.textTheme.titleMedium),
+            ),
           ]),
         ],
         const SizedBox(height: 12),
@@ -779,7 +807,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           FilledButton(
             key: const ValueKey('trip-back-to-requests'),
             onPressed: _leave,
-            child: Text(_closeIn == null ? 'Back to requests' : 'Back to requests ($_closeIn)'),
+            child: ValueListenableBuilder(
+              valueListenable: _clockTicks,
+              builder: (_, _, _) => Text(_closeIn == null ? 'Back to requests' : 'Back to requests ($_closeIn)'),
+            ),
           ),
       ]),
     );

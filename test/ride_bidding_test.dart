@@ -184,6 +184,68 @@ void main() {
       return rides;
     }
 
+    testWidgets('the clock and a moving driver rebuild the countdown and the map, not the sheet', (tester) async {
+      tester.view.physicalSize = const Size(400, 860);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final rows = StreamController<RideRequest>();
+      addTearDown(rows.close);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            rideRepositoryProvider.overrideWithValue(_FakeRides()),
+            rideStreamProvider.overrideWith((ref, id) => rows.stream),
+            riderPositionStreamProvider.overrideWithValue(() => const Stream.empty()),
+          ],
+          child: const MaterialApp(home: RideTrackingScreen(requestId: 'r1')),
+        ),
+      );
+      rows.add(ride());
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      var panels = 0, ticks = 0;
+      debugOnRebuildDirtyWidget = (e, _) {
+        if (e.widget.runtimeType.toString() == '_RidePanel') panels++;
+        if (e.widget is SearchHeader) ticks++;
+      };
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+      await tester.pump(const Duration(seconds: 3));
+      expect(panels, 0);
+      expect(ticks, greaterThanOrEqualTo(1), reason: 'the countdown still runs');
+
+      RideRequest moving(double lat) => RideRequest({
+        ...ride(status: 'accepted', partner: _other, partnerName: 'Ali').raw,
+        'partner_live_lat': lat,
+        'partner_live_lng': 101.7,
+        'updated_at': '2026-10-18T10:00:${(lat * 1000).round() % 60}Z',
+      });
+      rows.add(moving(3.10));
+      await tester.pump();
+      await tester.pump();
+      panels = 0;
+      rows.add(moving(3.101));
+      await tester.pump();
+      await tester.pump();
+      expect(panels, 0, reason: 'a new position alone leaves the sheet as it is');
+      rows.add(RideRequest({...moving(3.101).raw, 'status': 'arrived'}));
+      await tester.pump();
+      await tester.pump();
+      expect(panels, greaterThan(0), reason: 'anything else still reaches it');
+      expect(find.text(RideStatus.arrived.label), findsWidgets);
+      debugOnRebuildDirtyWidget = null;
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 5));
+    });
+
+    test('a ride is steady while only its live positions move', () {
+      final a = ride(status: 'accepted').raw;
+      SteadyRide s(Map<String, dynamic> raw) => SteadyRide(AsyncData(RideRequest(raw)));
+      expect(s({...a, 'partner_live_lat': 3.1}), s({...a, 'partner_live_lat': 3.2, 'updated_at': 'x'}));
+      expect(s({...a, 'user_live_lat': 3.1}), s({...a, 'user_live_lat': 3.2}));
+      expect(s(a) == s({...a, 'status': 'arrived'}), isFalse);
+      expect(s(a) == SteadyRide(const AsyncLoading()), isFalse);
+    });
+
     testWidgets('accepts a standing offer by partner and amount', (tester) async {
       final rides = await pump(tester, ride(offered: 25, partner: _other, partnerName: 'Ali'));
       expect(find.text('Ali'), findsOneWidget);

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/coin_transfer.dart';
 import '../providers.dart';
 import 'realtime_backup.dart';
+import 'realtime_hub.dart';
 import 'wallet_once.dart';
 
 /// GET.coin transfers between accounts (Expo `transferRequestsStore`). The
@@ -99,7 +100,7 @@ class CoinTransferRepository {
     required Future<List<CoinTransferRequest>> Function() initial,
   }) {
     final controller = StreamController<CoinTransferRequest>();
-    RealtimeChannel? channel;
+    RealtimeListen? channel;
     RealtimeBackup? backup;
     controller.onListen = () {
       void emit(Map<String, dynamic> row) {
@@ -114,16 +115,12 @@ class CoinTransferRepository {
 
       backup = RealtimeBackup(reread, healthy: realtimeBackupSlowHealthyInterval);
 
-      channel = _db
-          .channel('coin_transfer_${column}_${value}_${DateTime.now().microsecondsSinceEpoch}')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: _table,
-            filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: column, value: value),
-            callback: (p) => emit(p.newRecord),
-          )
-          .subscribe(backup!.onStatus);
+      channel = RealtimeHub.of(_db).listen(
+        table: _table,
+        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: column, value: value),
+        onChange: (p) => emit(p.newRecord),
+        onStatus: backup!.onStatus,
+      );
       initial().then((list) {
         for (final r in list) {
           if (!controller.isClosed) controller.add(r);
@@ -132,7 +129,7 @@ class CoinTransferRepository {
     };
     controller.onCancel = () async {
       backup?.dispose();
-      if (channel != null) await _db.removeChannel(channel!);
+      channel?.cancel();
       await controller.close();
     };
     return controller.stream;

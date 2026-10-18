@@ -537,6 +537,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     setWebFavicon(widget.branding?.branding.appIconUrl);
     _branding!.latest.addListener(_brandingChanged);
     unawaited(_branding!.start());
+    // The branding row live, on the app's live-settings channel rather than
+    // a channel of its own (PERF-52).
+    ref.listenManual(liveTablesProvider.select((r) => r['app_branding'] ?? 0), (_, _) {
+      unawaited(_branding?.resync());
+    });
     _startSessionTracking();
     _startAlwaysOn();
     _startMessagingPresence();

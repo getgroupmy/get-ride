@@ -1,3 +1,5 @@
+import 'dart:math' show Random;
+
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/data/realtime_backup.dart';
@@ -236,5 +238,83 @@ void main() {
       expect(reads, 1);
       backup.dispose();
     });
+  });
+
+  test('jitter moves a wait by up to the fraction either way', () {
+    const base = Duration(minutes: 20);
+    expect(realtimeBackupJittered(base, fraction: 0.2, unit: 0), const Duration(minutes: 16));
+    expect(realtimeBackupJittered(base, fraction: 0.2, unit: 0.5), base);
+    expect(realtimeBackupJittered(base, fraction: 0.2, unit: 1), const Duration(minutes: 24));
+    expect(realtimeBackupJittered(base, fraction: 0, unit: 0), base);
+  });
+
+  test('safety net: slow jittered reads while healthy, the fast pace only while down', () {
+    fakeAsync((clock) {
+      var reads = 0;
+      final backup = RealtimeBackup(
+        () => reads++,
+        every: const Duration(minutes: 2),
+        healthy: realtimeBackupSafetyNetInterval,
+        healthyJitter: realtimeBackupSafetyNetJitter,
+        onOpen: false,
+        resumeWhileOpen: false,
+        random: Random(7),
+      );
+      backup.onStatus(RealtimeSubscribeStatus.subscribed);
+      clock.flushMicrotasks();
+      expect(reads, 0);
+      // Never sooner than 16 minutes, always by 24.
+      clock.elapse(const Duration(minutes: 16) - const Duration(seconds: 1));
+      expect(reads, 0);
+      clock.elapse(const Duration(minutes: 8) + const Duration(seconds: 1));
+      expect(reads, 1);
+      // A few hours healthy: about three reads an hour, never more than one
+      // per 16 minutes nor fewer than one per 24.
+      clock.elapse(const Duration(hours: 4));
+      expect(reads, inInclusiveRange(1 + 10, 1 + 15));
+
+      // Drops: a read at once, then every 2 minutes while down.
+      final before = reads;
+      backup.onStatus(RealtimeSubscribeStatus.channelError);
+      clock.flushMicrotasks();
+      expect(reads, before + 1);
+      clock.elapse(const Duration(minutes: 6));
+      expect(reads, before + 4);
+
+      // Reopens: a read, then back to the safety net.
+      backup.onStatus(RealtimeSubscribeStatus.subscribed);
+      clock.flushMicrotasks();
+      expect(reads, before + 5);
+      clock.elapse(const Duration(minutes: 15));
+      expect(reads, before + 5);
+      backup.dispose();
+      clock.elapse(const Duration(hours: 1));
+      expect(reads, before + 5);
+    });
+  });
+
+  test('phones started together spread their safety-net reads', () {
+    final waits = <Duration>{};
+    for (var seed = 0; seed < 20; seed++) {
+      fakeAsync((clock) {
+        Duration? first;
+        final backup = RealtimeBackup(
+          () => first ??= clock.elapsed,
+          every: const Duration(minutes: 2),
+          healthy: realtimeBackupSafetyNetInterval,
+          healthyJitter: realtimeBackupSafetyNetJitter,
+          onOpen: false,
+          random: Random(seed),
+        );
+        backup.onStatus(RealtimeSubscribeStatus.subscribed);
+        clock.elapse(const Duration(minutes: 25));
+        expect(first, isNotNull);
+        expect(first!, greaterThanOrEqualTo(const Duration(minutes: 16)));
+        expect(first!, lessThanOrEqualTo(const Duration(minutes: 24)));
+        waits.add(first!);
+        backup.dispose();
+      });
+    }
+    expect(waits.length, greaterThan(10));
   });
 }

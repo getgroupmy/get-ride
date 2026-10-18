@@ -137,7 +137,16 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   final _declinedFare = <String, double>{};
   final _raisedFrom = <String, double>{};
   Timer? _alertTick;
-  late DateTime _alertNow = ref.read(requestAlertClockProvider)();
+
+  /// The alert's one-second clock: only the countdowns read it, so a tick
+  /// rebuilds them and not the screen.
+  late final ValueNotifier<DateTime> _alertClock;
+  DateTime get _alertNow => _alertClock.value;
+  set _alertNow(DateTime v) => _alertClock.value = v;
+
+  /// The driver's position for the map: a fix that changes nothing on the
+  /// queue moves the map alone ([_onFix]).
+  final _meFix = ValueNotifier<LatLng?>(null);
 
   /// Back online from before this screen was built (a trip just ended):
   /// what is already waiting goes in the list, only new requests pop up.
@@ -147,6 +156,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   void dispose() {
     _fixes?.cancel();
     _alertTick?.cancel();
+    _alertClock.dispose();
+    _meFix.dispose();
     // Online stays as the driver left it (driverOnlineProvider): a trip
     // that ends comes back to the Drive screen still online.
     super.dispose();
@@ -217,7 +228,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
 
   void _onAlertTick() {
     if (!mounted || _alertAt == null) return;
-    setState(() => _alertNow = ref.read(requestAlertClockProvider)());
+    _alertNow = ref.read(requestAlertClockProvider)();
     // Left alone, the request drops back into the queue below.
     if (requestAlertExpired(_alertNow.difference(_alertAt!))) _dismissAlert(skipped: false);
   }
@@ -242,6 +253,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   @override
   void initState() {
     super.initState();
+    _alertClock = ValueNotifier(ref.read(requestAlertClockProvider)());
     _onlineState = ref.read(driverOnlineProvider.notifier);
     _online = _restoredOnline = ref.read(driverOnlineProvider);
     _resume();
@@ -255,9 +267,26 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       );
     }
     // Live: the map follows the driver as they move.
-    _fixes = ref.read(driverPositionStreamProvider)().listen((p) {
-      if (mounted) setState(() => _me = p);
-    }, onError: (_) {});
+    _fixes = ref.read(driverPositionStreamProvider)().listen(_onFix, onError: (_) {});
+  }
+
+  /// A GPS fix: the map, the request sheet and the cards' distances follow
+  /// it on their own; the screen rebuilds only when the queue itself moves
+  /// with it (which requests, in what order, with a distance or not).
+  void _onFix(LatLng p) {
+    if (!mounted) return;
+    final before = _queueView();
+    _me = p;
+    if (_queueView() != before) setState(() {});
+    _meFix.value = p;
+  }
+
+  /// The queue as the driver's position decides it.
+  String _queueView() {
+    if (!_online) return '';
+    final open = ref.read(openRequestsProvider).value ?? const <RideRequest>[];
+    final order = destinationOrder(_pinned(open), toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo);
+    return [for (final r in order) '${r.id}${_distanceTo(r) == null ? '' : '+'}'].join('|');
   }
 
   Future<void> _locate() async {
@@ -723,11 +752,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   ref.watch(partnerTypeEntriesProvider).value ?? const [],
                 );
                 final wide = MediaQuery.sizeOf(context).width >= 900;
-                final map = DriverHomeMap(
-                  key: const ValueKey('driver-home-map'),
-                  me: _me,
-                  requests: _online ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const [],
-                  onSelect: (r) => setState(() => _focusId = r.id),
+                final pins = _online ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const <RideRequest>[];
+                final map = ValueListenableBuilder(
+                  valueListenable: _meFix,
+                  builder: (_, _, _) => DriverHomeMap(
+                    key: const ValueKey('driver-home-map'),
+                    me: _me,
+                    requests: pins,
+                    onSelect: (r) => setState(() => _focusId = r.id),
+                  ),
                 );
                 final head = <Widget>[
                     // Online first, above the service types.
@@ -944,7 +977,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           ),
           child: r == null
               ? const SizedBox.shrink(key: ValueKey('no-request-sheet'))
-              : RideRequestSheet(
+              : ListenableBuilder(
+                  key: ValueKey('request-sheet-slot-${r.id}'),
+                  listenable: Listenable.merge([_alertClock, _meFix]),
+                  builder: (_, _) => RideRequestSheet(
                   key: ValueKey('request-sheet-${r.id}'),
                   request: r,
                   shown: _alertNow.difference(_alertAt ?? _alertNow),
@@ -961,6 +997,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   onOffer: canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)
                       ? (amount) => _offer(r, partner, preset: amount)
                       : null,
+                ),
                 ),
         ),
       ),
@@ -1138,7 +1175,6 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Widget _requestCard(RideRequest r, Partner partner) {
     final t = Theme.of(context);
     final destinationOn = _destinationOn;
-    final away = _distanceTo(r);
     final focused = r.id == _focusId;
     return Card(
       key: ValueKey('queue-${r.id}'),
@@ -1180,12 +1216,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               ]),
             ),
           const SizedBox(height: 4),
-          Text([
-            if (away != null) '${formatDistance(away)} away',
-            '${formatDistance(r.distanceKm)} trip',
-            r.paymentMode,
-            '${r.passengers} pax',
-          ].join(' · '), style: t.textTheme.bodySmall),
+          // How far away moves with every fix: this line alone rebuilds.
+          ValueListenableBuilder(
+            valueListenable: _meFix,
+            builder: (_, _, _) {
+              final away = _distanceTo(r);
+              return Text([
+                if (away != null) '${formatDistance(away)} away',
+                '${formatDistance(r.distanceKm)} trip',
+                r.paymentMode,
+                '${r.passengers} pax',
+              ].join(' · '), style: t.textTheme.bodySmall);
+            },
+          ),
           const SizedBox(height: 8),
           Row(children: [
             Icon(Icons.trip_origin, size: 16, color: Colors.green.shade700),
@@ -1249,8 +1292,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// how far and how long to the pickup, the trip, and a countdown.
   Widget _alertCard(RideRequest r, Partner partner) {
     final t = Theme.of(context);
-    final shown = _alertNow.difference(_alertAt ?? _alertNow);
-    final away = _distanceTo(r);
+    Duration shown() => _alertNow.difference(_alertAt ?? _alertNow);
     return Card(
       key: const ValueKey('request-alert'),
       color: t.colorScheme.primaryContainer,
@@ -1272,10 +1314,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 style: t.textTheme.titleMedium,
               ),
             ),
-            Text('${requestAlertSecondsLeft(shown)} s', style: t.textTheme.labelLarge),
+            ValueListenableBuilder(
+              valueListenable: _alertClock,
+              builder: (_, _, _) => Text('${requestAlertSecondsLeft(shown())} s', style: t.textTheme.labelLarge),
+            ),
           ]),
           const SizedBox(height: 6),
-          LinearProgressIndicator(key: const ValueKey('request-alert-countdown'), value: requestAlertProgress(shown)),
+          ValueListenableBuilder(
+            valueListenable: _alertClock,
+            builder: (_, _, _) => LinearProgressIndicator(
+              key: const ValueKey('request-alert-countdown'),
+              value: requestAlertProgress(shown()),
+            ),
+          ),
           MyRideForYouLabel(request: r, me: _myId, clock: ref.read(requestAlertClockProvider)),
           DirectBookingLabel(request: r, me: _myId),
           if (_raisedFrom[r.id] case final was?)
@@ -1318,13 +1369,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                       ),
                   ],
                 ),
-                Text(
-                  [
-                    if (r.riderRating != null) '★ ${r.riderRating!.toStringAsFixed(1)}',
-                    if (away != null) '${formatDistance(away)} away',
-                    if (away != null) '~${pickupMinutes(away)} min',
-                  ].join(' · '),
-                  style: t.textTheme.bodySmall,
+                ValueListenableBuilder(
+                  valueListenable: _meFix,
+                  builder: (_, _, _) {
+                    final away = _distanceTo(r);
+                    return Text(
+                      [
+                        if (r.riderRating != null) '★ ${r.riderRating!.toStringAsFixed(1)}',
+                        if (away != null) '${formatDistance(away)} away',
+                        if (away != null) '~${pickupMinutes(away)} min',
+                      ].join(' · '),
+                      style: t.textTheme.bodySmall,
+                    );
+                  },
                 ),
               ]),
             ),
