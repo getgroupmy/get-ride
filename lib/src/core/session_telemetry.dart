@@ -83,6 +83,108 @@ class DeviceSnapshot {
   final String? appBuild;
 }
 
+/// What the phone tells about itself and its connection at the moment of an
+/// event, without asking for any permission: make and model, the network
+/// and the SIM's operator, the local IP. Anything the platform keeps back
+/// stays null.
+class DeviceDetails {
+  const DeviceDetails({
+    this.osVersion,
+    this.brand,
+    this.manufacturer,
+    this.modelName,
+    this.modelId,
+    this.isPhysical,
+    this.networkType,
+    this.isConnected,
+    this.internetReachable,
+    this.networkOperator,
+    this.mobileOperator,
+    this.mobileCountryCode,
+    this.mobileNetworkCode,
+    this.cellularGeneration,
+    this.localIp,
+    this.extra = const {},
+  });
+
+  /// "Android 14 (SDK 34)", "iOS 18.1": better than the platform's own string.
+  final String? osVersion;
+  final String? brand;
+  final String? manufacturer;
+
+  /// "Galaxy A54" / "iPhone"; [modelId] the hardware code ("SM-A546E", "iPhone15,2").
+  final String? modelName;
+  final String? modelId;
+  final bool? isPhysical;
+
+  /// `wifi`, `cellular`, `ethernet`, `vpn`, `bluetooth`, `other` or `none`.
+  final String? networkType;
+  final bool? isConnected;
+  final bool? internetReachable;
+
+  /// The network the phone is on ("CelcomDigi"), and the SIM's operator.
+  final String? networkOperator;
+  final String? mobileOperator;
+  final String? mobileCountryCode;
+  final String? mobileNetworkCode;
+
+  /// `2G` … `5G`, where the platform tells it.
+  final String? cellularGeneration;
+  final String? localIp;
+
+  /// Everything else worth keeping (SIM country, metered, screen, locale…).
+  final Map<String, Object?> extra;
+
+  /// The `user_sessions` columns these fill (nulls left out).
+  Map<String, Object?> get columns => {
+    'device_brand': ?brand,
+    'device_manufacturer': ?manufacturer,
+    'device_model_name': ?modelName,
+    'device_model_id': ?modelId,
+    'is_physical_device': ?isPhysical,
+    'network_type': ?networkType,
+    'connection_type': ?networkType,
+    'network_is_connected': ?isConnected,
+    'network_is_internet_reachable': ?internetReachable,
+    'network_operator': ?networkOperator,
+    'mobile_operator_name': ?mobileOperator,
+    'mobile_country_code': ?mobileCountryCode,
+    'mobile_network_code': ?mobileNetworkCode,
+    'cellular_generation': ?cellularGeneration,
+    'ip_address': ?localIp,
+  };
+}
+
+/// "50219" (an operator code) as its country and network codes; null for
+/// anything shorter. Pure.
+(String, String)? splitOperatorCode(String? code) {
+  final c = code?.trim() ?? '';
+  if (c.length < 5 || int.tryParse(c) == null) return null;
+  return (c.substring(0, 3), c.substring(3));
+}
+
+/// iOS's radio technology (`CTRadioAccessTechnologyLTE`) as a generation;
+/// null for anything else. Pure.
+String? cellularGenerationOf(String? radio) {
+  final r = (radio ?? '').replaceFirst('CTRadioAccessTechnology', '');
+  if (r.isEmpty) return null;
+  if (r.startsWith('NR')) return '5G';
+  if (r == 'LTE') return '4G';
+  if (const {'WCDMA', 'HSDPA', 'HSUPA', 'eHRPD', 'CDMAEVDORev0', 'CDMAEVDORevA', 'CDMAEVDORevB'}.contains(r)) {
+    return '3G';
+  }
+  if (const {'GPRS', 'Edge', 'CDMA1x'}.contains(r)) return '2G';
+  return null;
+}
+
+/// A name the platform gives, or null for a blank or placeholder ("--",
+/// what iOS 16+ answers for the carrier). Pure.
+String? cleanDeviceText(Object? v) {
+  if (v is! String) return null;
+  final s = v.trim();
+  return s.isEmpty || s == '--' || s == 'unknown' || s == '65535' ? null : s;
+}
+
 /// The `user_sessions` row for one event.
 Map<String, dynamic> sessionRow({
   required String id,
@@ -92,14 +194,16 @@ Map<String, dynamic> sessionRow({
   String? userId,
   String? phone,
   IpInfo? ip,
+  DeviceDetails? details,
 }) => {
+  ...?details?.columns,
   'id': id,
   'user_id': userId,
   'phone': phone,
   'event_type': event.value,
   'device_id': deviceId,
   'os_name': device.osName,
-  'os_version': device.osVersion,
+  'os_version': details?.osVersion ?? device.osVersion,
   'device_type': device.deviceType,
   'app_version': device.appVersion,
   'app_build_version': ?device.appBuild,
@@ -110,7 +214,7 @@ Map<String, dynamic> sessionRow({
   'ip_city': ip?.city,
   'ip_region': ip?.region,
   'ip_country': ip?.country,
-  'raw': {'client': 'flutter', 'platform': device.osName},
+  'raw': {'client': 'flutter', 'platform': device.osName, 'app_build': ?device.appBuild, ...?details?.extra},
 };
 
 /// The `user_location_history` row for one fix.

@@ -17,6 +17,7 @@ class MainActivity : FlutterActivity() {
 
     private var classicPrinter: ClassicPrinterChannel? = null
     private var appIcon: AppIconChannel? = null
+    private var networkInfo: NetworkInfoChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -24,6 +25,8 @@ class MainActivity : FlutterActivity() {
         classicPrinter = ClassicPrinterChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         // Settings → App icon and the admin's seasonal icons (lib/src/core/app_icons.dart).
         appIcon = AppIconChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        // The connection and SIM for Admin → Session History (lib/src/data/device_details.dart).
+        networkInfo = NetworkInfoChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         // Settings → Permissions (lib/src/data/permission_probe.dart): where
         // the camera, microphone and Bluetooth stand, without asking.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "get_ride/permissions").setMethodCallHandler { call, result ->

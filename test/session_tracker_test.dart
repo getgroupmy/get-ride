@@ -186,4 +186,87 @@ void main() {
       expect(sink.sessions.map((r) => r['event_type']), ['login', 'login']);
     });
   });
+
+  group('device details', () {
+    test('operator codes, radio generations and placeholders', () {
+      expect(splitOperatorCode('50219'), ('502', '19'));
+      expect(splitOperatorCode('310260'), ('310', '260'));
+      expect(splitOperatorCode(''), isNull);
+      expect(cellularGenerationOf('CTRadioAccessTechnologyLTE'), '4G');
+      expect(cellularGenerationOf('CTRadioAccessTechnologyNRNSA'), '5G');
+      expect(cellularGenerationOf('CTRadioAccessTechnologyHSDPA'), '3G');
+      expect(cellularGenerationOf('CTRadioAccessTechnologyEdge'), '2G');
+      expect(cellularGenerationOf(null), isNull);
+      expect(cleanDeviceText('--'), isNull, reason: "iOS 16+'s carrier placeholder");
+      expect(cleanDeviceText(' Maxis '), 'Maxis');
+    });
+
+    test('fill the session columns and the OS version, extras in raw', () {
+      final row = sessionRow(
+        id: 's1',
+        event: SessionEvent.login,
+        deviceId: 'd1',
+        device: _device,
+        details: const DeviceDetails(
+          osVersion: 'Android 14 (SDK 34)',
+          brand: 'samsung',
+          manufacturer: 'samsung',
+          modelName: 'SM-A546E',
+          modelId: 'a54x',
+          isPhysical: true,
+          networkType: 'cellular',
+          isConnected: true,
+          internetReachable: true,
+          networkOperator: 'CelcomDigi',
+          mobileOperator: 'CelcomDigi',
+          mobileCountryCode: '502',
+          mobileNetworkCode: '13',
+          localIp: '10.0.0.5',
+          extra: {'net_simCountry': 'my'},
+        ),
+      );
+      expect(row['os_version'], 'Android 14 (SDK 34)');
+      expect(row['device_brand'], 'samsung');
+      expect(row['device_model_name'], 'SM-A546E');
+      expect(row['network_type'], 'cellular');
+      expect(row['connection_type'], 'cellular');
+      expect(row['mobile_operator_name'], 'CelcomDigi');
+      expect(row['mobile_country_code'], '502');
+      expect(row['ip_address'], '10.0.0.5');
+      expect(row['app_version'], '1.4.3');
+      expect((row['raw'] as Map)['net_simCountry'], 'my');
+      expect(row.containsKey('cellular_generation'), isFalse, reason: 'nulls left out');
+    });
+
+    test('the launch row carries the signed-in account and the details', () async {
+      final sink = _Sink();
+      final tracker = SessionTracker(
+        sink: sink,
+        location: _Location(),
+        deviceId: () async => 'd1',
+        device: _device,
+        details: () async => const DeviceDetails(modelName: 'Pixel 8', networkType: 'wifi'),
+      );
+      addTearDown(tracker.dispose);
+      await tracker.launched(userId: 'u1', phone: '+601');
+      expect(sink.sessions.single['user_id'], 'u1');
+      expect(sink.sessions.single['device_model_name'], 'Pixel 8');
+      expect(sink.sessions.single['network_type'], 'wifi');
+    });
+
+    test('details that fail leave the row as it was', () async {
+      final sink = _Sink();
+      final tracker = SessionTracker(
+        sink: sink,
+        location: _Location(),
+        deviceId: () async => 'd1',
+        device: _device,
+        details: () async => throw Exception('no plugin'),
+      );
+      addTearDown(tracker.dispose);
+      await tracker.launched();
+      expect(sink.sessions.single['device_id'], 'd1');
+      expect(sink.sessions.single.containsKey('device_model_name'), isFalse);
+    });
+  });
 }

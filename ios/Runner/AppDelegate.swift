@@ -2,7 +2,9 @@ import AVFoundation
 import CallKit
 import CoreBluetooth
 import CoreLocation
+import CoreTelephony
 import Flutter
+import Network
 import PushKit
 import UIKit
 import flutter_callkit_incoming
@@ -56,6 +58,9 @@ import flutter_callkit_incoming
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AppIconPlugin") {
       AppIconPlugin.register(with: registrar)
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NetworkInfoPlugin") {
+      NetworkInfoPlugin.register(with: registrar)
     }
   }
 
@@ -332,4 +337,57 @@ final class FallbackCallReporter: NSObject, CXProviderDelegate {
   }
 
   func providerDidReset(_ provider: CXProvider) {}
+}
+
+/// The connection and SIM for the session rows Admin → Session History shows
+/// (lib/src/data/device_details.dart): the path type from NWPathMonitor and
+/// the radio technology from CoreTelephony. Nothing here needs a permission
+/// or asks the user anything; iOS 16+ answers placeholders for the carrier,
+/// which the app leaves out.
+final class NetworkInfoPlugin: NSObject, FlutterPlugin {
+  private let monitor = NWPathMonitor()
+  private var path: NWPath?
+
+  override init() {
+    super.init()
+    monitor.pathUpdateHandler = { [weak self] p in self?.path = p }
+    monitor.start(queue: DispatchQueue(label: "get_ride.network"))
+  }
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "get_ride/network", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(NetworkInfoPlugin(), channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "info" else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    var out: [String: Any] = [:]
+    let p = path ?? monitor.currentPath
+    let up = p.status == .satisfied
+    out["connected"] = up
+    out["internet"] = up
+    out["type"] = !up ? "none"
+      : p.usesInterfaceType(.wifi) ? "wifi"
+      : p.usesInterfaceType(.cellular) ? "cellular"
+      : p.usesInterfaceType(.wiredEthernet) ? "ethernet"
+      : "other"
+    out["metered"] = p.isExpensive
+    let info = CTTelephonyNetworkInfo()
+    if let radio = info.serviceCurrentRadioAccessTechnology?.values.first {
+      out["radio"] = radio
+    }
+    if let carriers = info.serviceSubscriberCellularProviders {
+      out["simSlots"] = carriers.count
+      if let c = carriers.values.first(where: { $0.mobileCountryCode != nil }) ?? carriers.values.first {
+        out["carrierName"] = c.carrierName
+        out["mcc"] = c.mobileCountryCode
+        out["mnc"] = c.mobileNetworkCode
+        out["simCountry"] = c.isoCountryCode
+      }
+    }
+    result(out)
+  }
 }
