@@ -320,6 +320,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _demo?.dispose();
     _tick?.cancel();
     _clock.dispose();
+    _footerHeight.dispose();
     _position?.cancel();
     super.dispose();
   }
@@ -459,6 +460,18 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   }
 
   bool _closed = false;
+
+  /// The pinned footer (Cancel request), measured so the offers' dim stops
+  /// above it.
+  final _footerKey = GlobalKey();
+  final _footerHeight = ValueNotifier<double>(0);
+
+  void _measureFooter() {
+    if (!mounted) return;
+    final box = _footerKey.currentContext?.findRenderObject() as RenderBox?;
+    final h = box != null && box.attached && box.hasSize ? box.size.height : 0.0;
+    if ((h - _footerHeight.value).abs() > 0.5) _footerHeight.value = h;
+  }
 
   /// The ride was cancelled before this screen opened (set in initState).
   bool _openedCancelled = false;
@@ -776,6 +789,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             left: formatCountdown(left),
             progress: (left.inMilliseconds / AppConfig.requestExpiry.inMilliseconds).clamp(0.0, 1.0),
             waitHint: waitHint,
+            offers: (_visibleOffer == null ? 0 : 1) + (_demo?.shown.length ?? 0),
           );
         },
       ),
@@ -936,6 +950,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureFooter());
     // Settings → Show location to your driver, switched mid-ride.
     ref.listen(showLocationToDriverProvider, (_, _) => _syncLocationShare());
     ref.listen(rideLocationOffProvider, (_, _) => _syncLocationShare());
@@ -1217,14 +1232,26 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             if (_sosOn(r)) Positioned.fill(child: RideSosFab(onPressed: () => _sos(r))),
           ]),
           sheet: content,
-          footer: _rideFooter(r),
+          footer: switch (_rideFooter(r)) {
+            final f? => KeyedSubtree(key: _footerKey, child: f),
+            null => null,
+          },
         ),
       ),
+      // Down to the pinned footer, so its Cancel request stays the one way
+      // to cancel while offers are up.
       if (r.status == RideStatus.open)
         Positioned.fill(
           child: ValueListenableBuilder(
-            valueListenable: _clock,
-            builder: (_, _, _) => ChooseDriverOverlay(offers: _offerViews(), onCancel: _busy ? null : _cancelSearch),
+            valueListenable: _footerHeight,
+            builder: (_, footer, child) => Padding(
+              padding: EdgeInsets.only(bottom: footer),
+              child: MediaQuery.removePadding(context: context, removeBottom: footer > 0, child: child!),
+            ),
+            child: ValueListenableBuilder(
+              valueListenable: _clock,
+              builder: (_, _, _) => ChooseDriverOverlay(offers: _offerViews()),
+            ),
           ),
         ),
     ]);

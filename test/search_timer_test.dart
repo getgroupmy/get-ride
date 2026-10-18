@@ -16,7 +16,10 @@ import 'package:get_ride/src/features/ride/ride_tracking_screen.dart';
 import 'package:get_ride/src/features/ride/searching_parts.dart' show SearchRouteCard;
 import 'package:get_ride/src/features/wallet/wallet_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/data/geo_service.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -141,6 +144,7 @@ void main() {
             walletTxProvider.overrideWith((ref) async => const []),
             autoAcceptProvider.overrideWith(() => _Preset(autoAccept)),
             displaySettingsBlobProvider.overrideWith((ref) async => display),
+            geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
             demoSettingsProvider.overrideWithValue(DemoSettings(riderOffers: demoOffers)),
           ],
           child: MaterialApp.router(routerConfig: router),
@@ -255,6 +259,40 @@ void main() {
       expect(find.text('DEMO'), findsNothing);
       expect(find.byKey(const ValueKey('demo-viewers')), findsNothing);
       expect(rides.cancelled, isEmpty);
+    });
+
+    testWidgets("a driver's real offer: its minutes away, the difference from the fare, one Cancel request", (tester) async {
+      await pump(tester);
+      tester.view.physicalSize = const Size(390, 844);
+      rows.add(open(age: const Duration(seconds: 20), extra: const {
+        'pickup_lat': 3.1579,
+        'pickup_lng': 101.7116,
+        'offered_fare': 24,
+        'partner_id': 'p1',
+        'partner_name': 'Ali',
+        'partner_vehicle': 'Proton Saga',
+        'partner_plate': 'VBX 4321',
+        'partner_rating': 4.8,
+        'partner_accept_lat': 3.1579,
+        'partner_accept_lng': 101.7296,
+      }));
+      await tester.pump();
+      for (var i = 0; i < 3; i++) {
+        await tick(tester, const Duration(seconds: 1));
+      }
+      expect(find.textContaining('Ali', findRichText: true), findsOneWidget);
+      expect(find.text('+RM4.00'), findsOneWidget);
+      // How far the driver is, from where they made the offer.
+      expect(find.textContaining(RegExp(r'^\d+ min$')), findsOneWidget);
+      expect(find.text('1 offer — choose a driver'), findsOneWidget);
+      expect(find.text('Searching further'), findsNothing);
+      expect(find.byKey(const ValueKey('overlay-cancel-request')), findsNothing);
+      final cancel = find.byKey(const ValueKey('cancel-request'));
+      expect(cancel, findsOneWidget);
+      // Not under the offers' dim: it still takes a tap.
+      await tester.tap(cancel);
+      await tick(tester, const Duration(seconds: 1));
+      expect(find.byKey(const ValueKey('cancel-skip')), findsOneWidget);
     });
 
     testWidgets('a fixed-fare request has nothing to raise, confirm or auto-accept, and is never asked to raise',

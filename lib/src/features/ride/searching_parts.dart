@@ -78,7 +78,12 @@ class SearchHeader extends StatelessWidget {
     required this.progress,
     this.bidding = true,
     this.waitHint,
+    this.offers = 0,
   });
+
+  /// Offers waiting for the rider: the headline says so instead of
+  /// cycling through the search's stages.
+  final int offers;
   final Duration elapsed;
   final String left;
   final double progress;
@@ -94,7 +99,13 @@ class SearchHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final stage = searchStageAt(elapsed, bidding: bidding);
+    final stage = offers > 0
+        ? (
+            id: 'offers',
+            title: offers == 1 ? '1 offer — choose a driver' : '$offers offers — choose a driver',
+            subtitle: 'Accept the one that suits you',
+          )
+        : searchStageAt(elapsed, bidding: bidding);
     final ink = t.colorScheme.onSurface;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -980,12 +991,12 @@ class _SideOpenClip extends CustomClipper<Rect> {
   bool shouldReclip(covariant _SideOpenClip old) => false;
 }
 
-/// inDrive's "Choose a driver": the screen dims, and the offers stack under
-/// a Cancel request pill and the title.
+/// inDrive's "Choose a driver": the screen over the sheet's foot dims, and
+/// the offers stack under the title. Cancel request stays the sheet's own,
+/// pinned under the dim (one way to cancel, not two).
 class ChooseDriverOverlay extends StatelessWidget {
-  const ChooseDriverOverlay({super.key, required this.offers, required this.onCancel});
+  const ChooseDriverOverlay({super.key, required this.offers});
   final List<SearchOfferView> offers;
-  final VoidCallback? onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -1005,37 +1016,6 @@ class ChooseDriverOverlay extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Material(
-                      color: const Color(0xFFFCE4E6),
-                      shape: const StadiumBorder(),
-                      child: InkWell(
-                        key: const ValueKey('overlay-cancel-request'),
-                        customBorder: const StadiumBorder(),
-                        onTap: onCancel,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.close, color: Colors.black87),
-                              SizedBox(width: 10),
-                              Flexible(
-                                child: Text(
-                                  'Cancel request',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w500),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                   Text(
                     'Choose a driver',
                     style: t.textTheme.headlineMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
