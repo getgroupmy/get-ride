@@ -1203,6 +1203,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           ]),
           sheet: content,
           footer: _rideFooter(r),
+          // A phone on its side: SOS and the map's buttons beside the sheet.
+          besideWhenShort: true,
         ),
       ),
       if (r.status == RideStatus.open)

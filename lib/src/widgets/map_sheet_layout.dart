@@ -28,8 +28,14 @@ class MapBottomInset extends InheritedWidget {
     required this.cap,
     this.pull,
     this.rest = 0,
+    this.beside,
     required super.child,
   });
+
+  /// Where the map's buttons stand when the sheet is narrowed to leave room
+  /// beside it ([MapSheetLayout.besideWhenShort]): this far up from the
+  /// bottom, beside the sheet rather than above it. Null: above the sheet.
+  final double? beside;
 
   /// The inset with the sheet all the way down: the part of the map above
   /// it is where a pin the map keeps centred stands ([focusOffset]).
@@ -53,6 +59,8 @@ class MapBottomInset extends InheritedWidget {
   static Widget listen(BuildContext context, Widget Function(double inset) build) {
     final m = context.dependOnInheritedWidgetOfExactType<MapBottomInset>();
     if (m == null) return build(0);
+    final beside = m.beside;
+    if (beside != null) return build(beside);
     return ListenableBuilder(
       listenable: Listenable.merge([m.extent, ?m.pull]),
       builder: (_, _) => build(m.value),
@@ -71,7 +79,7 @@ class MapBottomInset extends InheritedWidget {
 
   @override
   bool updateShouldNotify(MapBottomInset old) =>
-      old.extent != extent || old.pull != pull || old.height != height || old.cap != cap || old.rest != rest;
+      old.extent != extent || old.pull != pull || old.height != height || old.cap != cap || old.rest != rest || old.beside != beside;
 }
 
 /// Moves the point a map keeps its pin on ([MapBottomInset.focusOffset])
@@ -105,6 +113,18 @@ const mapSheetDragDevices = {
   PointerDeviceKind.unknown,
 };
 
+/// Less of the map than this showing above a sheet at rest leaves no room
+/// for the map's buttons (SOS, recenter) over it: a phone on its side.
+const mapShortStrip = 110.0;
+
+/// The sheet's width when the buttons stand beside it, and the room kept
+/// for them each side (past the notch), on a screen at least
+/// [besideMinWidth] wide; never narrower than [besideMinSheetWidth].
+const besideSheetWidth = 560.0;
+const besideButtonRoom = 80.0;
+const besideMinWidth = 600.0;
+const besideMinSheetWidth = 320.0;
+
 class MapSheetLayout extends StatefulWidget {
   const MapSheetLayout({
     super.key,
@@ -121,6 +141,7 @@ class MapSheetLayout extends StatefulWidget {
     this.aboveFooter,
     this.front,
     this.padBottom = true,
+    this.besideWhenShort = false,
   });
 
   final Widget map;
@@ -166,6 +187,13 @@ class MapSheetLayout extends StatefulWidget {
   /// so a last button (Done, a countdown) is never under the system's swipe.
   /// Off where the page lifts its sheet itself (home's navLift).
   final bool padBottom;
+
+  /// On a screen too short for the map's buttons above the sheet at rest
+  /// (under [mapShortStrip] of map showing, a phone on its side), the sheet
+  /// is narrowed to [besideSheetWidth] in the middle and the buttons (SOS,
+  /// recenter, map type) stand beside it instead, whole and reachable,
+  /// where the screen is wide enough for both ([besideMinWidth]).
+  final bool besideWhenShort;
 
   /// How near [max] counts as up, for [aboveFooter].
   static const upSlack = 0.05;
@@ -523,6 +551,16 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     child: child,
   );
 
+  /// How far in from each side the sheet stands ([MapSheetLayout.besideWhenShort]):
+  /// 0 where the buttons fit above it, or the screen is too narrow.
+  double _besideRoom(double w, double h) {
+    if (!widget.besideWhenShort || h <= 0 || h * (1 - _min) >= mapShortStrip || w < besideMinWidth) return 0;
+    final pad = MediaQuery.paddingOf(context);
+    final room = besideButtonRoom + math.max(pad.left, pad.right);
+    final sheet = math.min(besideSheetWidth, w - 2 * room);
+    return sheet < besideMinSheetWidth ? 0 : (w - sheet) / 2;
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -531,6 +569,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
         final h = c.maxHeight;
         _h = h;
         _bottomPad = MediaQuery.viewPaddingOf(context).bottom;
+        final side = _besideRoom(c.maxWidth, h);
         return Stack(
           children: [
             Positioned.fill(
@@ -540,10 +579,16 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 cap: h * (1 - widget.mapMinFraction),
                 pull: _bounce,
                 rest: math.min(h * _min, h * (1 - widget.mapMinFraction)),
+                beside: side > 0 ? _bottomPad : null,
                 child: widget.map,
               ),
             ),
-            AnimatedBuilder(
+            Positioned(
+              left: side,
+              right: side,
+              top: 0,
+              bottom: 0,
+              child: AnimatedBuilder(
               animation: Listenable.merge([_hide, _extent]),
               // Always wrapped, so showing it again doesn't rebuild the sheet.
               builder: (_, child) => IgnorePointer(
@@ -687,6 +732,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
               ),
             ),
             ),
+            ),
             if (widget.front != null)
               Positioned.fill(
                 child: MapBottomInset(
@@ -700,8 +746,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
               ),
             if (widget.footer != null)
               Positioned(
-                left: 0,
-                right: 0,
+                left: side,
+                right: side,
                 bottom: 0,
                 child: _SizeReporter(
                   onSize: (size) {
@@ -723,8 +769,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
               ),
             if (widget.aboveFooter != null)
               Positioned(
-                left: 0,
-                right: 0,
+                left: side,
+                right: side,
                 bottom: _footerHeight,
                 child: _SizeReporter(
                   onSize: (size) {

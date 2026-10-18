@@ -641,6 +641,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
               : MapSheetLayout(
                   map: map,
                   sheet: panel,
+                  // A phone on its side: SOS and recenter beside the sheet.
+                  besideWhenShort: true,
                   footer: primary == null
                       ? null
                       : Material(
