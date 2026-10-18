@@ -61,6 +61,7 @@ import 'package:get_ride/src/features/auth/passkey_sign_in_button.dart';
 import 'package:get_ride/src/features/profile/emergency_contacts_screen.dart';
 import 'package:get_ride/src/features/auth/set_pin_screen.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
+import 'package:get_ride/src/features/partner/driver_wallet_pills.dart' show creditFloorProvider;
 import 'package:get_ride/src/features/partner/partner_screen.dart';
 import 'package:get_ride/src/features/profile/referral_screen.dart';
 import 'package:get_ride/src/features/settings/change_pin_screen.dart';
@@ -2403,6 +2404,117 @@ void main() {
         },
       ),
     );
+  });
+
+  group('requested', () {
+    for (final (tab, name) in [('commission-tab-settings', 'settings'), ('commission-tab-tiers', 'tiers')]) {
+      testWidgets(
+        'commission $name',
+        (t) => _shot(t, 'req_commission_$name', route: '/admin/commission', admin: true, act: (t) => tapKey(t, tab)),
+      );
+      testWidgets(
+        'commission $name large text',
+        (t) => _shot(
+          t,
+          'req_commission_${name}_xl',
+          route: '/admin/commission',
+          admin: true,
+          textScale: 1.35,
+          act: (t) => tapKey(t, tab),
+        ),
+      );
+    }
+    testWidgets(
+      'commission add rate',
+      (t) => _shot(
+        t,
+        'req_commission_add',
+        route: '/admin/commission',
+        admin: true,
+        act: (t) => tapKey(t, 'commission-add'),
+      ),
+    );
+    testWidgets(
+      'commission add rate SE',
+      (t) => _shot(
+        t,
+        'req_commission_add_se',
+        route: '/admin/commission',
+        admin: true,
+        se: true,
+        act: (t) => tapKey(t, 'commission-add'),
+      ),
+    );
+    testWidgets(
+      'commission add rate country picker',
+      (t) => _shot(
+        t,
+        'req_commission_add_country',
+        route: '/admin/commission',
+        admin: true,
+        keyboard: true,
+        act: (t) async {
+          await tapKey(t, 'commission-add');
+          await t.tap(find.byType(SearchableDropdownFormField<String>).first, warnIfMissed: false);
+          await _settle(t);
+        },
+      ),
+    );
+    testWidgets(
+      'statements layout',
+      (t) => _shot(
+        t,
+        'req_statements_layout',
+        route: '/admin/m/partner-statements',
+        admin: true,
+        act: (t) => tapKey(t, 'statements-tab-layout'),
+      ),
+    );
+    testWidgets(
+      'statements layout SE',
+      (t) => _shot(
+        t,
+        'req_statements_layout_se',
+        route: '/admin/m/partner-statements',
+        admin: true,
+        se: true,
+        act: (t) => tapKey(t, 'statements-tab-layout'),
+      ),
+    );
+    testWidgets(
+      'statements layout dark',
+      (t) => _shot(
+        t,
+        'req_statements_layout_dark',
+        route: '/admin/m/partner-statements',
+        admin: true,
+        dark: true,
+        act: (t) => tapKey(t, 'statements-tab-layout'),
+      ),
+    );
+    for (final (name, floor, dark, scale) in [
+      ('ok', 10.0, false, 1.0),
+      ('blocked', 50.0, false, 1.0),
+      ('blocked_dark', 50.0, true, 1.0),
+      ('blocked_xl', 50.0, false, 1.35),
+    ]) {
+      testWidgets(
+        'drive credit $name',
+        (t) => _shot(
+          t,
+          'req_drive_credit_$name',
+          route: '/drive',
+          partner: _approved,
+          dark: dark,
+          textScale: scale,
+          overrides: [creditFloorProvider.overrideWith((ref) async => floor)],
+          act: (t) async {
+            await t.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -600), warnIfMissed: false);
+            await _settle(t);
+          },
+        ),
+      );
+    }
   });
 
   group('partner', () {
