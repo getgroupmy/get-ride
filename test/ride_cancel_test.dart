@@ -325,7 +325,10 @@ void main() {
       expect(find.text('Your driver cancelled this ride: Passenger no-show'), findsOneWidget);
       expect(find.text('Call'), findsNothing, reason: 'no contact once cancelled');
       expect(find.byKey(const ValueKey('ride-message')), findsNothing);
-      expect(find.text('Closing in 5s'), findsOneWidget);
+      // It stays for the rider to leave (web tester #131, WCAG 2.2.1).
+      expect(find.textContaining('Closing in'), findsNothing);
+      await tester.pump(const Duration(seconds: 10));
+      expect(find.byKey(const ValueKey('ride-book-again')), findsOneWidget);
     });
 
     testWidgets('a ride opened already cancelled stays, with the reason and Book another ride', (tester) async {

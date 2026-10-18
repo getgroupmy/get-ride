@@ -717,6 +717,16 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         ? _ll(r.dropLat, r.dropLng)
         : _ll(r.pickupLat, r.pickupLng);
 
+    // The sheet rests no lower than the passenger card, and where the screen
+    // has the room, than Navigate and Cancel ride too (at 390x844 they sat
+    // under the pinned bar, web tester #133): a soft rest line on the last
+    // of them shown.
+    final restAt = driverMayCancel(r.status)
+        ? _RestAt.cancel
+        : r.status.isOngoing && target != null
+        ? _RestAt.navigate
+        : null;
+    Widget restLine(bool here, Widget child) => here ? MapSheetRestLine(soft: true, child: child) : child;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -731,9 +741,9 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         Card(
           child: Column(children: [
             // The sheet never rests lower than the passenger and their
-            // Message and Call (a phone on its side showed only the title).
-            MapSheetRestLine(
-              child: ListTile(
+            // Message and Call (a phone on its side showed only the title),
+            // nor, below them, Navigate and Cancel ride ([restAt]).
+            MapSheetRestLine(child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
               title: Text(r.passengerName),
               // Two pieces with their own icons and no separator, each kept
@@ -743,14 +753,26 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.person_outline, size: 16),
                     const SizedBox(width: 4),
+                    // Shrunk to fit beside Message and Call on a narrow phone,
+                    // never broken mid-word ("1 passenge / r" at 320).
                     Flexible(
-                      child: Text('${r.passengers} passenger${r.passengers == 1 ? '' : 's'}', key: const ValueKey('trip-pax')),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text('${r.passengers} passenger${r.passengers == 1 ? '' : 's'}', key: const ValueKey('trip-pax')),
+                      ),
                     ),
                   ]),
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.payments_outlined, size: 16),
                     const SizedBox(width: 4),
-                    Flexible(child: Text(r.paymentMode, key: const ValueKey('trip-payment'))),
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(r.paymentMode, key: const ValueKey('trip-payment')),
+                      ),
+                    ),
                   ]),
                 ]),
                 if (r.isForOthers) Text('Booked by ${r.riderName ?? 'another rider'}'),
@@ -816,11 +838,12 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         const SizedBox(height: 12),
         const _VoiceProtectionPill(),
         if (r.status.isOngoing && target != null)
-          OutlinedButton.icon(
+          restLine(restAt == _RestAt.navigate, OutlinedButton.icon(
+            key: const ValueKey('trip-navigate'),
             icon: const Icon(Icons.navigation_outlined),
             label: const Text('Navigate'),
             onPressed: () => _navigate(target),
-          ),
+          )),
         // Asking another partner to take over, or meeting the car (0199).
         TripHandoverPanel(ride: r),
         const SizedBox(height: 8),
@@ -829,11 +852,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           BleHandshakeBadge(rideId: r.id, status: r.status.db, driver: true),
         if (!primaryInFooter) ?_primaryAction(r),
         if (driverMayCancel(r.status))
-          BusyButton.text(
+          restLine(restAt == _RestAt.cancel, BusyButton.text(
             key: const ValueKey('trip-cancel'),
             onPressed: _busy ? null : () => _cancel(r),
             child: const Text('Cancel ride'),
-          ),
+          )),
         if (r.status == RideStatus.completed) _CollectCard(ride: r),
         if (r.status == RideStatus.completed)
           OutlinedButton.icon(
@@ -1264,3 +1287,7 @@ class _DriverCancelDialogState extends State<_DriverCancelDialog> {
     );
   }
 }
+
+/// Which of the trip panel's buttons the sheet rests on, where it has the
+/// room ([MapSheetRestLine.soft]).
+enum _RestAt { navigate, cancel }

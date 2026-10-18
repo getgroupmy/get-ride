@@ -238,15 +238,24 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// down to its [MapSheetRestLine] shows above the footer (a phone on its
   /// side is 393 high, where a share of it showed only the handle).
   double get _min {
-    if (_restLine <= 0 || _h <= 0) return widget.min;
+    if ((_restLine <= 0 && _softRestLine <= 0) || _h <= 0) return widget.min;
     final under = widget.footer != null ? _footerHeight : (widget.padBottom ? _bottomPad : 0);
-    return math.min(widget.max, math.max(widget.min, (_restLine + under) / _h));
+    var rest = widget.min;
+    if (_restLine > 0) rest = math.max(rest, (_restLine + under) / _h);
+    // A soft line only where the sheet still leaves a good part of the map.
+    final soft = (_softRestLine + under) / _h;
+    if (_softRestLine > 0 && soft <= MapSheetRestLine.softMax) rest = math.max(rest, soft);
+    return math.min(widget.max, rest);
   }
 
+  /// A [MapSheetRestLine.soft] line: honoured only while it leaves the map
+  /// enough room ([MapSheetRestLine.softMax]).
+  double _softRestLine = 0;
+
   /// [MapSheetRestLine] measured [bottom]: the sheet rises to it if it rests lower.
-  void _setRestLine(double bottom) {
-    if ((bottom - _restLine).abs() <= 0.5 || !mounted) return;
-    setState(() => _restLine = bottom);
+  void _setRestLine(double bottom, {bool soft = false}) {
+    if ((bottom - (soft ? _softRestLine : _restLine)).abs() <= 0.5 || !mounted) return;
+    setState(() => soft ? _softRestLine = bottom : _restLine = bottom);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_sheet.isAttached || widget.locked) return;
       if (_sheet.size < _min - 0.001) _sheet.jumpTo(_min);
@@ -866,9 +875,17 @@ class MapSheetUpOnly extends StatelessWidget {
 /// own lowest still applies where it is higher, and its highest caps it.
 /// Nothing outside a [MapSheetLayout].
 class MapSheetRestLine extends StatefulWidget {
-  const MapSheetRestLine({super.key, required this.child});
+  const MapSheetRestLine({super.key, required this.child, this.soft = false});
 
   final Widget child;
+
+  /// Rested on only while the sheet then covers at most [softMax] of the
+  /// screen (a trip's Navigate and Cancel ride under the passenger's row):
+  /// on a short screen the sheet keeps to the other line instead. One soft
+  /// line and one other at a time.
+  final bool soft;
+
+  static const softMax = 0.75;
 
   @override
   State<MapSheetRestLine> createState() => _MapSheetRestLineState();
@@ -884,7 +901,7 @@ class _MapSheetRestLineState extends State<MapSheetRestLine> {
     // Below the sheet's top as it lies at rest, whatever slide or scroll it
     // is under now.
     final bottom = box.localToGlobal(Offset(0, box.size.height), ancestor: top).dy + layout._contentLift;
-    layout._setRestLine(bottom);
+    layout._setRestLine(bottom, soft: widget.soft);
   }
 
   @override
