@@ -34,6 +34,7 @@ import '../partner/vehicle_picker.dart';
 import 'hail_destination_screen.dart';
 import 'landscape_stage.dart';
 import 'meter_leave_launcher.dart';
+import '../../data/meter_trip_sync.dart';
 import 'meter_providers.dart';
 import '../../widgets/page_style_host.dart';
 
@@ -174,6 +175,15 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     ref.read(meterTripsStoreProvider).load().then((t) {
       if (mounted) setState(() => _trips = t);
     });
+    // Hires ended with no signal go to GET.ride now (0219).
+    Future.microtask(_sendTrips);
+  }
+
+  /// Sends the hires GET.ride hasn't had yet; a failure waits for the next try.
+  Future<void> _sendTrips() async {
+    try {
+      await ref.read(meterTripSyncProvider).sendPending();
+    } catch (_) {}
   }
 
   @override
@@ -636,6 +646,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     );
     final store = ref.read(meterTripsStoreProvider);
     final trips = await store.save(trip);
+    unawaited(_sendTrips());
     if (!mounted) return;
     setState(() {
       _trips = trips;
