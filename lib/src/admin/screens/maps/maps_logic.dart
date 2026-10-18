@@ -293,16 +293,16 @@ const mapGoogleApis = [
 
 /// How Google's place search answers (migration 0207).
 const mapGoogleSearches = [
-  ('text', 'Text Search (results when typing stops)'),
-  ('autocomplete', 'Autocomplete (suggestions as the rider types)'),
+  ('text', 'Text Search (when typing stops)'),
+  ('autocomplete', 'Autocomplete (as the rider types)'),
 ];
 
 /// How place search results are shown and checked (migration 0207).
 const mapSmartAddresses = [
-  ('normal', 'Normal: the provider\'s results as given'),
-  ('a', 'A: clean two-line results (name, then area)'),
-  ('b', 'B: places first, saved and recent on top'),
-  ('c', 'C: Google checks a picked street address'),
+  ('normal', 'Normal: as the provider gives'),
+  ('a', 'A: two-line results'),
+  ('b', 'B: places first'),
+  ('c', 'C: Google checks addresses'),
   ('all', 'Combination: A, B and C'),
 ];
 
@@ -315,13 +315,13 @@ const mapAmazonRegions = [
 /// Google's satellite map: imagery only, or with roads and names (migration 0211).
 const mapGoogleSatellites = [
   ('satellite', 'Satellite (imagery only)'),
-  ('hybrid', 'Hybrid (satellite with roads and names)'),
+  ('hybrid', 'Hybrid (with roads)'),
 ];
 
 /// Google's light map: the roadmap, or terrain (migration 0211). Dark mode keeps the night roadmap.
 const mapGoogleMaps = [
   ('roadmap', 'Roadmap'),
-  ('terrain', 'Terrain (hills and relief)'),
+  ('terrain', 'Terrain (relief)'),
 ];
 
 /// The whole setting.

@@ -41,6 +41,11 @@ import 'road_info_layers.dart';
 /// left, so the buttons only keep a margin rather than clearing it.
 const mapAttributionClearance = 12.0;
 
+/// The height the map credit takes in the bottom-left corner (its ⓘ button
+/// and padding), above the safe area: what floats in that corner starts
+/// above it.
+const mapCreditHeight = 48.0;
+
 /// Height of the box a pickup/drop-off pin is drawn in, standing on its point.
 const rideMapPinBox = 40.0;
 

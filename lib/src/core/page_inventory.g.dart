@@ -283,6 +283,8 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:book-for.show-book-for-sheet', SurfaceKind.sheet, 'Book for · Book for sheet', 'lib/src/features/ride/book_for_sheet.dart'),
   SurfaceEntry('sheet:chat-photo.choose-photo-source', SurfaceKind.sheet, 'Chat photo · Choose photo source', 'lib/src/widgets/chat_photo.dart'),
   SurfaceEntry('sheet:chat-photo.confirm-photo', SurfaceKind.sheet, 'Chat photo · Confirm photo', 'lib/src/widgets/chat_photo.dart'),
+  SurfaceEntry('sheet:common.search-picker-sheet', SurfaceKind.sheet, 'Common · Search picker sheet', 'lib/src/widgets/search_select.dart'),
+  SurfaceEntry('sheet:common.search-select-sheet', SurfaceKind.sheet, 'Common · Search select sheet', 'lib/src/widgets/search_select.dart'),
   SurfaceEntry('sheet:confirm.comments', SurfaceKind.sheet, 'Confirm · Comments', 'lib/src/features/ride/confirm_parts.dart'),
   SurfaceEntry('sheet:confirm.confirm-address-card', SurfaceKind.sheet, 'Confirm · Confirm address card', 'lib/src/features/ride/confirm_parts.dart'),
   SurfaceEntry('sheet:confirm.show-payment-sheet', SurfaceKind.sheet, 'Confirm · Payment sheet', 'lib/src/features/ride/confirm_parts.dart'),

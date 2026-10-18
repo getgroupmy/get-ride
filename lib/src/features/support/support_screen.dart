@@ -34,14 +34,18 @@ class HelpAssistantCard extends StatelessWidget {
       );
 }
 
+/// The chat address of a support chat not yet sent anything (no ticket yet).
+const newSupportTicketId = 'new';
+
 class SupportScreen extends ConsumerWidget {
   const SupportScreen({super.key});
 
+  /// The open ticket's chat, or a new chat whose ticket is only made with its
+  /// first message ([newSupportTicketId]): a tap and back makes no empty ticket.
   Future<void> _open(BuildContext context, WidgetRef ref) async {
     try {
-      final ticket = await ref.read(accountRepositoryProvider).openTicket('Support request');
-      ref.invalidate(ticketsProvider);
-      if (context.mounted) context.go('/account/support/${ticket.id}');
+      final ticket = await ref.read(accountRepositoryProvider).currentTicket();
+      if (context.mounted) context.go('/account/support/${ticket?.id ?? newSupportTicketId}');
     } catch (e) {
       if (context.mounted) showError(context, e);
     }

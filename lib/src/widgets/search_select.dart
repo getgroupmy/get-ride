@@ -141,11 +141,18 @@ class _SearchFieldState<T> extends FormFieldState<T> {
   }
 
   Future<void> pick() async {
-    final chosen = await showAppDialog<_Chosen<T>>(
-      id: 'common.search-select',
-      context: context,
-      builder: (_) => _SearchDialog<T>(items: widget.items, selected: value, title: widget.decoration.labelText),
-    );
+    Widget list(bool sheet) =>
+        _SearchDialog<T>(items: widget.items, selected: value, title: widget.decoration.labelText, sheet: sheet);
+    final chosen = searchAsSheet(context)
+        ? await showAppSheet<_Chosen<T>>(
+            id: 'common.search-select-sheet',
+            context: context,
+            isScrollControlled: true,
+            useSafeArea: true,
+            showDragHandle: true,
+            builder: (_) => list(true),
+          )
+        : await showAppDialog<_Chosen<T>>(id: 'common.search-select', context: context, builder: (_) => list(false));
     if (chosen == null || !mounted) return;
     didChange(chosen.value);
     widget.onChanged?.call(chosen.value);
@@ -158,9 +165,21 @@ class _Chosen<T> {
   final T? value;
 }
 
+/// Below this width the list opens as a full-height sheet rather than a
+/// dialog: a dialog squeezed by the keyboard showed two to four rows.
+const kSearchSheetBelowWidth = 600.0;
+
+/// Whether the picker opens as a full-height sheet (a phone) rather than a
+/// dialog.
+bool searchAsSheet(BuildContext context) => MediaQuery.sizeOf(context).width < kSearchSheetBelowWidth;
+
 class _SearchDialog<T> extends StatefulWidget {
-  const _SearchDialog({required this.items, required this.selected, this.title, this.labels});
+  const _SearchDialog({required this.items, required this.selected, this.title, this.labels, this.sheet = false});
   final List<DropdownMenuItem<T>> items;
+
+  /// Shown in a full-height sheet: the search pinned on top, the list
+  /// taking the rest above the keyboard.
+  final bool sheet;
 
   /// What each item is found by, where its widget doesn't say.
   final List<String>? labels;
@@ -191,94 +210,110 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
     ];
     final searchable = widget.items.length >= kSearchSelectFrom;
     final size = MediaQuery.sizeOf(context);
+    final sheet = widget.sheet;
+    final content = Column(
+      mainAxisSize: sheet ? MainAxisSize.max : MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if ((widget.title ?? '').isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Text(widget.title!, style: t.textTheme.titleMedium),
+          ),
+        if (searchable) Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: TextField(
+            key: const ValueKey('search-select-field'),
+            controller: _query,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Search',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: q.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear',
+                      icon: const Icon(Icons.close),
+                      onPressed: () => setState(_query.clear),
+                    ),
+              border: const OutlineInputBorder(),
+              isDense: true,
+            ),
+            onChanged: (_) => setState(() {}),
+            // Enter takes the only match.
+            onSubmitted: (typed) {
+              final t = typed.trim();
+              final hits = [
+                for (var n = 0; n < widget.items.length; n++)
+                  if (widget.items[n].enabled && (t.isEmpty || searchSelectMatches(labelOf(n), t))) widget.items[n],
+              ];
+              if (hits.length == 1) Navigator.pop(context, _Chosen<T>(hits.single.value));
+            },
+          ),
+        ),
+        if (searchable) Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Text(
+            q.isEmpty ? '${widget.items.length} choices' : '${shown.length} of ${widget.items.length}',
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+        ),
+        (sheet ? Expanded.new : Flexible.new)(
+          child: shown.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text('Nothing matches "$q".', textAlign: TextAlign.center),
+                )
+              : ListView.builder(
+                  shrinkWrap: !sheet,
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  itemCount: shown.length,
+                  itemBuilder: (context, n) {
+                    final i = shown[n];
+                    final on = i.value == widget.selected;
+                    return ListTile(
+                      key: ValueKey('search-select-item-${widget.labels == null ? searchSelectLabel(i) : '${i.value}'}'),
+                      enabled: i.enabled,
+                      selected: on,
+                      title: DefaultTextStyle.merge(
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        child: i.child,
+                      ),
+                      trailing: on ? const Icon(Icons.check) : null,
+                      onTap: () => Navigator.pop(context, _Chosen<T>(i.value)),
+                    );
+                  },
+                ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ),
+        ),
+      ],
+    );
+    if (sheet) {
+      // Nearly the whole screen, less the keyboard: the field stays on top,
+      // the rows scroll in what is left.
+      return LayoutBuilder(
+        builder: (context, box) => SizedBox(
+          height: box.maxHeight.isFinite && box.maxHeight < size.height * 0.9 ? box.maxHeight : size.height * 0.9,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+            child: content,
+          ),
+        ),
+      );
+    }
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: 480, maxHeight: size.height * 0.8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if ((widget.title ?? '').isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: Text(widget.title!, style: t.textTheme.titleMedium),
-              ),
-            if (searchable) Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: TextField(
-                key: const ValueKey('search-select-field'),
-                controller: _query,
-                autofocus: true,
-                textInputAction: TextInputAction.search,
-                decoration: InputDecoration(
-                  hintText: 'Search',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: q.isEmpty
-                      ? null
-                      : IconButton(
-                          tooltip: 'Clear',
-                          icon: const Icon(Icons.close),
-                          onPressed: () => setState(_query.clear),
-                        ),
-                  border: const OutlineInputBorder(),
-                  isDense: true,
-                ),
-                onChanged: (_) => setState(() {}),
-                // Enter takes the only match.
-                onSubmitted: (typed) {
-                  final t = typed.trim();
-                  final hits = [
-                    for (var n = 0; n < widget.items.length; n++)
-                      if (widget.items[n].enabled && (t.isEmpty || searchSelectMatches(labelOf(n), t))) widget.items[n],
-                  ];
-                  if (hits.length == 1) Navigator.pop(context, _Chosen<T>(hits.single.value));
-                },
-              ),
-            ),
-            if (searchable) Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(
-                q.isEmpty ? '${widget.items.length} choices' : '${shown.length} of ${widget.items.length}',
-                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
-              ),
-            ),
-            Flexible(
-              child: shown.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text('Nothing matches "$q".', textAlign: TextAlign.center),
-                    )
-                  : ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: shown.length,
-                      itemBuilder: (context, n) {
-                        final i = shown[n];
-                        final on = i.value == widget.selected;
-                        return ListTile(
-                          key: ValueKey('search-select-item-${widget.labels == null ? searchSelectLabel(i) : '${i.value}'}'),
-                          enabled: i.enabled,
-                          selected: on,
-                          title: DefaultTextStyle.merge(
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            child: i.child,
-                          ),
-                          trailing: on ? const Icon(Icons.check) : null,
-                          onTap: () => Navigator.pop(context, _Chosen<T>(i.value)),
-                        );
-                      },
-                    ),
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-              ),
-            ),
-          ],
-        ),
+        child: content,
       ),
     );
   }
@@ -295,22 +330,30 @@ Future<T?> showSearchPicker<T>(
   required List<SearchChoice<T>> choices,
   T? selected,
 }) async {
-  final chosen = await showAppDialog<_Chosen<T>>(
-    id: 'common.search-picker',
-    context: context,
-    builder: (_) => _SearchDialog<T>(
-      title: title,
-      selected: selected,
-      items: [
-        for (final c in choices)
-          DropdownMenuItem<T>(
-            value: c.value,
-            child: _ChoiceRow(label: c.label, subtitle: c.subtitle, leading: c.leading),
-          ),
-      ],
-      labels: [for (final c in choices) '${c.label} ${c.subtitle ?? ''}'],
-    ),
+  Widget list(bool sheet) => _SearchDialog<T>(
+    sheet: sheet,
+    title: title,
+    selected: selected,
+    items: [
+      for (final c in choices)
+        DropdownMenuItem<T>(
+          value: c.value,
+          child: _ChoiceRow(label: c.label, subtitle: c.subtitle, leading: c.leading),
+        ),
+    ],
+    labels: [for (final c in choices) '${c.label} ${c.subtitle ?? ''}'],
   );
+  // A dialog on a wide screen, a full-height sheet on a phone.
+  final chosen = searchAsSheet(context)
+      ? await showAppSheet<_Chosen<T>>(
+          id: 'common.search-picker-sheet',
+          context: context,
+          isScrollControlled: true,
+          useSafeArea: true,
+          showDragHandle: true,
+          builder: (_) => list(true),
+        )
+      : await showAppDialog<_Chosen<T>>(id: 'common.search-picker', context: context, builder: (_) => list(false));
   return chosen?.value;
 }
 

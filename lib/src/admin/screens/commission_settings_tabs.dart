@@ -217,7 +217,11 @@ class _CommissionSettingsTabState extends ConsumerState<CommissionSettingsTab> {
                             key: const ValueKey('commission-base-add'),
                             controller: _extra,
                             enabled: edit,
-                            decoration: const InputDecoration(labelText: 'Another surcharge name (as on the trip)'),
+                            decoration: const InputDecoration(
+                              labelText: 'Surcharge name',
+                              helperText: 'Another surcharge, named as it appears on the trip',
+                              helperMaxLines: 2,
+                            ),
                           ),
                         ),
                         TextButton(
@@ -323,21 +327,25 @@ class CommissionTiersTab extends ConsumerWidget {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Switch(
-                            key: ValueKey('commission-tier-active-${tier.id}'),
-                            value: tier.active,
-                            onChanged: canEdit
-                                ? (v) async {
-                                    if (await runAdminAction(context,
-                                        () => ref.read(adminRepositoryProvider).saveCommissionTier(tier.copyWith(active: v)))) {
-                                      ref.invalidate(commissionTiersProvider);
+                          Semantics(
+                            label: '${tier.name} active',
+                            child: Switch(
+                              key: ValueKey('commission-tier-active-${tier.id}'),
+                              value: tier.active,
+                              onChanged: canEdit
+                                  ? (v) async {
+                                      if (await runAdminAction(context,
+                                          () => ref.read(adminRepositoryProvider).saveCommissionTier(tier.copyWith(active: v)))) {
+                                        ref.invalidate(commissionTiersProvider);
+                                      }
                                     }
-                                  }
-                                : null,
+                                  : null,
+                            ),
                           ),
                           if (canEdit)
                             BusyIconButton(
                               key: ValueKey('commission-tier-delete-${tier.id}'),
+                              tooltip: 'Delete tier',
                               icon: const Icon(Icons.delete_outline),
                               onPressed: () async {
                                 if (!await confirm(context, 'Delete tier?', tier.name, ok: 'Delete')) return;

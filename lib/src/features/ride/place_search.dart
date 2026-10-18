@@ -846,7 +846,10 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       ListTile(
         leading: const Icon(Icons.my_location),
         title: const Text('Current location'),
-        subtitle: Text(widget.current!.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+        // Bare coordinates until the address arrives say nothing to a rider.
+        subtitle: isCoordinateLabel(widget.current!.address)
+            ? null
+            : Text(widget.current!.address, maxLines: 1, overflow: TextOverflow.ellipsis),
         onTap: () => _done(PlacePick.place(widget.current!)),
       ),
     // Choosing on the map is the pin button in the search field.
@@ -1009,7 +1012,8 @@ Color _fill(ThemeData t) => routeSheetFill(t);
 Color routeSheetFill(ThemeData t) =>
     t.brightness == Brightness.dark ? const Color(0xFF2C2D30) : const Color(0xFFF2F1EE);
 
-/// A 36 round grey button with a dark icon: close, save, edit.
+/// A 36 round grey button with a dark icon: close, save, edit. It is tapped
+/// anywhere in the 48 around it.
 ButtonStyle _roundButton(ThemeData t) => routeSheetRoundButton(t);
 
 /// [_roundButton], for the forms opened from the route sheet.
@@ -1019,5 +1023,5 @@ ButtonStyle routeSheetRoundButton(ThemeData t) => IconButton.styleFrom(
   fixedSize: const Size.square(36),
   minimumSize: const Size.square(36),
   padding: EdgeInsets.zero,
-  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+  tapTargetSize: MaterialTapTargetSize.padded,
 );

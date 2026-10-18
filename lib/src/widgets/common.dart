@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -34,6 +37,7 @@ class CodeField extends StatelessWidget {
     this.onCompleted,
     this.autofocus = true,
     this.label,
+    this.textInputAction,
   });
   final TextEditingController controller;
   final int length;
@@ -42,27 +46,49 @@ class CodeField extends StatelessWidget {
   final String? label;
   final ValueChanged<String>? onCompleted;
 
+  /// The keyboard's action key (Next to the following field of a form).
+  final TextInputAction? textInputAction;
+
   @override
-  Widget build(BuildContext context) => TextField(
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return TextField(
         controller: controller,
         autofocus: autofocus,
         obscureText: obscure,
         keyboardType: TextInputType.number,
+        textInputAction: textInputAction,
         textAlign: TextAlign.center,
         maxLength: length,
         autofillHints: obscure ? null : const [AutofillHints.oneTimeCode],
-        style: Theme.of(context).textTheme.headlineMedium?.copyWith(letterSpacing: 12),
+        style: t.textTheme.headlineMedium?.copyWith(letterSpacing: 12),
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        decoration: InputDecoration(counterText: '', labelText: label),
+        // What goes in, while it is empty: dots for a PIN, words for a code.
+        decoration: InputDecoration(
+          counterText: '',
+          labelText: label,
+          hintText: obscure ? '•' * length : '$length-digit code',
+          hintStyle: obscure
+              ? t.textTheme.headlineMedium?.copyWith(letterSpacing: 12, color: t.colorScheme.outline)
+              : t.textTheme.titleMedium?.copyWith(color: t.colorScheme.outline),
+        ),
         onChanged: (v) {
           if (v.length == length) onCompleted?.call(v);
         },
       );
+  }
 }
 
 /// Human-readable message for an exception from Supabase or elsewhere.
 /// No network: the same words wherever it happens.
-const noConnectionMessage = 'No connection. Check your internet and try again.';
+const noConnectionMessage = "Couldn't reach GET.ride. Check your connection and try again.";
+
+/// The server didn't answer in time.
+const timedOutMessage = 'GET.ride took too long to answer. Try again in a moment.';
+
+/// A fault in the app itself (a type error, an unreadable reply): nothing
+/// the user can act on, so a plain line; the detail stays under "Show details".
+const genericErrorMessage = 'Something went wrong. Try again.';
 
 bool _isNoConnection(Object e) {
   final s = '$e';
@@ -76,6 +102,20 @@ bool _isNoConnection(Object e) {
 
 String errorText(Object e) => _isNoConnection(e) ? noConnectionMessage : _errorText(e);
 
+/// Whether [e] is a programming fault or an unreadable reply rather than a
+/// message meant for people.
+bool _isFault(Object e) =>
+    (e is Error && e is! StateError) || e is FormatException || '$e'.startsWith('Instance of ');
+
+/// The technical text behind [errorText], for "Show details"; null when it
+/// would only repeat the message. In a release build a bare
+/// `Instance of 'minified:…'` says nothing, so it is left out.
+String? errorDetails(Object e) {
+  final raw = '$e';
+  if (kReleaseMode && raw.startsWith('Instance of ')) return null;
+  return raw == errorText(e) ? null : raw;
+}
+
 String _errorText(Object e) => switch (e) {
       AuthException(:final message) => message,
       // A database refusal named by code (GET_CREDIT_TOO_LOW) says it in its hint.
@@ -84,6 +124,8 @@ String _errorText(Object e) => switch (e) {
         hint!.trim(),
       PostgrestException(:final message) => message,
       StateError(:final message) => message,
+      TimeoutException() => timedOutMessage,
+      _ when _isFault(e) => genericErrorMessage,
       _ => e.toString().replaceFirst('Exception: ', ''),
     };
 
@@ -137,16 +179,20 @@ class AsyncView<T> extends StatelessWidget {
           icon: Icons.cloud_off,
           title: 'Something went wrong',
           message: errorText(e),
+          details: errorDetails(e),
           action: onRetry == null ? null : TextButton(onPressed: onRetry, child: const Text('Retry')),
         ),
       );
 }
 
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.icon, required this.title, this.message, this.action});
+  const EmptyState({super.key, required this.icon, required this.title, this.message, this.details, this.action});
   final IconData icon;
   final String title;
   final String? message;
+
+  /// Technical text kept behind "Show details" (an error's raw form).
+  final String? details;
   final Widget? action;
 
   @override
@@ -164,11 +210,89 @@ class EmptyState extends StatelessWidget {
             Text(message!, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
                 textAlign: TextAlign.center),
           ],
+          if (details != null) _ErrorDetails(details!),
           if (action != null) ...[const SizedBox(height: 12), action!],
         ]),
       ),
     );
   }
+}
+
+/// "Show details": the raw error, folded away until asked for.
+class _ErrorDetails extends StatefulWidget {
+  const _ErrorDetails(this.details);
+  final String details;
+
+  @override
+  State<_ErrorDetails> createState() => _ErrorDetailsState();
+}
+
+class _ErrorDetailsState extends State<_ErrorDetails> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      TextButton(
+        key: const ValueKey('error-details'),
+        onPressed: () => setState(() => _open = !_open),
+        child: Text(_open ? 'Hide details' : 'Show details'),
+      ),
+      if (_open)
+        SelectableText(
+          widget.details,
+          textAlign: TextAlign.center,
+          style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+        ),
+    ]);
+  }
+}
+
+/// The status bar's icons for a page with no app bar to set them (a map
+/// under the status bar, the welcome page): dark on a light theme, light on
+/// a dark one, so they stay readable after coming back from other pages.
+class ThemedStatusBar extends StatelessWidget {
+  const ThemedStatusBar({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+    value: Theme.of(context).brightness == Brightness.dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+    child: child,
+  );
+}
+
+/// A [NavigationRail] that scrolls when its destinations don't fit the
+/// height (a tablet on its side, a short window) instead of overflowing,
+/// and fills the height as usual when they do.
+class ScrollableRail extends StatelessWidget {
+  const ScrollableRail({super.key, required this.rail});
+
+  final NavigationRail rail;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => SingleChildScrollView(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: box.maxHeight),
+        child: IntrinsicHeight(child: rail),
+      ),
+    ),
+  );
+}
+
+/// A [SegmentedButton] segment's label on one line, shrunk to fit rather
+/// than broken mid-word at large text or on a narrow phone.
+class SegmentLabel extends StatelessWidget {
+  const SegmentLabel(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) =>
+      FittedBox(fit: BoxFit.scaleDown, child: Text(text, maxLines: 1, softWrap: false));
 }
 
 class BrandMark extends StatelessWidget {

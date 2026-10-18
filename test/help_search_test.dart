@@ -180,6 +180,22 @@ void main() {
         }
       }
     });
+
+    test('a starter (or any title, word for word) is answered, never offered back as a suggestion', () {
+      for (final viewer in ['rider', 'partner', 'admin']) {
+        for (final q in helpStarterQuestions(viewer)) {
+          final r = composeHelpReply(_index.search(q, viewer: viewer), HelpThresholds.device, question: q);
+          expect(r.kind, HelpReplyKind.answer, reason: '$viewer: $q');
+          expect(r.article?.title, q);
+          expect(r.suggestions.where((a) => sameHelpQuestion(a.title, q)), isEmpty, reason: '$viewer: $q');
+        }
+      }
+      // Even when a close runner-up would otherwise make it a choice.
+      const th = HelpThresholds(minimum: 1, confident: 5);
+      final r = composeHelpReply([HelpHit(_a('a'), 6), HelpHit(_a('b'), 5.9)], th, question: 'title b ');
+      expect((r.kind, r.article?.id), (HelpReplyKind.answer, 'b'));
+      expect(r.suggestions.map((a) => a.id), ['a']);
+    });
   });
 
   group('admin helpers', () {

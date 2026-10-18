@@ -63,6 +63,9 @@ class EmergencyContactsScreen extends ConsumerWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialog) => AlertDialog(
+          // Scrolls under a keyboard on a small phone or at large text,
+          // with Cancel and Save kept in view.
+          scrollable: true,
           title: Text(c == null ? 'Add contact' : 'Edit contact'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             if (pick != null)
@@ -96,7 +99,11 @@ class EmergencyContactsScreen extends ConsumerWidget {
                   },
                 ),
               ),
-            TextField(controller: name, decoration: const InputDecoration(labelText: 'Name')),
+            TextField(
+              controller: name,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
             const SizedBox(height: 12),
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               DialCountryButton(
@@ -104,7 +111,7 @@ class EmergencyContactsScreen extends ConsumerWidget {
                 country: country,
                 height: 56,
                 onPressed: () async {
-                  final picked = await showDialCountryPicker(ctx);
+                  final picked = await showDialCountryPicker(ctx, selected: country);
                   if (picked != null) setDialog(() => country = picked);
                 },
               ),
@@ -114,8 +121,10 @@ class EmergencyContactsScreen extends ConsumerWidget {
                   key: const ValueKey('contact-phone'),
                   controller: phone,
                   keyboardType: TextInputType.phone,
+                  textInputAction: TextInputAction.done,
                   inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d\s+()-]'))],
                   decoration: const InputDecoration(labelText: 'Phone'),
+                  onSubmitted: (_) => Navigator.pop(ctx, true),
                 ),
               ),
             ]),
@@ -200,12 +209,13 @@ class EmergencyContactsScreen extends ConsumerWidget {
                           onTap: () => _edit(context, ref, c),
                           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                             IconButton(
+                              tooltip: 'Call ${c.name}',
                               icon: const Icon(Icons.call_outlined),
                               onPressed: () => launchUrl(Uri(scheme: 'tel', path: c.phone)),
                             ),
                             BusyIconButton(
                               key: ValueKey('contact-delete-${c.id}'),
-                              tooltip: 'Delete',
+                              tooltip: 'Delete ${c.name}',
                               icon: const Icon(Icons.delete_outline),
                               onPressed: () => _delete(context, ref, c),
                             ),

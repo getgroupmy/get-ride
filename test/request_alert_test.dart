@@ -10,7 +10,7 @@ import 'package:get_ride/src/data/partner_doc_check.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
 import 'package:get_ride/src/features/partner/partner_screen.dart';
-import 'package:get_ride/src/features/ride/confirm_parts.dart' show confirmAccent;
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show accentFill;
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 
@@ -221,7 +221,7 @@ void main() {
       final accept = tester.widget<FilledButton>(
         find.descendant(of: find.byKey(const ValueKey('request-alert-accept')), matching: find.byType(FilledButton)),
       );
-      expect(accept.style!.backgroundColor!.resolve({}), confirmAccent);
+      expect(accept.style!.backgroundColor!.resolve({}), accentFill);
       expect(countdown(tester), 1);
       await wait(tester, const Duration(seconds: 10));
       expect(countdown(tester), closeTo(25 / 35, 0.01));

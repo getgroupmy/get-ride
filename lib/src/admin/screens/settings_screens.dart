@@ -223,13 +223,14 @@ class AdminCategoryScreen extends ConsumerWidget {
                     : (canEdit ? () => _edit(context, ref, all, e) : null),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                   if (canEdit && c.orderKey != null && !searching) ...[
-                    BusyIconButton(icon: const Icon(Icons.arrow_upward), onPressed: () => _move(context, ref, rows, i, -1)),
-                    BusyIconButton(icon: const Icon(Icons.arrow_downward), onPressed: () => _move(context, ref, rows, i, 1)),
+                    BusyIconButton(tooltip: 'Move up', icon: const Icon(Icons.arrow_upward), onPressed: () => _move(context, ref, rows, i, -1)),
+                    BusyIconButton(tooltip: 'Move down', icon: const Icon(Icons.arrow_downward), onPressed: () => _move(context, ref, rows, i, 1)),
                   ],
                   if (canEdit && c.childCategory != null)
-                    BusyIconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(context, ref, all, e)),
+                    BusyIconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(context, ref, all, e)),
                   if (canEdit)
                     BusyIconButton(
+                      tooltip: 'Delete',
 
                       icon: const Icon(Icons.delete_outline),
                       onPressed: () async {

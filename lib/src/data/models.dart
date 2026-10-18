@@ -314,6 +314,9 @@ class Profile {
   String? get avatarUrl => (raw['avatar_url'] ?? raw['profile_image']) as String?;
   String? get referralCode => raw['referral_code'] as String?;
   int get totalRides => _i(raw['total_rides']) ?? 0;
+  /// The account's rating as a rider, where the server keeps one; null until
+  /// then (the menu says "New" rather than inventing stars).
+  double? get riderRating => _d(raw['rider_rating']);
   String? get status => raw['status'] as String?;
   String? get nationality => raw['nationality'] as String?;
   String? get idNumber => raw['ic'] as String?;

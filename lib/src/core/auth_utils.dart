@@ -194,6 +194,28 @@ String rateLimitMessage(int seconds) {
 /// just typed, or signing in past a PIN lock without changing the PIN.
 enum OtpNext { setPin, resync, unlock }
 
+/// The PIN a `resync` SMS code re-derives the password from, held in memory
+/// only: a pushed page's state reaches the browser's history on web, and a
+/// PIN must not.
+abstract final class ResyncPin {
+  static String? value;
+}
+
+/// Where a sign-in step opened without what it needs goes instead (a reload
+/// of /login/pin or /login/otp, a bare link): the number page when the phone
+/// is missing; the PIN page when a resync lost its PIN ([ResyncPin], gone
+/// with a reload). Null: the step can show.
+String? signInStepRedirect(String location, Map<String, String> query, {String? resyncPin}) {
+  const steps = {'/login/pin', '/login/otp', '/login/closed'};
+  if (!steps.contains(location)) return null;
+  final phone = query['phone'] ?? '';
+  if (phone.trim().isEmpty) return '/login/phone';
+  if (location == '/login/otp' && query['next'] == 'resync' && resyncPin == null) {
+    return Uri(path: '/login/pin', queryParameters: {'phone': phone}).toString();
+  }
+  return null;
+}
+
 OtpNext otpNextFor(String next, {String? pin}) => switch (next) {
   'resync' when pin != null => OtpNext.resync,
   'unlock' => OtpNext.unlock,

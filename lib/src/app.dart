@@ -14,6 +14,7 @@ import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
+import 'core/auth_utils.dart' show ResyncPin, signInStepRedirect;
 import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
@@ -234,6 +235,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       // /q/<kind>/<token> and the app-link form /<kind>/<token>.
       if (isQrLinkLocation(loc)) return null;
       if (!signedIn && !onAuth) return '/login';
+      // A sign-in step reloaded without its phone starts again from the number.
+      if (!signedIn) {
+        final step = signInStepRedirect(loc, state.uri.queryParameters, resyncPin: ResyncPin.value);
+        if (step != null) return step;
+      }
       // A fresh OTP session still has to choose a PIN before entering the app.
       if (signedIn && AuthRepository.pinSetupPending) {
         return loc == '/login/set-pin' ? null : '/login/set-pin';
@@ -255,7 +261,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => OtpScreen(
               phone: s.uri.queryParameters['phone'] ?? '',
               next: s.uri.queryParameters['next'] ?? 'set-pin',
-              pin: s.extra as String?,
+              pin: ResyncPin.value,
               createUser: s.uri.queryParameters['new'] == '1',
             ),
           ),
@@ -585,8 +591,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     );
     if (popup == null) return;
     for (var i = 0; i < 40 && mounted; i++) {
-      final ctx = ref.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+      final router = ref.read(routerProvider);
+      final ctx = router.routerDelegate.navigatorKey.currentContext;
       if (ctx != null && ctx.mounted) {
+        // Diagnostics already say what the popup would.
+        if (onDiagnostics(router)) return;
         await showConnectionStatus(ctx, popup, check);
         return;
       }

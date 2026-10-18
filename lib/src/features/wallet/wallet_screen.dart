@@ -64,47 +64,72 @@ class WalletScreen extends ConsumerWidget {
                           ),
                         );
                       }
-                      return Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          for (final b in balances)
-                            SizedBox(
-                              width: 230,
-                              child: Card(
-                                color: b.walletType == 'get_wallet' ? Colors.black : null,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(16),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        b.label,
-                                        style: t.textTheme.labelLarge?.copyWith(
-                                          color: b.walletType == 'get_wallet' ? Colors.white70 : null,
-                                        ),
+                      // Sized from the room the cards really have (a rail beside them on
+                      // a tablet takes some): all in one row of equal cards when they fit
+                      // at 200 or more each (three across on an iPad); else, on a phone,
+                      // GET.wallet takes the row and the others share the next.
+                      return LayoutBuilder(
+                        builder: (context, box) {
+                          final screen = box.maxWidth;
+                          final n = balances.length;
+                          final across = (screen - 12 * (n - 1)) / n;
+                          double widthOf(String type) => across >= 200
+                              ? across
+                              : type == 'get_wallet' || n == 1
+                              ? screen
+                              : (screen - 12) / 2;
+                          return Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: [
+                              for (final b in balances)
+                                SizedBox(
+                                  width: widthOf(b.walletType),
+                                  child: Card(
+                                    color: b.walletType == 'get_wallet' ? Colors.black : null,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(16),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            b.label,
+                                            style: t.textTheme.labelLarge?.copyWith(
+                                              color: b.walletType == 'get_wallet' ? Colors.white70 : null,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          // One line at any text size: the figure shrinks to fit.
+                                          FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerLeft,
+                                            child: Text(
+                                              b.walletType == 'get_coin'
+                                                  ? '${b.balance.toStringAsFixed(2)} coins'
+                                                  : formatMoney(b.balance, b.currency),
+                                              maxLines: 1,
+                                              style: t.textTheme.headlineSmall?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                                color: b.walletType == 'get_wallet' ? const Color(0xFF2DABE2) : null,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        b.walletType == 'get_coin'
-                                            ? '${b.balance.toStringAsFixed(2)} coins'
-                                            : formatMoney(b.balance, b.currency),
-                                        style: t.textTheme.headlineSmall?.copyWith(
-                                          fontWeight: FontWeight.w800,
-                                          color: b.walletType == 'get_wallet' ? const Color(0xFF2DABE2) : null,
-                                        ),
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                        ],
+                            ],
+                          );
+                        },
                       );
                     },
                   ),
                   const SizedBox(height: 12),
-                  Row(
+                  // The three tiles stay one height when a label wraps.
+                  IntrinsicHeight(
+                    child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Expanded(
                         child: _QuickAction(
@@ -133,6 +158,7 @@ class WalletScreen extends ConsumerWidget {
                         ),
                       ),
                     ],
+                  ),
                   ),
                   const SizedBox(height: 12),
                   Card(
@@ -323,6 +349,7 @@ class _QuickAction extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, size: 28),
               const SizedBox(height: 6),

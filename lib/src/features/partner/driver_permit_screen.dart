@@ -14,6 +14,7 @@ import '../../widgets/common.dart';
 import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
 import 'teksi_pickup.dart';
+import '../../widgets/back_or_go_button.dart';
 import '../../widgets/page_style_host.dart';
 
 /// The signed-in partner's taxi driver permit, read from their uploads.
@@ -61,7 +62,7 @@ class DriverPermitScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Driver permit')),
+      appBar: AppBar(leading: const BackOrGoButton(fallback: '/drive'), title: const Text('Driver permit')),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(driverPermitProvider);

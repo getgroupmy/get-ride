@@ -50,9 +50,9 @@ class _PinScreenState extends ConsumerState<PinScreen> {
         try {
           await auth.sendOtp(widget.phone, createUser: false);
           if (!mounted) return;
+          ResyncPin.value = pin;
           context.push(
             Uri(path: '/login/otp', queryParameters: {'phone': widget.phone, 'next': 'resync'}).toString(),
-            extra: pin,
           );
         } catch (e) {
           if (mounted) showError(context, e);
@@ -102,7 +102,15 @@ class _PinScreenState extends ConsumerState<PinScreen> {
               Text(_error!, style: TextStyle(color: t.colorScheme.error), textAlign: TextAlign.center),
             ],
             const SizedBox(height: 24),
-            BusyButton.filled(onPressed: _busy ? null : _submit, child: const Text('Sign in')),
+            // Usable once all six digits are in.
+            ValueListenableBuilder(
+              valueListenable: _pin,
+              builder: (_, v, _) => BusyButton.filled(
+                key: const ValueKey('pin-sign-in'),
+                onPressed: _busy || !isValidPin(v.text) ? null : _submit,
+                child: const Text('Sign in'),
+              ),
+            ),
             const SizedBox(height: 8),
             if (_locked) ...[
               BusyButton.tonal(

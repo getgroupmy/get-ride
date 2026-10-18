@@ -17,6 +17,9 @@ abstract final class SideMenuStyle {
   static const button = Color(0xFF2DABE2);
   static const onButton = Colors.white;
 
+  /// [button] darkened under white words, so a filled button reads (4.5:1).
+  static const buttonFill = Color(0xFF0C7AB8);
+
   /// A row the admin menu has open.
   static const selected = Color(0xFF333333);
 
@@ -146,9 +149,10 @@ class SideMenuHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Long names (Nur Aisyah binti Rahman) get a second line.
                 Text(
                   name,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: c.text),
                 ),
@@ -167,10 +171,21 @@ class SideMenuHeader extends StatelessWidget {
 /// Five stars and the figure, as under the name.
 class SideMenuStars extends StatelessWidget {
   const SideMenuStars({super.key, required this.rating});
-  final double rating;
+
+  /// Null: no rating yet, said as "New" instead of stars.
+  final double? rating;
 
   @override
-  Widget build(BuildContext context) => Row(
+  Widget build(BuildContext context) {
+    final rating = this.rating;
+    if (rating == null) {
+      return Text(
+        'New',
+        key: const ValueKey('menu-rating-new'),
+        style: TextStyle(fontSize: 14, color: SideMenuColors.of(context).muted),
+      );
+    }
+    return Row(
     key: const ValueKey('menu-rating'),
     children: [
       for (var i = 1; i <= 5; i++)
@@ -183,6 +198,7 @@ class SideMenuStars extends StatelessWidget {
       Text(rating.toStringAsFixed(1), style: TextStyle(fontSize: 14, color: SideMenuColors.of(context).muted)),
     ],
   );
+  }
 }
 
 /// A side menu's frame: the header, a divider, the rows, a divider, then
@@ -230,7 +246,7 @@ class SideMenuFrame extends StatelessWidget {
                     FilledButton(
                       key: buttonKey,
                       style: FilledButton.styleFrom(
-                        backgroundColor: SideMenuStyle.button,
+                        backgroundColor: SideMenuStyle.buttonFill,
                         foregroundColor: SideMenuStyle.onButton,
                         minimumSize: const Size.fromHeight(50),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

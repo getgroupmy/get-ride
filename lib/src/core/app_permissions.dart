@@ -24,7 +24,9 @@ enum AppPermission {
 /// The permissions that apply on [platform] (full-screen calls are
 /// Android's own; the web has only notifications and location).
 List<AppPermission> permissionsFor(TargetPlatform platform, {bool web = false}) {
-  if (web) return const [AppPermission.notifications, AppPermission.location];
+  // The website gets no pushes (the browser keeps its own notification
+  // switch), so only the location it asks for is listed.
+  if (web) return const [AppPermission.location];
   return [
     for (final p in AppPermission.values)
       if (p != AppPermission.fullScreenCalls || platform == TargetPlatform.android) p,

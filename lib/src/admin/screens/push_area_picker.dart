@@ -3,6 +3,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/ride_bidding.dart' show BiddingRegion;
 import '../push_area.dart';
+import '../../widgets/common.dart' show SegmentLabel;
 import '../../widgets/search_select.dart';
 
 /// Picks where a broadcast goes: everywhere, a region from the admin's own
@@ -61,12 +62,15 @@ class PushAreaPicker extends StatelessWidget {
       children: [
         Text('Where', style: t.textTheme.labelLarge),
         const SizedBox(height: 6),
+        // Full width, one line each: no "Every-where".
         SegmentedButton<PushAreaKind>(
           key: const ValueKey('push-area-kind'),
+          expandedInsets: EdgeInsets.zero,
+          showSelectedIcon: false,
           segments: const [
-            ButtonSegment(value: PushAreaKind.everywhere, label: Text('Everywhere'), icon: Icon(Icons.public)),
-            ButtonSegment(value: PushAreaKind.region, label: Text('Region'), icon: Icon(Icons.map_outlined)),
-            ButtonSegment(value: PushAreaKind.radius, label: Text('Radius'), icon: Icon(Icons.radar)),
+            ButtonSegment(value: PushAreaKind.everywhere, label: SegmentLabel('Everywhere'), icon: Icon(Icons.public)),
+            ButtonSegment(value: PushAreaKind.region, label: SegmentLabel('Region'), icon: Icon(Icons.map_outlined)),
+            ButtonSegment(value: PushAreaKind.radius, label: SegmentLabel('Radius'), icon: Icon(Icons.radar)),
           ],
           selected: {area.kind},
           onSelectionChanged: (v) => onChanged(switch (v.first) {

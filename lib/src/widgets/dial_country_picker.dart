@@ -4,12 +4,13 @@ import '../core/dial_countries.dart';
 import 'page_style_host.dart';
 
 /// Opens the country picker (Expo's): search by name, ISO code or dial
-/// code. Null when it was dismissed.
-Future<DialCountry?> showDialCountryPicker(BuildContext context) => showAppSheet<DialCountry>(id: 'dial-country-picker',
+/// code, with [selected] ticked and scrolled to. Null when it was dismissed.
+Future<DialCountry?> showDialCountryPicker(BuildContext context, {DialCountry? selected}) =>
+    showAppSheet<DialCountry>(id: 'dial-country-picker',
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
-  builder: (_) => const DialCountrySheet(),
+  builder: (_) => DialCountrySheet(selected: selected),
 );
 
 /// The button beside a phone field: the country's flag and dial code.
@@ -38,7 +39,10 @@ class DialCountryButton extends StatelessWidget {
 
 /// Pick a country by name, code or dial code.
 class DialCountrySheet extends StatefulWidget {
-  const DialCountrySheet({super.key});
+  const DialCountrySheet({super.key, this.selected});
+
+  /// The country chosen now: ticked, and the list opens on it.
+  final DialCountry? selected;
 
   @override
   State<DialCountrySheet> createState() => _DialCountrySheetState();
@@ -46,10 +50,33 @@ class DialCountrySheet extends StatefulWidget {
 
 class _DialCountrySheetState extends State<DialCountrySheet> {
   String _query = '';
+  ScrollController? _scroll;
+
+  bool _isSelected(DialCountry c) =>
+      widget.selected != null && c.code == widget.selected!.code && c.dialCode == widget.selected!.dialCode;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Opens with the chosen country in view, two rows down from the top; a
+    // row is about 56 px, more at large text.
+    if (_scroll == null) {
+      final i = searchDialCountries('').indexWhere(_isSelected);
+      final row = MediaQuery.textScalerOf(context).scale(56);
+      _scroll = ScrollController(initialScrollOffset: i <= 2 ? 0 : (i - 2) * row);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final list = searchDialCountries(_query);
+    final scheme = Theme.of(context).colorScheme;
     return SafeArea(
       child: SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.75,
@@ -67,15 +94,31 @@ class _DialCountrySheetState extends State<DialCountrySheet> {
               child: list.isEmpty
                   ? const Center(child: Text('No country found'))
                   : ListView.builder(
+                      controller: _query.isEmpty ? _scroll : null,
                       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                       itemCount: list.length,
-                      itemBuilder: (c, i) => ListTile(
-                        key: ValueKey('country-${list[i].code}'),
-                        leading: Text(list[i].flag, style: const TextStyle(fontSize: 24)),
-                        title: Text(list[i].name),
-                        trailing: Text(list[i].dialCode),
-                        onTap: () => Navigator.pop(c, list[i]),
-                      ),
+                      itemBuilder: (c, i) {
+                        final on = _isSelected(list[i]);
+                        return ListTile(
+                          key: ValueKey('country-${list[i].code}'),
+                          selected: on,
+                          selectedTileColor: scheme.secondaryContainer,
+                          selectedColor: scheme.onSecondaryContainer,
+                          leading: Text(list[i].flag, style: const TextStyle(fontSize: 24)),
+                          title: Text(list[i].name),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(list[i].dialCode),
+                              if (on) ...[
+                                const SizedBox(width: 8),
+                                Icon(Icons.check, key: const ValueKey('country-selected'), color: scheme.primary),
+                              ],
+                            ],
+                          ),
+                          onTap: () => Navigator.pop(c, list[i]),
+                        );
+                      },
                     ),
             ),
           ],

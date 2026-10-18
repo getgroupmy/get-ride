@@ -332,7 +332,7 @@ class _OfferFareScreenState extends State<OfferFareScreen> {
                     child: FilledButton(
                       key: const ValueKey('offer-fare-find'),
                       style: FilledButton.styleFrom(
-                        backgroundColor: confirmAccent,
+                        backgroundColor: accentFill,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),

@@ -40,6 +40,10 @@ const _countries = {
   'cambodia',
 };
 
+/// Whether [label] is only "lat, lng" (what a place reads as before its
+/// address has been looked up).
+bool isCoordinateLabel(String label) => RegExp(r'^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$').hasMatch(label);
+
 /// Option A's second line: [p]'s area without its name, house number,
 /// postcode or country ("Kuala Lumpur International Airport (KLIA), 64000
 /// Sepang, Selangor, Malaysia" → "Sepang, Selangor"). The address as it is

@@ -4,13 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config.dart';
 import '../../core/auth_utils.dart';
+import '../../core/dial_countries.dart';
 import '../../core/phone_input.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
-import '../../widgets/search_select.dart';
-
-const _dialCodes = ['+60', '+65', '+62', '+66', '+63', '+84', '+673', '+91', '+44', '+1'];
+import '../../widgets/dial_country_picker.dart';
 
 /// Moves the signed-in account to a new phone number (Expo
 /// `app/change-number.tsx`): the number is checked against other accounts,
@@ -26,7 +25,7 @@ class ChangePhoneScreen extends ConsumerStatefulWidget {
 class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
   final _number = TextEditingController();
   final _code = TextEditingController();
-  String _dial = AppConfig.defaultDialCode;
+  DialCountry _country = dialCountryFor(AppConfig.defaultDialCode);
   String? _sentTo;
   bool _busy = false;
   String? _error;
@@ -39,7 +38,7 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
   }
 
   Future<void> _send() async {
-    final phone = composePhone(_dial, _number.text);
+    final phone = composePhone(_country.dialCode, _number.text);
     final auth = ref.read(authRepositoryProvider);
     final current = ref.read(profileProvider).value?.phone;
     setState(() {
@@ -109,16 +108,17 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(
-                        width: 110,
-                        child: SearchableDropdownFormField<String>(
-                          isExpanded: true,
-                          initialValue: _dial,
-                          items: [
-                            for (final c in {..._dialCodes, _dial}) DropdownMenuItem(value: c, child: Text(c)),
-                          ],
-                          onChanged: _busy ? null : (v) => setState(() => _dial = v ?? _dial),
-                        ),
+                      // The sign-in page's picker: flag, name and code, searchable.
+                      DialCountryButton(
+                        key: const ValueKey('new-phone-country'),
+                        country: _country,
+                        height: 56,
+                        onPressed: _busy
+                            ? null
+                            : () async {
+                                final picked = await showDialCountryPicker(context, selected: _country);
+                                if (picked != null && mounted) setState(() => _country = picked);
+                              },
                       ),
                       const SizedBox(width: 8),
                       Expanded(
