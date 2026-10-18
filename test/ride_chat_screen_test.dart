@@ -102,12 +102,12 @@ class _Rides implements RideRepository {
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
-RideRequest _ride(String status) => RideRequest({
+RideRequest _ride(String status, {String partnerName = 'Ravi'}) => RideRequest({
   'id': 'r1',
   'rider_id': 'rider',
   'partner_id': 'driver',
   'rider_name': 'Aina',
-  'partner_name': 'Ravi',
+  'partner_name': partnerName,
   'partner_phone': '+60123456789',
   'status': status,
   'pickup_name': 'KLCC',
@@ -143,6 +143,7 @@ void main() {
     Brightness brightness = Brightness.light,
     List<Override> extra = const [],
     Size size = const Size(500, 1000),
+    String partnerName = 'Ravi',
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -154,7 +155,7 @@ void main() {
       ProviderScope(
         overrides: [
           rideChatRepositoryProvider.overrideWithValue(repo),
-          rideStreamProvider.overrideWith((ref, id) => Stream.value(_ride(status))),
+          rideStreamProvider.overrideWith((ref, id) => Stream.value(_ride(status, partnerName: partnerName))),
           currentUserIdProvider.overrideWithValue(me),
           tripFixProvider.overrideWithValue(() async => const LatLng(2.93, 101.83)),
           rideChatLauncherProvider.overrideWithValue((uri) async {
@@ -284,6 +285,40 @@ void main() {
         handle.dispose();
       });
     }
+  }
+
+  for (final brightness in Brightness.values) {
+    testWidgets('a long name wraps to two lines in the app bar; Call names them in full (${brightness.name})',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      const name = 'Kabeer Singh Maand A/L Gurdev Singh Maand';
+      await pumpChat(
+        tester,
+        me: 'rider',
+        status: 'accepted',
+        brightness: brightness,
+        size: const Size(412, 915),
+        partnerName: name,
+      );
+      await tester.pump();
+      final title = tester.widget<Text>(find.byKey(const ValueKey('ride-chat-peer')));
+      expect(title.data, name);
+      expect(title.maxLines, 2);
+      expect(title.overflow, TextOverflow.ellipsis);
+      final para = tester.renderObject<RenderParagraph>(find.byKey(const ValueKey('ride-chat-peer')));
+      final lineHeight = para.getFullHeightForCaret(const TextPosition(offset: 0));
+      expect(para.size.height, greaterThan(lineHeight * 1.5), reason: 'the name takes a second line before any ellipsis');
+      // The name, the role and the bar all fit: nothing spills.
+      expect(find.text('Your driver'), findsOneWidget);
+      final bar = tester.getRect(find.byType(AppBar));
+      expect(tester.getRect(find.text('Your driver')).bottom, lessThanOrEqualTo(bar.bottom));
+      expect(tester.getRect(find.byKey(const ValueKey('ride-chat-peer'))).top, greaterThanOrEqualTo(bar.top));
+      // The call button carries the whole name.
+      expect(find.bySemanticsLabel('Call $name'), findsWidgets);
+      expect(find.byTooltip('Call $name'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
   }
 
   testWidgets('the driver gets the driver\'s quick replies and an empty thread says so', (tester) async {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/wallet_history.dart';
@@ -154,4 +155,31 @@ void main() {
     expect(asked, historyMonths(now)[1]);
     expect(find.text('No ride transactions for last month.'), findsOneWidget);
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('the month picker is one labelled button whose semantic tap opens it (${b.name})', (tester) async {
+      final handle = tester.ensureSemantics();
+      final now = DateTime(2026, 5, 20);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            partnerProvider.overrideWith((ref) async => null),
+            walletHistoryProvider.overrideWith((ref, m) async => const []),
+          ],
+          child: MaterialApp(theme: ThemeData(brightness: b), home: WalletHistoryScreen(now: now)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final node = tester.getSemantics(find.byKey(const ValueKey('history-month')));
+      final data = node.getSemanticsData();
+      expect(data.label, 'Month, ${historyMonths(now).first.label}');
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
+      tester.semantics.tap(find.semantics.byLabel('Month, ${historyMonths(now).first.label}'));
+      await tester.pumpAndSettle();
+      expect(find.text('Last Month'), findsWidgets, reason: 'the semantic tap opened the month list');
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+  }
 }

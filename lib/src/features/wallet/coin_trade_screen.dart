@@ -229,6 +229,9 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
             labelText: 'GC to send',
             suffixText: 'GC',
             helperText: 'GET.coin ${formatCoins(q.coinBalance)}',
+            // Readable on the page's own (possibly tinted) background.
+            helperStyle: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
+            helperMaxLines: 2,
             errorText: coins > 0 && to != null && problem != null ? problem : null,
           ),
           onChanged: changed,
@@ -363,6 +366,8 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
               helperText: buy
                   ? 'GET.wallet ${formatMoney(q.walletBalance)} · up to ${formatCoins(max)}'
                   : 'GET.coin ${formatCoins(q.coinBalance)}',
+              helperStyle: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
+              helperMaxLines: 2,
               errorText: showProblem ? problem : null,
             ),
             onChanged: (_) => setState(() {

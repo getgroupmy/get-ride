@@ -48,6 +48,11 @@ Color mutedTextColor(ThemeData t, {Color? background}) {
   return ink;
 }
 
+/// What a [Card] is painted with: the theme's card colour, else Material
+/// 3's tinted surfaceContainerLow. The ground to pass to [mutedTextColor]
+/// for text on a card.
+Color cardSurfaceColor(ThemeData t) => t.cardTheme.color ?? t.colorScheme.surfaceContainerLow;
+
 /// WCAG contrast ratio between two opaque colours (1 to 21).
 double contrastRatio(Color a, Color b) {
   final la = a.computeLuminance(), lb = b.computeLuminance();

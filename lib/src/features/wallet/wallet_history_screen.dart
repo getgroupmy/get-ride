@@ -31,6 +31,7 @@ class WalletHistoryScreen extends ConsumerStatefulWidget {
 class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
   late final _months = historyMonths(widget.now ?? DateTime.now());
   late var _month = _months.first;
+  final _monthMenu = GlobalKey<PopupMenuButtonState<HistoryMonth>>(debugLabel: 'history-month');
   String? _wallet;
   WalletTxCategory? _category;
 
@@ -59,8 +60,18 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
                 children: [
                   Align(
                     alignment: AlignmentDirectional.centerStart,
-                    child: PopupMenuButton<HistoryMonth>(
+                    // One labelled button for screen readers whose tap opens
+                    // the list (the menu's own tooltip node had no action).
+                    child: Semantics(
                       key: const ValueKey('history-month'),
+                      container: true,
+                      button: true,
+                      label: 'Month, ${_month.label}',
+                      hint: 'Choose a month',
+                      onTap: () => _monthMenu.currentState?.showButtonMenu(),
+                      excludeSemantics: true,
+                      child: PopupMenuButton<HistoryMonth>(
+                      key: _monthMenu,
                       tooltip: 'Month',
                       initialValue: _month,
                       onSelected: (m) => setState(() => _month = m),
@@ -77,6 +88,7 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
                           ],
                         ),
                       ),
+                    ),
                     ),
                   ),
                   const SizedBox(height: 4),

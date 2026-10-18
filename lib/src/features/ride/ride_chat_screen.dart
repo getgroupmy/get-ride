@@ -32,6 +32,9 @@ final rideChatLauncherProvider = Provider<Future<bool> Function(Uri)>(
       (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
 );
 
+/// The chat's app bar: a two-line name and the role under it.
+const rideChatToolbarHeight = 76.0;
+
 /// The in-app chat between a ride's rider and its driver, from either side.
 /// It takes messages while the ride is running and is read-only after.
 class RideChatScreen extends ConsumerStatefulWidget {
@@ -233,10 +236,21 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
     final t = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
+        // Room for a long name on two lines ("… A/L …", "… Binti …") over
+        // the role; the Call button's tooltip and label carry it in full.
+        toolbarHeight: rideChatToolbarHeight,
         title: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(peer, key: const ValueKey('ride-chat-peer')),
+            Text(
+              peer,
+              key: const ValueKey('ride-chat-peer'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: t.appBarTheme.titleTextStyle?.copyWith(fontSize: 18, height: 1.2) ??
+                  t.textTheme.titleMedium?.copyWith(height: 1.2),
+            ),
             if (role != null)
               Text(
                 role == RideChatRole.rider ? 'Your driver' : 'Your passenger',
