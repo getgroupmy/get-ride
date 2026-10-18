@@ -42,6 +42,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
     <application
         android:label="GET.ride"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:replace="android:allowBackup,android:fullBackupContent,android:dataExtractionRules"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <!-- singleTask: there is only ever one copy of the app. The call

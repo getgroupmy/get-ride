@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Send and receive GET.ride's SMS from this phone's SIM. -->
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
@@ -19,6 +20,10 @@
 
     <application
         android:label="GET.ride Gateway"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:replace="android:allowBackup,android:fullBackupContent,android:dataExtractionRules"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

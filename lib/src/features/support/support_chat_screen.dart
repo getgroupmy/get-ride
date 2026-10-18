@@ -148,7 +148,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
     }
     if (url != null && url.isNotEmpty && (m.type == 'image' || m.type == 'video')) {
       void open() =>
-          m.type == 'image' ? openPhotoViewer(context, url) : openInApp(context, url, title: 'Video');
+          m.type == 'image' ? openPhotoViewer(context, url) : openStoredFile(context, url, title: 'Video');
       if (m.type == 'image') {
         return GestureDetector(
           key: ValueKey('support-image-${m.id}'),

@@ -500,7 +500,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No ID image uploaded')))
       else
         InkWell(
-          onTap: img.startsWith('http') ? () => openInApp(context, img) : null,
+          onTap: img.startsWith('http') ? () => openStoredFile(context, img) : null,
           child: isPdfUri(img) || !img.startsWith('http')
               ? const SizedBox(height: 120, child: Center(child: Icon(Icons.picture_as_pdf_outlined, size: 48)))
               : ClipRRect(

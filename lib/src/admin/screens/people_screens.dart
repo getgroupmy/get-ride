@@ -363,7 +363,7 @@ class AdminUsersScreen extends ConsumerWidget {
           TextButton.icon(
             icon: const Icon(Icons.badge_outlined),
             label: const Text('Open ID image'),
-            onPressed: () => openInApp(context, u['id_image'] as String),
+            onPressed: () => openStoredFile(context, u['id_image'] as String),
           ),
         _statusPicker(
           context: ctx,
