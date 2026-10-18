@@ -168,9 +168,13 @@ void main() {
       expect(text, contains('pay Aina'));
       expect(text, contains('RM12.50'));
       expect(text, contains(walletAccountNumber(_me)));
-      expect(walletQrShareText(coin: true, userId: _me), contains('Wallet ID: $_me'));
+      // GET.coin codes name the same account number as GET.wallet ones,
+      // never the internal user id.
+      final coin = walletQrShareText(coin: true, userId: _me);
+      expect(coin, contains('Account no. ${walletAccountNumber(_me)}'));
+      expect(coin, isNot(contains(_me)));
       expect(walletQrCaption(coin: false, userId: _me, name: 'aina'), startsWith('AINA\nAccount no.'));
-      expect(walletQrCaption(coin: true, userId: _me), _me);
+      expect(walletQrCaption(coin: true, userId: _me), 'Account no. ${walletAccountNumber(_me)}');
     });
 
     test('the invite card names the inviter when there is one', () {
@@ -284,7 +288,7 @@ void main() {
       expect(seams.shared, hasLength(1));
     });
 
-    testWidgets('the GET.coin code shares in black with the wallet id', (tester) async {
+    testWidgets('the GET.coin code shares in black with the account number', (tester) async {
       _tall(tester);
       final seams = _Seams();
       await tester.pumpWidget(_app(const ReceiveQrScreen(coin: true), seams, brightness: Brightness.dark));
@@ -293,7 +297,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(seams.shared.single.fileName, 'getride-coin-qr.png');
       expect(seams.qrs.single.color, Colors.black);
-      expect(seams.shared.single.text, contains('Wallet ID: $_me'));
+      expect(seams.shared.single.text, contains('Account no. ${walletAccountNumber(_me)}'));
+      expect(seams.shared.single.text, isNot(contains(_me)));
+      expect(seams.qrs.single.data, walletQrPayload(_me), reason: 'the code itself still carries the user id');
       expect(tester.takeException(), isNull);
     });
   });
@@ -378,6 +384,27 @@ void main() {
       expect(find.byKey(const ValueKey('scan-help-sheet')), findsNothing);
       expect(tester.takeException(), isNull);
     });
+
+    for (final brightness in Brightness.values) {
+      testWidgets('with no camera the aiming hint goes, the panel says why ($brightness)', (tester) async {
+        _tall(tester);
+        final scanner = MobileScannerController(autoStart: false);
+        addTearDown(scanner.dispose);
+        await tester.pumpWidget(_app(ScanPayScreen(scanner: scanner), _Seams(), brightness: brightness));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('scan-hint')), findsOneWidget, reason: 'a camera to aim: the hint shows');
+
+        // Web or desktop with no camera: the scanner reports an error.
+        scanner.value = scanner.value.copyWith(
+          error: const MobileScannerException(errorCode: MobileScannerErrorCode.unsupported),
+        );
+        await tester.pump();
+        expect(find.text('Point the camera at a GET.ride QR code.'), findsNothing);
+        expect(find.byKey(const ValueKey('scan-hint-none')), findsOneWidget);
+        expect(find.byKey(const ValueKey('scan-manual')), findsOneWidget, reason: 'the code can still be pasted');
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   group('emergency contacts', () {

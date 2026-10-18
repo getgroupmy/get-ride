@@ -68,13 +68,17 @@ void main() {
     expect(find.textContaining('Valid for'), findsNothing);
   });
 
-  testWidgets('the GET.coin code shows the wallet id and coin balance', (tester) async {
+  testWidgets('the GET.coin code shows the same account number as Receive, and the coin balance', (tester) async {
     tester.view.physicalSize = const Size(1000, 2400);
     addTearDown(tester.view.reset);
     await tester.pumpWidget(_app(const ReceiveQrScreen(coin: true)));
     await tester.pumpAndSettle();
     expect(find.text('Scan to send GET.coin to Aina Hassan'), findsOneWidget);
-    expect(find.text(_me), findsOneWidget);
+    expect(find.text('Account no.'), findsOneWidget);
+    expect(find.text(walletAccountNumber(_me)), findsOneWidget);
+    // The internal user id is not shown to the rider (the code carries it).
+    expect(find.text('Wallet ID'), findsNothing);
+    expect(find.text(_me), findsNothing);
     expect(find.textContaining('GET.coin 300'), findsOneWidget);
     expect(find.byKey(const ValueKey('qr-amount')), findsNothing);
   });
