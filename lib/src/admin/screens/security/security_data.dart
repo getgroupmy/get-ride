@@ -24,6 +24,7 @@ import 'fare_ai_logic.dart';
 import 'fraud_detection.dart';
 import 'ip_access_logic.dart';
 import 'session_logic.dart';
+import '../../../data/function_region.dart';
 
 /// Access across several Expo page keys (comma-separated), plus the
 /// Settings hub grant — e.g. the API key sub-screens are gated on
@@ -81,7 +82,7 @@ class SecurityRepository {
   /// when it is missing or broken (public IP / ISP columns then stay null).
   Future<bool> ipLookupHealthy() async {
     try {
-      final res = await _db.functions.invoke('ip-lookup', body: const <String, dynamic>{});
+      final res = await _db.functions.invokeNearDb('ip-lookup', body: const <String, dynamic>{});
       final data = res.data;
       return data is Map && data['ip_country'] != null && '${data['ip_country']}'.isNotEmpty;
     } catch (_) {
@@ -385,7 +386,7 @@ class SecurityRepository {
     required ({double lat, double lng}) origin,
     required ({double lat, double lng}) destination,
   }) async {
-    final res = await _db.functions.invoke('ai-route-proxy', body: {
+    final res = await _db.functions.invokeNearDb('ai-route-proxy', body: {
       'test': true,
       'origin': {'latitude': origin.lat, 'longitude': origin.lng},
       'destination': {'latitude': destination.lat, 'longitude': destination.lng},
