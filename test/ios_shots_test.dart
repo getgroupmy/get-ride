@@ -2056,6 +2056,7 @@ void main() {
       ('admin_settings', '/admin/settings'),
       ('admin_display', '/admin/m/display'),
       ('permit', '/drive/permit'),
+      ('admin_messaging', '/admin/messaging'),
     ]) {
       testWidgets(
         '$name end',
