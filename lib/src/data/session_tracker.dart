@@ -14,9 +14,6 @@ import '../core/installed_app.dart';
 abstract class SessionSink {
   Future<IpInfo?> lookupIp();
   Future<void> insertSession(Map<String, dynamic> row);
-
-  /// Sets [patch] on the session row [id] (the IP columns, once known).
-  Future<void> updateSession(String id, Map<String, dynamic> patch);
   Future<void> insertLocation(Map<String, dynamic> row);
 }
 
@@ -34,19 +31,11 @@ class SupabaseSessionSink implements SessionSink {
   /// Retries without any column the live database does not have yet, since
   /// one unknown column rejects the whole row (same as Expo).
   @override
-  Future<void> insertSession(Map<String, dynamic> row) =>
-      _withoutMissing(row, (r) => _db.from('user_sessions').insert(r));
-
-  @override
-  Future<void> updateSession(String id, Map<String, dynamic> patch) =>
-      _withoutMissing(patch, (r) => _db.from('user_sessions').update(r).eq('id', id));
-
-  Future<void> _withoutMissing(Map<String, dynamic> row, Future<void> Function(Map<String, dynamic>) write) async {
+  Future<void> insertSession(Map<String, dynamic> row) async {
     final r = Map<String, dynamic>.of(row);
     for (var attempt = 0; attempt < 8; attempt++) {
-      if (r.isEmpty) return;
       try {
-        await write(r);
+        await _db.from('user_sessions').insert(r);
         return;
       } on PostgrestException catch (e) {
         final missing = missingColumn(e.message);
@@ -212,40 +201,25 @@ class SessionTracker {
     final id = _newId();
     _sessionId = id;
     try {
-      final ip = _sink.lookupIp().catchError((_) => null);
       final results = await Future.wait<Object?>([
         _deviceId(),
+        _sink.lookupIp().catchError((_) => null),
         Future<DeviceDetails?>(() async => await _details?.call()).catchError((_) => null),
       ]);
-      final uid = userId ?? _userId;
-      // Signed in, the row is written at once and the IP columns follow
-      // when ip-lookup answers. Signed out the row waits for them: a
-      // signed-out caller may insert but not update session rows.
-      final known = uid == null ? await ip : null;
       await _sink.insertSession(
         sessionRow(
           id: id,
           event: event,
           deviceId: results[0]! as String,
           device: _device,
-          userId: uid,
+          userId: userId ?? _userId,
           phone: phone ?? _phone,
-          ip: known,
-          details: results[1] as DeviceDetails?,
+          ip: results[1] as IpInfo?,
+          details: results[2] as DeviceDetails?,
         ),
       );
-      if (uid != null) unawaited(_patchIp(id, event, ip));
     } catch (e) {
       debugPrint('[session] ${event.value} not logged: $e');
-    }
-  }
-
-  Future<void> _patchIp(String id, SessionEvent event, Future<IpInfo?> lookup) async {
-    try {
-      final ip = await lookup;
-      if (ip != null) await _sink.updateSession(id, ip.columns);
-    } catch (e) {
-      debugPrint('[session] ${event.value} IP not added: $e');
     }
   }
 

@@ -21,10 +21,6 @@ class _Sink implements SessionSink {
   Future<void> insertSession(Map<String, dynamic> row) async => sessions.add(Map.of(row));
 
   @override
-  Future<void> updateSession(String id, Map<String, dynamic> patch) async =>
-      sessions.firstWhere((r) => r['id'] == id).addAll(patch);
-
-  @override
   Future<void> insertLocation(Map<String, dynamic> row) async => locations.add(row);
 }
 
@@ -155,24 +151,14 @@ void main() {
       expect(sink.sessions[1]['public_ip'], '1.2.3.4');
     });
 
-    test('signed in, the row is written before ip-lookup answers, then patched', () async {
+    test('the row waits for ip-lookup, since only admins may update session rows', () async {
       sink.ipGate = Completer<void>();
-      await tracker.userChanged('u1', phone: '+601');
-      expect(sink.sessions.single['user_id'], 'u1');
-      expect(sink.sessions.single['public_ip'], isNull);
-      sink.ipGate!.complete();
-      await pumpEventQueue();
-      expect(sink.sessions.single['public_ip'], '1.2.3.4');
-      expect(sink.sessions.single['isp_provider'], 'TM Net');
-    });
-
-    test('signed out, the row waits for ip-lookup (no update allowed)', () async {
-      sink.ipGate = Completer<void>();
-      final launch = tracker.launched();
+      final login = tracker.userChanged('u1', phone: '+601');
       await pumpEventQueue();
       expect(sink.sessions, isEmpty);
       sink.ipGate!.complete();
-      await launch;
+      await login;
+      expect(sink.sessions.single['user_id'], 'u1');
       expect(sink.sessions.single['public_ip'], '1.2.3.4');
     });
 
