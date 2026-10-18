@@ -363,7 +363,11 @@ List<Override> _trackingOverrides(RideRequest ride) => [
 /// From the home map to the confirm step: pickup by nudging the map,
 /// destination from the recent places.
 Future<void> _toConfirm(WidgetTester tester) async {
-  final g = await tester.startGesture(const Offset(200, 250));
+  // A nudge on the map (above the sheet in landscape) drops the pickup pin.
+  final size = tester.view.physicalSize / tester.view.devicePixelRatio;
+  final g = await tester.startGesture(
+    size.width > size.height ? const Offset(200, 90) : const Offset(200, 250),
+  );
   for (var i = 0; i < 5; i++) {
     await g.moveBy(const Offset(0, 8));
     await tester.pump(const Duration(milliseconds: 50));
@@ -372,6 +376,7 @@ Future<void> _toConfirm(WidgetTester tester) async {
   for (var i = 0; i < 10; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+  if (Platform.environment['NODRAG'] == '1') return;
   await tester.drag(
     find.byKey(const ValueKey('map-sheet-handle')),
     const Offset(0, -300),
@@ -1297,10 +1302,27 @@ Future<void> _shot(
         ),
       );
     }
-    for (var i = 0; i < frames; i++) {
+    // FRAMES=n pumps more frames before the shot (checks for animation artefacts).
+    for (var i = 0; i < (int.tryParse(env['FRAMES'] ?? '') ?? frames); i++) {
       await tester.pump(step);
     }
     if (act != null) await act(tester);
+    if (env['DUMP'] == '1') {
+      // Every Text with its on-screen rectangle, for layout debugging.
+      for (final e in find.byType(Text).evaluate()) {
+        final box = e.renderObject;
+        if (box is! RenderBox || !box.hasSize || !box.attached) continue;
+        final r = box.localToGlobal(Offset.zero) & box.size;
+        final txt =
+            (e.widget as Text).data ??
+            (e.widget as Text).textSpan?.toPlainText() ??
+            '';
+        // ignore: avoid_print
+        print(
+          'DUMP $name ${r.left.toStringAsFixed(0)},${r.top.toStringAsFixed(0)} ${r.width.toStringAsFixed(0)}x${r.height.toStringAsFixed(0)} "${txt.replaceAll('\n', ' ')}"',
+        );
+      }
+    }
     await expectLater(
       find.byKey(const Key('frame')),
       matchesGoldenFile(Uri.file('$_outDir/$name.png')),
