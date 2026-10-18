@@ -57,7 +57,7 @@ class _EvOrdersScreenState extends ConsumerState<EvOrdersScreen> {
     return AdminPage(
       title: 'TEKSI EV Orders',
       page: EvOrdersScreen.page,
-      actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(evOrdersProvider))],
+      actions: [IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(evOrdersProvider))],
       body: AsyncView(
         value: orders,
         onRetry: () => ref.invalidate(evOrdersProvider),

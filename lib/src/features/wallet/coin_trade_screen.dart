@@ -181,18 +181,22 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
         });
     return [
       const SizedBox(height: 16),
-      TextField(
-        key: const ValueKey('coin-recipient'),
-        controller: _recipient,
-        enabled: !_busy,
-        keyboardType: TextInputType.text,
-        decoration: InputDecoration(
-          labelText: 'Send to',
-          hintText: 'Phone number or wallet ID',
-          prefixIcon: const Icon(Icons.person_search_outlined),
-          errorText: _recipient.text.trim().isNotEmpty && to == null ? 'Enter a phone number or wallet ID.' : null,
+      // Its own node for screen readers, not merged into the page's text.
+      Semantics(
+        container: true,
+        child: TextField(
+          key: const ValueKey('coin-recipient'),
+          controller: _recipient,
+          enabled: !_busy,
+          keyboardType: TextInputType.text,
+          decoration: InputDecoration(
+            labelText: 'Send to',
+            hintText: 'Phone number or wallet ID',
+            prefixIcon: const Icon(Icons.person_search_outlined),
+            errorText: _recipient.text.trim().isNotEmpty && to == null ? 'Enter a phone number or wallet ID.' : null,
+          ),
+          onChanged: changed,
         ),
-        onChanged: changed,
       ),
       if (widget.requestedAmount != null && q.settings.coinsPerCurrency > 0) ...[
         const SizedBox(height: 8),
@@ -212,19 +216,23 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
         }),
       ],
       const SizedBox(height: 8),
-      TextField(
-        key: const ValueKey('coin-amount'),
-        controller: _amount,
-        enabled: !_busy,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-        decoration: InputDecoration(
-          labelText: 'GC to send',
-          suffixText: 'GC',
-          helperText: 'GET.coin ${formatCoins(q.coinBalance)}',
-          errorText: coins > 0 && to != null && problem != null ? problem : null,
+      // Its own node for screen readers, not merged into the page's text.
+      Semantics(
+        container: true,
+        child: TextField(
+          key: const ValueKey('coin-amount'),
+          controller: _amount,
+          enabled: !_busy,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+          decoration: InputDecoration(
+            labelText: 'GC to send',
+            suffixText: 'GC',
+            helperText: 'GET.coin ${formatCoins(q.coinBalance)}',
+            errorText: coins > 0 && to != null && problem != null ? problem : null,
+          ),
+          onChanged: changed,
         ),
-        onChanged: changed,
       ),
       const SizedBox(height: 8),
       Wrap(spacing: 8, children: [
@@ -236,11 +244,15 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
         ),
       ]),
       const SizedBox(height: 8),
-      TextField(
-        controller: _note,
-        enabled: !_busy,
-        maxLength: 80,
-        decoration: const InputDecoration(labelText: 'Note (optional)'),
+      // Its own node for screen readers, not merged into the page's text.
+      Semantics(
+        container: true,
+        child: TextField(
+          controller: _note,
+          enabled: !_busy,
+          maxLength: 80,
+          decoration: const InputDecoration(labelText: 'Note (optional)'),
+        ),
       ),
       if (_error != null) ...[
         const SizedBox(height: 8),
@@ -261,24 +273,9 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
         style: t.textTheme.bodySmall,
         textAlign: TextAlign.center,
       ),
-      if (selfId != null) ...[
-        const SizedBox(height: 16),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.qr_code_2),
-            title: const Text('Your wallet ID'),
-            subtitle: Text(selfId, style: const TextStyle(fontFamily: 'monospace')),
-            trailing: IconButton(
-              tooltip: 'Copy wallet ID',
-              icon: const Icon(Icons.copy),
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: selfId));
-                if (mounted) setState(() => _done = 'Wallet ID copied.');
-              },
-            ),
-          ),
-        ),
-      ],
+      // No "Your wallet ID" card: it was the raw account UUID, while Receive
+      // shows a 20-digit account number that a send can't resolve (the
+      // transfer takes a phone or the QR code). Those are the ways to share.
     ];
   }
 
@@ -351,24 +348,28 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
         ),
         if (_tab == _Tab.send) ..._sendFields(q) else ...[
         const SizedBox(height: 16),
-        TextField(
-          key: const ValueKey('coin-amount'),
-          controller: _amount,
-          enabled: !_busy,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-          decoration: InputDecoration(
-            labelText: buy ? 'GC to buy' : 'GC to sell',
-            suffixText: 'GC',
-            helperText: buy
-                ? 'GET.wallet ${formatMoney(q.walletBalance)} · up to ${formatCoins(max)}'
-                : 'GET.coin ${formatCoins(q.coinBalance)}',
-            errorText: showProblem ? problem : null,
+        // Its own node for screen readers, not merged into the page's text.
+        Semantics(
+          container: true,
+          child: TextField(
+            key: const ValueKey('coin-amount'),
+            controller: _amount,
+            enabled: !_busy,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+            decoration: InputDecoration(
+              labelText: buy ? 'GC to buy' : 'GC to sell',
+              suffixText: 'GC',
+              helperText: buy
+                  ? 'GET.wallet ${formatMoney(q.walletBalance)} · up to ${formatCoins(max)}'
+                  : 'GET.coin ${formatCoins(q.coinBalance)}',
+              errorText: showProblem ? problem : null,
+            ),
+            onChanged: (_) => setState(() {
+              _error = null;
+              _done = null;
+            }),
           ),
-          onChanged: (_) => setState(() {
-            _error = null;
-            _done = null;
-          }),
         ),
         const SizedBox(height: 8),
         Wrap(

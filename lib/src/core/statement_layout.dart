@@ -78,6 +78,7 @@ const statementFields = <StatementField>[
   StatementField('coins', StatementFieldGroup.howPaid, 'GET.coin', 'GET.coin'),
   StatementField('activity', StatementFieldGroup.activity, 'Activity', 'Aktiviti'),
   StatementField('trips', StatementFieldGroup.activity, 'Trips', 'Perjalanan'),
+  StatementField('meterTrips', StatementFieldGroup.activity, 'Of which meter trips', 'Daripadanya perjalanan meter'),
   StatementField('onlineHours', StatementFieldGroup.activity, 'Hours online', 'Jam dalam talian'),
   StatementField('distance', StatementFieldGroup.activity, 'Distance (km)', 'Jarak (km)'),
   StatementField('incentivesList', StatementFieldGroup.lists, 'Incentives', 'Insentif'),

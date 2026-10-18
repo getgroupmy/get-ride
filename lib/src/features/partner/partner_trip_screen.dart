@@ -586,14 +586,33 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                 child: RideSosFab(onPressed: () => showRideSos(context, ref, plate: r.partnerPlate, rideId: r.id)),
               ),
           ]);
-          final panel = _panel(r);
-          final Widget body = MediaQuery.sizeOf(context).width >= 900
+          final wide = MediaQuery.sizeOf(context).width >= 900;
+          // On a phone the step's main button (arrived / start / complete) is
+          // pinned under the sheet, so it is in view however far down the
+          // sheet sits; on a wide screen it stays in the panel.
+          final primary = wide ? null : _primaryAction(r);
+          final panel = _panel(r, primaryInFooter: primary != null);
+          final Widget body = wide
               ? Row(children: [
                   SizedBox(width: 420, child: SingleChildScrollView(child: panel)),
                   const VerticalDivider(width: 1),
                   Expanded(child: map),
                 ])
-              : MapSheetLayout(map: map, sheet: panel);
+              : MapSheetLayout(
+                  map: map,
+                  sheet: panel,
+                  footer: primary == null
+                      ? null
+                      : Material(
+                          key: const ValueKey('trip-footer'),
+                          color: Theme.of(context).colorScheme.surface,
+                          elevation: 8,
+                          child: SafeArea(
+                            top: false,
+                            child: Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 8), child: primary),
+                          ),
+                        ),
+                );
           if (!r.fromCache) return body;
           return Column(
             children: [
@@ -606,7 +625,31 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     );
   }
 
-  Widget _panel(RideRequest r) {
+  /// The step's one main button, or null when the step has none (or the
+  /// ride was handed over).
+  Widget? _primaryAction(RideRequest r) {
+    final handover = ref.watch(rideHandoverProvider(r.id));
+    if (tripHandedAway(handover)) return null;
+    final meeting = tripHandoverMeeting(r, handover);
+    return switch (r.status) {
+      RideStatus.accepted => BusyButton.filled(
+        key: const ValueKey('trip-arrive'),
+        onPressed: _busy ? null : () => _arrive(r),
+        child: const Text("I've arrived"),
+      ),
+      RideStatus.arrived => BusyButton.filled(onPressed: _busy ? null : () => _start(r), child: const Text('Start trip')),
+      RideStatus.onTrip when !meeting => BusyButton.filled(
+        key: const ValueKey('trip-complete'),
+        onPressed: _busy ? null : () => _complete(r),
+        child: Text('Complete trip · collect ${r.fareText(r.effectiveFare)}'),
+      ),
+      _ => null,
+    };
+  }
+
+  /// The trip's details and actions; [primaryInFooter] leaves out the main
+  /// button, pinned under the sheet instead ([_primaryAction]).
+  Widget _panel(RideRequest r, {bool primaryInFooter = false}) {
     final t = Theme.of(context);
     final handover = ref.watch(rideHandoverProvider(r.id));
     // Handed over: the ride is no longer this driver's to read or drive.
@@ -634,10 +677,15 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
               title: Text(r.passengerName),
-              subtitle: Text([
-                '${r.passengers} passenger${r.passengers == 1 ? '' : 's'} · ${r.paymentMode}',
-                if (r.isForOthers) 'Booked by ${r.riderName ?? 'another rider'}',
-              ].join('\n')),
+              // The pieces wrap whole, the separator with what follows it,
+              // so a line never ends on a dangling "·".
+              subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Wrap(spacing: 4, children: [
+                  Text('${r.passengers} passenger${r.passengers == 1 ? '' : 's'}'),
+                  Text('· ${r.paymentMode}'),
+                ]),
+                if (r.isForOthers) Text('Booked by ${r.riderName ?? 'another rider'}'),
+              ]),
               isThreeLine: r.isForOthers,
               // No Message or Call once the ride is cancelled.
               trailing: !rideContactAllowed(r) ? null : Row(mainAxisSize: MainAxisSize.min, children: [
@@ -701,20 +749,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         // The phones find each other at the kerb (Phase D); the code still works.
         if (r.status == RideStatus.accepted || r.status == RideStatus.arrived)
           BleHandshakeBadge(rideId: r.id, status: r.status.db, driver: true),
-        if (r.status == RideStatus.accepted)
-          BusyButton.filled(
-            key: const ValueKey('trip-arrive'),
-            onPressed: _busy ? null : () => _arrive(r),
-            child: const Text("I've arrived"),
-          ),
-        if (r.status == RideStatus.arrived)
-          BusyButton.filled(onPressed: _busy ? null : () => _start(r), child: const Text('Start trip')),
-        if (r.status == RideStatus.onTrip && !meeting)
-          BusyButton.filled(
-            key: const ValueKey('trip-complete'),
-            onPressed: _busy ? null : () => _complete(r),
-            child: Text('Complete trip · collect ${r.fareText(r.effectiveFare)}'),
-          ),
+        if (!primaryInFooter) ?_primaryAction(r),
         if (driverMayCancel(r.status))
           BusyButton.text(
             key: const ValueKey('trip-cancel'),
@@ -872,6 +907,19 @@ class _CollectCard extends ConsumerWidget {
   const _CollectCard({required this.ride});
   final RideRequest ride;
 
+  static Widget _amountRow(ThemeData t, String label, String amount, {Key? key}) => Padding(
+    key: key,
+    padding: const EdgeInsets.fromLTRB(16, 8, 24, 0),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: Text(label, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant))),
+        const SizedBox(width: 12),
+        Text(amount, style: t.textTheme.bodyMedium),
+      ],
+    ),
+  );
+
   Future<void> _confirmCash(BuildContext context, WidgetRef ref) async {
     try {
       await ref.read(rideRepositoryProvider).confirmRideCash(ride.id);
@@ -889,13 +937,23 @@ class _CollectCard extends ConsumerWidget {
     return Card(
       key: const ValueKey('trip-collect'),
       child: Column(children: [
+        // The fare, then each thing added to it (surcharges, taxes, tolls,
+        // other charges), so the total adds up on screen.
+        if (r.chargeLines.isNotEmpty || (r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0) ...[
+          _amountRow(t, 'Trip fare', formatMoney(r.effectiveFare, r.currency), key: const ValueKey('trip-collect-fare')),
+          for (final l in r.chargeLines) _amountRow(t, l.label, formatMoney(l.amount, r.currency)),
+          if ((r.tollCharges ?? 0) > 0)
+            _amountRow(t, 'Tolls', formatMoney(r.tollCharges, r.currency), key: const ValueKey('trip-collect-tolls')),
+          if ((r.otherCharges ?? 0) > 0)
+            _amountRow(
+              t,
+              (r.otherChargesNote ?? '').trim().isEmpty ? 'Other charges' : 'Other charges · ${r.otherChargesNote!.trim()}',
+              formatMoney(r.otherCharges, r.currency),
+              key: const ValueKey('trip-collect-other'),
+            ),
+        ],
         ListTile(
           title: const Text('Total due'),
-          subtitle: r.chargeLines.isEmpty
-              ? null
-              : Text([
-                  for (final l in r.chargeLines) 'Includes ${l.label}: ${formatMoney(l.amount, r.currency)}',
-                ].join('\n')),
           trailing: Text(formatMoney(r.totalDue, r.currency)),
         ),
         if (coins > 0)

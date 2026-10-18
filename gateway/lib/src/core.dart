@@ -153,7 +153,7 @@ String describeError(Object error) {
   return s.length > 160 ? '${s.substring(0, 157)}...' : s;
 }
 
-enum GatewayLogKind { sent, failed, received, info, error }
+enum GatewayLogKind { sent, failed, received, info, error, proxy }
 
 class GatewayLogEntry {
   const GatewayLogEntry(this.at, this.kind, this.text);
@@ -183,6 +183,9 @@ class GatewayStats {
   int sent = 0;
   int failed = 0;
   int received = 0;
+
+  /// Requests performed for a test session over the shared internet.
+  int relayed = 0;
 }
 
 /// A pairing code as typed: letters and digits only, in capitals
@@ -202,4 +205,49 @@ bool isPairCode(String typed) => normalizePairCode(typed).length == 8;
   final hint = map['hint'];
   if (hint is String && hint.trim().isNotEmpty) return (key: null, error: hint.trim());
   return (key: null, error: 'Pairing did not answer properly. Please try again.');
+}
+
+/// The shared internet (migration 0226, ProxyClient.kt): whether the relay
+/// at proxy.getride.my has this phone.
+enum ProxyState { off, connecting, connected, reconnecting, error }
+
+/// The state an event from the phone's side moves the shared internet to;
+/// null for an event that is not a change of state (a request relayed,
+/// mobile data coming or going). Pure.
+ProxyState? proxyStateFrom(Map<String, Object?> event) => switch (event['state']) {
+  'off' => ProxyState.off,
+  'connecting' => ProxyState.connecting,
+  'connected' => ProxyState.connected,
+  'reconnecting' => ProxyState.reconnecting,
+  'error' => ProxyState.error,
+  _ => null,
+};
+
+/// What the log says about an event from the phone's side, or null for one
+/// not worth a line. Names the host a request went to, never its path or
+/// what came back. Pure.
+String? proxyLogLine(Map<String, Object?> event) {
+  final reason = event['reason'];
+  switch (event['state']) {
+    case 'connected':
+      return 'Internet shared: the relay has this phone.';
+    case 'reconnecting':
+      return 'Internet sharing: no connection to the relay${reason == null ? '' : ' ($reason)'}. Retrying.';
+    case 'error':
+      return 'Internet sharing stopped: ${reason ?? 'refused'}';
+    case 'off':
+      return 'Internet sharing stopped.';
+    case 'request':
+      final host = event['host'] ?? '?';
+      final error = event['error'];
+      if (error != null) return 'Request to $host failed: $error';
+      final status = event['status'];
+      return 'Relayed a request to $host${status == null ? '' : ' ($status)'}';
+    case 'mobile':
+      return event['available'] == true
+          ? 'Mobile data is up: shared requests use it.'
+          : 'Mobile data is down: shared requests take the phone\'s default route.';
+    default:
+      return null;
+  }
 }

@@ -44,6 +44,22 @@ void main() {
     }
   });
 
+  test('no table followed live is one 0227 took out of the realtime publication', () {
+    // Following one again means adding it back to supabase_realtime first.
+    const unpublished = {
+      'user_location_history',
+      'notification_outbox',
+      'wallet_transactions',
+      'vehicle_active_session',
+      'emergency_contacts',
+      'vehicles',
+      'auth_rate_hits',
+    };
+    for (final t in [...liveSettingTables, ...liveOwnTables.keys, ...liveAdminTables]) {
+      expect(unpublished, isNot(contains(t)), reason: '$t is not in the realtime publication');
+    }
+  });
+
   test('admin pages follow every row of the account tables, the app only its own', () {
     for (final t in liveOwnTables.keys) {
       expect(liveAdminTables, contains(t), reason: 'an admin list of $t shows everyone\'s changes');

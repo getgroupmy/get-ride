@@ -27,6 +27,10 @@ import '../../widgets/page_style_host.dart';
 /// payment icon and the auto-accept switch.
 const confirmAccent = Color(0xFF2DABE2);
 
+/// The confirm blue darkened for a filled button with white words on it
+/// (4.5:1 and more); [confirmAccent] stays for icons, tints and highlights.
+const accentFill = Color(0xFF0C7AB8);
+
 
 /// The address card's marks, as inDrive's: a hailing figure for the pickup
 /// and a flag for the drop-off, black on a light card and white on a dark.
@@ -281,7 +285,7 @@ class _EntranceSheetState extends State<_EntranceSheet> {
                       onTap: () => Navigator.pop(context),
                       child: Tooltip(
                         message: 'Close',
-                        child: SizedBox.square(dimension: 40, child: Icon(Icons.close, size: 22, color: ink)),
+                        child: SizedBox.square(dimension: 48, child: Icon(Icons.close, size: 22, color: ink)),
                       ),
                     ),
                   ),
@@ -310,7 +314,7 @@ class _EntranceSheetState extends State<_EntranceSheet> {
                 child: FilledButton(
                   key: const ValueKey('entrance-done'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: confirmAccent,
+                    backgroundColor: accentFill,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
@@ -352,7 +356,12 @@ class _EntranceSheetState extends State<_EntranceSheet> {
                         onTap: _back,
                         child: SizedBox(
                           height: 58,
-                          child: Icon(Icons.backspace_outlined, size: 26, color: dark ? Colors.white : Colors.black),
+                          child: Icon(
+                            Icons.backspace_outlined,
+                            size: 26,
+                            color: dark ? Colors.white : Colors.black,
+                            semanticLabel: 'Delete',
+                          ),
                         ),
                       ),
                     ),
@@ -1051,7 +1060,11 @@ Future<String?> showPaymentSheet(
                     key: const ValueKey('payment-close'),
                     customBorder: const CircleBorder(),
                     onTap: () => Navigator.pop(c),
-                    child: const SizedBox.square(dimension: 40, child: Icon(Icons.close, size: 22)),
+                    // 48 across, and named for screen readers and on hover.
+                    child: const Tooltip(
+                      message: 'Close',
+                      child: SizedBox.square(dimension: 48, child: Icon(Icons.close, size: 22)),
+                    ),
                   ),
                 ),
               ],
@@ -1255,11 +1268,16 @@ class ConfirmFooter extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: pickLater != null && onLater != null
-                        ? NowLaterButton(onNow: onFind, pickLater: onFind == null ? null : pickLater, onLater: onLater!)
+                        ? NowLaterButton(
+                            label: label,
+                            onNow: onFind,
+                            pickLater: onFind == null ? null : pickLater,
+                            onLater: onLater!,
+                          )
                         : BusyButton.filled(
                             key: const ValueKey('book'),
                             style: FilledButton.styleFrom(
-                              backgroundColor: confirmAccent,
+                              backgroundColor: accentFill,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.all(16),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1589,7 +1607,15 @@ class _PromoSheetState extends State<_PromoSheet> {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + MediaQuery.viewInsetsOf(context).bottom),
+    // Above the keyboard when it is up, else above the home indicator.
+    padding: EdgeInsets.fromLTRB(
+      16,
+      8,
+      16,
+      16 + (MediaQuery.viewInsetsOf(context).bottom > MediaQuery.viewPaddingOf(context).bottom
+          ? MediaQuery.viewInsetsOf(context).bottom
+          : MediaQuery.viewPaddingOf(context).bottom),
+    ),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1609,7 +1635,7 @@ class _PromoSheetState extends State<_PromoSheet> {
           listenable: _code,
           builder: (_, _) => FilledButton(
             key: const ValueKey('promo-apply'),
-            style: FilledButton.styleFrom(backgroundColor: confirmAccent, padding: const EdgeInsets.all(14)),
+            style: FilledButton.styleFrom(backgroundColor: accentFill, padding: const EdgeInsets.all(14)),
             onPressed: _code.text.trim().isEmpty ? null : () => setState(() => _error = 'Promo code is not valid'),
             child: const Text('Apply'),
           ),
@@ -1670,14 +1696,18 @@ class _SpeedLines extends CustomPainter {
 /// inDrive's switch: a pill track with no outline, light grey (or charcoal
 /// on dark) when off with a white knob, the brand blue when on.
 class ConfirmSwitch extends StatelessWidget {
-  const ConfirmSwitch({super.key, required this.value, required this.onChanged});
+  const ConfirmSwitch({super.key, required this.value, required this.onChanged, this.semanticLabel});
   final bool value;
   final ValueChanged<bool>? onChanged;
+
+  /// What the switch turns on, for screen readers (the words beside it are
+  /// a separate node).
+  final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    return Switch(
+    final toggle = Switch(
       value: value,
       onChanged: onChanged,
       activeThumbColor: Colors.white,
@@ -1687,6 +1717,7 @@ class ConfirmSwitch extends StatelessWidget {
       trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
       thumbIcon: const WidgetStatePropertyAll(null),
     );
+    return semanticLabel == null ? toggle : Semantics(label: semanticLabel, child: toggle);
   }
 }
 
@@ -2076,7 +2107,16 @@ Future<void> showFareInfo(BuildContext context, FareInfoSheet sheet) =>
 /// Later asks for the pickup time first and books on Confirm. The side
 /// tapped wears the raised pill, and spins while its booking runs.
 class NowLaterButton extends StatefulWidget {
-  const NowLaterButton({super.key, required this.onNow, required this.pickLater, required this.onLater});
+  const NowLaterButton({
+    super.key,
+    required this.onNow,
+    required this.pickLater,
+    required this.onLater,
+    this.label = 'Find a driver',
+  });
+
+  /// The book-now button's words (the footer's label).
+  final String label;
 
   /// Null while the booking can't go.
   final Future<void> Function()? onNow;
@@ -2118,86 +2158,45 @@ class _NowLaterButtonState extends State<NowLaterButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final dark = t.brightness == Brightness.dark;
-    // The confirm step's blue, as Find a driver was: the chosen side filled,
-    // the other on a tint of it.
-    final track = Color.alphaBlend(confirmAccent.withValues(alpha: dark ? 0.22 : 0.12), t.colorScheme.surface);
-    final enabled = widget.onNow != null || widget.pickLater != null;
-
-    Widget side(bool later, IconData icon, String label) {
-      final on = _later == later;
-      final color = on ? Colors.white : (dark ? t.colorScheme.onSurface : const Color(0xFF1B7FAD));
-      final action = later ? widget.pickLater : widget.onNow;
-      return Semantics(
-        button: true,
-        selected: on,
-        child: InkWell(
-          key: ValueKey(later ? 'book-later' : 'book-now'),
-          borderRadius: BorderRadius.circular(24),
-          onTap: action == null || _busy || _later ? null : () => _run(later),
-          child: Center(
-            child: _busy && on
-                ? BusySpinner(size: 22, color: color)
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(icon, size: 24, color: color),
-                      const SizedBox(width: 6),
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: on ? FontWeight.w700 : FontWeight.w600,
-                          color: color,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ),
-      );
-    }
-
-    return Opacity(
-      opacity: enabled ? 1 : 0.5,
-      child: Container(
-        key: const ValueKey('book-now-later'),
-        height: 56,
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(color: track, borderRadius: BorderRadius.circular(28)),
-        child: Stack(
-          children: [
-            AnimatedAlign(
-              alignment: _later ? Alignment.centerRight : Alignment.centerLeft,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              child: FractionallySizedBox(
-                widthFactor: 0.5,
-                heightFactor: 1,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: confirmAccent,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: confirmAccent.withValues(alpha: dark ? 0.3 : 0.25),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                ),
+    // One plain primary action, Find a driver, books now; Later, beside it,
+    // is the secondary one (a Now|Later switch read as a toggle, not a go).
+    final nowBusy = _busy && !_later;
+    final laterBusy = _busy && _later;
+    return SizedBox(
+      key: const ValueKey('book-now-later'),
+      height: 56,
+      child: Row(
+        children: [
+          Expanded(
+            child: FilledButton.icon(
+              key: const ValueKey('book-now'),
+              style: FilledButton.styleFrom(
+                backgroundColor: accentFill,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 56),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
+              onPressed: widget.onNow == null || _busy ? null : () => _run(false),
+              icon: nowBusy ? const BusySpinner(size: 20, color: Colors.white) : const Icon(Icons.bolt),
+              label: Text(widget.label, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-            Row(
-              children: [
-                Expanded(child: side(false, Icons.bolt, 'Now')),
-                Expanded(child: side(true, Icons.event, 'Later')),
-              ],
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            key: const ValueKey('book-later'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size(0, 56),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
-          ],
-        ),
+            onPressed: widget.pickLater == null || _busy ? null : () => _run(true),
+            icon: laterBusy ? const BusySpinner(size: 20) : const Icon(Icons.event),
+            label: const Text('Later'),
+          ),
+        ],
       ),
     );
   }

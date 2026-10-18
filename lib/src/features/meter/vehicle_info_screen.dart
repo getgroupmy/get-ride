@@ -612,9 +612,20 @@ class _WritesCardState extends ConsumerState<_WritesCard> {
   @override
   Widget build(BuildContext context) {
     final ctx = _context(widget.obd);
+    // No reader: said once over the (disabled) writes, not under each one.
+    final offline = !widget.obd.linked;
     return Card(
       child: Column(
         children: [
+          if (offline)
+            ListTile(
+              key: const ValueKey('writes-offline'),
+              leading: Icon(Icons.link_off, color: Theme.of(context).colorScheme.error),
+              title: Text(
+                'Connect the OBD-II reader first.',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           for (final a in vehicleWriteActions)
             Builder(
               builder: (context) {
@@ -629,7 +640,7 @@ class _WritesCardState extends ConsumerState<_WritesCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(a.description),
-                      if (avail.reason case final reason?)
+                      if (avail.reason case final reason? when !offline)
                         Text(reason, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                     ],
                   ),

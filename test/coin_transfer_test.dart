@@ -200,7 +200,7 @@ void main() {
       final transfers = _FakeTransfers();
       await pump(tester, transfers);
       expect(find.textContaining('Fixed rate'), findsNothing);
-      expect(find.text(_me), findsOneWidget);
+      expect(find.text(_me), findsNothing, reason: 'no raw account UUID on screen');
 
       await fillAndSend(tester, '012-345 6789', '25');
       expect(transfers.requests.single.$1, (userId: null, phone: '012-345 6789'));

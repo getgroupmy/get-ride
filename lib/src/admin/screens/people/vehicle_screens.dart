@@ -424,7 +424,7 @@ class _VehicleDocumentsList extends ConsumerWidget {
                   final s = docDisplayStatus(d);
                   return Text(s, style: TextStyle(color: docStatusColor(s), fontWeight: FontWeight.w600));
                 }),
-                onTap: d['file_url'] == null ? null : () => openInApp(context, '${d['file_url']}'),
+                onTap: d['file_url'] == null ? null : () => openStoredFile(context, '${d['file_url']}'),
               ),
           ]);
         },

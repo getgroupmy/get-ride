@@ -7,6 +7,11 @@ name: Cloudflare worker
 # cloudflare/subdomain-proxy/worker.js; the owner's setup is
 # docs/store-release.md, "App links".
 #
+# Also deploys cloudflare/session-proxy, the relay on proxy.getride.my that
+# carries a test session's requests through a gateway phone
+# (docs/session-access.md). Same token; its Durable Object needs the
+# account's Workers plan to allow them (free plans do, with SQLite storage).
+#
 # Default branch only. There is one zone and one route pattern, so a branch
 # deploy would not be a preview of anything: it would put unreviewed code in
 # front of every subdomain at once. Runnable by hand from the Actions tab
@@ -180,3 +185,70 @@ jobs:
             echo "::warning::$url $why."
             echo "- :warning: \`$url\` $why." >> "$GITHUB_STEP_SUMMARY"
           done
+
+  session-proxy:
+    name: Deploy the session proxy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    concurrency:
+      group: cloudflare-session-proxy-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Check the API token is present
+        id: creds
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::The session proxy was not deployed: CLOUDFLARE_API_TOKEN is not set (see the subdomain proxy job's summary for the token)."
+          fi
+
+      - uses: actions/checkout@v5
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # What the relay does with a request, with the backend and the phone
+      # faked: never deployed on a commit whose tests fail.
+      - name: Test the relay
+        run: |
+          deno check cloudflare/session-proxy/relay_test.ts
+          deno test cloudflare/session-proxy/relay_test.ts
+
+      - uses: actions/setup-node@v5
+        if: steps.creds.outputs.ready == 'true'
+        with:
+          node-version: "22"
+
+      - name: Deploy
+        if: steps.creds.outputs.ready == 'true'
+        working-directory: cloudflare/session-proxy
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@4.127.0 deploy
+          {
+            echo "### The session proxy"
+            echo
+            echo "Deployed to the route \`proxy.getride.my/*\`: a test session's requests"
+            echo "through a gateway phone (docs/session-access.md)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The usage text at the root is a cheap sign the route is live. Warned,
+      # not failed: a fresh route can take minutes to settle.
+      - name: Confirm proxy.getride.my answers
+        if: steps.creds.outputs.ready == 'true'
+        continue-on-error: true
+        run: |
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://proxy.getride.my/?cb=$GITHUB_RUN_ID" || echo 000)"
+          if [ "$code" = "200" ]; then
+            echo "- \`https://proxy.getride.my/\` answered 200." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::https://proxy.getride.my/ answered $code."
+            echo "- :warning: \`https://proxy.getride.my/\` answered $code." >> "$GITHUB_STEP_SUMMARY"
+          fi

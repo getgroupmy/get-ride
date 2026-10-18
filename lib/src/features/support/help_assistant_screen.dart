@@ -72,7 +72,7 @@ class _HelpAssistantScreenState extends ConsumerState<HelpAssistantScreen> {
     _toBottom();
     final result = await ref.read(helpRepositoryProvider).search(q, viewer: ref.read(helpViewerProvider));
     if (!mounted) return;
-    setState(() => turn.reply = composeHelpReply(result.hits, result.thresholds));
+    setState(() => turn.reply = composeHelpReply(result.hits, result.thresholds, question: q));
     _toBottom();
     await _log(turn);
   }

@@ -22,9 +22,11 @@ import io.flutter.plugin.common.MethodChannel
  *
  * The Dart side's view of the phone (lib/src/sms_platform.dart):
  * `getride.gateway/sms` for sending, the received-SMS queue, SIMs, the
- * foreground service and battery settings; `getride.gateway/sms_in` for SMS
- * as they arrive. Native calls Dart's `resume` when the service is
- * (re)started, so the gateway turns itself back on if it was left on.
+ * foreground service, battery settings and sharing the phone's internet
+ * (`startProxy` / `stopProxy`, [ProxyClient]); `getride.gateway/sms_in` for
+ * SMS as they arrive. Native calls Dart's `resume` when the service is
+ * (re)started, so the gateway turns itself back on if it was left on, and
+ * `proxy` with each change in the shared internet's state.
  */
 object GatewayRuntime {
     private const val ENGINE_ID = "gateway"
@@ -32,6 +34,7 @@ object GatewayRuntime {
     private const val EVENTS = "getride.gateway/sms_in"
 
     private var methods: MethodChannel? = null
+    private var proxy: ProxyClient? = null
 
     /** The engine, started (running the app's main()) on first use. Main thread only. */
     fun engine(context: Context): FlutterEngine {
@@ -59,6 +62,10 @@ object GatewayRuntime {
     private fun attach(engine: FlutterEngine, app: Context) {
         val messenger = engine.dartExecutor.binaryMessenger
         val sender = SmsSender(app)
+        // Shares the phone's internet with a test session (ProxyClient);
+        // its events reach Dart as `proxy` calls on the method channel.
+        val proxy = ProxyClient(app) { event -> methods?.invokeMethod("proxy", event) }
+        this.proxy = proxy
 
         methods = MethodChannel(messenger, METHODS).apply {
             setMethodCallHandler { call, result ->
@@ -91,7 +98,27 @@ object GatewayRuntime {
                         result.error("service", e.message, null)
                     }
                     "stopService" -> {
+                        proxy.stop()
                         GatewayService.stop(app)
+                        result.success(null)
+                    }
+                    "startProxy" -> {
+                        val url = call.argument<String>("url")
+                        val key = call.argument<String>("key")
+                        if (url.isNullOrBlank() || key.isNullOrBlank()) {
+                            result.error("proxy", "No relay address or key.", null)
+                        } else {
+                            proxy.start(
+                                url,
+                                key,
+                                call.argument<String>("label") ?: "",
+                                call.argument<Boolean>("mobileDataOnly") ?: true,
+                            )
+                            result.success(null)
+                        }
+                    }
+                    "stopProxy" -> {
+                        proxy.stop()
                         result.success(null)
                     }
                     "batteryOptimized" -> {

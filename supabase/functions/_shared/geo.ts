@@ -32,6 +32,16 @@
  * comes as vector tiles only, which the browser draws with MapLibre.
  */
 
+/**
+ * The key a caller's bearer token is remembered under (the `geo` function's
+ * who-is-this cache): its SHA-256, hex. The token itself is never kept, so a
+ * dump of the instance's memory holds no usable session.
+ */
+export async function tokenCacheKey(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export const ROLES = ["rider", "partner"] as const;
 export const DEVICES = ["android", "ios", "web", "desktop"] as const;
 export type Role = (typeof ROLES)[number];

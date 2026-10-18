@@ -32,3 +32,16 @@ String linkTitle(Uri uri) {
   if (segs.isNotEmpty && segs.last.contains('.')) return Uri.decodeComponent(segs.last);
   return uri.host.isEmpty ? 'Link' : uri.host;
 }
+
+/// Whether [uri] is a file the app's own storage serves, so it may be opened
+/// from a record somebody else wrote (a document, an ID, a chat attachment):
+/// https on the project's host under /storage/v1/, or on [allowedDomain] and
+/// its subdomains (the fallback route); or a picture or PDF carried inline.
+/// Anything else could be a look-alike page or another app's link.
+bool isOwnStorageLink(Uri uri, {required String projectUrl, String allowedDomain = 'getride.my'}) {
+  if (uri.scheme == 'data') return linkViewFor(uri) != LinkView.external;
+  if (uri.scheme != 'https' || uri.userInfo.isNotEmpty || uri.host.isEmpty) return false;
+  final host = uri.host.toLowerCase();
+  if (host == allowedDomain || host.endsWith('.$allowedDomain')) return true;
+  return host == Uri.tryParse(projectUrl)?.host.toLowerCase() && uri.path.startsWith('/storage/v1/');
+}

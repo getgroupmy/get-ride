@@ -43,17 +43,22 @@ class AdminDashboardScreen extends ConsumerWidget {
       title: 'Dashboard',
       module: 'dashboard',
       actions: [
-        IconButton(icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(dashboardCountsProvider)),
+        IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(dashboardCountsProvider)),
       ],
       body: AsyncView(
         value: ref.watch(dashboardCountsProvider),
         onRetry: () => ref.invalidate(dashboardCountsProvider),
-        data: (counts) => GridView.extent(
+        data: (counts) => GridView(
           padding: const EdgeInsets.all(16),
-          maxCrossAxisExtent: 260,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.6,
+          // A height that holds the icon, the count and a three-line label at
+          // the reader's text size, at any width (not a fixed shape, which
+          // clipped the labels on phones and at large text).
+          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 260,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            mainAxisExtent: dashboardTileHeight(MediaQuery.textScalerOf(context)),
+          ),
           children: [
             for (final (key, label, icon, route) in tiles)
               Card(
@@ -65,11 +70,17 @@ class AdminDashboardScreen extends ConsumerWidget {
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Icon(icon, color: Theme.of(context).colorScheme.primary),
                       const Spacer(),
-                      Text(
-                        (counts[key] ?? -1) < 0 ? '—' : '${counts[key]}',
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+                      // One line, shrunk to fit a narrow tile.
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          (counts[key] ?? -1) < 0 ? '—' : '${counts[key]}',
+                          maxLines: 1,
+                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+                        ),
                       ),
-                      Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      Text(label, maxLines: 3, overflow: TextOverflow.ellipsis),
                     ]),
                   ),
                 ),
@@ -80,3 +91,8 @@ class AdminDashboardScreen extends ConsumerWidget {
     );
   }
 }
+
+/// A dashboard tile's height: padding, the icon, a gap, the count
+/// (headlineMedium, 36 px a line) and three label lines (20 px each), the
+/// text parts grown with [scaler].
+double dashboardTileHeight(TextScaler scaler) => 32 + 24 + 8 + scaler.scale(36) + scaler.scale(60) + 4;

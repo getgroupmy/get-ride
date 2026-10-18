@@ -13,6 +13,7 @@ import '../profile_search.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
+import 'commission_promotions_tabs.dart';
 import 'commission_settings_tabs.dart';
 import 'geo/geo_data.dart' show regionsProvider;
 import 'geo/geo_logic.dart' show RegionEntry, RegionLevel, regionNamesAt;
@@ -50,6 +51,18 @@ String commissionHistoryLine(Map<String, dynamic> h) {
   final before = h['old_row'] is Map ? Map<String, dynamic>.from(h['old_row'] as Map) : null;
   final after = h['new_row'] is Map ? Map<String, dynamic>.from(h['new_row'] as Map) : null;
   String rule(Map<String, dynamic> r) => '${_pct(r['rate'])} · ${r['level']} (${commissionScopeLabel(r)})';
+  // Tiers (0218) and promotions (0224) share the history: "Added promotion "Raya week"".
+  final kind = '${h['op']}'.split(':');
+  if (kind.length == 2) {
+    final what = kind.first == 'promo' ? 'promotion' : 'tier';
+    final name = (after ?? before)?['name'];
+    final called = name == null ? '' : ' "$name"';
+    return switch (kind.last) {
+      'insert' => 'Added $what$called',
+      'delete' => 'Deleted $what$called',
+      _ => 'Changed $what$called',
+    };
+  }
   switch (h['op']) {
     case 'insert':
       return after == null ? 'Added' : 'Added ${rule(after)}';
@@ -106,7 +119,7 @@ class AdminCommissionScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(moduleAccessProvider('commission')) == AccessLevel.edit;
     return DefaultTabController(
-      length: 3,
+      length: 5,
       child: AdminPage(
       title: 'Commission',
       module: 'commission',
@@ -115,7 +128,11 @@ class AdminCommissionScreen extends ConsumerWidget {
           Tab(key: ValueKey('commission-tab-rates'), text: 'Rates'),
           Tab(key: ValueKey('commission-tab-settings'), text: 'Settings'),
           Tab(key: ValueKey('commission-tab-tiers'), text: 'Tiers'),
+          Tab(key: ValueKey('commission-tab-promotions'), text: 'Promotions'),
+          Tab(key: ValueKey('commission-tab-reports'), text: 'Reports'),
         ],
+        isScrollable: true,
+        tabAlignment: TabAlignment.start,
       ),
       actions: [
         IconButton(
@@ -174,6 +191,7 @@ class AdminCommissionScreen extends ConsumerWidget {
                     _ActiveSwitch(key: ValueKey('commission-active-${r['id']}'), row: r, canEdit: canEdit),
                     if (canEdit)
                       BusyIconButton(
+                        tooltip: 'Delete rule',
                         icon: const Icon(Icons.delete_outline),
 
                         onPressed: () async {
@@ -194,6 +212,8 @@ class AdminCommissionScreen extends ConsumerWidget {
       ),
       CommissionSettingsTab(canEdit: canEdit),
       CommissionTiersTab(canEdit: canEdit),
+      CommissionPromotionsTab(canEdit: canEdit),
+      const CommissionReportsTab(),
       ]),
     ),
     );
@@ -265,7 +285,7 @@ class _HistoryList extends ConsumerWidget {
               ListTile(
                 key: ValueKey('commission-history-${h['id']}'),
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(switch (h['op']) {
+                leading: Icon(switch ('${h['op']}'.split(':').last) {
                   'insert' => Icons.add_circle_outline,
                   'delete' => Icons.delete_outline,
                   _ => Icons.edit_outlined,
@@ -561,6 +581,7 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
             ),
             const SizedBox(height: 12),
             TextField(
+              textInputAction: TextInputAction.next,
               controller: _rate,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'Rate (%)', suffixText: '%'),
@@ -576,11 +597,13 @@ class _RateDialogState extends ConsumerState<_RateDialog> {
             const SizedBox(height: 12),
             TextField(
               key: const ValueKey('commission-priority'),
+              textInputAction: TextInputAction.next,
               controller: _priority,
               keyboardType: const TextInputType.numberWithOptions(signed: true),
               decoration: const InputDecoration(
                 labelText: 'Priority',
                 helperText: 'Higher wins between rules at the same level',
+                helperMaxLines: 2,
               ),
             ),
             const SizedBox(height: 12),

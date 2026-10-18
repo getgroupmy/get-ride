@@ -28,6 +28,17 @@ linked from Admin → SMS / WhatsApp).
 While online it shows an ongoing notification. It turns itself back on when
 the app is opened, but not after a restart of the phone: open the app once.
 
+## Sharing the phone's internet with a test session
+
+A test session (a Claude Code cloud session, a CI job) given this phone in
+Admin → SMS / WhatsApp → Session access can make its HTTP requests through
+it, so they leave from this SIM's network (docs/session-access.md). Turn on
+**Share this phone's internet** on the gateway's screen; it works while the
+gateway is online. "Mobile data only" keeps those requests on the SIM even
+when the phone is on Wi-Fi. The phone dials the relay at proxy.getride.my
+with its device key (`ProxyClient.kt`); nothing is open for incoming
+connections.
+
 ## How it works
 
 - `lib/src/engine.dart`: the loop. A heartbeat every minute
@@ -40,9 +51,12 @@ the app is opened, but not after a restart of the phone: open the app once.
   report was lost.
 - `android/app/src/main/kotlin/…`: sending (`SmsSender`, multipart, one
   answer per SMS), receiving (`SmsReceiver` → `InboxStore`, on disk), SIMs,
-  and the foreground service (`GatewayService`).
-- The server side is migrations `0120` (devices, routes, queue, RPCs) and
-  `0121` (a gateway must be an admin's).
+  the foreground service (`GatewayService`), and the shared internet
+  (`ProxyClient`: the relay's WebSocket and the requests it hands over,
+  performed over mobile data).
+- The server side is migrations `0120` (devices, routes, queue, RPCs),
+  `0121` (a gateway must be an admin's), `0190` (pairing and device keys)
+  and `0223` (session access: the keys and the relay's checks).
 
 ```bash
 flutter test            # core, engine and screen tests

@@ -9,7 +9,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models.dart';
 import '../../providers.dart';
-import 'confirm_parts.dart' show confirmAccent;
+import 'confirm_parts.dart' show accentFill, confirmAccent;
 import '../../widgets/page_style_host.dart';
 
 /// What the passenger chose on the first sheet.
@@ -221,7 +221,7 @@ class _SheetButton extends StatelessWidget {
       child: primary
           ? FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: confirmAccent,
+                backgroundColor: accentFill,
                 foregroundColor: Colors.white,
                 shape: shape,
                 textStyle: text,

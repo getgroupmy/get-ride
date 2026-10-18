@@ -105,13 +105,19 @@ class SideMenuHostState extends State<SideMenuHost> with SingleTickerProviderSta
                       top: 0,
                       bottom: 0,
                       width: c.maxWidth,
-                      child: GestureDetector(
-                        key: const ValueKey('side-menu-scrim'),
-                        behavior: HitTestBehavior.opaque,
+                      // A screen reader can close the menu from here too.
+                      child: Semantics(
+                        button: true,
+                        label: 'Close menu',
                         onTap: close,
-                        onHorizontalDragUpdate: _drag,
-                        onHorizontalDragEnd: _settle,
-                        child: ColoredBox(color: Colors.black.withValues(alpha: 0.5 * v)),
+                        child: GestureDetector(
+                          key: const ValueKey('side-menu-scrim'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: close,
+                          onHorizontalDragUpdate: _drag,
+                          onHorizontalDragEnd: _settle,
+                          child: ColoredBox(color: Colors.black.withValues(alpha: 0.5 * v)),
+                        ),
                       ),
                     )
                   else
@@ -150,12 +156,17 @@ class _SideMenuScope extends InheritedWidget {
   bool updateShouldNotify(_SideMenuScope old) => old.enabled != enabled || old.state != state;
 }
 
-/// The menu button a page off the side menu shows in place of its back
-/// arrow (Expo's hamburger): opens the side menu. Null where there is no
-/// menu to open, so the app bar keeps its usual back arrow.
+/// The menu button a tab's own page shows in place of a back arrow (Expo's
+/// hamburger): opens the side menu. A page opened from one (Account →
+/// Settings) keeps its back arrow, so the way back is on screen; the menu
+/// is still an edge swipe away. Null where there is no menu to open, so the
+/// app bar keeps its usual back arrow.
 Widget? sideMenuLeading(BuildContext context) {
   final host = SideMenuHost.of(context);
   if (host == null) return null;
+  if (Navigator.maybeOf(context)?.canPop() ?? false) {
+    return const BackButton(key: ValueKey('side-menu-back'));
+  }
   return IconButton(
     key: const ValueKey('side-menu-button'),
     tooltip: 'Menu',

@@ -75,11 +75,11 @@ class SecurityRepository {
           .order('captured_at', ascending: false)
           .limit(5000));
 
-  /// Probes the `ip-lookup` edge function with a well-known public IP; false
+  /// Probes the `ip-lookup` edge function with this device's own address; false
   /// when it is missing or broken (public IP / ISP columns then stay null).
   Future<bool> ipLookupHealthy() async {
     try {
-      final res = await _db.functions.invoke('ip-lookup', body: {'ip': '8.8.8.8'});
+      final res = await _db.functions.invoke('ip-lookup', body: const <String, dynamic>{});
       final data = res.data;
       return data is Map && data['ip_country'] != null && '${data['ip_country']}'.isNotEmpty;
     } catch (_) {

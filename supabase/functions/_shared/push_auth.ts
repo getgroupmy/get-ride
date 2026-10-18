@@ -7,15 +7,17 @@
  *     the database says whether it matches (`push_webhook_secret_ok`), so
  *     the secret lives in one place;
  *   * a bearer that is the project's service-role key;
- *   * a bearer that is a signed-in admin's access token — the admin
- *     "Push Notification" screens. `caller_is_admin()` is asked with that
- *     token, which also answers true for a service-role JWT.
+ *   * a bearer that is the access token of an admin who may edit the
+ *     "Push Notification" page (`admin_can_edit`, see admin_page.ts) — not
+ *     any admin, so a sub-admin with one unrelated page cannot broadcast.
  *
  * Anything else is refused before the body is read: no credentials -> 401,
  * a valid token that is not an admin's -> 403.
  *
  *     deno test supabase/functions/_shared/push_auth_test.ts
  */
+
+import { callerCanEdit, PUSH_PAGES } from "./admin_page.ts";
 
 export const WEBHOOK_SECRET_HEADER = "x-push-secret";
 
@@ -24,8 +26,8 @@ export interface PushAuthDeps {
   serviceKeys: string[];
   /** Whether the webhook secret matches the one in Vault. */
   webhookSecretOk(secret: string): Promise<boolean>;
-  /** `caller_is_admin()` for this Authorization header; null when the token is not accepted. */
-  callerIsAdmin(authorization: string): Promise<boolean | null>;
+  /** Whether this Authorization header's user may edit Push Notification; null when the token is not accepted. */
+  callerCanPush(authorization: string): Promise<boolean | null>;
 }
 
 export type PushAuthResult =
@@ -66,9 +68,9 @@ export async function authorizePush(
     return { ok: true, caller: "service" };
   }
 
-  const admin = await deps.callerIsAdmin(`Bearer ${token}`);
+  const admin = await deps.callerCanPush(`Bearer ${token}`);
   if (admin === null) return { ok: false, status: 401, error: "Invalid or expired token" };
-  if (!admin) return { ok: false, status: 403, error: "Only admins can send notifications" };
+  if (!admin) return { ok: false, status: 403, error: "You need edit access to Push Notification to send notifications" };
   return { ok: true, caller: "admin" };
 }
 
@@ -102,15 +104,8 @@ export function livePushAuthDeps(
       }
       return (await res.json()) === true;
     },
-    async callerIsAdmin(authorization) {
-      const res = await rpc("caller_is_admin", env.anonKey, authorization, {});
-      // PostgREST answers 401 for a token it won't accept (bad signature, expired).
-      if (res.status === 401 || res.status === 403) {
-        await res.body?.cancel();
-        return null;
-      }
-      if (!res.ok) throw new Error(`caller_is_admin: HTTP ${res.status} ${await res.text()}`);
-      return (await res.json()) === true;
+    callerCanPush(authorization) {
+      return callerCanEdit(env, authorization, PUSH_PAGES, fetchFn);
     },
   };
 }

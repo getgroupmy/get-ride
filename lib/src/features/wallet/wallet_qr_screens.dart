@@ -414,6 +414,8 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
             builder: (_, state, _) {
               final on = state.torchState == TorchState.on;
               final available = scannerTorchAvailable(state);
+              // No camera at all (it never started): no torch button either.
+              if (state.error != null) return const SizedBox.shrink(key: ValueKey('scan-torch-none'));
               return IconButton(
                 key: const ValueKey('scan-torch'),
                 tooltip: !available

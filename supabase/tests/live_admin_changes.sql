@@ -40,7 +40,9 @@ begin
     -- Mid-trip handovers (migration 0199).
     'trip_handovers', 'trip_handover_candidates',
     -- EV profiles for the OBD-II reader (migration 0202).
-    'ev_profiles'
+    'ev_profiles',
+    -- Commission promotions (migration 0224).
+    'commission_promotions'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

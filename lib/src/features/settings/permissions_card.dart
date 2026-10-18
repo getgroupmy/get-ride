@@ -2,6 +2,7 @@
 // where each stands, with the way to change it.
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -77,20 +78,36 @@ class _PermissionsCardState extends ConsumerState<PermissionsCard> {
               ),
             ),
             switch (statuses) {
-              AsyncData(:final value) => Column(
-                children: [
-                  for (final e in value.entries)
-                    ListTile(
-                      key: ValueKey('permission-${e.key.name}'),
-                      leading: Icon(permissionIcon(e.key)),
-                      title: Text(e.key.title),
-                      subtitle: Text(e.key.why),
-                      trailing: PermissionStatusChip(permission: e.key, state: e.value),
-                      onTap: e.value == PermState.granted || e.value == PermState.unknown
-                          ? null
-                          : () => unawaited(_change(e.key, e.value)),
-                    ),
-                ],
+              // On a phone (narrower still at large text) the chip goes under
+              // the reason instead of squeezing it into a thin column.
+              AsyncData(:final value) => LayoutBuilder(
+                builder: (context, box) {
+                  final below = box.maxWidth < 440 * MediaQuery.textScalerOf(context).scale(1);
+                  return Column(
+                    children: [
+                      for (final e in value.entries)
+                        ListTile(
+                          key: ValueKey('permission-${e.key.name}'),
+                          leading: Icon(permissionIcon(e.key)),
+                          title: Text(e.key.title),
+                          subtitle: below
+                              ? Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(e.key.why),
+                                    const SizedBox(height: 6),
+                                    PermissionStatusChip(permission: e.key, state: e.value),
+                                  ],
+                                )
+                              : Text(e.key.why),
+                          trailing: below ? null : PermissionStatusChip(permission: e.key, state: e.value),
+                          onTap: e.value == PermState.granted || e.value == PermState.unknown
+                              ? null
+                              : () => unawaited(_change(e.key, e.value)),
+                        ),
+                    ],
+                  );
+                },
               ),
               AsyncError() => ListTile(
                 title: const Text("Couldn't read the permissions"),
@@ -104,8 +121,10 @@ class _PermissionsCardState extends ConsumerState<PermissionsCard> {
                 child: Center(child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))),
               ),
             },
-            if (statuses.value?.entries.any((e) => e.value != PermState.granted && e.value != PermState.unknown) ??
-                false)
+            // A browser has no app settings page to send anyone to.
+            if (!kIsWeb &&
+                (statuses.value?.entries.any((e) => e.value != PermState.granted && e.value != PermState.unknown) ??
+                    false))
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                 child: OutlinedButton.icon(

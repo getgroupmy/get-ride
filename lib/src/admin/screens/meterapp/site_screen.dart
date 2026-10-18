@@ -319,7 +319,15 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: t.colorScheme.outlineVariant),
             ),
-            child: SplashView(cached: preview, latest: _splashPicked == null ? draft : null, dark: dark),
+            // Laid out at a phone's size and scaled down whole, so the
+            // fallback "GET." keeps its one line as on a real phone.
+            child: FittedBox(
+              child: SizedBox(
+                width: 390,
+                height: 690,
+                child: SplashView(cached: preview, latest: _splashPicked == null ? draft : null, dark: dark),
+              ),
+            ),
           ),
           const SizedBox(height: 6),
           Text(label, style: t.textTheme.labelMedium),
@@ -573,6 +581,7 @@ class _SiteValues extends ConsumerWidget {
                 onTap: canEdit ? () => _edit(context, ref, e) : null,
                 trailing: canEdit
                     ? BusyIconButton(
+                        tooltip: 'Delete value',
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () async {
                           if (!await confirm(context, 'Delete value?', '${e.values['name'] ?? ''}', ok: 'Delete')) return;

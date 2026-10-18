@@ -233,14 +233,20 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
                           if (on) ...[
                             const Spacer(),
                             const SizedBox(width: 12),
-                            InkResponse(
-                              key: ValueKey('vehicle-info-${s.name}'),
-                              radius: 18,
-                              onTap: () => widget.onInfo != null ? widget.onInfo!(s) : _info(context, s),
-                              child: Icon(
-                                Icons.info_outline,
-                                size: style.number('infoIconSize'),
-                                color: style.color('infoIcon', t.brightness) ?? infoBlue,
+                            // Named for screen readers (the icon alone said nothing).
+                            Semantics(
+                              button: true,
+                              label: 'About ${s.name}',
+                              excludeSemantics: true,
+                              child: InkResponse(
+                                key: ValueKey('vehicle-info-${s.name}'),
+                                radius: 18,
+                                onTap: () => widget.onInfo != null ? widget.onInfo!(s) : _info(context, s),
+                                child: Icon(
+                                  Icons.info_outline,
+                                  size: style.number('infoIconSize'),
+                                  color: style.color('infoIcon', t.brightness) ?? infoBlue,
+                                ),
                               ),
                             ),
                           ],
@@ -491,7 +497,9 @@ class PickupPill extends StatelessWidget {
                         style: TextStyle(fontSize: 13, height: 1.25, color: dark ? Colors.white60 : const Color(0xFF7A7A7A)),
                       ),
                       Text(
-                        place?.name ?? 'Set pickup location',
+                        // Large text: the short words, so the pill isn't cut off.
+                        place?.name ??
+                            (MediaQuery.textScalerOf(context).scale(1) > 1.15 ? 'Set pickup' : 'Set pickup location'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 17, height: 1.3, fontWeight: FontWeight.w600, color: ink),

@@ -41,6 +41,19 @@ abstract class SmsPlatform {
   /// Calls [resume] whenever the service is restarted without the gateway
   /// asking (by Android, after a restart, or by the watchdog).
   void onResume(Future<void> Function() resume);
+
+  /// Shares this phone's internet with a test session: connects to the
+  /// relay at [url] with the phone's device [key] and performs the requests
+  /// it hands over, on mobile data when [mobileDataOnly]. Idempotent for the
+  /// same settings, so it can be called every round.
+  Future<void> startProxy({required String url, required String key, required String label, required bool mobileDataOnly});
+
+  Future<void> stopProxy();
+
+  /// Calls [handle] with each change in the shared internet's state
+  /// (`state`: connecting, connected, reconnecting, error, off, request,
+  /// mobile; see ProxyClient.kt).
+  void onProxyEvent(void Function(Map<String, Object?> event) handle);
 }
 
 class MethodChannelSmsPlatform implements SmsPlatform {
@@ -108,10 +121,45 @@ class MethodChannelSmsPlatform implements SmsPlatform {
   @override
   Future<void> requestBatteryExemption() => _methods.invokeMethod('requestBatteryExemption');
 
+  Future<void> Function()? _resume;
+  void Function(Map<String, Object?> event)? _proxyEvent;
+  bool _handling = false;
+
   @override
   void onResume(Future<void> Function() resume) {
+    _resume = resume;
+    _handle();
+  }
+
+  @override
+  Future<void> startProxy({
+    required String url,
+    required String key,
+    required String label,
+    required bool mobileDataOnly,
+  }) => _methods.invokeMethod('startProxy', {'url': url, 'key': key, 'label': label, 'mobileDataOnly': mobileDataOnly});
+
+  @override
+  Future<void> stopProxy() => _methods.invokeMethod('stopProxy');
+
+  @override
+  void onProxyEvent(void Function(Map<String, Object?> event) handle) {
+    _proxyEvent = handle;
+    _handle();
+  }
+
+  /// One handler for everything native calls on the channel.
+  void _handle() {
+    if (_handling) return;
+    _handling = true;
     _methods.setMethodCallHandler((call) async {
-      if (call.method == 'resume') await resume();
+      switch (call.method) {
+        case 'resume':
+          await _resume?.call();
+        case 'proxy':
+          final a = call.arguments;
+          if (a is Map) _proxyEvent?.call({for (final e in a.entries) '${e.key}': e.value});
+      }
     });
   }
 }

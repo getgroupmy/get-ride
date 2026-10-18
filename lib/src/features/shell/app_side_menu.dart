@@ -42,7 +42,7 @@ class AppSideMenuHost extends StatefulWidget {
   final Widget child;
 
   /// The side menu is for phones; wider screens have the rail.
-  static bool appliesAt(double width) => width < 720;
+  static bool appliesAt(double width, [double height = double.infinity]) => width < 720 || height < 500;
 
   @override
   State<AppSideMenuHost> createState() => _AppSideMenuHostState();
@@ -59,15 +59,11 @@ class _AppSideMenuHostState extends State<AppSideMenuHost> {
 
   @override
   Widget build(BuildContext context) => SideMenuHost(
-    enabled: AppSideMenuHost.appliesAt(MediaQuery.sizeOf(context).width),
+    enabled: AppSideMenuHost.appliesAt(MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height),
     menu: _mode == SideMenuMode.partner ? const PartnerSideMenu() : const RiderSideMenu(),
     child: widget.child,
   );
 }
-
-/// What the stars show until ratings are kept per account (Expo shows a
-/// fixed figure too), so the stars and the number agree.
-const riderMenuRating = 5.0;
 
 /// The rider side menu (Expo `MenuSideSheet`): the admin's rider menu,
 /// then the driver mode button.
@@ -92,7 +88,8 @@ class RiderSideMenu extends ConsumerWidget {
             SideMenuTile(
               entry: e,
               plain: true,
-              color: e.id == 'logout' ? const Color(0xFFFF6B6B) : null,
+              // The theme's error red: readable on the light panel as on the dark.
+              color: e.id == 'logout' ? Theme.of(context).colorScheme.error : null,
               beforeOpen: close,
               builtIn: (c, id) => riderMenuAction(c, ref, id, beforeOpen: close),
             ),
@@ -132,7 +129,7 @@ class PartnerSideMenu extends ConsumerWidget {
             SideMenuTile(
               entry: e,
               plain: true,
-              color: e.id == 'sign-out' ? const Color(0xFFFF6B6B) : null,
+              color: e.id == 'sign-out' ? Theme.of(context).colorScheme.error : null,
               beforeOpen: close,
               builtIn: (c, id) => partnerMenuAction(c, ref, id, close: close),
             ),
@@ -202,7 +199,7 @@ class SideMenuPanel extends ConsumerWidget {
           ? SideMenuHeader(
               name: profile?.name ?? 'Add your name',
               avatarUrl: profile?.avatarUrl,
-              subtitle: const SideMenuStars(rating: riderMenuRating),
+              subtitle: SideMenuStars(rating: profile?.riderRating),
               onTap: onProfile == null ? null : () => onProfile!(context),
             )
           : null,

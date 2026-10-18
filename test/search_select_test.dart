@@ -63,6 +63,27 @@ void main() {
         return picked;
       }
 
+      testWidgets('on a phone the list is a full-height sheet, search on top, at large text', (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(360, 640);
+        tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final picked = await pump(tester, _states, initial: 'Johor');
+        await tester.tap(find.byKey(const ValueKey('state')));
+        await tester.pumpAndSettle();
+        expect(find.byType(Dialog), findsNothing);
+        expect(find.byType(BottomSheet), findsOneWidget);
+        final field = tester.getTopLeft(find.byKey(const ValueKey('search-select-field'))).dy;
+        expect(field, lessThan(200), reason: 'pinned near the top of a tall sheet');
+        await tester.enterText(find.byKey(const ValueKey('search-select-field')), 'tereng');
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Terengganu'));
+        await tester.pumpAndSettle();
+        expect(picked, ['Terengganu']);
+        expect(tester.takeException(), isNull);
+      });
+
       testWidgets('a long list opens with a search box; typing narrows it; a tap picks', (tester) async {
         final picked = await pump(tester, _states, initial: 'Johor');
         expect(find.text('Johor'), findsOneWidget);

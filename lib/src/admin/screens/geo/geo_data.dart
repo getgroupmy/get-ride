@@ -41,7 +41,9 @@ class GeoAdminRepository {
   // The list leaves the boundary shapes out (12 MB for the states alone,
   // which timed the page out): only their source and date come, enough to
   // mark a region as having one. [boundaryOf] reads one when it is opened.
-  static const _boundaryMarks = 'geofence_source:geofence->>source, geofence_updated:geofence->>updatedAt';
+  // Both are stored columns (migration 0227), so listing doesn't unpack
+  // every shape on the server to find them.
+  static const _boundaryMarks = 'geofence_source, geofence_updated:geofence_updated_at';
   static const _regionSelects = {
     RegionLevel.country: 'id, name, values, $_boundaryMarks, position',
     RegionLevel.state: 'id, country, name, values, $_boundaryMarks, position',

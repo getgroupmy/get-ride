@@ -744,7 +744,7 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
                           ),
                     onTap: widget.enabled && opens == null
                         ? () => _open(d, u)
-                        : (u?['file_url'] != null ? () => openInApp(context, '${u!['file_url']}') : null),
+                        : (u?['file_url'] != null ? () => openStoredFile(context, '${u!['file_url']}') : null),
                   ),
                 );
               }),

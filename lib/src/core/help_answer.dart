@@ -73,13 +73,40 @@ const helpNotedText = "I've passed your question on so we can add an answer.";
 const helpSuggestionsText = 'I found a few things that might help:';
 const helpTentativeIntro = 'This might help:';
 
+/// [a] and [b] as the same question: case, spacing and end punctuation aside.
+bool sameHelpQuestion(String a, String b) {
+  String n(String s) => s.toLowerCase().replaceAll(RegExp(r'[^\p{L}\p{N}]+', unicode: true), ' ').trim();
+  return n(a).isNotEmpty && n(a) == n(b);
+}
+
+/// Whether [question] is word for word one of [article]'s own questions.
+bool _asksExactly(HelpArticle article, String question) =>
+    sameHelpQuestion(article.title, question) || article.questionVariants.any((v) => sameHelpQuestion(v, question));
+
 /// The reply to a question whose ranked articles are [hits] (best first).
-HelpReply composeHelpReply(List<HelpHit> hits, HelpThresholds th) {
+/// An article whose title is [question] word for word (a starter tapped, a
+/// title typed) is the answer outright, and no suggestion repeats the
+/// question just asked.
+HelpReply composeHelpReply(List<HelpHit> hits, HelpThresholds th, {String? question}) {
   final ok = [
     for (final h in hits)
       if (h.score >= th.minimum && h.article.answer.trim().isNotEmpty) h,
   ];
   if (ok.isEmpty) return const HelpReply(kind: HelpReplyKind.unknown, text: helpUnknownText);
+  if (question != null) {
+    final exact = ok.where((h) => _asksExactly(h.article, question)).firstOrNull;
+    if (exact != null) {
+      return HelpReply(
+        kind: HelpReplyKind.answer,
+        text: exact.article.answer,
+        article: exact.article,
+        suggestions: [
+          for (final h in ok)
+            if (h != exact && !_asksExactly(h.article, question)) h.article,
+        ].take(2).toList(),
+      );
+    }
+  }
   final top = ok.first;
   final close = ok.length > 1 && ok[1].score >= top.score * th.closeRatio;
   if (ok.length == 1 || (top.score >= th.confident && !close)) {

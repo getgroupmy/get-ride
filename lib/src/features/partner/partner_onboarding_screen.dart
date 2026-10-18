@@ -278,7 +278,8 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         style: t.textTheme.labelLarge,
       ),
       const SizedBox(height: 8),
-      LinearProgressIndicator(value: reachedIndex / OnboardingStep.wizard.length),
+      // Counted as the step on screen says: full on the last step.
+      LinearProgressIndicator(value: ((reachedIndex + 1) / OnboardingStep.wizard.length).clamp(0.0, 1.0)),
       const SizedBox(height: 12),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final (i, step) in OnboardingStep.wizard.indexed)

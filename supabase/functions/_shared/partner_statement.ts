@@ -45,7 +45,8 @@ export interface StatementData {
   incentives: { at: string; label: string; amount: number }[];
   adjustments: { at: string; reason: string; amount: number }[];
   breakdown: { start: string; end?: string; totals: Totals; weeks?: unknown[] }[];
-  trips: { at: string; service: string | null; pickup: string; drop: string; payment: string | null; lines: Totals }[];
+  /** kind "meter": a meter / TEKSI hire (0224); left out for a booked trip. */
+  trips: { at: string; kind?: "meter"; service: string | null; pickup: string; drop: string; payment: string | null; lines: Totals }[];
 }
 
 export const DEFAULT_VERIFY_URL = "https://getride.my/verify";
@@ -110,6 +111,8 @@ const WORDS = {
     coins: "GET.coin",
     activity: "Activity",
     trips: "Trips",
+    meterTrips: "Of which meter trips",
+    meter: "Meter",
     onlineHours: "Hours online",
     distance: "Distance (km)",
     daily: "Daily breakdown",
@@ -179,6 +182,8 @@ const WORDS = {
     coins: "GET.coin",
     activity: "Aktiviti",
     trips: "Perjalanan",
+    meterTrips: "Daripadanya perjalanan meter",
+    meter: "Meter",
     onlineHours: "Jam dalam talian",
     distance: "Jarak (km)",
     daily: "Pecahan harian",
@@ -303,12 +308,15 @@ export function summaryRows(t: Totals, w: Words): Row[] {
     { id: "coins", section: "howPaid", label: w.coins, amount: n("coins") },
     { id: "activity", section: "activity", label: w.activity, head: true },
     { id: "trips", section: "activity", label: w.trips, text: String(n("trips")) },
+    { id: "meterTrips", section: "activity", label: w.meterTrips, text: String(n("meterTrips")) },
     { id: "onlineHours", section: "activity", label: w.onlineHours, text: n("onlineHours").toFixed(1) },
     { id: "distance", section: "activity", label: w.distance, text: n("distanceKm").toFixed(1) },
   ];
   // Lines that are nothing in every statement (no handover, no adjustments) are left out.
   const optional = new Set(["handoverIn", "handoverOut", "adjustments", "otherCharges", "otherSurcharges"]);
-  return rows.filter((r) => !optional.has(r.id) || (r.amount ?? 0) !== 0);
+  return rows.filter((r) =>
+    r.id === "meterTrips" ? n("meterTrips") !== 0 : !optional.has(r.id) || (r.amount ?? 0) !== 0
+  );
 }
 
 // ---- The PDF -------------------------------------------------------------------------------
@@ -559,7 +567,7 @@ export async function renderStatement(d: StatementData, meta: RenderMeta, look: 
       need(14);
       const l = t.lines;
       text(myt(t.at), tc[0], y, size);
-      text(fit(t.service ?? "", 75, size), tc[1], y, size);
+      text(fit(t.kind === "meter" ? w.meter : t.service ?? "", 75, size), tc[1], y, size);
       text(fit(t.payment ?? "", 80, size), tc[2], y, size);
       right(money(l.fare), tc[4], y, size);
       right(money((l.fare ?? 0) + (l.surcharges ?? 0) + (l.platformCollected ?? 0)), tc[5], y, size);

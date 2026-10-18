@@ -18,7 +18,7 @@ insert into public.profiles (id) select id from auth.users
 on conflict do nothing;
 -- The gateway phone is signed in as an admin (0121).
 insert into public.admin_access (profile_id, page, access_level)
-values ('00000000-0000-0000-0000-0000000120a1', 'admin-settings-messaging', 'edit')
+values ('00000000-0000-0000-0000-0000000120a1', '*', 'edit')  -- a gateway is a full admin's (0223)
 on conflict do nothing;
 
 create or replace function pg_temp.as_user(p uuid) returns void language plpgsql as $$

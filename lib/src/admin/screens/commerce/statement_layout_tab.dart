@@ -711,7 +711,7 @@ class StatementPreview extends StatelessWidget {
     'commission': -277.2, 'platformFees': -9, 'totalDeductions': -286.2, 'adjustments': -2, 'net': 1735.8,
     'taxes': 0, 'tolls': 67.2, 'total': 67.2, 'cash': 1108.8, 'coins': 92.4,
   };
-  static const _activity = {'trips': '84', 'onlineHours': '134.4', 'distance': '798.0'};
+  static const _activity = {'trips': '84', 'meterTrips': '6', 'onlineHours': '134.4', 'distance': '798.0'};
   static const _heads = {'earnings', 'deductions', 'passThrough', 'howPaid', 'activity'};
   static const _quiet = {'handoverIn', 'handoverOut', 'otherCharges', 'otherSurcharges'};
 

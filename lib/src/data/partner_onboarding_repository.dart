@@ -98,13 +98,7 @@ class PartnerOnboardingRepository {
     final ext = guessExt(fileName);
     return _upload(
       'avatars',
-      avatarPath(
-        country: uploadCountry(s.partner, s.profile),
-        phone: '${s.profile?['phone'] ?? s.partner['phone'] ?? _uid}',
-        name: '${s.profile?['name'] ?? s.partner['name'] ?? ''}',
-        ext: ext,
-        owner: _uid,
-      ),
+      avatarPath(owner: _uid, ext: ext),
       bytes,
       ext,
     );
@@ -115,13 +109,7 @@ class PartnerOnboardingRepository {
     final ext = guessExt(fileName);
     return _upload(
       'ID_Image',
-      idImagePath(
-        country: uploadCountry(s.partner, s.profile),
-        phone: '${s.profile?['phone'] ?? s.partner['phone'] ?? _uid}',
-        idNumber: idNumber.isEmpty ? 'id' : idNumber,
-        ext: ext,
-        owner: _uid,
-      ),
+      idImagePath(owner: _uid, ext: ext),
       bytes,
       ext,
     );

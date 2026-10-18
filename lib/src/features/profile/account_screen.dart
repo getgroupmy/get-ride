@@ -133,7 +133,12 @@ class RiderMenu extends ConsumerWidget {
             contentPadding: const EdgeInsets.all(16),
             leading: NetAvatar(url: p?.avatarUrl, radius: 28, fallback: const Icon(Icons.person, size: 28)),
             title: Text(p?.name ?? 'Add your name', style: t.textTheme.titleLarge),
-            subtitle: Text([p?.phone, p?.displayId].whereType<String>().join(' · ')),
+            // Phone and ID side by side, each whole on its own line when
+            // large text has no room for both.
+            subtitle: Wrap(
+              spacing: 12,
+              children: [for (final s in [p?.phone, p?.displayId].whereType<String>()) Text(s)],
+            ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => go('/account/profile'),
           ),

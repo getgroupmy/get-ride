@@ -10,7 +10,7 @@ void main() {
     expect(SideMenuStyle.button, brandAccent);
   });
 
-  testWidgets('the mode button at the foot is filled with the accent', (tester) async {
+  testWidgets('the mode button at the foot is filled with the accent, darkened under white words', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: SideMenuFrame(
@@ -22,7 +22,10 @@ void main() {
       ),
     ));
     final style = tester.widget<FilledButton>(find.byKey(const ValueKey('mode'))).style!;
-    expect(style.backgroundColor!.resolve({}), brandAccent);
+    final fill = style.backgroundColor!.resolve({})!;
+    expect(fill, SideMenuStyle.buttonFill);
     expect(style.foregroundColor!.resolve({}), Colors.white);
+    // WCAG AA for the white label: at least 4.5:1.
+    expect(1.05 / (fill.computeLuminance() + 0.05), greaterThanOrEqualTo(4.5));
   });
 }

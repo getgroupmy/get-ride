@@ -273,11 +273,14 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
                         ),
                     ]),
                     const SizedBox(height: 12),
+                    // Full width, no tick, one line each: no "Every-one".
                     SegmentedButton<String>(
+                      expandedInsets: EdgeInsets.zero,
+                      showSelectedIcon: false,
                       segments: const [
-                        ButtonSegment(value: 'all', label: Text('Everyone')),
-                        ButtonSegment(value: 'users', label: Text('Passengers')),
-                        ButtonSegment(value: 'partners', label: Text('Partners')),
+                        ButtonSegment(value: 'all', label: SegmentLabel('Everyone')),
+                        ButtonSegment(value: 'users', label: SegmentLabel('Passengers')),
+                        ButtonSegment(value: 'partners', label: SegmentLabel('Partners')),
                       ],
                       selected: {_audience},
                       onSelectionChanged: (v) => _setAudience(v.first),

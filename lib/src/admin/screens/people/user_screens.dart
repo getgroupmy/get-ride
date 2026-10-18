@@ -91,20 +91,19 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
     setState(() => _saving = true);
     final repo = ref.read(peopleRepositoryProvider);
     final ok = await runAdminAction(context, () async {
-      final country = _nationality.text.trim();
       var profileImage = _s('profile_image');
       var idImage = _s('id_image');
       if (_profileFile != null) {
         profileImage = await repo.upload(
           'avatars',
-          avatarPath(country: country, phone: _phone.text.trim(), name: _name.text, ext: guessExt(_profileFile!.name)),
+          avatarPath(owner: '${r['id']}', ext: guessExt(_profileFile!.name)),
           _profileFile!,
         );
       }
       if (_idFile != null) {
         idImage = await repo.upload(
           'ID_Image',
-          idImagePath(country: country, phone: _phone.text.trim(), idNumber: _ic.text.trim(), ext: guessExt(_idFile!.name)),
+          idImagePath(owner: '${r['id']}', ext: guessExt(_idFile!.name)),
           _idFile!,
         );
       }
@@ -356,7 +355,7 @@ class _UserIdDocumentsScreenState extends ConsumerState<UserIdDocumentsScreen> {
                           title: Text('${row['name'] ?? row['phone'] ?? row['email'] ?? id.substring(0, 8)}'),
                           subtitle: Text([
                             if (row['ic'] != null) 'IC ${row['ic']}' else '${row['phone'] ?? ''}',
-                            'Updated ${dateText(row['updated_at']).split(' ').first}',
+                            'Updated ${dateText(row['updated_at']).split(',').first}',
                           ].join('\n')),
                           isThreeLine: true,
                           trailing: Chip(
@@ -500,7 +499,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No ID image uploaded')))
       else
         InkWell(
-          onTap: img.startsWith('http') ? () => openInApp(context, img) : null,
+          onTap: img.startsWith('http') ? () => openStoredFile(context, img) : null,
           child: isPdfUri(img) || !img.startsWith('http')
               ? const SizedBox(height: 120, child: Center(child: Icon(Icons.picture_as_pdf_outlined, size: 48)))
               : ClipRRect(

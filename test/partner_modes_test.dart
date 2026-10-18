@@ -96,6 +96,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('add vehicle'), findsOneWidget);
   });
+
+  testWidgets('a half set-up vehicle: says what is missing and opens its wizard, the switch not spinning', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(700, 1400);
+    addTearDown(tester.view.reset);
+    final router = GoRouter(
+      routes: [
+        GoRoute(path: '/', builder: (_, _) => const PartnerScreen()),
+        GoRoute(
+          path: '/drive/vehicles/:id',
+          builder: (_, s) => Scaffold(body: Text('vehicle ${s.pathParameters['id']}')),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          partnerProvider.overrideWith(
+            (ref) async => Partner({
+              'id': 'p1',
+              'status': 'approved',
+              'name': 'Ali',
+              'partner_types': ['eHailing'],
+            }),
+          ),
+          rideRepositoryProvider.overrideWithValue(_NoTrip()),
+          openRequestsProvider.overrideWith((ref) => const Stream<List<RideRequest>>.empty()),
+          assignableVehiclesProvider.overrideWith(
+            (ref) async => const [
+              AssignableVehicle(
+                vehicle: {'id': 'v1', 'plate': 'WXY 1234'},
+                role: VehicleRole.owner,
+                status: AssignableStatus.incomplete,
+              ),
+            ],
+          ),
+          partnerTypeEntriesProvider.overrideWith(
+            (ref) async => [
+              _e({'name': 'eHailing', 'vehicleRequired': true}),
+            ],
+          ),
+          partnerDocCheckProvider.overrideWithValue((partner, {required teksi}) async => const <DocIssue>[]),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('You are offline'));
+    await tester.pump();
+    await _pumpOpen(tester);
+    expect(find.byKey(const ValueKey('vehicle-required')), findsOneWidget);
+    expect(find.textContaining('WXY 1234 isn\'t set up yet: Make & model is still missing'), findsOneWidget);
+    expect(find.byKey(const ValueKey('busy-spinner')), findsNothing, reason: 'the switch settled before asking');
+    await tester.tap(find.text('Finish vehicle'));
+    await tester.pumpAndSettle();
+    expect(find.text('vehicle v1'), findsOneWidget);
+  });
 }
 
 /// Lets a dialog or sheet open over a busy control: the control's spinner

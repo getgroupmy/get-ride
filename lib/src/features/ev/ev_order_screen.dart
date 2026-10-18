@@ -678,7 +678,8 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
     final f = {for (final e in _fields.entries) e.key: e.value.text};
     final problem = ownershipProblem(f, _ownerType);
     if (problem != null) return _say(problem);
-    await _save(ownershipPatch(f, _ownerType, _idType, _idCountry), done: 'Owner details saved.');
+    // Said under the button once saved (no snackbar saying it twice).
+    await _save(ownershipPatch(f, _ownerType, _idType, _idCountry));
   }
 
   // ---- 5. Plate ---------------------------------------------------------------

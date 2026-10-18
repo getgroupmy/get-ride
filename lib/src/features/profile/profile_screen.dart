@@ -31,15 +31,8 @@ class ProfileScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         leading: sideMenuLeading(context),
+        // One way to edit: the "Edit profile" button under the details.
         title: const Text('Profile'),
-        actions: [
-          IconButton(
-            key: const ValueKey('profile-edit'),
-            tooltip: 'Edit profile',
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: () => context.push('/account/edit'),
-          ),
-        ],
       ),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(profileProvider.future),

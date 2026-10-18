@@ -108,13 +108,14 @@ class _BookingIdRow extends StatelessWidget {
         child: Row(
           children: [
             Text('Booking ID', style: t.textTheme.titleSmall),
-            const Spacer(),
-            Flexible(
-              child: Text(
-                bookingNo,
-                style: t.textTheme.bodyMedium,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.end,
+            const SizedBox(width: 12),
+            // All the room the label leaves, and shrunk rather than cut off
+            // at large text: the ID is read out to support.
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(bookingNo, style: t.textTheme.bodyMedium, maxLines: 1),
               ),
             ),
             IconButton(
@@ -288,12 +289,20 @@ class _ReceiptBody extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // The value gets the larger share, and a time keeps its AM/PM on
+          // its line.
           Expanded(
+            flex: 2,
             child: Text(k, style: bold ? style : style?.copyWith(color: t.colorScheme.onSurfaceVariant)),
           ),
           const SizedBox(width: 12),
           Flexible(
-            child: Text(v, textAlign: TextAlign.end, style: style),
+            flex: 3,
+            child: Text(
+              v.replaceAll(' AM', ' AM').replaceAll(' PM', ' PM'),
+              textAlign: TextAlign.end,
+              style: style,
+            ),
           ),
         ],
       ),

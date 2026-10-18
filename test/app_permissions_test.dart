@@ -78,7 +78,7 @@ void main() {
       expect(permissionsFor(TargetPlatform.android), contains(AppPermission.fullScreenCalls));
       expect(permissionsFor(TargetPlatform.iOS), isNot(contains(AppPermission.fullScreenCalls)));
       expect(permissionsFor(TargetPlatform.iOS).first, AppPermission.notifications);
-      expect(permissionsFor(TargetPlatform.android, web: true), [AppPermission.notifications, AppPermission.location]);
+      expect(permissionsFor(TargetPlatform.android, web: true), [AppPermission.location]);
     });
 
     test('native answers read as states', () {

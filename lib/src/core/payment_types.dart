@@ -81,3 +81,14 @@ PaymentChoice paymentChoiceFor(String value, List<PaymentChoice> choices) {
   final list = choices.isEmpty ? builtInPayments : choices;
   return list.firstWhere((c) => c.value == value, orElse: () => list.first);
 }
+
+/// A stored `payment_mode` as the rider saw it when booking: the built-in
+/// methods by their label ("cash" → "Cash", "Get Pay" → "GET.wallet"), any
+/// other with a capital first letter.
+String paymentModeLabel(String mode) {
+  final m = mode.trim();
+  for (final c in builtInPayments) {
+    if (c.value.toLowerCase() == m.toLowerCase()) return c.label;
+  }
+  return m.isEmpty ? m : '${m[0].toUpperCase()}${m.substring(1)}';
+}

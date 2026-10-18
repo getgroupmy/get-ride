@@ -96,6 +96,11 @@ select pg_temp.refused(
   format($q$select public.meter_trip_record(%L)$q$,
     pg_temp.hire('00000000-0000-0000-0000-0000000219e7') || '{"fare": -5}'),
   'a negative fare', '%METER_TRIP_INVALID%');
+-- 0223: the total is at least the fare and its extras (20 + 5 + 3 + 2).
+select pg_temp.refused(
+  format($q$select public.meter_trip_record(%L)$q$,
+    pg_temp.hire('00000000-0000-0000-0000-0000000219e6') || '{"total": 10}'),
+  'a total below the fare', '%METER_TRIP_INVALID%');
 reset role;
 
 -- 3. Switch on, Airport surcharge and tolls ticked: 10% of 20 + 5 + 3 = 2.80 -------------

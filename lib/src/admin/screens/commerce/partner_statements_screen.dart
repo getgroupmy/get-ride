@@ -85,8 +85,12 @@ class _AdminPartnerStatementsScreenState extends ConsumerState<AdminPartnerState
       child: AdminPage(
         title: 'Partner statements',
         page: statementsPage,
-        bottom: const TabBar(
-          tabs: [
+        // Four tabs don't fit a phone without cutting "Adjustments": there
+        // the bar scrolls. (Only the bar; the pages still don't swipe.)
+        bottom: TabBar(
+          isScrollable: MediaQuery.sizeOf(context).width < 600,
+          tabAlignment: MediaQuery.sizeOf(context).width < 600 ? TabAlignment.start : null,
+          tabs: const [
             Tab(key: ValueKey('statements-tab-settings'), text: 'Settings'),
             Tab(key: ValueKey('statements-tab-layout'), text: 'Layout'),
             Tab(key: ValueKey('statements-tab-incentives'), text: 'Incentives'),

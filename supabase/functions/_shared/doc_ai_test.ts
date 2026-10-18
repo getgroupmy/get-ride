@@ -6,6 +6,7 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 
 import {
+  keyRefused,
   bearerToken,
   buildUserText,
   DEFAULT_VISION_MODELS,
@@ -149,4 +150,10 @@ Deno.test("dates and the bearer token", () => {
   assertEquals(bearerToken("Bearer abc.def"), "abc.def");
   assertEquals(bearerToken("abc"), null);
   assertEquals(bearerToken(null), null);
+});
+
+Deno.test("only a refused key moves on to the next one", () => {
+  assertEquals(keyRefused(401), true);
+  assertEquals(keyRefused(403), true);
+  for (const s of [400, 413, 429, 500, 503]) assertEquals(keyRefused(s), false);
 });

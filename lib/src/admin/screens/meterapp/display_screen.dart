@@ -399,6 +399,7 @@ class _StepperTile extends StatelessWidget {
         subtitle: Text(description),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           BusyIconButton(
+            tooltip: 'Decrease',
             icon: const Icon(Icons.remove),
             onPressed: onChanged == null || value <= min ? null : () => onChanged!(value - step),
           ),
@@ -407,6 +408,7 @@ class _StepperTile extends StatelessWidget {
             child: Text('$value${unit ?? ''}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600)),
           ),
           BusyIconButton(
+            tooltip: 'Increase',
             icon: const Icon(Icons.add),
             onPressed: onChanged == null || value >= max ? null : () => onChanged!(value + step),
           ),
@@ -675,10 +677,12 @@ class _VehicleArrangement extends ConsumerWidget {
           title: Text('${(list[i]['values'] as Map?)?['name'] ?? 'Unnamed'}'),
           trailing: Row(mainAxisSize: MainAxisSize.min, children: [
             BusyIconButton(
+              tooltip: 'Move up',
               icon: const Icon(Icons.keyboard_arrow_up),
               onPressed: !canEdit || i == 0 ? null : () => applyDisplay(context, ref, (x) => moveVehicleInBar(x, ids[i], -1, ids)),
             ),
             BusyIconButton(
+              tooltip: 'Move down',
               icon: const Icon(Icons.keyboard_arrow_down),
               onPressed: !canEdit || i == list.length - 1
                   ? null

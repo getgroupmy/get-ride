@@ -72,6 +72,39 @@ void main() {
     expect(tester.getTopLeft(find.byType(_Page)).dx, 0);
   });
 
+  testWidgets('a page opened from a tab keeps its back arrow', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SideMenuHost(
+          menu: const ColoredBox(key: ValueKey('menu'), color: Colors.white, child: SizedBox.expand()),
+          // A tab's own navigator, inside the menu, as the app's branches are.
+          child: Navigator(
+            onGenerateRoute: (_) => MaterialPageRoute<void>(
+              builder: (context) => Scaffold(
+                appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Account')),
+                body: TextButton(
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const _Page())),
+                  child: const Text('settings'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('side-menu-button')), findsOneWidget, reason: 'the tab itself has the menu');
+    await tester.tap(find.text('settings'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('side-menu-back')), findsOneWidget);
+    expect(find.byKey(const ValueKey('side-menu-button')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('side-menu-back')));
+    await tester.pumpAndSettle();
+    expect(find.text('settings'), findsOneWidget);
+  });
+
   testWidgets('system back closes an open menu first', (tester) async {
     await _pump(tester);
     await tester.tap(find.byKey(const ValueKey('side-menu-button')));
@@ -138,8 +171,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Kabeer'), findsOneWidget);
-    expect(find.byKey(const ValueKey('menu-rating')), findsOneWidget);
-    expect(find.text('5.0'), findsOneWidget);
+    expect(find.byKey(const ValueKey('menu-rating')), findsNothing, reason: 'no rating kept yet: no made-up stars');
+    expect(find.text('New'), findsOneWidget);
     expect(find.byIcon(Icons.chevron_right), findsOneWidget, reason: 'only the profile row has a chevron');
     expect(find.byKey(const ValueKey('menu-request-history')), findsOneWidget);
     expect(find.byKey(const ValueKey('menu-social')), findsOneWidget);

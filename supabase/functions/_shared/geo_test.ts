@@ -42,6 +42,7 @@ import {
   googleSessionBody,
   tileSource,
   trafficTileUrl,
+  tokenCacheKey,
 } from "./geo.ts";
 import { type GeoDeps, googleApiOf, googleSearchOf, handleGeo, parseGoogleSession, smartAddressOf } from "./geo_handler.ts";
 
@@ -303,6 +304,7 @@ function deps(over: Partial<GeoDeps> = {}) {
       return Promise.reject(new Error("down"));
     },
     take: () => Promise.resolve(true),
+    caller: () => Promise.resolve("u1"),
     count: (p, k, ok, cached) => {
       log.push(`count ${p} ${k} ${ok} ${cached}`);
       return Promise.resolve();
@@ -362,6 +364,19 @@ Deno.test("lookups: only providers the profile lists, Google never cached, other
   assert(log.includes("count here reverse true true"));
 });
 
+Deno.test("lookups: a reverse lookup a few metres away is the same cached answer", async () => {
+  const { d, log } = deps();
+  const at = (lat: string, lng: string) =>
+    handleGeo(q(`action=reverse&provider=here&role=rider&device=android&lat=${lat}&lng=${lng}`), "ip", d);
+  await at("3.10001", "101.60002");
+  // GPS jitter of a metre or two: the same ~11 m cell.
+  await at("3.10003", "101.60004");
+  assertEquals(log.filter((l) => l.startsWith("call revgeocode")).length, 1, "jitter came from the cache");
+  // Some 100 m away is a new lookup.
+  await at("3.1010", "101.6000");
+  assertEquals(log.filter((l) => l.startsWith("call revgeocode")).length, 2, "a new spot asks again");
+});
+
 Deno.test("lookups: a provider down, a missing key, the rate limit, bad input", async () => {
   const { d, log } = deps();
   const r = await handleGeo(q("action=route&provider=tomtom&role=partner&device=web&points=3.1,101.6;3.2,101.7"), "ip", d);
@@ -375,6 +390,23 @@ Deno.test("lookups: a provider down, a missing key, the rate limit, bad input", 
 
   const limited = deps({ take: () => Promise.resolve(false) }).d;
   assertEquals((await handleGeo(q("action=search&provider=here&role=partner&device=web&q=klcc"), "ip", limited)).status, 429);
+  // 0220 review: a key is spent for a signed-in user only, each held to their own limit.
+  const anon = deps({ caller: () => Promise.resolve(null) });
+  for (const a of [
+    "action=search&provider=here&role=partner&device=web&q=klcc",
+    "action=reverse&provider=here&role=rider&device=android&lat=3.1&lng=101.6",
+  ]) {
+    const r = await handleGeo(q(a), "ip", anon.d);
+    assertEquals(r.status, 401);
+    assertEquals(r.body, { error: "sign_in_required" });
+  }
+  assertEquals(anon.log.filter((l) => l.startsWith("call")), [], "nothing was asked of a provider");
+  assertEquals((await handleGeo(q("action=profile&role=rider&device=web"), "ip", anon.d)).status, 200,
+    "the map's tiles need no sign-in");
+  const buckets: string[] = [];
+  const perUser = deps({ take: (b) => { buckets.push(b); return Promise.resolve(!b.startsWith("user:")); } }).d;
+  assertEquals((await handleGeo(q("action=search&provider=here&role=partner&device=web&q=klcc"), "ip", perUser)).status, 429);
+  assertEquals(buckets, ["user:u1"]);
 });
 
 Deno.test("Google API choice: newer then older (default), newer only, older only", async () => {
@@ -1026,4 +1058,12 @@ Deno.test("Google's unofficial tiles for testing (0211): no key, the look set, d
   assertStringIncludes(tileSource("google_xyz", "satellite", null, null, undefined, look)!.url, "lyrs=y&");
   assertStringIncludes(tileSource("google_xyz", "light", null, null, undefined, look)!.url, "lyrs=p&");
   assertStringIncludes(tileSource("google_xyz", "dark", null, null, undefined, look)!.url, "lyrs=m&");
+});
+
+Deno.test("the caller cache keys a token by its SHA-256, never the token", async () => {
+  const key = await tokenCacheKey("abc");
+  assertEquals(key, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  assertEquals(await tokenCacheKey("abc"), key);
+  assert(!key.includes("abc"));
+  assert(await tokenCacheKey("abd") !== key);
 });

@@ -77,7 +77,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
     final label = t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600);
     final muted = t.colorScheme.onSurfaceVariant;
-    return Scaffold(
+    final page = Scaffold(
       key: const ValueKey('welcome'),
       body: SafeArea(
         child: ResponsiveCenter(
@@ -97,7 +97,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                       child: IconButton(
                         key: const ValueKey('phone-diagnostics'),
                         tooltip: 'Connection diagnostics',
-                        icon: Icon(Icons.medical_services_outlined, color: muted),
+                        icon: Icon(Icons.network_check, color: muted),
                         onPressed: () => context.push('/diagnostics'),
                       ),
                     ),
@@ -105,25 +105,45 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                 ),
               ),
               Expanded(
-                child: PageView(
-                  key: const ValueKey('welcome-slides'),
-                  controller: _pages,
-                  onPageChanged: (i) => setState(() => _page = i),
-                  children: [for (final s in _slides) _SlideView(s)],
+                // A mouse can drag the slides too (desktop web), not only a finger.
+                child: ScrollConfiguration(
+                  behavior: ScrollConfiguration.of(context).copyWith(dragDevices: PointerDeviceKind.values.toSet()),
+                  child: PageView(
+                    key: const ValueKey('welcome-slides'),
+                    controller: _pages,
+                    onPageChanged: (i) => setState(() => _page = i),
+                    children: [for (final s in _slides) _SlideView(s)],
+                  ),
                 ),
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // Each dot opens its slide.
                   for (var i = 0; i < _slides.length; i++)
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 20),
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: i == _page ? t.colorScheme.onSurface : t.colorScheme.outlineVariant,
+                    Semantics(
+                      button: true,
+                      selected: i == _page,
+                      label: 'Slide ${i + 1} of ${_slides.length}',
+                      child: InkWell(
+                        key: ValueKey('welcome-dot-$i'),
+                        customBorder: const CircleBorder(),
+                        onTap: () => unawaited(
+                          _pages.animateToPage(i, duration: const Duration(milliseconds: 400), curve: Curves.easeInOut),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            margin: const EdgeInsets.all(8),
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: i == _page ? t.colorScheme.onSurface : t.colorScheme.outlineVariant,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                 ],
@@ -180,6 +200,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
         ),
       ),
     );
+    // No app bar to set the status bar: its icons follow the theme.
+    return ThemedStatusBar(child: page);
   }
 }
 
@@ -195,12 +217,16 @@ class _SlideView extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, box) {
         final art = (box.maxHeight * 0.5).clamp(120.0, 280.0);
+        // A phone on its side leaves the slide too little height for the
+        // drawing: the words come first.
+        final showArt = box.maxHeight >= 240;
         return SingleChildScrollView(
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: box.maxHeight),
             child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            if (showArt) ...[
             SizedBox.square(
               dimension: art,
               child: Stack(
@@ -231,6 +257,7 @@ class _SlideView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 28),
+            ],
             Text(
               slide.title,
               textAlign: TextAlign.center,

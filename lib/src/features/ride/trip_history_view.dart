@@ -139,8 +139,18 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
               key: ValueKey('trip-${r.id}'),
               child: ListTile(
                 leading: Icon(partner ? Icons.drive_eta : Icons.local_taxi),
-                title: Text('${r.pickupLabel} → ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text('${formatInZone(r.createdAt, r.timezone)} · ${r.status.label}'),
+                // Pickup and drop-off on lines of their own, so a phone shows
+                // where the trip went, not just where it began.
+                title: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('→ ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(formatInZone(r.createdAt, r.timezone), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(r.status.label),
+                  ],
+                ),
+                isThreeLine: true,
                 trailing: Text(r.fareText(r.effectiveFare)),
                 onTap: () => context.push(tripHistoryRoute(widget.role, r)),
               ),

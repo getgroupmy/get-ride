@@ -147,9 +147,8 @@ class AccountRepository {
     return rows.map(SupportTicket.new).toList();
   }
 
-  /// Reuses the newest non-closed ticket, or opens a new one (Expo
-  /// `getOrCreateTicket`).
-  Future<SupportTicket> openTicket(String subject) async {
+  /// The newest non-closed ticket, if there is one.
+  Future<SupportTicket?> currentTicket() async {
     final existing = await _db
         .from('support_tickets')
         .select()
@@ -158,7 +157,15 @@ class AccountRepository {
         .order('last_message_at', ascending: false, nullsFirst: false)
         .limit(1)
         .maybeSingle();
-    if (existing != null) return SupportTicket(existing);
+    return existing == null ? null : SupportTicket(existing);
+  }
+
+  /// Reuses the newest non-closed ticket, or opens a new one (Expo
+  /// `getOrCreateTicket`). Called with the first message, so opening the
+  /// chat and leaving leaves no empty ticket behind.
+  Future<SupportTicket> openTicket(String subject) async {
+    final existing = await currentTicket();
+    if (existing != null) return existing;
     final row = await _db
         .from('support_tickets')
         .insert({'profile_id': _uid, 'subject': subject})

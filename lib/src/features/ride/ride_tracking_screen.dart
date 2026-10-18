@@ -13,6 +13,8 @@ import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart' show fareOfferStep;
 import '../../core/format.dart';
+import '../../core/auth_utils.dart' show capitaliseName;
+import '../../core/payment_types.dart' show paymentModeLabel;
 import '../../core/ride_bidding.dart';
 import '../../core/ride_cancel.dart';
 import '../../core/ride_chat.dart' show rideChatAvailable, rideContactAllowed;
@@ -732,6 +734,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             ),
             ConfirmSwitch(
               key: const ValueKey('search-auto-accept'),
+              semanticLabel: 'Auto-accept an offer of ${money(limit ?? current)}',
               value: limit != null,
               onChanged: (on) {
                 final n = ref.read(autoAcceptProvider.notifier);
@@ -750,12 +753,47 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       SearchBlock(child: SearchPaymentRow(amount: money(r.effectiveFare ?? current), mode: r.paymentMode)),
       SearchBlock(child: SearchRouteCard(ride: r)),
       const SizedBox(height: 12),
-      SearchGreyButton(
+      // On a phone it is pinned under the sheet instead ([_cancelFooter]).
+      if (widget.wide) ?_cancelAction(r),
+    ];
+  }
+
+  /// Cancel request while searching, Cancel ride while the driver is on the
+  /// way; null otherwise (on the trip itself cancelling is asked, below).
+  Widget? _cancelAction(RideRequest r) {
+    if (r.status == RideStatus.open) {
+      return SearchGreyButton(
         key: const ValueKey('cancel-request'),
         label: 'Cancel request',
         onPressed: _busy ? null : _cancelSearch,
+      );
+    }
+    final asked = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider';
+    if ((r.status == RideStatus.accepted || r.status == RideStatus.arrived) && !asked) {
+      return BusyButton.outlined(
+        key: const ValueKey('ride-cancel'),
+        icon: const Icon(Icons.close),
+        onPressed: _busy ? null : _cancel,
+        child: const Text('Cancel ride'),
+      );
+    }
+    return null;
+  }
+
+  /// On a phone the way to cancel stays in view under the sheet, however
+  /// far down the sheet sits.
+  Widget? _cancelFooter(RideRequest r) {
+    final cancel = _cancelAction(r);
+    if (cancel == null) return null;
+    return Material(
+      key: const ValueKey('ride-cancel-footer'),
+      color: Theme.of(context).colorScheme.surface,
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 8), child: cancel),
       ),
-    ];
+    );
   }
 
   @override
@@ -891,9 +929,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 ),
                 const Divider(height: 1),
                 ListTile(
-                  title: Text(r.service ?? 'Ride'),
+                  // In the booking sheet's words, not the stored values.
+                  title: Text(capitaliseName(r.service ?? 'Ride')),
                   subtitle: Text(
-                    '${formatDistance(r.distanceKm)} · ${formatDuration(r.durationMin)} · ${r.paymentMode}',
+                    '${formatDistance(r.distanceKm)} · ${formatDuration(r.durationMin)} · ${paymentModeLabel(r.paymentMode)}',
                   ),
                   trailing: Text(
                     r.fareText(r.effectiveFare),
@@ -909,7 +948,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (r.status == RideStatus.completed) RideRatingCard(ride: r),
           if (r.status == RideStatus.completed) LostItemCard(ride: r),
           // On the trip itself the X only asks: the driver approves it.
-          if (r.status.isOngoing && !riderCancelAsk)
+          // Before it, on a phone, Cancel ride is pinned under the sheet.
+          if (r.status.isOngoing && !riderCancelAsk && (widget.wide || _cancelAction(r) == null))
             BusyButton.outlined(
               icon: const Icon(Icons.close),
               onPressed: _busy ? null : _cancel,
@@ -983,7 +1023,15 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             CancelledCountdown(onDone: _close),
             const SizedBox(height: 12),
           ],
-          if (r.status.isFinished) FilledButton(onPressed: _close, child: const Text('Done')),
+          // Cancelled: straight on to booking again, rather than only Done.
+          if (r.status == RideStatus.cancelled)
+            FilledButton(
+              key: const ValueKey('ride-book-again'),
+              onPressed: () => context.go('/'),
+              child: const Text('Book another ride'),
+            )
+          else if (r.status.isFinished)
+            FilledButton(onPressed: _close, child: const Text('Done')),
           ],
         ],
       ),
@@ -1043,6 +1091,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             if (_sosOn(r)) Positioned.fill(child: RideSosFab(onPressed: () => _sos(r))),
           ]),
           sheet: content,
+          footer: _cancelFooter(r),
         ),
       ),
       if (r.status == RideStatus.open)

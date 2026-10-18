@@ -37,11 +37,15 @@ class SettingsScreen extends ConsumerWidget {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const Text('Appearance'),
                   const SizedBox(height: 8),
+                  // The card's width, no tick, one line each: "System" never
+                  // breaks in two at large text.
                   SegmentedButton<ThemeMode>(
+                    expandedInsets: EdgeInsets.zero,
+                    showSelectedIcon: false,
                     segments: const [
-                      ButtonSegment(value: ThemeMode.system, label: Text('System')),
-                      ButtonSegment(value: ThemeMode.light, label: Text('Light')),
-                      ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
+                      ButtonSegment(value: ThemeMode.system, label: _OneLine('System')),
+                      ButtonSegment(value: ThemeMode.light, label: _OneLine('Light')),
+                      ButtonSegment(value: ThemeMode.dark, label: _OneLine('Dark')),
                     ],
                     selected: {mode},
                     onSelectionChanged: (v) => ref.read(themeModeProvider.notifier).set(v.first),
@@ -143,4 +147,15 @@ class ObdReaderSettingsTile extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// A segment's label on one line, shrunk to fit rather than broken.
+class _OneLine extends StatelessWidget {
+  const _OneLine(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) =>
+      FittedBox(fit: BoxFit.scaleDown, child: Text(text, maxLines: 1, softWrap: false));
 }

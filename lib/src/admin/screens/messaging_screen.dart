@@ -23,6 +23,7 @@ import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import 'reliability_card.dart';
+import 'session_access_card.dart';
 import 'sms_fallback_card.dart';
 import 'sms_limits_card.dart';
 import '../../widgets/page_style_host.dart';
@@ -105,7 +106,8 @@ class AdminMessagingScreen extends ConsumerWidget {
                                 OutlinedButton.icon(
                                   key: const ValueKey('messaging-gateway-download'),
                                   icon: const Icon(Icons.download_outlined),
-                                  label: const Text('Download the Gateway app (Android)'),
+                                  // Short enough to stay on one line on a phone.
+                                  label: const Text('Gateway app (Android)'),
                                   onPressed: () =>
                                       launchUrl(Uri.parse(gatewayApkUrl), mode: LaunchMode.externalApplication),
                                 ),
@@ -139,6 +141,8 @@ class AdminMessagingScreen extends ConsumerWidget {
                     ReliabilityCard(canEdit: canEdit),
                     const SizedBox(height: 16),
                     _DevicesCard(devices: deviceList, canEdit: canEdit),
+                    const SizedBox(height: 16),
+                    SessionAccessCard(devices: deviceList),
                     const SizedBox(height: 16),
                     _QueueCard(canEdit: canEdit),
                     const SizedBox(height: 40),
@@ -348,10 +352,13 @@ class _RouteEditorState extends ConsumerState<_RouteEditor> {
                   style: t.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.8),
                 ),
               ),
-              Switch(
-                key: ValueKey('messaging-enabled-${r.channel.id}-${r.direction.id}'),
-                value: r.enabled,
-                onChanged: edit ? (v) => _change(r.copyWith(enabled: v)) : null,
+              Semantics(
+                label: '${r.direction.label} on',
+                child: Switch(
+                  key: ValueKey('messaging-enabled-${r.channel.id}-${r.direction.id}'),
+                  value: r.enabled,
+                  onChanged: edit ? (v) => _change(r.copyWith(enabled: v)) : null,
+                ),
               ),
             ],
           ),

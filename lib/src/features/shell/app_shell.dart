@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../widgets/common.dart';
 import '../../data/driver_presence.dart';
 import '../partner/driver_online.dart';
+import 'app_side_menu.dart' show AppSideMenuHost;
 
 class _Dest {
   const _Dest(this.label, this.icon, this.selectedIcon);
@@ -37,7 +38,8 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final width = MediaQuery.sizeOf(context).width;
+    final size = MediaQuery.sizeOf(context);
+    final width = size.width;
     final online = ref.watch(driverOnlineProvider);
     // The server learns who is taking rides, and where (migration 0145).
     ref.watch(driverPresenceProvider);
@@ -46,7 +48,8 @@ class AppShell extends ConsumerWidget {
       shell.goBranch(i, initialLocation: i == shell.currentIndex);
     }
 
-    if (width < 720) {
+    // A phone on its side is wide but short: still the phone layout.
+    if (AppSideMenuHost.appliesAt(width, size.height)) {
       // Trips, Wallet and Account are pages off the home screen here: back
       // from one returns home. Drive is a mode, left from its own menu.
       final page = shell.currentIndex != rideTab && shell.currentIndex != driveTab;
@@ -61,24 +64,26 @@ class AppShell extends ConsumerWidget {
     final extended = width >= 1100;
     return Scaffold(
       body: Row(children: [
-        NavigationRail(
-          extended: extended,
-          selectedIndex: shell.currentIndex,
-          onDestinationSelected: go,
-          labelType: extended ? NavigationRailLabelType.none : NavigationRailLabelType.all,
-          leading: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: BrandMark(size: extended ? 26 : 14),
+        ScrollableRail(
+          rail: NavigationRail(
+            extended: extended,
+            selectedIndex: shell.currentIndex,
+            onDestinationSelected: go,
+            labelType: extended ? NavigationRailLabelType.none : NavigationRailLabelType.all,
+            leading: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: BrandMark(size: extended ? 26 : 14),
+            ),
+            destinations: [
+              for (final (i, d) in _destinations.indexed)
+                NavigationRailDestination(
+                  disabled: online && i == rideTab,
+                  icon: Icon(d.icon),
+                  selectedIcon: Icon(d.selectedIcon),
+                  label: Text(d.label),
+                ),
+            ],
           ),
-          destinations: [
-            for (final (i, d) in _destinations.indexed)
-              NavigationRailDestination(
-                disabled: online && i == rideTab,
-                icon: Icon(d.icon),
-                selectedIcon: Icon(d.selectedIcon),
-                label: Text(d.label),
-              ),
-          ],
         ),
         const VerticalDivider(width: 1),
         Expanded(child: shell),

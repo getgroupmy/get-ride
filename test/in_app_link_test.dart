@@ -25,6 +25,26 @@ void main() {
     }
   });
 
+  test('a file from somebody else\'s record opens only from the app\'s own storage', () {
+    const project = 'https://rqlavogkgywxspuxgiwk.supabase.co';
+    bool own(String s) => isOwnStorageLink(Uri.parse(s), projectUrl: project);
+    expect(own('$project/storage/v1/object/sign/partner-docs/a/ic.jpg?token=x'), isTrue);
+    expect(own('https://api.getride.my/storage/v1/object/public/support-media/v.mp4'), isTrue);
+    expect(own('data:image/png;base64,AAAA'), isTrue);
+    for (final s in [
+      'https://evil.example/login',
+      'https://getride.my.evil.example/x.pdf',
+      'http://api.getride.my/x.pdf',
+      '$project/rest/v1/profiles',
+      'https://user@api.getride.my/x.pdf',
+      'intent://#Intent;end',
+      'tel:999',
+      'data:text/html;base64,PHNjcmlwdD4=',
+    ]) {
+      expect(own(s), isFalse, reason: s);
+    }
+  });
+
   test('a title from the file name, else the host', () {
     expect(linkTitle(Uri.parse('https://cdn/a/my%20permit.pdf')), 'my permit.pdf');
     expect(linkTitle(Uri.parse('https://getride.my/privacy')), 'getride.my');

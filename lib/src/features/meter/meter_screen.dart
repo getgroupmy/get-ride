@@ -1021,7 +1021,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     return [
       'PICKUP',
       if (km != null) 'ODO ${km.toStringAsFixed(0)} km' else if (meterReadsOdometer(_profile)) 'ODO —',
-      p.label,
+      // The place once it is known; bare coordinates mean nothing to read
+      // at a glance (the trip log keeps them).
+      if ((p.place ?? '').isNotEmpty) p.place! else 'Locating…',
     ].join(' · ');
   }
 
@@ -1470,11 +1472,28 @@ class _Panel extends StatelessWidget {
     margin: const EdgeInsets.all(6),
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(color: _panel, borderRadius: BorderRadius.circular(12)),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisAlignment: spread ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.start,
-      children: children,
-    ),
+    child: spread
+        // The readouts fill the room left under the fare, spaced out when
+        // there is plenty and shrunk as one when there isn't (the shortest
+        // stage, a phone on its side), never cut off.
+        ? LayoutBuilder(
+            builder: (context, box) => FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: box.maxWidth,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: box.maxHeight.isFinite ? box.maxHeight : 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: children,
+                  ),
+                ),
+              ),
+            ),
+          )
+        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
   );
 }
 

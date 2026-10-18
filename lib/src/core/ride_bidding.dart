@@ -197,7 +197,6 @@ class BiddingRegion {
   }
 }
 
-/// The region tables, broadest first, with the columns [BiddingRegion.fromRegionRow] reads.
 /// The cache key of a region list read for [p]: ~11 m cells, so a pickup
 /// nudged by a few metres reuses the answer for the spot it moved from.
 String regionLookupKey(LatLng p) => '${p.latitude.toStringAsFixed(4)},${p.longitude.toStringAsFixed(4)}';
@@ -218,11 +217,15 @@ BiddingRegion? regionFromLookupRow(Map<String, dynamic> row) {
   );
 }
 
+/// The region tables, broadest first, with the columns
+/// [BiddingRegion.fromRegionRow] reads when `regions_at` is missing. The
+/// boundaries are left out (megabytes for the states alone): the regions
+/// then match by name, as `regions_at` does without a point.
 const regionTableSelects = {
-  'countries': 'name, values, geofence',
-  'states': 'country, name, values, geofence',
-  'cities': 'country, state, name, values, geofence',
-  'suburbs': 'country, state, city, name, values, geofence',
+  'countries': 'name, values',
+  'states': 'country, name, values',
+  'cities': 'country, state, name, values',
+  'suburbs': 'country, state, city, name, values',
 };
 
 /// The symbols the regions give their currencies, by code (the first

@@ -68,6 +68,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
         case OtpNext.resync:
           // Confirmed by SMS: the PIN-derived password, if any, goes too.
           await auth.retireDerivedPassword();
+          ResyncPin.value = null;
           if (mounted) context.go('/');
         case OtpNext.unlock:
           // Signed in past the PIN lock: the code proved the number, so the
@@ -108,15 +109,24 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('Verify your number', style: t.textTheme.headlineSmall),
             const SizedBox(height: 4),
-            Text('Enter the 6-digit code sent by SMS to ${widget.phone}'),
+            Text(
+              widget.phone.isEmpty
+                  ? 'Enter the 6-digit code sent by SMS to your number'
+                  : 'Enter the 6-digit code sent by SMS to ${widget.phone}',
+            ),
             const SizedBox(height: 32),
             CodeField(controller: _code, length: 6, onCompleted: _verify),
             const SizedBox(height: 24),
-            BusyButton.filled(
-              onPressed: _busy ? null : _verify,
-              child: _busy
-                  ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Verify'),
+            // Usable once all six digits are in.
+            ValueListenableBuilder(
+              valueListenable: _code,
+              builder: (_, v, _) => BusyButton.filled(
+                key: const ValueKey('otp-verify'),
+                onPressed: _busy || v.text.length != 6 ? null : _verify,
+                child: _busy
+                    ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Verify'),
+              ),
             ),
             const SizedBox(height: 8),
             BusyButton.text(

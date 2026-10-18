@@ -52,6 +52,7 @@ import 'scheduled_jobs_screen.dart' show PartnerUpcomingBookingCard;
 import 'vehicle_picker.dart';
 import '../../core/partner_modes.dart';
 import '../../core/vehicle_assignment.dart';
+import '../../core/vehicle_onboarding.dart' show firstVehicleStep;
 import '../../data/vehicle_assignment_repository.dart';
 import '../../admin/screens/people/people_logic.dart' show parseStringList;
 import '../../widgets/side_menu_host.dart';
@@ -311,8 +312,18 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       final partner = ref.read(partnerProvider).value;
       if (partner != null && !await _documentsCleared(partner, teksi: false)) return;
       if (!mounted) return;
-      if (partner != null && !await _vehicleReady(partner, teksi: false)) return;
-      if (!mounted) return;
+      if (partner != null) {
+        final needed = await _vehicleNeeded(partner, teksi: false);
+        if (!mounted) return;
+        if (needed != null) {
+          // Asked once the switch has settled back (no spinner behind the
+          // dialog); a vehicle picked there turns it on.
+          unawaited(_askForVehicle(needed, teksi: false).then((ok) {
+            if (ok && mounted) unawaited(_toggle(true));
+          }));
+          return;
+        }
+      }
     }
     if (v && _autoAccept) _markQueueSeen();
     // Requests already waiting are in the list; only new ones pop up.
@@ -411,6 +422,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// When the catalogue or the vehicles cannot be read it lets them through,
   /// as the document check does.
   Future<bool> _vehicleReady(Partner partner, {required bool teksi}) async {
+    final needed = await _vehicleNeeded(partner, teksi: teksi);
+    if (needed == null) return true;
+    if (!mounted) return false;
+    return _askForVehicle(needed, teksi: teksi);
+  }
+
+  /// [_vehicleReady]'s check alone: null when the driver may start, else
+  /// the vehicles to choose from (maybe none).
+  Future<List<AssignableVehicle>?> _vehicleNeeded(Partner partner, {required bool teksi}) async {
     List<AssignableVehicle> vehicles;
     bool required;
     try {
@@ -420,35 +440,56 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           if (m.isTeksi == teksi) m.name,
       ];
       required = (modes.isEmpty ? [teksi ? 'teksi' : 'ehailing'] : modes).any((m) => vehicleRequiredFor(m, entries));
-      if (!required) return true;
+      if (!required) return null;
       vehicles = await ref.read(assignableVehiclesProvider.future).timeout(goOnlineCheckTimeout);
     } catch (_) {
-      return true;
+      return null;
     }
-    if (vehicles.any((v) => v.inUseByMe)) return true;
-    if (!mounted) return false;
+    if (vehicles.any((v) => v.inUseByMe)) return null;
+    return vehicles;
+  }
+
+  /// Asks for a vehicle: pick one that can be driven, finish the one this
+  /// driver added but left half set up (saying what is missing), or add one.
+  /// True once one is taken.
+  Future<bool> _askForVehicle(List<AssignableVehicle> vehicles, {required bool teksi}) async {
     final usable = vehicles.where((v) => v.selectable).toList();
+    final unfinished = usable.isNotEmpty
+        ? null
+        : vehicles.where((v) => v.status == AssignableStatus.incomplete && v.role == VehicleRole.owner).firstOrNull;
+    final start = teksi ? 'start the meter' : 'go online';
+    final String message;
+    if (usable.isNotEmpty) {
+      message = 'You need a vehicle before you can $start. Pick the one you are driving.';
+    } else if (unfinished != null) {
+      final name = unfinished.plate.isEmpty ? 'Your vehicle' : unfinished.plate;
+      message = "$name isn't set up yet: ${firstVehicleStep(unfinished.vehicle).label} is still missing. "
+          'Finish it before you can $start.';
+    } else {
+      message = 'You need a vehicle before you can $start. Add the vehicle you drive.';
+    }
     final choose = await showAppDialog<bool>(id: 'partner.vehicle-ready',
       context: context,
       builder: (c) => AlertDialog(
         key: const ValueKey('vehicle-required'),
-        title: const Text('Choose a vehicle'),
-        content: Text(usable.isEmpty
-            ? 'You need a vehicle before you can ${teksi ? 'start the meter' : 'go online'}. Add the vehicle you drive.'
-            : 'You need a vehicle before you can ${teksi ? 'start the meter' : 'go online'}. Pick the one you are driving.'),
+        title: Text(unfinished == null ? 'Choose a vehicle' : 'Finish your vehicle'),
+        content: Text(message),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')),
           FilledButton(
+            key: const ValueKey('vehicle-required-go'),
             style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
             onPressed: () => Navigator.pop(c, true),
-            child: Text(usable.isEmpty ? 'Add a vehicle' : 'Choose vehicle'),
+            child: Text(
+              usable.isNotEmpty ? 'Choose vehicle' : (unfinished != null ? 'Finish vehicle' : 'Add a vehicle'),
+            ),
           ),
         ],
       ),
     );
     if (choose != true || !mounted) return false;
     if (usable.isEmpty) {
-      context.push('/drive/vehicles/new');
+      context.push(unfinished == null ? '/drive/vehicles/new' : '/drive/vehicles/${unfinished.id}');
       return false;
     }
     final picked = await showAppSheet<AssignableVehicle>(id: 'partner.vehicle-ready-2',
@@ -645,7 +686,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         _syncAlert(open);
       }
     });
-    return Scaffold(
+    final page = Scaffold(
       // No top bar: the page's buttons float over it, top right.
       body: Stack(children: [
         Positioned.fill(
@@ -873,6 +914,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           Positioned.fill(child: _requestSheet(p)),
       ]),
     );
+    // No app bar to set the status bar: its icons follow the theme.
+    return ThemedStatusBar(child: page);
   }
 
   /// The new request on a phone ([RideRequestSheet]): up from the bottom
@@ -1021,11 +1064,13 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             context,
             (inset) => Positioned(
               key: const ValueKey('floating-requests'),
-              // Below the page's floating buttons.
-              top: 56,
+              // Below the page's floating buttons (under the status bar) and
+              // above the map's own column of buttons (traffic, map view,
+              // recenter): on a short screen the list scrolls between them.
+              top: MediaQuery.paddingOf(context).top + 64,
               left: 12,
               right: 12,
-              bottom: inset + mapAttributionClearance + 104,
+              bottom: inset + mapAttributionClearance + 168,
               child: FlyInList<RideRequest>(
                 padding: const EdgeInsets.only(top: 8, bottom: 8),
                 items: items,

@@ -631,6 +631,7 @@ class _VehicleDetailsFormState extends State<_VehicleDetailsForm> {
                   right: 2,
                   top: 2,
                   child: IconButton.filledTonal(
+                    tooltip: 'Remove photo',
                     visualDensity: VisualDensity.compact,
                     iconSize: 14,
                     icon: const Icon(Icons.close),
@@ -682,7 +683,7 @@ class _VehicleDetailsFormState extends State<_VehicleDetailsForm> {
                   Switch(value: item['enabled'] != false, onChanged: (v) => setState(() => item['enabled'] = v)),
                   Text(item['enabled'] != false ? 'Enabled' : 'Disabled'),
                   const Spacer(),
-                  IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => setState(() => items.remove(item))),
+                  IconButton(tooltip: 'Remove', icon: const Icon(Icons.delete_outline), onPressed: () => setState(() => items.remove(item))),
                 ]),
               ]),
             ),

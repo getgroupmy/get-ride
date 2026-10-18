@@ -65,7 +65,10 @@ class AppInstallHeader extends ConsumerWidget {
         Container(
           width: iconSize,
           height: iconSize,
+          // A filled tile, so an icon with a transparent background (the
+          // fallback) doesn't show the shadow through it.
           decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(color: scheme.shadow.withValues(alpha: 0.18), blurRadius: 16, offset: const Offset(0, 6)),
@@ -196,6 +199,9 @@ Future<void> showAppInstallQr(BuildContext context, AppBuild b) {
   );
 }
 
+/// Whether [e] says the release function isn't there at all (HTTP 404).
+bool appBuildMissing(Object e) => RegExp(r'status:?\s*404\b|\b404\b').hasMatch('$e');
+
 /// The latest build and what can be done with it, for Admin → App Release.
 class AppBuildPanel extends ConsumerWidget {
   const AppBuildPanel({super.key, required this.platform});
@@ -209,17 +215,22 @@ class AppBuildPanel extends ConsumerWidget {
     return build.when(
       skipLoadingOnReload: true,
       loading: () => const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: LinearProgressIndicator()),
-      error: (e, _) => ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.error_outline),
-        title: const Text("Couldn't load the latest build"),
-        subtitle: Text('$e'),
-        trailing: IconButton(
-          tooltip: 'Try again',
-          onPressed: () => ref.invalidate(appBuildProvider(platform)),
-          icon: const Icon(Icons.refresh),
-        ),
-      ),
+      // The release functions not deployed (404): the release card already
+      // says "Not set up yet", so nothing more here. Anything else in words,
+      // never the raw (minified) exception.
+      error: (e, _) => appBuildMissing(e)
+          ? const SizedBox.shrink(key: ValueKey('app-build-missing'))
+          : ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.error_outline),
+              title: const Text("Couldn't load the latest build"),
+              subtitle: const Text("The release service didn't answer. Try again in a moment."),
+              trailing: IconButton(
+                tooltip: 'Try again',
+                onPressed: () => ref.invalidate(appBuildProvider(platform)),
+                icon: const Icon(Icons.refresh),
+              ),
+            ),
       data: (b) {
         if (!b.available) {
           return Padding(

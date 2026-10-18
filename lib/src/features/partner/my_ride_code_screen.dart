@@ -12,6 +12,7 @@ import '../../core/my_ride.dart';
 import '../../data/my_ride_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/image_share.dart';
+import '../../widgets/back_or_go_button.dart';
 import '../../widgets/page_style_host.dart';
 
 /// What a passenger is told the code is for.
@@ -140,7 +141,7 @@ class _MyRideCodeScreenState extends ConsumerState<MyRideCodeScreen> {
   Widget build(BuildContext context) {
     final code = ref.watch(myRideCodeProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('My Ride code')),
+      appBar: AppBar(leading: const BackOrGoButton(fallback: '/drive'), title: const Text('My Ride code')),
       body: AsyncView<String?>(
         value: code,
         onRetry: () => ref.invalidate(myRideCodeProvider),
