@@ -17,6 +17,22 @@ abstract class SessionSink {
   Future<void> insertLocation(Map<String, dynamic> row);
 }
 
+/// How long the sign-in path waits for the address-only `ip-lookup`.
+const callerIpTimeout = Duration(seconds: 3);
+
+/// This device's public IP as the `ip-lookup` edge function sees it, asked
+/// for alone ([ipOnlyBody]: no rate check and no ISP lookup on the server,
+/// so it answers in the time of a round trip), or null. A server from before
+/// `ip_only` gives its full answer, which carries the address too.
+Future<String?> lookupCallerIp(SupabaseClient db, {Duration timeout = callerIpTimeout}) async {
+  try {
+    final res = await db.functions.invoke('ip-lookup', body: ipOnlyBody).timeout(timeout);
+    return IpInfo.fromResponse(res.data)?.publicIp;
+  } catch (_) {
+    return null;
+  }
+}
+
 class SupabaseSessionSink implements SessionSink {
   SupabaseSessionSink(this._db);
   final SupabaseClient _db;
