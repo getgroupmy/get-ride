@@ -928,7 +928,11 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             key: ValueKey('recent-${p.point.latitude},${p.point.longitude}'),
             leading: const Icon(Icons.history),
             title: Text(p.name),
-            subtitle: Text(p.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+            // None when it would only repeat the name.
+            subtitle: switch (placeSubtitle(p.name, p.address)) {
+              final a? => Text(a, maxLines: 1, overflow: TextOverflow.ellipsis),
+              null => null,
+            },
             onTap: () => _done(PlacePick.place(p)),
           ),
       ],

@@ -135,6 +135,12 @@ void main() {
     expect(find.text('Step 1 of 6'), findsOneWidget);
     expect(find.text('Add a profile photo'), findsOneWidget);
     expect(find.text('Choose photo'), findsOneWidget);
+    // The current step is filled, not ticked: no step is done yet.
+    for (final chip in tester.widgetList<ChoiceChip>(find.byType(ChoiceChip))) {
+      expect(chip.showCheckmark, isFalse);
+      expect(chip.avatar, isNull);
+    }
+    expect(find.byIcon(Icons.check), findsNothing);
   });
 
   testWidgets('the profile photo comes from the avatar picker and is saved to both rows', (tester) async {

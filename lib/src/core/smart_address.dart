@@ -66,6 +66,16 @@ String shortArea(Place p, {String? homeRegion}) {
   return parts.length <= 2 ? parts.join(', ') : parts.sublist(parts.length - 2).join(', ');
 }
 
+/// The line under a place's [name]: its [address], or null when that only
+/// says the name again (the same words, or words the name already holds:
+/// "KLCC - Petronas Twin Towers" over "KLCC - Petronas Twin Towers").
+String? placeSubtitle(String name, String address) {
+  String plain(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+  final a = plain(address), n = plain(name);
+  if (a.isEmpty || n.contains(a)) return null;
+  return address;
+}
+
 /// The state (or other last area part) of [p]: "Selangor" for "…, 64000
 /// Sepang, Selangor, Malaysia"; null when there is none.
 String? areaRegion(Place? p) {

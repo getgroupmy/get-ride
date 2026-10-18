@@ -130,7 +130,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
         body: SingleChildScrollView(
           child: ResponsiveCenter(
             maxWidth: 480,
-            padding: const EdgeInsets.all(24),
+            // The last field stands clear of the pinned buttons below.
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24 + 16),
             child: _step == _Step.review ? _review(t) : _confirm(t),
           ),
         ),

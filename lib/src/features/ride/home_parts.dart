@@ -10,6 +10,7 @@ import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/net_image.dart';
 import '../../core/page_styles.dart' show homeSurface;
+import '../../core/smart_address.dart' show placeSubtitle;
 import '../../widgets/page_style_host.dart';
 
 /// Whether [uri] is a picture that loads over the network (and so shows a
@@ -365,7 +366,10 @@ class HomeRecentPlaces extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.place_outlined),
           title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(p.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: switch (placeSubtitle(p.name, p.address)) {
+            final a? => Text(a, maxLines: 1, overflow: TextOverflow.ellipsis),
+            null => null,
+          },
           onTap: () => onTap(p),
         ),
     ],

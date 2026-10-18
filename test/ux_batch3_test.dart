@@ -9,6 +9,7 @@ import 'package:get_ride/src/core/fare.dart' show RideService;
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/payment_types.dart';
 import 'package:get_ride/src/core/side_menu.dart' show MenuEntry;
+import 'package:get_ride/src/core/smart_address.dart' show placeSubtitle;
 import 'package:get_ride/src/widgets/side_menu_tiles.dart' show SideMenuTile;
 import 'package:get_ride/src/data/geo_service.dart' show Place;
 import 'package:latlong2/latlong.dart' show LatLng;
@@ -633,6 +634,14 @@ void _sheets() {
         expect(contrastRatio(ink, t.colorScheme.surfaceContainerLow), greaterThanOrEqualTo(4.5));
       });
     }
+  });
+
+  test('a recent place drops an address that only repeats its name', () {
+    expect(placeSubtitle('KLCC - Petronas Twin Towers', 'KLCC - Petronas Twin Towers'), isNull);
+    expect(placeSubtitle('KLCC - Petronas Twin Towers', 'klcc  petronas twin towers'), isNull);
+    expect(placeSubtitle('KLCC - Petronas Twin Towers', 'Petronas Twin Towers'), isNull, reason: 'held in the name');
+    expect(placeSubtitle('KLCC', 'Kuala Lumpur City Centre, 50088 Kuala Lumpur'), 'Kuala Lumpur City Centre, 50088 Kuala Lumpur');
+    expect(placeSubtitle('Eco Majestic', ''), isNull);
   });
 
   test('the time wheels show fewer rows on a short screen', () {
