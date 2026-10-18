@@ -77,10 +77,15 @@ class SearchHeader extends StatelessWidget {
     required this.left,
     required this.progress,
     this.bidding = true,
+    this.waitHint,
   });
   final Duration elapsed;
   final String left;
   final double progress;
+
+  /// How near the drivers are ("Nearest driver about 3 min away", "Few
+  /// drivers nearby"), beside the countdown; null shows nothing.
+  final String? waitHint;
 
   /// Whether the request is open to offers; a fixed-fare one says nothing
   /// about prices or offers.
@@ -117,10 +122,29 @@ class SearchHeader extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Text(
-              left,
-              key: const ValueKey('search-time-left'),
-              style: t.textTheme.headlineSmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  left,
+                  key: const ValueKey('search-time-left'),
+                  style: t.textTheme.headlineSmall?.copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
+                ),
+                if (waitHint case final hint?)
+                  ConstrainedBox(
+                    // Narrow enough to leave the headline its room on a
+                    // small phone at large text; it wraps instead.
+                    constraints: BoxConstraints(maxWidth: math.min(140, MediaQuery.sizeOf(context).width * 0.34)),
+                    child: Text(
+                      hint,
+                      key: const ValueKey('search-wait-hint'),
+                      textAlign: TextAlign.end,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
@@ -136,6 +160,91 @@ class SearchHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// No offer yet on a request open to offers: the fare as it stands, a
+/// one-tap raise by the usual step, and Keep waiting.
+class SearchRaiseCard extends StatelessWidget {
+  const SearchRaiseCard({
+    super.key,
+    required this.fare,
+    required this.raisedTo,
+    required this.onRaise,
+    required this.onKeepWaiting,
+  });
+
+  /// The fare offered now ("RM 20.00").
+  final String fare;
+
+  /// What one raise would make it, or null when it can go no higher.
+  final String? raisedTo;
+
+  /// Null while busy.
+  final VoidCallback? onRaise;
+  final VoidCallback onKeepWaiting;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final c = ConfirmCardColors.of(context);
+    final to = raisedTo;
+    return Container(
+      key: const ValueKey('search-raise-card'),
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: c.tray,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: accentFill, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            header: true,
+            child: Text(
+              to == null ? 'No offers yet' : 'Raise your fare and search again',
+              style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            to == null
+                ? 'Your fare of $fare is as high as it can go. Drivers nearby can still take it.'
+                : 'No driver has answered at $fare yet. A higher fare often gets one sooner.',
+            key: const ValueKey('search-raise-body'),
+            style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+          if (to != null) ...[
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: FilledButton(
+                key: const ValueKey('search-raise-now'),
+                onPressed: onRaise,
+                style: FilledButton.styleFrom(
+                  backgroundColor: accentFill,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                child: Text('Raise to $to', textAlign: TextAlign.center),
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: TextButton(
+              key: const ValueKey('search-keep-waiting'),
+              onPressed: onKeepWaiting,
+              style: TextButton.styleFrom(foregroundColor: t.colorScheme.onSurface),
+              child: const Text('Keep waiting'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -367,10 +476,23 @@ class SearchOfferView {
     this.cardKey,
     this.acceptKey,
     this.declineKey,
+    this.amount,
+    this.difference,
+    this.secondsLeft,
   });
 
   final String key;
   final String price;
+
+  /// The offer's amount, for ordering the cards by price.
+  final double? amount;
+
+  /// How far it is from the rider's fare ("+RM1.00"); null when it is the
+  /// rider's own fare ([yourFare]) or unknown.
+  final String? difference;
+
+  /// Whole seconds left on the offer, read out with Accept.
+  final int? secondsLeft;
 
   /// The offer is the rider's own fare.
   final bool yourFare;
@@ -385,18 +507,60 @@ class SearchOfferView {
   final Key? cardKey, acceptKey, declineKey;
 }
 
+/// The cards in the order the rider compares them: cheapest first, then
+/// the nearer driver; offers that tie keep the order they came in.
+List<SearchOfferView> sortOffers(List<SearchOfferView> offers) {
+  final indexed = offers.indexed.toList();
+  indexed.sort((a, b) {
+    final pa = a.$2.amount ?? double.infinity, pb = b.$2.amount ?? double.infinity;
+    if (pa != pb) return pa.compareTo(pb);
+    final ea = a.$2.etaMin ?? 1 << 20, eb = b.$2.etaMin ?? 1 << 20;
+    if (ea != eb) return ea.compareTo(eb);
+    return a.$1.compareTo(b.$1);
+  });
+  return [for (final (_, o) in indexed) o];
+}
+
+/// What Accept is read out as: "Accept RM11.00 from Mellier, 8 seconds left".
+String offerAcceptLabel(SearchOfferView o) {
+  final from = o.name == null ? '' : ' from ${o.name}';
+  final left = switch (o.secondsLeft) {
+    null => '',
+    1 => ', 1 second left',
+    final n => ', $n seconds left',
+  };
+  return 'Accept ${o.price}$from$left';
+}
+
 /// The Accept key with the offer's time running out across it: the bright
 /// part shrinks toward the left as the window drains.
 class OfferAcceptButton extends StatelessWidget {
-  const OfferAcceptButton({super.key, required this.progress, required this.onPressed, this.timerKey});
+  const OfferAcceptButton({
+    super.key,
+    required this.progress,
+    required this.onPressed,
+    this.timerKey,
+    this.semanticLabel,
+  });
   final double progress;
   final VoidCallback? onPressed;
   final Key? timerKey;
 
+  /// Read out instead of a bare "Accept" (the price, driver and time left).
+  final String? semanticLabel;
+
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(14);
-    return Material(
+    // A button node of its own, named in full: not merged with the card.
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: onPressed != null,
+      label: semanticLabel ?? 'Accept',
+      onTap: onPressed,
+      excludeSemantics: true,
+      child: Material(
       color: offerAcceptSpent,
       borderRadius: radius,
       clipBehavior: Clip.antiAlias,
@@ -426,6 +590,7 @@ class OfferAcceptButton extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -463,6 +628,14 @@ class SearchOfferCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(o.price, style: t.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
+                        if (o.difference case final d?) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            d,
+                            key: ValueKey('offer-difference-${o.key}'),
+                            style: t.textTheme.titleMedium?.copyWith(color: muted, fontWeight: FontWeight.w600),
+                          ),
+                        ],
                         if (o.etaMin != null) ...[
                           const SizedBox(width: 12),
                           Text(
@@ -559,6 +732,7 @@ class SearchOfferCard extends StatelessWidget {
                     key: o.acceptKey,
                     progress: o.progress,
                     onPressed: o.onAccept,
+                    semanticLabel: offerAcceptLabel(o),
                     timerKey: ValueKey('offer-countdown-${o.key}'),
                   ),
                 ),
@@ -676,9 +850,17 @@ class _OfferStackState extends State<OfferStack> with TickerProviderStateMixin {
         _leave(e, _width);
       }
     }
+    // A new card goes in where it belongs in the order it was given (by
+    // price, [sortOffers]); the cards already on screen keep their places,
+    // so nothing jumps while the rider reads.
     final known = {for (final e in _entries) e.view.key};
+    final order = {for (final (i, o) in widget.offers.indexed) o.key: i};
     for (final o in widget.offers) {
-      if (!known.contains(o.key)) _entries.add(_enter(o));
+      if (known.contains(o.key)) continue;
+      final at = _entries.indexWhere((e) => !e.leaving && (order[e.view.key] ?? -1) > order[o.key]!);
+      final entry = _enter(o);
+      at < 0 ? _entries.add(entry) : _entries.insert(at, entry);
+      known.add(o.key);
     }
   }
 
@@ -1026,6 +1208,10 @@ class DriversViewingBar extends StatelessWidget {
     final label = viewers.label;
     if (label == null) return const SizedBox.shrink();
     final (:faces, :more) = viewers.faces();
+    // As many faces as the number says, at most four: initials stand in
+    // for the demo's, never more than it counts.
+    final count = viewers.viewing > 0 ? viewers.viewing : viewers.viewed;
+    final initials = demo ? math.max(0, math.min(math.min(4, count), demoNames.length + faces.length) - faces.length) : 0;
     final ring = ConfirmCardColors.of(context).tray;
     Widget face(Widget child) => Container(
       width: 30,
@@ -1036,10 +1222,10 @@ class DriversViewingBar extends StatelessWidget {
     final circles = <Widget>[
       for (final url in faces)
         face(Image.network(url, fit: BoxFit.cover, frameBuilder: boneUntilPainted(), errorBuilder: (_, _, _) => const ColoredBox(color: Colors.grey))),
-      for (final n in demo ? demoNames.take(4 - faces.length) : const <String>[])
+      for (final n in demoNames.take(initials))
         face(CircleAvatar(child: Text(n[0], style: const TextStyle(fontSize: 11)))),
     ];
-    final extra = more - (demo ? circles.length - faces.length : 0);
+    final extra = math.max(0, more - initials);
     return Container(
       key: const ValueKey('drivers-viewing'),
       margin: const EdgeInsets.only(bottom: 12),

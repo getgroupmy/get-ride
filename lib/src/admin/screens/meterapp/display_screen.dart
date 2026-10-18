@@ -19,6 +19,7 @@ import '../../widgets/admin_widgets.dart';
 import 'display_logic.dart';
 import 'display_store.dart';
 import 'pick_image.dart';
+import '../../../core/raise_nudge.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
@@ -250,6 +251,23 @@ class _DisplayBody extends ConsumerWidget {
               onChanged: canEdit
                   ? (v) => applyDisplay(
                       context, ref, (x) => setDisplayNumber(x, 'recentLocationsCount', v, recentLocationsMin, recentLocationsMax))
+                  : null,
+            ),
+          ),
+          const _Section('Ride Search'),
+          Card(
+            child: _StepperTile(
+              label: 'Offer a fare raise after',
+              description: 'Seconds with no driver offer before a bidding ride\'s search sheet suggests raising the fare '
+                  '($raiseNudgeMinSeconds-$raiseNudgeMaxSeconds)',
+              value: displayNum(s, raiseNudgeKey),
+              min: raiseNudgeMinSeconds,
+              max: raiseNudgeMaxSeconds,
+              step: 5,
+              unit: 's',
+              onChanged: canEdit
+                  ? (v) => applyDisplay(
+                      context, ref, (x) => setDisplayNumber(x, raiseNudgeKey, v, raiseNudgeMinSeconds, raiseNudgeMaxSeconds))
                   : null,
             ),
           ),

@@ -221,6 +221,9 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'connectedPopupEnabled': true,
       'connectionFailedPopupEnabled': true,
       'recentLocationsCount': 4,
+      // Seconds with no offer before the search sheet offers a raise
+      // (core/raise_nudge.dart).
+      'raiseFareAfterSeconds': 45,
       'serviceBoxes': defaultServiceBoxes(),
       'recenterButtonBottom': 459,
       'mapHeightOffset': 365,
