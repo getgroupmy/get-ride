@@ -127,6 +127,7 @@ class SessionTracker {
     required this._location,
     required this._deviceId,
     required this._device,
+    this._details,
     DateTime Function()? now,
     String Function()? newId,
   }) : _now = now ?? DateTime.now,
@@ -136,6 +137,10 @@ class SessionTracker {
   final TelemetryLocation _location;
   final Future<String> Function() _deviceId;
   final DeviceSnapshot _device;
+
+  /// Make, model, network, SIM operator and local IP, read afresh for each
+  /// row (data/device_details.dart); null leaves them out.
+  final Future<DeviceDetails?> Function()? _details;
   final DateTime Function() _now;
   final String Function() _newId;
 
@@ -154,11 +159,12 @@ class SessionTracker {
   /// The session row the location rows belong to.
   String? get sessionId => _sessionId;
 
-  /// The cold start, logged once.
-  Future<void> launched() async {
+  /// The cold start (the splash), logged once, with the account already
+  /// signed in on this phone when there is one.
+  Future<void> launched({String? userId, String? phone}) async {
     if (_launched) return;
     _launched = true;
-    await _log(SessionEvent.appLaunch);
+    await _log(SessionEvent.appLaunch, userId: userId ?? _userId, phone: phone ?? _phone);
   }
 
   /// The app came back to the foreground.
@@ -190,13 +196,14 @@ class SessionTracker {
     _stopLocation();
   }
 
-  Future<void> _log(SessionEvent event) async {
+  Future<void> _log(SessionEvent event, {String? userId, String? phone}) async {
     final id = _newId();
     _sessionId = id;
     try {
       final results = await Future.wait<Object?>([
         _deviceId(),
         _sink.lookupIp().catchError((_) => null),
+        Future<DeviceDetails?>(() async => await _details?.call()).catchError((_) => null),
       ]);
       await _sink.insertSession(
         sessionRow(
@@ -204,9 +211,10 @@ class SessionTracker {
           event: event,
           deviceId: results[0]! as String,
           device: _device,
-          userId: _userId,
-          phone: _phone,
+          userId: userId ?? _userId,
+          phone: phone ?? _phone,
           ip: results[1] as IpInfo?,
+          details: results[2] as DeviceDetails?,
         ),
       );
     } catch (e) {

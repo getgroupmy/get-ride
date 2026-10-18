@@ -113,6 +113,7 @@ import 'widgets/keyboard_dismiss.dart';
 import 'widgets/page_style_host.dart';
 import 'core/page_styles.dart' show PageStyles;
 import 'data/page_styles_repository.dart' show pageStylesProvider;
+import 'data/device_details.dart';
 import 'widgets/notifications_off_banner.dart';
 import 'widgets/map_sheet_layout.dart' show appBottomSheetTheme;
 import 'core/map_profile.dart' show waitForMapProfile;
@@ -598,9 +599,10 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       location: GeolocatorTelemetryLocation(),
       deviceId: ref.read(authRepositoryProvider).deviceIdentifier,
       device: currentDevice(),
+      details: DeviceDetailsReader().read,
     );
     _tracker = tracker;
-    unawaited(tracker.launched());
+    unawaited(tracker.launched(userId: db.auth.currentUser?.id, phone: db.auth.currentUser?.phone));
     ref.listenManual<String?>(currentUserIdProvider, (_, id) {
       unawaited(tracker.userChanged(id, phone: db.auth.currentUser?.phone));
       // The installed version on the account, at launch and every sign-in.
