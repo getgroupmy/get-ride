@@ -453,15 +453,26 @@ class SearchOfferCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(o.price, style: t.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
-                if (o.etaMin != null) ...[
-                  const SizedBox(width: 12),
-                  Text(
-                    '${o.etaMin} min',
-                    style: t.textTheme.headlineMedium?.copyWith(color: muted, fontWeight: FontWeight.w600),
+                // Price and time shrink together rather than pushing off the card.
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(o.price, style: t.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
+                        if (o.etaMin != null) ...[
+                          const SizedBox(width: 12),
+                          Text(
+                            '${o.etaMin} min',
+                            style: t.textTheme.headlineMedium?.copyWith(color: muted, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                ],
-                const Spacer(),
+                ),
                 if (o.demo) const _DemoTag(),
               ],
             ),
@@ -827,9 +838,13 @@ class ChooseDriverOverlay extends StatelessWidget {
                             children: [
                               Icon(Icons.close, color: Colors.black87),
                               SizedBox(width: 10),
-                              Text(
-                                'Cancel request',
-                                style: TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w500),
+                              Flexible(
+                                child: Text(
+                                  'Cancel request',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w500),
+                                ),
                               ),
                             ],
                           ),

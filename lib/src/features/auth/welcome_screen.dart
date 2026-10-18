@@ -195,7 +195,10 @@ class _SlideView extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, box) {
         final art = (box.maxHeight * 0.5).clamp(120.0, 280.0);
-        return Column(
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: box.maxHeight),
+            child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             SizedBox.square(
@@ -243,6 +246,7 @@ class _SlideView extends StatelessWidget {
                 style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
               ),
           ],
+        )),
         );
       },
     );

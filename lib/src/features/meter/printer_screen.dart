@@ -105,7 +105,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
     final kind = await showAppSheet<String>(id: 'printer.add',
       context: context,
       builder: (c) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+        child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           const ListTile(title: Text('How does the printer connect?')),
           ListTile(
             leading: const Icon(Icons.bluetooth),
@@ -129,7 +129,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
             subtitle: const Text('On the same Wi-Fi as this phone; added by its IP address'),
             onTap: () => Navigator.pop(c, 'wifi'),
           ),
-        ]),
+        ])),
       ),
     );
     if (kind == null || !mounted) return;

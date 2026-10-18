@@ -1180,7 +1180,7 @@ class _ActionNeeded extends StatelessWidget {
               child: Row(children: [
                 Icon(Icons.circle, size: 8, color: i.compulsory ? t.colorScheme.error : t.colorScheme.outline),
                 const SizedBox(width: 8),
-                Expanded(child: Text(i.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Expanded(child: Flexible(child: Text(i.name, maxLines: 1, overflow: TextOverflow.ellipsis))),
                 Text(
                   switch (i.reason) {
                     DocIssueReason.missing => 'Not uploaded',

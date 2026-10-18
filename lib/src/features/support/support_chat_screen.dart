@@ -173,7 +173,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.play_circle_outline, color: fg),
           const SizedBox(width: 6),
-          Text('Video · tap to play', style: TextStyle(color: fg)),
+          Flexible(child: Text('Video · tap to play', style: TextStyle(color: fg))),
         ]),
       );
     }

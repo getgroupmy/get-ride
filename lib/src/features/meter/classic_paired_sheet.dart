@@ -84,7 +84,7 @@ class _ClassicPairedSheetState extends ConsumerState<ClassicPairedSheet> {
     final devices = _devices ?? const <BondedBluetoothDevice>[];
     return SafeArea(
       child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * 0.7,
+        height: MediaQuery.sizeOf(context).height * 0.55,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

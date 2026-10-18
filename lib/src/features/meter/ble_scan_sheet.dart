@@ -90,7 +90,7 @@ class _BleScanSheetState extends ConsumerState<BleScanSheet> {
       ..sort((a, b) => (b.rssi ?? -999).compareTo(a.rssi ?? -999));
     return SafeArea(
       child: SizedBox(
-        height: MediaQuery.sizeOf(context).height * 0.7,
+        height: MediaQuery.sizeOf(context).height * 0.55,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ListTile(
             title: Text(widget.title),

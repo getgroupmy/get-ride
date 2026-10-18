@@ -85,7 +85,8 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
         key: const ValueKey('ride-rating-saved'),
         child: ListTile(
           leading: Icon(Icons.star_rounded, color: _starColor(t)),
-          title: Row(
+          title: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               const Text('Your rating '),
               _Stars(value: saved.stars, size: 18, color: _starColor(t)),

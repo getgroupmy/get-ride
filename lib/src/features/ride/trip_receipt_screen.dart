@@ -89,7 +89,7 @@ class _BookingIdRow extends StatelessWidget {
             children: [
               Icon(Icons.check_circle, color: tick),
               const SizedBox(width: 12),
-              const Text('Booking ID copied'),
+              const Expanded(child: Text('Booking ID copied')),
             ],
           ),
         ),

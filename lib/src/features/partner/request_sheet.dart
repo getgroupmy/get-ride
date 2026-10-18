@@ -356,7 +356,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
         if (r.riderRating != null)
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(Icons.star, size: 12, color: Color(0xFFF5A623)),
-            Text(r.riderRating!.toStringAsFixed(2), style: t.textTheme.labelSmall),
+            Flexible(child: Text(r.riderRating!.toStringAsFixed(2), maxLines: 1, style: t.textTheme.labelSmall)),
           ]),
         Text(_age(), key: const ValueKey('request-age'), style: t.textTheme.labelSmall?.copyWith(color: muted)),
       ]),
