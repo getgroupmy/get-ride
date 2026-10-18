@@ -1,10 +1,11 @@
-// Security & integrations: session history, fraud tracing, IP access, API keys, eLife, fare AI, backend diagnostics.
+// Security & integrations: session history, fraud tracing, IP access, Claude Code access, API keys, eLife, fare AI, backend diagnostics.
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin_registry.dart';
 import 'api_keys_screens.dart';
 import 'backend_screen.dart';
+import 'claude_access_screen.dart';
 import 'ble_report_screen.dart';
 import 'elife_screen.dart';
 import 'fare_ai_request_screen.dart';
@@ -15,7 +16,7 @@ import 'session_history_screen.dart';
 import 'trace_fraud_screen.dart';
 
 /// `settings_entries` categories owned by these screens. None: every screen
-/// here stores its data in a dedicated table (`ip_access_rules`,
+/// here stores its data in a dedicated table (`ip_access_rules`, `claude_access_rules`,
 /// `user_sessions`, `fare_ai_*`, …) or an `app_settings` row
 /// (`api_providers`, `elife_api_connection`, `fare_ai_provider`).
 const securityOwnedCategories = <String>{};
@@ -26,6 +27,7 @@ final securityRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/messaging', builder: (_, _) => const AdminMessagingScreen()),
   GoRoute(path: '/admin/m/ble-report', builder: (_, _) => const AdminBleReportScreen()),
   GoRoute(path: '/admin/m/ip-access', builder: (_, _) => const AdminIpAccessScreen()),
+  GoRoute(path: '/admin/m/claude-access', builder: (_, _) => const AdminClaudeAccessScreen()),
   GoRoute(path: '/admin/m/api-keys', builder: (_, _) => const AdminApiProvidersScreen()),
   GoRoute(
     path: '/admin/m/api-keys-services',
@@ -71,6 +73,14 @@ const securityEntries = <AdminScreenEntry>[
     path: '/admin/m/ip-access',
     pages: ['admin-settings-ip-access'],
     icon: Icons.public,
+  ),
+  AdminScreenEntry(
+    section: _section,
+    title: 'Claude Code access',
+    subtitle: 'Claude sessions and office IPs that use the Supabase tools without a prompt',
+    path: '/admin/m/claude-access',
+    pages: ['admin-settings-claude-access'],
+    icon: Icons.smart_toy_outlined,
   ),
   AdminScreenEntry(
     section: _section,

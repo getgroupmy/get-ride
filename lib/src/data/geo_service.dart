@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import '../core/map_link.dart';
 import '../core/map_profile.dart';
 import '../core/smart_address.dart';
+import 'geo_memo.dart';
 
 class Place {
   const Place({
@@ -115,11 +116,21 @@ class GeoService {
     this.lookup,
     MapProfile Function()? profile,
     this.nominatimGap = const Duration(milliseconds: 1100),
+    GeoMemo? memo,
   })  : _http = client ?? http.Client(),
-        _profile = profile ?? (() => activeMapProfile);
+        _profile = profile ?? (() => activeMapProfile),
+        _memo = memo ?? GeoMemo();
   final http.Client _http;
   final GeoLookup? lookup;
   final MapProfile Function() _profile;
+
+  /// Address lookups already answered this session, by ~11 m cell
+  /// ([reverse], [reverseArea]): a GPS fix that barely moved costs no
+  /// round trip. In memory only.
+  final GeoMemo _memo;
+
+  /// The language addresses are asked in.
+  static const _lang = 'en';
 
   /// The least time between this device's own position lookups on
   /// Nominatim for suggestions ([roughPoints]): its usage policy allows one
@@ -173,7 +184,7 @@ class GeoService {
   }
 
   Future<Map<String, dynamic>?> _ask(String action, String provider, Map<String, String> params) =>
-      lookup!({'action': action, 'provider': provider, 'countries': _countryCodes, 'lang': 'en', ...params});
+      lookup!({'action': action, 'provider': provider, 'countries': _countryCodes, 'lang': _lang, ...params});
 
   Map<String, String> get _headers => kIsWeb
       ? const {'Accept-Language': 'en'}
@@ -388,14 +399,19 @@ class GeoService {
     }).toList();
   }
 
+  /// The place at [p], named by the profile's reverse providers in turn,
+  /// OpenStreetMap last; a fix in a cell already named this session takes
+  /// that name ([GeoMemo]). "Pinned location" when none answers.
   Future<Place> reverse(LatLng p) async {
     try {
-      final found = await _first<Place>(MapProfile.withOsm(_profile().reverse), (provider) async {
-        if (provider == 'nominatim') return _nominatimReverse(p);
-        final a = await _proxyArea(provider, p);
-        return a == null ? null : Place(name: a.label ?? a.address ?? '', address: a.address ?? '', point: p);
+      final found = await _memo.get<Place>('place', p, _lang, () {
+        return _first<Place>(MapProfile.withOsm(_profile().reverse), (provider) async {
+          if (provider == 'nominatim') return _nominatimReverse(p);
+          final a = await _proxyArea(provider, p);
+          return a == null ? null : Place(name: a.label ?? a.address ?? '', address: a.address ?? '', point: p);
+        });
       });
-      if (found != null) return found;
+      if (found != null) return Place(name: found.name, address: found.address, point: p, types: found.types);
     } catch (_) {}
     final label = '${p.latitude.toStringAsFixed(5)}, ${p.longitude.toStringAsFixed(5)}';
     return Place(name: 'Pinned location', address: label, point: p);
@@ -442,12 +458,14 @@ class GeoService {
 
   /// Structured geography for [p] (country, state, city, suburb), which the
   /// meter resolves its rate card on, plus a short label for the receipt.
-  /// Null when the geocoder cannot be reached.
+  /// Null when the geocoder cannot be reached. Kept by cell like [reverse].
   Future<AreaInfo?> reverseArea(LatLng p) async {
     try {
-      return await _first<AreaInfo>(_profile().reverse, (provider) async {
-        if (provider == 'nominatim') return _nominatimArea(p);
-        return _proxyArea(provider, p);
+      return await _memo.get<AreaInfo>('area', p, _lang, () {
+        return _first<AreaInfo>(_profile().reverse, (provider) async {
+          if (provider == 'nominatim') return _nominatimArea(p);
+          return _proxyArea(provider, p);
+        });
       });
     } catch (_) {
       return null;

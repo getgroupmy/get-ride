@@ -26,7 +26,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import countries from "npm:world-countries@5.1.0";
 
 import { fallbackKey, googleMapType, tokenCacheKey } from "../_shared/geo.ts";
-import { errorDetail, googleSessionBody, handleGeo, parseGoogleSession } from "../_shared/geo_handler.ts";
+import {
+  errorDetail,
+  googleSessionBody,
+  handleGeo,
+  parseGoogleSession,
+  RefusedSessions,
+} from "../_shared/geo_handler.ts";
 import { clientIp } from "../_shared/pin_login.ts";
 
 const corsHeaders = {
@@ -52,6 +58,10 @@ async function settings() {
   settingsAt = Date.now();
   return settingsCache;
 }
+
+// Google tile sessions refused in the last 10 minutes, per instance: profiles
+// asked meanwhile fall back at once instead of waiting on Google to refuse again.
+const refusedSessions = new RefusedSessions();
 
 const iso3By = new Map(
   (countries as unknown as { cca2: string; cca3: string }[]).map((c) => [c.cca2.toLowerCase(), c.cca3]),
@@ -169,6 +179,7 @@ Deno.serve(async (req) => {
       },
       iso3: (cc) => iso3By.get(cc.toLowerCase()) ?? null,
       fallbackKey: (slot) => fallbackKey(slot, (name) => Deno.env.get(name)),
+      refusedSessions,
       redirect: async (url) => {
         const res = await fetch(url, {
           redirect: "manual",
