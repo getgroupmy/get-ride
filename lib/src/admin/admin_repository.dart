@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/commission_settings.dart';
 import '../core/fare_tariff.dart' show fareTariffRowWithoutServices;
 import 'admin_access.dart';
 import 'admin_settings_models.dart';
@@ -370,6 +371,32 @@ class AdminRepository {
     final r = Map<String, dynamic>.from(await _db.rpc('admin_charge_uncharged_commissions') as Map);
     return (charged: (r['charged'] as num?)?.toInt() ?? 0, failed: (r['failed'] as num?)?.toInt() ?? 0);
   }
+
+  // ---- Commission settings and tiers (0218) ----
+  Future<CommissionConfig> commissionConfig() async => CommissionConfig.fromJson(await _db.rpc('commission_config'));
+
+  Future<CommissionConfig> saveCommissionConfig(CommissionConfig c) async =>
+      CommissionConfig.fromJson(await _db.rpc('set_commission_config', params: {'p_config': c.toJson()}));
+
+  Future<List<CommissionTier>> commissionTiers() async => [
+        for (final r in await _db.from('commission_tiers').select().order('position').order('created_at') as List)
+          CommissionTier.fromRow(Map<String, dynamic>.from(r as Map)),
+      ];
+
+  Future<void> saveCommissionTier(CommissionTier t) {
+    final row = t.toRow();
+    return t.id == null
+        ? _db.from('commission_tiers').insert(row..remove('id'))
+        : _db.from('commission_tiers').update(row..remove('id')).eq('id', t.id!);
+  }
+
+  Future<void> deleteCommissionTier(String id) => _db.from('commission_tiers').delete().eq('id', id);
+
+  /// Surcharge names seen on trips over the last year (0201), to tick for the base.
+  Future<List<({String name, int trips})>> surchargeNamesSeen() async => [
+        for (final r in await _db.rpc('statement_surcharge_names') as List)
+          (name: '${(r as Map)['name']}', trips: (r['trips'] as num?)?.toInt() ?? 0),
+      ];
 
   /// People a per-user rule can be about: matched by name, phone, email or
   /// account id, or exactly by profile id. The term is sanitised before it

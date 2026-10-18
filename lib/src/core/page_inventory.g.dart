@@ -31,6 +31,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:commerce-widgets.country-field', SurfaceKind.modal, 'Commerce widgets · Country field', 'lib/src/admin/screens/commerce/commerce_widgets.dart'),
   SurfaceEntry('modal:commerce-widgets.show-form-dialog', SurfaceKind.modal, 'Commerce widgets · Form dialog', 'lib/src/admin/screens/commerce/commerce_widgets.dart'),
   SurfaceEntry('modal:commission.edit', SurfaceKind.modal, 'Commission · Edit', 'lib/src/admin/screens/commission_screen.dart'),
+  SurfaceEntry('modal:commission.tier', SurfaceKind.modal, 'Commission · Tier', 'lib/src/admin/screens/commission_settings_tabs.dart'),
   SurfaceEntry('modal:common.show-info', SurfaceKind.modal, 'Common · Info', 'lib/src/widgets/common.dart'),
   SurfaceEntry('modal:connection-status.show-connection-status', SurfaceKind.modal, 'Connection status · Connection status', 'lib/src/widgets/connection_status_dialog.dart'),
   SurfaceEntry('modal:delete-account.run', SurfaceKind.modal, 'Delete account · Run', 'lib/src/features/settings/delete_account_screen.dart'),

@@ -13,6 +13,7 @@ import '../profile_search.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
+import 'commission_settings_tabs.dart';
 import 'geo/geo_data.dart' show regionsProvider;
 import 'geo/geo_logic.dart' show RegionEntry, RegionLevel, regionNamesAt;
 
@@ -103,9 +104,18 @@ class AdminCommissionScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(moduleAccessProvider('commission')) == AccessLevel.edit;
-    return AdminPage(
-      title: 'Commission rates',
+    return DefaultTabController(
+      length: 3,
+      child: AdminPage(
+      title: 'Commission',
       module: 'commission',
+      bottom: const TabBar(
+        tabs: [
+          Tab(key: ValueKey('commission-tab-rates'), text: 'Rates'),
+          Tab(key: ValueKey('commission-tab-settings'), text: 'Settings'),
+          Tab(key: ValueKey('commission-tab-tiers'), text: 'Tiers'),
+        ],
+      ),
       actions: [
         IconButton(
           key: const ValueKey('commission-history'),
@@ -114,16 +124,8 @@ class AdminCommissionScreen extends ConsumerWidget {
           onPressed: () => showAdminSheet<void>(context, title: 'Change history', builder: (_) => const _HistoryList()),
         ),
       ],
-      // Only for admins who may change rates.
-      floatingActionButton: canEdit
-          ? FloatingActionButton.extended(
-              key: const ValueKey('commission-add'),
-              onPressed: () => _edit(context, ref),
-              icon: const Icon(Icons.add),
-              label: const Text('Add rate'),
-            )
-          : null,
-      body: AsyncView(
+      body: TabBarView(children: [
+      AsyncView(
         value: ref.watch(commissionRatesProvider),
         onRetry: () => ref.invalidate(commissionRatesProvider),
         data: (rows) {
@@ -142,6 +144,20 @@ class AdminCommissionScreen extends ConsumerWidget {
               ),
             ),
             _UnchargedCard(canEdit: canEdit),
+            // Only for admins who may change rates.
+            if (canEdit)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: FilledButton.tonalIcon(
+                    key: const ValueKey('commission-add'),
+                    onPressed: () => _edit(context, ref),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add rate'),
+                  ),
+                ),
+              ),
             if (sorted.isEmpty) const EmptyState(icon: Icons.percent, title: 'No commission rules yet'),
             for (final r in sorted)
               Card(
@@ -175,6 +191,10 @@ class AdminCommissionScreen extends ConsumerWidget {
           ]);
         },
       ),
+      CommissionSettingsTab(canEdit: canEdit),
+      CommissionTiersTab(canEdit: canEdit),
+      ]),
+    ),
     );
   }
 }
