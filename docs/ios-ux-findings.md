@@ -49,10 +49,18 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly, see the table.
 | 38 | Session access card | Subtitle joins empty parts: "· · Ends 18 Nov…" when a key has no test number / scopes | `session_access_card.dart:101` | minor |
 | 39 | Home with upcoming ride | "Upcoming ride" card below the search bar is cut off under the home indicator at the sheet's resting height | `home_screen.dart` fold | open |
 | 40 | Admin → Claude Code access | Title truncates to "Claude Code acce…" at text scale 1.3 next to the menu + refresh icons (same pattern as #16) | `claude_access_screen.dart` app bar | minor |
+| 41 | Landscape sheets | Fixed Columns overflow the 393 pt viewport, last rows/buttons unreachable: Payment 72 px, Choose date and time 76 px, Who's riding 10 px (189 px with keyboard; 23 px on SE + 1.3 portrait), Cancel reasons 124 px, Location sharing 90 px | `confirm_parts.dart:1030`, `pickup_time_sheet.dart:19`, `book_for_sheet.dart:50`, `searching_parts.dart` ~918, `location_share_button.dart:103` | open |
+| 42 | Landscape confirm step | Back pill overlaps the route card's second row (map strip above the 55 % sheet is ~110 pt) | `home_screen.dart:1645` | open |
+| 43 | Landscape ride / driver sheets | Resting height shows only the handle and a title cut under the pinned footer ("Driver on the way" / "Waiting for passenger" / "Completed") | `map_sheet_layout.dart`, `home_screen.dart:1878` | open |
+| 44 | Landscape Drive online | Request card clipped to ~60 pt; "You are online" card cut by the bottom edge | `partner_screen.dart` queue column | open |
+| 45 | Landscape + keyboard | Enter phone / OTP overflow 17 px, title scrolls off behind the back button | `phone_screen.dart:163`, `otp_screen.dart:105` | open |
+| 46 | Ride chat (SE + 1.3) | Empty-state text clipped on its second line above the quick replies (9 px) | `ride_chat_screen.dart:307` | open |
+| 47 | Back swipe | `PopScope(canPop: false)` disables the iOS edge swipe on Offer your fare and in-app web pages (and wizard inner steps) | `offer_fare_screen.dart:133`, `in_app_page.dart:128` | open |
 | 29 | Contacts picker | "Choose from contacts" exists only on the web; iOS has a permission-free CNContactPickerViewController | `emergency_contacts_screen.dart:32-38` | suggestion |
 
 Sweeps over every screen: dark mode, text scale 1.3, iPhone SE and iOS
-Bold Text found nothing beyond #15 and #30 (bold text: no overflows at all).
+Bold Text found nothing beyond #15 and #30 (bold text: no overflows at all);
+iPhone landscape found #41–#45, SE + text scale 1.3 combined found #46.
 
 Checked and fine on iPhone: sign-in flow (welcome, phone, OTP with
 `oneTimeCode` autofill, PIN, set PIN, closed registrations), keyboard
@@ -71,6 +79,9 @@ photos, microphone, Bluetooth and local network.
 ```
 SHOTS_DIR=/tmp/shots flutter test test/ios_shots_test.dart --update-goldens
 ```
+
+Sweep switches: `DARK=1`, `XL=1`, `SE=1`, `LAND=1` (iPhone landscape), `BOLD=1`;
+`FRAMES=n` pumps more frames, `DUMP=1` prints every Text with its rectangle.
 
 Groups: `auth`, `rider`, `booking`, `tracking`, `driver`, `keyboard`,
 `sheets`, `admin`, `picker`, `wizards`, `support`, `meter`, `ipad`,
