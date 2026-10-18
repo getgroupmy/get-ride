@@ -10,7 +10,7 @@
 begin;
 
 insert into auth.users (id) values
-  ('00000000-0000-0000-0000-0000000183a1'),  -- runs the gateway phone (an admin)
+  ('00000000-0000-0000-0000-0000000183a1'),  -- runs the gateway phone (a full admin: 0223)
   ('00000000-0000-0000-0000-0000000183a2'),  -- a sub-admin with one read-only page
   ('00000000-0000-0000-0000-0000000183a3')   -- a full admin (0187)
 on conflict do nothing;
@@ -18,7 +18,7 @@ insert into public.profiles (id) select id from auth.users
  where id::text like '00000000-0000-0000-0000-0000000183a%'
 on conflict do nothing;
 insert into public.admin_access (profile_id, page, access_level) values
-  ('00000000-0000-0000-0000-0000000183a1', 'admin-settings-messaging', 'edit'),
+  ('00000000-0000-0000-0000-0000000183a1', '*', 'edit'),
   ('00000000-0000-0000-0000-0000000183a2', 'admin-help', 'read'),
   ('00000000-0000-0000-0000-0000000183a3', '*', 'edit')
 on conflict do nothing;

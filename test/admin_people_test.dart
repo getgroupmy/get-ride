@@ -71,20 +71,15 @@ void main() {
       expect(isValidIsoDate('29/02/2024'), isFalse);
     });
 
-    test('storage paths follow Expo edit-profile', () {
-      final d = DateTime(2025, 3, 7);
-      expect(idImagePath(country: 'Malaysia', phone: '+60 12-345', idNumber: '990101-14', ext: 'jpg', now: d),
-          'Malaysia/+60_12-345_990101-14_07032025.jpg');
-      expect(avatarPath(country: '', phone: '+6012', name: 'Jane Doe', ext: 'png', now: d), 'Unknown/+6012_jane_doe_07032025.png');
-      expect(avatarPath(country: 'MY', phone: '1', name: ' ', ext: 'png', now: d), 'MY/1_user_07032025.png');
-      expect(
-        avatarPath(country: 'MY', phone: '1', name: 'Jo', ext: 'png', owner: 'u-1', now: d),
-        'u-1/MY_1_jo_07032025.png',
-      );
-      expect(
-        idImagePath(country: '', phone: '1', idNumber: '9', ext: 'jpg', owner: 'u-1', now: d),
-        'u-1/Unknown_1_9_07032025.jpg',
-      );
+    test('storage paths name nobody: the owner\'s folder and a time', () {
+      final d = DateTime.utc(2025, 3, 7);
+      final ms = d.millisecondsSinceEpoch;
+      expect(idImagePath(owner: 'u-1', ext: 'jpg', now: d), 'u-1/id_$ms.jpg');
+      expect(avatarPath(owner: 'u-1', ext: 'png', now: d), 'u-1/avatar_$ms.png');
+      // No phone number, name or ID number reaches the public file name.
+      for (final p in [idImagePath(owner: 'u-1', ext: 'jpg'), avatarPath(owner: 'u-1', ext: 'png')]) {
+        expect(p, matches(RegExp(r'^u-1/(id|avatar)_\d+\.(jpg|png)$')));
+      }
       expect(docFilePath('p1', 'd1', 'front', 'jpg', ms: 5), 'p1/d1/front-5.jpg');
       expect(vehiclePhotoPath('v1', 'left', 'png', ms: 9), 'v1/photos/left-9.png');
     });

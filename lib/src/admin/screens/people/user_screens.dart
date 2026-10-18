@@ -91,20 +91,19 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
     setState(() => _saving = true);
     final repo = ref.read(peopleRepositoryProvider);
     final ok = await runAdminAction(context, () async {
-      final country = _nationality.text.trim();
       var profileImage = _s('profile_image');
       var idImage = _s('id_image');
       if (_profileFile != null) {
         profileImage = await repo.upload(
           'avatars',
-          avatarPath(country: country, phone: _phone.text.trim(), name: _name.text, ext: guessExt(_profileFile!.name)),
+          avatarPath(owner: '${r['id']}', ext: guessExt(_profileFile!.name)),
           _profileFile!,
         );
       }
       if (_idFile != null) {
         idImage = await repo.upload(
           'ID_Image',
-          idImagePath(country: country, phone: _phone.text.trim(), idNumber: _ic.text.trim(), ext: guessExt(_idFile!.name)),
+          idImagePath(owner: '${r['id']}', ext: guessExt(_idFile!.name)),
           _idFile!,
         );
       }

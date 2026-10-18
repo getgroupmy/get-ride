@@ -19,7 +19,8 @@ insert into public.profiles (id) select id from auth.users
 on conflict do nothing;
 update public.profiles set phone = '+60 12-345 0150' where id = '00000000-0000-0000-0000-0000000150a1';
 update public.profiles set phone = null where id = '00000000-0000-0000-0000-0000000150b1';
-insert into public.admin_access (profile_id, page) values ('00000000-0000-0000-0000-0000000150c1', 'admin-messaging')
+-- Edit on the page that owns the setting (0223: a grant on any page no longer writes it).
+insert into public.admin_access (profile_id, page, access_level) values ('00000000-0000-0000-0000-0000000150c1', 'admin-settings-messaging', 'edit')
 on conflict do nothing;
 
 insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_fare, partner_name, partner_plate, pickup_name)

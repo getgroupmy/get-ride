@@ -42,6 +42,7 @@ import {
   googleSessionBody,
   tileSource,
   trafficTileUrl,
+  tokenCacheKey,
 } from "./geo.ts";
 import { type GeoDeps, googleApiOf, googleSearchOf, handleGeo, parseGoogleSession, smartAddressOf } from "./geo_handler.ts";
 
@@ -1044,4 +1045,12 @@ Deno.test("Google's unofficial tiles for testing (0211): no key, the look set, d
   assertStringIncludes(tileSource("google_xyz", "satellite", null, null, undefined, look)!.url, "lyrs=y&");
   assertStringIncludes(tileSource("google_xyz", "light", null, null, undefined, look)!.url, "lyrs=p&");
   assertStringIncludes(tileSource("google_xyz", "dark", null, null, undefined, look)!.url, "lyrs=m&");
+});
+
+Deno.test("the caller cache keys a token by its SHA-256, never the token", async () => {
+  const key = await tokenCacheKey("abc");
+  assertEquals(key, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  assertEquals(await tokenCacheKey("abc"), key);
+  assert(!key.includes("abc"));
+  assert(await tokenCacheKey("abd") !== key);
 });

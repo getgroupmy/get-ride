@@ -17,7 +17,7 @@ on conflict do nothing;
 insert into public.profiles (id) select id from auth.users
  where id::text like '00000000-0000-0000-0000-0000000180%'
 on conflict do nothing;
-insert into public.admin_access (profile_id, page) values ('00000000-0000-0000-0000-0000000180b1', '*');
+insert into public.admin_access (profile_id, page, access_level) values ('00000000-0000-0000-0000-0000000180b1', '*', 'edit');
 
 -- u1's old phone (A, signed in ten minutes ago) and new phone (B, now);
 -- the admin's two devices (E, F).
