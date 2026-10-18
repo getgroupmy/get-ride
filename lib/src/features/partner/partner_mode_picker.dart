@@ -14,6 +14,7 @@ import '../../data/models.dart' show Partner;
 import '../../providers.dart';
 import 'partner_screen.dart' show partnerCanDrive;
 import '../../widgets/net_image.dart';
+import '../../widgets/page_style_host.dart';
 
 /// What a partner with no assigned type is offered (Expo's defaults).
 const defaultPartnerModeOptions = [
@@ -69,7 +70,7 @@ Future<void> openPartnerMode(BuildContext context, WidgetRef ref, {VoidCallback?
 /// The picker; null when dismissed. [assigned] empty shows the defaults.
 Future<PartnerModeOption?> showPartnerModePicker(BuildContext context, List<PartnerModeOption> assigned) {
   final options = assigned.isEmpty ? defaultPartnerModeOptions : assigned;
-  return showDialog<PartnerModeOption>(
+  return showAppDialog<PartnerModeOption>(id: 'partner-mode-picker.show-partner-mode-picker',
     context: context,
     builder: (c) {
       final t = Theme.of(c);

@@ -18,6 +18,7 @@ import '../../providers.dart';
 import '../support/call/call_session.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../support/call/mic_gate.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Opens the phone's dialer for the fallback phone call (overridden in tests).
 final rideCallDialerProvider = Provider<Future<bool> Function(Uri)>((ref) => launchUrl);
@@ -520,7 +521,7 @@ class RideCallButton extends ConsumerWidget {
     required String number,
     String inAppTitle = 'Call in the app',
   }) async {
-    final choice = await showModalBottomSheet<String>(
+    final choice = await showAppSheet<String>(id: 'ride-call.options',
       context: context,
       showDragHandle: true,
       builder: (c) => SafeArea(

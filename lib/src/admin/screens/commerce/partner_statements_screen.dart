@@ -14,6 +14,7 @@ import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../widgets/page_style_host.dart';
 
 /// The `admin_access` page these settings sit under.
 const statementsPage = 'admin-settings-partner-statements';
@@ -325,7 +326,7 @@ class _EntriesTab extends ConsumerWidget {
                       icon: const Icon(Icons.add),
                       label: Text(_incentive ? 'Credit an incentive' : 'Post an adjustment'),
                       onPressed: () async {
-                        final done = await showDialog<bool>(
+                        final done = await showAppDialog<bool>(id: 'partner-statements.entries-tab',
                           context: context,
                           builder: (_) => _EntryDialog(incentive: _incentive),
                         );

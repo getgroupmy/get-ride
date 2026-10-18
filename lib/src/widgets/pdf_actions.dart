@@ -8,11 +8,12 @@ import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
 import 'common.dart';
+import 'page_style_host.dart';
 
 enum PdfAction { share, download }
 
 /// Asks whether to share or download; null when dismissed.
-Future<PdfAction?> askPdfAction(BuildContext context, {required String title}) => showModalBottomSheet<PdfAction>(
+Future<PdfAction?> askPdfAction(BuildContext context, {required String title}) => showAppSheet<PdfAction>(id: 'pdf.share-or-download',
   context: context,
   showDragHandle: true,
   builder: (c) => SafeArea(

@@ -9,6 +9,7 @@ import '../../core/auth_utils.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../core/installed_app.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Hidden screen for "I can't sign in" (Expo `/auth-diagnostics`), reached
 /// from the "Not Connected to server" popup. Works signed out.
@@ -62,7 +63,7 @@ class _AuthDiagnosticsScreenState extends State<AuthDiagnosticsScreen> {
   Future<void> _send() async {
     final digits = _phone.text.replaceAll(RegExp(r'\D'), '');
     if (digits.length < 8) return showInfo(context, 'Enter the full number with its country code, e.g. +60123456789.');
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'auth-diagnostics.send',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Send a real SMS?'),

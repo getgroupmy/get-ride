@@ -13,11 +13,12 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
 import 'driver_online.dart';
+import '../../widgets/page_style_host.dart';
 
 /// The driver menu (Expo `PartnerSideSheet`), arranged by Admin → Display
 /// Settings → Side Menus → Partner. Vehicle information shows only while an
 /// OBD-II reader is actually linked.
-Future<void> showPartnerMenu(BuildContext context) => showModalBottomSheet<void>(
+Future<void> showPartnerMenu(BuildContext context) => showAppSheet<void>(id: 'driver.menu',
   context: context,
   showDragHandle: true,
   isScrollControlled: true,
@@ -69,7 +70,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     return true;
   }
   if (id == 'sign-out') {
-    showDialog<bool>(
+    showAppDialog<bool>(id: 'partner-menu.partner-menu-action',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Sign out?'),

@@ -7,6 +7,7 @@ import '../../core/ev_profile.dart';
 import '../../core/installed_app.dart';
 import '../../data/ev_profile_repository.dart';
 import '../../data/obd/obd_session.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Hands a job the reader to itself (the shared session's [ObdSession.exclusive]).
 /// A seam so tests can script the car.
@@ -15,7 +16,7 @@ typedef EvExclusiveLink = Future<T> Function<T>(Future<T> Function(EvSend send) 
 final evCaptureLinkProvider = Provider<EvExclusiveLink>((ref) => ref.read(obdSessionProvider.notifier).exclusive);
 
 /// Opens "Record for support" over [context].
-Future<void> showEvCaptureSheet(BuildContext context) => showModalBottomSheet<void>(
+Future<void> showEvCaptureSheet(BuildContext context) => showAppSheet<void>(id: 'meter.ev-record-for-support',
   context: context,
   isScrollControlled: true,
   showDragHandle: true,

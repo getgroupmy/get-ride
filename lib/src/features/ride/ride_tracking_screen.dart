@@ -53,6 +53,7 @@ import '../../core/demo_mode.dart';
 import 'auto_accept.dart';
 import '../my_ride/my_ride_parts.dart' show MyRideSearchBanner;
 import 'rider_handover_card.dart';
+import '../../widgets/page_style_host.dart';
 
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>(
   (ref, id) => ref.watch(rideRepositoryProvider).watch(id),
@@ -386,7 +387,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   Future<void> _promptRaise() async {
     final r = widget.ride;
     final fare = r.fare ?? 0;
-    final raise = await showModalBottomSheet<bool>(
+    final raise = await showAppSheet<bool>(id: 'ride-tracking.prompt-raise',
       context: context,
       builder: (c) => SafeArea(
         child: Padding(
@@ -425,7 +426,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   }
 
   Future<void> _showExpired() async {
-    await showDialog<void>(
+    await showAppDialog<void>(id: 'ride-tracking.show-expired',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Request expired'),
@@ -606,7 +607,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   Future<void> _cancel() async {
     final r = widget.ride;
     if (r.status == RideStatus.open) return _cancelSearch();
-    final reason = await showDialog<String>(context: context, builder: (_) => _CancelReasonDialog(status: r.status));
+    final reason = await showAppDialog<String>(id: 'ride-tracking.cancel', context: context, builder: (_) => _CancelReasonDialog(status: r.status));
     if (reason == null) return;
     await _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: reason, by: 'rider'));
   }

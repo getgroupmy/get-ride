@@ -11,6 +11,7 @@ import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/net_image.dart';
 import '../../widgets/storage_image.dart';
+import '../../widgets/page_style_host.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key, this.pickPhoto = pickImage});
@@ -119,7 +120,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   }
 
   Future<void> _chooseCountry() async {
-    final picked = await showModalBottomSheet<String>(
+    final picked = await showAppSheet<String>(id: 'edit-profile.choose-country',
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

@@ -10,6 +10,7 @@ import '../data/models.dart';
 import '../data/reliability_repository.dart';
 import '../data/trip_safety_repository.dart';
 import 'common.dart';
+import 'page_style_host.dart';
 
 /// Asks the passenger, mid-trip, the question the server flagged. "Get help"
 /// runs [onHelp] (the trip screen's SOS).
@@ -115,7 +116,7 @@ class LostItemCard extends ConsumerWidget {
   final RideRequest ride;
 
   Future<void> _report(BuildContext context, WidgetRef ref) async {
-    final text = await showDialog<String>(context: context, builder: (_) => const _LostItemDialog());
+    final text = await showAppDialog<String>(id: 'trip-safety.report', context: context, builder: (_) => const _LostItemDialog());
     if (text == null || !context.mounted) return;
     try {
       await ref.read(tripSafetyRepositoryProvider).reportLostItem(ride.id, text);
@@ -232,7 +233,7 @@ class DriverLostItemsCard extends ConsumerWidget {
   Future<void> _answer(BuildContext context, WidgetRef ref, LostItem item, LostItemStatus status) async {
     String? note;
     if (status != LostItemStatus.notFound) {
-      note = await showDialog<String>(
+      note = await showAppDialog<String>(id: 'trip-safety.answer',
         context: context,
         builder: (_) => _NoteDialog(status: status),
       );

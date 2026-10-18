@@ -58,6 +58,7 @@ import '../../widgets/side_menu_host.dart';
 import '../../widgets/trip_safety.dart';
 import '../../widgets/net_image.dart';
 import 'trip_handover_panel.dart' show HandoverOffersCard;
+import '../../widgets/page_style_host.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -340,7 +341,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
     if (blocking.isEmpty) return true;
     if (!mounted) return false;
-    final update = await showDialog<bool>(
+    final update = await showAppDialog<bool>(id: 'partner.documents-cleared',
       context: context,
       builder: (ctx) => AlertDialog(
         key: const ValueKey('docs-blocked'),
@@ -427,7 +428,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     if (vehicles.any((v) => v.inUseByMe)) return true;
     if (!mounted) return false;
     final usable = vehicles.where((v) => v.selectable).toList();
-    final choose = await showDialog<bool>(
+    final choose = await showAppDialog<bool>(id: 'partner.vehicle-ready',
       context: context,
       builder: (c) => AlertDialog(
         key: const ValueKey('vehicle-required'),
@@ -450,7 +451,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       context.push('/drive/vehicles/new');
       return false;
     }
-    final picked = await showModalBottomSheet<AssignableVehicle>(
+    final picked = await showAppSheet<AssignableVehicle>(id: 'partner.vehicle-ready-2',
       context: context,
       isScrollControlled: true,
       builder: (_) => VehiclePickerSheet(vehicles: vehicles),
@@ -513,7 +514,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       context.push('/drive/trip/${sent.id}');
       return;
     }
-    final won = await showDialog<RideRequest>(
+    final won = await showAppDialog<RideRequest>(id: 'partner.offer',
       context: context,
       barrierDismissible: false,
       builder: (_) => OfferPendingDialog(repo: repo, ride: r, me: me, amount: amount, accepting: accepting),
@@ -549,7 +550,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// saved yet it goes straight to the search.
   Future<void> _chooseDestination() async {
     if (ref.read(destinationModeProvider).saved.isEmpty) return _addDestination();
-    final add = await showModalBottomSheet<bool>(
+    final add = await showAppSheet<bool>(id: 'partner.choose-destination',
       context: context,
       showDragHandle: true,
       builder: (sheet) => Consumer(

@@ -20,6 +20,7 @@ import '../my_qr/qr_result_sheet.dart' show showQrResultSheet;
 import '../wallet/wallet_qr_screens.dart' show scannerTorchProvider, scannerTorchAvailable;
 import 'my_ride_parts.dart';
 import 'my_ride_settings.dart';
+import '../../widgets/page_style_host.dart';
 
 class MyRideScreen extends ConsumerWidget {
   const MyRideScreen({super.key});
@@ -115,7 +116,7 @@ class MyRideScreen extends ConsumerWidget {
   }
 
   Future<void> _remove(BuildContext context, WidgetRef ref, FavouriteDriver d) async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'my-ride.remove',
       context: context,
       builder: (c) => AlertDialog(
         title: Text('Remove ${d.name}?'),
@@ -210,7 +211,7 @@ class _Empty extends StatelessWidget {
 /// scanned there (a driver's GET.me or GET.now, a GET.Referral) closes it
 /// and opens that code's own sheet.
 Future<void> showAddFavouriteSheet(BuildContext context, {String? code}) async {
-  final personal = await showModalBottomSheet<PersonalQrScan>(
+  final personal = await showAppSheet<PersonalQrScan>(id: 'my-ride.show-add-favourite-sheet',
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
@@ -288,7 +289,7 @@ class _AddFavouriteSheetState extends ConsumerState<AddFavouriteSheet> {
 
   Future<void> _scan() async {
     final raw = await Navigator.of(context)
-        .push<String>(MaterialPageRoute(builder: (_) => const MyRideScanScreen(), fullscreenDialog: true));
+        .push<String>(AppPageRoute(id: 'my-ride.scan', builder: (_) => const MyRideScanScreen(), fullscreenDialog: true));
     if (raw == null || !mounted) return;
     final personal = parsePersonalQr(raw);
     if (personal != null) {

@@ -17,6 +17,7 @@ import '../../providers.dart';
 import '../../widgets/map_pick_icon.dart';
 import 'map_place_picker.dart';
 import 'saved_place_form.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Result of the place picker: either a concrete place or a request to drop
 /// a pin on the map.
@@ -65,14 +66,14 @@ Future<PlacePick?> showPlaceSearch(
     mode: mode,
   );
   if (wide) {
-    return showDialog<PlacePick>(
+    return showAppDialog<PlacePick>(id: 'place-search.show-place-search',
       context: context,
       builder: (_) => Dialog(
         child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560, maxHeight: 680), child: body),
       ),
     );
   }
-  return showModalBottomSheet<PlacePick>(
+  return showAppSheet<PlacePick>(id: 'place-search.show-place-search-2',
     context: context,
     isScrollControlled: true,
     useSafeArea: true,

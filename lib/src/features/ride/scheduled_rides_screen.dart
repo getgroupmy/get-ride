@@ -14,6 +14,7 @@ import '../../data/scheduled_ride_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import 'driver_code_sheet.dart';
+import '../../widgets/page_style_host.dart';
 
 /// "Tue 14 Oct, 18:30".
 String pickupLabel(DateTime at) => DateFormat('EEE d MMM, HH:mm').format(at);
@@ -132,7 +133,7 @@ class _BookingCard extends ConsumerWidget {
   Future<void> _cancel(BuildContext context, WidgetRef ref) async {
     final fee = cancelFeeAt(ride.pickupAt, DateTime.now(), config);
     final money = formatMoney(fee, ride.currency ?? 'MYR');
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'scheduled-rides.cancel',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Cancel this ride?'),

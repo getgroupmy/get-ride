@@ -11,6 +11,7 @@ import '../../../widgets/map_tiles.dart';
 import '../../widgets/admin_widgets.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
+import '../../../widgets/page_style_host.dart';
 
 /// Base tiles shared by the geography map editors (same tiles as `RideMap`).
 List<Widget> osmBaseLayers(BuildContext context) => [baseTileLayer(context)];
@@ -50,7 +51,7 @@ class BoundaryEditorPage extends ConsumerStatefulWidget {
   final Future<void> Function()? onClear;
 
   static Future<void> open(BuildContext context, BoundaryEditorPage page) =>
-      Navigator.of(context).push(MaterialPageRoute(fullscreenDialog: true, builder: (_) => page));
+      Navigator.of(context).push(AppPageRoute(id: 'admin-regions.boundary-editor', fullscreenDialog: true, builder: (_) => page));
 
   @override
   ConsumerState<BoundaryEditorPage> createState() => _BoundaryEditorPageState();
@@ -478,7 +479,7 @@ class PointPickerPage extends StatefulWidget {
 
   static Future<LatLng?> open(BuildContext context, LatLng initial, {String title = 'Pick location'}) =>
       Navigator.of(context).push<LatLng>(
-        MaterialPageRoute(fullscreenDialog: true, builder: (_) => PointPickerPage(initial: initial, title: title)),
+        AppPageRoute(id: 'admin-regions.point-picker', fullscreenDialog: true, builder: (_) => PointPickerPage(initial: initial, title: title)),
       );
 
   @override

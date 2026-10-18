@@ -8,6 +8,7 @@ import '../../../core/account_deletion.dart';
 import '../../../data/account_deletion_repository.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../widgets/page_style_host.dart';
 
 final accountEventsProvider = FutureProvider.autoDispose.family<List<AccountEvent>, String>(
   (ref, id) => ref.watch(accountDeletionRepositoryProvider).events(id),
@@ -111,7 +112,7 @@ class AccountDeletionSection extends ConsumerWidget {
               key: const ValueKey('link-previous-account'),
               icon: const Icon(Icons.link),
               label: const Text('Link previous account'),
-              onPressed: () => showDialog<void>(
+              onPressed: () => showAppDialog<void>(id: 'account-deletion-section.account-deletion-section',
                 context: context,
                 builder: (_) => LinkAccountDialog(newAccount: user),
               ),
@@ -145,7 +146,7 @@ class AccountDeletionSection extends ConsumerWidget {
 
   Future<void> _editRetention(BuildContext context, WidgetRef ref, int days) async {
     final c = TextEditingController(text: '$days');
-    final v = await showDialog<int>(
+    final v = await showAppDialog<int>(id: 'account-deletion-section.edit-retention',
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Keep deleted accounts'),

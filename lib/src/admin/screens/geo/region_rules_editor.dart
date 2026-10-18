@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/region_rules.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
+import '../../../widgets/page_style_host.dart';
 
 IconData ruleKindIcon(RuleKind k) => switch (k) {
   RuleKind.availability => Icons.schedule,
@@ -39,7 +40,7 @@ class RegionRulesSection extends ConsumerWidget {
   final ValueChanged<List<RegionRule>> onChanged;
 
   Future<void> _edit(BuildContext context, WidgetRef ref, {RuleKind? kind, RegionRule? rule}) async {
-    final result = await showDialog<RegionRule>(
+    final result = await showAppDialog<RegionRule>(id: 'region-rules-editor.edit',
       context: context,
       builder: (_) => RegionRuleDialog(
         rule: rule ?? RegionRule(id: const Uuid().v4(), kind: kind!),

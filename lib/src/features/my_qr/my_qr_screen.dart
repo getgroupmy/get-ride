@@ -21,6 +21,7 @@ import '../../widgets/side_menu_host.dart';
 import '../my_ride/my_ride_parts.dart' show myRideWait;
 import '../my_ride/my_ride_screen.dart' show MyRideScanScreen;
 import 'qr_result_sheet.dart';
+import '../../widgets/page_style_host.dart';
 
 /// The clock the page reads codes against; overridden in tests.
 final myQrClockProvider = Provider<DateTime Function()>((_) => DateTime.now);
@@ -95,7 +96,7 @@ class _MyQrScreenState extends ConsumerState<MyQrScreen> {
   Future<void> _scan() async {
     final raw = await Navigator.of(
       context,
-    ).push<String>(MaterialPageRoute(builder: (_) => const MyRideScanScreen(universal: true), fullscreenDialog: true));
+    ).push<String>(AppPageRoute(id: 'my-qr.scan', builder: (_) => const MyRideScanScreen(universal: true), fullscreenDialog: true));
     if (raw == null || !mounted) return;
     await openScannedGetQr(context, ref, raw);
   }
@@ -137,7 +138,7 @@ class _MyQrScreenState extends ConsumerState<MyQrScreen> {
   }
 
   Future<void> _expire(PersonalQr qr) async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'my-qr.expire',
       context: context,
       builder: (c) => AlertDialog(
         title: Text('Expire your ${qr.kind.label} code?'),
@@ -563,7 +564,7 @@ Future<QrTtl?> showQrLifetimeDialog(
   required String title,
   String? message,
   required String confirmLabel,
-}) => showDialog<QrTtl>(
+}) => showAppDialog<QrTtl>(id: 'my-qr.show-qr-lifetime-dialog',
   context: context,
   builder: (_) => _LifetimeDialog(title: title, message: message, confirmLabel: confirmLabel),
 );

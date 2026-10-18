@@ -9,6 +9,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/link_view.dart';
 import '../data/storage_links.dart';
+import 'page_style_host.dart';
 
 /// Opens [url] inside the app on a screen with a back button: a web page in a
 /// web view, a picture full screen with pinch-zoom, a PDF page by page. A
@@ -33,7 +34,7 @@ Future<void> openInApp(BuildContext context, String link, {String? title}) async
     LinkView.external => null,
   };
   if (page != null) {
-    await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(builder: (_) => page));
+    await Navigator.of(context, rootNavigator: true).push(AppPageRoute<void>(id: 'in-app.open-in-app', builder: (_) => page));
     return;
   }
   var ok = false;

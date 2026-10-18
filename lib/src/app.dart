@@ -110,6 +110,9 @@ import 'widgets/app_icon_changed.dart';
 import 'widgets/connection_status_dialog.dart';
 import 'widgets/android_nav_bar_inset.dart';
 import 'widgets/keyboard_dismiss.dart';
+import 'widgets/page_style_host.dart';
+import 'core/page_styles.dart' show PageStyles;
+import 'data/page_styles_repository.dart' show pageStylesProvider;
 import 'widgets/notifications_off_banner.dart';
 import 'widgets/map_sheet_layout.dart' show appBottomSheetTheme;
 import 'core/map_profile.dart' show waitForMapProfile;
@@ -827,17 +830,19 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   Widget build(BuildContext context) {
     final mode = ref.watch(themeModeProvider);
     final router = ref.watch(routerProvider);
+    final styles = ref.watch(pageStylesProvider).value ?? PageStyles.none;
     final live = _branding?.latest;
-    if (live == null) return _app(widget.branding?.branding, mode, router);
+    if (live == null) return _app(widget.branding?.branding, mode, router, styles);
     return ValueListenableBuilder<AppBranding?>(
       valueListenable: live,
-      builder: (_, latest, _) => _app(latest ?? widget.branding?.branding, mode, router),
+      builder: (_, latest, _) => _app(latest ?? widget.branding?.branding, mode, router, styles),
     );
   }
 
   /// The app under [branding]'s theme colours (Admin → App Settings), which
-  /// change live as the admin saves them.
-  Widget _app(AppBranding? branding, ThemeMode mode, GoRouter router) {
+  /// change live as the admin saves them, and App Page Settings' [styles]
+  /// for every page, sheet and modal.
+  Widget _app(AppBranding? branding, ThemeMode mode, GoRouter router, PageStyles styles) {
     return MaterialApp.router(
       title: 'GET.ride',
       scaffoldMessengerKey: _messenger,
@@ -862,7 +867,14 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
                       child: RideCallListener(
                         child: KeyboardDismissOnChange(
                           listenable: router.routerDelegate,
-                          child: KeyboardDismissOnTap(child: child ?? const SizedBox.shrink()),
+                          child: KeyboardDismissOnTap(
+                            child: PageStyleHost(
+                              styles: styles,
+                              location: () => router.routerDelegate.currentConfiguration.fullPath,
+                              listenable: router.routerDelegate,
+                              child: child ?? const SizedBox.shrink(),
+                            ),
+                          ),
                         ),
                       ),
                     ),

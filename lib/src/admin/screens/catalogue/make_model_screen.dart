@@ -7,6 +7,7 @@ import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
+import '../../../widgets/page_style_host.dart';
 
 const _page = 'admin-settings-vehicle-make-model';
 
@@ -112,7 +113,7 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
   }
 
   Future<void> _addPicker(List<VehicleMakeModel> all) async {
-    final level = await showModalBottomSheet<int>(
+    final level = await showAppSheet<int>(id: 'make-model.add-picker',
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [

@@ -16,6 +16,7 @@ import '../../data/coin_transfer_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import 'wallet_screen.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Buy and sell GET.coin against GET.wallet (Expo `app/wallet-trade.tsx`,
 /// Buy / Sell tabs). Priced at the admin rate, or with market pricing on, a
@@ -78,7 +79,7 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
     final coins = _coins;
     final value = coinTradeAmount(coins, rate, _direction);
     final buy = _direction == CoinTradeDirection.buy;
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'coin-trade.confirm',
       context: context,
       builder: (c) => AlertDialog(
         title: Text(buy ? 'Buy GET.coin?' : 'Sell GET.coin?'),
@@ -123,7 +124,7 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
   Future<void> _confirmSend(TransferRecipient to) async {
     final coins = _coins;
     final who = to.phone ?? 'wallet ${to.userId!.substring(0, 8)}…';
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'coin-trade.confirm-send',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Send GET.coin?'),
@@ -154,7 +155,7 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
       if (mounted) setState(() => _busy = false);
     }
     if (!mounted) return;
-    final outcome = await showDialog<String>(
+    final outcome = await showAppDialog<String>(id: 'coin-trade.confirm-send-2',
       context: context,
       barrierDismissible: false,
       builder: (_) => TransferWaitingDialog(sent: sent, recipientHint: sent.recipientName ?? to.phone, repo: repo),

@@ -10,12 +10,13 @@ import 'commerce_logic.dart';
 import 'countries.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/storage_image.dart';
+import '../../../widgets/page_style_host.dart';
 
 /// Opens [child] as a full-screen dialog on phones and a centred, capped
 /// dialog on wide screens.
 Future<T?> showFormDialog<T>(BuildContext context, Widget Function(BuildContext) builder) {
   final wide = MediaQuery.sizeOf(context).width >= 700;
-  return showDialog<T>(
+  return showAppDialog<T>(id: 'commerce-widgets.show-form-dialog',
     context: context,
     builder: (ctx) => wide
         ? Dialog(
@@ -156,7 +157,7 @@ class CountryField extends StatelessWidget {
         onTap: !enabled
             ? null
             : () async {
-                final picked = await showDialog<String>(context: context, builder: (_) => _CountryPicker(selected: value));
+                final picked = await showAppDialog<String>(id: 'commerce-widgets.country-field', context: context, builder: (_) => _CountryPicker(selected: value));
                 if (picked != null) onChanged(picked);
               },
         child: InputDecorator(

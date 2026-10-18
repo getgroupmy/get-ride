@@ -9,6 +9,7 @@ import '../../widgets/ride_stop_tiles.dart';
 import '../../data/models.dart';
 import 'confirm_parts.dart';
 import '../../widgets/net_image.dart';
+import '../../widgets/page_style_host.dart';
 
 // The rider's search for a driver, drawn as inDrive draws it: the sheet
 // (stage headline and countdown, fare stepper, auto-accept, payment, route,
@@ -861,7 +862,7 @@ typedef SearchCancelChoice = ({bool cancel, String? reason});
 /// inDrive's cancel: "Why do you want to cancel?" (a reason, or Skip), then
 /// "Cancel your request?" with Keep searching first. Null keeps searching.
 Future<SearchCancelChoice?> showSearchCancelSheet(BuildContext context) async {
-  final reason = await showModalBottomSheet<String>(
+  final reason = await showAppSheet<String>(id: 'searching.show-search-cancel-sheet',
     context: context,
     isScrollControlled: true,
     showDragHandle: false,
@@ -869,7 +870,7 @@ Future<SearchCancelChoice?> showSearchCancelSheet(BuildContext context) async {
     builder: (c) => const _WhyCancelSheet(),
   );
   if (reason == null || !context.mounted) return null;
-  final sure = await showModalBottomSheet<bool>(
+  final sure = await showAppSheet<bool>(id: 'searching.show-search-cancel-sheet-2',
     context: context,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (c) => const _SureCancelSheet(),

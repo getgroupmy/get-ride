@@ -18,6 +18,7 @@ import 'people_logic.dart';
 import '../../../widgets/net_image.dart';
 import '../../../data/live_tables.dart';
 import '../../../widgets/storage_image.dart';
+import '../../../widgets/page_style_host.dart';
 
 /// Wide screens get a two-column form, phones one column.
 class FormColumns extends StatelessWidget {
@@ -191,7 +192,7 @@ Future<List<String>?> showMultiSelect(
   required List<String> selected,
   List<SelectOption> Function(String query)? customKeys,
 }) =>
-    showDialog<List<String>>(
+    showAppDialog<List<String>>(id: 'admin-people.multi-select',
       context: context,
       builder: (ctx) => _MultiSelectDialog(title: title, options: options, selected: selected, customKeys: customKeys),
     );
@@ -483,7 +484,7 @@ class MakeModelField extends ConsumerWidget {
   Future<void> _pick(BuildContext context, WidgetRef ref) async {
     final rows = await ref.read(peopleRepositoryProvider).makeModels();
     if (!context.mounted) return;
-    final picked = await showDialog<MakeModel>(
+    final picked = await showAppDialog<MakeModel>(id: 'people-widgets.pick',
       context: context,
       builder: (ctx) {
         var q = '';
@@ -656,7 +657,7 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
   }
 
   Future<void> _open(RequiredDoc d, Map<String, dynamic>? existing) async {
-    final saved = await showDialog<bool>(
+    final saved = await showAppDialog<bool>(id: 'admin-people.upload-document',
       context: context,
       builder: (_) => DocUploadDialog(
         partnerId: widget.partnerId,

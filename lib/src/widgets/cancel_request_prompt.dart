@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'page_style_host.dart';
 
 /// The popup either side of a ride answers when the other asks to cancel:
 /// the request, and Decline / Approve. It can't be dismissed by tapping
@@ -53,7 +54,7 @@ class CancelRequestPrompt {
     if (askedAt == _askedAt) return; // already asked about this one
     _close();
     _askedAt = askedAt;
-    showDialog<bool>(
+    showAppDialog<bool>(id: 'cancel-request-prompt.update',
       context: context,
       barrierDismissible: false,
       builder: (ctx) {

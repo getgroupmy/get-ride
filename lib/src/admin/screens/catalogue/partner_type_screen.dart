@@ -9,6 +9,7 @@ import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
+import '../../../widgets/page_style_host.dart';
 
 const _page = 'admin-settings-partner-type';
 
@@ -252,7 +253,7 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
 
   Future<String?> _askName(String title, [String initial = '']) {
     final ctrl = TextEditingController(text: initial);
-    return showDialog<String>(
+    return showAppDialog<String>(id: 'partner-type.ask-name',
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(title),

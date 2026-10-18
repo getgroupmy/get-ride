@@ -12,6 +12,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
+import '../../widgets/page_style_host.dart';
 
 final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>((ref) {
   ref.watchLive('wallets');
@@ -214,7 +215,7 @@ Future<void> _openRecharge(BuildContext context, WidgetRef ref) async {
   for (final b in balances) {
     if (b.walletType == 'get_wallet') wallet = b.balance;
   }
-  final done = await showDialog<double>(
+  final done = await showAppDialog<double>(id: 'wallet.open-recharge',
     context: context,
     builder: (_) => _RechargeDialog(walletBalance: wallet, repo: ref.read(creditRechargeRepositoryProvider)),
   );

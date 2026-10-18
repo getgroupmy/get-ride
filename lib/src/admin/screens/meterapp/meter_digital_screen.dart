@@ -15,6 +15,7 @@ import '../../widgets/admin_widgets.dart';
 import 'meter_logic.dart';
 import 'meter_store.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/page_style_host.dart';
 
 const meterDigitalPage = 'admin-settings-meter-digital';
 
@@ -76,7 +77,7 @@ class AdminMeterDigitalScreen extends ConsumerWidget {
   const AdminMeterDigitalScreen({super.key});
 
   Future<void> _open(BuildContext context, WidgetRef ref, MeterProfile profile, List<MeterProfile> all) async {
-    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
+    final saved = await Navigator.of(context).push<bool>(AppPageRoute(id: 'admin-meter.card-editor',
       fullscreenDialog: true,
       builder: (_) => MeterCardEditor(initial: profile, stored: all),
     ));
@@ -84,7 +85,7 @@ class AdminMeterDigitalScreen extends ConsumerWidget {
     if (saved == true && context.mounted) {
       final dropped = describeMissingMeterColumns(ref.read(meterStoreProvider).missingGroups);
       if (dropped != null) {
-        await showDialog<void>(
+        await showAppDialog<void>(id: 'admin-meter.saved-partly',
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Saved, with one part left out'),
@@ -307,7 +308,7 @@ class _MeterCardEditorState extends ConsumerState<MeterCardEditor> {
     final merged = _merged();
     final invalid = validateMeterProfile(merged);
     if (invalid != null) {
-      await showDialog<void>(
+      await showAppDialog<void>(id: 'meter-digital.submit',
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Check the card'),

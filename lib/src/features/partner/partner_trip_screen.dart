@@ -45,6 +45,7 @@ import '../ride/ride_tracking_screen.dart' show rideStreamProvider;
 import '../safety/ride_sos.dart';
 import '../safety/voice_protection_controller.dart';
 import 'trip_handover_panel.dart';
+import '../../widgets/page_style_host.dart';
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
 
@@ -237,7 +238,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   Future<void> _showCancelled(String notice) async {
     if (!mounted) return;
     _cancelNoticeUp = true;
-    await showDialog<void>(
+    await showAppDialog<void>(id: 'partner-trip.show-cancelled',
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
@@ -327,7 +328,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   }
 
   Future<void> _start(RideRequest r) async {
-    final code = await showDialog<String>(
+    final code = await showAppDialog<String>(id: 'partner-trip.start',
       context: context,
       builder: (ctx) {
         final c = TextEditingController();
@@ -367,7 +368,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   /// (see [driverCancelNotice]). Once the passenger is on board there is no
   /// cancel key: the trip is completed or ended early.
   Future<void> _cancel(RideRequest r) async {
-    final reason = await showDialog<String>(context: context, builder: (_) => const _DriverCancelDialog());
+    final reason = await showAppDialog<String>(id: 'partner-trip.cancel', context: context, builder: (_) => const _DriverCancelDialog());
     if (reason == null || !mounted) return;
     RideRequest? done;
     var answered = false;
@@ -410,7 +411,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       earlyFare = await _confirmEarlyEnd(r, here!);
       if (earlyFare == null || !mounted) return;
     }
-    final charges = await showDialog<TripCharges>(
+    final charges = await showAppDialog<TripCharges>(id: 'partner-trip.complete',
       context: context,
       builder: (_) => _ChargesDialog(fare: earlyFare ?? r.effectiveFare ?? 0, currency: r.currency),
     );
@@ -481,7 +482,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       floor: await _earlyEndFloor(r),
     );
     if (!mounted) return null;
-    final go = await showDialog<bool>(
+    final go = await showAppDialog<bool>(id: 'partner-trip.km',
       context: context,
       builder: (ctx) => AlertDialog(
         key: const ValueKey('early-end'),

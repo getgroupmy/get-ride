@@ -10,6 +10,7 @@ import '../../../providers.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../widgets/page_style_host.dart';
 
 class SignInSecurityCard extends ConsumerStatefulWidget {
   const SignInSecurityCard({super.key, required this.canEdit});
@@ -25,7 +26,7 @@ class _SignInSecurityCardState extends ConsumerState<SignInSecurityCard> {
 
   Future<void> _save(SignInConfig stored, SignInConfig next) async {
     if (next.oneDevice && !stored.oneDevice) {
-      final ok = await showDialog<bool>(
+      final ok = await showAppDialog<bool>(id: 'sign-in-security.save',
         context: context,
         builder: (c) => AlertDialog(
           title: const Text('One device per account?'),
@@ -157,7 +158,7 @@ class ActiveDeviceSection extends ConsumerWidget {
   final bool canEdit;
 
   Future<void> _signOutEverywhere(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'sign-in-security.sign-out-everywhere',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Sign out all devices?'),

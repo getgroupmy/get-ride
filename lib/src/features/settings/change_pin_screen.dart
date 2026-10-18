@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/pin_change.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Whether the signed-in account has a PIN yet. When it can't be told the
 /// answer is yes: the screen then asks for the current PIN, and "Forgot
@@ -147,7 +148,7 @@ class _ChangePinFlowState extends ConsumerState<_ChangePinFlow> {
   });
 
   Future<void> _done(bool synced) async {
-    await showDialog<void>(
+    await showAppDialog<void>(id: 'change-pin.done',
       context: context,
       barrierDismissible: false,
       builder: (c) {

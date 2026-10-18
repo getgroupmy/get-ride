@@ -16,6 +16,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/dial_country_picker.dart';
 import 'passkey_sign_in_button.dart';
+import '../../widgets/page_style_host.dart';
 
 class PhoneScreen extends ConsumerStatefulWidget {
   const PhoneScreen({super.key});
@@ -90,7 +91,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   /// Expo's "Create a new account?" sheet: the number isn't known, so say so
   /// before texting it a code that would open an account.
   Future<bool> _confirmNewAccount(String phone) async {
-    final ok = await showModalBottomSheet<bool>(
+    final ok = await showAppSheet<bool>(id: 'phone.confirm-new-account',
       context: context,
       showDragHandle: true,
       builder: (c) {

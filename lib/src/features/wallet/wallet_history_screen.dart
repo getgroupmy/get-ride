@@ -8,6 +8,7 @@ import '../../core/wallet_history.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/page_style_host.dart';
 
 /// One month of this account's ledger, newest first.
 final walletHistoryProvider = FutureProvider.autoDispose.family<List<WalletTransaction>, HistoryMonth>(
@@ -155,7 +156,7 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
   }
 
   void _details(WalletTransaction tx) {
-    showModalBottomSheet<void>(
+    showAppSheet<void>(id: 'wallet-history.details',
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(child: _HistoryDetails(tx: tx)),

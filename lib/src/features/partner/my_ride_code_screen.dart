@@ -12,6 +12,7 @@ import '../../core/my_ride.dart';
 import '../../data/my_ride_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/image_share.dart';
+import '../../widgets/page_style_host.dart';
 
 /// What a passenger is told the code is for.
 const myRideCodeExplainer = 'Passengers scan this or type the code in My Ride to add you as their driver.';
@@ -53,7 +54,7 @@ class _MyRideCodeScreenState extends ConsumerState<MyRideCodeScreen> {
   }
 
   Future<void> _rotate() async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'my-ride-code.rotate',
       context: context,
       builder: (c) => AlertDialog(
         key: const ValueKey('my-ride-rotate-confirm'),
@@ -93,7 +94,7 @@ class _MyRideCodeScreenState extends ConsumerState<MyRideCodeScreen> {
 
   Future<void> _setHidden(FavouriteRider r, bool hidden) async {
     if (hidden) {
-      final ok = await showDialog<bool>(
+      final ok = await showAppDialog<bool>(id: 'my-ride-code.set-hidden',
         context: context,
         builder: (c) => AlertDialog(
           key: const ValueKey('my-ride-hide-confirm'),

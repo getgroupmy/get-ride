@@ -6,6 +6,7 @@ import '../core/inbox.dart' show inboxBadgeText;
 import '../core/side_menu.dart';
 import '../data/notifications_repository.dart' show unreadNotificationsProvider;
 import 'side_menu_style.dart';
+import 'page_style_host.dart';
 
 /// Expo icon names (the admin's custom-item picker) as Material icons.
 const _expoIcons = <String, IconData>{
@@ -69,7 +70,7 @@ void openRoute(GoRouter router, String route) {
   inShell ? router.go(route) : router.push(route);
 }
 
-Future<void> showComingSoon(BuildContext context) => showDialog<void>(
+Future<void> showComingSoon(BuildContext context) => showAppDialog<void>(id: 'side-menu-tiles.open-route',
   context: context,
   builder: (c) => AlertDialog(
     key: const ValueKey('menu-coming-soon'),

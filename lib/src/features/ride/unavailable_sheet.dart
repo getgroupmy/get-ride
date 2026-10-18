@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/ride_bidding.dart';
 import 'castaway_illustration.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Which point of a trip GET.ride can't serve.
 enum UnavailableAt { pickup, stop, drop }
@@ -52,7 +53,7 @@ Future<void> showServiceUnavailable(
   String? region,
   RegionBlock block = RegionBlock.both,
   required VoidCallback onChange,
-}) => showModalBottomSheet<void>(
+}) => showAppSheet<void>(id: 'unavailable.show-service-unavailable',
   context: context,
   isScrollControlled: true,
   useSafeArea: true,

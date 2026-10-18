@@ -20,6 +20,8 @@ import '../../widgets/map_sheet_layout.dart' show MapSheetReveal;
 import '../../widgets/shake.dart';
 import 'fare_offer_controls.dart';
 import 'home_parts.dart' show uriImage;
+import '../../core/page_styles.dart' show fareInfoSurface;
+import '../../widgets/page_style_host.dart';
 
 /// Expo's accent: the "Find a driver" bar, the add-stop button, the
 /// payment icon and the auto-accept switch.
@@ -172,7 +174,7 @@ class ConfirmAddressCard extends StatelessWidget {
 
 /// Expo's "Set entrance" keypad: the entrance (a door or gate number) the
 /// driver should come to. Pops the new value, or null when closed.
-Future<String?> showEntranceSheet(BuildContext context, String current) => showModalBottomSheet<String>(
+Future<String?> showEntranceSheet(BuildContext context, String current) => showAppSheet<String>(id: 'confirm.confirm-address-card',
   context: context,
   isScrollControlled: true,
   showDragHandle: true,
@@ -371,7 +373,7 @@ Future<void> showRouteStopsSheet(
   BuildContext context, {
   required List<Place> destinations,
   required ValueChanged<List<Place>> onChanged,
-}) => showModalBottomSheet<void>(
+}) => showAppSheet<void>(id: 'confirm.show-route-stops-sheet',
   context: context,
   isScrollControlled: true,
   showDragHandle: false,
@@ -1008,7 +1010,7 @@ Future<String?> showPaymentSheet(
   BuildContext context,
   String current, {
   List<PaymentChoice> payments = builtInPayments,
-}) => showModalBottomSheet<String>(
+}) => showAppSheet<String>(id: 'confirm.show-payment-sheet',
   context: context,
   builder: (c) {
     final t = Theme.of(c);
@@ -1284,7 +1286,7 @@ Future<void> showRideOptionsSheet(
   required RideOptions options,
   required ValueChanged<RideOptions> onChanged,
   required TextEditingController note,
-}) => showModalBottomSheet<void>(
+}) => showAppSheet<void>(id: 'confirm.show-ride-options-sheet',
   context: context,
   isScrollControlled: true,
   showDragHandle: false,
@@ -1310,7 +1312,7 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
   }
 
   Future<void> _comments() async {
-    final r = await showModalBottomSheet<_Comments>(
+    final r = await showAppSheet<_Comments>(id: 'confirm.comments',
       context: context,
       isScrollControlled: true,
       showDragHandle: false,
@@ -1554,7 +1556,7 @@ class PromoBanner extends StatelessWidget {
 /// The promo-code sheet. No promotions are set up, so every code is
 /// answered "not valid", as Expo's sheet answers any code it doesn't know.
 Future<void> showPromoSheet(BuildContext context) =>
-    showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => const _PromoSheet());
+    showAppSheet<void>(id: 'confirm.show-promo-sheet', context: context, isScrollControlled: true, builder: (_) => const _PromoSheet());
 
 class _PromoSheet extends StatefulWidget {
   const _PromoSheet();
@@ -1741,7 +1743,7 @@ const addStopSteps = ['Calculating additional distance', 'Calculating additional
 
 /// The "Calculating fare" box over whatever screen is open, its title the
 /// [step] adding a stop is on. Closed with `Navigator.pop`.
-Future<void> showAddStopProgress(BuildContext context, ValueListenable<String> step) => showGeneralDialog<void>(
+Future<void> showAddStopProgress(BuildContext context, ValueListenable<String> step) => showAppGeneralDialog<void>(id: 'ride.add-stop-progress',
   context: context,
   barrierDismissible: false,
   barrierColor: Colors.transparent,
@@ -1777,7 +1779,7 @@ Future<bool> confirmAddStop(
     ),
   );
   final minutes = extraMinutes.round();
-  final ok = await showDialog<bool>(
+  final ok = await showAppDialog<bool>(id: 'ride.add-stop-confirm',
     context: context,
     barrierDismissible: false,
     builder: (c) => AlertDialog(
@@ -1909,7 +1911,7 @@ Widget _okButton(BuildContext context) => SizedBox(
 
 /// The demand band's "Fare details" (inDrive's): why the fare is off the
 /// usual, and OK.
-Future<void> showDemandSheet(BuildContext context, FareTrend trend) => showModalBottomSheet<void>(
+Future<void> showDemandSheet(BuildContext context, FareTrend trend) => showAppSheet<void>(id: 'ride.demand-details',
   context: context,
   isScrollControlled: true,
   builder: (ctx) => SafeArea(
@@ -1964,8 +1966,11 @@ class FareInfoSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final body = t.textTheme.bodyLarge;
+    // App Page Settings → Fare info.
+    final style = SurfaceStyle.of(context, fareInfoSurface);
+    final body = t.textTheme.bodyLarge?.copyWith(fontSize: style.number('bodySize'));
     final metered = isMeteredService(service);
+    final imageWidth = style.number('imageWidth'), imageHeight = style.number('imageHeight');
     return SafeArea(
       child: SingleChildScrollView(
         key: const ValueKey('fare-details-sheet'),
@@ -1974,12 +1979,12 @@ class FareInfoSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 132,
-              height: 80,
+              width: imageWidth,
+              height: imageHeight,
               child: uriImage(
                 service.image,
-                width: 132,
-                height: 80,
+                width: imageWidth,
+                height: imageHeight,
                 fallback: Icon(
                   metered ? Icons.local_taxi : Icons.directions_car,
                   size: 64,
@@ -1988,7 +1993,10 @@ class FareInfoSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Text(service.name, style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+            Text(
+              service.name,
+              style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700, fontSize: style.number('titleSize')),
+            ),
             if (service.description.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(service.description, style: body),
@@ -2041,7 +2049,7 @@ class FareInfoSheet extends StatelessWidget {
 }
 
 Future<void> showFareInfo(BuildContext context, FareInfoSheet sheet) =>
-    showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (_) => sheet);
+    showAppSheet<void>(id: 'fare-info', context: context, isScrollControlled: true, builder: (_) => sheet);
 
 /// The booking button when rides can be scheduled: Now books at once,
 /// Later asks for the pickup time first and books on Confirm. The side

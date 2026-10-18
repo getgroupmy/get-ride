@@ -22,6 +22,7 @@ import '../meter/meter_providers.dart';
 import '../meter/meter_screen.dart' show MeterLaunch;
 import 'driver_permit_screen.dart';
 import 'vehicle_picker.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Where the driver is now; a provider so tests can place them.
 final teksiPositionProvider = Provider<Future<LatLng?> Function()>((_) => currentPosition);
@@ -58,7 +59,7 @@ Future<bool> teksiPermitCleared(BuildContext context, WidgetRef ref) async {
       await showPermitBlock(context, block, permit, plate);
       return false;
     }
-    final pick = await showDialog<bool>(
+    final pick = await showAppDialog<bool>(id: 'teksi-pickup.teksi-permit-cleared',
       context: context,
       builder: (c) => AlertDialog(
         key: const ValueKey('teksi-plate-mismatch'),
@@ -107,7 +108,7 @@ Future<bool> _pickVehicle(BuildContext context, WidgetRef ref) async {
     return false;
   }
   if (!context.mounted) return false;
-  final picked = await showModalBottomSheet<AssignableVehicle>(
+  final picked = await showAppSheet<AssignableVehicle>(id: 'teksi-pickup.pick-vehicle',
     context: context,
     isScrollControlled: true,
     builder: (_) => VehiclePickerSheet(vehicles: list),
@@ -125,7 +126,7 @@ Future<bool> _pickVehicle(BuildContext context, WidgetRef ref) async {
 }
 
 /// "Select tariff" (Expo): New or Old; null when dismissed.
-Future<TeksiTariff?> showTariffPicker(BuildContext context) => showModalBottomSheet<TeksiTariff>(
+Future<TeksiTariff?> showTariffPicker(BuildContext context) => showAppSheet<TeksiTariff>(id: 'teksi-pickup.pick-vehicle-2',
   context: context,
   isScrollControlled: true,
   builder: (c) {
@@ -293,14 +294,14 @@ Future<void> planTeksiTrip(BuildContext context, WidgetRef ref, TeksiTariff tari
       pickupAddress: here?.address,
       estimate: hailEstimate(rates, dest),
     );
-    final go = await showDialog<bool>(
+    final go = await showAppDialog<bool>(id: 'teksi-pickup.plan-teksi-trip',
       context: context,
       builder: (_) => TeksiTripSummary(plan: plan),
     );
     if (go == null || !context.mounted) return;
     if (!go) continue; // Edit: back to the destination.
     final start = await Navigator.of(context)
-        .push<bool>(MaterialPageRoute(fullscreenDialog: true, builder: (_) => ConfirmTeksiTripScreen(plan: plan)));
+        .push<bool>(AppPageRoute(id: 'teksi-pickup.plan-teksi-trip-2', fullscreenDialog: true, builder: (_) => ConfirmTeksiTripScreen(plan: plan)));
     if (start != true || !context.mounted) return;
     context.push(
       '/meter',

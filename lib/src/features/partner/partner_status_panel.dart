@@ -13,6 +13,7 @@ import '../../data/partner_onboarding_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/page_style_host.dart';
 
 class PartnerStatusPanel extends ConsumerWidget {
   const PartnerStatusPanel({super.key, required this.partner, required this.onOpenApplication});
@@ -29,7 +30,7 @@ class PartnerStatusPanel extends ConsumerWidget {
   };
 
   Future<void> _resubmit(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'partner-status-panel.resubmit',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Send for review again?'),

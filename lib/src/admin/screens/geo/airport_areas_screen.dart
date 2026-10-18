@@ -11,6 +11,7 @@ import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
 import 'place_search_field.dart';
+import '../../../widgets/page_style_host.dart';
 
 const airportAreasPage = 'admin-settings-airport-areas';
 
@@ -56,7 +57,7 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
   Future<void> _geofence(GeoEntry e, bool canEdit) async {
     final placeName = '${e.values['placeName'] ?? ''}'.trim();
     if (placeName.isEmpty) {
-      await showDialog<void>(
+      await showAppDialog<void>(id: 'airport-areas.geofence',
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Place required'),
@@ -98,7 +99,7 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
   }
 
   Future<void> _pickFilter(String label, List<String> options, String current, ValueChanged<String> onPick) async {
-    final picked = await showDialog<String>(
+    final picked = await showAppDialog<String>(id: 'airport-areas.pick-filter',
       context: context,
       builder: (ctx) => SimpleDialog(
         title: Text('Filter by $label'),

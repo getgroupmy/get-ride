@@ -19,6 +19,7 @@ import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 import '../../widgets/net_image.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Dials a number from the shared page's SOS: the phone app, overridden in
 /// tests.
@@ -131,7 +132,7 @@ class _SharedRideView extends ConsumerWidget {
   /// Call the emergency number, or send the trip (where the car is, the
   /// driver, plate and car) to whoever can help.
   Future<void> _sos(BuildContext context, WidgetRef ref) async {
-    final choice = await showModalBottomSheet<String>(
+    final choice = await showAppSheet<String>(id: 'shared-ride.sos',
       context: context,
       builder: (c) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [

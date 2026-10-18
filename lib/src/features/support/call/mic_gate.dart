@@ -6,6 +6,7 @@ import 'package:flutter/services.dart' show MethodChannel;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart' show Geolocator;
 import 'package:record/record.dart';
+import '../../../widgets/page_style_host.dart';
 
 /// Where the microphone stands. iOS tells "never asked" ([undetermined])
 /// apart from "refused" ([denied]); it only lists Microphone in the app's
@@ -130,7 +131,7 @@ Future<bool> ensureMic(BuildContext context, WidgetRef ref, MicUse use) async {
   // a tap, where the system's question can appear.
   if (await mic.status() == MicStatus.undetermined) {
     if (!context.mounted) return false;
-    final allow = await showDialog<bool>(
+    final allow = await showAppDialog<bool>(id: 'mic-gate.ensure-mic',
       context: context,
       builder: (c) => AlertDialog(
         key: const ValueKey('mic-ask'),
@@ -153,7 +154,7 @@ Future<bool> ensureMic(BuildContext context, WidgetRef ref, MicUse use) async {
   }
   if (!context.mounted) return false;
   final then = use == MicUse.call ? 'the call will start when you come back' : 'you can record when you come back';
-  final go = await showDialog<bool>(
+  final go = await showAppDialog<bool>(id: 'mic-gate.ensure-mic-2',
     context: context,
     builder: (c) => AlertDialog(
       key: const ValueKey('mic-needed'),

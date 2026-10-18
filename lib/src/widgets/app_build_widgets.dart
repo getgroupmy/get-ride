@@ -16,6 +16,7 @@ import '../core/format.dart';
 import '../providers.dart';
 import 'common.dart' show BrandMark;
 import 'net_image.dart';
+import 'page_style_host.dart';
 
 /// The latest published build for a platform ('ios' / 'android').
 final appBuildProvider = FutureProvider.autoDispose.family<AppBuild, String>((ref, platform) async {
@@ -137,7 +138,7 @@ String appBuildSummary(AppBuild b) => [
 /// The QR code a tester scans to open the install page, with its link.
 Future<void> showAppInstallQr(BuildContext context, AppBuild b) {
   final url = appInstallPageUrl(b.platform);
-  return showDialog<void>(
+  return showAppDialog<void>(id: 'app-build-widgets.show-app-install-qr',
     context: context,
     builder: (context) => AlertDialog(
       title: Text('Install on ${b.ios ? 'iPhone' : 'Android'}'),

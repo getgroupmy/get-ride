@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_branding.dart';
 import 'net_image.dart';
+import 'page_style_host.dart';
 
 const _seenKey = 'app_icon_seen_at';
 
@@ -27,7 +28,7 @@ Future<bool> takeIconChange(AppBranding b) async {
   }
 }
 
-Future<void> showAppIconChanged(BuildContext context, String? iconUrl) => showDialog<void>(
+Future<void> showAppIconChanged(BuildContext context, String? iconUrl) => showAppDialog<void>(id: 'app-icon-changed.take-icon-change',
   context: context,
   builder: (c) {
     final t = Theme.of(c);

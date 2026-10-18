@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'loading_skeleton.dart';
+import 'page_style_host.dart';
 
 /// Centres content and caps its width so forms and lists read well on
 /// desktop and web as well as phones.
@@ -95,7 +96,7 @@ void showInfo(BuildContext context, String message) {
 }
 
 /// A message the rider has to acknowledge: a modal with one OK.
-Future<void> showNotice(BuildContext context, {String? title, required String message}) => showDialog<void>(
+Future<void> showNotice(BuildContext context, {String? title, required String message}) => showAppDialog<void>(id: 'common.show-info',
   context: context,
   builder: (c) => AlertDialog(
     key: const ValueKey('notice'),

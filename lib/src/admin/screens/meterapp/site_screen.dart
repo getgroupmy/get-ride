@@ -32,6 +32,7 @@ import 'branding_screens.dart';
 import 'pick_image.dart';
 import 'site_logic.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/page_style_host.dart';
 
 const sitePage = 'admin-settings-site';
 
@@ -160,7 +161,7 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
       _iconCleared = false;
     });
     ref.invalidate(brandingProvider);
-    await showDialog<void>(
+    await showAppDialog<void>(id: 'site.publish-icon',
       context: context,
       builder: (ctx) => AlertDialog(
         icon: const Icon(Icons.check_circle_outline),
@@ -515,7 +516,7 @@ class _SiteValues extends ConsumerWidget {
   Future<void> _edit(BuildContext context, WidgetRef ref, [SettingEntry? e]) async {
     final name = TextEditingController(text: '${e?.values['name'] ?? ''}');
     final value = TextEditingController(text: '${e?.values['value'] ?? ''}');
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'site.edit',
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(e == null ? 'Add value' : 'Edit value'),

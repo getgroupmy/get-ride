@@ -20,6 +20,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../ride/driver_code_sheet.dart';
 import '../ride/scheduled_rides_screen.dart' show pickupLabel;
+import '../../widgets/page_style_host.dart';
 
 class ScheduledJobsScreen extends ConsumerWidget {
   const ScheduledJobsScreen({super.key, this.initialTab = 0});
@@ -314,7 +315,7 @@ class _JobCard extends ConsumerWidget {
   }
 
   Future<void> _letGo(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(
+    final ok = await showAppDialog<bool>(id: 'scheduled-jobs.let-go',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text("Can't make it?"),

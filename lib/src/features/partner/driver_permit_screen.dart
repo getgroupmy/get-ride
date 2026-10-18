@@ -14,6 +14,7 @@ import '../../widgets/common.dart';
 import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
 import 'teksi_pickup.dart';
+import '../../widgets/page_style_host.dart';
 
 /// The signed-in partner's taxi driver permit, read from their uploads.
 final driverPermitProvider = FutureProvider.autoDispose<DriverPermit>((ref) async {
@@ -324,7 +325,7 @@ class _PermitBody extends StatelessWidget {
 /// Why the meter can't open (Expo's Start Pickup popups), with the way to fix
 /// it: update the documents, or pick the vehicle the permit names.
 Future<void> showPermitBlock(BuildContext context, PermitBlock block, DriverPermit permit, String? plate) =>
-    showDialog<void>(
+    showAppDialog<void>(id: 'driver-permit.show-permit-block',
       context: context,
       builder: (c) => AlertDialog(
         key: const ValueKey('permit-block'),

@@ -11,6 +11,7 @@ import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/page_style_host.dart';
 
 const helpArticlesPage = 'admin-settings-help-articles';
 
@@ -35,7 +36,7 @@ class _AdminHelpArticlesScreenState extends ConsumerState<AdminHelpArticlesScree
   String _query = '';
 
   Future<void> _edit(HelpArticle? article) async {
-    final result = await showDialog<HelpArticle>(
+    final result = await showAppDialog<HelpArticle>(id: 'help-articles.edit',
       context: context,
       builder: (_) => HelpArticleDialog(article: article),
     );

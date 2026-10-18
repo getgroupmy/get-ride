@@ -16,10 +16,11 @@ import '../../widgets/map_recenter.dart';
 import '../../widgets/map_credit.dart';
 import '../../widgets/map_tiles.dart';
 import '../../widgets/map_type_button.dart';
+import '../../widgets/page_style_host.dart';
 
 /// Opens the picker at [start] (else [me]); the place chosen, or null.
 Future<Place?> pickPlaceOnMap(BuildContext context, {LatLng? start, LatLng? me}) => Navigator.of(context).push<Place>(
-  MaterialPageRoute(
+  AppPageRoute(id: 'map-place-picker.pick-place-on-map',
     fullscreenDialog: true,
     builder: (_) => MapPlacePicker(start: start, me: me),
   ),
