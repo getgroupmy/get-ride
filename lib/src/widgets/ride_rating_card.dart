@@ -116,21 +116,26 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
             const SizedBox(height: 4),
             Text('How was your trip?', style: t.textTheme.bodySmall),
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var i = 1; i <= 5; i++)
-                  IconButton(
-                    key: ValueKey('rate-star-$i'),
-                    tooltip: '$i star${i == 1 ? '' : 's'}',
-                    iconSize: 36,
-                    onPressed: _busy ? null : () => setState(() => _stars = i),
-                    icon: Icon(
-                      stars != null && i <= stars ? Icons.star_rounded : Icons.star_outline_rounded,
-                      color: stars != null && i <= stars ? _starColor(t) : t.colorScheme.onSurfaceVariant,
+            // All five stars always fit: on a narrow card (320 wide) the row
+            // scales down instead of cutting off the fifth.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (var i = 1; i <= 5; i++)
+                    IconButton(
+                      key: ValueKey('rate-star-$i'),
+                      tooltip: '$i star${i == 1 ? '' : 's'}',
+                      iconSize: 36,
+                      onPressed: _busy ? null : () => setState(() => _stars = i),
+                      icon: Icon(
+                        stars != null && i <= stars ? Icons.star_rounded : Icons.star_outline_rounded,
+                        color: stars != null && i <= stars ? _starColor(t) : t.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
             Center(child: Text(starsLabel(stars ?? 0), style: t.textTheme.labelLarge)),
             const SizedBox(height: 8),

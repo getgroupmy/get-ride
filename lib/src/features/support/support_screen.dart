@@ -37,6 +37,16 @@ class HelpAssistantCard extends StatelessWidget {
 /// The chat address of a support chat not yet sent anything (no ticket yet).
 const newSupportTicketId = 'new';
 
+/// A ticket's name: "#4 · Support request", or the subject alone.
+String supportTicketTitle(SupportTicket t) => '${t.number != null ? '#${t.number} · ' : ''}${t.subject}';
+
+/// A ticket's status in words, as the admin's chips say it: `open` →
+/// "Open", `in_progress` → "In progress".
+String supportStatusLabel(String status) {
+  final words = status.replaceAll(RegExp(r'[_-]+'), ' ').trim();
+  return words.isEmpty ? status : '${words[0].toUpperCase()}${words.substring(1).toLowerCase()}';
+}
+
 class SupportScreen extends ConsumerWidget {
   const SupportScreen({super.key});
 
@@ -84,7 +94,7 @@ class SupportScreen extends ConsumerWidget {
                                 label: Text('${tk.unreadUser}'),
                                 child: const Icon(Icons.forum_outlined),
                               ),
-                              title: Text('${tk.number != null ? '#${tk.number} · ' : ''}${tk.subject}'),
+                              title: Text(supportTicketTitle(tk)),
                               subtitle: Text(tk.lastMessage ?? 'No messages yet',
                                   maxLines: 1, overflow: TextOverflow.ellipsis),
                               trailing: Column(
@@ -92,7 +102,7 @@ class SupportScreen extends ConsumerWidget {
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text(formatTime(tk.lastMessageAt)),
-                                  Text(tk.status, style: Theme.of(context).textTheme.labelSmall),
+                                  Text(supportStatusLabel(tk.status), style: Theme.of(context).textTheme.labelSmall),
                                 ],
                               ),
                               onTap: () => context.go('/account/support/${tk.id}'),

@@ -174,7 +174,7 @@ class FavouriteDriverTile extends StatelessWidget {
                 children: [
                   Text(
                     d.name,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                   ),

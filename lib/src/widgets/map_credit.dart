@@ -68,6 +68,20 @@ class MapCreditLayer extends StatelessWidget {
       alignment: AttributionAlignment.bottomLeft,
       // The map's own provider beside the ⓘ, not flutter_map's logo.
       showFlutterMapAttribution: false,
+      // ⓘ and its close button: 44 × 44 targets with names, at any density.
+      openButton: (context, open) => IconButton(
+        key: const ValueKey('map-credit-open'),
+        tooltip: 'Map credits',
+        onPressed: open,
+        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        icon: const Icon(Icons.info_outlined, color: Colors.black, size: 24),
+      ),
+      closeButton: (context, close) => IconButton(
+        tooltip: 'Close map credits',
+        onPressed: close,
+        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        icon: Icon(Icons.cancel_outlined, color: Theme.of(context).textTheme.titleSmall?.color ?? Colors.black, size: 24),
+      ),
       attributions: [
         if (brand.isNotEmpty) LogoSourceAttribution(MapBrand(brand), tooltip: brand),
         TextSourceAttribution(credit.text, prependCopyright: false),

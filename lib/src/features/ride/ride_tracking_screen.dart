@@ -243,6 +243,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   @override
   void initState() {
     super.initState();
+    _openedCancelled = widget.ride.status == RideStatus.cancelled;
     _clock = ValueNotifier(ref.read(searchClockProvider)());
     ref.read(fareCoinChoiceStoreProvider).chosen(widget.ride.id).then((v) {
       if (mounted && v) setState(() => _coinsChosen = true);
@@ -464,6 +465,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   }
 
   bool _closed = false;
+
+  /// The ride was cancelled before this screen opened (set in initState).
+  bool _openedCancelled = false;
 
   void _close() {
     if (_closed || !mounted) return;
@@ -841,14 +845,58 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   Widget? _cancelFooter(RideRequest r) {
     final cancel = _cancelAction(r);
     if (cancel == null) return null;
-    return Material(
-      key: const ValueKey('ride-cancel-footer'),
-      color: Theme.of(context).colorScheme.surface,
-      elevation: 8,
-      child: SafeArea(
-        top: false,
-        child: Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 8), child: cancel),
-      ),
+    return _footer(const ValueKey('ride-cancel-footer'), cancel);
+  }
+
+  /// A finished ride's last word: the cancelled countdown and Book another
+  /// ride, or Done.
+  List<Widget> _finishActions(RideRequest r) => [
+        // Cancelled while watching: the screen closes by itself. Opened on a
+        // ride already cancelled (a link, a reload): it stays, so the
+        // reason can be read.
+        if (r.status == RideStatus.cancelled && !_openedCancelled) ...[
+          CancelledCountdown(onDone: _close),
+          const SizedBox(height: 12),
+        ],
+        if (r.status == RideStatus.cancelled && _openedCancelled && (r.cancelReason ?? '').trim().isNotEmpty) ...[
+          Text(
+            'Reason: ${cancelReasonLabel(r.cancelReason) ?? r.cancelReason!.trim()}',
+            key: const ValueKey('ride-cancel-reason'),
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: mutedTextColor(Theme.of(context))),
+          ),
+          const SizedBox(height: 12),
+        ],
+        // Cancelled: straight on to booking again, rather than only Done.
+        if (r.status == RideStatus.cancelled)
+          FilledButton(
+            key: const ValueKey('ride-book-again'),
+            onPressed: () => context.go('/'),
+            child: const Text('Book another ride'),
+          )
+        else if (r.status.isFinished)
+          FilledButton(key: const ValueKey('ride-done'), onPressed: _close, child: const Text('Done')),
+      ];
+
+  /// Pinned under the sheet at any height and clear of the home indicator
+  /// (and of a browser toolbar, which reports no inset: 12 at least).
+  Widget _footer(Key key, Widget child) => Material(
+        key: key,
+        color: Theme.of(context).colorScheme.surface,
+        elevation: 8,
+        child: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.only(bottom: 12),
+          child: Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 8), child: child),
+        ),
+      );
+
+  Widget? _rideFooter(RideRequest r) {
+    final cancel = _cancelFooter(r);
+    if (cancel != null || !r.status.isFinished) return cancel;
+    return _footer(
+      const ValueKey('ride-finish-footer'),
+      Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: _finishActions(r)),
     );
   }
 
@@ -990,10 +1038,17 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   subtitle: Text(
                     '${formatDistance(r.distanceKm)} · ${formatDuration(r.durationMin)} · ${paymentModeLabel(r.paymentMode)}',
                   ),
-                  trailing: Text(
-                    r.fareText(r.effectiveFare),
-                    style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-                  ),
+                  // A cancelled ride was never charged: not its quote as a price.
+                  trailing: r.status == RideStatus.cancelled || r.status == RideStatus.expired
+                      ? Text(
+                          'Not charged',
+                          key: const ValueKey('ride-not-charged'),
+                          style: t.textTheme.titleSmall?.copyWith(color: mutedTextColor(t)),
+                        )
+                      : Text(
+                          r.fareText(r.effectiveFare),
+                          style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                        ),
                 ),
               ],
             ),
@@ -1074,20 +1129,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 subtitle: const Text('Ride reward, added to your GET.coin'),
               ),
             ),
-          // Cancelled: the screen closes by itself.
-          if (r.status == RideStatus.cancelled) ...[
-            CancelledCountdown(onDone: _close),
-            const SizedBox(height: 12),
-          ],
-          // Cancelled: straight on to booking again, rather than only Done.
-          if (r.status == RideStatus.cancelled)
-            FilledButton(
-              key: const ValueKey('ride-book-again'),
-              onPressed: () => context.go('/'),
-              child: const Text('Book another ride'),
-            )
-          else if (r.status.isFinished)
-            FilledButton(onPressed: _close, child: const Text('Done')),
+          // On a phone these sit in the footer, above the home indicator.
+          if (widget.wide) ..._finishActions(r),
           ],
         ],
       ),
@@ -1152,7 +1195,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             if (_sosOn(r)) Positioned.fill(child: RideSosFab(onPressed: () => _sos(r))),
           ]),
           sheet: content,
-          footer: _cancelFooter(r),
+          footer: _rideFooter(r),
         ),
       ),
       if (r.status == RideStatus.open)

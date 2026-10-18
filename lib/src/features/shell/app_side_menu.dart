@@ -117,6 +117,8 @@ class PartnerSideMenu extends ConsumerWidget {
     final linked = ref.watch(obdSessionProvider).linked;
     final hasCode = ref.watch(myRideCodeProvider).value != null;
     final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
+    // Pages for an approved driver wait for the approval.
+    final approved = ref.watch(partnerProvider).value?.approved ?? true;
     final mode = sideMenuModeButton(blob, 'partner');
     final profile = sideMenuProfile(blob, 'partner');
     return SideMenuPanel(
@@ -125,7 +127,13 @@ class PartnerSideMenu extends ConsumerWidget {
       onProfile: profile.comingSoon ? showComingSoon : SideMenuPanel.editProfile,
       rows: [
         for (final e in resolveSideMenu(blob, 'partner'))
-          if (partnerMenuRowShows(e.id, obdLinked: linked, hasMyRideCode: hasCode, scheduledRides: scheduled))
+          if (partnerMenuRowShows(
+            e.id,
+            obdLinked: linked,
+            hasMyRideCode: hasCode,
+            scheduledRides: scheduled,
+            approved: approved,
+          ))
             SideMenuTile(
               entry: e,
               plain: true,

@@ -76,7 +76,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
         final display = await ref.read(appDisplayProvider.future);
         if (!mounted) return;
         if (!mayContinueSignIn(hasAccount: false, display: display)) {
-          context.push(Uri(path: '/login/closed', queryParameters: {'phone': phone}).toString());
+          context.push(signInStepPath('/login/closed', phone));
           return;
         }
         // No SMS (and no account) until they say this is a new account.
@@ -85,15 +85,14 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
         setState(() => _busy = true);
         await auth.sendOtp(phone, createUser: true);
         if (!mounted) return;
-        context.push(
-          Uri(path: '/login/otp', queryParameters: {'phone': phone, 'next': 'set-pin', 'new': '1'}).toString(),
-        );
+        // The number stays in memory, not in the address (signInStepPath).
+        context.push(signInStepPath('/login/otp', phone, {'next': 'set-pin', 'new': '1'}));
       } else if (lookup.hasPin) {
-        context.push(Uri(path: '/login/pin', queryParameters: {'phone': phone}).toString());
+        context.push(signInStepPath('/login/pin', phone));
       } else {
         await auth.sendOtp(phone, createUser: false);
         if (!mounted) return;
-        context.push(Uri(path: '/login/otp', queryParameters: {'phone': phone, 'next': 'set-pin'}).toString());
+        context.push(signInStepPath('/login/otp', phone, {'next': 'set-pin'}));
       }
     } catch (e) {
       if (mounted) showError(context, e);
@@ -281,16 +280,23 @@ class _PhoneFieldState extends State<_PhoneField> {
         border: Border.all(color: t.colorScheme.onSurface, width: 2),
       ),
       child: Row(children: [
-        InkWell(
-          key: const ValueKey('dial-country'),
-          borderRadius: BorderRadius.circular(10),
+        // Read out as "Country code +60, Malaysia", not as the flag.
+        Semantics(
+          button: true,
+          label: DialCountryButton.semanticsLabelFor(widget.country),
+          excludeSemantics: true,
           onTap: widget.onPickCountry,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(widget.country.flag, style: const TextStyle(fontSize: 24)),
-              const Icon(Icons.arrow_drop_down),
-            ]),
+          child: InkWell(
+            key: const ValueKey('dial-country'),
+            borderRadius: BorderRadius.circular(10),
+            onTap: widget.onPickCountry,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(widget.country.flag, style: const TextStyle(fontSize: 24)),
+                const Icon(Icons.arrow_drop_down),
+              ]),
+            ),
           ),
         ),
         Text(widget.country.dialCode, style: t.textTheme.titleLarge),

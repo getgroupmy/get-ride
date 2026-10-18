@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../core/inbox.dart' show inboxBadgeText;
 import '../core/side_menu.dart';
 import '../data/notifications_repository.dart' show unreadNotificationsProvider;
+import 'common.dart' show mutedTextColor;
 import 'side_menu_style.dart';
 import 'page_style_host.dart';
 
@@ -70,6 +71,9 @@ void openRoute(GoRouter router, String route) {
   inShell ? router.go(route) : router.push(route);
 }
 
+/// Built-in rider rows whose service has no page yet.
+const homeLinkedComingSoon = {'city', 'freight'};
+
 Future<void> showComingSoon(BuildContext context) => showAppDialog<void>(id: 'side-menu-tiles.open-route',
   context: context,
   builder: (c) => AlertDialog(
@@ -110,6 +114,12 @@ class SideMenuTile extends StatelessWidget {
       return;
     }
     final route = entry.route;
+    // A built-in service with no page yet, linked home (Expo's City and
+    // Freight): "coming soon", not a jump to home (or, on a desktop, Drive).
+    if (route == '/' && !entry.custom && homeLinkedComingSoon.contains(entry.id)) {
+      showComingSoon(context);
+      return;
+    }
     if (route != null) {
       final router = GoRouter.of(context);
       beforeOpen?.call();
@@ -145,7 +155,7 @@ class SideMenuTile extends StatelessWidget {
       leading: Icon(menuIcon(entry), color: color),
       title: Text(entry.label, style: color == null ? null : TextStyle(color: color)),
       trailing: entry.comingSoon
-          ? const Chip(label: Text('Soon'))
+          ? Chip(label: Text('Soon', style: TextStyle(color: mutedTextColor(Theme.of(context)))))
           : _counts
           ? const Row(
               mainAxisSize: MainAxisSize.min,

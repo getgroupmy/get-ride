@@ -35,7 +35,10 @@ class SettingsScreen extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Appearance'),
+                  Text(
+                    'Appearance',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(color: mutedTextColor(Theme.of(context))),
+                  ),
                   const SizedBox(height: 8),
                   // The card's width, no tick, one line each: "System" never
                   // breaks in two at large text.

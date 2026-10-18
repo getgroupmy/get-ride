@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../data/safety_incident_repository.dart';
 import '../../../widgets/busy.dart';
+import '../../../widgets/call_number.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../../widgets/page_style_host.dart';
@@ -209,7 +210,7 @@ class _IncidentCard extends ConsumerWidget {
                   OutlinedButton.icon(
                     icon: const Icon(Icons.call_outlined),
                     label: const Text('Call'),
-                    onPressed: () => launchUrl(Uri(scheme: 'tel', path: i.reporterPhone)),
+                    onPressed: () => callNumber(context, i.reporterPhone!),
                   ),
                 if (i.open)
                   BusyButton.filled(

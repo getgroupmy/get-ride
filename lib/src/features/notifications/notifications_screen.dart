@@ -22,6 +22,7 @@ class NotificationsScreen extends ConsumerWidget {
     final value = ref.watch(notificationsProvider);
     final mode = ref.watch(appModeProvider);
     final items = inboxFor(value.value ?? const [], mode);
+    final rows = groupInbox(items);
     final anyUnread = items.any((i) => i.unread);
     NotificationsRepository repo() => ref.read(notificationsRepositoryProvider);
 
@@ -65,10 +66,11 @@ class NotificationsScreen extends ConsumerWidget {
                 onRefresh: () async => ref.invalidate(notificationsProvider),
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: items.length,
+                  itemCount: rows.length,
                   separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
                   itemBuilder: (context, i) {
-                    final item = items[i];
+                    final row = rows[i];
+                    final item = row.latest;
                     return ResponsiveCenter(
                       maxWidth: 760,
                       child: Dismissible(
@@ -80,12 +82,14 @@ class NotificationsScreen extends ConsumerWidget {
                           color: Theme.of(context).colorScheme.errorContainer,
                           child: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.onErrorContainer),
                         ),
-                        onDismissed: (_) => unawaited(run(() => repo().delete([item.id]))),
+                        onDismissed: (_) => unawaited(run(() => repo().delete(row.ids))),
                         child: InboxTile(
                           item: item,
+                          count: row.count,
+                          rowUnread: row.unread,
                           now: now ?? DateTime.now(),
                           onTap: () {
-                            if (item.unread) unawaited(run(() => repo().markRead([item.id])));
+                            if (row.unread) unawaited(run(() => repo().markRead(row.unreadIds)));
                             final route = item.route;
                             if (route != null) openAppRoute(context, route);
                           },
@@ -103,9 +107,16 @@ class NotificationsScreen extends ConsumerWidget {
 /// One row: an icon for what it is about, the title (bold while unread),
 /// the text, when, and an unread dot.
 class InboxTile extends StatelessWidget {
-  const InboxTile({super.key, required this.item, required this.now, required this.onTap});
+  const InboxTile({super.key, required this.item, required this.now, required this.onTap, this.count = 1, this.rowUnread});
 
   final InboxItem item;
+
+  /// How many identical notifications this row stands for (×3).
+  final int count;
+
+  /// Whether any of them is unread; [item]'s own state when null.
+  final bool? rowUnread;
+  bool get unread => rowUnread ?? item.unread;
   final DateTime now;
   final VoidCallback onTap;
 
@@ -126,15 +137,24 @@ class InboxTile extends StatelessWidget {
       key: ValueKey('notification-tile-${item.id}'),
       onTap: onTap,
       leading: CircleAvatar(
-        backgroundColor: item.unread ? cs.primaryContainer : cs.surfaceContainerHighest,
-        foregroundColor: item.unread ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+        backgroundColor: unread ? cs.primaryContainer : cs.surfaceContainerHighest,
+        foregroundColor: unread ? cs.onPrimaryContainer : cs.onSurfaceVariant,
         child: Icon(iconFor(inboxIconFor(item.kind))),
       ),
-      title: Text(
-        item.title,
+      title: Text.rich(
+        TextSpan(children: [
+          TextSpan(text: item.title),
+          if (count > 1)
+            TextSpan(
+              text: '  ×$count',
+              semanticsLabel: ', $count times',
+              style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600),
+            ),
+        ]),
+        key: ValueKey('notification-title-${item.id}'),
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontWeight: item.unread ? FontWeight.w700 : FontWeight.w500),
+        style: TextStyle(fontWeight: unread ? FontWeight.w700 : FontWeight.w500),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,7 +165,7 @@ class InboxTile extends StatelessWidget {
           Text(inboxWhen(item.createdAt, now), style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         ],
       ),
-      trailing: item.unread
+      trailing: unread
           ? Container(
               key: ValueKey('notification-unread-${item.id}'),
               width: 10,

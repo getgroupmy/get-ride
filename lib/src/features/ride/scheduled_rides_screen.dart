@@ -17,7 +17,7 @@ import 'driver_code_sheet.dart';
 import '../../widgets/page_style_host.dart';
 
 /// "Tue 14 Oct, 18:30".
-String pickupLabel(DateTime at) => DateFormat('EEE d MMM, HH:mm').format(at);
+String pickupLabel(DateTime at) => DateFormat('EEE d MMM, h:mm a').format(at);
 
 /// Home: the soonest booking still to come; opens the bookings page.
 class UpcomingRideCard extends ConsumerWidget {
@@ -84,12 +84,17 @@ class ScheduledRidesList extends ConsumerWidget {
           for (final r in all.reversed)
             if (!r.upcoming) r,
         ];
+        // Near the top, as Trips and Wallet history have theirs.
         if (all.isEmpty) {
-          return const EmptyState(
-            key: ValueKey('scheduled-empty'),
-            icon: Icons.event_outlined,
-            title: 'No scheduled rides',
-            message: 'On the booking screen, tap Later to book a ride ahead.',
+          return ListView(
+            children: const [
+              EmptyState(
+                key: ValueKey('scheduled-empty'),
+                icon: Icons.event_outlined,
+                title: 'No scheduled rides',
+                message: 'On the booking screen, tap Later to book a ride ahead.',
+              ),
+            ],
           );
         }
         return RefreshIndicator(

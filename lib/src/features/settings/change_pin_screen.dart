@@ -51,6 +51,7 @@ class _ChangePinFlow extends ConsumerStatefulWidget {
 class _ChangePinFlowState extends ConsumerState<_ChangePinFlow> {
   late PinChangeStep _step = firstPinChangeStep(hasPin: widget.hasPin);
   final _code = TextEditingController();
+  final _focus = FocusNode();
   String? _current, _new, _error;
 
   /// Set once the new PIN is saved: whether the sign-in password kept up.
@@ -60,6 +61,7 @@ class _ChangePinFlowState extends ConsumerState<_ChangePinFlow> {
   @override
   void dispose() {
     _code.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -89,9 +91,17 @@ class _ChangePinFlowState extends ConsumerState<_ChangePinFlow> {
     } catch (e) {
       if (mounted) setState(() => _error = errorText(e));
       _code.clear();
+      _refocus();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Back in the field for another try, keyboard up.
+  void _refocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
   }
 
   Future<void> _completed(String code) async {
@@ -110,6 +120,7 @@ class _ChangePinFlowState extends ConsumerState<_ChangePinFlow> {
         if (problem != null) {
           _code.clear();
           setState(() => _error = problem);
+          _refocus();
           return;
         }
         _current = code;
@@ -235,6 +246,7 @@ class _ChangePinFlowState extends ConsumerState<_ChangePinFlow> {
                 CodeField(
                   key: ValueKey('pin-field-${_step.name}'),
                   controller: _code,
+                  focusNode: _focus,
                   length: 6,
                   obscure: _step != PinChangeStep.code,
                   onCompleted: _completed,
@@ -253,7 +265,7 @@ class _ChangePinFlowState extends ConsumerState<_ChangePinFlow> {
                   TextButton(
                     key: const ValueKey('pin-forgot'),
                     onPressed: _busy ? null : _forgot,
-                    child: const Text('Forgot PIN?'),
+                    child: const Text('Forgot PIN? Verify by SMS'),
                   ),
                 if (_step == PinChangeStep.code)
                   TextButton(onPressed: _busy ? null : _resend, child: const Text('Resend code')),

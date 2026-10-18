@@ -85,12 +85,13 @@ class _AdminPartnerStatementsScreenState extends ConsumerState<AdminPartnerState
       child: AdminPage(
         title: 'Partner statements',
         page: statementsPage,
-        // Four tabs don't fit a phone without cutting "Adjustments": there
-        // the bar scrolls. (Only the bar; the pages still don't swipe.)
-        bottom: TabBar(
-          isScrollable: MediaQuery.sizeOf(context).width < 600,
-          tabAlignment: MediaQuery.sizeOf(context).width < 600 ? TabAlignment.start : null,
-          tabs: const [
+        // Four tabs don't fit a phone (or a narrow admin pane, or large
+        // text) without cutting "Adjustments": the bar always scrolls when
+        // it has to. (Only the bar; the pages still don't swipe.)
+        bottom: const TabBar(
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: [
             Tab(key: ValueKey('statements-tab-settings'), text: 'Settings'),
             Tab(key: ValueKey('statements-tab-layout'), text: 'Layout'),
             Tab(key: ValueKey('statements-tab-incentives'), text: 'Incentives'),
@@ -186,8 +187,9 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
         ],
       ),
     );
+    // The same space above and below each field.
     Widget field(String key, String label, String value, ValueChanged<String> onChanged, {String? hint}) => Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: TextFormField(
         key: ValueKey(key),
         initialValue: value,
@@ -197,7 +199,7 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> {
       ),
     );
     return ListView(
-      padding: const EdgeInsets.only(bottom: 96),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 96),
       children: [
         ResponsiveCenter(
           maxWidth: 760,

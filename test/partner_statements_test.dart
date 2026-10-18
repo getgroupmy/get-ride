@@ -362,6 +362,8 @@ void main() {
 
       testWidgets('posts a minus adjustment', (tester) async {
         final repo = await pump(tester);
+        await tester.ensureVisible(find.byKey(const ValueKey('statements-tab-adjustments')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('statements-tab-adjustments')));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('statements-new-adjustment')));

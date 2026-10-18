@@ -42,9 +42,19 @@ final _calls = RegExp(
   r"\b(AppPageRoute|showAppSheet|showAppDialog|showAppGeneralDialog)\s*(?:<[^(]*>)?\(\s*id:\s*'([^']+)'",
 );
 
+/// Titles for ids that would read the same as another's (a "-2" id), so
+/// the admin can tell them apart. The ids stay, and with them the styles
+/// already saved under them.
+const surfaceTitleOverrides = {
+  'coin-trade.confirm-send': 'Coin trade · Confirm send coins',
+  'coin-trade.confirm-send-2': 'Coin trade · Waiting for the recipient',
+};
+
 /// "confirm.show-payment-sheet" → "Confirm · Payment sheet"; "fare-info" →
 /// "Fare info".
 String surfaceTitle(String id) {
+  final fixed = surfaceTitleOverrides[id];
+  if (fixed != null) return fixed;
   String words(String part) {
     final w = part
         .replaceAll('_', '-')

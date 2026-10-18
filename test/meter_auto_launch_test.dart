@@ -152,14 +152,21 @@ void main() {
   group('once per launch', () {
     late int decisions;
 
+    setUp(() => AppLaunch.firstAppLocation = null);
+    tearDown(() => AppLaunch.firstAppLocation = null);
+
     Future<GoRouter> pump(
       WidgetTester tester, {
       required bool launch,
       ({bool rider, String? partnerTripId}) ongoing = (rider: false, partnerTripId: null),
+      Partner? partner,
+      String initial = '/',
     }) async {
       decisions = 0;
-      final router = GoRouter(routes: [
+      final router = GoRouter(initialLocation: initial, routes: [
         GoRoute(path: '/', builder: (_, _) => const _Home()),
+        GoRoute(path: '/drive', builder: (_, _) => const Scaffold(body: Text('DRIVE'))),
+        GoRoute(path: '/account', builder: (_, _) => const Scaffold(body: Text('ACCOUNT'))),
         GoRoute(path: '/meter', builder: (_, _) => const Scaffold(body: Text('METER'))),
         GoRoute(path: '/drive/trip/:id', builder: (_, s) => Scaffold(body: Text('TRIP ${s.pathParameters['id']}'))),
       ]);
@@ -172,6 +179,7 @@ void main() {
             decisions++;
             return launch;
           }),
+          partnerProvider.overrideWith((_) async => partner),
         ],
         child: MaterialApp.router(routerConfig: router),
       ));
@@ -210,6 +218,54 @@ void main() {
       await pump(tester, launch: false);
       expect(find.text('HOME'), findsOneWidget);
       expect(find.text('METER'), findsNothing);
+    });
+
+    group('a partner on a tablet', () {
+      Future<void> tablet(WidgetTester tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(1180, 820);
+        addTearDown(tester.view.reset);
+      }
+
+      testWidgets('launched on home goes to the Drive console', (tester) async {
+        await tablet(tester);
+        AppLaunch.note('/');
+        await pump(tester, launch: false, partner: Partner({'id': 'p1', 'status': 'approved'}));
+        expect(find.text('DRIVE'), findsOneWidget);
+      });
+
+      testWidgets('a rider on a tablet stays home', (tester) async {
+        await tablet(tester);
+        AppLaunch.note('/');
+        await pump(tester, launch: false);
+        expect(find.text('HOME'), findsOneWidget);
+      });
+
+      testWidgets('launched elsewhere, the Ride tab later opens the rider home', (tester) async {
+        await tablet(tester);
+        AppLaunch.note('/account');
+        final router = await pump(
+          tester,
+          launch: false,
+          partner: Partner({'id': 'p1', 'status': 'approved'}),
+          initial: '/account',
+        );
+        expect(find.text('ACCOUNT'), findsOneWidget);
+        router.go('/');
+        await tester.pumpAndSettle();
+        expect(find.text('HOME'), findsOneWidget);
+        expect(find.text('DRIVE'), findsNothing);
+      });
+
+      testWidgets('after the launch, going home again stays home', (tester) async {
+        await tablet(tester);
+        AppLaunch.note('/');
+        final router = await pump(tester, launch: false, partner: Partner({'id': 'p1', 'status': 'approved'}));
+        expect(find.text('DRIVE'), findsOneWidget);
+        router.go('/');
+        await tester.pumpAndSettle();
+        expect(find.text('HOME'), findsOneWidget);
+      });
     });
 
     testWidgets('signing out and in again decides afresh', (tester) async {

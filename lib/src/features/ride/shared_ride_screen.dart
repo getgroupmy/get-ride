@@ -16,6 +16,7 @@ import '../../core/sos.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/call_number.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
@@ -23,10 +24,14 @@ import '../../widgets/net_image.dart';
 import '../../widgets/page_style_host.dart';
 
 /// Dials a number from the shared page's SOS: the phone app, overridden in
-/// tests.
-final sharedRideDialerProvider = Provider<Future<void> Function(String number)>(
+/// tests. False when nothing here can place a call.
+final sharedRideDialerProvider = Provider<Future<bool> Function(String number)>(
   (ref) => (number) async {
-    await launchUrl(Uri(scheme: 'tel', path: number));
+    try {
+      return await launchUrl(Uri(scheme: 'tel', path: number));
+    } catch (_) {
+      return false;
+    }
   },
 );
 
@@ -130,10 +135,16 @@ class _SharedRideScreenState extends ConsumerState<SharedRideScreen> {
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 16),
-                          FilledButton(
-                            key: const ValueKey('shared-ride-open-app'),
-                            onPressed: () => GoRouter.maybeOf(context)?.go('/'),
-                            child: const Text('Open GET.ride'),
+                          // Its own width, centred, as on the verify and install pages.
+                          Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 320),
+                              child: FilledButton(
+                                key: const ValueKey('shared-ride-open-app'),
+                                onPressed: () => GoRouter.maybeOf(context)?.go('/'),
+                                child: const Text('Open GET.ride'),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -173,7 +184,8 @@ class _SharedRideView extends ConsumerWidget {
       ),
     );
     if (choice == 'call') {
-      await ref.read(sharedRideDialerProvider)(emergencyNumber);
+      final called = await ref.read(sharedRideDialerProvider)(emergencyNumber);
+      if (!called && context.mounted) showNumberToCopy(context, emergencyNumber);
     } else if (choice == 'send') {
       await ref.read(rideSharerProvider)(sharedRideSosText(ride, url: url));
     }

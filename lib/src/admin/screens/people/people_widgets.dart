@@ -111,6 +111,32 @@ class ChoiceChips extends StatelessWidget {
       ]);
 }
 
+/// What an [ImageSlot] is read out as: "Front photo, tap to upload",
+/// "Front photo, tap to replace", or "Front photo, no image".
+String imageSlotSemanticsLabel(String label, {required bool hasImage, required bool enabled}) {
+  final what = label.toLowerCase().contains('photo') || label.toLowerCase().contains('image') ? label : '$label photo';
+  if (!enabled) return hasImage ? what : '$what, no image';
+  return '$what, ${hasImage ? 'tap to replace' : 'tap to upload'}';
+}
+
+/// A vehicle model's type and energy in words: `car`, `ev` → "Car · Electric".
+String makeModelKind(String vehicleType, String energyType) {
+  String word(String s) {
+    final t = s.trim().replaceAll(RegExp(r'[_-]+'), ' ');
+    if (t.isEmpty) return '';
+    const known = {'ev': 'Electric', 'bev': 'Electric', 'phev': 'Plug-in hybrid', 'hev': 'Hybrid', 'ngv': 'NGV', 'lpg': 'LPG', 'mpv': 'MPV', 'suv': 'SUV'};
+    return known[t.toLowerCase()] ?? '${t[0].toUpperCase()}${t.substring(1).toLowerCase()}';
+  }
+
+  return [word(vehicleType), word(energyType)].where((s) => s.isNotEmpty).join(' · ');
+}
+
+/// Make then model, A to Z, ignoring case.
+int compareMakeModel(MakeModel a, MakeModel b) {
+  final m = a.make.toLowerCase().compareTo(b.make.toLowerCase());
+  return m != 0 ? m : a.model.toLowerCase().compareTo(b.model.toLowerCase());
+}
+
 /// Shows a stored image URL (or a picked file) with a tap-to-replace action.
 class ImageSlot extends StatelessWidget {
   const ImageSlot({
@@ -162,12 +188,20 @@ class ImageSlot extends StatelessWidget {
           color: t.colorScheme.surfaceContainerHighest,
           clipBehavior: Clip.antiAlias,
           borderRadius: BorderRadius.circular(12),
-          child: InkWell(
+          // Named by its side for a screen reader: "Front photo, tap to
+          // upload", not a bare "Tap to upload".
+          child: Semantics(
+            button: enabled,
+            label: imageSlotSemanticsLabel(label, hasImage: url != null || pending != null, enabled: enabled),
+            excludeSemantics: true,
             onTap: enabled && !busy ? onPick : null,
-            child: Stack(fit: StackFit.expand, children: [
-              content,
-              if (busy) const ColoredBox(color: Colors.black26, child: Center(child: CircularProgressIndicator())),
-            ]),
+            child: InkWell(
+              onTap: enabled && !busy ? onPick : null,
+              child: Stack(fit: StackFit.expand, children: [
+                content,
+                if (busy) const ColoredBox(color: Colors.black26, child: Center(child: CircularProgressIndicator())),
+              ]),
+            ),
           ),
         ),
       ),
@@ -495,7 +529,8 @@ class MakeModelField extends ConsumerWidget {
       builder: (ctx) {
         var q = '';
         return StatefulBuilder(builder: (ctx, setState) {
-          final all = rows.map(makeModelFromRow).where((m) => m.make.isNotEmpty && m.model.isNotEmpty).toList();
+          final all = rows.map(makeModelFromRow).where((m) => m.make.isNotEmpty && m.model.isNotEmpty).toList()
+            ..sort(compareMakeModel);
           final list = all
               .where((m) => '${m.make} ${m.model} ${m.vehicleType} ${m.energyType}'.toLowerCase().contains(q.toLowerCase()))
               .toList();
@@ -519,7 +554,7 @@ class MakeModelField extends ConsumerWidget {
                           for (final m in list)
                             ListTile(
                               title: Text(makeModelLabel(m)),
-                              subtitle: Text([m.vehicleType, m.energyType].where((s) => s.isNotEmpty).join(' • ')),
+                              subtitle: Text(makeModelKind(m.vehicleType, m.energyType)),
                               onTap: () => Navigator.pop(ctx, m),
                             ),
                         ]),
@@ -542,7 +577,7 @@ class MakeModelField extends ConsumerWidget {
       child: BusyListTile(
         leading: const Icon(Icons.directions_car_filled_outlined),
         title: Text(v == null || v.make.isEmpty ? 'Select make & model' : makeModelLabel(v)),
-        subtitle: v == null ? null : Text([v.vehicleType, v.energyType].where((s) => s.isNotEmpty).join(' • ')),
+        subtitle: v == null ? null : Text(makeModelKind(v.vehicleType, v.energyType)),
         trailing: const Icon(Icons.expand_more),
         enabled: enabled,
         onTap: () => _pick(context, ref),

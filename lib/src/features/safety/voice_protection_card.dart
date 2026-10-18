@@ -7,6 +7,10 @@ import '../../widgets/busy.dart';
 import 'voice_protection_controller.dart';
 import '../../widgets/in_app_page.dart';
 
+/// Link blue that reads on the card in both themes (4.5:1).
+Color privacyLinkColor(ThemeData t) =>
+    t.brightness == Brightness.dark ? const Color(0xFF7CC4F0) : const Color(0xFF0C6AA6);
+
 /// The VoiceProtection switch and what it means (Expo `app/safety.tsx`).
 class VoiceProtectionCard extends ConsumerWidget {
   const VoiceProtectionCard({super.key});
@@ -50,10 +54,17 @@ class VoiceProtectionCard extends ConsumerWidget {
                     'VoiceProtection, in line with the Privacy Notice.',
                     style: t.textTheme.bodySmall,
                   ),
-                  TextButton(
-                    style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                  // A link that looks like one: link colour, underlined, an arrow.
+                  TextButton.icon(
+                    key: const ValueKey('voice-privacy-link'),
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      foregroundColor: privacyLinkColor(t),
+                      textStyle: const TextStyle(decoration: TextDecoration.underline, fontWeight: FontWeight.w600),
+                    ),
                     onPressed: () => openInApp(context, AppConfig.privacyUrl, title: 'Privacy Notice'),
-                    child: const Text('Privacy Notice'),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('Privacy Notice'),
                   ),
                 ],
               ),

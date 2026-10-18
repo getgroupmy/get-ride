@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/commission_promotions.dart';
-import '../../core/format.dart' show formatDateTime, formatMoney;
+import '../../core/format.dart' show formatDateTime, formatMoney, formatTime;
 import '../../data/live_tables.dart';
 import '../../features/partner/earnings_screen.dart' show CsvShareOutcome, earningsCsvSharerProvider;
 import '../../widgets/busy.dart';
@@ -49,6 +49,9 @@ final driversBelowCreditProvider = FutureProvider.autoDispose<List<BelowCreditDr
 });
 
 String _day(DateTime d) => formatDateTime(d).split(',').first;
+
+/// A promotion's start or end day, on its own line: "1 Mar 2026".
+String promoMomentDate(DateTime d) => _day(d);
 
 /// Hands a CSV to the share sheet, or downloads it on the web (as the Earnings page does).
 Future<void> _exportCsv(BuildContext button, WidgetRef ref, String csv, String fileName) async {
@@ -168,10 +171,13 @@ class _PromotionCard extends ConsumerWidget {
       child: ListTile(
         key: ValueKey('commission-promo-${p.id}'),
         leading: Icon(Icons.local_offer_outlined, color: status == 'Running' ? cs.primary : cs.outline),
-        title: Row(
+        // The name gets the width (two lines), with its status under it.
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Flexible(child: Text(p.name, overflow: TextOverflow.ellipsis)),
-            const SizedBox(width: 8),
+            Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
@@ -192,7 +198,9 @@ class _PromotionCard extends ConsumerWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Switch(
+            Semantics(
+              label: '${p.name} on',
+              child: Switch(
               key: ValueKey('commission-promo-active-${p.id}'),
               value: p.active,
               onChanged: canEdit
@@ -204,6 +212,7 @@ class _PromotionCard extends ConsumerWidget {
                       }
                     }
                   : null,
+              ),
             ),
             if (canEdit)
               BusyIconButton(
@@ -310,6 +319,7 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
       return TextFormField(
         key: ValueKey('promo-$k-${_place['country']}/${_place['state']}'),
         initialValue: value,
+        textInputAction: TextInputAction.next,
         decoration: InputDecoration(labelText: '$title (optional)', helperText: 'Blank: any $k'),
         onChanged: (v) => _place[k] = v.trim(),
       );
@@ -378,12 +388,20 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
       padding: const EdgeInsets.only(top: 16, bottom: 4),
       child: Text(text, style: t.textTheme.titleSmall),
     );
+    // The date on one line and the time on the next, each kept whole.
     Widget moment(String label, DateTime at, bool start) => Expanded(
-      child: OutlinedButton.icon(
+      child: OutlinedButton(
         key: ValueKey(start ? 'promo-from' : 'promo-to'),
         onPressed: () => _pickMoment(start),
-        icon: const Icon(Icons.event_outlined, size: 18),
-        label: Text('$label\n${formatDateTime(at)}', textAlign: TextAlign.center),
+        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, maxLines: 1),
+            FittedBox(fit: BoxFit.scaleDown, child: Text(promoMomentDate(at), maxLines: 1)),
+            Text(formatTime(at), maxLines: 1),
+          ],
+        ),
       ),
     );
     return AlertDialog(
@@ -400,6 +418,7 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
                 TextFormField(
                   key: const ValueKey('promo-name'),
                   controller: _name,
+                  textInputAction: TextInputAction.next,
                   maxLength: 80,
                   decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. Hari Raya week'),
                   validator: (v) => (v ?? '').trim().isEmpty ? 'Give the promotion a name' : null,
@@ -409,7 +428,13 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
                   controller: _rate,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-                  decoration: const InputDecoration(labelText: 'Rate (%)', suffixText: '%', helperText: '0 for no commission'),
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    labelText: 'Rate (%)',
+                    suffixText: '%',
+                    helperText: '0 for no commission',
+                    helperStyle: t.textTheme.bodySmall?.copyWith(color: muted),
+                  ),
                   validator: (v) {
                     final n = double.tryParse((v ?? '').trim());
                     return n == null || n < 0 || n >= 100 ? 'Between 0 and 99.99' : null;
@@ -501,6 +526,7 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
                     key: const ValueKey('promo-days'),
                     controller: _days,
                     keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.next,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: const InputDecoration(labelText: 'Their first', suffixText: 'days'),
                     validator: (v) {
@@ -511,6 +537,7 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
                 TextFormField(
                   key: const ValueKey('promo-note'),
                   controller: _note,
+                  textInputAction: TextInputAction.done,
                   maxLength: 300,
                   decoration: const InputDecoration(labelText: 'Note (optional)'),
                 ),
@@ -529,7 +556,12 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(key: const ValueKey('promo-save'), onPressed: _save, child: const Text('Save')),
+        FilledButton(
+          key: const ValueKey('promo-save'),
+          style: FilledButton.styleFrom(minimumSize: const Size(64, 44)),
+          onPressed: _save,
+          child: const Text('Save'),
+        ),
       ],
     );
   }
@@ -635,6 +667,7 @@ class _CommissionReportsTabState extends ConsumerState<CommissionReportsTab> {
               const SizedBox(height: 12),
               AsyncView(
                 value: report,
+                errorTitle: "Couldn't load the report",
                 onRetry: () => ref.invalidate(commissionReportProvider(q)),
                 data: (rows) => _ReportView(
                   rows: rows,

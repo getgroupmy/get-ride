@@ -14,7 +14,8 @@ import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
-import 'core/auth_utils.dart' show ResyncPin, signInStepRedirect;
+import 'core/launch_destination.dart' show AppLaunch;
+import 'core/auth_utils.dart' show PendingSignInRoute, ResyncPin, SignInPhone, signInLocation, signInNextPath, signInStepPhone, signInStepRedirect;
 import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
@@ -112,6 +113,7 @@ import 'widgets/connection_status_dialog.dart';
 import 'widgets/android_nav_bar_inset.dart';
 import 'widgets/keyboard_dismiss.dart';
 import 'widgets/page_style_host.dart';
+import 'widgets/route_title.dart';
 import 'widgets/web_overlay_back.dart';
 import 'core/page_styles.dart' show PageStyles;
 import 'data/page_styles_repository.dart' show pageStylesProvider;
@@ -222,6 +224,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (schemeLink != null) return schemeLink;
       final signedIn = db.auth.currentSession != null;
       final loc = state.matchedLocation;
+      // The first app page of this run, for the launch-only rules.
+      if (signedIn) AppLaunch.note(loc);
       final onAuth = loc.startsWith('/login');
       // Diagnostics are for people who can't sign in, so they work either way.
       if (loc == '/diagnostics') return null;
@@ -235,10 +239,23 @@ final routerProvider = Provider<GoRouter>((ref) {
       // carried into sign-up, a driver's code asks to sign in first. Both
       // /q/<kind>/<token> and the app-link form /<kind>/<token>.
       if (isQrLinkLocation(loc)) return null;
-      if (!signedIn && !onAuth) return '/login';
+      // A deep link opened signed out: kept, and opened once signed in.
+      if (!signedIn && !onAuth) {
+        PendingSignInRoute.path = signInNextPath(state.uri.toString());
+        return signInLocation(state.uri.toString());
+      }
+      if (!signedIn && loc == '/login') {
+        final next = signInNextPath(state.uri.queryParameters['next']);
+        if (next != null) PendingSignInRoute.path = next;
+      }
       // A sign-in step reloaded without its phone starts again from the number.
       if (!signedIn) {
-        final step = signInStepRedirect(loc, state.uri.queryParameters, resyncPin: ResyncPin.value);
+        final step = signInStepRedirect(
+          loc,
+          state.uri.queryParameters,
+          resyncPin: ResyncPin.value,
+          phone: SignInPhone.value,
+        );
         if (step != null) return step;
       }
       // A fresh OTP session still has to choose a PIN before entering the app.
@@ -247,6 +264,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       // Signed in after opening a driver's code: back to that code.
       if (signedIn && (onAuth || loc == '/') && PendingQrLink.path != null) return PendingQrLink.take();
+      if (signedIn && (onAuth || loc == '/') && PendingSignInRoute.path != null) return PendingSignInRoute.take();
       if (signedIn && onAuth) return '/';
       return null;
     },
@@ -260,7 +278,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'otp',
             builder: (_, s) => OtpScreen(
-              phone: s.uri.queryParameters['phone'] ?? '',
+              phone: signInStepPhone(s.uri.queryParameters),
               next: s.uri.queryParameters['next'] ?? 'set-pin',
               pin: ResyncPin.value,
               createUser: s.uri.queryParameters['new'] == '1',
@@ -268,11 +286,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: 'pin',
-            builder: (_, s) => PinScreen(phone: s.uri.queryParameters['phone'] ?? ''),
+            builder: (_, s) => PinScreen(phone: signInStepPhone(s.uri.queryParameters)),
           ),
           GoRoute(
             path: 'closed',
-            builder: (_, s) => RegistrationClosedScreen(phone: s.uri.queryParameters['phone'] ?? ''),
+            builder: (_, s) => RegistrationClosedScreen(phone: signInStepPhone(s.uri.queryParameters)),
           ),
           GoRoute(path: 'set-pin', builder: (_, _) => const SetPinScreen()),
         ],
@@ -347,6 +365,9 @@ final routerProvider = Provider<GoRouter>((ref) {
                         routes: [GoRoute(path: 'settings', builder: (_, _) => const MyRideSettingsScreen())],
                       ),
                       GoRoute(path: 'my-qr', builder: (_, _) => const MyQrScreen()),
+                      // The permissions page became a card in Settings: old
+                      // links land there.
+                      GoRoute(path: 'permissions', redirect: (_, _) => '/account/settings'),
                       GoRoute(path: 'safety', builder: (_, _) => const SafetyScreen()),
                       GoRoute(path: 'emergency', builder: (_, _) => const EmergencyContactsScreen()),
                       GoRoute(path: 'guide', builder: (_, _) => const UserGuideScreen()),
@@ -908,7 +929,12 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
                                 styles: styles,
                                 location: () => router.routerDelegate.currentConfiguration.fullPath,
                                 listenable: router.routerDelegate,
-                                child: child ?? const SizedBox.shrink(),
+                                // The browser tab names the page ("Trips · GET.ride").
+                                child: RouteTitle(
+                                  location: () => router.routerDelegate.currentConfiguration.uri.path,
+                                  listenable: router.routerDelegate,
+                                  child: child ?? const SizedBox.shrink(),
+                                ),
                               ),
                             ),
                           ),

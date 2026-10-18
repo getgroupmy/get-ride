@@ -42,7 +42,13 @@ class _Mark extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(right: 12),
-    child: Icon(icon, key: ValueKey('confirm-mark-$id'), size: 24, color: Theme.of(context).colorScheme.onSurface),
+    child: Icon(
+      icon,
+      key: ValueKey('confirm-mark-$id'),
+      size: 24,
+      color: Theme.of(context).colorScheme.onSurface,
+      semanticLabel: id == 'pickup' ? 'Pickup' : 'Drop-off',
+    ),
   );
 }
 
@@ -86,23 +92,30 @@ class ConfirmAddressCard extends StatelessWidget {
       color: t.colorScheme.surface.withValues(alpha: 0.95),
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+        padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const _Mark(Icons.emoji_people, 'pickup'),
                 Expanded(
                   child: InkWell(
                     key: const ValueKey('confirm-pickup'),
                     onTap: onPickup,
-                    child: Text(
-                      pickup?.name ?? 'Set pickup',
-                      style: text,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    // 44 tall at least: a finger-sized target.
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 44),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          pickup?.name ?? 'Set pickup',
+                          style: text,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -111,43 +124,56 @@ class ConfirmAddressCard extends StatelessWidget {
                   key: const ValueKey('confirm-entrance'),
                   borderRadius: BorderRadius.circular(8),
                   onTap: onEntrance,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: t.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      entrance.isEmpty ? 'Entrance' : 'Entrance $entrance',
-                      style: t.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+                  // The chip stays small; the target around it is 44 high.
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+                    child: Center(
+                      widthFactor: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: t.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          entrance.isEmpty ? 'Entrance' : 'Entrance $entrance',
+                          style: t.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 2),
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 const _Mark(Icons.flag, 'drop'),
                 Expanded(
                   child: InkWell(
                     key: const ValueKey('confirm-drop'),
                     onTap: stops.isEmpty ? onDrop : onStops,
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          TextSpan(text: stops.isEmpty ? drop.name : '${stops.length + 1} route stops'),
-                          if (duration.isNotEmpty)
-                            TextSpan(
-                              text: '  $duration',
-                              style: TextStyle(color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w400),
-                            ),
-                        ],
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 44),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: stops.isEmpty ? drop.name : '${stops.length + 1} route stops'),
+                              if (duration.isNotEmpty)
+                                TextSpan(
+                                  text: '  $duration',
+                                  style: TextStyle(color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w400),
+                                ),
+                            ],
+                          ),
+                          style: text,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
-                      style: text,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ),
@@ -158,11 +184,16 @@ class ConfirmAddressCard extends StatelessWidget {
                     child: InkResponse(
                       key: const ValueKey('confirm-add-stop'),
                       onTap: onAddStop,
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: const BoxDecoration(color: confirmAccent, shape: BoxShape.circle),
-                        child: const Icon(Icons.add, color: Colors.white, size: 20),
+                      child: SizedBox.square(
+                        dimension: 44,
+                        child: Center(
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: const BoxDecoration(color: confirmAccent, shape: BoxShape.circle),
+                            child: const Icon(Icons.add, color: Colors.white, size: 20),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -2162,42 +2193,69 @@ class _NowLaterButtonState extends State<NowLaterButton> {
     // is the secondary one (a Now|Later switch read as a toggle, not a go).
     final nowBusy = _busy && !_later;
     final laterBusy = _busy && _later;
-    return SizedBox(
-      key: const ValueKey('book-now-later'),
-      height: 56,
-      child: Row(
-        children: [
-          Expanded(
-            child: FilledButton.icon(
-              key: const ValueKey('book-now'),
-              style: FilledButton.styleFrom(
-                backgroundColor: accentFill,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(0, 56),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+    // Narrow (a 360 phone with the payment and options buttons beside it):
+    // Later shrinks to its icon so "Find a driver" is read whole.
+    return LayoutBuilder(builder: (context, box) {
+      final compact = box.maxWidth < MediaQuery.textScalerOf(context).scale(nowLaterCompactWidth);
+      final laterOnPressed = widget.pickLater == null || _busy ? null : () => _run(true);
+      return SizedBox(
+        key: const ValueKey('book-now-later'),
+        height: 56,
+        child: Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                key: const ValueKey('book-now'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: accentFill,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(0, 56),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                onPressed: widget.onNow == null || _busy ? null : () => _run(false),
+                icon: nowBusy ? const BusySpinner(size: 20, color: Colors.white) : const Icon(Icons.bolt),
+                label: Text(widget.label, maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
-              onPressed: widget.onNow == null || _busy ? null : () => _run(false),
-              icon: nowBusy ? const BusySpinner(size: 20, color: Colors.white) : const Icon(Icons.bolt),
-              label: Text(widget.label, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            key: const ValueKey('book-later'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size(0, 56),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            onPressed: widget.pickLater == null || _busy ? null : () => _run(true),
-            icon: laterBusy ? const BusySpinner(size: 20) : const Icon(Icons.event),
-            label: const Text('Later'),
-          ),
-        ],
-      ),
-    );
+            const SizedBox(width: 8),
+            if (compact)
+              Tooltip(
+                message: 'Later',
+                child: OutlinedButton(
+                  key: const ValueKey('book-later'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(56, 56),
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: laterOnPressed,
+                  child: laterBusy
+                      ? const BusySpinner(size: 20)
+                      : const Icon(Icons.event, semanticLabel: 'Later'),
+                ),
+              )
+            else
+              OutlinedButton.icon(
+                key: const ValueKey('book-later'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 56),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+                onPressed: laterOnPressed,
+                icon: laterBusy ? const BusySpinner(size: 20) : const Icon(Icons.event),
+                label: const Text('Later'),
+              ),
+          ],
+        ),
+      );
+    });
   }
 }
+
+/// Below this width (at text scale 1) the book-now row shows Later as its
+/// icon alone.
+const nowLaterCompactWidth = 300.0;

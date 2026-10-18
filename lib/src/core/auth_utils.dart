@@ -201,19 +201,71 @@ abstract final class ResyncPin {
   static String? value;
 }
 
+/// The number being signed in with, held in memory only like [ResyncPin]:
+/// it never goes in the address, the history or the address bar's
+/// suggestions. A reload loses it, and the step starts again from the
+/// number ([signInStepRedirect]).
+abstract final class SignInPhone {
+  static String? value;
+}
+
+/// The address of a sign-in step ([path]: /login/pin, /login/otp,
+/// /login/closed) for [phone]: the phone kept in [SignInPhone], only the
+/// harmless choices ([query]: next, new) in the address.
+String signInStepPath(String path, String phone, [Map<String, String> query = const {}]) {
+  SignInPhone.value = phone;
+  return Uri(path: path, queryParameters: query.isEmpty ? null : query).toString();
+}
+
+/// The phone a sign-in step is for: an older link's `phone`, else the one
+/// in memory.
+String signInStepPhone(Map<String, String> query) => query['phone'] ?? SignInPhone.value ?? '';
+
 /// Where a sign-in step opened without what it needs goes instead (a reload
 /// of /login/pin or /login/otp, a bare link): the number page when the phone
-/// is missing; the PIN page when a resync lost its PIN ([ResyncPin], gone
-/// with a reload). Null: the step can show.
-String? signInStepRedirect(String location, Map<String, String> query, {String? resyncPin}) {
+/// is missing (in the address of an older link, or [phone] in memory); the
+/// PIN page when a resync lost its PIN ([ResyncPin], gone with a reload).
+/// Null: the step can show.
+String? signInStepRedirect(String location, Map<String, String> query, {String? resyncPin, String? phone}) {
   const steps = {'/login/pin', '/login/otp', '/login/closed'};
   if (!steps.contains(location)) return null;
-  final phone = query['phone'] ?? '';
-  if (phone.trim().isEmpty) return '/login/phone';
-  if (location == '/login/otp' && query['next'] == 'resync' && resyncPin == null) {
-    return Uri(path: '/login/pin', queryParameters: {'phone': phone}).toString();
-  }
+  final number = query['phone'] ?? phone ?? '';
+  if (number.trim().isEmpty) return '/login/phone';
+  if (location == '/login/otp' && query['next'] == 'resync' && resyncPin == null) return '/login/pin';
   return null;
+}
+
+/// [raw] when it is a page of this app to go to after signing in (a deep
+/// link opened signed out, carried as `/login?next=`): a path starting
+/// with a single `/`, not another site, not a sign-in page or the home
+/// page. Null otherwise.
+String? signInNextPath(String? raw) {
+  final v = (raw ?? '').trim();
+  if (v.isEmpty || !v.startsWith('/') || v.startsWith('//') || v.contains('\\')) return null;
+  final uri = Uri.tryParse(v);
+  if (uri == null || uri.hasScheme || uri.hasAuthority) return null;
+  if (uri.path == '/' || uri.path == '/login' || uri.path.startsWith('/login/')) return null;
+  return uri.toString();
+}
+
+/// Where a signed-out visitor is sent: `/login`, carrying [location] as
+/// `next` when it is a page to come back to.
+String signInLocation(String location) {
+  final next = signInNextPath(location);
+  return next == null ? '/login' : Uri(path: '/login', queryParameters: {'next': next}).toString();
+}
+
+/// The page a signed-out visitor asked for, kept (in memory) until they
+/// are signed in; the /login?next= in the address bar restores it after a
+/// reload.
+abstract final class PendingSignInRoute {
+  static String? path;
+
+  static String? take() {
+    final p = path;
+    path = null;
+    return p;
+  }
 }
 
 OtpNext otpNextFor(String next, {String? pin}) => switch (next) {

@@ -8,11 +8,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/messaging.dart';
 import '../../core/session_access.dart';
 import '../../data/messaging_repository.dart';
-import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart';
@@ -24,6 +24,9 @@ final sessionKeysProvider = FutureProvider.autoDispose((ref) => ref.watch(messag
 
 /// Where a session reads how to use its key.
 const sessionAccessDocs = 'docs/session-access.md';
+
+/// The guide on GitHub, for the card's link row.
+final sessionAccessDocsUrl = Uri.parse('https://github.com/getgroupmy/get-ride/blob/main/$sessionAccessDocs');
 
 class SessionAccessCard extends ConsumerWidget {
   const SessionAccessCard({super.key, required this.devices});
@@ -48,11 +51,26 @@ class SessionAccessCard extends ConsumerWidget {
             Text('Session access', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
             Text(
-              'A key for a test session (a Claude Code cloud session, a CI job) that has no phone of its own: it can '
-              'text one test number through the gateway phone, read the sign-in codes sent to that number, and use a '
-              "gateway phone's mobile data for its requests. The key is shown once; remove it here any time. "
-              'How a session uses it: $sessionAccessDocs.',
-              style: t.textTheme.bodySmall,
+              'A key for a test session with no phone of its own (a cloud session, a CI job): it texts one test '
+              'number through the gateway phone and reads its sign-in codes. Shown once; remove it any time.',
+              style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
+            ),
+            ListTile(
+              key: const ValueKey('session-docs'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: const Icon(Icons.menu_book_outlined),
+              title: const Text('How a session uses it'),
+              trailing: const Icon(Icons.open_in_new, size: 18),
+              onTap: () async {
+                var opened = false;
+                try {
+                  opened = await launchUrl(sessionAccessDocsUrl, mode: LaunchMode.externalApplication);
+                } catch (_) {}
+                if (opened) return;
+                await Clipboard.setData(const ClipboardData(text: sessionAccessDocs));
+                if (context.mounted) showInfo(context, "Copied the guide's path: $sessionAccessDocs");
+              },
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -89,17 +107,7 @@ class SessionAccessCard extends ConsumerWidget {
                         color: k.activeAt(now) ? Colors.green : t.colorScheme.outline,
                       ),
                       title: Text(k.label),
-                      subtitle: Text(
-                        [
-                          k.testPhone,
-                          k.scopes.map((s) => s.label).join(', '),
-                          if (k.proxyLabel != null) 'Internet via ${k.proxyLabel}',
-                          k.activeAt(now)
-                              ? 'Ends ${time.format(k.expiresAt.toLocal())}'
-                              : sessionKeyStatus(k, now),
-                          sessionKeyUseLabel(k, now),
-                        ].join(' · '),
-                      ),
+                      subtitle: Text(sessionKeySubtitle(k, now, time.format)),
                       trailing: fullAdmin && k.activeAt(now)
                           ? IconButton(
                               key: ValueKey('session-remove-${k.id}'),
@@ -227,81 +235,84 @@ class _AddSessionDialogState extends State<_AddSessionDialog> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final wantsProxy = _scopes.contains(SessionScope.proxy);
+    // Scrolls as a whole at large text, with the actions always in view.
     return AlertDialog(
       title: const Text('Add a session'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextField(
-              key: const ValueKey('session-label'),
-              controller: _label,
-              autofocus: true,
-              maxLength: 80,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                hintText: 'e.g. Claude cloud session',
-                counterText: '',
-              ),
+      scrollable: true,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            key: const ValueKey('session-label'),
+            controller: _label,
+            autofocus: true,
+            maxLength: 80,
+            decoration: const InputDecoration(
+              labelText: 'Name',
+              hintText: 'e.g. Claude cloud session',
+              counterText: '',
             ),
-            const SizedBox(height: 8),
-            TextField(
-              key: const ValueKey('session-phone'),
-              controller: _phone,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Test phone number',
-                hintText: '+60123456789',
-                helperText: 'The only number the session may text or read codes for.',
-                helperMaxLines: 2,
-              ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('session-phone'),
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(
+              labelText: 'Test phone number',
+              hintText: '+60123456789',
+              helperText: 'The only number the session may text or read codes for.',
+              helperMaxLines: 2,
+              helperStyle: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
             ),
-            const SizedBox(height: 12),
-            Text('The session may', style: t.textTheme.labelLarge),
-            for (final s in SessionScope.values)
-              CheckboxListTile(
-                key: ValueKey('session-scope-${s.id}'),
-                contentPadding: EdgeInsets.zero,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: Text(s.label),
-                subtitle: Text(s.description, style: t.textTheme.bodySmall),
-                value: _scopes.contains(s),
-                onChanged: (v) => setState(() => v == true ? _scopes.add(s) : _scopes.remove(s)),
-              ),
-            if (wantsProxy) ...[
-              const SizedBox(height: 4),
-              if (widget.gateways.isEmpty)
-                Text(
-                  'No gateway phone yet: pair one with "Pair a gateway phone" first.',
-                  style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.error),
-                )
-              else
-                SearchableDropdownFormField<String>(
-                  key: const ValueKey('session-proxy-device'),
-                  isExpanded: true,
-                  initialValue: _proxyDevice,
-                  decoration: const InputDecoration(labelText: 'Internet through', isDense: true),
-                  items: [
-                    for (final d in widget.gateways)
-                      DropdownMenuItem(value: d.id, child: Text(d.title, overflow: TextOverflow.ellipsis)),
-                  ],
-                  onChanged: (v) => setState(() => _proxyDevice = v),
-                ),
+          ),
+          // How long, before the list of what it may do, so it is never
+          // below the fold.
+          const SizedBox(height: 12),
+          SearchableDropdownFormField<int>(
+            key: const ValueKey('session-hours'),
+            isExpanded: true,
+            initialValue: _hours,
+            decoration: const InputDecoration(labelText: 'Lasts', isDense: true),
+            items: [
+              for (final h in sessionKeyHoursChoices) DropdownMenuItem(value: h, child: Text(sessionKeyHoursLabel(h))),
             ],
-            const SizedBox(height: 12),
-            SearchableDropdownFormField<int>(
-              key: const ValueKey('session-hours'),
-              isExpanded: true,
-              initialValue: _hours,
-              decoration: const InputDecoration(labelText: 'Lasts', isDense: true),
-              items: [
-                for (final h in sessionKeyHoursChoices) DropdownMenuItem(value: h, child: Text(sessionKeyHoursLabel(h))),
-              ],
-              onChanged: (v) => setState(() => _hours = v ?? _hours),
+            onChanged: (v) => setState(() => _hours = v ?? _hours),
+          ),
+          const SizedBox(height: 12),
+          Text('The session may', style: t.textTheme.labelLarge),
+          for (final s in SessionScope.values)
+            CheckboxListTile(
+              key: ValueKey('session-scope-${s.id}'),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(s.label),
+              subtitle: Text(s.description, style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t))),
+              value: _scopes.contains(s),
+              onChanged: (v) => setState(() => v == true ? _scopes.add(s) : _scopes.remove(s)),
             ),
+          if (wantsProxy) ...[
+            const SizedBox(height: 4),
+            if (widget.gateways.isEmpty)
+              Text(
+                'No gateway phone yet: pair one with "Pair a gateway phone" first.',
+                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.error),
+              )
+            else
+              SearchableDropdownFormField<String>(
+                key: const ValueKey('session-proxy-device'),
+                isExpanded: true,
+                initialValue: _proxyDevice,
+                decoration: const InputDecoration(labelText: 'Internet through', isDense: true),
+                items: [
+                  for (final d in widget.gateways)
+                    DropdownMenuItem(value: d.id, child: Text(d.title, overflow: TextOverflow.ellipsis)),
+                ],
+                onChanged: (v) => setState(() => _proxyDevice = v),
+              ),
           ],
-        ),
+        ],
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
@@ -327,22 +338,32 @@ class _ShowKeyDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SelectableText(
-            made.key,
-            key: const ValueKey('session-key-value'),
-            style: t.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace'),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: BusyButton.tonal(
-              key: const ValueKey('session-key-copy'),
-              icon: const Icon(Icons.copy),
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: made.key));
-                if (context.mounted) showInfo(context, 'Copied');
-              },
-              child: const Text('Copy'),
+          // The key in a filled box, Copy beside it.
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: t.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+              child: Row(children: [
+                Expanded(
+                  child: SelectableText(
+                    made.key,
+                    key: const ValueKey('session-key-value'),
+                    style: t.textTheme.bodyMedium?.copyWith(fontFamily: 'monospace', color: t.colorScheme.onSurface),
+                  ),
+                ),
+                IconButton(
+                  key: const ValueKey('session-key-copy'),
+                  tooltip: 'Copy key',
+                  icon: const Icon(Icons.copy),
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: made.key));
+                    if (context.mounted) showInfo(context, 'Copied');
+                  },
+                ),
+              ]),
             ),
           ),
           const SizedBox(height: 8),

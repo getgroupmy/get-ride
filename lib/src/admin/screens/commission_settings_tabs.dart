@@ -163,6 +163,7 @@ class _CommissionSettingsTabState extends ConsumerState<CommissionSettingsTab> {
                   if (c.allowNegativeCredit)
                     TextField(
                       key: const ValueKey('commission-negative-limit'),
+                      textInputAction: TextInputAction.done,
                       controller: _limit,
                       enabled: edit,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -215,6 +216,7 @@ class _CommissionSettingsTabState extends ConsumerState<CommissionSettingsTab> {
                         Expanded(
                           child: TextField(
                             key: const ValueKey('commission-base-add'),
+                            textInputAction: TextInputAction.done,
                             controller: _extra,
                             enabled: edit,
                             decoration: const InputDecoration(
@@ -416,6 +418,7 @@ class _TierDialogState extends State<_TierDialog> {
               children: [
                 TextFormField(
                   key: const ValueKey('tier-name'),
+                  textInputAction: TextInputAction.next,
                   controller: _name,
                   maxLength: 80,
                   decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. Gold driver'),
@@ -432,6 +435,7 @@ class _TierDialogState extends State<_TierDialog> {
                 const SizedBox(height: 8),
                 TextFormField(
                   key: const ValueKey('tier-threshold'),
+                  textInputAction: TextInputAction.next,
                   controller: _threshold,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: decimal,
@@ -472,6 +476,7 @@ class _TierDialogState extends State<_TierDialog> {
                 ),
                 TextFormField(
                   key: const ValueKey('tier-value'),
+                  textInputAction: TextInputAction.next,
                   controller: _value,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: decimal,
@@ -486,6 +491,7 @@ class _TierDialogState extends State<_TierDialog> {
                 ),
                 TextFormField(
                   key: const ValueKey('tier-note'),
+                  textInputAction: TextInputAction.done,
                   controller: _note,
                   maxLength: 300,
                   decoration: const InputDecoration(labelText: 'Note (optional)'),

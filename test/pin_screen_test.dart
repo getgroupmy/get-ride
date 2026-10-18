@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/auth_utils.dart' show SignInPhone;
 import 'package:get_ride/src/data/auth_repository.dart';
 import 'package:get_ride/src/features/auth/pin_screen.dart';
 import 'package:get_ride/src/providers.dart';
@@ -59,6 +60,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(auth.sent, ['+60123456789']);
     expect(opened.single, contains('next=unlock'));
+    expect(opened.single, isNot(contains('phone')), reason: 'the number stays out of the address');
+    expect(SignInPhone.value, '+60123456789');
   });
 
   testWidgets('a wrong PIN does not offer the SMS sign-in', (tester) async {

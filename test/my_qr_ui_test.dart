@@ -252,6 +252,7 @@ Future<GoRouter> _app(
   _FakeMyRide? myRide,
   _FakeReferrals? referrals,
   List<Override> extra = const [],
+  Profile? profile,
 }) async {
   _size(tester, size);
   final router = GoRouter(
@@ -314,14 +315,14 @@ Future<GoRouter> _app(
       overrides: [
         currentUserIdProvider.overrideWithValue(user),
         partnerProvider.overrideWith((ref) async => partner ? Partner({'id': 'p1', 'status': 'approved'}) : null),
-        profileProvider.overrideWith((ref) async => null),
+        profileProvider.overrideWith((ref) async => profile),
         myQrRepositoryProvider.overrideWithValue(qr),
         myQrClockProvider.overrideWithValue(() => _now),
         myRideRepositoryProvider.overrideWithValue(myRide ?? _FakeMyRide()),
         myRideSettingsStoreProvider.overrideWithValue(_MemoryStore()),
         referralRepositoryProvider.overrideWithValue(referrals ?? _FakeReferrals()),
         qrPngRendererProvider.overrideWithValue((data, {color = Colors.black, caption}) async => _png),
-        imageSharerProvider.overrideWithValue((i) async {}),
+        imageSharerProvider.overrideWithValue((i) async => false),
         scannerTorchProvider.overrideWithValue((_) async {}),
         myRideScanViewProvider.overrideWithValue(
           (controller, onCode) => Center(
@@ -422,6 +423,16 @@ void main() {
       expect(find.byKey(const ValueKey('my-qr-unavailable')), findsOneWidget);
       expect(find.text("My QR isn't available yet"), findsOneWidget);
       expect(find.byKey(const ValueKey('my-qr-tabs')), findsNothing);
+    });
+
+    testWidgets('a rider sees their invite code as a QR straight away, not an empty Generate card', (tester) async {
+      final qr = _FakeQr();
+      await _app(tester, qr: qr, profile: Profile({'id': 'me', 'referral_code': 'AINA123'}));
+      expect(find.byKey(const ValueKey('my-qr-tabs')), findsNothing);
+      expect(find.byKey(const ValueKey('my-qr-invite')), findsOneWidget);
+      expect(find.text('AINA123'), findsOneWidget);
+      expect(find.byKey(const ValueKey('my-qr-empty-referral')), findsNothing);
+      expect(find.byKey(const ValueKey('my-qr-generate-referral')), findsOneWidget, reason: 'an expiring one can still be made');
     });
 
     testWidgets('a rider has only GET.Referral; generating asks for a lifetime', (tester) async {

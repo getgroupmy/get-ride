@@ -56,6 +56,7 @@ import '../../core/vehicle_onboarding.dart' show firstVehicleStep;
 import '../../data/vehicle_assignment_repository.dart';
 import '../../admin/screens/people/people_logic.dart' show parseStringList;
 import '../../widgets/side_menu_host.dart';
+import '../shell/app_side_menu.dart' show AppSideMenuHost;
 import '../../widgets/trip_safety.dart';
 import '../../widgets/net_image.dart';
 import 'trip_handover_panel.dart' show HandoverOffersCard;
@@ -66,6 +67,15 @@ final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
 );
 
 /// Partners whose record lets them take jobs.
+/// The driver home sheet's lowest height, as a share of [screenHeight]:
+/// 20%, or on a short screen enough for the online switch card (128 px),
+/// at most half.
+double driverSheetRest(double screenHeight) {
+  if (screenHeight <= 0) return 0.2;
+  final needed = 128 / screenHeight;
+  return needed <= 0.2 ? 0.2 : (needed >= 0.5 ? 0.5 : needed);
+}
+
 bool partnerCanDrive(Partner p) {
   final s = p.status ?? '';
   return s == 'approved' || s.startsWith('permit-');
@@ -704,6 +714,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   @override
   Widget build(BuildContext context) {
     final partner = ref.watch(partnerProvider);
+    // A phone-sized page (the side menu's): the menu button top left. On a
+    // wide one with the rail it joins the page buttons on the right, clear
+    // of the "You are offline" panel.
+    final size = MediaQuery.sizeOf(context);
+    final sideMenu = SideMenuHost.of(context) != null || AppSideMenuHost.appliesAt(size.width, size.height);
     // My Ride's stars and the services' search radii: the queue re-sorts
     // and re-filters as they arrive (both empty when unavailable).
     ref.watch(favouriteRiderIdsProvider);
@@ -771,8 +786,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         onChanged: _toggle,
                         secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
                         title: Text(_online ? 'You are online' : 'You are offline'),
+                        // One line: on a phone on its side the card must fit
+                        // the sheet's lowest height.
                         subtitle: Text(
                           [p.name, p.vehicle, p.plate].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
@@ -856,11 +875,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 final queue = _queueOrder(open, wide: false);
                 // The new request is the sheet up from the bottom, not a card here.
                 final floating = queue.sorted;
+                // Fully down (just the online switch) until the driver drags
+                // it up; on a short screen (a phone on its side) low enough
+                // still holds the whole switch card, so the map buttons
+                // stand clear above it.
+                final rest = driverSheetRest(MediaQuery.sizeOf(context).height);
                 return MapSheetLayout(
-                  // Fully down (just the online switch) until the driver
-                  // drags it up.
-                  initial: 0.2,
-                  min: 0.2,
+                  initial: rest,
+                  min: rest,
                   locked: floating.isNotEmpty,
                   map: Stack(children: [
                     Positioned.fill(child: map),
@@ -911,7 +933,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                       context.push('/drive/scheduled');
                     },
                   ),
-                if (partner.value != null)
+                // After approval: an application in progress adds its vehicle
+                // from the application itself.
+                if (partner.value != null && partnerCanDrive(partner.value!))
                   _floatingButton(
                     tooltip: 'My vehicles',
                     icon: Icons.directions_car_outlined,
@@ -919,28 +943,39 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                       context.push('/drive/vehicles');
                     },
                   ),
+                // No side menu (a wide screen with the rail): the menu joins
+                // these buttons instead of sitting over the panel's corner.
+                if (!sideMenu)
+                  _floatingButton(
+                    key: const ValueKey('partner-menu-button'),
+                    tooltip: 'Menu',
+                    icon: Icons.menu,
+                    onPressed: () => showPartnerMenu(context),
+                  ),
               ]),
             ),
           ),
         ),
-        // The menu: top left, exactly where the home map has it.
-        Positioned(
-          left: 16,
-          top: 16,
-          child: SafeArea(
-            child: FloatingActionButton.small(
-              key: const ValueKey('partner-menu-button'),
-              heroTag: 'partner-menu',
-              tooltip: 'Menu',
-              onPressed: () {
-                // The side menu on phones; a sheet where there is none.
-                final menu = SideMenuHost.of(context);
-                menu == null ? showPartnerMenu(context) : menu.open();
-              },
-              child: const Icon(Icons.menu),
+        // The menu: top left, exactly where the home map has it (on a
+        // phone, with its side menu).
+        if (sideMenu)
+          Positioned(
+            left: 16,
+            top: 16,
+            child: SafeArea(
+              child: FloatingActionButton.small(
+                key: const ValueKey('partner-menu-button'),
+                heroTag: 'partner-menu',
+                tooltip: 'Menu',
+                onPressed: () {
+                  // The side menu on phones; a sheet where there is none.
+                  final menu = SideMenuHost.of(context);
+                  menu == null ? showPartnerMenu(context) : menu.open();
+                },
+                child: const Icon(Icons.menu),
+              ),
             ),
           ),
-        ),
         // A new request on a phone: inDrive's sheet up from the bottom, over
         // everything (the desktop has it over the map instead).
         if (partner.value case final p? when _online && MediaQuery.sizeOf(context).width < 900)
@@ -1226,14 +1261,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 '${formatDistance(r.distanceKm)} trip',
                 r.paymentMode,
                 '${r.passengers} pax',
-              ].join(' · '), style: t.textTheme.bodySmall);
+              ].join(' · '), style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)));
             },
           ),
           const SizedBox(height: 8),
           Row(children: [
             Icon(Icons.trip_origin, size: 16, color: Colors.green.shade700),
             const SizedBox(width: 8),
-            Expanded(child: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
+            Expanded(child: Text(r.pickupLabel, maxLines: 2, overflow: TextOverflow.ellipsis)),
           ]),
           if (r.stops.isNotEmpty)
             Row(key: ValueKey('queue-stops-${r.id}'), children: [
@@ -1249,7 +1284,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           Row(children: [
             Icon(Icons.location_on, size: 16, color: Colors.red.shade700),
             const SizedBox(width: 8),
-            Expanded(child: Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis)),
+            Expanded(child: Text(r.dropLabel, maxLines: 2, overflow: TextOverflow.ellipsis)),
           ]),
           if (r.note != null) Padding(
             padding: const EdgeInsets.only(top: 6),
@@ -1393,14 +1428,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             dense: true,
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
-            title: Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
+            title: Text(r.pickupLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
             subtitle: r.pickupAddress == null ? null : Text(r.pickupAddress!, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
           ListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.location_on, color: Colors.red.shade700),
-            title: Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
+            title: Text(r.dropLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
             subtitle: Text(
               [
                 '${formatDistance(r.distanceKm)} trip',

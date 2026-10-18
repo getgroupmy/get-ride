@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/core/support_media.dart';
 import 'package:get_ride/src/data/account_repository.dart';
 import 'package:get_ride/src/data/models.dart';
@@ -12,6 +13,7 @@ import 'package:get_ride/src/data/voice_recorder.dart';
 import 'package:get_ride/src/features/support/call/mic_gate.dart';
 import 'package:get_ride/src/widgets/voice_note.dart';
 import 'package:get_ride/src/features/support/support_chat_screen.dart';
+import 'package:get_ride/src/features/support/support_screen.dart' show supportStatusLabel, ticketsProvider;
 import 'package:get_ride/src/providers.dart';
 
 import 'chat_media_fakes.dart';
@@ -35,6 +37,12 @@ class _FakeAccount implements AccountRepository {
     required Duration duration,
     String? senderName,
   }) async => sent.add('$ticketId:voice:$ext:${duration.inSeconds}');
+
+  @override
+  Future<SupportTicket> openTicket(String subject) async => SupportTicket({'id': 't9', 'subject': subject});
+
+  @override
+  Future<void> sendMessage(String ticketId, String body, {String? senderName}) async => sent.add('$ticketId:$body');
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -179,4 +187,61 @@ void main() {
     await tester.pump();
     expect(account.sent, ['t1:voice:m4a:4']);
   });
+
+  test("a new chat's address becomes its ticket's", () {
+    expect(supportTicketAddress('/account/support/new', 't9'), '/account/support/t9');
+    expect(supportTicketAddress('/account/support/t1', 't9'), isNull);
+    expect(supportStatusLabel('open'), 'Open');
+    expect(supportStatusLabel('in_progress'), 'In progress');
+  });
+
+  testWidgets('after the first message the address is the ticket, so a reload keeps the chat', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(600, 1000);
+    addTearDown(tester.view.reset);
+    final account = _FakeAccount();
+    final router = GoRouter(
+      initialLocation: '/account/support/new',
+      routes: [
+        GoRoute(
+          path: '/account/support/:ticketId',
+          builder: (_, s) => SupportChatScreen(ticketId: s.pathParameters['ticketId']!),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          accountRepositoryProvider.overrideWithValue(account),
+          profileProvider.overrideWith((ref) async => Profile({'id': 'me', 'name': 'Ali'})),
+          supportMessagesProvider.overrideWith((ref, id) => Stream.value(const <SupportMessage>[])),
+          photoCameraAvailableProvider.overrideWithValue(false),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'My card was charged twice');
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('support-send')));
+    await tester.pumpAndSettle();
+    expect(account.sent, ['t9:My card was charged twice']);
+    expect(router.routeInformationProvider.value.uri.path, '/account/support/t9');
+  });
+
+  testWidgets('the chat is headed by its ticket and status', (tester) async {
+    await pump(
+      tester,
+      null,
+      const [],
+      extra: [
+        ticketsProvider.overrideWith(
+          (ref) async => [SupportTicket({'id': 't1', 'subject': 'Support request', 'ticket_number': 4, 'status': 'open'})],
+        ),
+      ],
+    );
+    expect(find.text('#4 · Support request'), findsOneWidget);
+    expect(find.text('Open'), findsOneWidget);
+  });
 }
+

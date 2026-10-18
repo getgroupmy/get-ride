@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../core/overlay_back.dart';
 import '../providers.dart';
-import '../widgets/busy.dart';
 import '../widgets/common.dart';
 import '../widgets/keyboard_dismiss.dart';
 import '../widgets/loading_skeleton.dart';
@@ -195,35 +194,13 @@ class _AdminTitle extends StatelessWidget {
       ]);
 }
 
-/// Shown to signed-in users without any `admin_access` grant. Offers the
-/// one-time bootstrap when the project has no admins at all.
-class AdminGate extends ConsumerStatefulWidget {
+/// Shown to signed-in users without any `admin_access` grant. The old
+/// "Claim first-admin access" bootstrap is gone: since migration 0147
+/// `admin_access_bootstrap()` is not callable by clients, and nothing tells
+/// a non-admin whether the project has admins, so the button only ever
+/// failed. A new project's first admin is granted from the server.
+class AdminGate extends StatelessWidget {
   const AdminGate({super.key});
-
-  @override
-  ConsumerState<AdminGate> createState() => _AdminGateState();
-}
-
-class _AdminGateState extends ConsumerState<AdminGate> {
-  bool _busy = false;
-
-  Future<void> _bootstrap() async {
-    setState(() => _busy = true);
-    try {
-      final ok = await ref.read(adminRepositoryProvider).bootstrap();
-      if (!mounted) return;
-      if (ok) {
-        ref.invalidate(adminAccessProvider);
-        showInfo(context, 'You are now the first administrator.');
-      } else {
-        showInfo(context, 'This project already has administrators. Ask one of them to grant you access.');
-      }
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -235,11 +212,11 @@ class _AdminGateState extends ConsumerState<AdminGate> {
           icon: Icons.lock_outline,
           title: 'No admin access',
           message: 'Your account has no admin permissions. An existing administrator can grant them '
-              'under Sub-admins. On a brand-new project, the first account to claim it becomes the administrator.',
-          action: BusyButton.outlined(
-            onPressed: _busy ? null : _bootstrap,
-
-            child: const Text('Claim first-admin access'),
+              'under Sub-admins.',
+          action: OutlinedButton(
+            key: const ValueKey('admin-gate-back'),
+            onPressed: () => context.go('/account'),
+            child: const Text('Back to my account'),
           ),
         ),
       );

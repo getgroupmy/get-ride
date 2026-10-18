@@ -38,3 +38,41 @@ String composeContactPhone(String dialCode, String local) {
   if (l.replaceAll(RegExp(r'\D'), '').isEmpty) return '';
   return l.startsWith('+') ? normalizeE164(l) : composePhone(dialCode, l);
 }
+
+/// [phone] as the app shows it: `+60 19-556 5525`. A Malaysian number is
+/// grouped the local way (mobile `1X-XXX XXXX`, `11-XXXX XXXX`, Klang
+/// Valley `3-XXXX XXXX`, other areas `X-XXX XXXX`); another country's
+/// number gets its dial code split off and the rest left whole. Display
+/// only: the stored number is untouched. Empty in, empty out.
+String formatPhoneDisplay(String? phone) {
+  final raw = (phone ?? '').trim();
+  final digits = raw.replaceAll(RegExp(r'\D'), '');
+  if (digits.length < 6) return raw;
+  final String local;
+  if (raw.startsWith('+')) {
+    if (!digits.startsWith('60')) {
+      final split = splitContactPhone(raw, defaultDialCode: '+60');
+      if (split.local.startsWith('+') || split.country.dialCode == '+60') return '+$digits';
+      return '${split.country.dialCode} ${split.local}';
+    }
+    local = digits.substring(2);
+  } else if (digits.startsWith('0')) {
+    local = digits.substring(1);
+  } else if (digits.startsWith('60') && digits.length >= 10) {
+    local = digits.substring(2);
+  } else {
+    return raw;
+  }
+  String group(int head, int mid) {
+    if (local.length <= head + mid) return local;
+    final rest = local.substring(head);
+    return '${local.substring(0, head)}-${rest.substring(0, mid)} ${rest.substring(mid)}';
+  }
+
+  final grouped = local.startsWith('1')
+      ? group(2, local.length >= 10 ? 4 : 3)
+      : local.startsWith('3')
+          ? group(1, 4)
+          : group(1, 3);
+  return '+60 $grouped';
+}
