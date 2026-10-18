@@ -149,7 +149,8 @@ class _SearchFieldState<T> extends FormFieldState<T> {
             context: context,
             isScrollControlled: true,
             useSafeArea: true,
-            showDragHandle: true,
+            // No handle on a short screen: the room goes to the rows.
+            showDragHandle: MediaQuery.sizeOf(context).height >= kSearchSheetBelowHeight,
             builder: (_) => list(true),
           )
         : await showAppDialog<_Chosen<T>>(id: 'common.search-select', context: context, builder: (_) => list(false));
@@ -169,9 +170,16 @@ class _Chosen<T> {
 /// dialog: a dialog squeezed by the keyboard showed two to four rows.
 const kSearchSheetBelowWidth = 600.0;
 
-/// Whether the picker opens as a full-height sheet (a phone) rather than a
-/// dialog.
-bool searchAsSheet(BuildContext context) => MediaQuery.sizeOf(context).width < kSearchSheetBelowWidth;
+/// Below this height too: a phone on its side is wide, but a dialog there
+/// left the list no rows once the keyboard was up.
+const kSearchSheetBelowHeight = 500.0;
+
+/// Whether the picker opens as a full-height sheet (a phone, either way
+/// round) rather than a dialog.
+bool searchAsSheet(BuildContext context) {
+  final size = MediaQuery.sizeOf(context);
+  return size.width < kSearchSheetBelowWidth || size.height < kSearchSheetBelowHeight;
+}
 
 class _SearchDialog<T> extends StatefulWidget {
   const _SearchDialog({required this.items, required this.selected, this.title, this.labels, this.sheet = false});
@@ -199,6 +207,17 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
     super.dispose();
   }
 
+  /// [field], with Cancel beside it when [compact] (there is no room for
+  /// Cancel's own row under the list).
+  Widget _withCancel(bool compact, Widget field) => !compact
+      ? field
+      : Row(
+          children: [
+            Expanded(child: field),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ],
+        );
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -211,24 +230,27 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
     final searchable = widget.items.length >= kSearchSelectFrom;
     final size = MediaQuery.sizeOf(context);
     final sheet = widget.sheet;
+    // Little room left over the keyboard (a phone on its side): the search
+    // box and the rows only, so a few rows still show.
+    final compact = sheet && size.height - MediaQuery.viewInsetsOf(context).bottom < 320;
     final content = Column(
       mainAxisSize: sheet ? MainAxisSize.max : MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if ((widget.title ?? '').isNotEmpty)
+        if ((widget.title ?? '').isNotEmpty && !compact)
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
             child: Text(widget.title!, style: t.textTheme.titleMedium),
           ),
         if (searchable) Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: TextField(
+          padding: compact ? const EdgeInsets.fromLTRB(16, 4, 8, 4) : const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: _withCancel(compact, TextField(
             key: const ValueKey('search-select-field'),
             controller: _query,
             autofocus: true,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search',
+              hintText: compact && (widget.title ?? '').isNotEmpty ? 'Search ${widget.title}' : 'Search',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: q.isEmpty
                   ? null
@@ -250,9 +272,9 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
               ];
               if (hits.length == 1) Navigator.pop(context, _Chosen<T>(hits.single.value));
             },
-          ),
+          )),
         ),
-        if (searchable) Padding(
+        if (searchable && !compact) Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Text(
             q.isEmpty ? '${widget.items.length} choices' : '${shown.length} of ${widget.items.length}',
@@ -287,7 +309,7 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
                   },
                 ),
         ),
-        Align(
+        if (!compact || !searchable) Align(
           alignment: Alignment.centerRight,
           child: Padding(
             padding: const EdgeInsets.all(8),
@@ -301,7 +323,10 @@ class _SearchDialogState<T> extends State<_SearchDialog<T>> {
       // the rows scroll in what is left.
       return LayoutBuilder(
         builder: (context, box) => SizedBox(
-          height: box.maxHeight.isFinite && box.maxHeight < size.height * 0.9 ? box.maxHeight : size.height * 0.9,
+          // All of it on a short screen (on its side), where every row counts.
+          height: size.height < kSearchSheetBelowHeight && box.maxHeight.isFinite
+              ? box.maxHeight
+              : box.maxHeight.isFinite && box.maxHeight < size.height * 0.9 ? box.maxHeight : size.height * 0.9,
           child: Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
             child: content,
@@ -350,7 +375,7 @@ Future<T?> showSearchPicker<T>(
           context: context,
           isScrollControlled: true,
           useSafeArea: true,
-          showDragHandle: true,
+          showDragHandle: MediaQuery.sizeOf(context).height >= kSearchSheetBelowHeight,
           builder: (_) => list(true),
         )
       : await showAppDialog<_Chosen<T>>(id: 'common.search-picker', context: context, builder: (_) => list(false));

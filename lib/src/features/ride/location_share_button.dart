@@ -103,7 +103,7 @@ class LocationShareButton extends ConsumerWidget {
 Future<LocationShareChoice?> showLocationShareSheet(BuildContext context, {required bool on}) =>
     showAppSheet<LocationShareChoice>(id: 'location-share-button.show-location-share-sheet',
       context: context,
-      isScrollControlled: true,
+      fitContent: true,
       builder: (c) {
         final t = Theme.of(c);
         return SafeArea(
@@ -173,6 +173,7 @@ Future<LocationShareChoice?> showLocationShareSheet(BuildContext context, {requi
 /// ride (the setting). Null when closed.
 Future<LocationOffScope?> showLocationOffScopeSheet(BuildContext context) => showAppSheet<LocationOffScope>(id: 'location-share-button.show-location-share-sheet-2',
   context: context,
+  fitContent: true,
   builder: (c) => SafeArea(
     child: Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),

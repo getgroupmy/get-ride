@@ -159,27 +159,32 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
         child: ResponsiveCenter(
           maxWidth: 480,
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
-              if (Navigator.of(context).canPop())
-                IconButton.outlined(
-                  key: const ValueKey('sign-in-back'),
-                  tooltip: 'Back',
-                  style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.of(context).maybePop(),
-                ),
-              const Spacer(),
-              IconButton(
-                key: const ValueKey('phone-diagnostics'),
-                tooltip: 'Connection diagnostics',
-                icon: Icon(Icons.network_check, color: muted),
-                onPressed: () => context.push('/diagnostics'),
-              ),
-            ]),
-            Expanded(
-              child: SingleChildScrollView(
+          // One scroll for the whole page, Next at the foot of the screen
+          // when there is room and under the form when there is not (on its
+          // side with the keyboard up).
+          child: CustomScrollView(
+            key: const ValueKey('phone-scroll'),
+            slivers: [
+              SliverFillRemaining(
+                hasScrollBody: false,
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Row(children: [
+                    if (Navigator.of(context).canPop())
+                      IconButton.outlined(
+                        key: const ValueKey('sign-in-back'),
+                        tooltip: 'Back',
+                        style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                    const Spacer(),
+                    IconButton(
+                      key: const ValueKey('phone-diagnostics'),
+                      tooltip: 'Connection diagnostics',
+                      icon: Icon(Icons.network_check, color: muted),
+                      onPressed: () => context.push('/diagnostics'),
+                    ),
+                  ]),
                   const SizedBox(height: 12),
                   Text(
                     'Join us via phone number',
@@ -212,23 +217,24 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                       child: const ListTile(leading: Icon(Icons.gpp_bad_outlined), title: Text(serviceNotAvailable)),
                     ),
                   ],
+                  const Spacer(),
+                  const SizedBox(height: 12),
+                  BusyButton.filled(
+                    key: const ValueKey('phone-next'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(58),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      textStyle: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    onPressed: _busy || blocked ? null : _continue,
+                    child: _busy
+                        ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Next'),
+                  ),
                 ]),
               ),
-            ),
-            const SizedBox(height: 12),
-            BusyButton.filled(
-              key: const ValueKey('phone-next'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(58),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                textStyle: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              onPressed: _busy || blocked ? null : _continue,
-              child: _busy
-                  ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Next'),
-            ),
-          ]),
+            ],
+          ),
         ),
       ),
     );
@@ -317,6 +323,8 @@ class _PhoneFieldState extends State<_PhoneField> {
               focusedBorder: InputBorder.none,
               filled: false,
               isDense: true,
+              // A 48-high tap target, not the dense field's 36.
+              contentPadding: EdgeInsets.symmetric(vertical: 12),
             ),
             onSubmitted: (_) => widget.onSubmitted(),
           ),

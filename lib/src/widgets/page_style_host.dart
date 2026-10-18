@@ -235,6 +235,11 @@ SurfaceEntry? surfaceEntry(String id) {
 /// [showModalBottomSheet] for sheet [id] (listed in App Page Settings): its
 /// curve, background, handle, height and dim as the admin set them, over
 /// what the caller passed.
+///
+/// [fitContent] is for a body built as a fixed column: the sheet then grows
+/// to what it holds, stops under the status bar, sits above the keyboard and
+/// scrolls when it does not fit (a phone on its side is 393 high), so its
+/// last row and buttons stay reachable ([FitSheetBody]).
 Future<T?> showAppSheet<T>({
   required String id,
   required BuildContext context,
@@ -258,6 +263,7 @@ Future<T?> showAppSheet<T>({
   Offset? anchorPoint,
   AnimationStyle? sheetAnimationStyle,
   bool? requestFocus,
+  bool fitContent = false,
 }) {
   final surface = 'sheet:$id';
   final s = SurfaceStyle.of(context, surface);
@@ -270,7 +276,11 @@ Future<T?> showAppSheet<T>({
   final back = OverlayRouteBack();
   return back.track(showModalBottomSheet<T>(
     context: context,
-    builder: (_) => back.wrap(SurfaceFrame(id: surface, styles: s.styles, child: Builder(builder: builder))),
+    builder: (_) => back.wrap(SurfaceFrame(
+      id: surface,
+      styles: s.styles,
+      child: fitContent ? FitSheetBody(child: Builder(builder: builder)) : Builder(builder: builder),
+    )),
     backgroundColor: s.setColor('background', b) ?? backgroundColor,
     barrierLabel: barrierLabel,
     elevation: elevation,
@@ -280,7 +290,7 @@ Future<T?> showAppSheet<T>({
         ? constraints
         : (constraints ?? const BoxConstraints()).copyWith(maxHeight: screen * tallest / 100),
     barrierColor: dim == null ? barrierColor : Colors.black.withValues(alpha: dim / 100),
-    isScrollControlled: isScrollControlled,
+    isScrollControlled: isScrollControlled || fitContent,
     scrollControlDisabledMaxHeightRatio: scrollControlDisabledMaxHeightRatio,
     useRootNavigator: useRootNavigator,
     isDismissible: isDismissible,
@@ -293,6 +303,34 @@ Future<T?> showAppSheet<T>({
     sheetAnimationStyle: sheetAnimationStyle,
     requestFocus: requestFocus,
   ));
+}
+
+/// A sheet body that fits the screen: as tall as [child] up to the space
+/// under the status bar and above the keyboard, scrolling past that. The
+/// keyboard's height is taken here, so [child] does not pad for it again.
+class FitSheetBody extends StatelessWidget {
+  const FitSheetBody({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final keyboard = mq.viewInsets.bottom;
+    final room = mq.size.height - mq.viewPadding.top - keyboard - 8;
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: room < 120 ? 120 : room),
+        // The child sees no keyboard: it is already above it.
+        child: MediaQuery.removeViewInsets(
+          context: context,
+          removeBottom: true,
+          child: SingleChildScrollView(child: child),
+        ),
+      ),
+    );
+  }
 }
 
 /// [showDialog] for modal [id] (listed in App Page Settings): its curve,

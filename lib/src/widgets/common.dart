@@ -240,8 +240,9 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    // Scrolls where it is short (a phone on its side, the keyboard up).
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 48, color: t.colorScheme.outline),

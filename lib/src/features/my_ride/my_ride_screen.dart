@@ -213,13 +213,11 @@ class _Empty extends StatelessWidget {
 Future<void> showAddFavouriteSheet(BuildContext context, {String? code}) async {
   final personal = await showAppSheet<PersonalQrScan>(id: 'my-ride.show-add-favourite-sheet',
     context: context,
-    isScrollControlled: true,
+    // Above the keyboard, scrolling so Add stays reachable on its side.
+    fitContent: true,
     showDragHandle: true,
     useSafeArea: true,
-    builder: (c) => Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(c).bottom),
-      child: AddFavouriteSheet(initialCode: code),
-    ),
+    builder: (c) => AddFavouriteSheet(initialCode: code),
   );
   if (personal != null && context.mounted) await showQrResultSheet(context, personal);
 }
