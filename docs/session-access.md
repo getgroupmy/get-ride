@@ -62,13 +62,12 @@ codes; any admin sees the list, with when each key was last used.
 
 ## What a session does with it
 
-Every call takes the key as `p_key`, or from the request's `X-Session-Key`
-header when `p_key` is left out (an explicit `p_key` wins), and needs no
-sign-in: the session calls the backend's REST endpoint with the project's
-public anon key (the one in the apps). `SUPABASE_URL` and `SUPABASE_ANON_KEY`
-are the project's; `api.getride.my` serves the same backend for networks that
-cannot look up `*.supabase.co`. The lines below pass the key explicitly; with
-the network secret, drop the `p_key` field from each.
+Every call reads the key from the request's `X-Session-Key` header, which
+the network secret adds, and needs no sign-in: the session calls the
+backend's REST endpoint with the project's public anon key (the one in the
+apps). `SUPABASE_URL` and `SUPABASE_ANON_KEY` are the project's;
+`api.getride.my` serves the same backend for networks that cannot look up
+`*.supabase.co`.
 
 ```bash
 rpc() {  # rpc <function> '<json params>'
@@ -78,18 +77,26 @@ rpc() {  # rpc <function> '<json params>'
 }
 
 # What this key is: its name, number, scopes, expiry and proxy phone.
-rpc session_key_info "{\"p_key\": \"$GETRIDE_SESSION_KEY\"}"
+rpc session_key_info '{}'
 
 # Text the test number (support_message by default, or marketing).
-rpc session_key_send_sms "{\"p_key\": \"$GETRIDE_SESSION_KEY\", \"p_body\": \"Hello from the test\"}"
+rpc session_key_send_sms '{"p_body": "Hello from the test"}'
 
 # What was queued for the test number, newest first. With `codes`, a sign-in
 # code's text is in clear; this is how a session reads the code after it
 # asked the app to sign in with the test number.
-rpc session_key_outbox "{\"p_key\": \"$GETRIDE_SESSION_KEY\", \"p_limit\": 5}"
+rpc session_key_outbox '{"p_limit": 5}'
 
 # What the gateway received from the test number (after a time, optionally).
-rpc session_key_inbox "{\"p_key\": \"$GETRIDE_SESSION_KEY\", \"p_since\": \"2026-10-18T08:00:00Z\"}"
+rpc session_key_inbox '{"p_since": "2026-10-18T08:00:00Z"}'
+```
+
+With the key in the environment variable `GETRIDE_SESSION_KEY` instead, the
+session passes it itself, as `p_key` beside the other fields (an explicit
+`p_key` wins over the header):
+
+```bash
+rpc session_key_outbox "{\"p_key\": \"$GETRIDE_SESSION_KEY\", \"p_limit\": 5}"
 ```
 
 A refusal is an HTTP 4xx whose JSON carries `message` (`SESSION_KEY_INVALID`,
@@ -108,17 +115,19 @@ Sign-in SMS limits, so poll every few seconds, not every minute.
 ### Internet through the phone
 
 The relay at `proxy.getride.my` (`cloudflare/session-proxy/`) is an HTTP
-fetch-through: the URL to fetch goes after the first slash, the key in the
-`Authorization` header or in `X-Session-Key` (what the network secret adds;
-then the lines below need no `-H "Authorization: ..."`).
+fetch-through: the URL to fetch goes after the first slash, and the key
+comes in the `X-Session-Key` header the network secret adds.
 
 ```bash
-curl -H "Authorization: Bearer $GETRIDE_SESSION_KEY" \
-     https://proxy.getride.my/https://api.example.com/v1/thing?x=1
+curl "https://proxy.getride.my/https://api.example.com/v1/thing?x=1"
 
-curl -X POST -H "Authorization: Bearer $GETRIDE_SESSION_KEY" -H "Content-Type: application/json" \
-     -d '{"a": 1}' https://proxy.getride.my/https://api.example.com/v1/thing
+curl -X POST -H "Content-Type: application/json" -d '{"a": 1}' \
+     https://proxy.getride.my/https://api.example.com/v1/thing
 ```
+
+With the environment variable instead, the session sends the key itself,
+as `-H "Authorization: Bearer $GETRIDE_SESSION_KEY"` (or as
+`X-Session-Key`, when `Authorization` is for the target).
 
 The method, the body and the request headers go through as they are, apart
 from the key, the hop-by-hop headers and `Accept-Encoding` (the phone
