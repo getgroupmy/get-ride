@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -196,6 +197,19 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
         ),
       ),
     );
+  }
+
+  /// The map, built again only when what it shows changes: the countdown
+  /// rebuilds the sheet every second, which leaves the map alone.
+  Widget? _map0;
+  List<Object?>? _map0Deps;
+  Widget _cachedMap(BuildContext context) {
+    final deps = [widget.request, widget.me, widget.awayKm, _pickup, _drop, _trip, _toPickup];
+    if (_map0 == null || !listEquals(deps, _map0Deps)) {
+      _map0Deps = deps;
+      _map0 = _mapPart(context);
+    }
+    return _map0!;
   }
 
   Widget _mapPart(BuildContext context) {
@@ -406,7 +420,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: h * 0.94),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SizedBox(height: (h * 0.34).clamp(180.0, 320.0), child: _mapPart(context)),
+          SizedBox(height: (h * 0.34).clamp(180.0, 320.0), child: _cachedMap(context)),
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(12, 12, 16, 0),
