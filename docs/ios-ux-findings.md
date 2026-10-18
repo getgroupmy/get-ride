@@ -56,11 +56,14 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly, see the table.
 | 45 | Landscape + keyboard | Enter phone / OTP overflow 17 px, title scrolls off behind the back button | `phone_screen.dart:163`, `otp_screen.dart:105` | open |
 | 46 | Ride chat (SE + 1.3) | Empty-state text clipped on its second line above the quick replies (9 px) | `ride_chat_screen.dart:307` | open |
 | 47 | Back swipe | `PopScope(canPop: false)` disables the iOS edge swipe on Offer your fare and in-app web pages (and wizard inner steps) | `offer_fare_screen.dart:133`, `in_app_page.dart:128` | open |
+| 48 | Landscape safe area | SOS pill (`left: 12`) under the Dynamic Island; right-hand map buttons, sheet titles / cards and the confirm back pill in the 59 pt side strips; pinned footers are inset correctly | `ride_sos.dart:112`, `ride_map.dart`, `map_sheet_layout.dart`, `home_screen.dart:1645` | open |
+| 49 | Change phone → Code | No `AutofillHints.oneTimeCode`, so iOS doesn't offer the SMS code above the keyboard (sign-in OTP has it) | `change_phone_screen.dart:140` | open |
 | 29 | Contacts picker | "Choose from contacts" exists only on the web; iOS has a permission-free CNContactPickerViewController | `emergency_contacts_screen.dart:32-38` | suggestion |
 
 Sweeps over every screen: dark mode, text scale 1.3, iPhone SE and iOS
 Bold Text found nothing beyond #15 and #30 (bold text: no overflows at all);
-iPhone landscape found #41–#45, SE + text scale 1.3 combined found #46.
+iPhone landscape found #41–#45 and #48 (with the 59 pt side insets), SE + text
+scale 1.3 combined found #46.
 
 Checked and fine on iPhone: sign-in flow (welcome, phone, OTP with
 `oneTimeCode` autofill, PIN, set PIN, closed registrations), keyboard
