@@ -2727,6 +2727,171 @@ void main() {
     );
   });
 
+  group('edge', () {
+    final longProfile = Profile({
+      ..._profile.raw,
+      'name': 'Tengku Nur Aisyah Humaira binti Tengku Abdul Rahman Al-Haj',
+      'display_id': 'GR-1048291',
+    });
+    const from = 'Jalan Persiaran Eco Majestic Utama 3/12, Taman Eco Majestic Fasa 2B, Semenyih, Selangor';
+    const to = 'Suria KLCC Shopping Centre, Entrance 3 beside the aquarium, Kuala Lumpur City Centre';
+    final longRide = _tracked(
+      'accepted',
+      extra: {
+        'pickup_name': from,
+        'drop_name': to,
+        'partner_name': 'Muhammad Ravindran Kumar a/l Subramaniam',
+        'fare': 1234.5,
+        'ride_fare': 1234.5,
+      },
+    );
+    testWidgets('long name account', (t) => _shot(t, 'edge_account', route: '/account', profile: longProfile));
+    testWidgets(
+      'long name menu',
+      (t) => _shot(t, 'edge_menu', route: '/', profile: longProfile, act: (t) => tapKey(t, 'home-menu', 10)),
+    );
+    testWidgets('long name profile', (t) => _shot(t, 'edge_profile', route: '/account/profile', profile: longProfile));
+    testWidgets('long name receive', (t) => _shot(t, 'edge_receive', route: '/wallet/receive', profile: longProfile));
+    testWidgets(
+      'long addresses trips',
+      (t) => _shot(
+        t,
+        'edge_trips',
+        route: '/trips',
+        past: [_ride('r1', 'completed', from: from, to: to, fare: 1234.5)],
+      ),
+    );
+    testWidgets(
+      'long addresses ride',
+      (t) => _shot(t, 'edge_ride', route: '/ride/r1', overrides: _trackingOverrides(longRide)),
+    );
+    testWidgets(
+      'long addresses ride up',
+      (t) => _shot(
+        t,
+        'edge_ride_up',
+        route: '/ride/r1',
+        overrides: _trackingOverrides(longRide),
+        act: (t) async {
+          await t.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -500), warnIfMissed: false);
+          await _settle(t);
+        },
+      ),
+    );
+    testWidgets(
+      'long addresses driver queue',
+      (t) => _shot(
+        t,
+        'edge_queue',
+        route: '/drive',
+        partner: _approved,
+        queue: [_request('q1', from, to, 1234.5, km: 52.3)],
+        act: (t) async {
+          await t.tap(find.text('You are offline'), warnIfMissed: false);
+          await _settle(t, 10);
+        },
+      ),
+    );
+    testWidgets(
+      'long addresses driver trip',
+      (t) => _shot(
+        t,
+        'edge_drive_trip',
+        route: '/drive/trip/r1',
+        partner: _approved,
+        overrides: _trackingOverrides(
+          RideRequest({
+            ...longRide.raw,
+            'rider_id': 'rider',
+            'partner_id': 'me',
+            'rider_name': 'Tengku Nur Aisyah Humaira binti Tengku Abdul Rahman',
+          }),
+        ),
+      ),
+    );
+    testWidgets(
+      'long addresses home ongoing',
+      (t) => _shot(
+        t,
+        'edge_home_ongoing',
+        route: '/',
+        rides: _FakeRides(ongoing: RideRequest({...longRide.raw, 'status': 'open'})),
+      ),
+    );
+    testWidgets(
+      'set pin mismatch',
+      (t) => _shot(
+        t,
+        'edge_pin_mismatch',
+        screen: const SetPinScreen(),
+        keyboard: true,
+        act: (t) async {
+          final fields = find.byType(TextField);
+          await t.enterText(fields.at(0), '123456');
+          await t.enterText(fields.at(1), '654321');
+          await t.tap(find.text('Save PIN'), warnIfMissed: false);
+          await _settle(t);
+        },
+      ),
+    );
+    testWidgets(
+      'phone invalid',
+      (t) => _shot(
+        t,
+        'edge_phone_invalid',
+        route: '/login/phone',
+        signedIn: false,
+        keyboard: true,
+        act: (t) async {
+          await t.enterText(find.byType(TextField).first, '12');
+          await t.tap(find.text('Next'), warnIfMissed: false);
+          await _settle(t);
+        },
+      ),
+    );
+    testWidgets(
+      'vehicle plate empty',
+      (t) => _shot(
+        t,
+        'edge_plate_empty',
+        route: '/drive/vehicles/new',
+        partner: _approved,
+        overrides: _wizardOverrides(partnerRow: _partnerRow({..._filledIn, 'status': 'approved'})),
+        act: (t) async {
+          await t.tap(find.text('Continue'), warnIfMissed: false);
+          await _settle(t);
+        },
+      ),
+    );
+    testWidgets(
+      'add contact empty',
+      (t) => _shot(
+        t,
+        'edge_contact_empty',
+        route: '/account/emergency',
+        keyboard: true,
+        act: (t) async {
+          await t.tap(find.text('Add contact'), warnIfMissed: false);
+          await _settle(t);
+          await t.tap(find.text('Save'), warnIfMissed: false);
+          await _settle(t);
+        },
+      ),
+    );
+    testWidgets(
+      'change phone empty',
+      (t) => _shot(
+        t,
+        'edge_change_phone_empty',
+        route: '/account/settings/phone',
+        act: (t) async {
+          await t.tap(find.text('Send code'), warnIfMissed: false);
+          await _settle(t);
+        },
+      ),
+    );
+  });
+
   group('partner', () {
     testWidgets('drive (not a partner)', (t) => _shot(t, 'drive_none', route: '/drive'));
     testWidgets('drive dark', (t) => _shot(t, 'drive_none_dark', route: '/drive', dark: true));
