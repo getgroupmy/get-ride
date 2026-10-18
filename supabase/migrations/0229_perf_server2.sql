@@ -55,6 +55,18 @@
 --    admin page watches, joins the app's live list
 --    (lib/src/data/live_tables.dart); it is published since 0218 and added
 --    here if a copy lacks it.
+-- 4. A partner can remove their own draft vehicle. The only delete policy on
+--    vehicle was the admin's (0097), so a plate typed by mistake stayed on
+--    the account for good. "vehicle own draft delete" lets the owner (the
+--    login that created it, or the owning partner) delete it while it is
+--    an unsubmitted draft: status 'unapproved', permit 'pending', documents
+--    not passed, the wizard not finished (onboarding_step <> 'done'), no
+--    document sent for review, no driver assigned, no active session, no
+--    online location and no ride naming it. The check is a security-definer
+--    helper (vehicle_is_own_draft) so rows the caller can't see still
+--    count. Its photos in vehicle-documents/<id>/photos/ are left as an
+--    admin delete leaves them. The admin's delete is unchanged; the app's
+--    Remove button comes with a later UI change.
 -- ============================================================================
 
 -- 1. Rate limit counters ------------------------------------------------------
@@ -435,5 +447,36 @@ begin
   end if;
 end
 $$;
+
+-- 4. A partner removes their own draft vehicle ----------------------------------
+create or replace function public.vehicle_is_own_draft(p_vehicle uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select auth.uid() is not null and exists (
+    select 1 from public.vehicle v
+     where v.id = p_vehicle
+       and (v.auth_user_id = auth.uid()
+            or exists (select 1 from public.partners p
+                        where p.id = v.owner_partner_id and p.auth_user_id = auth.uid()))
+       and v.status = 'unapproved'
+       and v.permit = 'pending'
+       and not v.documents_ok
+       and v.onboarding_step is distinct from 'done'
+       and not exists (select 1 from public.vehicle_documents d where d.vehicle_id = v.id)
+       and not exists (select 1 from public.vehicle_user_assignment a where a.vehicle_id = v.id)
+       and not exists (select 1 from public.vehicle_active_session a where a.vehicle_id = v.id)
+       and not exists (select 1 from public.online_driver_locations o where o.vehicle_id = v.id)
+       and not exists (select 1 from public.ride_requests r where r.vehicle_id = v.id::text));
+$$;
+revoke execute on function public.vehicle_is_own_draft(uuid) from public, anon;
+grant execute on function public.vehicle_is_own_draft(uuid) to authenticated;
+
+drop policy if exists "vehicle own draft delete" on public.vehicle;
+create policy "vehicle own draft delete" on public.vehicle
+  for delete to authenticated using ((select auth.uid()) is not null and public.vehicle_is_own_draft(id));
 
 notify pgrst, 'reload schema';
