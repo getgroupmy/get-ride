@@ -135,6 +135,15 @@ select pg_temp.refused($q$select public.session_key_send_sms('000000000000000000
 -- The sign-in hook queues a code for the test number, and the gateway hears
 -- back from it; another number's traffic is none of the session's business.
 reset role;
+-- Queued as the admin's, to the test number, text trimmed (read as the owner:
+-- the outbox is no anonymous caller's to read).
+do $$
+begin
+  if (select count(*) from public.sms_outbox where to_phone = '+60123456789' and body in ('Hello from CI', 'Promo')
+        and created_by = '00000000-0000-0000-0000-0000000223a1' and status = 'queued') <> 2 then
+    raise exception 'FAILED: the session''s SMS are not queued as the admin''s';
+  end if;
+end $$;
 insert into public.sms_outbox (channel, to_phone, body) values
   ('otp', '+60123456789', 'Your GET.ride code is 4321'),
   ('otp', '+60199999999', 'Your GET.ride code is 8765');
@@ -154,12 +163,6 @@ declare
   sms_key text := (select key from keys where name = 'sms');
   r jsonb;
 begin
-  -- Queued as the admin's, to the test number, text trimmed.
-  if (select count(*) from public.sms_outbox where to_phone = '+60123456789' and body in ('Hello from CI', 'Promo')
-        and created_by = '00000000-0000-0000-0000-0000000223a1' and status = 'queued') <> 2 then
-    raise exception 'FAILED: the session''s SMS are not queued as the admin''s';
-  end if;
-
   r := public.session_key_outbox(full_key);
   if jsonb_array_length(r) <> 3 then raise exception 'FAILED: outbox %', r; end if;
   if r->0->>'body' <> 'Your GET.ride code is 4321' then raise exception 'FAILED: codes in clear: %', r->0; end if;
