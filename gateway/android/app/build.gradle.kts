@@ -73,4 +73,6 @@ flutter {
 dependencies {
     // NotificationCompat, ServiceCompat, ContextCompat.registerReceiver.
     implementation("androidx.core:core-ktx:1.16.0")
+    // The relay WebSocket and the requests it hands this phone (ProxyClient).
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

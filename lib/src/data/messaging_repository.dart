@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/messaging.dart';
+import '../core/session_access.dart';
 import '../core/sms_fallback.dart';
 import '../core/sms_limits.dart';
 import '../providers.dart';
@@ -118,6 +119,45 @@ class MessagingRepository {
 
   Future<void> saveSmsFallback(SmsFallbackSettings s) =>
       _db.from('sms_fallback_settings').update(s.toPatch()).eq('id', 1);
+
+  // ---- Session access (migration 0223) ---------------------------------------
+
+  /// Every session key, newest first (never the key itself).
+  Future<List<SessionKey>> sessionKeys() async {
+    final rows = await _db.rpc('admin_session_keys');
+    return [
+      if (rows is List)
+        for (final r in rows)
+          if (r is Map) ?SessionKey.fromRow(Map<String, dynamic>.from(r)),
+    ];
+  }
+
+  /// Adds a key (full admin only); answers the key, shown once, and when it
+  /// ends.
+  Future<({String key, DateTime? expiresAt})> createSessionKey({
+    required String label,
+    required String testPhone,
+    required Set<SessionScope> scopes,
+    required int hours,
+    String? proxyDevice,
+  }) async {
+    final r = await _db.rpc(
+      'admin_session_key_create',
+      params: {
+        'p_label': label,
+        'p_test_phone': testPhone,
+        'p_scopes': [for (final s in scopes) s.id],
+        'p_hours': hours,
+        'p_proxy_device': proxyDevice,
+      },
+    );
+    final m = r is Map ? r : const {};
+    final key = '${m['key'] ?? ''}';
+    if (key.isEmpty) throw StateError('The server did not answer with a key.');
+    return (key: key, expiresAt: DateTime.tryParse('${m['expires_at'] ?? ''}'));
+  }
+
+  Future<void> revokeSessionKey(String id) => _db.rpc('admin_session_key_revoke', params: {'p_id': id});
 
   /// Alerts, confirmed by the app, and texted, over the last [hours].
   Future<SmsFallbackSummary> smsFallbackSummary({int hours = 24}) async =>

@@ -49,6 +49,8 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:maps.heading', SurfaceKind.modal, 'Maps · Heading', 'lib/src/admin/screens/maps/maps_screen.dart'),
   SurfaceEntry('modal:maps.usage-tab', SurfaceKind.modal, 'Maps · Usage tab', 'lib/src/admin/screens/maps/maps_screen.dart'),
   SurfaceEntry('modal:messaging.rename', SurfaceKind.modal, 'Messaging · Rename', 'lib/src/admin/screens/messaging_screen.dart'),
+  SurfaceEntry('modal:messaging.session-add', SurfaceKind.modal, 'Messaging · Session add', 'lib/src/admin/screens/session_access_card.dart'),
+  SurfaceEntry('modal:messaging.session-key', SurfaceKind.modal, 'Messaging · Session key', 'lib/src/admin/screens/session_access_card.dart'),
   SurfaceEntry('modal:messaging.show-gateway-pairing-code', SurfaceKind.modal, 'Messaging · Gateway pairing code', 'lib/src/admin/screens/messaging_screen.dart'),
   SurfaceEntry('modal:messaging.show-gateway-pairing-code-2', SurfaceKind.modal, 'Messaging · Gateway pairing code', 'lib/src/admin/screens/messaging_screen.dart'),
   SurfaceEntry('modal:meter-digital.submit', SurfaceKind.modal, 'Meter digital · Submit', 'lib/src/admin/screens/meterapp/meter_digital_screen.dart'),

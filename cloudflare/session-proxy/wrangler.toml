@@ -1,0 +1,30 @@
+name = "getride-session-proxy"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# Only the route below (see cloudflare/subdomain-proxy/wrangler.toml for why
+# there is no workers.dev address).
+workers_dev = false
+preview_urls = false
+
+# More specific than the subdomain proxy's `*.getride.my/*`, so this host is
+# this worker's. The proxied wildcard DNS record that worker's deploy keeps
+# (`scripts/ci/cloudflare_wildcard.ts`) makes proxy.getride.my resolve.
+routes = [
+  { pattern = "proxy.getride.my/*", zone_name = "getride.my" },
+]
+
+[vars]
+# The backend the keys are checked against. The anon key is the project's
+# public one (it is in the apps too); row-level security limits it.
+SUPABASE_URL = "https://rqlavogkgywxspuxgiwk.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxbGF2b2drZ3l3eHNwdXhnaXdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0NTk5NzQsImV4cCI6MjA5NDAzNTk3NH0.xzx_EdvoOeTLxNQTIzG0EiF9H34OlHirHAdSVA4_aG0"
+
+# One object per gateway phone: its WebSocket and the requests in flight.
+[[durable_objects.bindings]]
+name = "RELAY"
+class_name = "PhoneRelay"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PhoneRelay"]

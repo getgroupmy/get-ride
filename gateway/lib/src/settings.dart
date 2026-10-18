@@ -17,6 +17,8 @@ class GatewaySettings {
   static const _subscriptionKey = 'gateway.subscription_id';
   static const _onlineKey = 'gateway.online';
   static const _pairKey = 'gateway.key';
+  static const _shareInternetKey = 'gateway.share_internet';
+  static const _mobileDataOnlyKey = 'gateway.mobile_data_only';
 
   /// This install's id, made once; the server keys the device row on it.
   String get deviceId {
@@ -51,8 +53,25 @@ class GatewaySettings {
   bool get wantOnline => _prefs.getBool(_onlineKey) ?? false;
   set wantOnline(bool v) => _prefs.setBool(_onlineKey, v);
 
-  GatewayConfig config() =>
-      GatewayConfig(deviceId: deviceId, label: label, simNumber: simNumber, subscriptionId: subscriptionId);
+  /// Whether this phone's internet is shared with test sessions through the
+  /// relay (migration 0223), while the gateway is online.
+  bool get shareInternet => _prefs.getBool(_shareInternetKey) ?? false;
+  set shareInternet(bool v) => _prefs.setBool(_shareInternetKey, v);
+
+  /// Whether shared requests go out over mobile data only (the point of
+  /// sharing: a real SIM's network), or the phone's default route.
+  bool get mobileDataOnly => _prefs.getBool(_mobileDataOnlyKey) ?? true;
+  set mobileDataOnly(bool v) => _prefs.setBool(_mobileDataOnlyKey, v);
+
+  GatewayConfig config() => GatewayConfig(
+    deviceId: deviceId,
+    label: label,
+    simNumber: simNumber,
+    subscriptionId: subscriptionId,
+    gatewayKey: gatewayKey,
+    shareInternet: shareInternet,
+    mobileDataOnly: mobileDataOnly,
+  );
 
   void _set(String key, String? v) {
     final c = _clean(v);

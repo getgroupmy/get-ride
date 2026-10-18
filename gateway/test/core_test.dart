@@ -61,6 +61,21 @@ void main() {
     expect(SimCard.fromMap({'label': 'x'}), isNull);
   });
 
+  test('the shared internet\'s events: a state, a line for the log, hosts only', () {
+    expect(proxyStateFrom({'state': 'connected'}), ProxyState.connected);
+    expect(proxyStateFrom({'state': 'error', 'reason': 'x'}), ProxyState.error);
+    expect(proxyStateFrom({'state': 'request', 'host': 'a'}), isNull);
+    expect(proxyStateFrom({'state': 'mobile', 'available': true}), isNull);
+    expect(proxyStateFrom({}), isNull);
+    expect(proxyLogLine({'state': 'request', 'host': 'api.example.com', 'status': 404}),
+        'Relayed a request to api.example.com (404)');
+    expect(proxyLogLine({'state': 'request', 'host': 'api.example.com', 'error': 'timeout'}),
+        'Request to api.example.com failed: timeout');
+    expect(proxyLogLine({'state': 'error', 'reason': 'refused'}), contains('refused'));
+    expect(proxyLogLine({'state': 'mobile', 'available': false}), contains('down'));
+    expect(proxyLogLine({'state': 'connecting'}), isNull);
+  });
+
   test('the version the admin page shows matches pubspec.yaml', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     expect(RegExp(r'^version:\s*(\S+)', multiLine: true).firstMatch(pubspec)!.group(1), startsWith('$gatewayVersion+'));

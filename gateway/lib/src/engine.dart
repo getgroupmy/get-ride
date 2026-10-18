@@ -9,6 +9,11 @@
 // A failed call to the server backs off (5 s doubling to 2 min) and keeps
 // trying; a refusal (the account is not an admin, or signed out) stops the
 // gateway and says why, since retrying cannot fix it.
+//
+// While online it can also share the phone's internet with a test session
+// (migration 0223): the phone's side keeps a socket to the relay and
+// performs the requests it is handed; the engine only turns that on and off
+// with the switch and the gateway, and keeps its state for the screen.
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -19,15 +24,36 @@ import 'sms_platform.dart';
 
 enum GatewayState { off, starting, online, reconnecting }
 
+/// The relay a shared internet connects to (cloudflare/session-proxy);
+/// overridden with --dart-define=GATEWAY_RELAY_URL=... for another zone.
+const defaultRelayUrl = String.fromEnvironment('GATEWAY_RELAY_URL', defaultValue: 'wss://proxy.getride.my/phone');
+
 /// What the engine reads from the phone's settings when it needs it.
 class GatewayConfig {
-  const GatewayConfig({required this.deviceId, this.label, this.simNumber, this.subscriptionId});
+  const GatewayConfig({
+    required this.deviceId,
+    this.label,
+    this.simNumber,
+    this.subscriptionId,
+    this.gatewayKey,
+    this.shareInternet = false,
+    this.mobileDataOnly = true,
+  });
 
   /// This install's stable id (not the server's device row id).
   final String deviceId;
   final String? label;
   final String? simNumber;
   final int? subscriptionId;
+
+  /// The device key from pairing; the shared internet connects with it.
+  final String? gatewayKey;
+
+  /// Whether to share this phone's internet while the gateway is online.
+  final bool shareInternet;
+
+  /// Whether shared requests go out over mobile data only.
+  final bool mobileDataOnly;
 }
 
 class GatewayEngine extends ChangeNotifier {
@@ -39,8 +65,11 @@ class GatewayEngine extends ChangeNotifier {
     this.pollEvery = const Duration(seconds: 5),
     this.heartbeatEvery = const Duration(minutes: 1),
     this.schedule = true,
+    this.relayUrl = defaultRelayUrl,
     DateTime Function()? now,
-  }) : _now = now ?? DateTime.now;
+  }) : _now = now ?? DateTime.now {
+    platform.onProxyEvent(_proxyEvent);
+  }
 
   final GatewayBackend backend;
   final SmsPlatform platform;
@@ -48,6 +77,9 @@ class GatewayEngine extends ChangeNotifier {
   final String? appVersion;
   final Duration pollEvery;
   final Duration heartbeatEvery;
+
+  /// Where the shared internet connects (empty: never shared).
+  final String relayUrl;
 
   /// False in tests, which drive [tick] themselves.
   final bool schedule;
@@ -66,6 +98,17 @@ class GatewayEngine extends ChangeNotifier {
   /// The server's id for this phone, once a heartbeat has been accepted.
   String? _device;
   String? get device => _device;
+
+  /// The shared internet, as the phone's side last reported it.
+  ProxyState _proxy = ProxyState.off;
+  ProxyState get proxy => _proxy;
+
+  /// Why the shared internet stopped by itself, until it is started again.
+  String? _proxyReason;
+  String? get proxyReason => _proxyReason;
+
+  /// Whether the phone's side was last asked to share.
+  bool _proxyAsked = false;
 
   Timer? _timer;
   StreamSubscription<IncomingSms>? _incomingSub;
@@ -119,7 +162,63 @@ class GatewayEngine extends ChangeNotifier {
       _info('Gateway stopped.');
     }
     _setState(GatewayState.off);
+    await _stopProxy();
     await _safe(platform.stopService);
+  }
+
+  /// Shares the phone's internet, or stops sharing it, as the settings say
+  /// now: called when the gateway comes online and when the switch moves.
+  /// Nothing is shared while the gateway is off, or before it is paired.
+  Future<void> syncProxy() async {
+    final c = config();
+    final key = c.gatewayKey;
+    if (!running || !c.shareInternet || key == null || relayUrl.isEmpty) {
+      await _stopProxy();
+      return;
+    }
+    if (!_proxyAsked) {
+      _proxyReason = null;
+      _proxyAsked = true;
+    }
+    await _safe(() => platform.startProxy(url: relayUrl, key: key, label: c.label ?? '', mobileDataOnly: c.mobileDataOnly));
+  }
+
+  Future<void> _stopProxy() async {
+    if (!_proxyAsked && _proxy == ProxyState.off) return;
+    _proxyAsked = false;
+    await _safe(platform.stopProxy);
+    if (_proxy != ProxyState.off && _proxy != ProxyState.error) _setProxy(ProxyState.off, 'Internet sharing stopped.');
+  }
+
+  /// An event from the phone's side of the shared internet (ProxyClient.kt).
+  void _proxyEvent(Map<String, Object?> event) {
+    final state = proxyStateFrom(event);
+    final line = proxyLogLine(event);
+    if (state != null) {
+      if (state == ProxyState.error) {
+        _proxyAsked = false;
+        _proxyReason = '${event['reason'] ?? 'The relay refused this phone.'}';
+      }
+      // Reconnecting is reported on every retry: logged once per outage.
+      if (state != _proxy) _setProxy(state, line);
+      return;
+    }
+    if (event['state'] == 'request') {
+      if (event['error'] == null) stats.relayed++;
+      if (line != null) log.add(GatewayLogEntry(_now(), GatewayLogKind.proxy, line));
+    } else if (line != null) {
+      log.add(GatewayLogEntry(_now(), GatewayLogKind.proxy, line));
+    }
+    notifyListeners();
+  }
+
+  void _setProxy(ProxyState s, String? line) {
+    _proxy = s;
+    if (line != null) {
+      log.add(GatewayLogEntry(_now(), s == ProxyState.error ? GatewayLogKind.error : GatewayLogKind.proxy, line));
+    }
+    if (running) unawaited(_safe(() => platform.startService(_serviceText())));
+    notifyListeners();
   }
 
   /// One round: heartbeat when due, then received SMS, unsent reports and
@@ -205,6 +304,7 @@ class GatewayEngine extends ChangeNotifier {
     if (_state != GatewayState.online) {
       _setState(GatewayState.online);
       unawaited(_safe(() => platform.startService(_serviceText())));
+      unawaited(syncProxy());
     }
   }
 
@@ -220,7 +320,9 @@ class GatewayEngine extends ChangeNotifier {
     }
   }
 
-  String _serviceText() => 'Online · ${stats.sent} sent · ${stats.received} received';
+  String _serviceText() =>
+      'Online · ${stats.sent} sent · ${stats.received} received'
+      '${_proxy == ProxyState.connected ? ' · internet shared' : ''}';
 
   void _info(String text) => log.add(GatewayLogEntry(_now(), GatewayLogKind.info, text));
 

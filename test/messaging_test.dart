@@ -6,6 +6,7 @@ import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/admin_registry.dart';
 import 'package:get_ride/src/admin/screens/messaging_screen.dart';
 import 'package:get_ride/src/core/messaging.dart';
+import 'package:get_ride/src/core/session_access.dart';
 import 'package:get_ride/src/data/messaging_repository.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -42,6 +43,8 @@ class _FakeRepo extends MessagingRepository {
   Future<List<Map<String, dynamic>>> recentOutbox({int limit = 20}) async => const [];
   @override
   Future<List<Map<String, dynamic>>> recentInbox({int limit = 20}) async => const [];
+  @override
+  Future<List<SessionKey>> sessionKeys() async => const [];
 }
 
 void main() {

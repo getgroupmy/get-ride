@@ -167,6 +167,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             const SizedBox(height: 12),
             _phoneCard(context),
             const SizedBox(height: 12),
+            _InternetCard(engine: e, settings: widget.settings, onChanged: () => setState(() {})),
+            const SizedBox(height: 12),
             _StatsRow(stats: e.stats),
             const SizedBox(height: 12),
             _LogCard(entries: e.log.entries),
@@ -346,6 +348,80 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
+/// Sharing this phone's internet with a test session (migration 0223):
+/// the switch, mobile data only, and how the relay connection is doing.
+class _InternetCard extends StatelessWidget {
+  const _InternetCard({required this.engine, required this.settings, required this.onChanged});
+
+  final GatewayEngine engine;
+  final GatewaySettings settings;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final sharing = settings.shareInternet;
+    final (status, color) = switch (engine.proxy) {
+      ProxyState.off => (
+        !sharing
+            ? 'Not shared.'
+            : engine.running
+            ? 'Starting…'
+            : 'Turn the gateway on to share.',
+        t.colorScheme.outline,
+      ),
+      ProxyState.connecting => ('Connecting to the relay…', Colors.amber.shade700),
+      ProxyState.connected => (
+        'Shared · ${engine.stats.relayed} request${engine.stats.relayed == 1 ? '' : 's'} relayed',
+        Colors.green,
+      ),
+      ProxyState.reconnecting => ('No connection to the relay. Retrying.', Colors.amber.shade700),
+      ProxyState.error => (engine.proxyReason ?? 'The relay refused this phone.', t.colorScheme.error),
+    };
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Internet for test sessions', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(
+              'A test session given this phone in Admin → SMS / WhatsApp → Session access makes its requests '
+              'through this phone, so they leave from this SIM\'s network. Only while the gateway is online.',
+              style: t.textTheme.bodySmall,
+            ),
+            SwitchListTile(
+              key: const ValueKey('proxy-switch'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Share this phone\'s internet'),
+              subtitle: Text(status, key: const ValueKey('proxy-state'), style: TextStyle(color: color)),
+              value: sharing,
+              onChanged: (v) {
+                settings.shareInternet = v;
+                onChanged();
+                unawaited(engine.syncProxy());
+              },
+            ),
+            SwitchListTile(
+              key: const ValueKey('proxy-mobile-data'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Mobile data only'),
+              subtitle: const Text('Shared requests use the SIM\'s network even on Wi-Fi.'),
+              value: settings.mobileDataOnly,
+              onChanged: (v) {
+                settings.mobileDataOnly = v;
+                onChanged();
+                unawaited(engine.syncProxy());
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StatsRow extends StatelessWidget {
   const _StatsRow({required this.stats});
 
@@ -395,10 +471,11 @@ class _LogCard extends StatelessWidget {
       GatewayLogKind.received => Icons.call_received,
       GatewayLogKind.info => Icons.info_outline,
       GatewayLogKind.error => Icons.warning_amber,
+      GatewayLogKind.proxy => Icons.public,
     };
     Color color(GatewayLogKind k) => switch (k) {
       GatewayLogKind.failed || GatewayLogKind.error => t.colorScheme.error,
-      GatewayLogKind.sent || GatewayLogKind.received => t.colorScheme.primary,
+      GatewayLogKind.sent || GatewayLogKind.received || GatewayLogKind.proxy => t.colorScheme.primary,
       GatewayLogKind.info => t.colorScheme.onSurfaceVariant,
     };
     String time(DateTime at) =>
