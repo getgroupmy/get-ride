@@ -4,12 +4,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show HttpMethod;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/app_builds.dart';
 import '../../core/app_version.dart';
 import '../../data/app_version_repository.dart';
 import '../partner/driver_online.dart';
 import '../../core/installed_app.dart';
+import '../../platform/device_abis.dart';
+import '../../providers.dart';
 
 /// Opens the store; the store app is a different app, so this leaves ours.
 typedef StoreOpener = Future<bool> Function(String url);
@@ -21,6 +25,30 @@ Future<bool> _openStore(String url) async {
     return false;
   }
 }
+
+/// The link the update button opens, from the admin's Store Link.
+typedef UpdateLinkResolver = Future<String> Function(String url);
+
+/// When the Store Link is the universal APK of the `android-latest`
+/// release, an Android phone gets the APK for its own processor instead
+/// (from app-install; core/app_builds.dart `updateApkLink`), a third of the
+/// download. Any other link, or no answer, opens as configured.
+final updateLinkResolverProvider = Provider<UpdateLinkResolver>(
+  (ref) => (url) async {
+    if (currentPlatformKey() != 'android' || !isUniversalApkLink(url)) return url;
+    try {
+      final res = await ref
+          .read(supabaseProvider)
+          .functions
+          .invoke('app-install', method: HttpMethod.get, queryParameters: {'platform': 'android'})
+          .timeout(const Duration(seconds: 8));
+      final abis = await readDeviceAbis();
+      return updateApkLink(url, AppBuild.fromJson('android', res.data), abis);
+    } catch (_) {
+      return url;
+    }
+  },
+);
 
 /// SharedPreferences key: the latest version whose "update available" card
 /// the user dismissed, so it is not shown again until a newer one ships.
@@ -71,8 +99,10 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
   }
 
   Future<void> _update(UpdateVerdict v) async {
-    final url = v.storeUrl;
-    if (url == null) return;
+    final configured = v.storeUrl;
+    if (configured == null) return;
+    final url = await ref.read(updateLinkResolverProvider)(configured);
+    if (!mounted) return;
     final ok = await (widget.openStore ?? _openStore)(url);
     if (!ok && mounted) setState(() => _failed = true);
   }
