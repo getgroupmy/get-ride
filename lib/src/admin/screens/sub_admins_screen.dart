@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../providers.dart';
 import '../../widgets/busy.dart';
@@ -12,7 +13,6 @@ import '../profile_search.dart';
 import '../sub_admin_grants.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
-import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart';
 
 typedef _GrantsView = ({List<AdminGrant> grants, Map<String, Map<String, dynamic>> people});
@@ -51,16 +51,11 @@ class _AdminSubAdminsScreenState extends ConsumerState<AdminSubAdminsScreen> {
   GrantFilter _filter = GrantFilter.all;
   String? _page;
 
+  /// Grant access or Edit access, at their own addresses
+  /// (/admin/sub-admins/grant, /admin/sub-admins/ID/edit) so a reload
+  /// stays on them.
   Future<void> _edit(_GrantsView view, {String? profileId}) async {
-    final saved = await Navigator.of(context).push<bool>(
-      AppPageRoute(id: 'sub-admins.edit',
-        fullscreenDialog: true,
-        builder: (_) => GrantEditorScreen(
-          allGrants: view.grants,
-          person: profileId == null ? null : {...?view.people[profileId], 'id': profileId},
-        ),
-      ),
-    );
+    final saved = await context.push<bool>(subAdminEditorPath(profileId));
     if (saved == true) {
       ref.invalidate(_grantsProvider);
       ref.invalidate(adminAccessProvider);
@@ -235,6 +230,55 @@ class _AdminSubAdminsScreenState extends ConsumerState<AdminSubAdminsScreen> {
 /// One person's access, every page at once: find the person (name, phone,
 /// email or id), set a level per page or all of them, add a note, save.
 /// Pops true when something was written.
+/// Where Grant access (no [profileId]) or Edit access for [profileId] is.
+String subAdminEditorPath(String? profileId) =>
+    profileId == null ? '/admin/sub-admins/grant' : '/admin/sub-admins/${Uri.encodeComponent(profileId)}/edit';
+
+final _grantPersonProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?, String>((ref, id) async {
+  final people = await ref.watch(adminRepositoryProvider).profilesByIds([id]);
+  return people[id];
+});
+
+/// Grant access, or Edit access for [profileId], as a page of its own: it
+/// loads the grants and the person itself, so its address opens it again
+/// after a reload.
+class GrantEditorPage extends ConsumerWidget {
+  const GrantEditorPage({super.key, this.profileId});
+
+  final String? profileId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final id = profileId;
+    final title = id == null ? 'Grant access' : 'Edit access';
+    Widget page(Widget body) => Scaffold(appBar: AppBar(title: Text(title)), body: body);
+    if (ref.watch(moduleAccessProvider('sub-admins')) != AccessLevel.edit) {
+      return page(
+        ref.watch(adminAccessProvider).isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : const EmptyState(icon: Icons.lock_outline, title: "You can't change admin access"),
+      );
+    }
+    final view = ref.watch(_grantsProvider);
+    final grants = view.value;
+    if (grants == null) {
+      return page(AsyncView(value: view, onRetry: () => ref.invalidate(_grantsProvider), data: (_) => const SizedBox()));
+    }
+    if (id == null) return GrantEditorScreen(allGrants: grants.grants);
+    final known = grants.people[id];
+    if (known != null) return GrantEditorScreen(allGrants: grants.grants, person: {...known, 'id': id});
+    // Not holding any access yet: the person read by id.
+    final person = ref.watch(_grantPersonProvider(id));
+    return person.value == null && !person.hasError && person.isLoading
+        ? page(const Center(child: CircularProgressIndicator()))
+        : person.hasError
+        ? page(AsyncView(value: person, onRetry: () => ref.invalidate(_grantPersonProvider(id)), data: (_) => const SizedBox()))
+        : person.value == null
+        ? page(const EmptyState(icon: Icons.person_off_outlined, title: 'No such person'))
+        : GrantEditorScreen(allGrants: grants.grants, person: {...person.value!, 'id': id});
+  }
+}
+
 class GrantEditorScreen extends ConsumerStatefulWidget {
   const GrantEditorScreen({super.key, required this.allGrants, this.person});
 
@@ -314,7 +358,7 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
     final id = '${person['id']}';
     final plan = planGrantChanges(_existing, _levels, notes: _notes.text);
     if (plan.upserts.isEmpty && plan.deletes.isEmpty) {
-      Navigator.pop(context, false);
+      _close(false);
       return;
     }
     final me = ref.read(currentUserIdProvider);
@@ -336,7 +380,21 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
           .setGrants(profileId: id, upserts: plan.upserts, deletes: plan.deletes, notes: notes.isEmpty ? null : notes),
       success: 'Access saved for ${_personLabel(person, id)}',
     );
-    if (saved && mounted) Navigator.pop(context, true);
+    if (saved && mounted) {
+      ref.invalidate(_grantsProvider);
+      ref.invalidate(adminAccessProvider);
+      _close(true);
+    }
+  }
+
+  /// Back to the list: popped with [saved] when it was opened from there,
+  /// gone to when the page was opened by its address (a reload).
+  void _close(bool saved) {
+    if (Navigator.of(context).canPop()) {
+      Navigator.pop(context, saved);
+    } else {
+      context.go('/admin/sub-admins');
+    }
   }
 
   @override
@@ -466,10 +524,23 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
                       key: ValueKey('grant-level-${e.key}'),
                       showSelectedIcon: false,
                       style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                      segments: const [
-                        ButtonSegment(value: GrantLevel.none, label: Text('None')),
-                        ButtonSegment(value: GrantLevel.read, label: Text('View')),
-                        ButtonSegment(value: GrantLevel.edit, label: Text('Edit')),
+                      // Each read as "<page>: View, selected" (or not).
+                      segments: [
+                        for (final (l, label) in const [
+                          (GrantLevel.none, 'None'),
+                          (GrantLevel.read, 'View'),
+                          (GrantLevel.edit, 'Edit'),
+                        ])
+                          ButtonSegment(
+                            value: l,
+                            label: Semantics(
+                              selected: (_levels[e.key] ?? GrantLevel.none) == l,
+                              inMutuallyExclusiveGroup: true,
+                              label: '${e.value}: $label',
+                              excludeSemantics: true,
+                              child: Text(label),
+                            ),
+                          ),
                       ],
                       selected: {_levels[e.key] ?? GrantLevel.none},
                       onSelectionChanged: (s) => setState(() => _levels = {..._levels, e.key: s.first}),
