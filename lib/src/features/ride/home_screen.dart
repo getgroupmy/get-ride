@@ -19,6 +19,7 @@ import '../../core/fare.dart';
 import '../../core/fare_info.dart' show fareRateLines;
 import '../../core/scheduled_rides.dart';
 import '../../core/search_timer.dart';
+import '../../core/smart_address.dart' show isCoordinateLabel;
 import '../../core/fare_tariff.dart';
 import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart';
@@ -448,7 +449,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void setState(VoidCallback fn) {
     super.setState(fn);
     _changes.value++;
-    _confirmBack.set(_drop != null, _leaveConfirm);
+    _confirmBack.set(_drop != null, _backFromConfirm);
   }
 
   @override
@@ -786,7 +787,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _updateRoute();
   }
 
-  Future<void> _choose(_PinTarget target) async {
+  /// What was typed for the destination now on the map ('' or null when
+  /// it was picked without typing), for the search to open on again.
+  String? _dropQuery;
+
+  /// [again]: the trip Back on the confirm step came from, its destination
+  /// and stops, searched again from what was typed for it.
+  Future<void> _choose(_PinTarget target, {({Place to, String query, List<Place> stops})? again}) async {
     final pickup = target == _PinTarget.pickup;
     // One route sheet for both ends: From over To, opened on the one tapped.
     _syncRouteEnds();
@@ -797,12 +804,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       current: _here,
       usage: GateUsage.drop,
       from: _pickup,
-      to: _drop,
+      to: again?.to ?? _drop,
       routeEnds: true,
       startOnFrom: pickup,
       live: _routeEnds,
+      initialQuery: again?.query ?? '',
     );
     if (pick == null || !mounted) return;
+    // A new destination for the trip Back came from keeps its stops.
+    if (again != null && !pick.from && !pick.pickOnMap && _drop == null && _stops.isEmpty) {
+      _stops.addAll(again.stops);
+    }
+    if (!pickup && !pick.from) _dropQuery = pick.query;
     // The route's "From", changed in the same dialog: the pickup.
     final toPickup = pickup || pick.from;
     if (pick.pickOnMap) {
@@ -828,6 +841,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() => _pinTarget = _PinTarget.none);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
+    if (target != _PinTarget.pickup) _dropQuery = null;
     setState(() => target == _PinTarget.pickup ? _pickup = place : _drop = place);
     _updateRoute();
   }
@@ -1210,7 +1224,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  /// The confirm step's back arrow: off the trip, back to the home map.
+  /// Back on the confirm step (its arrow, the system's or the browser's):
+  /// off the trip and into the route search again, on what was typed for
+  /// the destination (else its name), so a wrong pick is put right without
+  /// typing it all again. Closing the search leaves the home map.
+  void _backFromConfirm() {
+    final drop = _drop;
+    final stops = [..._stops];
+    final typed = _dropQuery?.trim() ?? '';
+    _leaveConfirm();
+    if (drop == null) return;
+    final query = typed.isNotEmpty ? typed : (isCoordinateLabel(drop.name) ? '' : drop.name);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _drop != null) return;
+      unawaited(_choose(_PinTarget.drop, again: (to: drop, query: query, stops: stops)));
+    });
+  }
+
+  /// Off the trip, back to the home map.
   void _leaveConfirm() {
     setState(() {
       _drop = null;
@@ -1320,7 +1351,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         );
     void whereTo() => serviceOn ? _choose(_PinTarget.drop) : comingSoon(serviceComingSoonMessage);
+    void toRecent(Place p) {
+      if (!serviceOn) return comingSoon(serviceComingSoonMessage);
+      _dropQuery = null;
+      setState(() => _drop = p);
+      _updateRoute();
+    }
+
+    // The two most recent places stay in view with the sheet all the way
+    // down (portrait as on its side); any more only with the sheet up.
+    final firstRecent = recent.take(homeRecentAtRest).toList();
+    final moreRecent = recent.skip(homeRecentAtRest).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Where to first: the destination leads, over the vehicles.
+      sections.searchBar
+          ? HomeSearchPill(onTap: whereTo)
+          : ListTile(
+              key: const ValueKey('home-where-to'),
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.location_on, color: Colors.red.shade700),
+              title: const Text('Where to?'),
+              onTap: whereTo,
+            ),
+      const SizedBox(height: 12),
       if (sections.vehicleBar) ...[
         // Until a catalogue is known -- this read's, or the one this device
         // showed last time -- a skeleton: the built-in names and car icons
@@ -1336,7 +1389,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           )
         else
           const VehicleTypeBarSkeleton(),
-        const SizedBox(height: 12),
+        const SizedBox(height: 4),
       ],
       if (!sections.addressBar)
         ListTile(
@@ -1345,41 +1398,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           title: Text(_pickup?.name ?? 'Set pickup'),
           onTap: () => _choose(_PinTarget.pickup),
         ),
-      // The fold reaches the foot of the upcoming-ride card too, so the
-      // sheet all the way down shows it whole, clear of the home indicator.
+      // The fold reaches the foot of the upcoming-ride card and the first
+      // recent places too, so the sheet all the way down shows them whole,
+      // clear of the home indicator.
       KeyedSubtree(
         key: _foldKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            sections.searchBar
-                ? HomeSearchPill(onTap: whereTo)
-                : ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.location_on, color: Colors.red.shade700),
-                    title: const Text('Where to?'),
-                    onTap: whereTo,
-                  ),
             const UpcomingRideCard(),
+            if (firstRecent.isNotEmpty) HomeRecentPlaces(places: firstRecent, onTap: toRecent),
           ],
         ),
       ),
-      // Under the search bar only with the sheet up: all the way down it
-      // would peek out below it.
-      if (recent.isNotEmpty) ...[
-        const SizedBox(height: 4),
-        MapSheetUpOnly(
-          child: HomeRecentPlaces(
-            places: recent,
-            onTap: (p) {
-              if (!serviceOn) return comingSoon(serviceComingSoonMessage);
-              setState(() => _drop = p);
-              _updateRoute();
-            },
-          ),
-        ),
-      ],
+      if (moreRecent.isNotEmpty)
+        MapSheetUpOnly(child: HomeRecentPlaces(places: moreRecent, onTap: toRecent)),
       if (boxes.isNotEmpty) ...[
         const SizedBox(height: 16),
         MapSheetUpOnly(
@@ -1702,7 +1736,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 key: const ValueKey('confirm-back'),
                 tooltip: 'Back',
                 icon: const Icon(Icons.arrow_back),
-                onPressed: _leaveConfirm,
+                onPressed: _backFromConfirm,
               ),
             ),
           ),
@@ -1721,7 +1755,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 key: const ValueKey('confirm-back'),
                 tooltip: 'Back',
                 icon: const Icon(Icons.arrow_back),
-                onPressed: _leaveConfirm,
+                onPressed: _backFromConfirm,
               ),
             ),
           ),
@@ -1926,7 +1960,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           key: const ValueKey('confirm-back'),
                           tooltip: 'Back',
                           icon: const Icon(Icons.arrow_back),
-                          onPressed: _leaveConfirm,
+                          onPressed: _backFromConfirm,
                         ),
                         const SizedBox(width: 4),
                         Expanded(
@@ -1960,7 +1994,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // Back on the confirm step leaves it, as its back arrow does.
         canPop: !confirming,
         onPopInvokedWithResult: (didPop, _) {
-          if (!didPop && confirming) _leaveConfirm();
+          if (!didPop && confirming) _backFromConfirm();
         },
         child: LayoutBuilder(builder: (context, box) {
           // All the way down, the sheet still shows the search bar whole,
@@ -1970,8 +2004,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // A phone on its side (844 × 390): the confirm sheet starts lower,
           // so the map and the pickup above it keep their room.
           final landscapePhone = box.maxWidth > box.maxHeight && box.maxHeight < 500;
-          final confirmMin = landscapePhone ? 0.4 : 0.5;
-          final confirmStart = landscapePhone ? 0.4 : 0.55;
+          // Never so high that the sheet covers the route card over the map
+          // (on its side at large text the card is most of the strip).
+          final cardFit = confirming && _confirmCardBottom > 0 && box.maxHeight > 0
+              ? 1 - (_confirmCardBottom + 8) / box.maxHeight
+              : 1.0;
+          final confirmMin = math.max(0.25, math.min(landscapePhone ? 0.4 : 0.5, cardFit));
+          final confirmStart = math.max(confirmMin, math.min(landscapePhone ? 0.4 : 0.55, cardFit));
           return MapSheetLayout(
           map: map,
           // Android's own buttons (three-button navigation, drawn over the
@@ -1982,6 +2021,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: navLift > 0 ? Padding(padding: EdgeInsets.only(bottom: navLift), child: panel) : panel,
           ),
           min: (confirming ? confirmMin : least) + navLiftFraction,
+          revealMax: confirming && cardFit < 1 ? math.max(confirmStart, cardFit) : null,
           // The main screen's sheet starts fully down; the rider drags it up.
           initial: (confirming ? confirmStart : least) + navLiftFraction,
           hidden: _pinMoving,
@@ -2190,6 +2230,9 @@ class _BookingPanel extends StatelessWidget {
   }
 }
 
+/// What the AI mark on the route line means, on tap and to screen readers.
+const routeAiExplainer = 'Fare and travel time worked out by AI from current traffic and demand';
+
 /// The distance and time the fares are priced on. When they came from the
 /// AI Fare Service (`ai-route-proxy`, traffic-aware) the line says so with
 /// the AI mark; the plain road route has none.
@@ -2210,26 +2253,45 @@ class RouteBasisLine extends StatelessWidget {
       Flexible(child: Text(text, key: const ValueKey('route-basis'), style: t.textTheme.bodyMedium)),
       if (a != null) ...[
         const SizedBox(width: 6),
+        // Tapped (or hovered, or long-pressed) it says what the AI did; a
+        // screen reader reads the same with the mark.
         Tooltip(
-          message: 'Estimated by the AI Fare Service',
-          child: Container(
-            key: const ValueKey('route-ai'),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: t.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.auto_awesome, size: 14, color: t.colorScheme.onPrimaryContainer),
-              const SizedBox(width: 3),
-              Text(
-                'AI',
-                style: t.textTheme.labelSmall?.copyWith(
-                  color: t.colorScheme.onPrimaryContainer,
-                  fontWeight: FontWeight.w700,
+          message: routeAiExplainer,
+          triggerMode: TooltipTriggerMode.tap,
+          showDuration: const Duration(seconds: 5),
+          excludeFromSemantics: true,
+          child: Semantics(
+            container: true,
+            label: 'AI estimate. $routeAiExplainer',
+            excludeSemantics: true,
+            child: ConstrainedBox(
+              // A 44-high tap area around the small chip.
+              constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+              child: Center(
+                widthFactor: 1,
+                child: Container(
+                  key: const ValueKey('route-ai'),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: t.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.auto_awesome, size: 14, color: t.colorScheme.onPrimaryContainer),
+                    const SizedBox(width: 3),
+                    Text(
+                      'AI',
+                      style: t.textTheme.labelSmall?.copyWith(
+                        color: t.colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    Icon(Icons.info_outline, size: 14, color: t.colorScheme.onPrimaryContainer),
+                  ]),
                 ),
               ),
-            ]),
+            ),
           ),
         ),
       ],

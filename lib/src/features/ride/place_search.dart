@@ -23,10 +23,19 @@ import '../../widgets/page_style_host.dart';
 /// Result of the place picker: either a concrete place or a request to drop
 /// a pin on the map.
 class PlacePick {
-  const PlacePick.place(Place this.place, {this.entrance = '', this.from = false}) : pickOnMap = false;
-  const PlacePick.onMap({this.from = false}) : place = null, entrance = '', pickOnMap = true;
+  const PlacePick.place(Place this.place, {this.entrance = '', this.from = false, this.query = ''})
+    : pickOnMap = false;
+  const PlacePick.onMap({this.from = false, this.query = ''}) : place = null, entrance = '', pickOnMap = true;
   final Place? place;
   final bool pickOnMap;
+
+  /// What was typed in the search field when it was picked ('' for none),
+  /// so the search can open on it again (Back from the confirm step).
+  final String query;
+
+  PlacePick _withQuery(String q) => pickOnMap
+      ? PlacePick.onMap(from: from, query: q)
+      : PlacePick.place(place!, entrance: entrance, from: from, query: q);
 
   /// A saved place's entrance ("Gate B"); empty for none.
   final String entrance;
@@ -54,6 +63,7 @@ Future<PlacePick?> showPlaceSearch(
   bool startOnFrom = false,
   PlaceSearchMode mode = PlaceSearchMode.route,
   ValueListenable<RouteSheetEnds>? live,
+  String initialQuery = '',
 }) {
   final wide = MediaQuery.sizeOf(context).width >= 720;
   final body = _PlaceSearch(
@@ -67,6 +77,7 @@ Future<PlacePick?> showPlaceSearch(
     startOnFrom: startOnFrom,
     mode: mode,
     live: live,
+    initialQuery: initialQuery,
   );
   if (wide) {
     return showAppDialog<PlacePick>(id: 'place-search.show-place-search',
@@ -143,8 +154,12 @@ class _PlaceSearch extends ConsumerStatefulWidget {
     this.startOnFrom = false,
     this.mode = PlaceSearchMode.route,
     this.live,
+    this.initialQuery = '',
   });
   final String title;
+
+  /// Typed into the field as it opens, its results searched again.
+  final String initialQuery;
   final LatLng? near;
   final Place? current;
 
@@ -186,6 +201,13 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   void initState() {
     super.initState();
     widget.live?.addListener(_liveChanged);
+    final q = widget.initialQuery;
+    if (q.trim().isNotEmpty) {
+      _query.value = TextEditingValue(text: q, selection: TextSelection.collapsed(offset: q.length));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _query.text == q) _onChanged(q);
+      });
+    }
   }
 
   @override
@@ -228,7 +250,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   GateUsage? get _usage => _editFrom ? GateUsage.pickup : widget.usage;
 
   /// Closes with [p], marked as the new start when the rider is changing it.
-  void _done(PlacePick p) => Navigator.pop(context, _editFrom ? p._asFrom() : p);
+  void _done(PlacePick p) => Navigator.pop(context, (_editFrom ? p._asFrom() : p)._withQuery(_query.text));
 
   /// Back to searching the trip's end (the To row tapped).
   void _changeTo() {

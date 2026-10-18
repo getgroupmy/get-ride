@@ -351,6 +351,9 @@ class HomeSearchPill extends StatelessWidget {
   }
 }
 
+/// How many recent places show with the home sheet all the way down.
+const homeRecentAtRest = 2;
+
 /// Recent destinations under the search bar (Expo `recentLocations`).
 class HomeRecentPlaces extends StatelessWidget {
   const HomeRecentPlaces({super.key, required this.places, required this.onTap});

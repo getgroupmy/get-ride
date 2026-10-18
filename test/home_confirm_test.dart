@@ -448,10 +448,67 @@ void main() {
     expect(find.text(trafficUnavailableTitle), findsNothing);
   });
 
+  testWidgets('Where to & for how much? leads the sheet, over the vehicles, with two recent places', (tester) async {
+    await _pump(tester, _Rides(), book: false);
+    final search = find.byKey(const ValueKey('home-search'));
+    expect(search, findsOneWidget, reason: 'one search bar, not two');
+    expect(find.text('Where to & for how much?'), findsOneWidget);
+    expect(tester.getRect(search).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('vehicle-type-bar'))).top));
+    // Both recent places in view with the sheet all the way down, under the vehicles.
+    for (final p in ['Eco Majestic', 'KLCC']) {
+      final row = find.byKey(ValueKey('home-recent-$p'));
+      expect(tester.getRect(row).bottom, lessThanOrEqualTo(860));
+      expect(tester.getRect(row).top, greaterThan(tester.getRect(search).bottom));
+    }
+    // A recent place goes straight on to the confirm step, sheet still down.
+    await tester.tap(find.byKey(const ValueKey('home-recent-KLCC')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('confirm-address-card')), findsOneWidget);
+  });
+
+  testWidgets('on a small phone at large text the search bar and both recent places still show', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pump(tester, _Rides(), book: false);
+    tester.view.physicalSize = const Size(375, 667);
+    await _settle(tester);
+    expect(tester.takeException(), isNull);
+    expect(tester.getRect(find.byKey(const ValueKey('home-search'))).bottom, lessThanOrEqualTo(667));
+    expect(tester.getRect(find.byKey(const ValueKey('home-recent-KLCC'))).bottom, lessThanOrEqualTo(667));
+  });
+
+  testWidgets("Display Settings' switches still hide the search bar and the recent places", (tester) async {
+    await _pump(tester, _Rides(), book: false, display: const {'searchBar': false, 'recentLocations': false});
+    expect(find.byKey(const ValueKey('home-search')), findsNothing);
+    // The plain Where to? row stands in for it, still first.
+    final where = find.byKey(const ValueKey('home-where-to'));
+    expect(where, findsOneWidget);
+    expect(tester.getRect(where).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('vehicle-type-bar'))).top));
+    expect(find.byKey(const ValueKey('home-recent-KLCC')), findsNothing);
+  });
+
+  testWidgets('on its side at large text the whole route card shows above the confirm sheet', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pump(tester, _Rides());
+    tester.view.physicalSize = const Size(852, 393);
+    tester.view.padding = const FakeViewPadding(left: 59, right: 59, bottom: 21);
+    tester.view.viewPadding = const FakeViewPadding(left: 59, right: 59, bottom: 21);
+    await _settle(tester);
+    await tester.pumpAndSettle();
+    final card = tester.getRect(find.byKey(const ValueKey('confirm-address-card')));
+    final sheetTop = tester.getRect(find.byKey(const ValueKey('map-sheet-handle'))).top;
+    expect(card.bottom, lessThanOrEqualTo(sheetTop), reason: 'the route card clear of the sheet');
+  });
+
   testWidgets('the main screen opens with its sheet fully down', (tester) async {
     await _pump(tester, _Rides(), book: false);
     final top = tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
-    expect(top, greaterThan(860 * (1 - 0.22) - 24), reason: 'at its lowest (22%), not half way up');
+    // At its lowest: down to the two recent places under the search bar
+    // and the vehicles, not half way up.
+    expect(top, greaterThan(860 * 0.55), reason: 'at its lowest, not half way up');
+    final second = tester.getRect(find.byKey(const ValueKey('home-recent-KLCC')));
+    expect(second.bottom, lessThanOrEqualTo(860), reason: 'the second recent place shows whole');
   });
 
   testWidgets('the route is framed between the address card and the bar on the sheet', (tester) async {
@@ -870,6 +927,13 @@ void main() {
     expect(find.text('Find a driver'), findsNothing);
     expect(history.stack.markers, isEmpty);
     expect(history.moves, isEmpty, reason: 'the Back already took the entry off');
+    // Back in the route search, on the destination picked before.
+    final field = find.byKey(const ValueKey('place-search-field'));
+    expect(field, findsOneWidget);
+    expect(tester.widget<TextField>(field).controller!.text, 'KLCC');
+    await tester.tap(find.byKey(const ValueKey('place-search-close')));
+    await _settle(tester);
+    expect(field, findsNothing);
 
     // Left by the back arrow: its entry is taken off.
     await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -300));
@@ -883,6 +947,7 @@ void main() {
     await _settle(tester);
     expect(history.stack.markers, isEmpty);
     expect(history.moves, [-1]);
+    expect(find.byKey(const ValueKey('place-search-field')), findsOneWidget, reason: 'the arrow does the same');
   });
 }
 
