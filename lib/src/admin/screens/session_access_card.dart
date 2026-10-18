@@ -368,8 +368,9 @@ class _ShowKeyDialog extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Shown once. Save it in the session\'s environment as the secret $sessionKeyEnvName '
-            '(for a Claude Code cloud session: the environment\'s settings → Secrets). '
+            'Shown once. Put it in the session\'s environment: as a network secret that adds the header '
+            'X-Session-Key to requests to proxy.getride.my and the backend (nothing in the session sees it), '
+            'or as the environment variable $sessionKeyEnvName. '
             '${ends == null ? '' : 'It works until ${DateFormat('d MMM, h:mm a').format(ends)}. '}'
             'The session calls the backend with it as in $sessionAccessDocs; remove it here to end it early.',
             style: t.textTheme.bodySmall,

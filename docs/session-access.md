@@ -35,9 +35,19 @@ codes; any admin sees the list, with when each key was last used.
    phone must be paired and online, and routed to the channels the session
    will use (`support_message` outbound for its texts; `otp` outbound for
    sign-in codes).
-2. Copy the key into the session's environment as the secret
-   `GETRIDE_SESSION_KEY`. For a Claude Code cloud session: the environment's
-   settings → **Secrets** (every session in that environment then has it).
+2. Put the key in the session's environment, one of two ways:
+   - **As a network secret (preferred).** In a Claude Code cloud
+     environment: the cloud environment menu in the session's title bar →
+     Edit → Secrets → Add secret. Allowed websites: `proxy.getride.my` and
+     the backend host (`rqlavogkgywxspuxgiwk.supabase.co`, or
+     `api.getride.my`); custom header: name `X-Session-Key`, no prefix,
+     value the key. The environment adds that header to every request to
+     those hosts, and nothing in the session ever sees the key. The relay
+     and the backend both read it (migration `0230`), so the calls below
+     need no `p_key` and no `Authorization` of their own.
+   - **As an environment variable** named `GETRIDE_SESSION_KEY`, which the
+     session passes itself: as `p_key` to the backend, and as a bearer token
+     to the relay.
 3. For internet through the phone, on the gateway phone open the GET.ride
    Gateway app and turn on **Share this phone's internet** (the gateway must
    be online; "Mobile data only" keeps shared requests on the SIM even when
@@ -52,11 +62,13 @@ codes; any admin sees the list, with when each key was last used.
 
 ## What a session does with it
 
-Every call takes the key as its first argument and needs no sign-in: the
-session calls the backend's REST endpoint with the project's public anon key
-(the one in the apps). `SUPABASE_URL` and `SUPABASE_ANON_KEY` are the project's;
-`api.getride.my` serves the same backend for networks that cannot look up
-`*.supabase.co`.
+Every call takes the key as `p_key`, or from the request's `X-Session-Key`
+header when `p_key` is left out (an explicit `p_key` wins), and needs no
+sign-in: the session calls the backend's REST endpoint with the project's
+public anon key (the one in the apps). `SUPABASE_URL` and `SUPABASE_ANON_KEY`
+are the project's; `api.getride.my` serves the same backend for networks that
+cannot look up `*.supabase.co`. The lines below pass the key explicitly; with
+the network secret, drop the `p_key` field from each.
 
 ```bash
 rpc() {  # rpc <function> '<json params>'
@@ -97,8 +109,8 @@ Sign-in SMS limits, so poll every few seconds, not every minute.
 
 The relay at `proxy.getride.my` (`cloudflare/session-proxy/`) is an HTTP
 fetch-through: the URL to fetch goes after the first slash, the key in the
-`Authorization` header (or `X-Session-Key`, when `Authorization` is for the
-target).
+`Authorization` header or in `X-Session-Key` (what the network secret adds;
+then the lines below need no `-H "Authorization: ..."`).
 
 ```bash
 curl -H "Authorization: Bearer $GETRIDE_SESSION_KEY" \
@@ -129,7 +141,8 @@ phone's data plan: keep it to the test.
   `admin_session_keys` and `admin_session_key_revoke` are the card's;
   `session_key_info`, `session_key_send_sms`, `session_key_outbox`,
   `session_key_inbox` and `session_key_proxy_check` are the session's, each
-  resolving the key with `session_by_key`, which counts the use.
+  resolving the key with `session_by_key`, which counts the use and, since
+  `0230`, reads the `X-Session-Key` header when no key is passed.
   `gateway_key_check` tells the relay which phone a device key is.
 - **Admin** (`lib/src/admin/screens/session_access_card.dart`, rules in
   `lib/src/core/session_access.dart`): the card on Admin → SMS / WhatsApp.
