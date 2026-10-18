@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../core/overlay_back.dart';
 import 'side_menu_style.dart';
+import 'web_overlay_back.dart';
 
 /// The rider side menu as the Expo app draws it (`MenuSideSheet` inline):
 /// a panel on the left that pushes the whole page right to make room, with
@@ -40,10 +42,32 @@ class SideMenuHostState extends State<SideMenuHost> with SingleTickerProviderSta
   late final AnimationController _open = AnimationController(vsync: this, duration: const Duration(milliseconds: 250));
   double _width = 0;
 
+  /// On the web, the browser's Back closes the open menu
+  /// (web_overlay_back.dart).
+  final _back = OverlayBackSlot(() => webOverlayBack);
+
   bool get isOpen => _open.value > 0;
 
-  void open() => _open.animateTo(1, curve: Curves.easeOutCubic);
-  void close() => _open.animateTo(0, curve: Curves.easeOutCubic);
+  void open() {
+    _back.set(true, close);
+    _open.animateTo(1, curve: Curves.easeOutCubic);
+  }
+
+  void close() {
+    // Before a row that closes the menu opens its page.
+    _back.set(false, close);
+    _open.animateTo(0, curve: Curves.easeOutCubic);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Opened or closed by a swipe.
+    _open.addListener(() {
+      if (_open.value == 1) _back.set(true, close);
+      if (_open.value == 0) _back.set(false, close);
+    });
+  }
 
   @override
   void didUpdateWidget(covariant SideMenuHost oldWidget) {
@@ -53,6 +77,7 @@ class SideMenuHostState extends State<SideMenuHost> with SingleTickerProviderSta
 
   @override
   void dispose() {
+    _back.set(false, close);
     _open.dispose();
     super.dispose();
   }
