@@ -15,7 +15,17 @@ import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
 import 'core/launch_destination.dart' show AppLaunch;
-import 'core/auth_utils.dart' show PendingSignInRoute, ResyncPin, SignInPhone, signInLocation, signInNextPath, signInStepPhone, signInStepRedirect;
+import 'core/auth_utils.dart'
+    show
+        PendingSignInRoute,
+        ResyncPin,
+        SignInPhone,
+        rememberSignInTarget,
+        signedInTarget,
+        signInLocation,
+        signInNextPath,
+        signInStepPhone,
+        signInStepRedirect;
 import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
@@ -247,10 +257,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         PendingSignInRoute.path = signInNextPath(state.uri.toString());
         return signInLocation(state.uri.toString());
       }
-      if (!signedIn && loc == '/login') {
-        final next = signInNextPath(state.uri.queryParameters['next']);
-        if (next != null) PendingSignInRoute.path = next;
-      }
+      // On a sign-in page: kept from /login's `next` or a later step's `to`
+      // (a reload of /login/phone or /login/pin keeps it too).
+      if (!signedIn && onAuth) rememberSignInTarget(loc, state.uri.queryParameters);
       // A sign-in step reloaded without its phone starts again from the number.
       if (!signedIn) {
         final step = signInStepRedirect(
@@ -267,7 +276,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       // Signed in after opening a driver's code: back to that code.
       if (signedIn && (onAuth || loc == '/') && PendingQrLink.path != null) return PendingQrLink.take();
-      if (signedIn && (onAuth || loc == '/') && PendingSignInRoute.path != null) return PendingSignInRoute.take();
+      if (signedIn) {
+        final target = signedInTarget(loc);
+        if (target != null) return target;
+      } else {
+        PendingSignInRoute.signedOut();
+      }
       if (signedIn && onAuth) return '/';
       return null;
     },

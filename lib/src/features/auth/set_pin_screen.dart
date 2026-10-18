@@ -66,6 +66,8 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
     if (referral.isNotEmpty && !isPlausibleReferralCode(referral)) {
       return showInfo(context, "That referral code wasn't found.");
     }
+    // Read before the PIN is set: the page asked for before sign-in.
+    final landing = signInLanding();
     setState(() => _busy = true);
     try {
       if (isNew) {
@@ -83,7 +85,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
       AuthRepository.pinSetupPending = false;
       ref.invalidate(profileProvider);
       final referralNotice = referral.isEmpty ? null : await _applyReferral(referral);
-      if (mounted) context.go(_nextRoute(isNew: isNew, hasPhoto: hasPhoto));
+      if (mounted) context.go(_nextRoute(isNew: isNew, hasPhoto: hasPhoto, again: landing));
       if (referralNotice != null && mounted) showInfo(context, referralNotice);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -93,9 +95,10 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   }
 
   /// A new account gets the optional photo step (unless it already has
-  /// one) and then its chosen mode.
-  String _nextRoute({required bool isNew, required bool hasPhoto}) {
-    if (!isNew) return '/';
+  /// one) and then its chosen mode; one signing in again, [again] (the
+  /// page asked for before sign-in, or home).
+  String _nextRoute({required bool isNew, required bool hasPhoto, String again = '/'}) {
+    if (!isNew) return again;
     final landing = signupLanding(_role);
     return hasPhoto ? landing : Uri(path: '/signup/photo', queryParameters: {'next': landing}).toString();
   }

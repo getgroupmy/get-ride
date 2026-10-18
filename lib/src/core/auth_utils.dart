@@ -214,8 +214,34 @@ abstract final class SignInPhone {
 /// harmless choices ([query]: next, new) in the address.
 String signInStepPath(String path, String phone, [Map<String, String> query = const {}]) {
   SignInPhone.value = phone;
-  return Uri(path: path, queryParameters: query.isEmpty ? null : query).toString();
+  return signInAddress(path, query);
 }
+
+/// The query key that carries the page asked for before sign-in through
+/// the steps after /login (whose own `next` it is): /login/phone, pin, otp
+/// and set-pin, so a reload on any of them still ends there.
+const signInTargetKey = 'to';
+
+/// [path] with [query] and, while one is waiting, the page asked for before
+/// sign-in ([PendingSignInRoute]) as [signInTargetKey].
+String signInAddress(String path, [Map<String, String> query = const {}]) {
+  final to = PendingSignInRoute.path;
+  final q = {...query, signInTargetKey: ?to};
+  return Uri(path: path, queryParameters: q.isEmpty ? null : q).toString();
+}
+
+/// Signed out on a sign-in page ([location], with its [query]): keeps the
+/// page asked for, from /login's `next` or a later step's `to`, checked by
+/// [signInNextPath].
+void rememberSignInTarget(String location, Map<String, String> query) {
+  final next = signInNextPath(location == '/login' ? query['next'] : query[signInTargetKey]);
+  if (next != null) PendingSignInRoute.path = next;
+}
+
+/// Where a sign-in step sends the user once it is done: the page asked for
+/// before sign-in, else home. Read before signing in, so a redirect that
+/// already took it on the way does not leave the step sending them home.
+String signInLanding() => PendingSignInRoute.path ?? '/';
 
 /// The phone a sign-in step is for: an older link's `phone`, else the one
 /// in memory.
@@ -261,11 +287,28 @@ String signInLocation(String location) {
 abstract final class PendingSignInRoute {
   static String? path;
 
+  /// The last page [take]n, for a second look at the sign-in page in the
+  /// same sign-in (the session changes twice: signed in, then the PIN
+  /// check), which would otherwise send the user home after it.
+  static String? landed;
+
   static String? take() {
     final p = path;
     path = null;
+    if (p != null) landed = p;
     return p;
   }
+
+  /// Signed out: nothing is on its way any more.
+  static void signedOut() => landed = null;
+}
+
+/// Signed in, at [location]: the page asked for before sign-in to go to
+/// instead (from a sign-in page or home), or null.
+String? signedInTarget(String location) {
+  final onAuth = location.startsWith('/login');
+  if (!onAuth && location != '/') return null;
+  return PendingSignInRoute.take() ?? (onAuth ? PendingSignInRoute.landed : null);
 }
 
 OtpNext otpNextFor(String next, {String? pin}) => switch (next) {
