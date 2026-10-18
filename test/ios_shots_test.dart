@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart' show FlutterMap;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -2975,7 +2976,7 @@ void main() {
         rides: _BookingRides(),
         act: (t) async {
           await _toConfirm(t);
-          await tapKey(t, 'ride-options');
+          await tapKey(t, 'confirm-options');
         },
       ),
     );
@@ -2989,7 +2990,7 @@ void main() {
         rides: _BookingRides(),
         act: (t) async {
           await _toConfirm(t);
-          await tapKey(t, 'ride-options');
+          await tapKey(t, 'confirm-options');
         },
       ),
     );
@@ -3013,6 +3014,7 @@ void main() {
         'flow_now_later',
         route: '/',
         rides: _BookingRides(),
+        sched: const ScheduledRidesConfig(enabled: true, feeFixed: 2),
         act: (t) async {
           await _toConfirm(t);
           await tapKey(t, 'book-now-later');
@@ -3119,6 +3121,12 @@ void main() {
         rides: _BookingRides(),
         act: (t) async {
           await _toConfirm(t);
+          await t.drag(
+            find.byType(FlutterMap).first,
+            const Offset(0, 80),
+            warnIfMissed: false,
+          );
+          await _settle(t, 4);
           await tapKey(t, 'confirm-route');
         },
       ),
@@ -3180,7 +3188,7 @@ void main() {
             );
             await t.pump(const Duration(milliseconds: 100));
           }
-          await t.tap(find.text('Logout'), warnIfMissed: false);
+          await t.tap(find.text('Sign out'), warnIfMissed: false);
           await _settle(t);
         },
       ),
@@ -3210,7 +3218,7 @@ void main() {
             warnIfMissed: false,
           );
           await _settle(t);
-          await tapKey(t, 'auto-accept');
+          await tapKey(t, 'queue-auto-accept');
         },
       ),
     );
@@ -3230,6 +3238,7 @@ void main() {
             warnIfMissed: false,
           );
           await _settle(t);
+          await tapKey(t, 'queue-destination');
           await tapKey(t, 'destination-add');
         },
       ),
