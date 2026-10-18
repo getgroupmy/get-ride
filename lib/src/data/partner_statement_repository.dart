@@ -2,6 +2,7 @@
 // totals, the statements list, the PDF from the `partner-statement`
 // function (kept on the device so a statement opens offline), the payout
 // account, and Admin → Settings → Partner statements.
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/driver_earnings.dart' show EarningsPeriod;
 import '../core/partner_statement.dart';
+import '../core/statement_layout.dart';
 import '../providers.dart';
 import 'live_tables.dart';
 
@@ -244,13 +246,54 @@ class PartnerStatementRepository {
   ];
 
   Future<bool> canEdit() async => await _db.rpc('caller_can_edit_statements') == true;
+
+  // ---- Layout (0217) ----
+  Future<StatementLayout> layout() async => StatementLayout.fromJson(await _db.rpc('partner_statement_layout'));
+
+  Future<StatementLayout> saveLayout(StatementLayout l) => _call(
+    () async =>
+        StatementLayout.fromJson(await _db.rpc('set_partner_statement_layout', params: {'p_layout': l.toJson()})),
+  );
+
+  /// Uploads a PNG or JPEG logo to the public `app-branding` bucket; answers its file name there.
+  Future<String> uploadLogo(Uint8List bytes, String ext) => _call(() async {
+    final png = ext != 'jpg';
+    final path = 'statement-logo-${DateTime.now().millisecondsSinceEpoch}.${png ? 'png' : 'jpg'}';
+    await _db.storage.from(statementLogoBucket).uploadBinary(
+      path,
+      bytes,
+      fileOptions: FileOptions(upsert: true, contentType: png ? 'image/png' : 'image/jpeg'),
+    );
+    return path;
+  });
+
+  String logoUrl(String path) => _db.storage.from(statementLogoBucket).getPublicUrl(path);
+
+  /// A made-up statement drawn in [l], which need not be saved yet.
+  Future<({Uint8List bytes, String fileName})> sample(StatementLayout l, StatementType type, StatementLang lang) =>
+      _call(() async {
+        final res = await _db.functions.invoke(
+          'partner-statement',
+          body: {'preview': true, 'type': type.name, 'lang': lang.name, 'layout': l.toJson()},
+        );
+        final m = Map<String, dynamic>.from(res.data as Map);
+        return (bytes: base64Decode('${m['pdf']}'), fileName: '${m['fileName']}');
+      });
 }
+
+/// Where the statement logo is kept (with the splash and app icon).
+const statementLogoBucket = 'app-branding';
 
 final partnerStatementRepositoryProvider = Provider((ref) => PartnerStatementRepository(ref.watch(supabaseProvider)));
 
 final statementSettingsProvider = FutureProvider.autoDispose<StatementSettings>((ref) {
   ref.watchLive('app_settings');
   return ref.watch(partnerStatementRepositoryProvider).settings();
+});
+
+final statementLayoutProvider = FutureProvider.autoDispose<StatementLayout>((ref) {
+  ref.watchLive('app_settings');
+  return ref.watch(partnerStatementRepositoryProvider).layout();
 });
 
 /// The Earnings page's totals for a period, and the same per day (days with trips only, newest first).

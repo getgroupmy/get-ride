@@ -11,8 +11,10 @@ import {
   day,
   DEFAULT_VERIFY_URL,
   fileName,
+  handlePreview,
   handleStatement,
   latin1,
+  logoKind,
   money,
   myt,
   parseRequest,
@@ -26,6 +28,7 @@ import {
   verifyLink,
   words,
 } from "./partner_statement.ts";
+import { cleanLayout, layoutHash, renamed, shows } from "./statement_layout.ts";
 
 const totals = {
   fare: 48, surcharges: 5, platformCollected: 2, surchargesPass: 2, taxes: 1.74, tolls: 3, otherCharges: 0,
@@ -228,4 +231,87 @@ Deno.test("handler: refusals", async () => {
     status: 400,
     body: { error: "bad_period", hint: "There is no statement for that period." },
   });
+});
+
+// ---- The admin's layout (0217) ---------------------------------------------------------------
+Deno.test("layout: a statement drawn in a custom layout, with fields hidden and renamed", async () => {
+  const layout = cleanLayout({
+    fields: { title: { en: "Monthly Pay Slip", ms: "Slip Gaji Bulanan" }, ic: { show: false }, watermark: { show: false } },
+    sections: ["activity", "earnings"],
+    fontFamily: "times",
+    fonts: { body: 11, title: 99 },
+    colors: { brand: "#123456", ink: "nope" },
+    logo: { path: "statement-logo-1.png", position: "right", width: 500, dx: 12 },
+    companySide: "right",
+  });
+  assertEquals(layout.fonts.title, 24);
+  assertEquals(layout.fonts.body, 11);
+  assertEquals(layout.colors.brand, "#123456");
+  assertEquals(layout.colors.ink, "#1A1A1F");
+  assertEquals(layout.logo.width, 220);
+  assertEquals(layout.sections.slice(0, 3), ["activity", "earnings", "deductions"]);
+  assertEquals(layout.sections.length, 10);
+  assertEquals(renamed(words("ms"), layout, "ms").title, "Slip Gaji Bulanan");
+  assertEquals(shows(layout, "ic"), false);
+  // A tiny PNG as the logo.
+  const png = Uint8Array.from(atob(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  ), (c) => c.charCodeAt(0));
+  assertEquals(logoKind(png)?.png, true);
+  assertEquals(logoKind(new Uint8Array([1, 2, 3])), null);
+  for (const type of ["weekly", "monthly", "annual"] as const) {
+    const pdf = await renderStatement(sample({ type, status: "provisional" }), {
+      statementNo: "GR-M-2026-000001", verifyUrl: verifyLink("", "t"), issuedAt: "2026-09-14T01:00:00Z", revisedAt: null,
+    }, { layout, logo: logoKind(png) });
+    const doc = await PDFDocument.load(pdf);
+    assertEquals(doc.getTitle(), "Monthly Pay Slip GR-M-2026-000001");
+  }
+});
+
+Deno.test("layout: unknown fields and sections are dropped; the same layout hashes the same", async () => {
+  const a = cleanLayout({ fields: { bogus: { show: false }, net: { en: " Take home " } }, sections: ["nope", "net"] });
+  assertEquals(Object.keys(a.fields), ["net"]);
+  assertEquals(a.fields.net.en, "Take home");
+  assertEquals(a.sections[0], "net");
+  const b = cleanLayout({ sections: ["net"], fields: { net: { en: "Take home" } } });
+  assertEquals(await layoutHash(a), await layoutHash(b));
+  assertEquals(cleanLayout({ logo: { path: "../secret" } }).logo.path, "");
+});
+
+Deno.test("handler: a kept final statement in an older layout is redrawn, not revised", async () => {
+  const hash = await statementHash(sample());
+  const row = { statement_no: "GR-W-2026-000001", verify_token: "t".repeat(24), is_final: true, data_hash: hash,
+    storage_path: "uid-1/weekly-2026-09-07-en.pdf", revised_at: null };
+  const layout = cleanLayout({ fields: { title: { en: "Pay Slip" } } });
+  const { d, log, saved } = deps({ row, look: async () => ({ layout, logo: null }) });
+  const a = await handleStatement(req, d);
+  assertEquals((a.body as { status: string }).status, "final");
+  assertEquals(log, ["upload uid-1/weekly-2026-09-07-en.pdf"]);
+  assertEquals(saved[0].layout_hash, await layoutHash(layout));
+  // Drawn in that layout already: handed back.
+  const { d: d2, log: log2 } = deps({ row: { ...row, layout_hash: await layoutHash(layout) }, look: async () => ({ layout, logo: null }) });
+  await handleStatement(req, d2);
+  assertEquals(log2, []);
+  // No layout saved yet and none recorded: the built-in one, handed back.
+  const { d: d3, log: log3 } = deps({ row });
+  await handleStatement(req, d3);
+  assertEquals(log3, []);
+});
+
+Deno.test("preview: admins get a sample PDF in the layout being edited", async () => {
+  const refused = await handlePreview({ preview: true, layout: {} }, {
+    isAdmin: async () => false, company: async () => sample().company, logo: async () => null,
+  });
+  assertEquals(refused.status, 403);
+  let looked = "";
+  const a = await handlePreview({ preview: true, type: "weekly", lang: "ms", layout: { logo: { path: "x.png" } } }, {
+    isAdmin: async () => true,
+    company: async () => sample().company,
+    logo: async (p) => (looked = p, null),
+  });
+  assertEquals(a.status, 200);
+  assertEquals(looked, "x.png");
+  const body = a.body as { pdf: string; fileName: string };
+  assertEquals(body.fileName, "getride-statement-weekly-SAMPLE-ms.pdf");
+  assertEquals(atob(body.pdf).slice(0, 5), "%PDF-");
 });

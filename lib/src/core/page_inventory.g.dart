@@ -72,6 +72,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:partner-menu.partner-menu-action', SurfaceKind.modal, 'Partner menu · Partner menu action', 'lib/src/features/partner/partner_menu.dart'),
   SurfaceEntry('modal:partner-mode-picker.show-partner-mode-picker', SurfaceKind.modal, 'Partner mode picker · Partner mode picker', 'lib/src/features/partner/partner_mode_picker.dart'),
   SurfaceEntry('modal:partner-statements.entries-tab', SurfaceKind.modal, 'Partner statements · Entries tab', 'lib/src/admin/screens/commerce/partner_statements_screen.dart'),
+  SurfaceEntry('modal:partner-statements.rename-field', SurfaceKind.modal, 'Partner statements · Rename field', 'lib/src/admin/screens/commerce/statement_layout_tab.dart'),
   SurfaceEntry('modal:partner-status-panel.resubmit', SurfaceKind.modal, 'Partner status panel · Resubmit', 'lib/src/features/partner/partner_status_panel.dart'),
   SurfaceEntry('modal:partner-trip.cancel', SurfaceKind.modal, 'Partner trip · Cancel', 'lib/src/features/partner/partner_trip_screen.dart'),
   SurfaceEntry('modal:partner-trip.complete', SurfaceKind.modal, 'Partner trip · Complete', 'lib/src/features/partner/partner_trip_screen.dart'),
