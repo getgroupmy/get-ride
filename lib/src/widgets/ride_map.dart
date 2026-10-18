@@ -162,6 +162,7 @@ class RideMap extends StatefulWidget {
     this.onTap,
     this.controller,
     this.extraMarkers = const [],
+    this.topMarkers = const [],
     this.framed = const [],
     this.satellite = false,
     this.autoFit = true,
@@ -196,6 +197,10 @@ class RideMap extends StatefulWidget {
 
   /// Further marks drawn above the route (toll booths and the like).
   final List<Marker> extraMarkers;
+
+  /// Labels drawn over everything, the car included (the request map's
+  /// time and distance chips, which the car near the drop-off covered).
+  final List<Marker> topMarkers;
 
   /// Further points the camera keeps in frame (the driver home map's
   /// request pickups).
@@ -540,6 +545,7 @@ class _RideMapState extends State<RideMap> {
               ),
           ],
         ),
+        if (w.topMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: w.topMarkers),
       ],
     );
   }

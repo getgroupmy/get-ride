@@ -125,6 +125,18 @@ const goOnlineCheckTimeout = Duration(seconds: 8);
 
 class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool _online = false;
+
+  /// A demo request (Admin → Demo → mock incoming requests) is up: it
+  /// floats on the map and holds the sheet down as a real one does.
+  bool _demoShowing = false;
+
+  void _onDemo(bool on) {
+    if (mounted && on != _demoShowing) setState(() => _demoShowing = on);
+  }
+
+  bool get _demoOn => _online && ref.watch(demoSettingsProvider).partnerRequests;
+
+  bool get _demoShown => _demoShowing && _demoOn;
   late final DriverOnline _onlineState;
   LatLng? _me;
   StreamSubscription<LatLng>? _fixes;
@@ -372,7 +384,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     if (v && _autoAccept) _markQueueSeen();
     // Requests already waiting are in the list; only new ones pop up.
     if (v) _alertSeen.addAll(ref.read(openRequestsProvider).value?.map((r) => r.id) ?? const <String>[]);
-    setState(() => _online = v);
+    setState(() {
+      _online = v;
+      _demoShowing = false;
+    });
     _onlineState.set(v);
     if (!v) _syncAlert(const []);
     if (v) unawaited(_locate());
@@ -472,6 +487,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     return _askForVehicle(needed, teksi: teksi);
   }
 
+  /// The vehicle under the online switch: the one this driver has taken,
+  /// else "No vehicle chosen" (not the car on their profile, which they may
+  /// not be driving: going online then asked them to pick one). Where the
+  /// vehicles can't be read, the profile's, as before.
+  List<String?> _vehicleLine(Partner p) {
+    final vehicles = ref.watch(assignableVehiclesProvider);
+    if (vehicles.hasError) return [p.vehicle, p.plate];
+    final list = vehicles.value;
+    if (list == null) return const [];
+    final mine = list.where((v) => v.inUseByMe).firstOrNull;
+    return mine == null ? const ['No vehicle chosen'] : [mine.title, mine.plate];
+  }
+
   /// [_vehicleReady]'s check alone: null when the driver may start, else
   /// the vehicles to choose from (maybe none).
   Future<List<AssignableVehicle>?> _vehicleNeeded(Partner partner, {required bool teksi}) async {
@@ -539,7 +567,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final picked = await showAppSheet<AssignableVehicle>(id: 'partner.vehicle-ready-2',
       context: context,
       isScrollControlled: true,
-      builder: (_) => VehiclePickerSheet(vehicles: vehicles),
+      // The one vehicle that can be driven comes picked out; still the
+      // driver's tap takes it.
+      builder: (_) => VehiclePickerSheet(vehicles: vehicles, preselect: usable.length == 1 ? usable.single.id : null),
     );
     if (picked == null || !mounted) return false;
     if (picked.inUseByMe) return true;
@@ -794,7 +824,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         // One line: on a phone on its side the card must fit
                         // the sheet's lowest height.
                         subtitle: Text(
-                          [p.name, p.vehicle, p.plate].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · '),
+                          [p.name, ..._vehicleLine(p)].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -856,7 +886,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     // Lost item reports to answer (Phase D4).
                     const DriverLostItemsCard(),
                     const CurrentVehicleCard(),
-                    if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
+                    // On a phone the demo request floats on the map instead,
+                    // with the real ones ([_floatingRequests]).
+                    if (wide && _demoOn) DemoJobFeed(key: const ValueKey('demo-job-feed'), onShowing: _onDemo),
                   ];
                 const offline = EmptyState(icon: Icons.local_taxi_outlined, title: 'Go online to receive ride requests');
                 if (wide) {
@@ -888,7 +920,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 return MapSheetLayout(
                   initial: rest,
                   min: rest,
-                  locked: floating.isNotEmpty,
+                  locked: floating.isNotEmpty || _demoShown,
                   map: Stack(children: [
                     Positioned.fill(child: map),
                     if (_online) _floatingRequests(p, null, floating),
@@ -1135,6 +1167,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Widget _floatingRequests(Partner partner, RideRequest? alert, List<RideRequest> items) {
     final t = Theme.of(context);
     final sideways = floatingRequestsBeside(MediaQuery.sizeOf(context));
+    final demoOn = _demoOn, demoShown = _demoShown;
     // Inside the map, so the list keeps clear of the sheet and the map
     // buttons; mounted even when empty, so the last card flies out too.
     return Positioned.fill(
@@ -1154,15 +1187,23 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               // instead, as far as the sheet.
               right: 12 + MediaQuery.paddingOf(context).right + (sideways ? 64 : 0),
               bottom: inset + mapAttributionClearance + (sideways ? 0 : 168),
-              child: FlyInList<RideRequest>(
-                padding: const EdgeInsets.only(top: 8, bottom: 8),
-                items: items,
-                idOf: (r) => r.id == alert?.id ? 'alert-${r.id}' : r.id,
-                itemBuilder: (_, r) => r.id == alert?.id ? _alertCard(r, partner) : _requestCard(r, partner),
-              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                // A demo request, as the real ones float (it sat unseen in
+                // the sheet held down under them).
+                if (demoOn) DemoJobFeed(key: const ValueKey('demo-job-feed'), onShowing: _onDemo),
+                Expanded(
+                  key: const ValueKey('floating-requests-list'),
+                  child: FlyInList<RideRequest>(
+                    padding: const EdgeInsets.only(top: 8, bottom: 8),
+                    items: items,
+                    idOf: (r) => r.id == alert?.id ? 'alert-${r.id}' : r.id,
+                    itemBuilder: (_, r) => r.id == alert?.id ? _alertCard(r, partner) : _requestCard(r, partner),
+                  ),
+                ),
+              ]),
             ),
           ),
-          if (items.isEmpty)
+          if (items.isEmpty && !demoShown)
             Positioned(
               top: 64,
               left: 0,
@@ -1198,12 +1239,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
 
   /// The queue as a list (the wide layout's panel).
   Widget _queue(Partner partner, {bool wide = false}) {
+    final demoShown = _demoShown;
     return AsyncView(
       value: ref.watch(openRequestsProvider),
       onRetry: () => ref.invalidate(openRequestsProvider),
       data: (list) {
         final (:alert, :sorted) = _queueOrder(list, wide: wide);
         if (alert == null && sorted.isEmpty) {
+          // A demo request is showing above: not "waiting" under it.
+          if (demoShown) return const SizedBox.shrink();
           return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');
         }
         return ListView.builder(

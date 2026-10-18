@@ -164,16 +164,16 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     } catch (_) {}
   }
 
-  /// "13 min." or "1 h 19 min.", as inDrive's chips.
-  static String _minutes(num m) => m < 60 ? '${m.round()} min.' : '${formatDuration(m)}.';
+  /// "13 min" or "1 h 19 min".
+  static String _minutes(num m) => m < 60 ? '${m.round()} min' : formatDuration(m);
 
-  /// "13 min.\n6.0 km" standing just above a point's mark, which reaches
+  /// "Trip\n13 min · 6.0 km" (or "To pickup\n…") standing just above a point's mark, which reaches
   /// [over] above the point (so the chip never covers the pin).
   Marker _chip(LatLng at, Color color, String text, String key, {required double over}) {
     final lift = over + 6;
     return Marker(
       point: at,
-      width: 120,
+      width: 150,
       height: 60 + lift,
       // The box stands on the point, the chip at its foot, [lift] up.
       alignment: Alignment.topCenter,
@@ -228,12 +228,13 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           framed: [?widget.me, ?a, ?b],
           // Room for "Ride request" and the chips standing over the pins.
           fitTop: 120,
-          extraMarkers: [
+          // Over the car, which near the drop-off used to cover them.
+          topMarkers: [
             if (a != null && widget.awayKm != null)
               _chip(
                 a,
                 RideRequestSheet.toPickup,
-                '${_minutes(pickupMinutes(widget.awayKm!))}\n${formatDistance(widget.awayKm)}',
+                'To pickup\n${_minutes(pickupMinutes(widget.awayKm!))} · ${formatDistance(widget.awayKm)}',
                 'request-chip-pickup',
                 over: confirmPickupTop,
               ),
@@ -241,7 +242,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
               _chip(
                 b,
                 RideRequestSheet.trip,
-                [if (r.durationMin != null) _minutes(r.durationMin!), formatDistance(r.distanceKm)].join('\n'),
+                'Trip\n${[if (r.durationMin != null) _minutes(r.durationMin!), formatDistance(r.distanceKm)].join(' · ')}',
                 'request-chip-trip',
                 over: confirmDropTop,
               ),
@@ -331,13 +332,14 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     );
   }
 
-  /// How long ago the request was made: "37 sec.", "2 min." or "just now".
+  /// How long ago the request was made: "37 s ago", "2 min ago" or "just
+  /// now" (not time left: that stands on the countdown bar).
   String _age() {
     final made = widget.request.createdAt;
     if (made == null) return 'just now';
     final s = widget.now.difference(made).inSeconds;
     if (s < 5) return 'just now';
-    return s < 60 ? '$s sec.' : '${s ~/ 60} min.';
+    return s < 60 ? '$s s ago' : '${s ~/ 60} min ago';
   }
 
   Widget _rider(BuildContext context) {
@@ -472,13 +474,27 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
         ),
       ]),
     );
-    // The time left to answer, running down.
-    final countdown = LinearProgressIndicator(
-      key: const ValueKey('request-alert-countdown'),
-      value: requestAlertProgress(widget.shown),
-      minHeight: 3,
-      color: confirmAccent,
-      backgroundColor: Colors.transparent,
+    // The time left to answer, running down, with its seconds (as the
+    // Offer-sent dialog's "41s"), so the request's age is not read as it.
+    final countdown = Padding(
+      padding: const EdgeInsets.only(right: 16),
+      child: Row(children: [
+        Expanded(
+          child: LinearProgressIndicator(
+            key: const ValueKey('request-alert-countdown'),
+            value: requestAlertProgress(widget.shown),
+            minHeight: 3,
+            color: confirmAccent,
+            backgroundColor: Colors.transparent,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '${requestAlertSecondsLeft(widget.shown)}s',
+          key: const ValueKey('request-alert-seconds-left'),
+          style: t.textTheme.labelMedium?.copyWith(color: muted, fontFeatures: const [FontFeature.tabularFigures()]),
+        ),
+      ]),
     );
     final actions = Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
@@ -505,11 +521,15 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
               ),
             SizedBox(
               width: 56,
-              child: BusyButton.filled(
-                key: const ValueKey('request-offer-custom'),
-                style: _offerStyle(context).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.zero)),
-                onPressed: off ? null : () => offer(null),
-                child: const Icon(Icons.edit_outlined, size: 20),
+              // Named for screen readers and on a long press (web tester #119).
+              child: Tooltip(
+                message: 'Offer another fare',
+                child: BusyButton.filled(
+                  key: const ValueKey('request-offer-custom'),
+                  style: _offerStyle(context).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.zero)),
+                  onPressed: off ? null : () => offer(null),
+                  child: const Icon(Icons.edit_outlined, size: 20),
+                ),
               ),
             ),
           ]),
