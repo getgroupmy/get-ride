@@ -46,7 +46,7 @@ class NotificationsRepository {
         }
       }
 
-      backup = RealtimeBackup(reread);
+      backup = RealtimeBackup(reread, healthy: realtimeBackupSlowHealthyInterval);
       channel = _db
           .channel('user_notifications_${userId}_${DateTime.now().microsecondsSinceEpoch}')
           .onPostgresChanges(

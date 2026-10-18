@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/admin/screens/security/security_data.dart' show lookupPublicIp;
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:get_ride/src/admin/screens/security/api_keys_logic.dart';
 import 'package:get_ride/src/admin/screens/security/backend_logic.dart';
 import 'package:get_ride/src/admin/screens/security/elife_logic.dart';
@@ -525,6 +530,33 @@ void main() {
       expect(parsePublicIp('203.0.113.9\n'), '203.0.113.9');
       expect(parsePublicIp('<html>'), isNull);
       expect(parsePublicIp(''), isNull);
+    });
+
+    test('lookupPublicIp asks every provider at once; the first answer wins', () async {
+      final asked = <String>[];
+      final slow = Completer<void>();
+      final ip = await lookupPublicIp(
+        client: MockClient((r) async {
+          asked.add(r.url.host);
+          if (r.url.host == 'icanhazip.com') return http.Response('198.51.100.7\n', 200);
+          await slow.future;
+          return http.Response('{"ip":"203.0.113.9"}', 200);
+        }),
+      );
+      expect(ip, '198.51.100.7');
+      expect(asked, hasLength(publicIpProviders.length));
+      slow.complete();
+    });
+
+    test('lookupPublicIp gives up after the cap, or when every provider fails', () async {
+      final never = Completer<http.Response>();
+      final watch = Stopwatch()..start();
+      expect(
+        await lookupPublicIp(cap: const Duration(milliseconds: 50), client: MockClient((_) => never.future)),
+        isNull,
+      );
+      expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
+      expect(await lookupPublicIp(client: MockClient((_) async => http.Response('<html>', 500))), isNull);
     });
   });
 

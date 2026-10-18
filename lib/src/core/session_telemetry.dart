@@ -59,7 +59,41 @@ class IpInfo {
     );
     return info.publicIp == null && info.ispProvider == null ? null : info;
   }
+
+  /// The `user_sessions` columns it fills.
+  Map<String, dynamic> get columns => {
+    'public_ip': publicIp,
+    'isp_provider': ispProvider,
+    'isp_org': ispOrg,
+    'ip_city': city,
+    'ip_region': region,
+    'ip_country': country,
+  };
 }
+
+/// The `ip-lookup` answer, looked up once per launch and shared: every
+/// session row of the launch and the device blacklist check reuse it. A
+/// failed or empty lookup is tried again by the next caller.
+class LaunchIpCache {
+  Future<IpInfo?>? _inFlight;
+
+  /// The answer, once one came back.
+  IpInfo? value;
+
+  Future<IpInfo?> get(Future<IpInfo?> Function() lookup) {
+    final known = value;
+    if (known != null) return Future.value(known);
+    return _inFlight ??= Future.sync(lookup)
+        .then((ip) {
+          value = ip;
+          return ip;
+        })
+        .whenComplete(() => _inFlight = null);
+  }
+}
+
+/// This launch's [LaunchIpCache].
+final launchIp = LaunchIpCache();
 
 /// The device and app, as far as the platform tells (no native plugin).
 class DeviceSnapshot {
@@ -208,12 +242,7 @@ Map<String, dynamic> sessionRow({
   'app_version': device.appVersion,
   'app_build_version': ?device.appBuild,
   'app_id': 'com.taxxee.teksi',
-  'public_ip': ip?.publicIp,
-  'isp_provider': ip?.ispProvider,
-  'isp_org': ip?.ispOrg,
-  'ip_city': ip?.city,
-  'ip_region': ip?.region,
-  'ip_country': ip?.country,
+  ...(ip ?? const IpInfo()).columns,
   'raw': {'client': 'flutter', 'platform': device.osName, 'app_build': ?device.appBuild, ...?details?.extra},
 };
 

@@ -12,6 +12,7 @@ import '../core/ride_chat_outbox.dart';
 import '../core/support_media.dart' show fileExt;
 import '../providers.dart';
 import 'realtime_backup.dart';
+import 'storage_links.dart' show cachedSignedLink;
 
 /// The rider ↔ driver chat of a ride (`ride_messages`, migration 0129). RLS
 /// keeps each thread to the ride's two participants; a trigger lets only the
@@ -32,10 +33,17 @@ class RideChatRepository {
 
   static String _cacheKey(String requestId) => 'ride_chat_cache_v1_$requestId';
 
+  /// What each thread was last kept as this session: a re-read that brings
+  /// nothing new is not written again.
+  final _keptThreads = <String, String>{};
+
   Future<void> _saveCache(String requestId, List<Map<String, dynamic>> rows) async {
     try {
+      final json = jsonEncode(rows);
+      if (_keptThreads[requestId] == json) return;
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_cacheKey(requestId), jsonEncode(rows));
+      await prefs.setString(_cacheKey(requestId), json);
+      _keptThreads[requestId] = json;
     } catch (_) {}
   }
 
@@ -199,8 +207,11 @@ class RideChatRepository {
 
   /// A short-lived link to a photo or voice note; only the ride's two
   /// participants can get one.
-  Future<String> mediaUrl(String path) =>
-      _db.storage.from(rideChatMediaBucket).createSignedUrl(path, rideChatMediaLinkTtl.inSeconds);
+  Future<String> mediaUrl(String path) => cachedSignedLink(
+    '$rideChatMediaBucket/$path',
+    ttl: rideChatMediaLinkTtl,
+    sign: () => _db.storage.from(rideChatMediaBucket).createSignedUrl(path, rideChatMediaLinkTtl.inSeconds),
+  );
 
   /// Moves the tick of the messages [ids] up to [to]; rows already past it
   /// are left alone (the database refuses a tick going back).

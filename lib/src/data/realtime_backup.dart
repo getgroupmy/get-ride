@@ -13,6 +13,11 @@ const realtimeBackupInterval = Duration(seconds: 5);
 /// with two phones online was thousands of API requests an hour.
 const realtimeBackupHealthyInterval = Duration(seconds: 30);
 
+/// The healthy interval for watchers that stay open app-wide (incoming
+/// calls, the inbox, transfers): open on every phone all day, so while
+/// realtime delivers they only check every few minutes.
+const realtimeBackupSlowHealthyInterval = Duration(minutes: 5);
+
 /// While the channel stays down, the reads that keep to [every] before the
 /// wait starts doubling: a channel still opening costs nothing extra, one
 /// that stays down (a struggling database, no realtime at all) stops being
@@ -25,9 +30,13 @@ const realtimeBackupSteadyDownReads = 3;
 const realtimeBackupMaxDownInterval = Duration(minutes: 2);
 
 /// The interval a backup re-reads at: [every] while the channel is down,
-/// and the slower of [every] and [healthy] while it is open. Pure.
-Duration realtimeBackupPeriod({required Duration every, required Duration healthy, required bool connected}) =>
-    connected && healthy > every ? healthy : every;
+/// and the slower of [every] and [healthy] while it is open -- or none while
+/// it is open when [healthy] is null. Pure.
+Duration? realtimeBackupPeriod({required Duration every, required Duration? healthy, required bool connected}) {
+  if (!connected) return every;
+  if (healthy == null) return null;
+  return healthy > every ? healthy : every;
+}
 
 /// The wait before the next read while the channel is down, after
 /// [downReads] reads since it went down: [every] for the first
@@ -57,15 +66,20 @@ Duration realtimeBackupDownDelay({required Duration every, required int downRead
 class RealtimeBackup {
   /// [onOpen] false skips the read when the channel first opens (the caller
   /// has just read everything anyway); a reopened channel still reads.
+  /// [healthy] null reads nothing on the timer while the channel is open, and
+  /// [resumeWhileOpen] false skips the read on coming back to the foreground
+  /// while the channel is open and has not dropped since the last read (a
+  /// socket that dropped meanwhile reads as it reopens).
   RealtimeBackup(
     this._refresh, {
     this.every = realtimeBackupInterval,
     this.healthy = realtimeBackupHealthyInterval,
     bool onOpen = true,
+    this.resumeWhileOpen = true,
   }) : _skipOpen = !onOpen {
     _schedule();
     try {
-      _lifecycle = AppLifecycleListener(onResume: run);
+      _lifecycle = AppLifecycleListener(onResume: resumed);
     } catch (_) {
       // No binding (a plain unit test): the timer still runs.
     }
@@ -76,14 +90,22 @@ class RealtimeBackup {
   /// The interval while the channel is down.
   final Duration every;
 
-  /// The interval while it is open (never faster than [every]).
-  final Duration healthy;
+  /// The interval while it is open (never faster than [every]); null for no
+  /// timer reads while it is open.
+  final Duration? healthy;
+
+  /// Whether coming back to the foreground reads even while the channel is
+  /// open and has not dropped since the last read.
+  final bool resumeWhileOpen;
   Timer? _timer;
   AppLifecycleListener? _lifecycle;
   bool _busy = false;
   bool _disposed = false;
   bool _skipOpen;
   bool _connected = false;
+
+  /// The channel went down after being open, and nothing was read since.
+  bool _droppedSinceRead = false;
 
   /// Timer reads since the channel was last open.
   int _downReads = 0;
@@ -92,25 +114,36 @@ class RealtimeBackup {
   /// flapping open and shut meanwhile does not read again on each flap.
   Timer? _cooldown;
 
-  /// The wait before the timer's next read.
-  Duration get period => _connected
+  /// The wait before the timer's next read; null while none is due.
+  Duration? get period => _connected
       ? realtimeBackupPeriod(every: every, healthy: healthy, connected: true)
       : realtimeBackupDownDelay(every: every, downReads: _downReads);
 
   void _schedule() {
     _timer?.cancel();
+    _timer = null;
     if (_disposed) return;
-    _timer = Timer(period, () {
+    final wait = period;
+    if (wait == null) return;
+    _timer = Timer(wait, () {
       if (!_connected) _downReads++;
       run();
       _schedule();
     });
   }
 
+  /// Back in the foreground: reads again, unless [resumeWhileOpen] is false
+  /// and the channel is open and has not dropped since the last read.
+  void resumed() {
+    if (!resumeWhileOpen && _connected && !_droppedSinceRead) return;
+    run();
+  }
+
   /// Reads again now, unless a read is already under way.
   void run() {
     if (_busy || _disposed) return;
     _busy = true;
+    _droppedSinceRead = false;
     Future.sync(_refresh).catchError((Object _) {}).whenComplete(() => _busy = false);
   }
 
@@ -128,6 +161,7 @@ class RealtimeBackup {
     if (_disposed) return;
     final connected = status == RealtimeSubscribeStatus.subscribed;
     final changed = connected != _connected;
+    if (changed && !connected) _droppedSinceRead = true;
     _connected = connected;
     if (connected) _downReads = 0;
     if (changed) _schedule();

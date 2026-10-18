@@ -3,8 +3,9 @@
 // configure, and each table has a revision number that moves when one of its
 // rows changes. A provider that reads a table calls `ref.watchLive(table)`,
 // so it refetches by itself on the next change — the change shows on every
-// open screen without a reload. Coming back to the foreground moves every
-// revision, in case the socket dropped while the app was away.
+// open screen without a reload. A channel that reopens (or coming back to the
+// foreground while it is down) moves every revision, in case an update was
+// missed while the socket was down; while it stays open nothing is re-read.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -125,12 +126,16 @@ class LiveTables extends Notifier<Map<String, int>> {
     try {
       final client = ref.read(supabaseProvider);
       db = client;
-      // Back from the background, a channel that reopened, or every couple
-      // of minutes in case an update was dropped: everything is read again.
+      // A channel that reopened, or every couple of minutes (and on coming
+      // back to the foreground) while it is down: everything is read again.
+      // While it is open realtime delivers, so nothing is re-read -- each
+      // full read refetched every live provider on the phone.
       backup = RealtimeBackup(
         () => changed([...liveSettingTables, ...liveOwnTables.keys]),
         every: const Duration(minutes: 2),
+        healthy: null,
         onOpen: false,
+        resumeWhileOpen: false,
       );
       var c = client.channel(uid == null ? 'live_settings' : 'live_settings_$uid');
       for (final table in liveSettingTables) {
@@ -230,7 +235,14 @@ class AdminLiveTables extends Notifier<Map<String, int>> {
     try {
       final client = ref.read(supabaseProvider);
       db = client;
-      backup = RealtimeBackup(() => changed(liveAdminTables), every: const Duration(seconds: 30), onOpen: false);
+      // Re-read only while the channel is down (or as it reopens).
+      backup = RealtimeBackup(
+        () => changed(liveAdminTables),
+        every: const Duration(seconds: 30),
+        healthy: null,
+        onOpen: false,
+        resumeWhileOpen: false,
+      );
       var c = client.channel('live_admin');
       for (final table in liveAdminTables) {
         c = c.onPostgresChanges(

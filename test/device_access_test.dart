@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,6 +28,21 @@ void main() {
     tester.view.physicalSize = const Size(700, 1400);
     addTearDown(tester.view.reset);
   }
+
+  test('a slow or failing device check fails open after a short wait', () {
+    fakeAsync((clock) {
+      bool? slow, failed, done;
+      deviceBlockedWithin(Completer<bool>().future).then((v) => slow = v);
+      deviceBlockedWithin(Future<bool>.error(StateError('x'))).then((v) => failed = v);
+      deviceBlockedWithin(Future.value(true)).then((v) => done = v);
+      clock.flushMicrotasks();
+      expect(done, isTrue);
+      expect(failed, isFalse);
+      expect(slow, isNull);
+      clock.elapse(deviceCheckTapWait);
+      expect(slow, isFalse);
+    });
+  });
 
   testWidgets('a blacklisted device cannot continue to sign-in', (tester) async {
     await setUpView(tester);

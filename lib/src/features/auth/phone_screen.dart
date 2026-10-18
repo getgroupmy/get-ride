@@ -51,7 +51,8 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
 
   Future<void> _continue() async {
     signedOutElsewhere.value = false;
-    final blocked = await ref.read(deviceBlockedProvider.future);
+    // Started when this screen opened (build watches it), so usually done.
+    final blocked = await deviceBlockedWithin(ref.read(deviceBlockedProvider.future));
     if (!mounted) return;
     if (blocked) {
       showInfo(context, serviceNotAvailable);

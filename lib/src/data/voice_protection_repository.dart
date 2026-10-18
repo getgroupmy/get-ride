@@ -155,7 +155,11 @@ class VoiceProtectionRepository {
   /// Calls [onChange] whenever one of [profileId]'s rows changes (an
   /// agent's request, or the phone answering it). Answers the unsubscribe.
   Future<void> Function() watch(String profileId, void Function() onChange) {
-    final backup = RealtimeBackup(onChange, every: const Duration(seconds: 15));
+    final backup = RealtimeBackup(
+      onChange,
+      every: const Duration(seconds: 15),
+      healthy: realtimeBackupSlowHealthyInterval,
+    );
     final channel = _db
         .channel('voice_protection_${profileId}_${DateTime.now().microsecondsSinceEpoch}')
         .onPostgresChanges(

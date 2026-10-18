@@ -65,6 +65,10 @@ String connectionErrorName(Object e, {required bool release}) {
 
 enum ConnectionPopup { connected, failed }
 
+/// Whether the launch check is worth making: only when either popup is on
+/// (the ping is otherwise a request every launch for nothing). Pure.
+bool connectionCheckWanted({required bool connectedOn, required bool failedOn}) => connectedOn || failedOn;
+
 /// The popup [check] earns at launch, or null when the admin switched that
 /// one off.
 ConnectionPopup? connectionPopupFor(ConnectionCheck check, {required bool connectedOn, required bool failedOn}) {

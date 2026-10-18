@@ -9,10 +9,10 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../admin/screens/meterapp/site_logic.dart' show brandingRowId, brandingTable;
 import '../core/app_branding.dart';
 import '../core/app_builds.dart';
 import '../core/format.dart';
+import '../data/branding_cache.dart' show readBrandingRow;
 import '../providers.dart';
 import 'common.dart' show BrandMark;
 import 'net_image.dart';
@@ -29,10 +29,10 @@ final appBuildProvider = FutureProvider.autoDispose.family<AppBuild, String>((re
 
 /// The admin's branding (Admin → App Settings), for the public install page:
 /// `app_branding` is readable without an account. Never fails: no row, or no
-/// signal, is the built-in look.
+/// signal, is the built-in look. Shares the launch's branding read.
 final installBrandingProvider = FutureProvider.autoDispose<AppBranding>((ref) async {
   try {
-    final row = await ref.watch(supabaseProvider).from(brandingTable).select().eq('id', brandingRowId).maybeSingle();
+    final row = await readBrandingRow(ref.watch(supabaseProvider));
     return AppBranding.fromRow(row);
   } catch (_) {
     return const AppBranding();

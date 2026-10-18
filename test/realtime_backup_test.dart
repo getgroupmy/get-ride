@@ -84,6 +84,96 @@ void main() {
     });
   });
 
+  test('healthy null: no period while open', () {
+    expect(realtimeBackupPeriod(every: const Duration(minutes: 2), healthy: null, connected: true), isNull);
+    expect(
+      realtimeBackupPeriod(every: const Duration(minutes: 2), healthy: null, connected: false),
+      const Duration(minutes: 2),
+    );
+  });
+
+  test('healthy null, resumeWhileOpen false: reads only while down or as the channel reopens', () {
+    fakeAsync((clock) {
+      var reads = 0;
+      final backup = RealtimeBackup(
+        () => reads++,
+        every: const Duration(minutes: 2),
+        healthy: null,
+        onOpen: false,
+        resumeWhileOpen: false,
+      );
+      // Down at start: resuming reads.
+      backup.resumed();
+      clock.flushMicrotasks();
+      expect(reads, 1);
+
+      backup.onStatus(RealtimeSubscribeStatus.subscribed);
+      clock.flushMicrotasks();
+      expect(reads, 1);
+      // Open: nothing on the timer, nothing on resume.
+      clock.elapse(const Duration(hours: 1));
+      backup.resumed();
+      clock.flushMicrotasks();
+      expect(reads, 1);
+      expect(backup.period, isNull);
+
+      // Drops: a read, then the 2-minute pace while down.
+      backup.onStatus(RealtimeSubscribeStatus.closed);
+      clock.flushMicrotasks();
+      expect(reads, 2);
+      clock.elapse(const Duration(minutes: 2));
+      expect(reads, 3);
+      backup.resumed();
+      clock.flushMicrotasks();
+      expect(reads, 4);
+
+      // Reopens: a read, then quiet again.
+      backup.onStatus(RealtimeSubscribeStatus.subscribed);
+      clock.flushMicrotasks();
+      expect(reads, 5);
+      clock.elapse(const Duration(hours: 1));
+      expect(reads, 5);
+      backup.dispose();
+    });
+  });
+
+  test('resumeWhileOpen false still reads on resume when a drop was not read yet', () {
+    fakeAsync((clock) {
+      var reads = 0;
+      final backup = RealtimeBackup(() => reads++, healthy: null, resumeWhileOpen: false);
+      backup.onStatus(RealtimeSubscribeStatus.subscribed);
+      clock.flushMicrotasks();
+      expect(reads, 1);
+      // Drop and reopen inside the cooldown: neither reads.
+      backup.onStatus(RealtimeSubscribeStatus.closed);
+      backup.onStatus(RealtimeSubscribeStatus.subscribed);
+      clock.flushMicrotasks();
+      expect(reads, 1);
+      backup.resumed();
+      clock.flushMicrotasks();
+      expect(reads, 2);
+      backup.resumed();
+      clock.flushMicrotasks();
+      expect(reads, 2);
+      backup.dispose();
+    });
+  });
+
+  test('the slow tier reads every five minutes while open', () {
+    fakeAsync((clock) {
+      var reads = 0;
+      final backup = RealtimeBackup(() => reads++, healthy: realtimeBackupSlowHealthyInterval);
+      backup.onStatus(RealtimeSubscribeStatus.subscribed);
+      clock.flushMicrotasks();
+      expect(reads, 1);
+      clock.elapse(const Duration(minutes: 4, seconds: 59));
+      expect(reads, 1);
+      clock.elapse(const Duration(seconds: 1));
+      expect(reads, 2);
+      backup.dispose();
+    });
+  });
+
   test('a status repeated while already down does not read again', () {
     fakeAsync((clock) {
       var reads = 0;

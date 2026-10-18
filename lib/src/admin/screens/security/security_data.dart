@@ -3,6 +3,7 @@
 // `elife_api_connection` policy and `app_settings_secret_access()` for
 // `fare_ai_provider`) is the real gate. Secret values read here are never
 // logged.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -387,19 +388,37 @@ class SecurityRepository {
     }
   }
 
-  Future<int> profileCount() async => (await _db.from('profiles').select('id').count(CountOption.exact)).count;
+  Future<int> profileCount() => _db.from('profiles').count(CountOption.exact);
 }
 
-/// First public-IP provider that answers (5 s each).
-Future<String?> lookupPublicIp() async {
-  for (final url in publicIpProviders) {
-    try {
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
-      final ip = parsePublicIp(res.body);
-      if (ip != null) return ip;
-    } catch (_) {}
+/// How long [lookupPublicIp] waits for any provider in all.
+const publicIpLookupCap = Duration(seconds: 3);
+
+/// The public IP from whichever provider answers first: all are asked at
+/// once, and null when none answers within [cap].
+Future<String?> lookupPublicIp({Duration cap = publicIpLookupCap, http.Client? client}) {
+  final c = client ?? http.Client();
+  final done = Completer<String?>();
+  var left = publicIpProviders.length;
+  void settle(String? ip) {
+    if (done.isCompleted) return;
+    if (ip != null) {
+      done.complete(ip);
+    } else if (--left == 0) {
+      done.complete(null);
+    }
   }
-  return null;
+
+  for (final url in publicIpProviders) {
+    c.get(Uri.parse(url)).then((res) => settle(parsePublicIp(res.body)), onError: (Object _) => settle(null));
+  }
+  final timer = Timer(cap, () {
+    if (!done.isCompleted) done.complete(null);
+  });
+  return done.future.whenComplete(() {
+    timer.cancel();
+    if (client == null) c.close();
+  });
 }
 
 /// Saves a CSV through the platform save dialog (a download on web); falls

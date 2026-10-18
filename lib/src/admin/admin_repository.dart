@@ -97,12 +97,12 @@ class AdminRepository {
 
   // ---- Dashboard -----------------------------------------------------------
 
-  Future<int> _count(String table, [PostgrestFilterBuilder<dynamic> Function(PostgrestFilterBuilder<dynamic>)? f]) async {
+  /// A count-only (HEAD) request: the number comes back, no rows.
+  Future<int> _count(String table, [PostgrestFilterBuilder<int> Function(PostgrestFilterBuilder<int>)? f]) async {
     try {
-      PostgrestFilterBuilder<dynamic> q = _db.from(table).select('id');
+      var q = _db.from(table).count(CountOption.exact);
       if (f != null) q = f(q);
-      final res = await q.count(CountOption.exact);
-      return res.count;
+      return await q;
     } catch (_) {
       return -1; // table missing or not readable
     }

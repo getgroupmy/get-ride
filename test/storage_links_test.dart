@@ -1,5 +1,7 @@
 // Document links that need a signed URL once their bucket is private
 // (lib/src/core/storage_links.dart, lib/src/data/storage_links.dart).
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/storage_links.dart';
 import 'package:get_ride/src/data/storage_links.dart';
@@ -42,6 +44,35 @@ void main() {
       expect(privateStorageRef('data:image/png;base64,AAAA'), isNull);
       expect(privateStorageRef(''), isNull);
       expect(privateStorageRef(null), isNull);
+    });
+  });
+
+  group('cachedSignedLink', () {
+    test('callers at once share one signing call, and the link is reused until near expiry', () async {
+      var signs = 0;
+      final gate = Completer<void>();
+      Future<String> sign() async {
+        signs++;
+        await gate.future;
+        return 'signed-$signs';
+      }
+
+      final t0 = DateTime(2026, 10, 18, 9);
+      const ttl = Duration(hours: 1);
+      final a = cachedSignedLink('k-share', ttl: ttl, sign: sign, now: t0);
+      final b = cachedSignedLink('k-share', ttl: ttl, sign: sign, now: t0);
+      gate.complete();
+      expect(await a, 'signed-1');
+      expect(await b, 'signed-1');
+      expect(await cachedSignedLink('k-share', ttl: ttl, sign: sign, now: t0.add(const Duration(minutes: 49))), 'signed-1');
+      expect(signs, 1);
+      expect(await cachedSignedLink('k-share', ttl: ttl, sign: sign, now: t0.add(const Duration(minutes: 50))), 'signed-2');
+    });
+
+    test('a failed signing is not kept', () async {
+      const ttl = Duration(hours: 1);
+      await expectLater(cachedSignedLink('k-fail', ttl: ttl, sign: () async => throw StateError('no')), throwsStateError);
+      expect(await cachedSignedLink('k-fail', ttl: ttl, sign: () async => 'ok'), 'ok');
     });
   });
 

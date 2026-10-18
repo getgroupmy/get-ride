@@ -132,6 +132,13 @@ void main() {
     expect(deviceSeenLabel(_device('x', ago: const Duration(minutes: 10)), _now), 'Seen 10 min ago');
     expect(deviceSeenLabel(_device('x', ago: const Duration(hours: 5)), _now), 'Seen 5 h ago');
     expect(deviceSeenLabel(_device('x', ago: const Duration(days: 3)), _now), 'Seen 3 d ago');
+    // An app install beats every 3 minutes: online for two beats.
+    expect(messagingAppOnlineWindow, messagingHeartbeatEvery * 2);
+    final app = _device('a', kind: 'app', ago: const Duration(minutes: 5));
+    expect(deviceSeenLabel(app, _now), 'Online');
+    expect(deviceSeenLabel(_device('a', kind: 'app', ago: const Duration(minutes: 7)), _now), 'Seen 7 min ago');
+    // A gateway phone beats every minute: offline after 3.
+    expect(deviceSeenLabel(_device('x', ago: const Duration(minutes: 5)), _now), 'Seen 5 min ago');
     expect(normalizeSmsNumber('+60 (12) 345-6789'), '+60123456789');
     expect(normalizeSmsNumber('call me'), isNull);
   });

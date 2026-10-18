@@ -100,6 +100,41 @@ void applyBrandingGlobals(AppBranding? b) {
   adminStartCenter = lat == null || lng == null ? null : LatLng(lat, lng);
 }
 
+/// One read shared by everyone who asks at about the same time: a caller
+/// joins a read already under way, and (unless it asks for a [fresh] one)
+/// takes a result younger than [maxAge]. A failed read is not kept.
+class SharedRead<T> {
+  SharedRead(this.maxAge, {DateTime Function()? now}) : _now = now ?? DateTime.now;
+
+  final Duration maxAge;
+  final DateTime Function() _now;
+  Future<T>? _inFlight;
+  T? _last;
+  DateTime? _at;
+
+  Future<T> get(Future<T> Function() fetch, {bool fresh = false}) {
+    final inFlight = _inFlight;
+    if (inFlight != null) return inFlight;
+    final at = _at;
+    if (!fresh && at != null && _now().difference(at) < maxAge) return Future.value(_last as T);
+    final read = Future.sync(fetch).then((v) {
+      _last = v;
+      _at = _now();
+      return v;
+    }).whenComplete(() => _inFlight = null);
+    _inFlight = read;
+    return read;
+  }
+}
+
+final _brandingReads = SharedRead<Map<String, dynamic>?>(const Duration(minutes: 1));
+
+/// The `app_branding` row, read once for everyone asking at launch (the
+/// branding sync and the install page both want it). [fresh] skips a recent
+/// result but still joins a read under way.
+Future<Map<String, dynamic>?> readBrandingRow(SupabaseClient db, {bool fresh = false}) =>
+    _brandingReads.get(() => db.from(brandingTable).select().eq('id', brandingRowId).maybeSingle(), fresh: fresh);
+
 /// Keeps the cache in step with the `app_branding` row: once at launch, then
 /// live while the app runs (and again on coming back to the foreground, in
 /// case the socket dropped meanwhile), so an admin's change shows at once.
@@ -121,7 +156,7 @@ class BrandingSync {
   /// Reads the row again.
   Future<void> resync() async {
     try {
-      final row = await _db.from(brandingTable).select().eq('id', brandingRowId).maybeSingle();
+      final row = await readBrandingRow(_db, fresh: true);
       await _apply(AppBranding.fromRow(row));
     } catch (_) {}
   }

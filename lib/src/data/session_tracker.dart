@@ -21,11 +21,12 @@ class SupabaseSessionSink implements SessionSink {
   SupabaseSessionSink(this._db);
   final SupabaseClient _db;
 
+  /// Once per launch ([launchIp]); a failed lookup is tried again next time.
   @override
-  Future<IpInfo?> lookupIp() async {
+  Future<IpInfo?> lookupIp() => launchIp.get(() async {
     final res = await _db.functions.invoke('ip-lookup', body: {}).timeout(const Duration(seconds: 8));
     return IpInfo.fromResponse(res.data);
-  }
+  });
 
   /// Retries without any column the live database does not have yet, since
   /// one unknown column rejects the whole row (same as Expo).
