@@ -65,8 +65,9 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly; 0e1f676 ("UX ba
 
 Sweeps over every screen: dark mode, text scale 1.3, iPhone SE and iOS
 Bold Text found nothing beyond #15 and #30 (bold text: no overflows at all);
-iPhone landscape found #41–#45 and #48 (with the 59 pt side insets), SE + text
-scale 1.3 combined found #46.
+iPhone landscape found #41–#45, #48 and #52 (with the 59 pt side insets), SE + text
+scale 1.3 combined found #46. Dark and Bold Text + 1.3 sweeps on 0e1f676: no overflows
+(only the cancelled Trips row's date ellipsizes next to "Not charged" at bold 1.3).
 
 Checked and fine on iPhone: sign-in flow (welcome, phone, OTP with
 `oneTimeCode` autofill, PIN, set PIN, closed registrations), keyboard
