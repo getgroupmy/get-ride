@@ -1197,6 +1197,16 @@ const _ipadLand = (
   side: 0.0,
   island: false,
 );
+// iPad 10th gen landscape Split View, half and half: 585 pt wide.
+const _splitHalf = (
+  w: 585.0,
+  h: 820.0,
+  dpr: 2.0,
+  top: 24.0,
+  bottom: 20.0,
+  side: 0.0,
+  island: false,
+);
 // iPad Slide Over / narrow Split View: 320 pt wide, full height.
 const _slideOver = (
   w: 320.0,
@@ -1357,6 +1367,25 @@ Future<void> _shot(
     }
     if (act != null) await act(tester);
     if (env['DUMP'] == '1') {
+      // Every icon button and ink well with its key and tooltip, for the audit.
+      for (final e in [
+        ...find.byType(IconButton).evaluate(),
+        ...find.byType(InkWell).evaluate(),
+      ]) {
+        final box = e.renderObject;
+        if (box is! RenderBox || !box.hasSize || !box.attached) continue;
+        final r = box.localToGlobal(Offset.zero) & box.size;
+        final w = e.widget;
+        final tip = w is IconButton
+            ? w.tooltip
+            : (w as InkWell).onTap == null
+            ? 'no-onTap'
+            : null;
+        // ignore: avoid_print
+        print(
+          'DUMP $name ${w.runtimeType} ${r.left.toStringAsFixed(0)},${r.top.toStringAsFixed(0)} ${r.width.toStringAsFixed(0)}x${r.height.toStringAsFixed(0)} key=${w.key} tooltip=$tip',
+        );
+      }
       // Every Text with its on-screen rectangle, for layout debugging.
       for (final e in find.byType(Text).evaluate()) {
         final box = e.renderObject;
@@ -2775,6 +2804,7 @@ void main() {
       ('ipad', _ipad),
       ('ipad_land', _ipadLand),
       ('slide', _slideOver),
+      ('split', _splitHalf),
       ('land', _iphone15Land),
     ]) {
       testWidgets(
