@@ -14,6 +14,10 @@
 -- (0223) whose request comes from an enabled office IP. The last enabled
 -- office IP can be neither disabled nor removed, so the page cannot lock
 -- every admin out.
+-- Note: a local Claude Code CLI honours the hook, so an office machine gets no
+-- prompt. A cloud session reads this list too, but the Supabase connector
+-- there asks on writes from its own tool-permission setting at
+-- claude.ai/customize/connectors, which a hook cannot override.
 -- ============================================================================
 
 create table if not exists public.claude_access_rules (
