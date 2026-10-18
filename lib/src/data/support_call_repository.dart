@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/support_call.dart';
 import '../providers.dart';
 import 'realtime_backup.dart';
+import 'realtime_hub.dart';
 
 /// Support calls (migration 0105): ringing, answering and hanging up on
 /// `support_calls`, and the WebRTC setup messages on `support_call_signals`.
@@ -175,7 +176,9 @@ class SupportCallRepository implements CallSignalling<SupportCall> {
 }
 
 /// Rows of [table] matching [filter]: [initial] first, then every change, as
-/// one stream (support calls and ride calls follow their rows this way).
+/// one stream (support calls and ride calls follow their rows this way). The
+/// channel is shared with any other stream on the same rows ([RealtimeHub]);
+/// [name] is kept for the callers' sake.
 Stream<Map<String, dynamic>> watchCallRows(
   SupabaseClient db,
   String name,
@@ -185,7 +188,7 @@ Stream<Map<String, dynamic>> watchCallRows(
   required Future<List<Map<String, dynamic>>> Function() initial,
 }) {
   final controller = StreamController<Map<String, dynamic>>();
-  RealtimeChannel? channel;
+  RealtimeListen? channel;
   RealtimeBackup? backup;
   controller.onListen = () {
     void emit(Map<String, dynamic> row) {
@@ -201,21 +204,18 @@ Stream<Map<String, dynamic>> watchCallRows(
       healthy: realtimeBackupSlowHealthyInterval,
     );
 
-    channel = db
-        .channel('${name}_${DateTime.now().microsecondsSinceEpoch}')
-        .onPostgresChanges(
-          event: event,
-          schema: 'public',
-          table: table,
-          filter: filter,
-          callback: (p) => emit(p.newRecord),
-        )
-        .subscribe(backup!.onStatus);
+    channel = RealtimeHub.of(db).listen(
+      table: table,
+      event: event,
+      filter: filter,
+      onChange: (p) => emit(p.newRecord),
+      onStatus: backup!.onStatus,
+    );
     initial().then((rows) => rows.forEach(emit), onError: (Object _) {});
   };
   controller.onCancel = () async {
     backup?.dispose();
-    if (channel != null) await db.removeChannel(channel!);
+    channel?.cancel();
     await controller.close();
   };
   return controller.stream;

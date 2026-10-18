@@ -596,6 +596,27 @@ void main() {
     expect(find.text('FOR HIRE'), findsOneWidget);
   });
 
+  testWidgets('a running hire rebuilds its readouts each second, not the console', (tester) async {
+    final loc = await _pump(tester, size: const Size(1600, 900));
+    loc.controller.add(_fixAt(0));
+    await tester.pump();
+    await tester.tap(find.text('START'));
+    await tester.pump();
+    await _driveSecond(tester, loc, 10);
+    var builds = 0;
+    debugOnRebuildDirtyWidget = (_, _) => builds++;
+    for (var i = 2; i <= 6; i++) {
+      await _driveSecond(tester, loc, i * 10.0);
+    }
+    debugOnRebuildDirtyWidget = null;
+    // The whole console was about 3,000 element builds over these five
+    // seconds; the readouts alone are a few dozen a second.
+    expect(builds, lessThan(600));
+    expect(find.text('0.05'), findsOneWidget, reason: 'the distance still moves');
+    expect(find.text('00:00:06'), findsOneWidget, reason: 'and the time');
+    expect(find.textContaining('HIRED · GPS'), findsOneWidget);
+  });
+
   testWidgets('extras step and are included in the fare shown', (tester) async {
     await _pump(tester);
     await tester.tap(find.byTooltip('More extra'));

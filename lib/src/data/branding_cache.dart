@@ -13,7 +13,6 @@ import '../admin/screens/meterapp/site_logic.dart' show brandingRowId, brandingT
 import '../core/app_branding.dart';
 import '../core/backend_network.dart';
 import 'geo_service.dart' show adminStartCenter;
-import 'realtime_backup.dart';
 
 /// What the splash shows on this launch: the branding cached by the previous
 /// one, with the image's bytes on disk so it paints on the first frame
@@ -136,13 +135,13 @@ Future<Map<String, dynamic>?> readBrandingRow(SupabaseClient db, {bool fresh = f
     _brandingReads.get(() => db.from(brandingTable).select().eq('id', brandingRowId).maybeSingle(), fresh: fresh);
 
 /// Keeps the cache in step with the `app_branding` row: once at launch, then
-/// live while the app runs (and again on coming back to the foreground, in
-/// case the socket dropped meanwhile), so an admin's change shows at once.
+/// whenever the app's live-settings channel says the row changed (the app
+/// calls [resync]; `app_branding` is one of `liveSettingTables`, so it has no
+/// channel of its own any more), and again on coming back to the foreground,
+/// so an admin's change shows at once.
 class BrandingSync {
   BrandingSync(this._db);
   final SupabaseClient _db;
-  RealtimeChannel? _channel;
-  RealtimeBackup? _backup;
 
   /// This launch's branding once fetched, for a splash still on screen.
   final latest = ValueNotifier<AppBranding?>(null);
@@ -161,30 +160,7 @@ class BrandingSync {
     } catch (_) {}
   }
 
-  Future<void> start() async {
-    await resync();
-    _backup = RealtimeBackup(resync, every: const Duration(minutes: 1));
-    try {
-      _channel = _db
-          .channel('app_branding_changes')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: brandingTable,
-            callback: (p) {
-              if (p.newRecord['id'] == brandingRowId) unawaited(_apply(AppBranding.fromRow(p.newRecord)));
-            },
-          )
-          .subscribe(_backup!.onStatus);
-    } catch (_) {}
-  }
+  Future<void> start() => resync();
 
-  void stop() {
-    _backup?.dispose();
-    _backup = null;
-    final c = _channel;
-    if (c != null) unawaited(_db.removeChannel(c));
-    _channel = null;
-    latest.dispose();
-  }
+  void stop() => latest.dispose();
 }

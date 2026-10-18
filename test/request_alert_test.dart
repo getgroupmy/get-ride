@@ -13,6 +13,7 @@ import 'package:get_ride/src/features/partner/partner_screen.dart';
 import 'package:get_ride/src/features/ride/confirm_parts.dart' show accentFill;
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
 
 class _FakeRides implements RideRepository {
   final accepted = <String>[];
@@ -121,13 +122,16 @@ void main() {
     late _FakeRides rides;
     late DateTime now;
     late GoRouter router;
+    late StreamController<LatLng> gps;
 
     setUp(() {
+      gps = StreamController<LatLng>.broadcast();
       open = StreamController<List<RideRequest>>.broadcast();
       rides = _FakeRides();
       now = DateTime(2026, 10, 6, 11);
     });
     tearDown(() {
+      gps.close();
       open.close();
       rides.rows.close();
     });
@@ -160,6 +164,8 @@ void main() {
             ),
             requestAlertClockProvider.overrideWithValue(() => now),
             currentUserIdProvider.overrideWithValue('p1'),
+            driverPositionStreamProvider.overrideWithValue(() => gps.stream),
+            driverPositionProvider.overrideWithValue(() async => null),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -178,6 +184,39 @@ void main() {
 
     double countdown(WidgetTester tester) =>
         tester.widget<LinearProgressIndicator>(find.byKey(const ValueKey('request-alert-countdown'))).value!;
+
+    testWidgets('the countdown and GPS fixes rebuild their own parts, not the drive screen', (tester) async {
+      await pump(tester, size: const Size(400, 860));
+      gps.add(const LatLng(3.15, 101.71));
+      await tester.pump();
+      open.add([
+        RideRequest({..._req('r1').raw, 'pickup_lat': 3.158, 'pickup_lng': 101.712}),
+      ]);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      var screens = 0;
+      debugOnRebuildDirtyWidget = (e, _) {
+        if (e.widget is PartnerScreen) screens++;
+      };
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+      await wait(tester, const Duration(seconds: 10));
+      expect(countdown(tester), closeTo(25 / 35, 0.01), reason: 'the countdown still runs');
+      expect(screens, 0);
+      await tester.tap(find.text('Skip'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      screens = 0;
+      String away() => tester.widget<Text>(find.textContaining('m away')).data!;
+      final before = away();
+      // ~100 m nearer: the card's distance follows, the screen does not rebuild.
+      gps.add(const LatLng(3.151, 101.71));
+      await tester.pump();
+      await tester.pump();
+      expect(screens, 0);
+      expect(away(), isNot(before));
+      debugOnRebuildDirtyWidget = null;
+    });
 
     testWidgets("on a phone a new request comes up from the bottom as inDrive's sheet", (tester) async {
       await pump(tester);

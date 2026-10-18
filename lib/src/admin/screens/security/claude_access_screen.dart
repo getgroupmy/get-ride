@@ -92,7 +92,7 @@ class _ClaudeAccessState extends ConsumerState<AdminClaudeAccessScreen> {
     final office = isOfficeIp(ip, rules.value ?? const []);
     final mayEdit = canEdit && office;
     return AdminPage(
-      title: 'Claude Code access',
+      title: 'Claude access',
       page: _page,
       actions: [IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _reload)],
       floatingActionButton: mayEdit
