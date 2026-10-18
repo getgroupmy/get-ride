@@ -155,7 +155,19 @@ class SideMenuTile extends StatelessWidget {
       leading: Icon(menuIcon(entry), color: color),
       title: Text(entry.label, style: color == null ? null : TextStyle(color: color)),
       trailing: entry.comingSoon
-          ? Chip(label: Text('Soon', style: TextStyle(color: mutedTextColor(Theme.of(context)))))
+          // On the chip's own fill, so "Soon" reads (4.5:1) on it.
+          ? Chip(
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              label: Text(
+                'Soon',
+                style: TextStyle(
+                  color: mutedTextColor(
+                    Theme.of(context),
+                    background: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  ),
+                ),
+              ),
+            )
           : _counts
           ? const Row(
               mainAxisSize: MainAxisSize.min,

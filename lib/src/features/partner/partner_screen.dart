@@ -1272,7 +1272,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 '${formatDistance(r.distanceKm)} trip',
                 r.paymentMode,
                 '${r.passengers} pax',
-              ].join(' · '), style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)));
+                // Checked against the card it is on, not the page.
+              ].join(' · '), style: t.textTheme.bodySmall?.copyWith(
+                color: mutedTextColor(t, background: t.cardTheme.color ?? t.colorScheme.surfaceContainerLow),
+              ));
             },
           ),
           const SizedBox(height: 8),

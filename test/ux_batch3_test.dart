@@ -6,7 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/fare.dart' show RideService;
+import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/payment_types.dart';
+import 'package:get_ride/src/core/side_menu.dart' show MenuEntry;
+import 'package:get_ride/src/widgets/side_menu_tiles.dart' show SideMenuTile;
 import 'package:get_ride/src/data/geo_service.dart' show Place;
 import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:get_ride/src/data/device_access.dart' show deviceBlockedProvider;
@@ -25,7 +28,7 @@ import 'package:get_ride/src/features/ride/confirm_parts.dart';
 import 'package:get_ride/src/features/ride/location_share_button.dart';
 import 'package:get_ride/src/features/ride/pickup_time_sheet.dart';
 import 'package:get_ride/src/features/ride/searching_parts.dart';
-import 'package:get_ride/src/widgets/common.dart' show EmptyState, contrastRatio;
+import 'package:get_ride/src/widgets/common.dart' show EmptyState, contrastRatio, mutedTextColor;
 import 'package:get_ride/src/features/safety/ride_sos.dart' show RideSosFab;
 import 'package:get_ride/src/widgets/map_sheet_layout.dart';
 import 'package:get_ride/src/widgets/search_select.dart';
@@ -576,6 +579,60 @@ void _sheets() {
     expect(tester.getSemantics(find.byKey(const ValueKey('confirm-drop'))).label, 'To: KLCC, ~25 min');
     expect(tester.getSemantics(find.byKey(const ValueKey('confirm-add-stop'))).label, 'Add stop');
     semantics.dispose();
+  });
+
+  group('contrast (4.5:1)', () {
+    test('muted text reads on the page whatever colours the admin set', () {
+      for (final b in Brightness.values) {
+        final light = b == Brightness.light;
+        // A pale grey for secondary text, and a page background set apart
+        // from the theme's surface.
+        final t = appTheme(b, colors: {
+          'textSecondary': light ? '#C4C4C4' : '#4A4A4A',
+          'background': light ? '#ECEDEF' : '#20242C',
+        });
+        final c = mutedTextColor(t);
+        expect(contrastRatio(c, t.colorScheme.surface), greaterThanOrEqualTo(4.5), reason: b.name);
+        expect(contrastRatio(c, t.scaffoldBackgroundColor), greaterThanOrEqualTo(4.5), reason: b.name);
+        // On a fill of its own too, however dark or light.
+        for (final fill in const [Color(0xFF9AA0A6), Color(0xFF3A3F47), Color(0xFFFFFFFF)]) {
+          expect(contrastRatio(mutedTextColor(t, background: fill), fill), greaterThanOrEqualTo(4.5));
+        }
+      }
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('"Soon" reads on its chip (${b.name})', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: appTheme(b),
+            home: Scaffold(
+              body: SideMenuTile(
+                entry: const MenuEntry(id: 'city', label: 'City', custom: false, comingSoon: true),
+                builtIn: (_, _) => false,
+              ),
+            ),
+          ),
+        );
+        final t = Theme.of(tester.element(find.text('Soon')));
+        final chip = tester.widget<Chip>(find.byType(Chip));
+        final text = tester.widget<Text>(find.text('Soon'));
+        expect(contrastRatio(text.style!.color!, chip.backgroundColor!), greaterThanOrEqualTo(4.5));
+        final title = tester.widget<Text>(find.text('City'));
+        expect(contrastRatio(title.style?.color ?? t.colorScheme.onSurface, t.colorScheme.surface), greaterThanOrEqualTo(4.5));
+      });
+
+      testWidgets('"Learn more" reads on the location sheet (${b.name})', (tester) async {
+        late BuildContext ctx;
+        await tester.pumpWidget(sheetHost(iphone15, b, (c) => ctx = c));
+        showLocationShareSheet(ctx, on: true);
+        await tester.pumpAndSettle();
+        final t = Theme.of(tester.element(find.text('Learn more')));
+        final button = tester.widget<TextButton>(find.byKey(const ValueKey('location-share-learn')));
+        final ink = button.style!.foregroundColor!.resolve({})!;
+        expect(contrastRatio(ink, t.colorScheme.surfaceContainerLow), greaterThanOrEqualTo(4.5));
+      });
+    }
   });
 
   test('the time wheels show fewer rows on a short screen', () {

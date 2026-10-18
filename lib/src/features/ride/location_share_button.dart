@@ -138,9 +138,10 @@ Future<LocationShareChoice?> showLocationShareSheet(BuildContext context, {requi
                     key: const ValueKey('location-share-learn'),
                     style: TextButton.styleFrom(
                       padding: EdgeInsets.zero,
+                      // 4.5:1 or more on the sheet at this size (#1B7FAD was 4.05).
                       foregroundColor: t.brightness == Brightness.dark
                           ? Colors.lightBlueAccent
-                          : const Color(0xFF1B7FAD),
+                          : const Color(0xFF146C94),
                     ),
                     onPressed: () {
                       Navigator.pop(c);
