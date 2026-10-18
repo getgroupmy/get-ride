@@ -360,6 +360,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Timer? _carsTimer;
   final _rnd = math.Random();
 
+  /// Bumped as the demo cars step: only the map rebuilds for them.
+  final _carsTick = ValueNotifier<int>(0);
+
+  /// The home map as last built, and what it was built from: the sheet's
+  /// providers and settings rebuild the screen around it, not the map
+  /// ([_homeMap]).
+  Widget? _rideMap;
+  List<Object?>? _rideMapDeps;
+
+  /// [build]'s map, or the one already built while [deps] are unchanged.
+  Widget _homeMap(List<Object?> deps, Widget Function() build) {
+    if (_rideMap == null || !listEquals(deps, _rideMapDeps)) {
+      _rideMapDeps = deps;
+      _rideMap = build();
+    }
+    return _rideMap!;
+  }
+
   void _syncCars(bool on) {
     final center = _pickup?.point ?? _me;
     if (!on || center == null || _drop != null) {
@@ -381,7 +399,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _carsTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
       final c = _carsAround;
       if (!mounted || c == null) return;
-      setState(() => _cars = [for (final car in _cars) stepDemoCar(car, c.latitude, c.longitude, _rnd)]);
+      _cars = [for (final car in _cars) stepDemoCar(car, c.latitude, c.longitude, _rnd)];
+      _carsTick.value++;
     });
   }
 
@@ -415,6 +434,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void dispose() {
     _changes.dispose();
+    _carsTick.dispose();
     _carsTimer?.cancel();
     _lifecycle?.dispose();
     _expiry?.cancel();
@@ -1421,6 +1441,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Admin → Display → Map Layout, while the pickup is being set.
     final mapLayout = confirming ? const HomeMapLayout() : HomeMapLayout.fromSettings(blob);
     _refocusOnLayoutChange(mapLayout);
+    final satellite = ref.watch(mapSatelliteProvider);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final autoFit = !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged);
+    final fitTop = confirming ? _confirmFitTop : 64.0;
+    final fitBottom = confirming ? _confirmFitBottom : 64.0;
     final map = Stack(children: [
       Positioned(
         // Map height: the map reaches above the top of the screen.
@@ -1428,7 +1453,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         left: 0,
         right: 0,
         bottom: 0,
-        child: MapFocusShift(
+        child: RepaintBoundary(
+          child: MapFocusShift(
           // Drop pin height / left-right: where the pin is kept.
           shift: Offset(mapLayout.pinShift.$1, mapLayout.pinShift.$2),
           child: MapDragPin(
@@ -1441,7 +1467,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               if (mounted && v != _pinMoving) setState(() => _pinMoving = v);
             },
             onDropped: _onPinDropped,
-            child: RideMap(
+            // Built again only when something it shows changes (the demo
+            // cars step on their own tick).
+            child: ValueListenableBuilder(
+              valueListenable: _carsTick,
+              builder: (_, _, _) => _homeMap([
+                _me, _pickup, _pinMoving, confirming, wide, _routeMoved, autoFit, fitTop, fitBottom, _drop?.point,
+                _route, satellite, _cars, serviceIndex, showPill, screenWidth, mapLayout.pillGap, ai, tolls.length,
+                _stops.length, for (final p in _stops) p.point,
+              ], () => RideMap(
               controller: _map,
               me: _me,
               pickup: _pickup?.point,
@@ -1451,14 +1485,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               focusPickup: !wide,
               pointZoom: homeStreetZoom,
               onGesture: confirming && !_routeMoved ? () => setState(() => _routeMoved = true) : null,
-              autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
-              fitTop: confirming ? _confirmFitTop : 64,
-              fitBottom: confirming ? _confirmFitBottom : 64,
+              autoFit: autoFit,
+              fitTop: fitTop,
+              fitBottom: fitBottom,
               drop: _drop?.point,
               stops: [for (final p in _stops) p.point],
               route: _route?.points ?? const [],
               onTap: _onMapTap,
-              satellite: ref.watch(mapSatelliteProvider),
+              satellite: satellite,
               extraMarkers: [
                 for (final c in _cars) demoCarMarker(c, serviceIndex),
                 // The pickup box stands 5 px above the pickup pin and moves with
@@ -1467,14 +1501,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   labelAbovePin(
                     _pickup!.point,
                     PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup)),
-                    width: math.min(320, MediaQuery.sizeOf(context).width - 32),
+                    width: math.min(320, screenWidth - 32),
                     // Address bar height.
                     gap: mapLayout.pillGap,
                   ),
                 for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
               ],
+            )),
             ),
           ),
+        ),
         ),
       ),
       if (_pinTarget != _PinTarget.none)
