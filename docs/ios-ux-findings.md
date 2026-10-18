@@ -59,6 +59,8 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly; 0e1f676 ("UX ba
 | 48 | Landscape safe area | SOS pill (`left: 12`) under the Dynamic Island; right-hand map buttons, sheet titles / cards and the confirm back pill in the 59 pt side strips; pinned footers are inset correctly | `ride_sos.dart:112`, `ride_map.dart`, `map_sheet_layout.dart`, `home_screen.dart:1645` | open |
 | 49 | Change phone → Code | No `AutofillHints.oneTimeCode`, so iOS doesn't offer the SMS code above the keyboard (sign-in OTP has it) | `change_phone_screen.dart:140` | open |
 | 50 | Side menu scrim | VoiceOver lands on the scrim's unlabelled GestureDetector node under the "Close menu" Semantics (needs `excludeSemantics: true`) | `side_menu_host.dart:134-146` | open |
+| 51 | Support chat | Ticket title "#1042 · Charged twice f…" truncates at one line next to the call icon | `support_chat_screen.dart:100` | open |
+| 52 | Landscape + keyboard | Searchable dropdown dialog shows 0 rows (43 px; #17 at its worst), Set entrance keypad cut (148 px), Add a driver sheet's Add button under the keyboard (111 px), Add contact dialog fields scrolled out (37 px), Vehicle Types empty state behind the pinned button (41 px) | `search_select.dart:313`, `confirm_parts.dart:181`, `my_ride_screen.dart:214`, `emergency_contacts_screen.dart`, `make_model_screen.dart` | open |
 | 29 | Contacts picker | "Choose from contacts" exists only on the web; iOS has a permission-free CNContactPickerViewController | `emergency_contacts_screen.dart:32-38` | suggestion |
 
 Sweeps over every screen: dark mode, text scale 1.3, iPhone SE and iOS
