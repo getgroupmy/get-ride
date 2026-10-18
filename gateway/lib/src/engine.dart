@@ -127,8 +127,8 @@ class GatewayEngine extends ChangeNotifier {
   /// started): how quiet it is, for [pollAfter].
   DateTime _lastWork = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// When the timer's next round is due (rounds the phone starts itself,
-  /// such as on a received SMS, do not wait for it).
+  /// When the next timed round is due ([_timer] is armed for it; rounds the
+  /// phone starts itself, such as on a received SMS, do not wait for it).
   DateTime? _nextPoll;
 
   /// Received SMS not yet accepted by the server, by the phone's id.
@@ -158,7 +158,7 @@ class GatewayEngine extends ChangeNotifier {
     for (final sms in await _safeValue(platform.pending, const <IncomingSms>[])) {
       _inbound.putIfAbsent(sms.id, () => sms);
     }
-    if (schedule) _timer = Timer.periodic(_timerEvery, (_) => unawaited(poll()));
+    // The round arms the timer for the next one (_arm).
     await tick();
   }
 
@@ -237,27 +237,38 @@ class GatewayEngine extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The timer's resolution: fine enough that a due round is never late by
-  /// much, while a round only runs when [poll] says it is due.
-  Duration get _timerEvery => pollEvery < const Duration(seconds: 1) ? pollEvery : const Duration(seconds: 1);
-
   /// How long the next timed round waits, as quiet as it is now.
   Duration get pollInterval => pollAfter(_now().difference(_lastWork), every: pollEvery, max: pollQuietMax);
 
-  /// A timed round: runs [tick] once the interval since the last round has
-  /// passed ([pollAfter]: 5 s while busy, easing to 15 s when quiet).
-  Future<void> poll() async {
-    final due = _nextPoll;
-    if (due != null && _now().isBefore(due)) return;
-    await tick();
+  /// Arms one timer for the next round: when the backoff after a failure
+  /// ends, else [pollInterval] after the last round ([pollAfter]: 5 s while
+  /// busy, easing to 15 s when quiet). Every round that runs re-arms it, so
+  /// a received or claimed SMS moves it to the busy interval at once, and
+  /// nothing wakes the gateway between due times.
+  void _arm() {
+    _timer?.cancel();
+    _timer = null;
+    if (!schedule || !running) return;
+    final now = _now();
+    final retry = _retryAt;
+    final due = retry != null && retry.isAfter(now) ? retry : (_nextPoll ?? now);
+    final wait = due.difference(now);
+    _timer = Timer(wait.isNegative ? Duration.zero : wait, () {
+      _timer = null;
+      unawaited(tick());
+    });
   }
 
   /// One round: heartbeat when due, then received SMS, unsent reports and
   /// new jobs. Rounds never overlap.
   Future<void> tick() async {
+    // A round already running re-arms the timer when it ends.
     if (!running || _busy) return;
     final now = _now();
-    if (_retryAt != null && now.isBefore(_retryAt!)) return;
+    if (_retryAt != null && now.isBefore(_retryAt!)) {
+      _arm();
+      return;
+    }
     _busy = true;
     try {
       if (_device == null || _lastHeartbeat == null || now.difference(_lastHeartbeat!) >= heartbeatEvery) {
@@ -287,6 +298,7 @@ class GatewayEngine extends ChangeNotifier {
     } finally {
       _busy = false;
     }
+    _arm();
   }
 
   Future<void> _flushInbound(String device) async {
