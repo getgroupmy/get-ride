@@ -48,11 +48,14 @@ const liveSettingTables = <String>[
   'insurance_durations',
   'insurance_premium',
   'driver_incentive',
+  // Admin → Commission settings → tiers (0218).
+  'commission_tiers',
   // Not settings, but the balances on screen: a commission or a transfer
   // lands without a pull to refresh (row-level security limits it to the
   // signed-in account's own wallets).
   'wallets',
-  'messaging_devices',
+  // messaging_devices is not here: every gateway's heartbeat rewrites its
+  // row, so Admin → SMS / WhatsApp reads it on a timer instead (0229).
   'messaging_routes',
   'sms_outbox',
   'sms_inbox',

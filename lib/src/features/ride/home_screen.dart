@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
 import '../../core/app_display.dart';
+import '../../core/overlay_back.dart';
 import '../../core/payment_types.dart';
 import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
@@ -70,6 +71,7 @@ import '../../core/my_qr.dart' show QrBookingError;
 import '../../core/early_end.dart' show serviceTypeIds;
 import '../my_ride/my_ride_settings.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/web_overlay_back.dart';
 
 enum _PinTarget { none, pickup, drop }
 
@@ -438,15 +440,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// of the trip ("Offer your fare") follows its stops and fare.
   final _changes = ValueNotifier<int>(0);
 
+  /// On the web, the confirm step has a browser history entry: Back steps
+  /// back to the search as the back arrow does (web_overlay_back.dart).
+  final _confirmBack = OverlayBackSlot(() => webOverlayBack);
+
   @override
   void setState(VoidCallback fn) {
     super.setState(fn);
     _changes.value++;
+    _confirmBack.set(_drop != null, _leaveConfirm);
   }
 
   @override
   void dispose() {
     _routeEnds.dispose();
+    _confirmBack.set(false, _leaveConfirm);
     _changes.dispose();
     _carsTick.dispose();
     _carsTimer?.cancel();

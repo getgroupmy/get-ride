@@ -85,8 +85,8 @@ select pg_temp.check(pg_temp.error_of(format($q$select public.wallet_transfer_co
 
 -- 3. Looking numbers up is limited per sender -------------------------------------------------
 reset role;
-insert into public.auth_rate_hits (bucket, key)
-select 'phone_resolve', '00000000-0000-0000-0000-0000000222a2' from generate_series(1, 20);
+select public.auth_rate_take('phone_resolve', '00000000-0000-0000-0000-0000000222a2', 20, interval '10 minutes')
+  from generate_series(1, 20);
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000222a2');
 select pg_temp.check(pg_temp.error_of($q$select public.wallet_request_coin_transfer(

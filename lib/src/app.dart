@@ -211,6 +211,9 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   final router = GoRouter(
     initialLocation: '/',
+    // On the web, a sheet, dialog, menu or picker gets a browser history
+    // entry, so Back closes it first (widgets/web_overlay_back.dart).
+    observers: webOverlayBackObservers(),
     refreshListenable: refresh,
     // An address that is no page here (an old or mistyped link) gets a way
     // home instead of the router's bare error. Signed-out visitors are still

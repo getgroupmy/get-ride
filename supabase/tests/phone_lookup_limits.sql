@@ -25,11 +25,10 @@ begin
 end $$;
 reset role;
 
--- An address that used up its day (earlier hours) is refused even though its
+-- An address that used up its day is refused even though its
 -- last ten minutes are empty.
-insert into public.auth_rate_hits (bucket, key, at)
-  select 'phone_lookup_day', '198.51.100.174', now() - interval '3 hours'
-    from generate_series(1, 100);
+select public.auth_rate_take('phone_lookup_day', '198.51.100.174', 100, interval '1 day')
+  from generate_series(1, 100);
 select set_config('request.headers', '{"cf-connecting-ip":"198.51.100.174"}', true);
 set local role anon;
 do $$

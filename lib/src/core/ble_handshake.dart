@@ -387,6 +387,51 @@ bool bleNeedsCountdown({required String? side, required String? status, required
 /// How long the driver has to cancel.
 const bleCountdown = Duration(seconds: 3);
 
+// ---- When to report ----------------------------------------------------------------
+
+/// The least time between two reports, whatever changed.
+const bleReportMinGap = Duration(seconds: 4);
+
+/// A sighting that is still close is reported again this often, so the
+/// server keeps knowing this phone sees the other one.
+const bleReportKeepAlive = Duration(seconds: 25);
+
+/// After 'matched', the keep-alive slows to this: enough for the start
+/// check to know the rider was still close in the last 10 minutes
+/// (start_flag 'no_proximity', 0154) if the code is used later.
+const bleReportAfterMatch = Duration(minutes: 4);
+
+/// Whether this phone reports to the server now. Each report is a write on
+/// the server, so it goes only when it says something new:
+///
+///   * the first time the other phone is seen close for long enough
+///     ([close] with nothing reported yet, [reported] null);
+///   * when it crosses the threshold either way ([close] differs from what
+///     the last report said);
+///   * a keep-alive every [bleReportKeepAlive] while it stays close;
+///
+/// never closer together than [bleReportMinGap]. Once the server has said
+/// 'matched' ([answer]) only a keep-alive every [bleReportAfterMatch] while
+/// still close; nothing once it started the trip, or once the ride has left
+/// the kerb ([status] other than accepted / arrived). Pure.
+bool bleShouldReport({
+  required bool close,
+  required bool? reported,
+  required DateTime? lastReport,
+  required DateTime now,
+  required String? status,
+  BleProofResult? answer,
+}) {
+  if (status != 'accepted' && status != 'arrived') return false;
+  if (answer == BleProofResult.started) return false;
+  final since = lastReport == null ? null : now.difference(lastReport);
+  if (since != null && since < bleReportMinGap) return false;
+  if (answer == BleProofResult.matched) return close && (since == null || since >= bleReportAfterMatch);
+  if (reported == null) return close;
+  if (close != reported) return true;
+  return close && (since == null || since >= bleReportKeepAlive);
+}
+
 // ---- Admin: how trips started ------------------------------------------------------
 
 /// ble_start_stats: trips started in the last days, by how.
