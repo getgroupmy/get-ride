@@ -2560,9 +2560,22 @@ void main() {
       'assign-service',
       'vehicle-make-model',
       'app-icon',
+      'claude-access',
     ]) {
       testWidgets('m $m', (t) => _shot(t, 'more_m_${m.replaceAll('-', '_')}', route: '/admin/m/$m', admin: true));
     }
+    testWidgets(
+      'm claude-access large text',
+      (t) => _shot(t, 'more_m_claude_access_xl', route: '/admin/m/claude-access', admin: true, textScale: 1.35),
+    );
+    testWidgets(
+      'm claude-access SE',
+      (t) => _shot(t, 'more_m_claude_access_se', route: '/admin/m/claude-access', admin: true, se: true),
+    );
+    testWidgets(
+      'm claude-access dark',
+      (t) => _shot(t, 'more_m_claude_access_dark', route: '/admin/m/claude-access', admin: true, dark: true),
+    );
     testWidgets(
       'admin support chat',
       (t) =>
