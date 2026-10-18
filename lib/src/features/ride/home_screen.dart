@@ -43,6 +43,7 @@ import '../../data/fare_coin_store.dart';
 import '../../data/fare_tariff_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/live_tables.dart';
+import '../../data/location_source.dart';
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
@@ -576,18 +577,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _pin.currentState?.dropAt(p));
   }
 
+  /// The rider and the pickup on the last known (or a quick) fix at once,
+  /// then moved onto the accurate one when it comes (PERF-4): the pickup
+  /// only while it is still the one set here and no destination is chosen.
   Future<void> _locate({bool recenter = false}) async {
-    final p = await currentPosition();
-    if (p == null || !mounted) return;
-    setState(() => _me = p);
-    if (recenter && recenterMap(_map, p, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(p);
-    final place = await ref.read(geoServiceProvider).reverse(p);
-    if (!mounted) return;
-    setState(() {
-      _here = place;
-      _pickup ??= place;
-    });
-    _updateRoute();
+    Place? set;
+    await for (final p in locateFastThenFine(ref.read(locationSourceProvider))) {
+      if (!mounted) return;
+      setState(() => _me = p);
+      if (recenter && recenterMap(_map, p, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(p);
+      final place = await ref.read(geoServiceProvider).reverse(p);
+      if (!mounted) return;
+      setState(() {
+        _here = place;
+        if (_pickup == null || (identical(_pickup, set) && _drop == null)) _pickup = set = place;
+      });
+      _updateRoute();
+    }
   }
 
   /// The first point of the trip GET.ride can't serve (outside every
