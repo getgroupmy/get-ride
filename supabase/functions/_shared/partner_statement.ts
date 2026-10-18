@@ -11,8 +11,20 @@
  * when its numbers change (an adjustment). A provisional one is made fresh
  * each time. 429 past 20 made per partner per hour.
  */
-import { degrees, PDFDocument, type PDFFont, type PDFPage, rgb, StandardFonts } from "npm:pdf-lib@1.17.1";
+import { degrees, PDFDocument, type PDFFont, type PDFImage, type PDFPage, rgb, StandardFonts } from "npm:pdf-lib@1.17.1";
 import qrcode from "npm:qrcode-generator@1.4.4";
+
+import {
+  cleanLayout,
+  type FontFamily,
+  layoutHash,
+  renamed,
+  rgbOf,
+  type Section,
+  shows,
+  type StatementLayout,
+} from "./statement_layout.ts";
+import { sampleStatement } from "./statement_sample.ts";
 
 export type PeriodType = "weekly" | "monthly" | "annual";
 export type Lang = "en" | "ms";
@@ -107,6 +119,8 @@ const WORDS = {
     week: "Week",
     month: "Month",
     tripList: "Trips",
+    incentivesList: "Incentives",
+    adjustmentsList: "Adjustments",
     time: "Time",
     service: "Service",
     payment: "Payment",
@@ -174,6 +188,8 @@ const WORDS = {
     week: "Minggu",
     month: "Bulan",
     tripList: "Perjalanan",
+    incentivesList: "Insentif",
+    adjustmentsList: "Pelarasan",
     time: "Masa",
     service: "Perkhidmatan",
     payment: "Bayaran",
@@ -257,42 +273,42 @@ export function verifyLink(base: string | undefined, token: string): string {
 }
 
 // ---- The summary's rows ---------------------------------------------------------------------
-export type Row = { label: string; amount?: number; bold?: boolean; head?: boolean; text?: string };
+export type Row = { id: string; section: Section; label: string; amount?: number; bold?: boolean; head?: boolean; text?: string };
 
 export function summaryRows(t: Totals, w: Words): Row[] {
   const n = (k: string) => Number(t[k] ?? 0);
   const rows: Row[] = [
-    { label: w.earnings, head: true },
-    { label: w.fares, amount: n("fare") },
-    { label: w.surcharges, amount: n("surcharges") },
-    { label: w.feesCollected, amount: n("platformCollected") },
-    { label: w.incentives, amount: n("incentives") },
-    { label: w.handoverIn, amount: n("handoverIn") },
-    { label: w.totalEarnings, amount: n("totalEarnings"), bold: true },
-    { label: w.deductions, head: true },
-    { label: w.commission, amount: -n("commission") },
-    { label: w.platformFees, amount: -n("platformFees") },
-    { label: w.handoverOut, amount: -n("handoverOut") },
-    { label: w.totalDeductions, amount: -n("totalDeductions"), bold: true },
-    { label: w.adjustments, amount: n("adjustments") },
-    { label: w.net, amount: n("net"), bold: true },
-    { label: w.passThrough, head: true },
-    { label: w.taxes, amount: n("taxes") },
-    { label: w.tolls, amount: n("tolls") },
-    { label: w.otherCharges, amount: n("otherCharges") },
-    { label: w.otherSurcharges, amount: n("surchargesPass") },
-    { label: w.total, amount: n("passThrough"), bold: true },
-    { label: w.howPaid, head: true },
-    { label: w.cash, amount: n("cash") },
-    { label: w.coins, amount: n("coins") },
-    { label: w.activity, head: true },
-    { label: w.trips, text: String(n("trips")) },
-    { label: w.onlineHours, text: n("onlineHours").toFixed(1) },
-    { label: w.distance, text: n("distanceKm").toFixed(1) },
+    { id: "earnings", section: "earnings", label: w.earnings, head: true },
+    { id: "fares", section: "earnings", label: w.fares, amount: n("fare") },
+    { id: "surcharges", section: "earnings", label: w.surcharges, amount: n("surcharges") },
+    { id: "feesCollected", section: "earnings", label: w.feesCollected, amount: n("platformCollected") },
+    { id: "incentives", section: "earnings", label: w.incentives, amount: n("incentives") },
+    { id: "handoverIn", section: "earnings", label: w.handoverIn, amount: n("handoverIn") },
+    { id: "totalEarnings", section: "earnings", label: w.totalEarnings, amount: n("totalEarnings"), bold: true },
+    { id: "deductions", section: "deductions", label: w.deductions, head: true },
+    { id: "commission", section: "deductions", label: w.commission, amount: -n("commission") },
+    { id: "platformFees", section: "deductions", label: w.platformFees, amount: -n("platformFees") },
+    { id: "handoverOut", section: "deductions", label: w.handoverOut, amount: -n("handoverOut") },
+    { id: "totalDeductions", section: "deductions", label: w.totalDeductions, amount: -n("totalDeductions"), bold: true },
+    { id: "adjustments", section: "net", label: w.adjustments, amount: n("adjustments") },
+    { id: "net", section: "net", label: w.net, amount: n("net"), bold: true },
+    { id: "passThrough", section: "passThrough", label: w.passThrough, head: true },
+    { id: "taxes", section: "passThrough", label: w.taxes, amount: n("taxes") },
+    { id: "tolls", section: "passThrough", label: w.tolls, amount: n("tolls") },
+    { id: "otherCharges", section: "passThrough", label: w.otherCharges, amount: n("otherCharges") },
+    { id: "otherSurcharges", section: "passThrough", label: w.otherSurcharges, amount: n("surchargesPass") },
+    { id: "total", section: "passThrough", label: w.total, amount: n("passThrough"), bold: true },
+    { id: "howPaid", section: "howPaid", label: w.howPaid, head: true },
+    { id: "cash", section: "howPaid", label: w.cash, amount: n("cash") },
+    { id: "coins", section: "howPaid", label: w.coins, amount: n("coins") },
+    { id: "activity", section: "activity", label: w.activity, head: true },
+    { id: "trips", section: "activity", label: w.trips, text: String(n("trips")) },
+    { id: "onlineHours", section: "activity", label: w.onlineHours, text: n("onlineHours").toFixed(1) },
+    { id: "distance", section: "activity", label: w.distance, text: n("distanceKm").toFixed(1) },
   ];
   // Lines that are nothing in every statement (no handover, no adjustments) are left out.
-  const optional = new Set([w.handoverIn, w.handoverOut, w.adjustments, w.otherCharges, w.otherSurcharges]);
-  return rows.filter((r) => !optional.has(r.label) || (r.amount ?? 0) !== 0);
+  const optional = new Set(["handoverIn", "handoverOut", "adjustments", "otherCharges", "otherSurcharges"]);
+  return rows.filter((r) => !optional.has(r.id) || (r.amount ?? 0) !== 0);
 }
 
 // ---- The PDF -------------------------------------------------------------------------------
@@ -303,60 +319,113 @@ export interface RenderMeta {
   revisedAt: string | null;
 }
 
+/** How it looks: the admin's layout, and the logo's bytes when it has one. */
+export interface RenderLook {
+  layout?: StatementLayout;
+  logo?: { bytes: Uint8Array; png: boolean } | null;
+}
+
 const A4 = { w: 595.28, h: 841.89 };
 const M = 40;
-const INK = rgb(0.1, 0.1, 0.12);
-const MUTED = rgb(0.42, 0.44, 0.48);
-const RULE = rgb(0.85, 0.86, 0.88);
-const BRAND = rgb(0.0, 0.47, 0.35);
-const WATERMARK = rgb(0.9, 0.9, 0.92);
 
-export async function renderStatement(d: StatementData, meta: RenderMeta): Promise<Uint8Array> {
+const FAMILIES: Record<FontFamily, [StandardFonts, StandardFonts]> = {
+  helvetica: [StandardFonts.Helvetica, StandardFonts.HelveticaBold],
+  times: [StandardFonts.TimesRoman, StandardFonts.TimesRomanBold],
+  courier: [StandardFonts.Courier, StandardFonts.CourierBold],
+};
+
+export async function renderStatement(d: StatementData, meta: RenderMeta, look: RenderLook = {}): Promise<Uint8Array> {
   const lang = d.lang;
-  const w = words(lang);
+  const L = look.layout ?? cleanLayout({});
+  const w = renamed(words(lang), L, lang);
+  const on = (id: string) => shows(L, id);
+  const fs = L.fonts;
+  const color = (k: keyof StatementLayout["colors"]) => rgb(...rgbOf(L.colors[k]));
+  const INK = color("ink");
+  const MUTED = color("muted");
+  const RULE = color("rule");
+  const BRAND = color("brand");
+
   const doc = await PDFDocument.create();
   doc.setTitle(`${w.title} ${meta.statementNo}`);
   doc.setAuthor(latin1(d.company.name));
   doc.setCreator("GET.ride");
   doc.setProducer("GET.ride");
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const [regular, heavy] = FAMILIES[L.fontFamily];
+  const font = await doc.embedFont(regular);
+  const bold = await doc.embedFont(heavy);
+
+  let logo: PDFImage | null = null;
+  if (look.logo && L.logo.path) {
+    try {
+      logo = look.logo.png ? await doc.embedPng(look.logo.bytes) : await doc.embedJpg(look.logo.bytes);
+    } catch {
+      logo = null; // A file pdf-lib can't read: the statement goes out without it.
+    }
+  }
 
   let page!: PDFPage;
   let y = 0;
   const status = meta.revisedAt ? w.revised : d.status === "final" ? w.final : w.provisional;
 
-  const text = (s: string, x: number, yy: number, size = 9, f: PDFFont = font, color = INK) =>
-    page.drawText(latin1(s), { x, y: yy, size, font: f, color });
-  const right = (s: string, xr: number, yy: number, size = 9, f: PDFFont = font, color = INK) => {
+  const text = (s: string, x: number, yy: number, size = fs.body, f: PDFFont = font, c = INK) =>
+    page.drawText(latin1(s), { x, y: yy, size, font: f, color: c });
+  const right = (s: string, xr: number, yy: number, size = fs.body, f: PDFFont = font, c = INK) => {
     const t = latin1(s);
-    page.drawText(t, { x: xr - f.widthOfTextAtSize(t, size), y: yy, size, font: f, color });
+    page.drawText(t, { x: xr - f.widthOfTextAtSize(t, size), y: yy, size, font: f, color: c });
   };
   const rule = (yy: number) =>
     page.drawLine({ start: { x: M, y: yy }, end: { x: A4.w - M, y: yy }, thickness: 0.5, color: RULE });
-  const fit = (s: string, max: number, size = 9, f: PDFFont = font) => {
+  const fit = (s: string, max: number, size = fs.body, f: PDFFont = font) => {
     let t = latin1(s);
     while (t.length > 1 && f.widthOfTextAtSize(t, size) > max) t = t.slice(0, -2) + ".";
     return t;
   };
 
+  // The logo's own band at the top; its shift moves only the picture.
+  const logoW = logo ? L.logo.width : 0;
+  const logoH = logo ? Math.min(120, (logoW * logo.height) / logo.width) : 0;
+  const band = logo ? logoH + 8 : 0;
+
+  type Line = { s: string; size: number; f: PDFFont; c: ReturnType<typeof rgb> };
+  const companyLines: Line[] = [
+    ...(on("companyName") ? [{ s: d.company.name, size: fs.company, f: bold, c: BRAND }] : []),
+    ...(on("companySsm") && d.company.ssm ? [{ s: `${w.ssm} ${d.company.ssm}`, size: fs.small + 1, f: font, c: MUTED }] : []),
+    ...(on("supportContact") && d.company.support ? [{ s: `${w.support} ${d.company.support}`, size: fs.small + 1, f: font, c: MUTED }] : []),
+  ];
+  const titleLines: Line[] = [
+    ...(on("title") ? [{ s: w.title, size: fs.title, f: bold, c: INK }] : []),
+    ...(on("period") ? [{ s: `${w[d.type]} - ${periodLabel(d, lang)}`, size: fs.body, f: font, c: INK }] : []),
+    ...(on("statementNo") ? [{ s: `${w.statementNo} ${meta.statementNo}`, size: fs.small + 1, f: font, c: MUTED }] : []),
+  ];
+  const stack = (lines: Line[], atRight: boolean, top: number) => {
+    let yy = top;
+    for (const l of lines) {
+      yy -= l.size;
+      atRight ? right(fit(l.s, 260, l.size, l.f), A4.w - M, yy, l.size, l.f, l.c) : text(fit(l.s, 260, l.size, l.f), M, yy, l.size, l.f, l.c);
+      yy -= 3;
+    }
+    return top - yy;
+  };
+
   const newPage = () => {
     page = doc.addPage([A4.w, A4.h]);
-    if (d.status !== "final") {
-      page.drawText(w.provisional, {
-        x: 110, y: 260, size: 72, font: bold, color: WATERMARK,
+    if (d.status !== "final" && on("watermark")) {
+      page.drawText(latin1(w.provisional), {
+        x: 110, y: 260, size: 72, font: bold, color: color("watermark"),
         rotate: degrees(40),
       });
     }
-    // Header on every page.
-    text(d.company.name, M, A4.h - M - 4, 12, bold, BRAND);
-    text(`${w.ssm} ${d.company.ssm}`, M, A4.h - M - 18, 8, font, MUTED);
-    text(`${w.support} ${d.company.support}`, M, A4.h - M - 29, 8, font, MUTED);
-    right(w.title, A4.w - M, A4.h - M - 4, 12, bold);
-    right(`${w[d.type]} - ${periodLabel(d, lang)}`, A4.w - M, A4.h - M - 18, 9);
-    right(`${w.statementNo} ${meta.statementNo}`, A4.w - M, A4.h - M - 29, 8, font, MUTED);
-    rule(A4.h - M - 38);
-    y = A4.h - M - 56;
+    const top = A4.h - M;
+    if (logo) {
+      const x0 = L.logo.position === "center" ? (A4.w - logoW) / 2 : L.logo.position === "right" ? A4.w - M - logoW : M;
+      page.drawImage(logo, { x: x0 + L.logo.dx, y: top - logoH - L.logo.dy, width: logoW, height: logoH });
+    }
+    // Header on every page: the company on one side, the title on the other.
+    const companyRight = L.companySide === "right";
+    const h = Math.max(stack(companyLines, companyRight, top - band), stack(titleLines, !companyRight, top - band));
+    rule(top - band - h - 4);
+    y = top - band - h - 22;
   };
   const need = (h: number) => {
     if (y - h < M + 70) newPage();
@@ -365,120 +434,151 @@ export async function renderStatement(d: StatementData, meta: RenderMeta): Promi
   newPage();
 
   // Status and partner.
-  const badge = latin1(status);
-  const bw = bold.widthOfTextAtSize(badge, 9) + 14;
-  page.drawRectangle({ x: A4.w - M - bw, y: y - 4, width: bw, height: 16, color: d.status === "final" ? BRAND : MUTED });
-  page.drawText(badge, { x: A4.w - M - bw + 7, y: y + 1, size: 9, font: bold, color: rgb(1, 1, 1) });
-  text(`${w.issued} ${myt(meta.issuedAt)}`, A4.w - M - 200, y - 20, 8, font, MUTED);
-  if (meta.revisedAt) text(w.revisedNote(myt(meta.revisedAt)), A4.w - M - 200, y - 31, 8, font, MUTED);
-  if (d.status !== "final") text(fit(w.provisionalNote, 200, 7), A4.w - M - 200, y - 31, 7, font, MUTED);
+  const metaX = L.companySide === "right" ? M : A4.w - M - 200;
+  if (on("status")) {
+    const badge = latin1(status);
+    const bw = bold.widthOfTextAtSize(badge, fs.body) + 14;
+    const bx = L.companySide === "right" ? M : A4.w - M - bw;
+    page.drawRectangle({ x: bx, y: y - 4, width: bw, height: fs.body + 7, color: d.status === "final" ? color("badge") : MUTED });
+    page.drawText(badge, { x: bx + 7, y: y + 1, size: fs.body, font: bold, color: rgb(1, 1, 1) });
+  }
+  if (on("issued")) text(`${w.issued} ${myt(meta.issuedAt)}`, metaX, y - 20, fs.small + 1, font, MUTED);
+  if (meta.revisedAt) text(w.revisedNote(myt(meta.revisedAt)), metaX, y - 31, fs.small + 1, font, MUTED);
+  if (d.status !== "final") text(fit(w.provisionalNote, 200, fs.small), metaX, y - 31, fs.small, font, MUTED);
 
   const p = d.partner;
-  const details: [string, string | null][] = [
-    [w.partner, p.name],
-    [w.partnerId, p.displayId],
-    [w.ic, p.ic],
-    [w.plate, p.plate],
-    [w.bank, p.bank ? `${p.bank.bank} ${p.bank.account} (${p.bank.holder})` : null],
-  ];
-  for (const [k, v] of details) {
-    if (!v) continue;
-    text(k, M, y, 9, font, MUTED);
-    text(fit(v, 230), M + 90, y, 9, k === w.partner ? bold : font);
-    y -= 13;
+  const partnerValues: Record<string, [string, string | null]> = {
+    partner: [w.partner, p.name],
+    partnerId: [w.partnerId, p.displayId],
+    ic: [w.ic, p.ic],
+    plate: [w.plate, p.plate],
+    bank: [w.bank, p.bank ? `${p.bank.bank} ${p.bank.account} (${p.bank.holder})` : null],
+  };
+  const partnerX = L.companySide === "right" ? A4.w / 2 - 20 : M;
+  for (const id of L.partnerOrder) {
+    const [k, v] = partnerValues[id] ?? ["", null];
+    if (!v || !on(id)) continue;
+    text(k, partnerX, y, fs.body, font, MUTED);
+    text(fit(v, 230), partnerX + 90, y, fs.body, id === "partner" ? bold : font);
+    y -= fs.body + 4;
   }
   y -= 10;
 
-  // Summary.
   const col = A4.w - M;
-  for (const r of summaryRows(d.totals, w)) {
-    need(16);
-    if (r.head) {
-      y -= 6;
-      text(r.label, M, y, 10, bold, BRAND);
-      y -= 4;
-      rule(y);
-      y -= 12;
-      continue;
+  const heading = (title: string) => {
+    y -= 6;
+    text(title, M, y, fs.heading, bold, BRAND);
+    y -= 4;
+    rule(y);
+    y -= fs.body + 3;
+  };
+
+  // Summary blocks.
+  const rows = summaryRows(d.totals, w);
+  const summary = (section: Section) => {
+    const mine = rows.filter((r) => r.section === section && on(r.id));
+    if (!mine.some((r) => !r.head)) return;
+    for (const r of mine) {
+      need(16);
+      if (r.head) {
+        heading(r.label);
+        continue;
+      }
+      const size = r.bold ? fs.total : fs.body;
+      text(r.label, M + 8, y, size, r.bold ? bold : font);
+      right(r.text ?? money(r.amount), col, y, size, r.bold ? bold : font);
+      y -= r.bold ? size + 6 : size + 4;
     }
-    text(r.label, M + 8, y, r.bold ? 10 : 9, r.bold ? bold : font);
-    right(r.text ?? money(r.amount), col, y, r.bold ? 10 : 9, r.bold ? bold : font);
-    y -= r.bold ? 16 : 13;
-  }
+  };
 
   // Incentives and adjustments.
   const listed = (title: string, items: { at: string; label: string; amount: number }[]) => {
     if (!items.length) return;
     need(40);
-    y -= 6;
-    text(title, M, y, 10, bold, BRAND);
-    y -= 4;
-    rule(y);
-    y -= 12;
+    heading(title);
     for (const i of items) {
       need(14);
       text(myt(i.at).slice(0, 10), M + 8, y);
       text(fit(i.label, 330), M + 90, y);
       right(money(i.amount), col, y);
-      y -= 13;
+      y -= fs.body + 4;
     }
   };
-  listed(w.incentives, d.incentives);
-  listed(w.adjustments, d.adjustments.map((a) => ({ at: a.at, label: a.reason, amount: a.amount })));
 
   // Breakdown.
   const cols = [M + 8, M + 190, M + 270, M + 370, col];
-  const table = (title: string, heads: string[], rows: string[][]) => {
+  const table = (title: string, heads: string[], body: string[][]) => {
     need(50);
     y -= 6;
-    text(title, M, y, 10, bold, BRAND);
-    y -= 14;
-    heads.forEach((h, i) => (i === 0 ? text(h, cols[0], y, 8, bold, MUTED) : right(h, cols[i + 1], y, 8, bold, MUTED)));
+    text(title, M, y, fs.heading, bold, BRAND);
+    y -= fs.heading + 4;
+    heads.forEach((h, i) => (i === 0 ? text(h, cols[0], y, fs.table, bold, MUTED) : right(h, cols[i + 1], y, fs.table, bold, MUTED)));
     y -= 4;
     rule(y);
-    y -= 12;
-    for (const r of rows) {
+    y -= fs.table + 4;
+    for (const r of body) {
       need(14);
-      r.forEach((c, i) => (i === 0 ? text(c, cols[0], y) : right(c, cols[i + 1], y)));
-      y -= 13;
+      r.forEach((c, i) => (i === 0 ? text(c, cols[0], y, fs.table + 1) : right(c, cols[i + 1], y, fs.table + 1)));
+      y -= fs.table + 5;
     }
   };
   const breakdownRows = (items: { start: string; end?: string; totals: Totals }[], label: (s: string, e?: string) => string) =>
     items.map((b) => [label(b.start, b.end), String(b.totals.trips ?? 0), money(b.totals.totalEarnings), money(b.totals.net)]);
   const heads = (first: string) => [first, w.trips, w.earned, w.net];
-  if (d.type === "weekly") {
-    table(w.daily, heads(w.date), breakdownRows(d.breakdown, (s) => {
-      const i = (new Date(`${s}T00:00:00Z`).getUTCDay() + 6) % 7;
-      return `${w.days[i]} ${day(s, lang)}`;
-    }));
-  } else if (d.type === "monthly") {
-    table(w.weeklyBreakdown, heads(w.week), breakdownRows(d.breakdown, (s, e) => `${day(s, lang)} - ${day(e ?? s, lang)}`));
-  } else {
-    table(w.monthlyBreakdown, heads(w.month), breakdownRows(d.breakdown, (s) => periodLabel({ type: "monthly", periodStart: s, periodEnd: s }, lang)));
-  }
+  const breakdown = () => {
+    if (d.type === "weekly") {
+      if (!on("daily")) return;
+      table(w.daily, heads(w.date), breakdownRows(d.breakdown, (s) => {
+        const i = (new Date(`${s}T00:00:00Z`).getUTCDay() + 6) % 7;
+        return `${w.days[i]} ${day(s, lang)}`;
+      }));
+    } else if (d.type === "monthly") {
+      if (!on("weeklyBreakdown")) return;
+      table(w.weeklyBreakdown, heads(w.week), breakdownRows(d.breakdown, (s, e) => `${day(s, lang)} - ${day(e ?? s, lang)}`));
+    } else {
+      if (!on("monthlyBreakdown")) return;
+      table(w.monthlyBreakdown, heads(w.month), breakdownRows(d.breakdown, (s) => periodLabel({ type: "monthly", periodStart: s, periodEnd: s }, lang)));
+    }
+  };
 
   // Trips (weekly).
-  if (d.type === "weekly" && d.trips.length) {
+  const tripList = () => {
+    if (d.type !== "weekly" || !d.trips.length || !on("tripList")) return;
     const tc = [M + 8, M + 95, M + 175, M + 265, M + 345, M + 425, col];
+    const size = fs.table;
     need(50);
     y -= 6;
-    text(w.tripList, M, y, 10, bold, BRAND);
-    y -= 14;
+    text(w.tripList, M, y, fs.heading, bold, BRAND);
+    y -= fs.heading + 4;
     const th = [w.time, w.service, w.payment, w.fare, w.earned, w.commission];
-    th.forEach((h, i) => (i < 3 ? text(h, tc[i], y, 8, bold, MUTED) : right(h, tc[i + 1], y, 8, bold, MUTED)));
+    th.forEach((h, i) => (i < 3 ? text(h, tc[i], y, size, bold, MUTED) : right(h, tc[i + 1], y, size, bold, MUTED)));
     y -= 4;
     rule(y);
-    y -= 12;
+    y -= size + 4;
     for (const t of d.trips) {
       need(14);
       const l = t.lines;
-      text(myt(t.at), tc[0], y, 8);
-      text(fit(t.service ?? "", 75, 8), tc[1], y, 8);
-      text(fit(t.payment ?? "", 80, 8), tc[2], y, 8);
-      right(money(l.fare), tc[4], y, 8);
-      right(money((l.fare ?? 0) + (l.surcharges ?? 0) + (l.platformCollected ?? 0)), tc[5], y, 8);
-      right(money(-(l.commission ?? 0)), tc[6], y, 8);
-      y -= 12;
+      text(myt(t.at), tc[0], y, size);
+      text(fit(t.service ?? "", 75, size), tc[1], y, size);
+      text(fit(t.payment ?? "", 80, size), tc[2], y, size);
+      right(money(l.fare), tc[4], y, size);
+      right(money((l.fare ?? 0) + (l.surcharges ?? 0) + (l.platformCollected ?? 0)), tc[5], y, size);
+      right(money(-(l.commission ?? 0)), tc[6], y, size);
+      y -= size + 4;
+    }
+  };
+
+  for (const s of L.sections) {
+    if (s === "incentivesList") {
+      if (on(s)) listed(w.incentivesList, d.incentives);
+    } else if (s === "adjustmentsList") {
+      if (on(s)) listed(w.adjustmentsList, d.adjustments.map((a) => ({ at: a.at, label: a.reason, amount: a.amount })));
+    } else if (s === "breakdown") {
+      breakdown();
+    } else if (s === "tripList") {
+      tripList();
+    } else {
+      summary(s);
     }
   }
 
@@ -490,21 +590,24 @@ export async function renderStatement(d: StatementData, meta: RenderMeta): Promi
   const size = 54;
   const cell = size / n;
   const pages = doc.getPages();
+  const textX = on("verify") ? M + size + 10 : M;
   pages.forEach((pg, i) => {
     page = pg;
     rule(M + 62);
-    for (let r = 0; r < n; r++) {
-      for (let c = 0; c < n; c++) {
-        if (qr.isDark(r, c)) {
-          pg.drawRectangle({ x: M + c * cell, y: M + size - (r + 1) * cell, width: cell + 0.05, height: cell + 0.05, color: INK });
+    if (on("verify")) {
+      for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) {
+          if (qr.isDark(r, c)) {
+            pg.drawRectangle({ x: M + c * cell, y: M + size - (r + 1) * cell, width: cell + 0.05, height: cell + 0.05, color: INK });
+          }
         }
       }
+      text(w.verify, textX, M + 40, fs.small + 1, bold);
+      text(fit(meta.verifyUrl, 300, fs.small), textX, M + 29, fs.small, font, MUTED);
     }
-    text(w.verify, M + size + 10, M + 40, 8, bold);
-    text(fit(meta.verifyUrl, 300, 7), M + size + 10, M + 29, 7, font, MUTED);
-    text(w.footer, M + size + 10, M + 14, 7, font, MUTED);
-    right(w.page(i + 1, pages.length), A4.w - M, M + 14, 7, font, MUTED);
-    right(meta.statementNo, A4.w - M, M + 40, 8, bold);
+    if (on("footer")) text(fit(w.footer, 380, fs.small), textX, M + 14, fs.small, font, MUTED);
+    if (on("pageNumbers")) right(w.page(i + 1, pages.length), A4.w - M, M + 14, fs.small, font, MUTED);
+    if (on("statementNo")) right(meta.statementNo, A4.w - M, M + 40, fs.small + 1, bold);
   });
 
   return await doc.save();
@@ -516,6 +619,8 @@ export interface StatementRow {
   verify_token: string;
   is_final: boolean;
   data_hash: string;
+  /** The layout it was drawn with; null: the built-in one. */
+  layout_hash?: string | null;
   storage_path: string;
   revised_at: string | null;
 }
@@ -532,6 +637,8 @@ export interface StatementDeps {
   save(row: Record<string, unknown>): Promise<void>;
   signedUrl(path: string, fileName: string): Promise<string>;
   now(): Date;
+  /** The saved layout and its logo; left out, the built-in look. */
+  look?(): Promise<RenderLook & { layout: StatementLayout }>;
   render?: typeof renderStatement;
 }
 
@@ -562,11 +669,14 @@ export async function handleStatement(body: unknown, deps: StatementDeps): Promi
   }
 
   const hash = await statementHash(data);
+  const look = deps.look ? await deps.look() : { layout: cleanLayout({}), logo: null };
+  const lHash = await layoutHash(look.layout);
   const row = await deps.find(uid, req.type, req.start, req.lang);
   const name = fileName(data, req.lang);
   const final = data.status === "final";
+  const sameLook = (row?.layout_hash ?? (await layoutHash(cleanLayout({})))) === lHash;
 
-  if (row && row.is_final && final && row.data_hash === hash) {
+  if (row && row.is_final && final && row.data_hash === hash && sameLook) {
     return {
       status: 200,
       body: {
@@ -583,14 +693,15 @@ export async function handleStatement(body: unknown, deps: StatementDeps): Promi
   const now = deps.now().toISOString();
   const statementNo = row?.statement_no ?? (await deps.nextNo(req.type));
   const token = row?.verify_token ?? newVerifyToken();
-  // A final copy whose numbers changed is revised; one made before the period closed is not.
-  const revisedAt = row?.is_final && final ? now : null;
+  // A final copy whose numbers changed is revised; one made before the period closed, or only
+  // redrawn in a new layout, is not.
+  const revisedAt = row?.is_final && final && row.data_hash !== hash ? now : null;
   const pdf = await (deps.render ?? renderStatement)(data, {
     statementNo,
     verifyUrl: verifyLink(data.company.verifyUrl, token),
     issuedAt: now,
-    revisedAt,
-  });
+    revisedAt: revisedAt ?? (final ? row?.revised_at ?? null : null),
+  }, look);
   const path = `${uid}/${req.type}-${req.start}-${req.lang}.pdf`;
   await deps.upload(path, pdf);
   await deps.save({
@@ -605,6 +716,7 @@ export async function handleStatement(body: unknown, deps: StatementDeps): Promi
     totals: data.totals,
     storage_path: path,
     data_hash: hash,
+    layout_hash: lHash,
     revised_at: revisedAt ?? row?.revised_at ?? null,
     updated_at: now,
   });
@@ -619,4 +731,46 @@ export async function handleStatement(body: unknown, deps: StatementDeps): Promi
       revisedAt: keptRevised,
     },
   };
+}
+
+// ---- The admin's sample --------------------------------------------------------------------
+export interface PreviewDeps {
+  /** Whether the caller is an admin (any access). */
+  isAdmin(): Promise<boolean>;
+  company(): Promise<StatementData["company"]>;
+  /** The logo at this `app-branding` path, or null. */
+  logo(path: string): Promise<RenderLook["logo"]>;
+  render?: typeof renderStatement;
+}
+
+/**
+ * POST { preview: true, type, lang, layout } → { pdf (base64), fileName }: a made-up
+ * statement drawn in the layout being edited, before it is saved.
+ */
+export async function handlePreview(body: unknown, deps: PreviewDeps): Promise<StatementAnswer> {
+  const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+  const type = typeof b.type === "string" && PERIOD.test(b.type) ? (b.type as PeriodType) : "monthly";
+  const lang: Lang = b.lang === "ms" ? "ms" : "en";
+  if (JSON.stringify(b.layout ?? {}).length > 20_000) return fail("bad_request", 400);
+  if (!(await deps.isAdmin())) return fail("not_authorized", 403);
+  const layout = cleanLayout(b.layout);
+  const data = sampleStatement(type, lang, await deps.company());
+  const logo = layout.logo.path ? await deps.logo(layout.logo.path) : null;
+  const pdf = await (deps.render ?? renderStatement)(data, {
+    statementNo: "SAMPLE",
+    verifyUrl: verifyLink(data.company.verifyUrl, "SAMPLE"),
+    issuedAt: new Date().toISOString(),
+    revisedAt: null,
+  }, { layout, logo });
+  let bin = "";
+  for (let i = 0; i < pdf.length; i += 0x8000) bin += String.fromCharCode(...pdf.subarray(i, i + 0x8000));
+  return { status: 200, body: { pdf: btoa(bin), fileName: `getride-statement-${type}-SAMPLE-${lang}.pdf` } };
+}
+
+/** PNG or JPEG, by their first bytes; anything else is not drawn. */
+export function logoKind(bytes: Uint8Array): { bytes: Uint8Array; png: boolean } | null {
+  if (bytes.length > 2_000_000) return null;
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return { bytes, png: true };
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return { bytes, png: false };
+  return null;
 }

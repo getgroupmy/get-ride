@@ -2,7 +2,8 @@
 // surcharges count as a driver's earnings, whether weeks run Monday–Sunday
 // or Sunday–Saturday, the bank line and the company header on every
 // statement; then incentives credited to GET credit, and adjustments, which
-// mark the final statements they touch as Revised. Only admins with edit
+// mark the final statements they touch as Revised; and the Layout tab, how the
+// PDF looks (statement_layout_tab.dart). Only admins with edit
 // rights change anything; the server checks that too.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +16,7 @@ import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../../widgets/page_style_host.dart';
+import 'statement_layout_tab.dart';
 
 /// The `admin_access` page these settings sit under.
 const statementsPage = 'admin-settings-partner-statements';
@@ -78,13 +80,14 @@ class _AdminPartnerStatementsScreenState extends ConsumerState<AdminPartnerState
     }
     final dirty = _draft != null && _draft != _stored;
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: AdminPage(
         title: 'Partner statements',
         page: statementsPage,
         bottom: const TabBar(
           tabs: [
             Tab(key: ValueKey('statements-tab-settings'), text: 'Settings'),
+            Tab(key: ValueKey('statements-tab-layout'), text: 'Layout'),
             Tab(key: ValueKey('statements-tab-incentives'), text: 'Incentives'),
             Tab(key: ValueKey('statements-tab-adjustments'), text: 'Adjustments'),
           ],
@@ -114,6 +117,8 @@ class _AdminPartnerStatementsScreenState extends ConsumerState<AdminPartnerState
           value: loaded,
           onRetry: () => ref.invalidate(statementSettingsProvider),
           data: (_) => TabBarView(
+            // No swiping between tabs: dragging the logo on the Layout preview moves it.
+            physics: const NeverScrollableScrollPhysics(),
             children: [
               _SettingsTab(
                 key: ValueKey('statements-settings-$_generation'),
@@ -121,6 +126,7 @@ class _AdminPartnerStatementsScreenState extends ConsumerState<AdminPartnerState
                 canEdit: _canEdit,
                 onChanged: (s) => setState(() => _draft = s),
               ),
+              StatementLayoutTab(canEdit: _canEdit, companyName: _draft!.companyName),
               _EntriesTab(kind: 'incentive', canEdit: _canEdit),
               _EntriesTab(kind: 'adjustment', canEdit: _canEdit),
             ],
