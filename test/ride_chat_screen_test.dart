@@ -2,8 +2,10 @@
 // both themes.
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui' show CheckedState;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -140,8 +142,9 @@ void main() {
     required String status,
     Brightness brightness = Brightness.light,
     List<Override> extra = const [],
+    Size size = const Size(500, 1000),
   }) async {
-    tester.view.physicalSize = const Size(500, 1000);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final repo = _Repo();
@@ -248,6 +251,39 @@ void main() {
       expect(find.byKey(const ValueKey('ride-chat-quick')), findsNothing);
       expect(tester.takeException(), isNull);
     });
+  }
+
+  for (final brightness in Brightness.values) {
+    for (final width in const [320.0, 390.0]) {
+      testWidgets('quick replies are buttons, all on screen at $width px (${brightness.name})', (tester) async {
+        final handle = tester.ensureSemantics();
+        final (repo, _) = await pumpChat(
+          tester,
+          me: 'rider',
+          status: 'accepted',
+          brightness: brightness,
+          size: Size(width, 800),
+        );
+        await tester.pump();
+        for (final line in const ["I'm at the pickup point", 'Running 2 minutes late', 'Please call me', 'OK']) {
+          final chip = find.byKey(ValueKey('quick-$line'));
+          final rect = tester.getRect(chip);
+          expect(rect.left, greaterThanOrEqualTo(0), reason: '"$line" starts on screen');
+          expect(rect.right, lessThanOrEqualTo(width), reason: '"$line" is wholly on screen, none hidden off the edge');
+          final data = tester.getSemantics(chip).getSemanticsData();
+          expect(data.label, line);
+          expect(data.flagsCollection.isButton, isTrue, reason: '"$line" is an action');
+          expect(data.flagsCollection.isChecked, isNot(CheckedState.isTrue));
+          expect(data.flagsCollection.isChecked, CheckedState.none, reason: 'not a checkbox');
+          expect(data.hasAction(SemanticsAction.tap), isTrue);
+        }
+        await tester.tap(find.byKey(const ValueKey('quick-OK')));
+        await tester.pump();
+        expect(repo.sent, isNotEmpty);
+        expect(tester.takeException(), isNull);
+        handle.dispose();
+      });
+    }
   }
 
   testWidgets('the driver gets the driver\'s quick replies and an empty thread says so', (tester) async {

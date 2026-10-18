@@ -338,23 +338,34 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Four short lines: all built, scrolled sideways on a narrow phone.
-          SingleChildScrollView(
+          // Four short lines, wrapped onto a second row on a narrow phone
+          // so none hides off the edge. Each is an action that sends its
+          // line: a button named by it, not a checkbox.
+          Padding(
             key: const ValueKey('ride-chat-quick'),
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-            child: Row(
-              children: [
-                for (final line in rideQuickReplies(role))
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: ActionChip(
-                      key: ValueKey('quick-$line'),
-                      label: Text(line),
-                      onPressed: _sending ? null : () => _sendQuick(role, line),
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final line in rideQuickReplies(role))
+                    Semantics(
+                      button: true,
+                      enabled: !_sending,
+                      label: line,
+                      hint: 'Sends this message',
+                      onTap: _sending ? null : () => _sendQuick(role, line),
+                      excludeSemantics: true,
+                      child: ActionChip(
+                        key: ValueKey('quick-$line'),
+                        label: Text(line),
+                        onPressed: _sending ? null : () => _sendQuick(role, line),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
           Padding(
