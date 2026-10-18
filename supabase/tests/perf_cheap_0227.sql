@@ -34,7 +34,7 @@ select pg_temp.check(pg_temp.published(t), t || ' is still in supabase_realtime'
                     'support_calls', 'support_call_signals', 'support_messages', 'active_sessions',
                     'user_notifications', 'wallet_transfer_requests', 'voice_protection_recordings',
                     'app_branding', 'wallets', 'countries', 'states', 'cities', 'suburbs',
-                    'settings_entries', 'messaging_devices', 'sms_log', 'profiles', 'partners',
+                    'settings_entries', 'sms_log', 'profiles', 'partners',  -- messaging_devices: out since 0229
                     'user_sessions', 'ev_orders', 'safety_incidents', 'trip_handovers']) as t;
 
 -- 2. Boundary marks ---------------------------------------------------------------

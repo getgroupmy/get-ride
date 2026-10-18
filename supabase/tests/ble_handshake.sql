@@ -118,8 +118,9 @@ begin
                         pg_temp.token('00000000-0000-0000-0000-0000000153e1', 'rider', 1), -50, 6000, 3.1579, 101.7116) = 'waiting',
                         'last window''s token still matches; one side alone waits');
 end $$;
-select pg_temp.check((select count(*) = 4 from public.ride_proximity_events where request_id = '00000000-0000-0000-0000-0000000153e1'),
-                     'every proof is recorded');
+select pg_temp.check((select count(*) = 1 and bool_and(matched) from public.ride_proximity_events
+                      where request_id = '00000000-0000-0000-0000-0000000153e1'),
+                     'one row for the side (0229), the match kept over the misses');
 
 -- 5. Both sides, but too far apart, too weak or too short: waiting ----------------------------
 do $$

@@ -47,7 +47,8 @@ insert into public.ride_ble_secrets (request_id, secret, rider_seen_at, driver_s
 insert into public.ride_proximity_events (request_id, profile_id, side, matched, rssi, seen_ms) values
   ('00000000-0000-0000-0000-0000000158e1', '00000000-0000-0000-0000-0000000158a1', 'rider', true, -60, 6000),
   ('00000000-0000-0000-0000-0000000158e1', '00000000-0000-0000-0000-0000000158b1', 'driver', true, -62, 6000),
-  ('00000000-0000-0000-0000-0000000158e1', '00000000-0000-0000-0000-0000000158b1', 'driver', false, -90, 1000);
+  -- (one row per ride side since 0229: the weak one is another ride's)
+  ('00000000-0000-0000-0000-0000000158e2', '00000000-0000-0000-0000-0000000158b1', 'driver', false, -90, 1000);
 
 insert into public.ride_lost_items (request_id, rider_id, partner_id, description, status) values
   ('00000000-0000-0000-0000-0000000158e2', '00000000-0000-0000-0000-0000000158a1',

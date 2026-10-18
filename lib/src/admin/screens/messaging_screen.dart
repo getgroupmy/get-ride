@@ -34,8 +34,15 @@ const messagingPage = 'admin-settings-messaging';
 /// The latest GET.ride Gateway APK, published by .github/workflows/gateway.yml.
 const gatewayApkUrl = 'https://github.com/getgroupmy/get-ride/releases/download/gateway-latest/getride-gateway.apk';
 
+/// How often the device list is read again while this page is open. Each
+/// device's heartbeat rewrites its row every few seconds, so the table is not
+/// followed live (0229 took it out of the realtime publication): a timer,
+/// and the refresh button, keep "online" and "seen … ago" current.
+const messagingDevicesRefresh = Duration(seconds: 30);
+
 final _devicesProvider = FutureProvider.autoDispose((ref) {
-  ref.watchLive('messaging_devices');
+  final timer = Timer(messagingDevicesRefresh, ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
   return ref.watch(messagingRepositoryProvider).devices();
 });
 final _routesProvider = FutureProvider.autoDispose((ref) {
@@ -68,6 +75,17 @@ class AdminMessagingScreen extends ConsumerWidget {
     return AdminPage(
       title: 'SMS / WhatsApp',
       page: messagingPage,
+      actions: [
+        IconButton(
+          key: const ValueKey('messaging-refresh'),
+          tooltip: 'Refresh',
+          icon: const Icon(Icons.refresh),
+          onPressed: () {
+            ref.invalidate(_devicesProvider);
+            ref.invalidate(_routesProvider);
+          },
+        ),
+      ],
       body: AsyncView(
         value: devices,
         onRetry: () => ref.invalidate(_devicesProvider),

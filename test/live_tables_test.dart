@@ -37,14 +37,14 @@ void main() {
     // supabase/tests/live_admin_changes.sql fails when one is not, so the
     // two lists must not drift apart.
     final sql = File('supabase/tests/live_admin_changes.sql').readAsStringSync();
-    const notSettings = {'messaging_devices', 'messaging_routes', 'sms_outbox', 'sms_inbox'};
+    const notSettings = {'messaging_routes', 'sms_outbox', 'sms_inbox'};
     for (final t in [...liveSettingTables, ...liveOwnTables.keys, ...liveAdminTables]) {
       if (notSettings.contains(t)) continue;
       expect(sql, contains("'$t'"), reason: '$t is followed live but not checked');
     }
   });
 
-  test('no table followed live is one 0227 took out of the realtime publication', () {
+  test('no table followed live is one 0227 or 0229 took out of the realtime publication', () {
     // Following one again means adding it back to supabase_realtime first.
     const unpublished = {
       'user_location_history',
@@ -54,10 +54,17 @@ void main() {
       'emergency_contacts',
       'vehicles',
       'auth_rate_hits',
+      // 0229: a heartbeat every few seconds per device; the admin page polls it.
+      'messaging_devices',
+      'auth_rate_counts',
     };
     for (final t in [...liveSettingTables, ...liveOwnTables.keys, ...liveAdminTables]) {
       expect(unpublished, isNot(contains(t)), reason: '$t is not in the realtime publication');
     }
+  });
+
+  test('the commission tiers the admin page watches are followed live', () {
+    expect(liveSettingTables, contains('commission_tiers'));
   });
 
   test('admin pages follow every row of the account tables, the app only its own', () {
