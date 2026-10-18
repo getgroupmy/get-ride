@@ -16,6 +16,8 @@ ALLOWED_SESSIONS="
 01D5UkQNkT4wNjAS45j7F4ej
 01NDfeQQMcJvAnDpYN9Mwyb6z
 01LUamzNaqHsLrMn92xVqEzH
+017V7sMCRzpsywneJ3Sw3wHz
+018jbhTQW6yVtn1tDDWjy2W1
 "
 
 CACHE="${TMPDIR:-/tmp}/claude-public-ip-cache"
