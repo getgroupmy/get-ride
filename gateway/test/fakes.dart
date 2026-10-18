@@ -105,6 +105,36 @@ class FakeSms implements SmsPlatform {
 
   @override
   void onResume(Future<void> Function() resume) => this.resume = resume;
+
+  /// Every start asked of the proxy (url, key, label, mobile data only).
+  final proxyStarts = <(String, String, String, bool)>[];
+  bool proxyRunning = false;
+  int proxyStops = 0;
+  void Function(Map<String, Object?> event)? proxyHandler;
+
+  @override
+  Future<void> startProxy({
+    required String url,
+    required String key,
+    required String label,
+    required bool mobileDataOnly,
+  }) async {
+    proxyStarts.add((url, key, label, mobileDataOnly));
+    proxyRunning = true;
+  }
+
+  @override
+  Future<void> stopProxy() async {
+    if (proxyRunning) proxyStops++;
+    proxyRunning = false;
+  }
+
+  @override
+  void onProxyEvent(void Function(Map<String, Object?> event) handle) => proxyHandler = handle;
+
+  /// What the phone's side reports (ProxyClient.kt).
+  void proxyEvent(String state, [Map<String, Object?> extra = const {}]) =>
+      proxyHandler?.call({'state': state, ...extra});
 }
 
 class FakePermissions implements GatewayPermissions {

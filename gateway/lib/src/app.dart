@@ -14,7 +14,7 @@ import 'sms_platform.dart';
 
 /// Kept with `version:` in pubspec.yaml (a test checks); the admin page
 /// shows it beside the device.
-const gatewayVersion = '1.2.0';
+const gatewayVersion = '1.3.0';
 
 ThemeData gatewayTheme(Brightness b) => ThemeData(
   useMaterial3: true,

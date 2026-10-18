@@ -23,6 +23,7 @@ import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import 'reliability_card.dart';
+import 'session_access_card.dart';
 import 'sms_fallback_card.dart';
 import 'sms_limits_card.dart';
 import '../../widgets/page_style_host.dart';
@@ -139,6 +140,8 @@ class AdminMessagingScreen extends ConsumerWidget {
                     ReliabilityCard(canEdit: canEdit),
                     const SizedBox(height: 16),
                     _DevicesCard(devices: deviceList, canEdit: canEdit),
+                    const SizedBox(height: 16),
+                    SessionAccessCard(devices: deviceList),
                     const SizedBox(height: 16),
                     _QueueCard(canEdit: canEdit),
                     const SizedBox(height: 40),

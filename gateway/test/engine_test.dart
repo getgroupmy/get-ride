@@ -109,6 +109,84 @@ void main() {
     expect(phone.serviceRunning, isFalse);
   });
 
+  group('sharing the phone\'s internet', () {
+    late GatewayConfig config;
+
+    setUp(() {
+      config = const GatewayConfig(
+        deviceId: 'install-1',
+        label: 'Office',
+        gatewayKey: 'device-key',
+        shareInternet: true,
+        mobileDataOnly: true,
+      );
+      engine.dispose();
+      engine = GatewayEngine(
+        backend: server,
+        platform: phone,
+        config: () => config,
+        schedule: false,
+        relayUrl: 'wss://relay.test/phone',
+        now: () => now,
+      );
+    });
+
+    test('starts with the gateway, with the device key, and stops with it', () async {
+      expect(phone.proxyStarts, isEmpty);
+      await engine.start();
+      expect(engine.state, GatewayState.online);
+      expect(phone.proxyStarts, [('wss://relay.test/phone', 'device-key', 'Office', true)]);
+
+      phone.proxyEvent('connecting');
+      phone.proxyEvent('connected');
+      expect(engine.proxy, ProxyState.connected);
+      expect(phone.serviceText, contains('internet shared'));
+      phone.proxyEvent('request', {'host': 'example.com', 'status': 200});
+      phone.proxyEvent('request', {'host': 'down.example', 'error': 'timeout'});
+      expect(engine.stats.relayed, 1);
+      final lines = engine.log.entries.map((e) => e.text).join('\n');
+      expect(lines, contains('example.com (200)'));
+      expect(lines, contains('down.example failed: timeout'));
+
+      await engine.stop();
+      expect(phone.proxyRunning, isFalse);
+      expect(engine.proxy, ProxyState.off);
+    });
+
+    test('not shared while the switch is off, nor before pairing; the switch moves it live', () async {
+      config = const GatewayConfig(deviceId: 'install-1', gatewayKey: 'device-key');
+      await engine.start();
+      expect(phone.proxyStarts, isEmpty);
+
+      config = const GatewayConfig(deviceId: 'install-1', gatewayKey: 'device-key', shareInternet: true);
+      await engine.syncProxy();
+      expect(phone.proxyStarts, hasLength(1));
+      phone.proxyEvent('connected');
+      expect(engine.proxy, ProxyState.connected);
+
+      config = const GatewayConfig(deviceId: 'install-1', gatewayKey: 'device-key', shareInternet: false);
+      await engine.syncProxy();
+      expect(phone.proxyRunning, isFalse);
+      expect(engine.proxy, ProxyState.off);
+
+      config = const GatewayConfig(deviceId: 'install-1', shareInternet: true);
+      await engine.syncProxy();
+      expect(phone.proxyStarts, hasLength(1), reason: 'no device key, nothing to connect with');
+    });
+
+    test('a refusal from the relay is kept as the reason; an outage is logged once', () async {
+      await engine.start();
+      phone.proxyEvent('reconnecting', {'reason': 'Connection reset'});
+      phone.proxyEvent('reconnecting', {'reason': 'Connection reset'});
+      expect(engine.proxy, ProxyState.reconnecting);
+      expect(engine.log.entries.where((e) => e.text.contains('Retrying')), hasLength(1));
+      phone.proxyEvent('error', {'reason': 'This phone is not paired any more (HTTP 401).'});
+      expect(engine.proxy, ProxyState.error);
+      expect(engine.proxyReason, contains('not paired'));
+      expect(engine.running, isTrue, reason: 'SMS go on without it');
+    });
+  });
+
   test('stopping ends the service; starting again clears the old reason', () async {
     await engine.start();
     await engine.stop();

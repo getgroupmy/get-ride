@@ -6,6 +6,10 @@
     <!-- List the SIMs, so a dual-SIM phone can choose the one that sends. -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Share this phone's internet with a test session over mobile data:
+         ask Android to keep the mobile network up beside Wi-Fi (ProxyClient). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <!-- Keep running with the screen off, with an ongoing notification. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -74,7 +78,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="SMS gateway: sends and receives the operator's SMS (sign-in codes, support) from this phone's SIM while online." />
+                android:value="SMS gateway: sends and receives the operator's SMS (sign-in codes, support) from this phone's SIM while online, and relays a test session's requests over its mobile data when the operator turns that on." />
         </service>
 
         <!-- Don't delete the meta-data below.
