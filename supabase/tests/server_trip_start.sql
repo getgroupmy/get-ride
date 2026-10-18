@@ -129,6 +129,8 @@ update public.ride_requests
 insert into public.ride_request_private (request_id, share_token)
 values ('00000000-0000-0000-0000-0000000152e2', '00000000-0000-0000-0000-0000000152f1')
 on conflict (request_id) do update set share_token = excluded.share_token;
+-- Opened by the passenger, not the driver (0220 hides the code from the driver).
+select set_config('request.jwt.claims', '{"role":"anon"}', true), set_config('request.jwt.claim.sub', '', true);
 select pg_temp.check((public.ride_share_view('00000000-0000-0000-0000-0000000152f1')->>'otp')
                        = (select code from public.ride_trip_codes where request_id = '00000000-0000-0000-0000-0000000152e2'),
                      'the shared page reads the code from ride_trip_codes');
