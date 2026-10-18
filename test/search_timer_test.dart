@@ -10,6 +10,7 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/ride/auto_accept.dart';
 import 'package:get_ride/src/features/ride/ride_tracking_screen.dart';
+import 'package:get_ride/src/features/ride/searching_parts.dart' show SearchRouteCard;
 import 'package:get_ride/src/features/wallet/wallet_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
@@ -142,6 +143,30 @@ void main() {
       now = now.add(by);
       await tester.pump(by);
       await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    for (final (size, bottom) in const [(Size(393, 852), 34.0), (Size(360, 640), 0.0)]) {
+      testWidgets('scrolled to its end, the route card clears the pinned Cancel request (${size.width.toInt()}x${size.height.toInt()})', (tester) async {
+        await pump(tester);
+        tester.view.physicalSize = size;
+        tester.view.padding = FakeViewPadding(top: 47, bottom: bottom);
+        tester.view.viewPadding = FakeViewPadding(top: 47, bottom: bottom);
+        rows.add(open(age: const Duration(seconds: 10), extra: const {'stops': [
+          {'name': 'Mid Valley', 'address': 'Mid Valley', 'lat': 3.11, 'lng': 101.67},
+        ]}));
+        await tester.pump();
+        await tick(tester, const Duration(seconds: 1));
+        // All the way up, then the content all the way down.
+        await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -1200));
+        await tick(tester, const Duration(seconds: 1));
+        final sheet = find.byKey(const ValueKey('map-sheet'));
+        final scroll = tester.state<ScrollableState>(find.descendant(of: sheet, matching: find.byType(Scrollable)).first);
+        scroll.position.jumpTo(scroll.position.maxScrollExtent);
+        await tick(tester, const Duration(seconds: 1));
+        final card = tester.getRect(find.byType(SearchRouteCard));
+        final footer = tester.getRect(find.byKey(const ValueKey('ride-cancel-footer')));
+        expect(card.bottom, lessThanOrEqualTo(footer.top), reason: 'its last row above the band, not under it');
+      });
     }
 
     testWidgets('shows the time left and the first-minute bar', (tester) async {
