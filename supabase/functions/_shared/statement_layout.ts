@@ -54,6 +54,7 @@ export const LAYOUT_FIELDS: { id: string; group: FieldGroup; word?: string }[] =
   { id: "coins", group: "howPaid", word: "coins" },
   { id: "activity", group: "activity", word: "activity" },
   { id: "trips", group: "activity", word: "trips" },
+  { id: "meterTrips", group: "activity", word: "meterTrips" },
   { id: "onlineHours", group: "activity", word: "onlineHours" },
   { id: "distance", group: "activity", word: "distance" },
   { id: "incentivesList", group: "lists", word: "incentivesList" },

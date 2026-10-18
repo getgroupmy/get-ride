@@ -181,6 +181,8 @@ jobs:
         id: build
         if: steps.creds.outputs.ready == 'true'
         env:
+          # build.gradle.kts: no key.properties fails the build, never debug-signs it.
+          GETRIDE_RELEASE_SIGNING: required
           OFFSET: ${{ vars.ANDROID_VERSION_CODE_OFFSET || 0 }}
           # Push notifications: Firebase's public client ids, as repository
           # variables (docs/store-release.md). Unset, the build has no push.
@@ -233,6 +235,7 @@ jobs:
         if: steps.creds.outputs.ready == 'true'
         continue-on-error: true
         env:
+          GETRIDE_RELEASE_SIGNING: required
           FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
           FIREBASE_MESSAGING_SENDER_ID: ${{ vars.FIREBASE_MESSAGING_SENDER_ID }}
           FIREBASE_ANDROID_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID }}

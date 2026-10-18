@@ -129,7 +129,9 @@ class _ChangePinFlowState extends ConsumerState<_ChangePinFlow> {
           _go(problem.startsWith('PINs do not match') ? PinChangeStep.confirm : PinChangeStep.create, error: problem);
           return;
         }
-        _synced = await auth.changePin(code);
+        // The current PIN proves it's them; after "Forgot PIN?" the SMS
+        // sign-in just made does (the server checks it is recent).
+        _synced = await auth.changePin(code, currentPin: _current);
         ref.invalidate(pinSetProvider);
     }
   });

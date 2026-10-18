@@ -246,6 +246,8 @@ class EarningsTotalsCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             row('Completed trips', '${s.trips}', key: const ValueKey('earnings-trips')),
+            if (s.meterTrips != 0)
+              row('Of which meter / TEKSI', '${s.meterTrips}', key: const ValueKey('earnings-meter-trips')),
             row('Fares', money(s.fares), key: const ValueKey('earnings-fares')),
             if (s.surcharges != 0) row('Surcharges', money(s.surcharges)),
             if (s.feesCollected != 0) row('Fees collected for GET.ride', money(s.feesCollected)),

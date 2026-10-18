@@ -10,11 +10,14 @@ plugins {
 // writes android/key.properties from Actions secrets for the length of a
 // release; it is gitignored and never committed. Without it a release
 // build falls back to the debug key, which is fine for `flutter run
-// --release` and is refused by Play (the workflow checks before upload).
+// --release` and the PR build check (flutter.yml), and is refused by Play.
+// The store builds set GETRIDE_RELEASE_SIGNING=required (android-release.yml):
+// for them a missing key fails the build instead of signing with debug.
 val keystoreProperties = Properties().apply {
     val file = rootProject.file("key.properties")
     if (file.exists()) file.inputStream().use { load(it) }
 }
+val releaseSigningRequired = System.getenv("GETRIDE_RELEASE_SIGNING") == "required"
 
 android {
     namespace = "my.getgroup.get_ride"
@@ -60,8 +63,14 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.findByName("release")
-                ?: signingConfigs.getByName("debug")
+            val upload = signingConfigs.findByName("release")
+            if (upload == null && releaseSigningRequired) {
+                throw GradleException(
+                    "GETRIDE_RELEASE_SIGNING=required, but android/key.properties is missing or has no " +
+                        "storeFile: refusing to sign a store build with the debug key."
+                )
+            }
+            signingConfig = upload ?: signingConfigs.getByName("debug")
         }
     }
 }

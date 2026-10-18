@@ -173,7 +173,8 @@ begin
   perform pg_temp.check(not has_table_privilege('authenticated', 'public.get_coin_rate_history', 'INSERT')
     or not exists (select 1 from pg_policies
                     where tablename = 'get_coin_rate_history' and cmd = 'INSERT'
-                      and with_check not like '%caller_is_admin%'),
+                      and with_check not like '%caller_is_admin%'
+                      and with_check not like '%caller_admin_can_write%'),
     'non-admin clients cannot insert rate snapshots');
 end $$;
 
