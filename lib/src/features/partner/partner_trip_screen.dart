@@ -102,7 +102,6 @@ class PartnerTripScreen extends ConsumerStatefulWidget {
 class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   StreamSubscription<TripFix>? _gps;
   LatLng? _me;
-  double? _heading;
   // The running trip: when this screen first saw it on trip (the row's
   // started_at wins), the distance driven since, and the last fix it counted.
   DateTime? _onTripSince;
@@ -115,8 +114,16 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   /// countdown: only their text rebuilds.
   final _clockTicks = ValueNotifier<int>(0);
 
-  /// Bumped on each GPS fix: only the map and the distance driven rebuild.
+  /// Bumped on each GPS fix: only the distance driven rebuilds.
   final _gpsTicks = ValueNotifier<int>(0);
+
+  /// Where the map shows the car, and bumped when that moves: only by a fix
+  /// that really moves it ([carMovedOnMap]), so GPS jitter on a car standing
+  /// still leaves the map alone (PERF-64).
+  final _mapTicks = ValueNotifier<int>(0);
+  LatLng? _mapAt;
+  double? _mapHeading;
+  DateTime? _mapAtTime;
   RideStatus? _status;
   // Set when the driver approves the passenger's cancel here, so the end of
   // the ride isn't announced back to them.
@@ -269,7 +276,6 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     if (!mounted) return;
     final now = _now;
     _me = p.at;
-    _heading = p.heading;
     // Only the trip itself counts toward the distance driven.
     if (_status == RideStatus.onTrip) {
       if (_legFrom != null && _legAt != null) {
@@ -282,6 +288,19 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     }
     // The map's car and the distance driven, not the screen.
     _gpsTicks.value++;
+    if (carMovedOnMap(
+      from: _mapAt,
+      to: p.at,
+      headingFrom: _mapHeading,
+      headingTo: p.heading,
+      elapsed: _mapAtTime == null ? null : now.difference(_mapAtTime!),
+      accuracy: p.accuracy,
+    )) {
+      _mapAt = p.at;
+      _mapHeading = p.heading;
+      _mapAtTime = now;
+      _mapTicks.value++;
+    }
     // Share the driver's live position with the rider at most every 5 s.
     if (now.difference(_lastPublish) < const Duration(seconds: 5)) return;
     _lastPublish = now;
@@ -320,6 +339,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     _closeTimer?.cancel();
     _clockTicks.dispose();
     _gpsTicks.dispose();
+    _mapTicks.dispose();
     // Leaving the trip screen always files whatever was recorded — after the
     // unmount, since a provider can't change while the tree is being torn down.
     unawaited(Future.microtask(_voice.stopTrip));
@@ -589,12 +609,12 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                 builder: (_, ref, _) {
                   final live = ref.watch(rideStreamProvider(widget.requestId)).value ?? r;
                   return ValueListenableBuilder(
-                    valueListenable: _gpsTicks,
+                    valueListenable: _mapTicks,
                     builder: (_, _, _) => LiveRideMap(
                       ride: live,
                       partner: true,
-                      driverAt: _me,
-                      driverHeading: _heading,
+                      driverAt: _mapAt,
+                      driverHeading: _mapHeading,
                       now: ref.read(tripClockProvider),
                     ),
                   );
