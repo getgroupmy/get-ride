@@ -207,6 +207,8 @@ const liveAdminTables = <String>[
   'user_sessions',
   // SOS alerts (0193): the red banner on every admin screen.
   'safety_incidents',
+  // Commission promotions (0224): admins only.
+  'commission_promotions',
 ];
 
 /// Rides and sessions change every few seconds while trips run; an admin

@@ -26,6 +26,9 @@ class StatementTotals {
 
   int get trips => _d('trips').round();
 
+  /// Of [trips], the meter / TEKSI hires (0224).
+  int get meterTrips => _d('meterTrips').round();
+
   // Earnings.
   double get fares => _d('fare');
 

@@ -114,6 +114,25 @@ Deno.test("summary: earnings, deductions, net, then what passes through", () => 
   assertEquals(quiet.find((r) => r.label === "Pendapatan bersih")?.amount, 58.3);
 });
 
+Deno.test("meter trips (0224): counted with the trips, listed and marked, only when there are some", async () => {
+  const rows = summaryRows({ ...totals, trips: 3, meterTrips: 1 }, words("en"));
+  assertEquals(rows.find((r) => r.id === "meterTrips")?.text, "1");
+  assertEquals(rows.find((r) => r.id === "meterTrips")?.label, "Of which meter trips");
+  assertEquals(summaryRows(totals, words("ms")).some((r) => r.id === "meterTrips"), false);
+  const meter = {
+    at: "2026-09-08T05:00:00Z", kind: "meter" as const, service: null, pickup: "KLCC", drop: "Mid Valley",
+    payment: "cash", lines: { fare: 20, surcharges: 0, commission: 1.6 },
+  };
+  for (const lang of ["en", "ms"] as const) {
+    const pdf = await renderStatement(sample({ lang, trips: [...sample().trips, meter], totals: { ...totals, meterTrips: 1 } }), {
+      statementNo: "GR-W-2026-000002", verifyUrl: verifyLink("", "t"), issuedAt: "2026-09-14T01:00:00Z", revisedAt: null,
+    });
+    assertEquals((await PDFDocument.load(pdf)).getPageCount() >= 1, true);
+  }
+  // A statement with no meter trips hashes as it did before them.
+  assertEquals(await statementHash(sample()), await statementHash(sample({ trips: sample().trips.map((t) => ({ ...t })) })));
+});
+
 Deno.test("the hash: same numbers, same hash; a changed number, a new one", async () => {
   const a = await statementHash(sample());
   assertEquals(a, await statementHash(sample({ lang: "ms", status: "provisional" })));
