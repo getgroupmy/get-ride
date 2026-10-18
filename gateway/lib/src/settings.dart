@@ -54,7 +54,7 @@ class GatewaySettings {
   set wantOnline(bool v) => _prefs.setBool(_onlineKey, v);
 
   /// Whether this phone's internet is shared with test sessions through the
-  /// relay (migration 0223), while the gateway is online.
+  /// relay (migration 0226), while the gateway is online.
   bool get shareInternet => _prefs.getBool(_shareInternetKey) ?? false;
   set shareInternet(bool v) => _prefs.setBool(_shareInternetKey, v);
 

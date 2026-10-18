@@ -112,15 +112,21 @@ void main() {
   testWidgets('sharing the internet waits for the gateway, then starts with it', (tester) async {
     settings.gatewayKey = 'device-key';
     await pump(tester, sms: true);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('proxy-switch')), 300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(find.byKey(const ValueKey('proxy-switch')));
+    await tester.pumpAndSettle();
     expect(find.text('Not shared.'), findsOneWidget);
-    await tester.scrollUntilVisible(find.byKey(const ValueKey('proxy-switch')), 300);
     await tester.tap(find.byKey(const ValueKey('proxy-switch')));
     await tester.pumpAndSettle();
     expect(settings.shareInternet, isTrue);
     expect(find.text('Turn the gateway on to share.'), findsOneWidget);
     expect(phone.proxyStarts, isEmpty);
 
-    await tester.scrollUntilVisible(find.byKey(const ValueKey('gateway-switch')), -300);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('gateway-switch')), -300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(find.byKey(const ValueKey('gateway-switch')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('gateway-switch')));
     await tester.pumpAndSettle();
     expect(engine.state, GatewayState.online);
@@ -128,9 +134,14 @@ void main() {
     expect(phone.proxyStarts.single.$2, 'device-key');
     phone.proxyEvent('connected');
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('proxy-state')), 300,
+        scrollable: find.byType(Scrollable).first);
     expect(find.textContaining('Shared · 0 requests relayed'), findsOneWidget);
 
-    await tester.scrollUntilVisible(find.byKey(const ValueKey('proxy-mobile-data')), 300);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('proxy-mobile-data')), 300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(find.byKey(const ValueKey('proxy-mobile-data')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('proxy-mobile-data')));
     await tester.pumpAndSettle();
     expect(settings.mobileDataOnly, isFalse);

@@ -1,4 +1,4 @@
-// Admin → SMS / WhatsApp → Session access (migration 0223): a key a full
+// Admin → SMS / WhatsApp → Session access (migration 0226): a key a full
 // admin gives a test session (a Claude Code cloud session, a CI job) so it
 // can take part in a live test without a phone of its own. Each key is
 // scoped to one test phone number and to what the session may do. Pure.

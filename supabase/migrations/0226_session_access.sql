@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0223: session access (Admin -> SMS / WhatsApp -> Session access).
+-- 0226: session access (Admin -> SMS / WhatsApp -> Session access).
 --
 -- A live, real-world test of the app runs in a Claude Code cloud session (or
 -- any script) that has no phone and no SIM. A full admin gives such a session

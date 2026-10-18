@@ -348,7 +348,7 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
-/// Sharing this phone's internet with a test session (migration 0223):
+/// Sharing this phone's internet with a test session (migration 0226):
 /// the switch, mobile data only, and how the relay connection is doing.
 class _InternetCard extends StatelessWidget {
   const _InternetCard({required this.engine, required this.settings, required this.onChanged});

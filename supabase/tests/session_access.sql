@@ -1,5 +1,5 @@
 -- ============================================================================
--- Regression test for migration 0223: session access. A full admin gives a
+-- Regression test for migration 0226: session access. A full admin gives a
 -- test session a key scoped to one phone number; the session texts that
 -- number, reads what went out (sign-in codes in clear only with `codes`),
 -- reads what came in from it, and the relay learns which phone carries its

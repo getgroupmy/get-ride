@@ -12,7 +12,7 @@ cannot do on its own are exactly the things a real test needs:
 
 The GET.ride Gateway phone (`gateway/`) already does both for the platform, so
 it does them for a test session too. A full admin gives the session a **key**
-in **Admin → SMS / WhatsApp → Session access** (migration `0223`). The key is
+in **Admin → SMS / WhatsApp → Session access** (migration `0226`). The key is
 scoped to one **test phone number** and to what the session may do:
 
 | Scope | What the session may do |
@@ -123,7 +123,7 @@ phone's data plan: keep it to the test.
 
 ## How it is built
 
-- **Backend** (`supabase/migrations/0223_session_access.sql`, tested by
+- **Backend** (`supabase/migrations/0226_session_access.sql`, tested by
   `supabase/tests/session_access.sql`): `session_keys` holds a hash of each
   key, its number, scopes, proxy phone and expiry. `admin_session_key_create`,
   `admin_session_keys` and `admin_session_key_revoke` are the card's;

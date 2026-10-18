@@ -1,4 +1,4 @@
-// Admin → SMS / WhatsApp → Session access (migration 0223): the keys that let
+// Admin → SMS / WhatsApp → Session access (migration 0226): the keys that let
 // a test session (a Claude Code cloud session, a CI job) take part in a live
 // test without a phone of its own — text one test number through the gateway
 // phone, read the sign-in codes sent to it, and reach the internet through a

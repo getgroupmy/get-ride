@@ -120,7 +120,7 @@ class MessagingRepository {
   Future<void> saveSmsFallback(SmsFallbackSettings s) =>
       _db.from('sms_fallback_settings').update(s.toPatch()).eq('id', 1);
 
-  // ---- Session access (migration 0223) ---------------------------------------
+  // ---- Session access (migration 0226) ---------------------------------------
 
   /// Every session key, newest first (never the key itself).
   Future<List<SessionKey>> sessionKeys() async {

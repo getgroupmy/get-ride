@@ -207,7 +207,7 @@ bool isPairCode(String typed) => normalizePairCode(typed).length == 8;
   return (key: null, error: 'Pairing did not answer properly. Please try again.');
 }
 
-/// The shared internet (migration 0223, ProxyClient.kt): whether the relay
+/// The shared internet (migration 0226, ProxyClient.kt): whether the relay
 /// at proxy.getride.my has this phone.
 enum ProxyState { off, connecting, connected, reconnecting, error }
 

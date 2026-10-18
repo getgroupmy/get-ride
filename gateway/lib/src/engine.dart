@@ -11,7 +11,7 @@
 // gateway and says why, since retrying cannot fix it.
 //
 // While online it can also share the phone's internet with a test session
-// (migration 0223): the phone's side keeps a socket to the relay and
+// (migration 0226): the phone's side keeps a socket to the relay and
 // performs the requests it is handed; the engine only turns that on and off
 // with the switch and the gateway, and keeps its state for the screen.
 import 'dart:async';

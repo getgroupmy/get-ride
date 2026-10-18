@@ -21,7 +21,7 @@
  *
  * ## Who may
  *
- * Two keys, both checked against the backend (migration 0223):
+ * Two keys, both checked against the backend (migration 0226):
  *
  *   - a session key (Admin -> SMS / WhatsApp -> Session access, with
  *     "Use a gateway phone's internet" ticked) names the phone it goes

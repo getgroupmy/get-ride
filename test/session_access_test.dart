@@ -1,4 +1,4 @@
-// Admin → SMS / WhatsApp → Session access (migration 0223): the rules of a
+// Admin → SMS / WhatsApp → Session access (migration 0226): the rules of a
 // session key, and the card that adds, lists and removes them.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/messaging_screen.dart';
-import 'package:get_ride/src/admin/screens/session_access_card.dart';
 import 'package:get_ride/src/core/messaging.dart';
 import 'package:get_ride/src/core/page_inventory.g.dart';
 import 'package:get_ride/src/core/session_access.dart';
@@ -186,7 +185,8 @@ void main() {
       ], devicesList: [gateway]);
       await tester.pumpWidget(_app(repo));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.byKey(const ValueKey('session-access-card')), 400);
+      await tester.scrollUntilVisible(find.byKey(const ValueKey('session-access-card')), 400,
+          scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('session-key-k1')), findsOneWidget);
@@ -247,7 +247,8 @@ void main() {
       final repo = _FakeRepo([_key('k1')]);
       await tester.pumpWidget(_app(repo));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.byKey(const ValueKey('session-remove-k1')), 400);
+      await tester.scrollUntilVisible(find.byKey(const ValueKey('session-remove-k1')), 400,
+          scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('session-remove-k1')));
       await tester.pumpAndSettle();
@@ -271,7 +272,8 @@ void main() {
       final repo = _FakeRepo([_key('k1')]);
       await tester.pumpWidget(_app(repo, fullAdmin: false));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.byKey(const ValueKey('session-key-k1')), 400);
+      await tester.scrollUntilVisible(find.byKey(const ValueKey('session-key-k1')), 400,
+          scrollable: find.byType(Scrollable).first);
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('session-add')), findsNothing);
       expect(find.byKey(const ValueKey('session-remove-k1')), findsNothing);
