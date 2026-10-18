@@ -687,6 +687,7 @@ List<Override> _common({
   Partner? partner,
   List<RideRequest> queue = const [],
   bool admin = false,
+  ScheduledRidesConfig sched = ScheduledRidesConfig.off,
 }) => [
   supabaseProvider.overrideWithValue(db),
   currentUserIdProvider.overrideWithValue('me'),
@@ -714,7 +715,7 @@ List<Override> _common({
   adminAccessProvider.overrideWith(
     (ref) async => admin ? const AdminAccess([AdminGrant(page: '*', edit: true)]) : AdminAccess.none,
   ),
-  scheduledRidesConfigProvider.overrideWith((ref) async => ScheduledRidesConfig.off),
+  scheduledRidesConfigProvider.overrideWith((ref) async => sched),
   deviceBlockedProvider.overrideWith((ref) async => false),
   pinSetProvider.overrideWith((ref) async => true),
   permissionRulesProvider.overrideWith((ref) async => PermissionRules.defaults),
@@ -922,6 +923,7 @@ Future<void> _shot(
   Partner? partner,
   List<RideRequest> queue = const [],
   bool admin = false,
+  ScheduledRidesConfig sched = ScheduledRidesConfig.off,
   bool dark = false,
   double textScale = 1.0,
   bool keyboard = false,
@@ -2407,7 +2409,12 @@ void main() {
   });
 
   group('requested', () {
-    for (final (tab, name) in [('commission-tab-settings', 'settings'), ('commission-tab-tiers', 'tiers'), ('commission-tab-promotions', 'promotions'), ('commission-tab-reports', 'reports')]) {
+    for (final (tab, name) in [
+      ('commission-tab-settings', 'settings'),
+      ('commission-tab-tiers', 'tiers'),
+      ('commission-tab-promotions', 'promotions'),
+      ('commission-tab-reports', 'reports'),
+    ]) {
       testWidgets(
         'commission $name',
         (t) => _shot(t, 'req_commission_$name', route: '/admin/commission', admin: true, act: (t) => tapKey(t, tab)),
@@ -2636,6 +2643,86 @@ void main() {
             },
           ),
         ),
+      ),
+    );
+  });
+
+  group('scheduled', () {
+    const on = ScheduledRidesConfig(enabled: true, feeFixed: 2);
+    testWidgets(
+      'confirm now or later',
+      (t) => _shot(t, 'sched_confirm', route: '/', rides: _BookingRides(), sched: on, act: _toConfirm),
+    );
+    final rows = [
+      ScheduledRide.fromRow({
+        'id': 's1',
+        'pickup_at': DateTime.now().add(const Duration(hours: 5)).toUtc().toIso8601String(),
+        'status': 'open',
+        'rider_id': 'me',
+        'service': 'Ride',
+        'pickup_address': 'Eco Majestic, Semenyih',
+        'drop_address': 'KLIA2, Sepang',
+        'fare': 68.5,
+        'scheduling_fee': 2,
+        'currency': 'MYR',
+        'distance_km': 52.1,
+      }),
+      ScheduledRide.fromRow({
+        'id': 's2',
+        'pickup_at': DateTime.now().add(const Duration(days: 2)).toUtc().toIso8601String(),
+        'status': 'accepted',
+        'rider_id': 'me',
+        'service': 'XL',
+        'pickup_address': 'KLCC, Kuala Lumpur',
+        'drop_address': 'Genting Highlands',
+        'fare': 120,
+        'scheduling_fee': 2,
+        'currency': 'MYR',
+        'distance_km': 55,
+        'partner_id': 'd1',
+        'booked_for_name': 'Mak',
+        'booked_for_phone': '+60111111111',
+      }),
+    ];
+    testWidgets(
+      'scheduled list',
+      (t) => _shot(
+        t,
+        'sched_list',
+        route: '/trips/scheduled',
+        sched: on,
+        overrides: [upcomingScheduledRidesProvider.overrideWithValue(rows)],
+      ),
+    );
+    testWidgets(
+      'scheduled list large text',
+      (t) => _shot(
+        t,
+        'sched_list_xl',
+        route: '/trips/scheduled',
+        textScale: 1.35,
+        sched: on,
+        overrides: [upcomingScheduledRidesProvider.overrideWithValue(rows)],
+      ),
+    );
+    testWidgets(
+      'home with scheduled',
+      (t) => _shot(
+        t,
+        'sched_home',
+        route: '/',
+        sched: on,
+        overrides: [upcomingScheduledRidesProvider.overrideWithValue(rows)],
+      ),
+    );
+    testWidgets(
+      'account with scheduled',
+      (t) => _shot(
+        t,
+        'sched_account',
+        route: '/account',
+        sched: on,
+        overrides: [upcomingScheduledRidesProvider.overrideWithValue(rows)],
       ),
     );
   });
