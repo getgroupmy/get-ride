@@ -63,6 +63,7 @@ import {
   googleLegacySearchRequest,
   googleLookOf,
   type GoogleLook,
+  googleMapType,
   googleSessionBody,
   type HttpRequest,
   isGoogleMapsHost,
@@ -119,6 +120,39 @@ export interface GeoDeps {
   fallbackKey?(slot: string): string | null;
   /** Where [url] redirects to (its Location), without following it; null when it doesn't. */
   redirect?(url: string): Promise<string | null>;
+  /** Google tile sessions refused lately, kept per function instance (see [RefusedSessions]). */
+  refusedSessions?: RefusedSessions;
+}
+
+/**
+ * Google tile sessions Google refused lately (403 PERMISSION_DENIED,
+ * SERVICE_DISABLED …), by slot, map type, region and key, for [ms] (10
+ * minutes): a profile asked meanwhile answers with the app's own map at
+ * once, giving the same reason, instead of waiting on Google to refuse
+ * again. In memory per function instance; nothing of Google's is kept.
+ */
+export class RefusedSessions {
+  constructor(readonly ms = 10 * 60_000, private readonly now: () => number = Date.now) {}
+  private readonly refused = new Map<string, { reason: string; at: number }>();
+
+  static id(slot: "light" | "dark" | "satellite", key: string, region: string, look: GoogleLook): string {
+    return `${slot}:${googleMapType(slot, look)}:${region}:${key}`;
+  }
+
+  /** Why [id] was refused, while that is under [ms] old; else null. */
+  reason(id: string): string | null {
+    const r = this.refused.get(id);
+    if (!r) return null;
+    if (this.now() - r.at < this.ms) return r.reason;
+    this.refused.delete(id);
+    return null;
+  }
+
+  remember(id: string, reason: string): void {
+    // A handful of slots × looks × regions; drop the stale ones as new arrive.
+    for (const [k, r] of this.refused) if (this.now() - r.at >= this.ms) this.refused.delete(k);
+    this.refused.set(id, { reason, at: this.now() });
+  }
 }
 
 /** Proxied lookups per caller address per minute. */
@@ -214,22 +248,36 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
 
   if (action === "profile") {
     // Why a set map slot fell back to the app's own (Admin → Maps → Test shows it; the app ignores it).
-    const refused: Record<string, string> = {};
+    const why: Partial<Record<"light" | "dark" | "satellite", string>> = {};
     const tile = async (slot: "light" | "dark" | "satellite"): Promise<TileSource | null> => {
       const provider = profile.tiles[slot];
       if (provider === "app") return null;
       const k = key(provider, "tiles");
       let session: string | null = null;
       if (provider === "google" && k) {
-        session = await deps.googleSession(slot, k, countries[0] ?? "my", look).catch((e) => {
-          refused[slot] = e instanceof Error ? e.message : "Google refused the tile session";
-          return null;
-        });
+        const region = countries[0] ?? "my";
+        const id = RefusedSessions.id(slot, k, region, look);
+        const known = deps.refusedSessions?.reason(id);
+        if (known) {
+          // Refused moments ago: don't wait on Google to refuse again.
+          why[slot] = known;
+        } else {
+          session = await deps.googleSession(slot, k, region, look).catch((e) => {
+            why[slot] = e instanceof Error ? e.message : "Google refused the tile session";
+            deps.refusedSessions?.remember(id, why[slot]!);
+            return null;
+          });
+        }
       }
       const source = tileSource(provider, slot, k, session, amazonRegion, look);
-      if (!source && !refused[slot]) refused[slot] = k ? "Not answered" : "No key";
+      if (!source && !why[slot]) why[slot] = k ? "Not answered" : "No key";
       return source;
     };
+    // The three slots at once: a refused Google session costs one round trip, not three.
+    const [light, dark, satellite] = await Promise.all([tile("light"), tile("dark"), tile("satellite")]);
+    // In slot order, as when they were asked one after another.
+    const refused: Record<string, string> = {};
+    for (const slot of ["light", "dark", "satellite"] as const) if (why[slot]) refused[slot] = why[slot]!;
     const t = profile.tiles.traffic;
     let traffic: unknown = null;
     if (t === "none") {
@@ -245,7 +293,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
       status: 200,
       body: {
         profile: {
-          tiles: { light: await tile("light"), dark: await tile("dark"), satellite: await tile("satellite"), traffic },
+          tiles: { light, dark, satellite, traffic },
           refused,
           search: profile.search,
           reverse: profile.reverse,

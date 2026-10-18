@@ -44,7 +44,15 @@ import {
   trafficTileUrl,
   tokenCacheKey,
 } from "./geo.ts";
-import { type GeoDeps, googleApiOf, googleSearchOf, handleGeo, parseGoogleSession, smartAddressOf } from "./geo_handler.ts";
+import {
+  type GeoDeps,
+  googleApiOf,
+  googleSearchOf,
+  handleGeo,
+  parseGoogleSession,
+  RefusedSessions,
+  smartAddressOf,
+} from "./geo_handler.ts";
 
 const apiProviders = [
   {
@@ -953,6 +961,102 @@ Deno.test("profile: why a set map slot fell back, for Admin → Maps → Test", 
   assertStringIncludes(p.refused.light, "SERVICE_DISABLED");
   assertEquals(p.refused.dark, "No key");
   assertEquals(p.refused.satellite, undefined, "built in by choice");
+});
+
+const allGoogle = {
+  ...config,
+  profiles: {
+    ...config.profiles,
+    "rider.android": { ...config.profiles["rider.android"], tiles: { light: "google", dark: "google", satellite: "google", traffic: "app" } },
+  },
+};
+
+Deno.test("profile: the three tile sessions are asked at once, the answer as before", async () => {
+  const asked: string[] = [];
+  const answers: Record<string, (v: string | null) => void> = {};
+  const fail: Record<string, (e: Error) => void> = {};
+  const { d } = deps({
+    settings: () => Promise.resolve({ config: allGoogle, apiProviders }),
+    googleSession: (slot) => {
+      asked.push(slot);
+      return new Promise((resolve, reject) => {
+        answers[slot] = resolve;
+        fail[slot] = reject;
+      });
+    },
+  });
+  const pending = handleGeo(q("action=profile&role=rider&device=android"), "ip", d);
+  // Let the handler reach the sessions: all three are asked before any answers.
+  for (let i = 0; i < 20 && asked.length < 3; i++) await new Promise((r) => setTimeout(r, 0));
+  assertEquals(asked.sort(), ["dark", "light", "satellite"]);
+  // Answered out of order; the refusals still read in slot order.
+  fail.satellite(new Error("403 satellite"));
+  answers.dark("S-dark");
+  fail.light(new Error("403 light"));
+  // deno-lint-ignore no-explicit-any
+  const p = ((await pending).body as any).profile;
+  assertEquals(p.tiles.light, null);
+  assertStringIncludes(p.tiles.dark.url, "session=S-dark&key=GTILES");
+  assertEquals(p.tiles.satellite, null);
+  assertEquals(p.refused, { light: "403 light", satellite: "403 satellite" });
+  assertEquals(Object.keys(p.refused), ["light", "satellite"]);
+  assertEquals(Object.keys(p).slice(0, 10), [
+    "tiles", "refused", "search", "reverse", "routing", "distance", "locate", "googleSearch", "smartAddress", "direct",
+  ], "same fields, same order");
+  assertEquals(Object.keys(p.tiles), ["light", "dark", "satellite", "traffic"]);
+});
+
+Deno.test("profile: a refused Google session is not asked again for 10 minutes", async () => {
+  let now = 1_000_000;
+  const refusedSessions = new RefusedSessions(10 * 60_000, () => now);
+  let up = false;
+  const asked: string[] = [];
+  const { d } = deps({
+    settings: () => Promise.resolve({ config: allGoogle, apiProviders }),
+    refusedSessions,
+    googleSession: (slot) => {
+      asked.push(slot);
+      return up || slot === "dark"
+        ? Promise.resolve(`S-${slot}`)
+        : Promise.reject(new Error("403 from tile.googleapis.com (PERMISSION_DENIED, SERVICE_DISABLED)"));
+    },
+  });
+  const profile = async () =>
+    // deno-lint-ignore no-explicit-any
+    ((await handleGeo(q("action=profile&role=rider&device=android"), "ip", d)).body as any).profile;
+
+  const first = await profile();
+  assertEquals(asked.sort(), ["dark", "light", "satellite"]);
+  assertStringIncludes(first.refused.light, "SERVICE_DISABLED");
+
+  asked.length = 0;
+  now += 9 * 60_000;
+  const again = await profile();
+  assertEquals(asked, ["dark"], "the refused slots answer at once");
+  assertEquals(again.refused, first.refused, "and still say why");
+  assertEquals(again.tiles, first.tiles);
+
+  asked.length = 0;
+  up = true;
+  now += 2 * 60_000;
+  const later = await profile();
+  assertEquals(asked.sort(), ["dark", "light", "satellite"], "asked again after 10 minutes");
+  assertEquals(later.refused, {});
+  assertStringIncludes(later.tiles.light.url, "session=S-light");
+});
+
+Deno.test("refused sessions: per slot, map type, region and key", () => {
+  let now = 0;
+  const r = new RefusedSessions(600_000, () => now);
+  const look = { satellite: "satellite", map: "roadmap" } as const;
+  r.remember(RefusedSessions.id("light", "K", "my", look), "403");
+  assertEquals(r.reason(RefusedSessions.id("light", "K", "my", look)), "403");
+  assertEquals(r.reason(RefusedSessions.id("dark", "K", "my", look)), null);
+  assertEquals(r.reason(RefusedSessions.id("light", "K", "sg", look)), null);
+  assertEquals(r.reason(RefusedSessions.id("light", "K2", "my", look)), null, "a new key is tried");
+  assertEquals(r.reason(RefusedSessions.id("light", "K", "my", { ...look, map: "terrain" })), null);
+  now = 600_000;
+  assertEquals(r.reason(RefusedSessions.id("light", "K", "my", look)), null);
 });
 
 Deno.test("Google's own map on phones: no key sent, the build carries it (0210)", async () => {
