@@ -930,8 +930,17 @@ Future<void> _shot(
   Duration step = const Duration(milliseconds: 100),
   Future<void> Function(WidgetTester)? act,
 }) async {
+  // Sweeps: DARK=1, XL=1 (text scale 1.3), SE=1, BOLD=1 (iOS Bold Text) force
+  // the setting on every screenshot.
+  final env = Platform.environment;
+  if (env['DARK'] == '1') dark = true;
+  if (env['XL'] == '1') textScale = 1.35;
+  if (env['SE'] == '1' && device == null) se = true;
   SharedPreferences.setMockInitialValues({});
   debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+  if (env['BOLD'] == '1') {
+    tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(boldText: true);
+  }
   // iPhone SE (3rd gen): 375 x 667 at 2x, 20 pt status bar, no home indicator.
   final d = device ?? (se ? _iphoneSe : _iphone15);
   final w = d.w, h = d.h, dpr = d.dpr, top = d.top, bottom = d.bottom;
