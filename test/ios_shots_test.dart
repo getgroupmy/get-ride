@@ -40,6 +40,8 @@ import 'package:get_ride/src/features/ride/ride_tracking_screen.dart'
     show rideStreamProvider, riderPositionStreamProvider;
 import 'package:get_ride/src/features/ride/searching_parts.dart' show showSearchCancelSheet;
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
+import 'package:get_ride/src/admin/screens/session_access_card.dart';
+import 'package:get_ride/src/core/session_access.dart';
 import 'package:get_ride/src/admin/screens/people/people_logic.dart';
 import 'package:get_ride/src/data/ev_order_repository.dart';
 import 'package:get_ride/src/data/live_tables.dart';
@@ -2891,6 +2893,58 @@ void main() {
         },
       ),
     );
+  });
+
+  group('session access', () {
+    Widget host() => Scaffold(
+      appBar: AppBar(title: const Text('SMS / WhatsApp')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: const [SessionAccessCard(devices: [])],
+      ),
+    );
+    final keys = [
+      sessionKeysProvider.overrideWith(
+        (ref) async => [
+          for (final r in [
+            {
+              'id': 'k1',
+              'label': 'Tester iPhone 15',
+              'created_at': '2026-10-18T06:00:00Z',
+              'last_used_at': '2026-10-18T08:30:00Z',
+              'expires_at': '2026-11-18T06:00:00Z',
+              'internet_device_id': null,
+            },
+            {
+              'id': 'k2',
+              'label': 'CI runner',
+              'created_at': '2026-10-10T06:00:00Z',
+              'last_used_at': null,
+              'expires_at': '2026-10-17T06:00:00Z',
+              'revoked_at': '2026-10-15T00:00:00Z',
+            },
+          ])
+            ?SessionKey.fromRow(r),
+        ],
+      ),
+    ];
+    testWidgets(
+      'empty',
+      (t) => _shot(
+        t,
+        'sa_empty',
+        screen: host(),
+        admin: true,
+        overrides: [sessionKeysProvider.overrideWith((ref) async => const <SessionKey>[])],
+      ),
+    );
+    testWidgets('keys', (t) => _shot(t, 'sa_keys', screen: host(), admin: true, overrides: keys));
+    testWidgets(
+      'keys large text',
+      (t) => _shot(t, 'sa_keys_xl', screen: host(), admin: true, textScale: 1.35, overrides: keys),
+    );
+    testWidgets('keys SE', (t) => _shot(t, 'sa_keys_se', screen: host(), admin: true, se: true, overrides: keys));
+    testWidgets('keys dark', (t) => _shot(t, 'sa_keys_dark', screen: host(), admin: true, dark: true, overrides: keys));
   });
 
   group('partner', () {
