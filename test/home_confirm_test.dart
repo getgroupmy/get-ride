@@ -213,7 +213,15 @@ void main() {
     await _pump(tester, _Rides(), book: false);
     await tester.tap(find.byKey(const ValueKey('vehicle-type-GET XL')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('vehicle-info-GET XL')));
+    // A 44-square tap target, named for screen readers.
+    final info = find.byKey(const ValueKey('vehicle-info-GET XL'));
+    expect(tester.getSize(info).width, greaterThanOrEqualTo(44));
+    expect(tester.getSize(info).height, greaterThanOrEqualTo(44));
+    final semantics = tester.ensureSemantics();
+    await tester.pump();
+    expect(find.bySemanticsLabel('Fare details for GET XL'), findsOneWidget);
+    semantics.dispose();
+    await tester.tap(info);
     await tester.pumpAndSettle();
     final sheet = find.byKey(const ValueKey('fare-details-sheet'));
     expect(find.descendant(of: sheet, matching: find.text('GET XL')), findsOneWidget);
@@ -456,6 +464,24 @@ void main() {
       expect(r.top, greaterThanOrEqualTo(card.bottom), reason: '$mark below the card');
       expect(r.bottom, lessThanOrEqualTo(bar.top), reason: '$mark above the bar on the sheet');
     }
+  });
+
+  testWidgets('on its side, Back on the confirm step stays off the route card and the notch', (tester) async {
+    await _pump(tester, _Rides());
+    // Turned on its side (iPhone 15): the notch left and right, the home bar.
+    tester.view.physicalSize = const Size(852, 393);
+    tester.view.padding = const FakeViewPadding(left: 59, right: 59, bottom: 21);
+    tester.view.viewPadding = const FakeViewPadding(left: 59, right: 59, bottom: 21);
+    await _settle(tester);
+    expect(tester.takeException(), isNull);
+    final back = tester.getRect(find.byKey(const ValueKey('confirm-back')));
+    final card = tester.getRect(find.byKey(const ValueKey('confirm-address-card')));
+    expect(back.overlaps(card), isFalse, reason: 'Back beside the route card, not on it');
+    expect(back.left, greaterThanOrEqualTo(59), reason: 'clear of the notch');
+    expect(back.top, greaterThanOrEqualTo(0));
+    await tester.tap(find.byKey(const ValueKey('confirm-back')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('confirm-address-card')), findsNothing);
   });
 
   testWidgets('the confirm step is laid out as Expo ride-confirm', (tester) async {
@@ -757,6 +783,25 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('offer-fare-back')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('offer-fare-screen')), findsNothing);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('confirm-fare'))).data, contains('$typed'));
+  });
+
+  testWidgets('Offer your fare leaves by the iOS edge swipe, and its fare still comes back', (tester) async {
+    await _pump(tester, _Rides(bidding: true));
+    await tester.tap(find.byKey(const ValueKey('fare-edit')));
+    await tester.pumpAndSettle();
+    final page = find.byKey(const ValueKey('offer-fare-screen'));
+    final route = ModalRoute.of(tester.element(page))!;
+    // Nothing holds the page: the swipe back is on.
+    expect(route.popDisposition, RoutePopDisposition.pop);
+    final recommended = tester.widget<Text>(find.byKey(const ValueKey('offer-fare-note'))).data!;
+    final typed = (double.parse(recommended.replaceAll(RegExp(r'[^0-9.]'), '')) + 3).round();
+    await tester.enterText(find.byKey(const ValueKey('offer-fare-field')), '$typed');
+    await tester.pump();
+    // Left as the swipe (or the system Back) leaves it: popped with no value.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(page, findsNothing);
     expect(tester.widget<Text>(find.byKey(const ValueKey('confirm-fare'))).data, contains('$typed'));
   });
 

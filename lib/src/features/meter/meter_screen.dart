@@ -1041,7 +1041,8 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         const SizedBox(width: 8),
         ActionChip(
           key: const ValueKey('meter-plate'),
-          visualDensity: VisualDensity.compact,
+          // Not compact: its tap area is 48 high (a compact one was 40).
+          materialTapTargetSize: MaterialTapTargetSize.padded,
           avatar: Icon(v == null ? Icons.add : Icons.directions_car, size: 16, color: v == null ? _amber : _lcd),
           label: Text(
             v == null ? 'SELECT' : (v.plate.isEmpty ? v.title : v.plate),
@@ -1319,6 +1320,8 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
           ),
         TextButton(
           key: const ValueKey('meter-destination'),
+          // 44 high: a finger-sized target.
+          style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
           onPressed: _ending ? null : _setDestination,
           child: Text(d == null ? 'SET' : 'CHANGE'),
         ),
@@ -1689,6 +1692,8 @@ class _DeclarationSheetState extends State<_DeclarationSheet> {
                 children: [
                   IconButton.filledTonal(
                     tooltip: 'Less',
+                    // 44 square: a finger-sized target.
+                    style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
                     onPressed: () => _stepCharges(-1),
                     icon: const Icon(Icons.remove),
                   ),
@@ -1712,6 +1717,7 @@ class _DeclarationSheetState extends State<_DeclarationSheet> {
                   const SizedBox(width: 8),
                   IconButton.filledTonal(
                     tooltip: 'More',
+                    style: IconButton.styleFrom(minimumSize: const Size(44, 44)),
                     onPressed: () => _stepCharges(1),
                     icon: const Icon(Icons.add),
                   ),

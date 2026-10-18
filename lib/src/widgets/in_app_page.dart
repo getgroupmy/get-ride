@@ -90,6 +90,16 @@ class _WebPageScreenState extends State<WebPageScreen> {
   late final WebViewController _web;
   int _progress = 0;
 
+  /// Whether the page has its own history to step back through. Only then
+  /// is the screen held to go back in it; otherwise iOS's edge swipe (and
+  /// Back) leave the screen as on any other page.
+  bool _canGoBack = false;
+
+  Future<void> _syncCanGoBack() async {
+    final can = await _web.canGoBack();
+    if (mounted && can != _canGoBack) setState(() => _canGoBack = can);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -100,6 +110,8 @@ class _WebPageScreenState extends State<WebPageScreen> {
           onProgress: (p) {
             if (mounted) setState(() => _progress = p);
           },
+          onPageFinished: (_) => unawaited(_syncCanGoBack()),
+          onUrlChange: (_) => unawaited(_syncCanGoBack()),
           // A link on the page to a call, an email or another app goes to
           // that app; everything on the web stays here.
           onNavigationRequest: (req) {
@@ -118,6 +130,7 @@ class _WebPageScreenState extends State<WebPageScreen> {
   Future<void> _back() async {
     if (await _web.canGoBack()) {
       await _web.goBack();
+      await _syncCanGoBack();
     } else if (mounted) {
       Navigator.of(context).pop();
     }
@@ -126,7 +139,7 @@ class _WebPageScreenState extends State<WebPageScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: !_canGoBack,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) unawaited(_back());
       },

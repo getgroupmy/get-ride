@@ -19,7 +19,9 @@ Future<DateTime?> showPickupTimeSheet(
   DateTime Function() clock = DateTime.now,
 }) => showAppSheet<DateTime>(id: 'ride.pickup-time',
   context: context,
-  isScrollControlled: true,
+  // A phone on its side is 393 high: the sheet scrolls rather than hide
+  // "Confirm time" ([PickupTimeSheet] also shows fewer wheel rows there).
+  fitContent: true,
   builder: (_) => PickupTimeSheet(config: config, initial: initial, note: note, clock: clock),
 );
 
@@ -38,7 +40,10 @@ class PickupTimeSheet extends StatefulWidget {
 }
 
 const _rowHeight = 44.0;
-const _rows = 5;
+
+/// Wheel rows shown on a screen [height] high: five, or three when that
+/// would not leave room for the title and "Confirm time" (landscape).
+int pickupWheelRows(double height) => height < 560 ? 3 : 5;
 
 class _PickupTimeSheetState extends State<PickupTimeSheet> {
   late final DateTime _opened = widget.clock();
@@ -127,7 +132,14 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final c = widget.config;
-    final muted = t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t));
+    // Checked against the sheet's own fill (an admin colour or the theme's
+    // sheet colour), not the page behind it.
+    final sheetFill = SurfaceStyle.of(context, 'sheet:ride.pickup-time').setColor('background', t.brightness) ??
+        t.bottomSheetTheme.modalBackgroundColor ??
+        t.bottomSheetTheme.backgroundColor ??
+        t.colorScheme.surfaceContainerLow;
+    final muted = t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t, background: sheetFill));
+    final rows = pickupWheelRows(MediaQuery.sizeOf(context).height);
     final days = c.maxDaysAhead == 1 ? '1 day' : '${c.maxDaysAhead} days';
     final footer = c.lateCancelFee > 0
         ? 'Free cancellation until ${pickupClock(freeCancelUntil(_at, c))}. Your driver will be there at '
@@ -146,7 +158,7 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
             Text('Book your pickup from ${c.minLeadMinutes} minutes to $days ahead.', style: muted),
             const SizedBox(height: 16),
             SizedBox(
-              height: _rowHeight * _rows,
+              height: _rowHeight * rows,
               child: Stack(
                 children: [
                   // The chosen row, across all four wheels.

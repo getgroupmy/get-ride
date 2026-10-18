@@ -15,7 +15,17 @@ import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
 import 'core/launch_destination.dart' show AppLaunch;
-import 'core/auth_utils.dart' show PendingSignInRoute, ResyncPin, SignInPhone, signInLocation, signInNextPath, signInStepPhone, signInStepRedirect;
+import 'core/auth_utils.dart'
+    show
+        PendingSignInRoute,
+        ResyncPin,
+        SignInPhone,
+        rememberSignInTarget,
+        signedInTarget,
+        signInLocation,
+        signInNextPath,
+        signInStepPhone,
+        signInStepRedirect;
 import 'core/connection_check.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
@@ -247,10 +257,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         PendingSignInRoute.path = signInNextPath(state.uri.toString());
         return signInLocation(state.uri.toString());
       }
-      if (!signedIn && loc == '/login') {
-        final next = signInNextPath(state.uri.queryParameters['next']);
-        if (next != null) PendingSignInRoute.path = next;
-      }
+      // On a sign-in page: kept from /login's `next` or a later step's `to`
+      // (a reload of /login/phone or /login/pin keeps it too).
+      if (!signedIn && onAuth) rememberSignInTarget(loc, state.uri.queryParameters);
       // A sign-in step reloaded without its phone starts again from the number.
       if (!signedIn) {
         final step = signInStepRedirect(
@@ -267,7 +276,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       // Signed in after opening a driver's code: back to that code.
       if (signedIn && (onAuth || loc == '/') && PendingQrLink.path != null) return PendingQrLink.take();
-      if (signedIn && (onAuth || loc == '/') && PendingSignInRoute.path != null) return PendingSignInRoute.take();
+      if (signedIn) {
+        final target = signedInTarget(loc);
+        if (target != null) return target;
+      } else {
+        PendingSignInRoute.signedOut();
+      }
       if (signedIn && onAuth) return '/';
       return null;
     },
@@ -350,7 +364,36 @@ final routerProvider = Provider<GoRouter>((ref) {
                 ],
               ),
               StatefulShellBranch(
-                routes: [GoRoute(path: '/drive', builder: (_, _) => const PartnerScreen())],
+                routes: [
+                  GoRoute(
+                    path: '/drive',
+                    builder: (_, _) => const PartnerScreen(),
+                    // The driver's own pages, in the same shell as the
+                    // rider's /account, /wallet and /trips: the navigation
+                    // rail beside them on a wide screen.
+                    routes: [
+                      GoRoute(path: 'permit', builder: (_, _) => const DriverPermitScreen()),
+                      GoRoute(path: 'my-ride', builder: (_, _) => const MyRideCodeScreen()),
+                      GoRoute(
+                        path: 'scheduled',
+                        builder: (_, s) =>
+                            ScheduledJobsScreen(initialTab: s.uri.queryParameters['tab'] == 'mine' ? 1 : 0),
+                      ),
+                      GoRoute(path: 'earnings', builder: (_, _) => const EarningsScreen()),
+                      GoRoute(path: 'statements', builder: (_, _) => const StatementsScreen()),
+                      GoRoute(
+                        path: 'history',
+                        builder: (_, _) => const PartnerTripHistoryScreen(),
+                        routes: [
+                          GoRoute(
+                            path: ':id',
+                            builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
               ),
               StatefulShellBranch(
                 routes: [
@@ -424,24 +467,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/drive/demo',
             builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
-          ),
-          GoRoute(path: '/drive/permit', builder: (_, _) => const DriverPermitScreen()),
-          GoRoute(path: '/drive/my-ride', builder: (_, _) => const MyRideCodeScreen()),
-          GoRoute(
-            path: '/drive/scheduled',
-            builder: (_, s) => ScheduledJobsScreen(initialTab: s.uri.queryParameters['tab'] == 'mine' ? 1 : 0),
-          ),
-          GoRoute(path: '/drive/earnings', builder: (_, _) => const EarningsScreen()),
-          GoRoute(path: '/drive/statements', builder: (_, _) => const StatementsScreen()),
-          GoRoute(
-            path: '/drive/history',
-            builder: (_, _) => const PartnerTripHistoryScreen(),
-            routes: [
-              GoRoute(
-                path: ':id',
-                builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!),
-              ),
-            ],
           ),
           GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
           GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),

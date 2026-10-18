@@ -880,7 +880,7 @@ typedef SearchCancelChoice = ({bool cancel, String? reason});
 Future<SearchCancelChoice?> showSearchCancelSheet(BuildContext context) async {
   final reason = await showAppSheet<String>(id: 'searching.show-search-cancel-sheet',
     context: context,
-    isScrollControlled: true,
+    fitContent: true,
     showDragHandle: false,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (c) => const _WhyCancelSheet(),
@@ -888,6 +888,7 @@ Future<SearchCancelChoice?> showSearchCancelSheet(BuildContext context) async {
   if (reason == null || !context.mounted) return null;
   final sure = await showAppSheet<bool>(id: 'searching.show-search-cancel-sheet-2',
     context: context,
+    fitContent: true,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (c) => const _SureCancelSheet(),
   );

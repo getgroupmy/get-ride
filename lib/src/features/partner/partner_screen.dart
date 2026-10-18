@@ -76,6 +76,11 @@ double driverSheetRest(double screenHeight) {
   return needed <= 0.2 ? 0.2 : (needed >= 0.5 ? 0.5 : needed);
 }
 
+/// Whether the requests floating on the driver's map run down beside the
+/// map's buttons rather than stopping above them: on a phone on its side,
+/// where above them left a card a strip ~60 high.
+bool floatingRequestsBeside(Size size) => size.width > size.height && size.height < 500;
+
 bool partnerCanDrive(Partner p) {
   final s = p.status ?? '';
   return s == 'approved' || s.startsWith('permit-');
@@ -889,7 +894,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     if (_online) _floatingRequests(p, null, floating),
                   ]),
                   // All the way down only the online switch shows.
-                  peek: ResponsiveCenter(maxWidth: 760, child: head.first),
+                  // The sheet rests no lower than the whole switch card, over
+                  // the home bar too (on its side its foot was cut off).
+                  peek: ResponsiveCenter(maxWidth: 760, child: MapSheetRestLine(child: head.first)),
                   sheet: ResponsiveCenter(
                     maxWidth: 760,
                     child: Column(children: [...head.skip(1), if (!_online) offline]),
@@ -1127,6 +1134,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// while there are none.
   Widget _floatingRequests(Partner partner, RideRequest? alert, List<RideRequest> items) {
     final t = Theme.of(context);
+    final sideways = floatingRequestsBeside(MediaQuery.sizeOf(context));
     // Inside the map, so the list keeps clear of the sheet and the map
     // buttons; mounted even when empty, so the last card flies out too.
     return Positioned.fill(
@@ -1140,9 +1148,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               // above the map's own column of buttons (traffic, map view,
               // recenter): on a short screen the list scrolls between them.
               top: MediaQuery.paddingOf(context).top + 64,
-              left: 12,
-              right: 12,
-              bottom: inset + mapAttributionClearance + 168,
+              left: 12 + MediaQuery.paddingOf(context).left,
+              // On a phone on its side there is no room above the map's
+              // buttons (the card was cut): the list runs down beside them
+              // instead, as far as the sheet.
+              right: 12 + MediaQuery.paddingOf(context).right + (sideways ? 64 : 0),
+              bottom: inset + mapAttributionClearance + (sideways ? 0 : 168),
               child: FlyInList<RideRequest>(
                 padding: const EdgeInsets.only(top: 8, bottom: 8),
                 items: items,
@@ -1261,7 +1272,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 '${formatDistance(r.distanceKm)} trip',
                 r.paymentMode,
                 '${r.passengers} pax',
-              ].join(' · '), style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)));
+                // Checked against the card it is on, not the page.
+              ].join(' · '), style: t.textTheme.bodySmall?.copyWith(
+                color: mutedTextColor(t, background: t.cardTheme.color ?? t.colorScheme.surfaceContainerLow),
+              ));
             },
           ),
           const SizedBox(height: 8),

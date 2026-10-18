@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -187,6 +188,44 @@ void main() {
     await tester.pump();
     expect(account.sent, ['t1:voice:m4a:4']);
   });
+
+  for (final scale in const [1.0, 1.3]) {
+    testWidgets('a long subject shows on two lines with the status under it (iPhone SE @$scale)', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(375, 667);
+      addTearDown(tester.view.reset);
+      const subject = 'Lost my bag';
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            accountRepositoryProvider.overrideWithValue(_FakeAccount()),
+            profileProvider.overrideWith((ref) async => Profile({'id': 'me', 'name': 'Ali'})),
+            supportMessagesProvider.overrideWith((ref, id) => Stream.value(const [])),
+            ticketsProvider.overrideWith(
+              (ref) async => [SupportTicket({'id': 't1', 'ticket_number': 1042, 'subject': subject, 'status': 'in_progress'})],
+            ),
+          ],
+          child: MaterialApp(
+            builder: (c, child) => MediaQuery(
+              data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
+            ),
+            home: const SupportChatScreen(ticketId: 't1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final title = tester.renderObject<RenderParagraph>(
+        find.descendant(of: find.byKey(const ValueKey('support-chat-title')), matching: find.byType(RichText)),
+      );
+      expect(title.didExceedMaxLines, isFalse, reason: 'the subject whole on two lines');
+      final status = tester.getRect(find.byKey(const ValueKey('support-chat-status')));
+      final bar = tester.getRect(find.byType(AppBar));
+      expect(status.bottom, lessThanOrEqualTo(bar.bottom), reason: 'the status inside the bar');
+      expect(status.top, greaterThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('support-chat-title'))).bottom - 0.5));
+    });
+  }
 
   test("a new chat's address becomes its ticket's", () {
     expect(supportTicketAddress('/account/support/new', 't9'), '/account/support/t9');

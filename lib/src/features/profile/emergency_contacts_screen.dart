@@ -93,7 +93,11 @@ class EmergencyContactsScreen extends ConsumerWidget {
             // Scrolls under a keyboard on a small phone or at large text,
             // with Cancel and Save kept in view.
             scrollable: true,
-            title: Text(c == null ? 'Add contact' : 'Edit contact'),
+            // On its side with the keyboard up the title gives way to the
+            // fields (they say what they are).
+            title: MediaQuery.sizeOf(ctx).height - MediaQuery.viewInsetsOf(ctx).bottom < 300
+                ? null
+                : Text(c == null ? 'Add contact' : 'Edit contact'),
             content: Column(mainAxisSize: MainAxisSize.min, children: [
               if (pick != null)
                 Align(

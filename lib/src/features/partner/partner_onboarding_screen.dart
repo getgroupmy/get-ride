@@ -320,6 +320,9 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         for (final (i, step) in OnboardingStep.wizard.indexed)
           ChoiceChip(
             avatar: i < reachedIndex ? const Icon(Icons.check, size: 16) : null,
+            // Ticks only on finished steps; the open one is filled, no tick
+            // (the chip's own checkmark put one on the current step).
+            showCheckmark: false,
             label: Text(step.label),
             selected: step == showing,
             // Finished steps can be reopened; later ones wait their turn.

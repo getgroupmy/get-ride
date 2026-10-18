@@ -345,7 +345,8 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
         MapBottomInset.listen(
           context,
           (inset) => Positioned(
-            right: 12 - recenterAt.$1,
+            // Clear of the notch on a phone on its side.
+            right: 12 + MediaQuery.paddingOf(context).right - recenterAt.$1,
             bottom: mapAttributionClearance + inset - recenterAt.$2,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               ?widget.topButton,
@@ -362,12 +363,16 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
           ),
         ),
         // The road the car is on: its limit, or its class as an estimate.
-        Positioned(left: 12, top: route != null ? 68 : 12, child: SpeedLimitBadge(at: driver)),
+        Positioned(
+          left: 12 + MediaQuery.paddingOf(context).left,
+          top: route != null ? 68 : 12,
+          child: SpeedLimitBadge(at: driver),
+        ),
         if (route != null)
           Positioned(
             top: 12,
-            left: 12,
-            right: 12,
+            left: 12 + MediaQuery.paddingOf(context).left,
+            right: 12 + MediaQuery.paddingOf(context).right,
             child: Center(
               child: Material(
                 key: const ValueKey('eta-chip'),

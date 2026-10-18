@@ -1049,6 +1049,6 @@ class _Empty extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text(text, style: TextStyle(color: Theme.of(context).colorScheme.outline)),
+        child: Text(text, style: TextStyle(color: mutedTextColor(Theme.of(context)))),
       );
 }

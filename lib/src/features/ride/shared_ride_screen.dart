@@ -27,6 +27,8 @@ import '../../widgets/page_style_host.dart';
 /// tests. False when nothing here can place a call.
 final sharedRideDialerProvider = Provider<Future<bool> Function(String number)>(
   (ref) => (number) async {
+    // A desktop browser: the number to copy instead (see canDialHere).
+    if (!canDialHere()) return false;
     try {
       return await launchUrl(Uri(scheme: 'tel', path: number));
     } catch (_) {

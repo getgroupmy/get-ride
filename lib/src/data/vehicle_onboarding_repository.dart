@@ -45,6 +45,14 @@ class VehicleOnboardingRepository {
 
   Future<Map<String, dynamic>?> vehicle(String id) => _db.from('vehicle').select().eq('id', id).maybeSingle();
 
+  /// Deletes the caller's own draft vehicle [id] (0229's "vehicle own draft
+  /// delete"). False when nothing was deleted: it is no longer a draft the
+  /// caller may remove (submitted, in use, or not theirs).
+  Future<bool> removeDraft(String id) async {
+    final rows = await _db.from('vehicle').delete().eq('id', id).select('id');
+    return rows.isNotEmpty;
+  }
+
   /// Starts a vehicle from its plate: one of the partner's own vehicles with
   /// that plate is resumed, otherwise a new row is created.
   Future<Map<String, dynamic>> startWithPlate(String plate, Map<String, dynamic> partner) async {

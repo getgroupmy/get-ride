@@ -85,6 +85,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(auth.calls, ['lookup +60129999999', 'request +60129999999']);
     expect(find.text('Enter the 6-digit code sent to +60129999999.'), findsOneWidget);
+    // iOS offers the texted code above the keyboard.
+    expect(
+      tester.widget<TextField>(find.byKey(const ValueKey('change-code'))).autofillHints,
+      contains(AutofillHints.oneTimeCode),
+    );
 
     await tester.enterText(find.byKey(const ValueKey('change-code')), '123456');
     await tester.pump();

@@ -11,7 +11,8 @@ import '../../widgets/page_style_host.dart';
 Future<BookedFor?> showBookForSheet(BuildContext context, {String name = '', String phone = ''}) =>
     showAppSheet<BookedFor>(id: 'book-for.show-book-for-sheet',
       context: context,
-      isScrollControlled: true,
+      // Scrolls, above the keyboard, when it does not fit (landscape).
+      fitContent: true,
       builder: (_) => _BookForSheet(name: name, phone: phone),
     );
 

@@ -87,7 +87,7 @@ class SessionAccessCard extends ConsumerWidget {
                 else
                   Text(
                     'Only a full admin adds or removes a session, since a key can read sign-in codes.',
-                    style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                    style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
                   ),
               ],
             ),

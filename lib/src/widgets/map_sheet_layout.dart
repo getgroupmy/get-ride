@@ -198,6 +198,40 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// The [MapSheetLayout.aboveFooter]'s height, as last laid out.
   double _aboveHeight = 0;
 
+  /// How far down the sheet (from its top edge, handle included) its
+  /// [MapSheetRestLine] ends: the sheet never rests lower than that, clear
+  /// of the footer (0: no line).
+  double _restLine = 0;
+
+  /// The layout's height and the bottom view padding, as last built.
+  double _h = 0, _bottomPad = 0;
+
+  /// The sheet's lowest: [MapSheetLayout.min], or higher so the content
+  /// down to its [MapSheetRestLine] shows above the footer (a phone on its
+  /// side is 393 high, where a share of it showed only the handle).
+  double get _min {
+    if (_restLine <= 0 || _h <= 0) return widget.min;
+    final under = widget.footer != null ? _footerHeight : (widget.padBottom ? _bottomPad : 0);
+    return math.min(widget.max, math.max(widget.min, (_restLine + under) / _h));
+  }
+
+  /// [MapSheetRestLine] measured [bottom]: the sheet rises to it if it rests lower.
+  void _setRestLine(double bottom) {
+    if ((bottom - _restLine).abs() <= 0.5 || !mounted) return;
+    setState(() => _restLine = bottom);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_sheet.isAttached || widget.locked) return;
+      if (_sheet.size < _min - 0.001) _sheet.jumpTo(_min);
+    });
+  }
+
+  /// The sheet's top edge, for [MapSheetRestLine] to measure from.
+  final _sheetKey = GlobalKey();
+
+  /// How far the content is moved up from where it lies at rest (scrolled,
+  /// or slid to show the chosen item), for [MapSheetRestLine].
+  double get _contentLift => _shift.value + (_scroll?.hasClients ?? false ? _scroll!.offset : 0);
+
   /// The sheet's content scroller, as last built.
   ScrollController? _scroll;
 
@@ -306,7 +340,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     _restSize = null;
     if (rest == null || !_sheet.isAttached || widget.locked) return;
     _sheet.animateTo(
-      rest.clamp(widget.min, widget.max),
+      rest.clamp(_min, widget.max),
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
     );
@@ -321,12 +355,12 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// content slides up under the handle so the chosen item sits whole just
   /// above the footer, the others pushed up out of the way.
   void _select(BuildContext target) {
-    if (widget.locked || !_sheet.isAttached || _sheet.size <= widget.min + 0.001) {
+    if (widget.locked || !_sheet.isAttached || _sheet.size <= _min + 0.001) {
       _reveal(target);
       return;
     }
     // Measured once the sheet's last step is laid out, not the one before.
-    _sheet.animateTo(widget.min, duration: const Duration(milliseconds: 250), curve: Curves.easeOut).then(
+    _sheet.animateTo(_min, duration: const Duration(milliseconds: 250), curve: Curves.easeOut).then(
       (_) => WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _target == target && target.mounted) _reveal(target);
       }),
@@ -390,7 +424,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// whole again (inDrive's). Left higher, the list stays as it is, to be
   /// looked through and chosen from.
   void _settledDown(double extent) {
-    if (!_moved || _dragging || extent > widget.min + 0.001) return;
+    if (!_moved || _dragging || extent > _min + 0.001) return;
     _moved = false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _revealTarget();
@@ -439,11 +473,11 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     super.didUpdateWidget(old);
     // The sheet doesn't report a size it is clamped to, only one it is
     // dragged to: tell the map's buttons.
-    if (widget.locked && !old.locked) _extent.value = widget.min;
+    if (widget.locked && !old.locked) _extent.value = _min;
     // A new resting height (the home sheet rising for the confirm step, or
     // settling back): the sheet moves to it.
     if ((widget.initial != old.initial || widget.min != old.min) && !widget.locked) {
-      final to = widget.initial.clamp(widget.min, widget.max);
+      final to = widget.initial.clamp(_min, widget.max);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_sheet.isAttached) return;
         _sheet
@@ -470,16 +504,20 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// sheet, as a drag would, instead of scrolling its content; so does
   /// scrolling back up past the top of the content of a full sheet. Inside
   /// the scroll view, so it is offered the event before the content is.
-  Widget _wheelMovesSheet(Widget child, ScrollController scroll, double height) => Listener(
+  /// Also over the handle and the pinned footer (a collapsed sheet is
+  /// mostly those), where [scroll] is null and the sheet's own scroller is
+  /// asked.
+  Widget _wheelMovesSheet(Widget child, ScrollController? scroll, double height) => Listener(
     onPointerSignal: (e) {
       if (e is! PointerScrollEvent || widget.locked || !_sheet.isAttached || height <= 0) return;
+      final content = scroll ?? _scroll;
       final full = _sheet.size >= widget.max - 0.001;
-      final scrolled = scroll.hasClients && scroll.offset > 0;
+      final scrolled = content != null && content.hasClients && content.offset > 0;
       if (full && (e.scrollDelta.dy > 0 || scrolled)) return; // the content's to scroll
       GestureBinding.instance.pointerSignalResolver.register(e, (event) {
         _release();
         final dy = (event as PointerScrollEvent).scrollDelta.dy;
-        _sheet.jumpTo((_sheet.size + dy / height).clamp(widget.min, widget.max));
+        _sheet.jumpTo((_sheet.size + dy / height).clamp(_min, widget.max));
       });
     },
     child: child,
@@ -491,6 +529,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     return LayoutBuilder(
       builder: (context, c) {
         final h = c.maxHeight;
+        _h = h;
+        _bottomPad = MediaQuery.viewPaddingOf(context).bottom;
         return Stack(
           children: [
             Positioned.fill(
@@ -499,7 +539,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 height: h,
                 cap: h * (1 - widget.mapMinFraction),
                 pull: _bounce,
-                rest: math.min(h * widget.min, h * (1 - widget.mapMinFraction)),
+                rest: math.min(h * _min, h * (1 - widget.mapMinFraction)),
                 child: widget.map,
               ),
             ),
@@ -530,9 +570,9 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 child: DraggableScrollableSheet(
                 key: const ValueKey('map-sheet'),
                 controller: _sheet,
-                initialChildSize: widget.locked ? widget.min : widget.initial,
-                minChildSize: widget.min,
-                maxChildSize: widget.locked ? widget.min : widget.max,
+                initialChildSize: widget.locked ? _min : math.max(widget.initial, _min),
+                minChildSize: _min,
+                maxChildSize: widget.locked ? _min : widget.max,
                 builder: (context, scroll) {
                   _scroll = scroll;
                   // App Page Settings for the page it is on.
@@ -544,6 +584,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                     animation: _bounce,
                     builder: (_, child) => Transform.translate(offset: Offset(0, _bounce.value), child: child),
                     child: Material(
+                      key: _sheetKey,
                       elevation: 8,
                       color: fill,
                       borderRadius: BorderRadius.vertical(top: Radius.circular(style.number('mapSheetRadius'))),
@@ -560,26 +601,38 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                         physics: widget.locked ? const NeverScrollableScrollPhysics() : const ClampingScrollPhysics(),
                         slivers: [
                           PinnedHeaderSliver(
-                            child: ColoredBox(
-                              key: const ValueKey('map-sheet-header'),
-                              color: fill,
-                              child: SizedBox(
-                                height: 22,
-                                child: Center(
-                                  child: Container(
-                                    key: const ValueKey('map-sheet-handle'),
-                                    width: 40,
-                                    height: 4,
-                                    decoration: BoxDecoration(
-                                      color: style.setColor('handleColor', t.brightness) ?? t.colorScheme.outlineVariant,
-                                      borderRadius: BorderRadius.circular(2),
+                            // A wheel over the handle moves the sheet too.
+                            child: _wheelMovesSheet(
+                              ColoredBox(
+                                key: const ValueKey('map-sheet-header'),
+                                color: fill,
+                                child: SizedBox(
+                                  height: 22,
+                                  child: Center(
+                                    child: Container(
+                                      key: const ValueKey('map-sheet-handle'),
+                                      width: 40,
+                                      height: 4,
+                                      decoration: BoxDecoration(
+                                        color: style.setColor('handleColor', t.brightness) ?? t.colorScheme.outlineVariant,
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
+                              scroll,
+                              h,
                             ),
                           ),
-                          if (widget.peek != null) SliverToBoxAdapter(child: _wheelMovesSheet(widget.peek!, scroll, h)),
+                          if (widget.peek != null)
+                            SliverToBoxAdapter(
+                              child: _wheelMovesSheet(
+                                SafeArea(top: false, bottom: false, child: widget.peek!),
+                                scroll,
+                                h,
+                              ),
+                            ),
                           SliverToBoxAdapter(
                             child: AnimatedBuilder(
                               animation: _shift,
@@ -587,13 +640,18 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                               // the slide comes and goes.
                               builder: (_, child) => Transform.translate(offset: Offset(0, -_shift.value), child: child),
                               child: _wheelMovesSheet(
-                              widget.peek == null
+                              // Clear of the notch and the rounded corners on
+                              // a phone on its side.
+                              SafeArea(
+                              top: false,
+                              bottom: false,
+                              child: widget.peek == null
                                   ? widget.sheet
                                   : ValueListenableBuilder<double>(
                                       valueListenable: _extent,
                                       builder: (_, extent, child) {
                                         // Hidden all the way down; in as it rises.
-                                        final shown = ((extent - widget.min) / 0.04).clamp(0.0, 1.0);
+                                        final shown = ((extent - _min) / 0.04).clamp(0.0, 1.0);
                                         return IgnorePointer(
                                           ignoring: shown < 1,
                                           child: Opacity(
@@ -605,6 +663,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                                       },
                                       child: widget.sheet,
                                     ),
+                              ),
                               scroll,
                               h,
                             ),
@@ -635,7 +694,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                   height: h,
                   cap: h,
                   pull: _bounce,
-                  rest: math.min(h * widget.min, h * (1 - widget.mapMinFraction)),
+                  rest: math.min(h * _min, h * (1 - widget.mapMinFraction)),
                   child: widget.front!,
                 ),
               ),
@@ -657,7 +716,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                     animation: _bounce,
                     builder: (_, child) =>
                         _bounce.value == 0 ? child! : Transform.translate(offset: Offset(0, _bounce.value), child: child),
-                    child: widget.footer!,
+                    // A wheel over the footer moves the sheet, as over the sheet.
+                    child: _wheelMovesSheet(widget.footer!, null, h),
                   ),
                 ),
               ),
@@ -741,13 +801,55 @@ class MapSheetUpOnly extends StatelessWidget {
     return ValueListenableBuilder<double>(
       valueListenable: layout._extent,
       builder: (_, extent, child) {
-        final shown = ((extent - layout.widget.min) / 0.04).clamp(0.0, 1.0);
+        final shown = ((extent - layout._min) / 0.04).clamp(0.0, 1.0);
         return IgnorePointer(
           ignoring: shown < 1,
           child: Opacity(key: const ValueKey('map-sheet-up-only'), opacity: shown, child: child),
         );
       },
       child: child,
+    );
+  }
+}
+
+/// Marks how much of a [MapSheetLayout]'s sheet must show when it is all
+/// the way down: the sheet never rests lower than [child]'s bottom edge,
+/// above the footer (the driver card's Call and Message row, not the
+/// handle and a clipped title under "Cancel ride"). In logical pixels, so
+/// it holds on a phone on its side and at large text alike; the sheet's
+/// own lowest still applies where it is higher, and its highest caps it.
+/// Nothing outside a [MapSheetLayout].
+class MapSheetRestLine extends StatefulWidget {
+  const MapSheetRestLine({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<MapSheetRestLine> createState() => _MapSheetRestLineState();
+}
+
+class _MapSheetRestLineState extends State<MapSheetRestLine> {
+  void _measure() {
+    if (!mounted) return;
+    final layout = context.findAncestorStateOfType<_MapSheetLayoutState>();
+    final top = layout?._sheetKey.currentContext?.findRenderObject() as RenderBox?;
+    final box = context.findRenderObject() as RenderBox?;
+    if (layout == null || top == null || box == null || !box.hasSize || !top.attached || !box.attached) return;
+    // Below the sheet's top as it lies at rest, whatever slide or scroll it
+    // is under now.
+    final bottom = box.localToGlobal(Offset(0, box.size.height), ancestor: top).dy + layout._contentLift;
+    layout._setRestLine(bottom);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+    return NotificationListener<SizeChangedLayoutNotification>(
+      onNotification: (_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+        return false;
+      },
+      child: SizeChangedLayoutNotifier(child: widget.child),
     );
   }
 }

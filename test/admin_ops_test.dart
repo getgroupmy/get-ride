@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/admin_repository.dart';
@@ -77,9 +78,30 @@ class _Admin extends AdminRepository {
 AdminGrant _g(String page, {bool edit = false, String? id, String? notes}) =>
     AdminGrant(page: page, edit: edit, id: id ?? 'g-$page', profileId: 'p-aina', notes: notes);
 
-Future<void> _pump(WidgetTester tester, _Admin admin, Widget home, {Brightness b = Brightness.light}) async {
+Future<GoRouter> _pump(
+  WidgetTester tester,
+  _Admin admin,
+  Widget home, {
+  Brightness b = Brightness.light,
+  String initial = '/admin/sub-admins',
+}) async {
   await tester.binding.setSurfaceSize(const Size(1000, 1600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
+  // Grant access and Edit access are pages of their own under the list.
+  final router = GoRouter(
+    initialLocation: initial,
+    routes: [
+      GoRoute(
+        path: '/admin/sub-admins',
+        builder: (_, _) => home,
+        routes: [
+          GoRoute(path: 'grant', builder: (_, _) => const GrantEditorPage()),
+          GoRoute(path: ':id/edit', builder: (_, s) => GrantEditorPage(profileId: s.pathParameters['id'])),
+        ],
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
   await tester.pumpWidget(ProviderScope(
     overrides: [
       supabaseProvider.overrideWithValue(_db),
@@ -87,9 +109,10 @@ Future<void> _pump(WidgetTester tester, _Admin admin, Widget home, {Brightness b
       adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
       adminRepositoryProvider.overrideWithValue(admin),
     ],
-    child: MaterialApp(theme: appTheme(b), home: home),
+    child: MaterialApp.router(theme: appTheme(b), routerConfig: router),
   ));
   await tester.pumpAndSettle();
+  return router;
 }
 
 void main() {
@@ -220,6 +243,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(admin.setCalls.single.upserts, [(page: '*', edit: true)]);
     expect(admin.setCalls.single.deletes, isEmpty);
+  });
+
+  testWidgets('Edit access has an address of its own: a reload opens the same person', (tester) async {
+    final admin = _Admin(grants: [
+      {'id': 'g1', 'profile_id': 'p-aina', 'page': '*', 'access_level': 'read'},
+    ]);
+    await _pump(tester, admin, const AdminSubAdminsScreen());
+    await tester.tap(find.byKey(const ValueKey('sub-admin-edit-p-aina')));
+    await tester.pumpAndSettle();
+    final at = GoRouterState.of(tester.element(find.byKey(const ValueKey('grant-save')))).uri.toString();
+    expect(at, '/admin/sub-admins/p-aina/edit');
+    expect(subAdminEditorPath(null), '/admin/sub-admins/grant');
+
+    // Opened straight from that address (a reload): the same person.
+    final router = await _pump(tester, admin, const AdminSubAdminsScreen(), initial: at);
+    expect(find.text('Edit access'), findsOneWidget);
+    expect(find.textContaining('Aina'), findsWidgets);
+    // Saved there, it goes back to the list.
+    await tester.tap(find.descendant(of: find.byKey(const ValueKey('grant-level-*')), matching: find.text('Edit')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('grant-save')));
+    await tester.pumpAndSettle();
+    expect(admin.setCalls.last.upserts, [(page: '*', edit: true)]);
+    expect(find.byKey(const ValueKey('grant-access')), findsOneWidget, reason: 'back on the list');
+    expect(router.routerDelegate.currentConfiguration.uri.path, '/admin/sub-admins');
+  });
+
+  testWidgets('each None / View / Edit says whether it is the one chosen', (tester) async {
+    final admin = _Admin(grants: [
+      {'id': 'g1', 'profile_id': 'p-aina', 'page': '*', 'access_level': 'read'},
+    ]);
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, admin, const AdminSubAdminsScreen(), initial: '/admin/sub-admins/p-aina/edit');
+    final all = grantablePages['*']!;
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('$all: View')),
+      isSemantics(isSelected: true, isInMutuallyExclusiveGroup: true, isButton: true),
+    );
+    expect(tester.getSemantics(find.bySemanticsLabel('$all: Edit')), isSemantics(isSelected: false));
+    expect(tester.getSemantics(find.bySemanticsLabel('$all: None')), isSemantics(isSelected: false));
+    semantics.dispose();
   });
 
   group('the document sheet', () {

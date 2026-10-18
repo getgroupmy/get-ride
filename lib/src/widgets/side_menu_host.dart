@@ -130,11 +130,13 @@ class SideMenuHostState extends State<SideMenuHost> with SingleTickerProviderSta
                       top: 0,
                       bottom: 0,
                       width: c.maxWidth,
-                      // A screen reader can close the menu from here too.
+                      // A screen reader can close the menu from here too: one
+                      // labelled node, not a bare one under it.
                       child: Semantics(
                         button: true,
                         label: 'Close menu',
                         onTap: close,
+                        excludeSemantics: true,
                         child: GestureDetector(
                           key: const ValueKey('side-menu-scrim'),
                           behavior: HitTestBehavior.opaque,

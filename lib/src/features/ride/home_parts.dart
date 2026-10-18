@@ -10,6 +10,7 @@ import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/net_image.dart';
 import '../../core/page_styles.dart' show homeSurface;
+import '../../core/smart_address.dart' show placeSubtitle;
 import '../../widgets/page_style_host.dart';
 
 /// Whether [uri] is a picture that loads over the network (and so shows a
@@ -212,7 +213,8 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
             child: InkWell(
               borderRadius: radius,
               onTap: ready ? () => widget.onSelect(s) : null,
-              child: Padding(
+              child: Stack(children: [
+              Padding(
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
                 child: IntrinsicWidth(
                   child: Column(
@@ -233,22 +235,9 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
                           if (on) ...[
                             const Spacer(),
                             const SizedBox(width: 12),
-                            // Named for screen readers (the icon alone said nothing).
-                            Semantics(
-                              button: true,
-                              label: 'About ${s.name}',
-                              excludeSemantics: true,
-                              child: InkResponse(
-                                key: ValueKey('vehicle-info-${s.name}'),
-                                radius: 18,
-                                onTap: () => widget.onInfo != null ? widget.onInfo!(s) : _info(context, s),
-                                child: Icon(
-                                  Icons.info_outline,
-                                  size: style.number('infoIconSize'),
-                                  color: style.color('infoIcon', t.brightness) ?? infoBlue,
-                                ),
-                              ),
-                            ),
+                            // Room for the (i), which stands over the box's corner
+                            // (below) so its tap area can be 44 square.
+                            SizedBox(width: style.number('infoIconSize')),
                           ],
                         ],
                       ),
@@ -275,6 +264,41 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
                   ),
                 ),
               ),
+              // The chosen box's (i): a 44-square tap area in its top corner,
+              // named for screen readers and on hover.
+              if (on)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  width: 44,
+                  height: 44,
+                  child: Tooltip(
+                    message: 'Fare details',
+                    excludeFromSemantics: true,
+                    child: Semantics(
+                      // Its own node: not merged into the box's button.
+                      container: true,
+                      button: true,
+                      label: 'Fare details for ${s.name}',
+                      excludeSemantics: true,
+                      child: InkResponse(
+                        key: ValueKey('vehicle-info-${s.name}'),
+                        radius: 22,
+                        onTap: () => widget.onInfo != null ? widget.onInfo!(s) : _info(context, s),
+                        child: Align(
+                          // Where the icon stood in the row: the box's padding in.
+                          alignment: const Alignment(0.4, -0.3),
+                          child: Icon(
+                            Icons.info_outline,
+                            size: style.number('infoIconSize'),
+                            color: style.color('infoIcon', t.brightness) ?? infoBlue,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ]),
             ),
           );
         },
@@ -342,7 +366,10 @@ class HomeRecentPlaces extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.place_outlined),
           title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(p.address, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: switch (placeSubtitle(p.name, p.address)) {
+            final a? => Text(a, maxLines: 1, overflow: TextOverflow.ellipsis),
+            null => null,
+          },
           onTap: () => onTap(p),
         ),
     ],

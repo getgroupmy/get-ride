@@ -492,16 +492,28 @@ class RideCallButton extends ConsumerWidget {
           ? Tooltip(
               message: label,
               triggerMode: TooltipTriggerMode.manual,
-              child: TextButton(
-                key: const ValueKey('ride-call'),
-                style: TextButton.styleFrom(
-                  shape: const CircleBorder(),
-                  minimumSize: const Size(48, 48),
-                  padding: EdgeInsets.zero,
-                ),
-                onPressed: call,
+              excludeFromSemantics: true,
+              // The tappable node itself carries the name (the tooltip's
+              // labelled a node above it, and VoiceOver read a bare "button").
+              child: Semantics(
+                container: true,
+                button: true,
+                label: label,
+                onTap: call,
                 onLongPress: more,
-                child: const Icon(Icons.call),
+                onLongPressHint: more == null ? null : 'More ways to call',
+                excludeSemantics: true,
+                child: TextButton(
+                  key: const ValueKey('ride-call'),
+                  style: TextButton.styleFrom(
+                    shape: const CircleBorder(),
+                    minimumSize: const Size(48, 48),
+                    padding: EdgeInsets.zero,
+                  ),
+                  onPressed: call,
+                  onLongPress: more,
+                  child: const Icon(Icons.call),
+                ),
               ),
             )
           : TextButton.icon(

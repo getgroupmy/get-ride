@@ -694,7 +694,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         const SizedBox(height: 12),
         Card(
           child: Column(children: [
-            ListTile(
+            // The sheet never rests lower than the passenger and their
+            // Message and Call (a phone on its side showed only the title).
+            MapSheetRestLine(
+              child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
               title: Text(r.passengerName),
               // Two pieces with their own icons and no separator, each kept
@@ -730,6 +733,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                 // long press offers the phone call when the number is known.
                 RideCallButton(ride: r, peerName: r.passengerName, phone: r.passengerPhone, compact: true),
               ]),
+              ),
             ),
             ListTile(
               leading: Icon(Icons.trip_origin, color: Colors.green.shade700),

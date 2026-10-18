@@ -94,6 +94,19 @@ void main() {
         final r = tester.getRect(find.byKey(const ValueKey('delete-continue')));
         expect(r.bottom, lessThanOrEqualTo(640), reason: 'pinned, not below the fold');
         expect(find.byKey(const ValueKey('delete-continue')).hitTestable(), findsOneWidget);
+        // Scrolled to the end, the last of the page stands 16 or more clear
+        // of the pinned bar.
+        final scroll = find.byType(SingleChildScrollView).first;
+        await tester.drag(scroll, const Offset(0, -2000));
+        await tester.pumpAndSettle();
+        final content = find.descendant(of: scroll, matching: find.byType(Column)).first;
+        final bar = tester.getRect(
+          find.ancestor(
+            of: find.byKey(const ValueKey('delete-continue')),
+            matching: find.byWidgetPredicate((w) => w is Material && w.elevation == 4),
+          ),
+        );
+        expect(tester.getRect(content).bottom, lessThanOrEqualTo(bar.top - 16));
       });
     }
 

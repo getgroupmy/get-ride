@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -86,18 +88,37 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
     if (next != null) router.replace(next);
   }
 
-  Widget _title(BuildContext context) {
+  SupportTicket? _openTicket() {
     final id = _ticketId;
-    final ticket = id == null
+    return id == null
         ? null
         : (ref.watch(ticketsProvider).value ?? const <SupportTicket>[]).where((x) => x.id == id).firstOrNull;
+  }
+
+  /// The bar's height for [_title]: room for a subject on two lines and
+  /// the status under it, at the phone's text size (null: the usual bar).
+  double? _titleHeight(BuildContext context) {
+    if (_openTicket() == null) return null;
+    final scale = MediaQuery.textScalerOf(context);
+    return math.max(kToolbarHeight, scale.scale(16) * 1.35 * 2 + scale.scale(12) * 1.4 + 16);
+  }
+
+  Widget _title(BuildContext context) {
+    final ticket = _openTicket();
     if (ticket == null) return const Text('Support chat');
     final t = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(supportTicketTitle(ticket), key: const ValueKey('support-chat-title'), maxLines: 1, overflow: TextOverflow.ellipsis),
+        // The whole subject where it fits on two lines, the status under it.
+        Text(
+          supportTicketTitle(ticket),
+          key: const ValueKey('support-chat-title'),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: t.textTheme.titleMedium,
+        ),
         Text(
           supportStatusLabel(ticket.status),
           key: const ValueKey('support-chat-status'),
@@ -247,7 +268,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
     final t = Theme.of(context);
     return Scaffold(
       // The ticket by name ("#4 · Support request") and its status under it.
-      appBar: AppBar(title: _title(context), actions: [
+      appBar: AppBar(toolbarHeight: _titleHeight(context), title: _title(context), actions: [
         BusyIconButton(
           key: const ValueKey('call-support'),
           tooltip: 'Call support',

@@ -56,6 +56,24 @@ void main() {
     expect(tester.getTopLeft(find.byType(_Page)).dx, 0);
   });
 
+  testWidgets('the dimmed page is one labelled "Close menu" button to a screen reader', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('side-menu-button')));
+    await tester.pumpAndSettle();
+    final node = tester.getSemantics(find.byKey(const ValueKey('side-menu-scrim')));
+    expect(node.label, 'Close menu');
+    expect(node.flagsCollection.isButton, isTrue);
+    // No unlabelled node under it.
+    var children = 0;
+    node.visitChildren((_) {
+      children++;
+      return true;
+    });
+    expect(children, 0);
+    semantics.dispose();
+  });
+
   testWidgets('a swipe in from the left edge opens it, and one back closes it', (tester) async {
     await _pump(tester);
     await tester.dragFrom(const Offset(5, 400), const Offset(250, 0));

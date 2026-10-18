@@ -29,13 +29,23 @@ class ResponsiveCenter extends StatelessWidget {
 
 /// Secondary text that still reads (4.5:1) on the page: the theme's
 /// onSurfaceVariant, unless an admin colour or a light grey would fail on
-/// [background] (the theme's surface by default); then a grey that passes,
-/// #6B7280 in light mode and #B4BAC4 in dark.
+/// [background] (by default both the theme's surface and the page's own
+/// background, which an admin colour can set apart); then a grey that
+/// passes, #6B7280 in light mode and #B4BAC4 in dark, taken further toward
+/// black or white where even that fails (an admin background).
 Color mutedTextColor(ThemeData t, {Color? background}) {
+  final grounds = background != null ? [background] : [t.colorScheme.surface, t.scaffoldBackgroundColor];
+  bool reads(Color c) => grounds.every((g) => contrastRatio(c, g) >= 4.5);
   final c = t.colorScheme.onSurfaceVariant;
-  final bg = background ?? t.colorScheme.surface;
-  if (contrastRatio(c, bg) >= 4.5) return c;
-  return t.brightness == Brightness.light ? const Color(0xFF6B7280) : const Color(0xFFB4BAC4);
+  if (reads(c)) return c;
+  final grey = t.brightness == Brightness.light ? const Color(0xFF6B7280) : const Color(0xFFB4BAC4);
+  if (reads(grey)) return grey;
+  final ink = grounds.first.computeLuminance() > 0.18 ? Colors.black : Colors.white;
+  for (var f = 0.2; f < 1; f += 0.2) {
+    final mixed = Color.lerp(grey, ink, f)!;
+    if (reads(mixed)) return mixed;
+  }
+  return ink;
 }
 
 /// WCAG contrast ratio between two opaque colours (1 to 21).
@@ -240,8 +250,9 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    // Scrolls where it is short (a phone on its side, the keyboard up).
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 48, color: t.colorScheme.outline),

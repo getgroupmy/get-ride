@@ -74,7 +74,12 @@ class MapCreditLayer extends StatelessWidget {
         tooltip: 'Map credits',
         onPressed: open,
         constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-        icon: const Icon(Icons.info_outlined, color: Colors.black, size: 24),
+        // On a light disc of its own: bare black on dark or satellite tiles
+        // hardly showed.
+        icon: const DecoratedBox(
+          decoration: BoxDecoration(color: Color(0xD9FFFFFF), shape: BoxShape.circle),
+          child: Icon(Icons.info_outlined, color: Colors.black, size: 24),
+        ),
       ),
       closeButton: (context, close) => IconButton(
         tooltip: 'Close map credits',

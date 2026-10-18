@@ -14,6 +14,7 @@ import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/ride_map.dart';
 import '../ride/confirm_parts.dart' show accentFill, confirmAccent;
 import '../../widgets/net_image.dart';
@@ -343,7 +344,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     final t = Theme.of(context);
     final r = widget.request;
     final photo = r.raw['rider_photo'];
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t);
     return SizedBox(
       width: 64,
       child: Column(children: [
@@ -406,7 +407,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     final t = Theme.of(context);
     final r = widget.request;
     final fare = r.effectiveFare;
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t);
     final offer = widget.onOffer;
     final presets = fare == null ? const <double>[] : counterOfferPresets(fare);
     final off = widget.busy;

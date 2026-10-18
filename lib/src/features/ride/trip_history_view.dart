@@ -147,17 +147,32 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('→ ${r.dropLabel}', maxLines: 2, overflow: TextOverflow.ellipsis),
-                    Text(formatInZone(r.createdAt, r.timezone), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    Text(r.status.label),
+                    // Two lines at large (and bold) text rather than cut.
+                    Text(
+                      formatInZone(r.createdAt, r.timezone),
+                      key: ValueKey('trip-date-${r.id}'),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      tripListFare(r) == notChargedLabel ? '${r.status.label} · $notChargedLabel' : r.status.label,
+                      key: ValueKey('trip-status-${r.id}'),
+                    ),
                   ],
                 ),
                 isThreeLine: true,
-                trailing: Text(
-                  tripListFare(r),
-                  style: r.status.isFinished && r.status != RideStatus.completed
-                      ? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)
-                      : null,
-                ),
+                // A trip never billed says so under its status, not in the
+                // fare's place: "Not charged" there was wider than a fare and
+                // cut the date at large (and bold) text.
+                trailing: tripListFare(r) == notChargedLabel
+                    ? null
+                    : Text(
+                        tripListFare(r),
+                        key: ValueKey('trip-fare-${r.id}'),
+                        style: r.status.isFinished && r.status != RideStatus.completed
+                            ? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)
+                            : null,
+                      ),
                 onTap: () => context.push(tripHistoryRoute(widget.role, r)),
               ),
             ),
@@ -176,10 +191,13 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
   }
 }
 
+/// What a cancelled or expired trip's row shows for its fare.
+const notChargedLabel = 'Not charged';
+
 /// The amount a trip row shows: the fare with two decimals on every row
 /// (RM4.00, RM57.00), or "Not charged" for a trip that was cancelled or
 /// expired, whose quoted fare was never billed.
 String tripListFare(RideRequest r) {
-  if (r.status == RideStatus.cancelled || r.status == RideStatus.expired) return 'Not charged';
+  if (r.status == RideStatus.cancelled || r.status == RideStatus.expired) return notChargedLabel;
   return formatMoney(r.effectiveFare, r.currency);
 }

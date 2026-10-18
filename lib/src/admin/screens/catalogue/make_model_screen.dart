@@ -259,18 +259,28 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
                 CatalogueSearch(controller: _search, onChanged: (_) => setState(() {})),
                 Expanded(
                   child: tiles.isEmpty
-                      ? EmptyState(
-                          icon: Icons.inbox_outlined,
-                          title: emptyTitle,
-                          message: emptyDesc,
-                          action: canEdit && !searching
-                              ? BusyButton.filled(
-                                  onPressed: () => level == 3 ? _editModel(all) : _addCategory(all, level),
-                                  icon: const Icon(Icons.add),
-                                  child: Text('Add ${_levelSingular[level]}'),
-
-                                )
-                              : null,
+                      // Scrolls, clear of the Add button, when short (a
+                      // phone on its side) and centred otherwise.
+                      ? LayoutBuilder(
+                          builder: (context, box) => SingleChildScrollView(
+                            key: const ValueKey('vmm-empty-scroll'),
+                            padding: const EdgeInsets.only(bottom: 96),
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(minHeight: (box.maxHeight - 96).clamp(0.0, double.infinity)),
+                              child: EmptyState(
+                                icon: Icons.inbox_outlined,
+                                title: emptyTitle,
+                                message: emptyDesc,
+                                action: canEdit && !searching
+                                    ? BusyButton.filled(
+                                        onPressed: () => level == 3 ? _editModel(all) : _addCategory(all, level),
+                                        icon: const Icon(Icons.add),
+                                        child: Text('Add ${_levelSingular[level]}'),
+                                      )
+                                    : null,
+                              ),
+                            ),
+                          ),
                         )
                       : ListView(padding: const EdgeInsets.only(bottom: 96), children: tiles),
                 ),

@@ -49,7 +49,15 @@ final adminRoute = ShellRoute(
     GoRoute(path: '/admin/commission', builder: (_, _) => const AdminCommissionScreen()),
     GoRoute(path: '/admin/fare-tariffs', builder: (_, _) => const AdminFareTariffsScreen()),
     GoRoute(path: '/admin/messaging', builder: (_, _) => const AdminMessagingScreen()),
-    GoRoute(path: '/admin/sub-admins', builder: (_, _) => const AdminSubAdminsScreen()),
+    GoRoute(
+      path: '/admin/sub-admins',
+      builder: (_, _) => const AdminSubAdminsScreen(),
+      routes: [
+        // Pages of their own, so a reload stays on them.
+        GoRoute(path: 'grant', builder: (_, _) => const GrantEditorPage()),
+        GoRoute(path: ':id/edit', builder: (_, s) => GrantEditorPage(profileId: s.pathParameters['id'])),
+      ],
+    ),
     GoRoute(path: '/admin/settings', builder: (_, _) => const AdminSettingsScreen()),
     GoRoute(
       path: '/admin/settings/:category',

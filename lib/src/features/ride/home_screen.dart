@@ -972,7 +972,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// books straight away.
   Future<void> _openOfferFare() async {
     final style = currencyStyles[_currency.trim().toUpperCase()];
-    final r = await Navigator.of(context).push<OfferFareResult>(
+    // What the page holds as it changes: kept when it is left by the iOS
+    // edge swipe, which pops it with no result.
+    OfferFareResult? latest;
+    final pushed = await Navigator.of(context).push<OfferFareResult>(
       AppPageRoute(id: 'home.open-offer-fare',
         // Rebuilt on every change here: a stop added, removed or moved there
         // changes the route label and, once the route is worked out, the fare.
@@ -1000,10 +1003,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onChanged: (o) => setState(() => _options = o),
               note: _note,
             ),
+            onChanged: (v) => latest = v,
           ),
         ),
       ),
     );
+    final r = pushed ?? latest;
     if (r == null || !mounted) return;
     setState(() {
       if (r.fare != null) _adjust = r.fare! - _recommendedFor(_service);
@@ -1621,7 +1626,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!confirming)
         aboveSheet(
           (inset) => Positioned(
-            right: 16,
+            // Clear of the notch on a phone on its side.
+            right: 16 + MediaQuery.paddingOf(context).right,
             // Recenter button height: at least that far up, still above the sheet.
             bottom: math.max(mapAttributionClearance + inset, mapLayout.recenterBottom ?? 0),
             child: IgnorePointer(
@@ -1654,7 +1660,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (confirming && _pinTarget == _PinTarget.none)
         Positioned(
           top: 16 + layout.address.$2,
-          left: 16 + layout.address.$1,
+          // On its side Back stands at the card's left (see below).
+          left: 16 + layout.address.$1 + (pillAtTop ? 56 : 0),
           right: 16 - layout.address.$1,
           child: SafeArea(
             child: ConfirmAddressCard(
@@ -1679,11 +1686,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
+      // On a phone on its side the map above the sheet is too short for
+      // Back to stand over it (it landed on the route card): it waits at
+      // the top left, beside the card and clear of the notch.
+      if (confirming && !wide && pillAtTop)
+        Positioned(
+          left: 16,
+          top: 16 + layout.address.$2,
+          child: SafeArea(
+            child: Material(
+              color: Theme.of(context).colorScheme.surface,
+              shape: const CircleBorder(),
+              elevation: 3,
+              child: IconButton(
+                key: const ValueKey('confirm-back'),
+                tooltip: 'Back',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: _leaveConfirm,
+              ),
+            ),
+          ),
+        ),
       // On a wide screen Back heads the panel instead (see below).
-      if (confirming && !wide)
+      if (confirming && !wide && !pillAtTop)
         aboveSheet(
           (inset) => Positioned(
-            left: 16 + layout.back.$1,
+            left: 16 + MediaQuery.paddingOf(context).left + layout.back.$1,
             bottom: (wide ? 16 : inset + aboveBar) - layout.back.$2,
             child: Material(
               color: Theme.of(context).colorScheme.surface,
@@ -1701,7 +1729,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (confirming && _routeMoved)
         aboveSheet(
           (inset) => Positioned(
-            right: 16 - layout.recenter.$1,
+            right: 16 + MediaQuery.paddingOf(context).right - layout.recenter.$1,
             bottom: (wide ? mapAttributionClearance : inset + aboveBar) - layout.recenter.$2,
             child: RouteFitButton(
               key: const ValueKey('confirm-route'),

@@ -61,6 +61,8 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
     setState(() => _busy = true);
     final auth = ref.read(authRepositoryProvider);
     final next = otpNextFor(widget.next, pin: widget.pin);
+    // Read before signing in: the router may take it on the way.
+    final landing = signInLanding();
     AuthRepository.pinSetupPending = next == OtpNext.setPin;
     try {
       await auth.verifyOtp(widget.phone, _code.text);
@@ -69,14 +71,14 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
           // Confirmed by SMS: the PIN-derived password, if any, goes too.
           await auth.retireDerivedPassword();
           ResyncPin.value = null;
-          if (mounted) context.go('/');
+          if (mounted) context.go(landing);
         case OtpNext.unlock:
           // Signed in past the PIN lock: the code proved the number, so the
           // lock goes and the PIN stays as it was.
           await auth.clearPinLock();
-          if (mounted) context.go('/');
+          if (mounted) context.go(landing);
         case OtpNext.setPin:
-          if (mounted) context.go('/login/set-pin');
+          if (mounted) context.go(signInAddress('/login/set-pin'));
       }
     } catch (e) {
       AuthRepository.pinSetupPending = false;

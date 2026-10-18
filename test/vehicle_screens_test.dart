@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/core/vehicle_onboarding.dart' show vehicleLooksLikeDraft;
 import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/data/partner_onboarding_repository.dart';
 import 'package:get_ride/src/data/vehicle_onboarding_repository.dart';
@@ -41,11 +42,23 @@ class _FakeOnboarding extends PartnerOnboardingRepository {
 }
 
 class _FakeVehicles extends VehicleOnboardingRepository {
-  _FakeVehicles({this.existing, this.taken = false}) : super(_db);
-  final Map<String, dynamic>? existing;
+  _FakeVehicles({this.existing, this.taken = false, this.removable = true}) : super(_db);
+  Map<String, dynamic>? existing;
   final bool taken;
+
+  /// What the server's draft delete does: removes it, or deletes no row.
+  final bool removable;
   final patches = <Map<String, dynamic>>[];
+  final removed = <String>[];
   String? startedWith;
+
+  @override
+  Future<bool> removeDraft(String id) async {
+    removed.add(id);
+    if (!removable) return false;
+    existing = null;
+    return true;
+  }
 
   @override
   Future<Map<String, dynamic>?> vehicle(String id) async => existing;
@@ -222,6 +235,65 @@ void main() {
     await tester.pump();
     expect(repo.patches.single, {'documents_ok': true});
     expect(find.text('Proton Saga · Pending review'), findsOneWidget);
+  });
+
+  for (final b in Brightness.values) {
+    testWidgets('a draft can be removed by its owner, once confirmed (${b.name})', (tester) async {
+      final repo = await _pump(tester, const VehiclesScreen(),
+          brightness: b, vehicles: _FakeVehicles(existing: {..._ready, 'make': null, 'model': null}));
+      await tester.pump();
+      final remove = find.byKey(const ValueKey('vehicle-remove-v1'));
+      expect(remove, findsOneWidget);
+      await tester.tap(remove);
+      await tester.pumpAndSettle();
+      expect(find.text('Remove WXY 1?'), findsOneWidget);
+      // Keep leaves it.
+      await tester.tap(find.text('Keep'));
+      await tester.pumpAndSettle();
+      expect(repo.removed, isEmpty);
+      await tester.tap(remove);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('vehicle-remove-confirm')));
+      await tester.pumpAndSettle();
+      expect(repo.removed, ['v1']);
+      expect(find.text('WXY 1 removed.'), findsOneWidget);
+      expect(find.text('No vehicles yet'), findsOneWidget);
+    });
+
+    testWidgets('a draft the server will no longer delete says so (${b.name})', (tester) async {
+      final repo = await _pump(tester, const VehiclesScreen(),
+          brightness: b, vehicles: _FakeVehicles(existing: {..._ready, 'make': null}, removable: false));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('vehicle-remove-v1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('vehicle-remove-confirm')));
+      await tester.pumpAndSettle();
+      expect(repo.removed, ['v1']);
+      expect(find.textContaining("can't be removed any more"), findsOneWidget);
+      expect(find.text('WXY 1'), findsOneWidget, reason: 'still listed');
+    });
+  }
+
+  testWidgets('a vehicle sent for review or approved has no Remove', (tester) async {
+    await _pump(tester, const VehiclesScreen(), vehicles: _FakeVehicles(existing: {..._ready, 'documents_ok': true}));
+    await tester.pump();
+    expect(find.text('WXY 1'), findsOneWidget);
+    expect(find.byKey(const ValueKey('vehicle-remove-v1')), findsNothing);
+    await _pump(
+      tester,
+      const VehiclesScreen(),
+      vehicles: _FakeVehicles(existing: {..._ready, 'make': null, 'status': 'approved'}),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('vehicle-remove-v1')), findsNothing);
+  });
+
+  test('what looks like a draft its owner may remove', () {
+    expect(vehicleLooksLikeDraft({..._ready, 'make': null}), isTrue);
+    expect(vehicleLooksLikeDraft({..._ready, 'documents_ok': true}), isFalse);
+    expect(vehicleLooksLikeDraft({..._ready, 'make': null, 'permit': 'approved'}), isFalse);
+    expect(vehicleLooksLikeDraft({..._ready, 'make': null, 'onboarding_step': 'done'}), isFalse);
+    expect(vehicleLooksLikeDraft({'id': 'v2', 'plate': 'ABC 1'}), isTrue, reason: 'a plate only, defaults');
   });
 
   testWidgets('the vehicle list shows where each vehicle stands', (tester) async {

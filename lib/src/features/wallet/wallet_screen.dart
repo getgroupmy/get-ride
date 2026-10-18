@@ -26,6 +26,15 @@ final walletTxProvider = FutureProvider.autoDispose<List<WalletTransaction>>((re
   return ref.watch(accountRepositoryProvider).walletTransactions();
 });
 
+/// Each balance card's width in [room] for [n] cards: one row of equal
+/// cards when each gets 200 or more, else one full-width card a row. The
+/// row's width is rounded down so the cards never wrap on a rounding error.
+double walletCardWidth(double room, int n) {
+  if (n <= 1) return room;
+  final across = ((room - 12 * (n - 1)) / n).floorToDouble();
+  return across >= 200 ? across : room;
+}
+
 /// GET.wallet / GET.coin / credit balances and history. Money only moves
 /// through the server-side wallet RPCs (GET.coin trades: `CoinTradeScreen`).
 class WalletScreen extends ConsumerWidget {
@@ -67,17 +76,13 @@ class WalletScreen extends ConsumerWidget {
                       // Sized from the room the cards really have (a rail beside them on
                       // a tablet takes some): all in one row of equal cards when they fit
                       // at 200 or more each (three across on an iPad); else, on a phone,
-                      // GET.wallet takes the row and the others share the next.
+                      // one card to a row, full width (two to a row left GET.credit
+                      // alone on a small phone at large text).
                       return LayoutBuilder(
                         builder: (context, box) {
                           final screen = box.maxWidth;
-                          final n = balances.length;
-                          final across = (screen - 12 * (n - 1)) / n;
-                          double widthOf(String type) => across >= 200
-                              ? across
-                              : type == 'get_wallet' || n == 1
-                              ? screen
-                              : (screen - 12) / 2;
+                          final width = walletCardWidth(screen, balances.length);
+                          double widthOf(String type) => width;
                           return Wrap(
                             spacing: 12,
                             runSpacing: 12,

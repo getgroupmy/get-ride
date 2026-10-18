@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../config.dart';
+import '../../core/auth_utils.dart' show signInAddress;
 import '../../data/app_display_repository.dart';
 import '../../data/session_guard.dart';
 import '../../widgets/common.dart';
@@ -172,7 +173,8 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                       ),
                 onPressed: () {
                   signedOutElsewhere.value = false;
-                  context.push('/login/phone');
+                  // The page asked for before sign-in rides along (`to`).
+                  context.push(signInAddress('/login/phone'));
                 },
                 child: const Text('Continue with phone'),
               ),
