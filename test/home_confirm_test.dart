@@ -211,7 +211,15 @@ void main() {
     await _pump(tester, _Rides(), book: false);
     await tester.tap(find.byKey(const ValueKey('vehicle-type-GET XL')));
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('vehicle-info-GET XL')));
+    // A 44-square tap target, named for screen readers.
+    final info = find.byKey(const ValueKey('vehicle-info-GET XL'));
+    expect(tester.getSize(info).width, greaterThanOrEqualTo(44));
+    expect(tester.getSize(info).height, greaterThanOrEqualTo(44));
+    final semantics = tester.ensureSemantics();
+    await tester.pump();
+    expect(find.bySemanticsLabel('Fare details for GET XL'), findsOneWidget);
+    semantics.dispose();
+    await tester.tap(info);
     await tester.pumpAndSettle();
     final sheet = find.byKey(const ValueKey('fare-details-sheet'));
     expect(find.descendant(of: sheet, matching: find.text('GET XL')), findsOneWidget);

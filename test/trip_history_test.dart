@@ -2,6 +2,7 @@
 // someone who is both a rider and a partner sees the rides they booked under
 // Trips and the trips they drove under Drive → Trip history, never mixed.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/trip_history.dart';
@@ -113,6 +114,33 @@ void main() {
       expect(find.text('Trip history'), findsOneWidget);
     });
   }
+
+  testWidgets('a cancelled row keeps its date whole at large bold text (iPhone SE @1.3)', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 667);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [tripHistoryRepositoryProvider.overrideWithValue(_Fake(rows))],
+        child: MaterialApp(
+          builder: (c, child) => MediaQuery(
+            data: MediaQuery.of(c).copyWith(textScaler: const TextScaler.linear(1.3), boldText: true),
+            child: child!,
+          ),
+          home: const TripsScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    final date = tester.renderObject<RenderParagraph>(
+      find.descendant(of: find.byKey(const ValueKey('trip-date-booked2')), matching: find.byType(RichText)),
+    );
+    expect(date.didExceedMaxLines, isFalse, reason: 'the date is not cut');
+    expect(find.byKey(const ValueKey('trip-fare-booked2')), findsNothing);
+    expect(find.text('Cancelled · Not charged'), findsOneWidget);
+    expect(find.byKey(const ValueKey('trip-fare-booked1')), findsOneWidget, reason: 'a billed trip keeps its fare');
+  });
 
   testWidgets('nothing on a side says so', (tester) async {
     final fake = _Fake([_ride('booked1', rider: 'me')]);

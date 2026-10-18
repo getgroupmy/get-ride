@@ -689,13 +689,23 @@ class ConfirmServiceCard extends StatelessWidget {
                             padding: const EdgeInsets.only(left: 4),
                             child: Icon(Icons.info_outline, size: 16, color: muted),
                           )
-                        : InkResponse(
-                            key: const ValueKey('fare-details'),
-                            radius: 18,
-                            onTap: onInfo,
-                            child: Padding(
-                              padding: const EdgeInsets.all(4),
-                              child: Icon(Icons.info_outline, size: 16, color: muted),
+                        : Tooltip(
+                            message: 'Fare details',
+                            excludeFromSemantics: true,
+                            child: Semantics(
+                              container: true,
+                              button: true,
+                              label: 'Fare details',
+                              excludeSemantics: true,
+                              child: InkResponse(
+                                key: const ValueKey('fare-details'),
+                                radius: 22,
+                                onTap: onInfo,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Icon(Icons.info_outline, size: 16, color: muted),
+                                ),
+                              ),
                             ),
                           ),
                   ],
@@ -718,10 +728,12 @@ class ConfirmServiceCard extends StatelessWidget {
                 ],
               ),
               if (service.description.isNotEmpty)
+                // Two lines before it is cut ("Comfortable c…" at large text).
                 Text(
                   service.description,
+                  key: ValueKey('service-description-${service.name}'),
                   style: t.textTheme.bodyMedium?.copyWith(color: muted),
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
             ],

@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/fare.dart' show RideService;
 import 'package:get_ride/src/core/payment_types.dart';
 import 'package:get_ride/src/data/device_access.dart' show deviceBlockedProvider;
 import 'package:get_ride/src/features/auth/otp_screen.dart';
@@ -15,6 +16,7 @@ import 'package:get_ride/src/data/models.dart' show EmergencyContact;
 import 'package:get_ride/src/features/my_ride/my_ride_screen.dart' show showAddFavouriteSheet;
 import 'package:get_ride/src/features/partner/partner_screen.dart' show floatingRequestsBeside;
 import 'package:get_ride/src/features/profile/emergency_contacts_screen.dart';
+import 'package:get_ride/src/features/wallet/wallet_screen.dart' show walletCardWidth;
 import 'package:get_ride/src/providers.dart' show accountRepositoryProvider;
 import 'package:get_ride/src/features/ride/book_for_sheet.dart';
 import 'package:get_ride/src/features/ride/confirm_parts.dart';
@@ -487,6 +489,65 @@ void _sheets() {
     expect(floatingRequestsBeside(const Size(852, 393)), isTrue);
     expect(floatingRequestsBeside(const Size(393, 852)), isFalse);
     expect(floatingRequestsBeside(const Size(1280, 800)), isFalse);
+  });
+
+  test('wallet cards: one row of equal cards where each gets 200, else one a row', () {
+    expect(walletCardWidth(343, 3), 343, reason: 'iPhone SE: full width, never 2 + 1');
+    expect(walletCardWidth(361, 3), 361);
+    expect(walletCardWidth(700, 3), 225);
+    expect(walletCardWidth(343, 1), 343);
+  });
+
+  testWidgets('a service description gets two lines at large text (iPhone SE @1.3)', (tester) async {
+    await onPhone(tester, iphoneSe);
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (c, child) => MediaQuery(
+          data: MediaQuery.of(c).copyWith(textScaler: const TextScaler.linear(1.3)),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: ConfirmServiceCard(
+            service: const RideService('Comfort', 'Comfy', 1.2, 4),
+            price: 'RM 12.00',
+            selected: false,
+            onTap: () {},
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    final d = tester.widget<Text>(find.byKey(const ValueKey('service-description-Comfort')));
+    expect(d.maxLines, 2);
+  });
+
+  testWidgets('the ride chat empty state shows its words whole in a short space (iPhone SE @1.3)', (tester) async {
+    await onPhone(tester, iphoneSe, keyboard: 260);
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (c, child) => MediaQuery(
+          data: MediaQuery.of(c).copyWith(textScaler: const TextScaler.linear(1.3)),
+          child: child!,
+        ),
+        home: const Scaffold(
+          body: Column(children: [
+            Expanded(
+              child: EmptyState(
+                icon: Icons.forum_outlined,
+                title: 'No messages yet',
+                message: 'Message your driver about the pickup.',
+              ),
+            ),
+            SizedBox(height: 64, child: Placeholder()),
+          ]),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    final msg = find.text('Message your driver about the pickup.');
+    await tester.ensureVisible(msg);
+    await tester.pumpAndSettle();
+    expectOnScreen(tester, msg, keyboard: 260 + 64);
   });
 
   test('the time wheels show fewer rows on a short screen', () {
