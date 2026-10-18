@@ -89,6 +89,8 @@ class OnlineBlockDialog extends StatelessWidget {
     final path = block.settingsPath;
     return AlertDialog(
       key: const ValueKey('online-block'),
+      // Long reasons with large phone text scroll instead of running off.
+      scrollable: true,
       icon: Icon(permissionBlockIcon(block), color: t.colorScheme.primary),
       title: Text(block.title),
       content: Column(

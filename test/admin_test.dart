@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart' show StateProvider;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_categories.g.dart';
@@ -167,5 +168,39 @@ void main() {
     expect(find.text('Support'), findsOneWidget);
     expect(find.text('Users'), findsNothing);
     expect(find.text('Sub-admins'), findsNothing);
+  });
+
+  testWidgets('re-reading access in the background keeps the page and what is typed on it', (tester) async {
+    tester.view.physicalSize = const Size(1300, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final tick = StateProvider<int>((_) => 0);
+    var fail = false;
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        adminAccessProvider.overrideWith((ref) async {
+          ref.watch(tick);
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          if (fail) throw Exception('offline');
+          return const AdminAccess([AdminGrant(page: '*', edit: true)]);
+        }),
+      ],
+      child: const MaterialApp(
+        home: AdminShell(location: '/admin/dashboard', child: Material(child: TextField(key: ValueKey('note')))),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('note')), 'half typed');
+    final container = ProviderScope.containerOf(tester.element(find.byType(AdminShell)));
+    // A live change, then one that fails (a dropped connection).
+    container.read(tick.notifier).state++;
+    await tester.pump(const Duration(milliseconds: 10));
+    expect(find.text('half typed'), findsOneWidget, reason: 'no skeleton while it re-reads');
+    await tester.pumpAndSettle();
+    fail = true;
+    container.read(tick.notifier).state++;
+    await tester.pumpAndSettle();
+    expect(find.text('half typed'), findsOneWidget);
+    expect(find.text('No admin access'), findsNothing);
   });
 }

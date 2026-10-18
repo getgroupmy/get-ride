@@ -95,7 +95,7 @@ class _ClassicPairedSheetState extends ConsumerState<ClassicPairedSheet> {
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                   : TextButton(onPressed: _load, child: const Text('Refresh')),
             ),
-            Padding(
+            Flexible(child: SingleChildScrollView(child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Card(
                 margin: EdgeInsets.zero,
@@ -120,7 +120,7 @@ class _ClassicPairedSheetState extends ConsumerState<ClassicPairedSheet> {
                   ),
                 ),
               ),
-            ),
+            ))),
             if (_error != null)
               ListTile(
                 leading: Icon(Icons.error_outline, color: scheme.error),

@@ -402,6 +402,7 @@ class _VehicleDocumentsList extends ConsumerWidget {
           trailing: TextButton(
               onPressed: () => context.go('/admin/documents?kind=vehicle'), child: const Text('Review documents'))),
       value.when(
+        skipLoadingOnReload: true,
         loading: () => const LoadingSkeleton(rows: 3),
         error: (e, _) => Text(errorText(e)),
         data: (rows) {

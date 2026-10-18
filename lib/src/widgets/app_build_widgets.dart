@@ -207,6 +207,7 @@ class AppBuildPanel extends ConsumerWidget {
     final theme = Theme.of(context);
     final build = ref.watch(appBuildProvider(platform));
     return build.when(
+      skipLoadingOnReload: true,
       loading: () => const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: LinearProgressIndicator()),
       error: (e, _) => ListTile(
         contentPadding: EdgeInsets.zero,

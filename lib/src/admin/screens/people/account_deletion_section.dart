@@ -253,6 +253,7 @@ class _LinkAccountDialogState extends ConsumerState<LinkAccountDialog> {
         const SizedBox(height: 8),
         Flexible(
           child: list.when(
+            skipLoadingOnReload: true,
             loading: () => const Padding(
               padding: EdgeInsets.all(24),
               child: Center(child: CircularProgressIndicator()),

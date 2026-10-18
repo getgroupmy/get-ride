@@ -1180,8 +1180,9 @@ class _ActionNeeded extends StatelessWidget {
               child: Row(children: [
                 Icon(Icons.circle, size: 8, color: i.compulsory ? t.colorScheme.error : t.colorScheme.outline),
                 const SizedBox(width: 8),
-                Expanded(child: Flexible(child: Text(i.name, maxLines: 1, overflow: TextOverflow.ellipsis))),
-                Text(
+                Expanded(child: Text(i.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                const SizedBox(width: 8),
+                Flexible(child: Text(
                   switch (i.reason) {
                     DocIssueReason.missing => 'Not uploaded',
                     DocIssueReason.rejected => 'Rejected — re-upload',
@@ -1195,7 +1196,7 @@ class _ActionNeeded extends StatelessWidget {
                       DocIssueReason.expired => Colors.orange.shade800,
                     },
                   ),
-                ),
+                )),
               ]),
             ),
         ]),

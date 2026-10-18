@@ -92,6 +92,11 @@ class _BleScanSheetState extends ConsumerState<BleScanSheet> {
       child: SizedBox(
         height: MediaQuery.sizeOf(context).height * 0.55,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          // The header scrolls on its own when large text makes it taller
+          // than the sheet; the list keeps the rest.
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
           ListTile(
             title: Text(widget.title),
             subtitle: Text(_scanning ? 'Scanning…' : 'Scan finished'),
@@ -110,9 +115,12 @@ class _BleScanSheetState extends ConsumerState<BleScanSheet> {
               leading: Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
               title: Text(_error!),
             ),
+              ]),
+            ),
+          ),
           Expanded(
             child: readers.isEmpty
-                ? Center(
+                ? SingleChildScrollView(child: Center(
                     child: Padding(
                       padding: const EdgeInsets.all(24),
                       child: Text(
@@ -120,7 +128,7 @@ class _BleScanSheetState extends ConsumerState<BleScanSheet> {
                         textAlign: TextAlign.center,
                       ),
                     ),
-                  )
+                  ))
                 : ListView(children: [
                     for (final d in readers)
                       ListTile(

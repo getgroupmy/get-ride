@@ -364,7 +364,7 @@ class AdminMultiGateGatesScreen extends ConsumerWidget {
         value: gatesAsync,
         onRetry: () => ref.invalidate(multiGateGatesProvider),
         data: (_) {
-          if (placesAsync.isLoading) return const LoadingSkeletonPage();
+          if (placesAsync.isLoading && !placesAsync.hasValue) return const LoadingSkeletonPage();
           if (place == null) {
             return const EmptyState(
               icon: Icons.error_outline,

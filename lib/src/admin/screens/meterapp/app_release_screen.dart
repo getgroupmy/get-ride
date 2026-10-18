@@ -327,6 +327,7 @@ class _ReleaseCardState extends ConsumerState<_ReleaseCard> {
             AppBuildPanel(platform: widget.platform.name),
             const Divider(height: 24),
             runs.when(
+              skipLoadingOnReload: true,
               loading: () => const LoadingSkeleton(rows: 3),
               error: (e, _) => Text('$e', style: TextStyle(color: theme.colorScheme.error)),
               data: (state) {

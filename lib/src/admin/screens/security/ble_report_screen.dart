@@ -65,6 +65,7 @@ class _AdminBleReportScreenState extends ConsumerState<AdminBleReportScreen> {
                 ),
                 const SizedBox(height: 16),
                 report.when(
+                  skipLoadingOnReload: true,
                   loading: () => const LoadingSkeleton(rows: 6),
                   error: (e, _) =>
                       EmptyState(icon: Icons.error_outline, title: "Couldn't load the report", message: '$e'),
@@ -494,6 +495,7 @@ class _TripsCard extends StatelessWidget {
     title: 'Flagged trips',
     subtitle: 'Newest first. Tap one for its details.',
     child: trips.when(
+      skipLoadingOnReload: true,
       loading: () => const LoadingSkeleton(rows: 3),
       error: (e, _) => Text("Couldn't load the trips: $e"),
       data: (list) => list.isEmpty

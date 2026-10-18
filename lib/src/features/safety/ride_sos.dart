@@ -28,7 +28,7 @@ Future<void> showRideSos(BuildContext context, WidgetRef ref, {String? driver, S
   final choice = await showAppSheet<String>(id: 'ride-sos.show-ride-sos',
     context: context,
     builder: (c) => SafeArea(
-      child: Column(
+      child: SingleChildScrollView(child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
@@ -60,7 +60,7 @@ Future<void> showRideSos(BuildContext context, WidgetRef ref, {String? driver, S
             onTap: () => Navigator.pop(c, 'contacts'),
           ),
         ],
-      ),
+      )),
     ),
   );
   if (!context.mounted || choice == null) return;

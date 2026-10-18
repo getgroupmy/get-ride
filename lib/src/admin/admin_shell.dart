@@ -53,7 +53,12 @@ class AdminShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accessAsync = ref.watch(adminAccessProvider);
+    // Re-reads (live changes, the periodic catch-up, back from the
+    // background) happen behind the page: it stays as it is, with whatever
+    // the admin is doing, until fresh access lands.
     return accessAsync.when(
+      skipLoadingOnReload: true,
+      skipError: true,
       loading: () => const Scaffold(body: LoadingSkeletonPage()),
       error: (e, _) => Scaffold(body: EmptyState(icon: Icons.error_outline, title: 'Could not load admin access', message: errorText(e))),
       data: (access) {
