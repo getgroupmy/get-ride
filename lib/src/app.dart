@@ -112,6 +112,7 @@ import 'widgets/connection_status_dialog.dart';
 import 'widgets/android_nav_bar_inset.dart';
 import 'widgets/keyboard_dismiss.dart';
 import 'widgets/page_style_host.dart';
+import 'widgets/web_overlay_back.dart';
 import 'core/page_styles.dart' show PageStyles;
 import 'data/page_styles_repository.dart' show pageStylesProvider;
 import 'data/device_details.dart';
@@ -206,7 +207,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
   ref.onDispose(refresh.dispose);
 
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/',
     refreshListenable: refresh,
     // An address that is no page here (an old or mistyped link) gets a way
@@ -503,6 +504,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       adminRoute,
     ],
   );
+  // On the web, the browser's Back closes an open sheet, modal or side
+  // menu before the router hears of it (widgets/web_overlay_back.dart).
+  attachWebOverlayBack(() => router.routeInformationProvider.value);
+  return router;
 });
 
 class GetRideApp extends ConsumerStatefulWidget {

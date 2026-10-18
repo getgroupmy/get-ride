@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/overlay_back.dart';
 import '../providers.dart';
 import '../widgets/busy.dart';
 import '../widgets/common.dart';
 import '../widgets/keyboard_dismiss.dart';
 import '../widgets/loading_skeleton.dart';
 import '../widgets/side_menu_style.dart';
+import '../widgets/web_overlay_back.dart';
 import 'admin_access.dart';
 import 'admin_providers.dart';
 import 'admin_registry.dart';
@@ -34,6 +36,9 @@ const _nav = [
   _NavItem('settings', Icons.tune),
   _NavItem('sub-admins', Icons.admin_panel_settings_outlined),
 ];
+
+/// On the web, the browser's Back closes the open menu (web_overlay_back.dart).
+final _drawerBack = OverlayBackSlot(() => webOverlayBack);
 
 /// Admin panel frame. Shows only the modules the signed-in user holds grants
 /// for; settings is shown if any settings page is granted.
@@ -69,10 +74,15 @@ class AdminShell extends ConsumerWidget {
         final width = MediaQuery.sizeOf(context).width;
 
         if (width < 900) {
+          BuildContext? body;
           return Scaffold(
             // Opening the menu closes the keyboard, which would cover it.
             onDrawerChanged: (open) {
               if (open) dismissKeyboard();
+              _drawerBack.set(open, () {
+                final b = body;
+                if (b != null && b.mounted) Scaffold.maybeOf(b)?.closeDrawer();
+              });
             },
             // The same side menu look as the user's and the driver's.
             drawer: Drawer(
@@ -113,16 +123,19 @@ class AdminShell extends ConsumerWidget {
               ),
             ),
             body: Builder(
-              builder: (ctx) => AdminDrawerScope(
-                openDrawer: () => Scaffold.of(ctx).openDrawer(),
-                // An SOS waiting (0193): red across every admin screen.
-                child: Column(
-                  children: [
-                    const SosAdminBanner(),
-                    Expanded(child: child),
-                  ],
-                ),
-              ),
+              builder: (ctx) {
+                body = ctx;
+                return AdminDrawerScope(
+                  openDrawer: () => Scaffold.of(ctx).openDrawer(),
+                  // An SOS waiting (0193): red across every admin screen.
+                  child: Column(
+                    children: [
+                      const SosAdminBanner(),
+                      Expanded(child: child),
+                    ],
+                  ),
+                );
+              },
             ),
           );
         }
