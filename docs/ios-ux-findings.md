@@ -1,6 +1,6 @@
 # iOS UI/UX findings (tester session)
 
-Rendered from `claude/magical-fermat-6o8l12` (head b86f449) with
+Rendered from `claude/magical-fermat-6o8l12` (head 80c624b) with
 `test/ios_shots_test.dart`: iPhone 15 frame (393×852, TargetPlatform.iOS,
 59 pt / 34 pt safe areas), iPhone SE, iPhone landscape, iPad, iPad Slide
 Over; light and dark; text scale 1.0 and 1.3; keyboard up where it matters.
@@ -63,6 +63,9 @@ from the web, iOS and Android test rounds"): 24 fixed, 2 partly; 0e1f676 ("UX ba
 | 52 | Landscape + keyboard | Searchable dropdown dialog shows 0 rows (43 px; #17 at its worst), Set entrance keypad cut (148 px), Add a driver sheet's Add button under the keyboard (111 px), Add contact dialog fields scrolled out (37 px), Vehicle Types empty state behind the pinned button (41 px) | `search_select.dart:313`, `confirm_parts.dart:181`, `my_ride_screen.dart:214`, `emergency_contacts_screen.dart`, `make_model_screen.dart` | partly fixed in b86f449: picker, entrance keypad, add-contact fixed; Options sheet 28 px, Add-a-driver button below the keyboard fold, Vehicle Types caption under the pinned button remain |
 | 53 | Offer your fare | Opens with "RM 68" (cents dropped) while the line under it says "Recommended fare: RM68.05" and the confirm card says RM68.05; the auto-accept row then says RM68.00 | `offer_fare_screen.dart` field initial value | open |
 | 54 | Landscape ride sheets | At the resting height the map strip is ~40 pt, so the SOS pill (75–130, 58–105) and the right-hand map buttons (730–780) are clipped by the sheet's top edge (Your ride accepted / on trip, Current trip) | `ride_tracking_screen.dart`, `partner_trip_screen.dart` overlay insets | open |
+| 55 | Driver ride-request alert (landscape) | The map takes `(h*0.34).clamp(180, 320)` = 180 pt of 393, so the details (fare, pickup, drop, rider, km) are squeezed to 0 pt: the driver sees only the map, Accept and Skip | `request_sheet.dart:424` | open |
+| 56 | Driver ride-request alert (landscape) | Wide, short map fits the route at a zoom where the world repeats: pickup / drop markers and the "7.2 km" chip appear three times across | `request_sheet.dart` map fit (needs a min zoom / no world wrap) | open |
+| 57 | Confirm step (landscape + 1.3) | Route card's second row ("KLCC ~1 hr, 15 min", y≈90) sits under the sheet's top edge (y≈95) at the 55 % resting height | `home_screen.dart` confirm sheet initial fraction | minor |
 | 29 | Contacts picker | "Choose from contacts" exists only on the web; iOS has a permission-free CNContactPickerViewController | `emergency_contacts_screen.dart:32-38` | suggestion |
 
 Sweeps over every screen: dark mode, text scale 1.3, iPhone SE and iOS
