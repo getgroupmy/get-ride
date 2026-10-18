@@ -1023,6 +1023,7 @@ ThemeData _theme(Brightness b) {
 double _frameW = _w,
     _frameTop = _top,
     _frameBottom = _bottom,
+    _frameSide = 0,
     _frameKeyboard = 0;
 bool _frameSe = false;
 
@@ -1052,6 +1053,41 @@ Widget _frame(Widget app, {required bool dark}) => RepaintBoundary(
               ],
             ),
           ),
+        if (Platform.environment['AUDIT'] != '1' && _frameSide > 0) ...[
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: _frameSide,
+            child: const IgnorePointer(
+              child: ColoredBox(color: Color(0x33FF0000)),
+            ),
+          ),
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: _frameSide,
+            child: const IgnorePointer(
+              child: ColoredBox(color: Color(0x33FF0000)),
+            ),
+          ),
+          // The Dynamic Island, on the left in landscape.
+          Positioned(
+            left: 11,
+            top: (393 - 126) / 2,
+            child: IgnorePointer(
+              child: Container(
+                width: 37,
+                height: 126,
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
+          ),
+        ],
         if (_frameKeyboard > 0)
           Positioned(
             left: 0,
@@ -1111,6 +1147,8 @@ typedef _Device = ({
   double dpr,
   double top,
   double bottom,
+  // Landscape iPhone: the notch/island side and the opposite edge, 59 pt each.
+  double side,
   bool island,
 });
 
@@ -1120,6 +1158,7 @@ const _iphone15 = (
   dpr: 3.0,
   top: 59.0,
   bottom: 34.0,
+  side: 0.0,
   island: true,
 );
 const _iphoneSe = (
@@ -1128,6 +1167,7 @@ const _iphoneSe = (
   dpr: 2.0,
   top: 20.0,
   bottom: 0.0,
+  side: 0.0,
   island: false,
 );
 const _iphone15Land = (
@@ -1136,6 +1176,7 @@ const _iphone15Land = (
   dpr: 3.0,
   top: 0.0,
   bottom: 21.0,
+  side: 59.0,
   island: false,
 );
 const _ipad = (
@@ -1144,6 +1185,7 @@ const _ipad = (
   dpr: 2.0,
   top: 24.0,
   bottom: 20.0,
+  side: 0.0,
   island: false,
 );
 const _ipadLand = (
@@ -1152,6 +1194,7 @@ const _ipadLand = (
   dpr: 2.0,
   top: 24.0,
   bottom: 20.0,
+  side: 0.0,
   island: false,
 );
 // iPad Slide Over / narrow Split View: 320 pt wide, full height.
@@ -1161,6 +1204,7 @@ const _slideOver = (
   dpr: 2.0,
   top: 0.0,
   bottom: 20.0,
+  side: 0.0,
   island: false,
 );
 
@@ -1210,6 +1254,7 @@ Future<void> _shot(
   _frameW = w;
   _frameTop = top;
   _frameBottom = bottom;
+  _frameSide = d.side;
   _frameSe = !d.island;
   tester.view.physicalSize = Size(w * dpr, h * dpr);
   tester.view.devicePixelRatio = dpr;
@@ -1217,10 +1262,14 @@ Future<void> _shot(
   tester.view.padding = FakeViewPadding(
     top: top * dpr,
     bottom: keyboard ? 0 : bottom * dpr,
+    left: d.side * dpr,
+    right: d.side * dpr,
   );
   tester.view.viewPadding = FakeViewPadding(
     top: top * dpr,
     bottom: bottom * dpr,
+    left: d.side * dpr,
+    right: d.side * dpr,
   );
   // The iOS keyboard (336 pt on an iPhone 15, 260 on an SE) is up.
   _frameKeyboard = keyboard
