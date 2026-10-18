@@ -128,7 +128,14 @@ class ConfirmAddressCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                InkWell(
+                // A button of its own for screen readers, its tap included.
+                Semantics(
+                  container: true,
+                  button: true,
+                  label: entrance.isEmpty ? 'Set entrance' : 'Entrance $entrance, change',
+                  onTap: onEntrance,
+                  excludeSemantics: true,
+                  child: InkWell(
                   key: const ValueKey('confirm-entrance'),
                   borderRadius: BorderRadius.circular(8),
                   onTap: onEntrance,
@@ -150,6 +157,7 @@ class ConfirmAddressCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                ),
                 ),
               ],
             ),
@@ -232,6 +240,9 @@ class ConfirmAddressCard extends StatelessWidget {
   }
 }
 
+/// What the empty entrance field asks for.
+const entranceHint = 'Gate or door number, e.g. 3';
+
 /// Expo's "Set entrance" keypad: the entrance (a door or gate number) the
 /// driver should come to. Pops the new value, or null when closed.
 Future<String?> showEntranceSheet(BuildContext context, String current) => showAppSheet<String>(id: 'confirm.confirm-address-card',
@@ -253,23 +264,12 @@ class _EntranceSheet extends StatefulWidget {
 class _EntranceSheetState extends State<_EntranceSheet> {
   late String _value = widget.current;
 
-  static const _letters = {
-    '2': 'ABC',
-    '3': 'DEF',
-    '4': 'GHI',
-    '5': 'JKL',
-    '6': 'MNO',
-    '7': 'PQRS',
-    '8': 'TUV',
-    '9': 'WXYZ',
-  };
-
   void _type(String digit) => setState(() => _value = (_value + digit).substring(0, (_value.length + 1).clamp(0, 6)));
 
   void _back() => setState(() => _value = _value.isEmpty ? '' : _value.substring(0, _value.length - 1));
 
-  /// One key of the phone-style keypad: the digit over its letters, on a
-  /// white (or, dark, charcoal) rounded key.
+  /// One key of the keypad: its digit alone (only digits can be typed), on
+  /// a white (or, dark, charcoal) rounded key.
   Widget _key(BuildContext context, String digit, {double height = 50}) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final ink = dark ? Colors.white : Colors.black;
@@ -290,17 +290,7 @@ class _EntranceSheetState extends State<_EntranceSheet> {
               // Large phone text shrinks to the key instead of spilling out.
               child: FittedBox(
                 fit: BoxFit.scaleDown,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(digit, style: TextStyle(fontSize: 24, height: 1.1, color: ink)),
-                    if (_letters[digit] != null)
-                      Text(
-                        _letters[digit]!,
-                        style: TextStyle(fontSize: 9, letterSpacing: 2, fontWeight: FontWeight.w600, color: ink),
-                      ),
-                  ],
-                ),
+                child: Text(digit, style: TextStyle(fontSize: 24, height: 1.1, color: ink)),
               ),
             ),
           ),
@@ -361,7 +351,19 @@ class _EntranceSheetState extends State<_EntranceSheet> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(_value, style: t.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600)),
+                if (_value.isEmpty)
+                  // What to type, until something is.
+                  Flexible(
+                    child: Text(
+                      entranceHint,
+                      key: const ValueKey('entrance-hint'),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      style: t.textTheme.titleMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                    ),
+                  )
+                else
+                  Text(_value, style: t.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600)),
                 Container(width: 2, height: 40, margin: const EdgeInsets.only(left: 2), color: ink),
               ],
             ),
@@ -382,6 +384,17 @@ class _EntranceSheetState extends State<_EntranceSheet> {
               child: const Text('Done'),
             ),
           ),
+          // An entrance set before can be taken off in one go.
+          if (widget.current.isNotEmpty)
+            SizedBox(
+              height: 48,
+              child: TextButton(
+                key: const ValueKey('entrance-clear'),
+                style: TextButton.styleFrom(foregroundColor: ink),
+                onPressed: () => Navigator.pop(context, ''),
+                child: const Text('Clear entrance'),
+              ),
+            ),
           const SizedBox(height: 16),
         ],
       ),
@@ -2190,7 +2203,7 @@ class FareInfoSheet extends StatelessWidget {
 }
 
 Future<void> showFareInfo(BuildContext context, FareInfoSheet sheet) =>
-    showAppSheet<void>(id: 'fare-info', context: context, isScrollControlled: true, builder: (_) => sheet);
+    showAppSheet<void>(id: 'fare-info', context: context, fitContent: true, builder: (_) => sheet);
 
 /// The booking button when rides can be scheduled: Now books at once,
 /// Later asks for the pickup time first and books on Confirm. The side

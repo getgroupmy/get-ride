@@ -14,6 +14,7 @@ import 'package:get_ride/src/core/request_viewers.dart';
 import 'package:get_ride/src/core/route_estimate.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/models.dart';
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show showEntranceSheet, entranceHint;
 import 'package:get_ride/src/features/ride/driver_card.dart';
 import 'package:get_ride/src/features/ride/home_parts.dart' show HomeSearchPill, HomeRecentPlaces, homeRecentAtRest;
 import 'package:get_ride/src/features/ride/home_screen.dart' show RouteBasisLine, routeAiExplainer;
@@ -379,6 +380,38 @@ void main() {
       expect(searched, 1);
       expect(picked?.name, 'KLCC');
       expect(tester.getSize(find.byKey(const ValueKey('home-search'))).height, greaterThanOrEqualTo(44));
+    });
+  });
+
+  group('entrance keypad', () {
+    matrix('fits with its hint and Clear, digits only', (tester, phone, b) async {
+      String? got = 'unset';
+      await host(
+        tester,
+        phone,
+        b,
+        Builder(
+          builder: (c) => TextButton(
+            onPressed: () async => got = await showEntranceSheet(c, '12'),
+            child: const Text('open'),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('12'), findsOneWidget);
+      for (final letters in ['ABC', 'WXYZ']) {
+        expect(find.text(letters), findsNothing);
+      }
+      await tester.tap(find.byKey(const ValueKey('entrance-key-back')));
+      await tester.tap(find.byKey(const ValueKey('entrance-key-back')));
+      await tester.pump();
+      expect(find.text(entranceHint), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('entrance-clear')));
+      await tester.tap(find.byKey(const ValueKey('entrance-clear')));
+      await tester.pumpAndSettle();
+      expect(got, '');
     });
   });
 

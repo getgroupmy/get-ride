@@ -501,6 +501,43 @@ void main() {
     expect(card.bottom, lessThanOrEqualTo(sheetTop), reason: 'the route card clear of the sheet');
   });
 
+  testWidgets('the Entrance chip answers a screen reader; the keypad hints, takes digits only, and clears', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, _Rides());
+    final chip = find.bySemanticsLabel('Set entrance');
+    expect(chip, findsOneWidget);
+    tester.semantics.tap(find.semantics.byLabel('Set entrance'));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('entrance-hint')), findsOneWidget);
+    expect(find.text('ABC'), findsNothing);
+    expect(find.byKey(const ValueKey('entrance-clear')), findsNothing, reason: 'nothing to clear yet');
+    await tester.tap(find.byKey(const ValueKey('entrance-key-4')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('entrance-hint')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('entrance-done')));
+    await _settle(tester);
+    expect(find.text('Entrance 4'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('confirm-entrance')));
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('entrance-clear')));
+    await _settle(tester);
+    expect(find.text('Entrance 4'), findsNothing);
+    expect(find.text('Entrance'), findsOneWidget);
+    semantics.dispose();
+  });
+
+  testWidgets("a vehicle's fare details sheet is as tall as what it holds", (tester) async {
+    await _pump(tester, _Rides(), book: false);
+    await tester.tap(find.byKey(const ValueKey('vehicle-type-GET XL')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('vehicle-info-GET XL')));
+    await tester.pumpAndSettle();
+    final sheet = tester.getRect(find.byType(BottomSheet));
+    final ok = tester.getRect(find.byKey(const ValueKey('fare-info-ok')));
+    expect(sheet.top, greaterThan(860 * 0.2), reason: 'not full height');
+    expect(sheet.bottom - ok.bottom, lessThan(80), reason: 'no empty space under OK');
+  });
+
   testWidgets('the main screen opens with its sheet fully down', (tester) async {
     await _pump(tester, _Rides(), book: false);
     final top = tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
