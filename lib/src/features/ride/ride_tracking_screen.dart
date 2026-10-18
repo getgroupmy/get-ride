@@ -22,6 +22,7 @@ import '../../core/ride_confirm.dart';
 import '../../core/request_viewers.dart';
 import '../../core/search_stage.dart';
 import '../../core/ride_payment.dart';
+import '../../core/ride_cache.dart' show sameRideApartFromLive;
 import '../../core/search_timer.dart';
 import '../../config.dart';
 import '../../data/fare_coin_store.dart';
@@ -93,6 +94,47 @@ final riderPositionStreamProvider = Provider<Stream<LatLng> Function()>((ref) =>
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
 
+/// A ride as the tracking screen's sheet follows it: equal to the last one
+/// when only the live positions (or `updated_at`) moved, so a position
+/// update leaves the sheet alone ([sameRideApartFromLive]).
+class SteadyRide {
+  SteadyRide(this.value);
+  final AsyncValue<RideRequest> value;
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! SteadyRide) return false;
+    final a = value, b = other.value;
+    if (identical(a, b)) return true;
+    if (a.runtimeType != b.runtimeType || a.isLoading != b.isLoading || a.error != b.error) return false;
+    final x = a.value, y = b.value;
+    if (x == null || y == null) return identical(x, y);
+    return x.cachedAt == y.cachedAt && sameRideApartFromLive(x.raw, y.raw);
+  }
+
+  @override
+  int get hashCode => value.value?.id.hashCode ?? 0;
+}
+
+/// The ride's map, following every change of the ride (the driver's live
+/// position included) on its own.
+class _TrackingMap extends ConsumerWidget {
+  const _TrackingMap({required this.ride});
+
+  /// The ride as the sheet last saw it, until the stream has one.
+  final RideRequest ride;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final r = ref.watch(rideStreamProvider(ride.id)).value ?? ride;
+    return LiveRideMap(
+      ride: r,
+      riderPosition: ref.read(riderPositionStreamProvider),
+      topButton: LocationShareButton(ride: r),
+    );
+  }
+}
+
 /// Rider view of one request: searching → driver assigned → on trip → done.
 class RideTrackingScreen extends ConsumerWidget {
   const RideTrackingScreen({super.key, required this.requestId});
@@ -100,7 +142,9 @@ class RideTrackingScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final ride = ref.watch(rideStreamProvider(requestId));
+    // The positions move every few seconds on a live trip: they only
+    // rebuild the map ([_TrackingMap]), not the screen and its sheet.
+    final ride = ref.watch(rideStreamProvider(requestId).select(SteadyRide.new)).value;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Your ride'),
@@ -123,11 +167,7 @@ class RideTrackingScreen extends ConsumerWidget {
           // the map; on a wide (desktop) screen the panel sits beside it.
           final panel = _RidePanel(
             ride: r,
-            map: LiveRideMap(
-              ride: r,
-              riderPosition: ref.read(riderPositionStreamProvider),
-              topButton: LocationShareButton(ride: r),
-            ),
+            map: _TrackingMap(ride: r),
             wide: MediaQuery.sizeOf(context).width >= 900,
           );
           if (!r.fromCache) return panel;
@@ -174,7 +214,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   /// The search's one-second clock (Expo ride-confirm): the first-minute
   /// bar, the "Raise your fare?" prompt, the expiry and the offer window.
   Timer? _tick;
-  late DateTime _now = ref.read(searchClockProvider)();
+  late final ValueNotifier<DateTime> _clock;
+  DateTime get _now => _clock.value;
   bool _askedRaise = false;
   bool _expiryShown = false;
 
@@ -202,6 +243,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   @override
   void initState() {
     super.initState();
+    _clock = ValueNotifier(ref.read(searchClockProvider)());
     ref.read(fareCoinChoiceStoreProvider).chosen(widget.ride.id).then((v) {
       if (mounted && v) setState(() => _coinsChosen = true);
     }, onError: (_) {});
@@ -269,6 +311,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   void dispose() {
     _demo?.dispose();
     _tick?.cancel();
+    _clock.dispose();
     _position?.cancel();
     super.dispose();
   }
@@ -364,7 +407,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   void _onTick() {
     if (!mounted) return;
-    setState(() => _now = ref.read(searchClockProvider)());
+    // Only what reads the clock rebuilds: the countdown and the offer cards.
+    _clock.value = ref.read(searchClockProvider)();
     final r = widget.ride;
     if (r.status != RideStatus.open) return;
     unawaited(_pollViewers());
@@ -454,7 +498,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     // Turned off on the way to the pickup: the driver no longer sees the
     // last position shared either.
     final hide = !shown && !demo && (r.status == RideStatus.accepted || r.status == RideStatus.arrived);
-    if (hide && r.userLiveAt != null && !_cleared) {
+    // The live columns as they are now: the sheet's copy of the ride is not
+    // rebuilt for a change of position alone.
+    final live = ref.read(rideStreamProvider(r.id)).value ?? r;
+    if (hide && live.userLiveAt != null && !_cleared) {
       _cleared = true;
       ref.read(rideRepositoryProvider).clearRiderLocation(r.id).catchError((_) {});
     } else if (!hide) {
@@ -682,8 +729,6 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   /// The open request's sheet, as inDrive's: the stage and its countdown,
   /// the fare to raise, auto-accept, payment, the route and Cancel request.
   List<Widget> _searchSheet(RideRequest r) {
-    final elapsed = searchElapsed(r.createdAt, _now);
-    final left = searchTimeLeft(elapsed, AppConfig.requestExpiry);
     final current = r.fare ?? 0;
     final quoted = _quoted ?? current;
     final target = _target;
@@ -702,14 +747,25 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           demo: true,
           demoNames: demoViewerNames,
         ),
-      SearchHeader(
-        bidding: bidding,
-        elapsed: elapsed,
-        left: formatCountdown(left),
-        progress: (left.inMilliseconds / AppConfig.requestExpiry.inMilliseconds).clamp(0.0, 1.0),
+      ValueListenableBuilder(
+        valueListenable: _clock,
+        builder: (_, now, _) {
+          final elapsed = searchElapsed(r.createdAt, now);
+          final left = searchTimeLeft(elapsed, AppConfig.requestExpiry);
+          return SearchHeader(
+            bidding: bidding,
+            elapsed: elapsed,
+            left: formatCountdown(left),
+            progress: (left.inMilliseconds / AppConfig.requestExpiry.inMilliseconds).clamp(0.0, 1.0),
+          );
+        },
       ),
       // Booked with My Ride: offered to the rider's favourites first.
-      if (r.isMyRide || r.isDirectBooking) MyRideSearchBanner(ride: r, now: _now),
+      if (r.isMyRide || r.isDirectBooking)
+        ValueListenableBuilder(
+          valueListenable: _clock,
+          builder: (_, now, _) => MyRideSearchBanner(ride: r, now: now),
+        ),
       const SizedBox(height: 16),
       if (bidding) ...[
         SearchFareStepper(
@@ -1071,7 +1127,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 top: 16,
                 right: 16,
                 width: 380,
-                child: SingleChildScrollView(child: OfferStack(offers: _offerViews())),
+                child: SingleChildScrollView(
+                  child: ValueListenableBuilder(
+                    valueListenable: _clock,
+                    builder: (_, _, _) => OfferStack(offers: _offerViews()),
+                  ),
+                ),
               ),
             ]),
           ),
@@ -1096,7 +1157,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       ),
       if (r.status == RideStatus.open)
         Positioned.fill(
-          child: ChooseDriverOverlay(offers: _offerViews(), onCancel: _busy ? null : _cancelSearch),
+          child: ValueListenableBuilder(
+            valueListenable: _clock,
+            builder: (_, _, _) => ChooseDriverOverlay(offers: _offerViews(), onCancel: _busy ? null : _cancelSearch),
+          ),
         ),
     ]);
   }
