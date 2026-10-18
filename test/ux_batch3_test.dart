@@ -13,6 +13,7 @@ import 'package:get_ride/src/core/scheduled_rides.dart';
 import 'package:get_ride/src/data/account_repository.dart';
 import 'package:get_ride/src/data/models.dart' show EmergencyContact;
 import 'package:get_ride/src/features/my_ride/my_ride_screen.dart' show showAddFavouriteSheet;
+import 'package:get_ride/src/features/partner/partner_screen.dart' show floatingRequestsBeside;
 import 'package:get_ride/src/features/profile/emergency_contacts_screen.dart';
 import 'package:get_ride/src/providers.dart' show accountRepositoryProvider;
 import 'package:get_ride/src/features/ride/book_for_sheet.dart';
@@ -21,6 +22,8 @@ import 'package:get_ride/src/features/ride/location_share_button.dart';
 import 'package:get_ride/src/features/ride/pickup_time_sheet.dart';
 import 'package:get_ride/src/features/ride/searching_parts.dart';
 import 'package:get_ride/src/widgets/common.dart' show EmptyState, contrastRatio;
+import 'package:get_ride/src/features/safety/ride_sos.dart' show RideSosFab;
+import 'package:get_ride/src/widgets/map_sheet_layout.dart';
 import 'package:get_ride/src/widgets/search_select.dart';
 
 /// A phone the testers used.
@@ -86,6 +89,95 @@ void expectOnScreen(WidgetTester tester, Finder f, {double keyboard = 0}) {
 void main() {
   _sheets();
   _keyboardPages();
+  _mapSheets();
+}
+
+/// A ride sheet as the trip screens build it: a title, the driver card
+/// whose last row must show at rest, more below, and a pinned footer.
+Widget _rideSheet(Phone phone, Brightness b, {bool sos = false}) => MaterialApp(
+  theme: ThemeData(brightness: b),
+  builder: (c, child) => MediaQuery(
+    data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(phone.scale)),
+    child: child!,
+  ),
+  home: Scaffold(
+    appBar: AppBar(title: const Text('Your ride')),
+    body: MapSheetLayout(
+      map: Stack(children: [
+        const Positioned.fill(child: ColoredBox(color: Colors.blueGrey)),
+        if (sos) Positioned.fill(child: RideSosFab(onPressed: () {})),
+      ]),
+      sheet: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Driver on the way', key: ValueKey('sheet-title'), style: TextStyle(fontSize: 24)),
+            const SizedBox(height: 16),
+            const Card(child: ListTile(title: Text('Ahmad'), subtitle: Text('Proton Saga · WXY 1234'))),
+            const Card(child: ListTile(title: Text('Trip code'), trailing: Text('4821'))),
+            MapSheetRestLine(
+              child: OverflowBar(
+                key: const ValueKey('call-row'),
+                children: [
+                  TextButton(onPressed: () {}, child: const Text('Call')),
+                  TextButton(onPressed: () {}, child: const Text('Message')),
+                ],
+              ),
+            ),
+            for (var i = 0; i < 6; i++) ListTile(title: Text('Detail $i')),
+          ],
+        ),
+      ),
+      footer: Material(
+        key: const ValueKey('ride-footer'),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: FilledButton(onPressed: () {}, child: const Text('Cancel ride')),
+          ),
+        ),
+      ),
+    ),
+  ),
+);
+
+void _mapSheets() {
+  for (final b in Brightness.values) {
+    for (final phone in const [iphone15, iphone15Side, iphoneSe]) {
+      final at = '$phone ${b.name}';
+
+      testWidgets('ride sheet at rest shows Call and Message above the footer ($at)', (tester) async {
+        await onPhone(tester, phone);
+        await tester.pumpWidget(_rideSheet(phone, b));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        // Fully down by hand, it still rests no lower than that row (or,
+        // where the row can't fit above the footer, all the way up, the
+        // title and driver in view rather than a handle and a clipped title).
+        await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 600));
+        await tester.pumpAndSettle();
+        final row = tester.getRect(find.byKey(const ValueKey('call-row')));
+        final footer = tester.getRect(find.byKey(const ValueKey('ride-footer')));
+        final body = tester.getRect(find.byType(MapSheetLayout));
+        final handle = tester.getRect(find.byKey(const ValueKey('map-sheet-handle')));
+        final atMax = handle.top <= body.top + body.height * (1 - 0.92) + 10;
+        if (!atMax) expect(row.bottom, lessThanOrEqualTo(footer.top + 0.5), reason: 'above "Cancel ride"');
+        final title = tester.getRect(find.byKey(const ValueKey('sheet-title')));
+        expect(title.bottom, lessThanOrEqualTo(footer.top), reason: 'the title whole above the footer');
+        // Clear of the notch on its side.
+        expect(title.left, greaterThanOrEqualTo(phone.padding.left));
+      });
+    }
+
+    testWidgets('SOS and the map buttons stand clear of the notch (${b.name})', (tester) async {
+      await onPhone(tester, iphone15Side);
+      await tester.pumpWidget(_rideSheet(iphone15Side, b, sos: true));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.byKey(const ValueKey('ride-sos'))).left, greaterThanOrEqualTo(59));
+    });
+  }
 }
 
 void _keyboardPages() {
@@ -389,6 +481,12 @@ void _sheets() {
     expect(tester.takeException(), isNull);
     await tester.ensureVisible(find.text('Add Vehicle Type'));
     expectOnScreen(tester, find.text('Add Vehicle Type'), keyboard: 170);
+  });
+
+  test('on its side the driver\'s floating requests run beside the map buttons', () {
+    expect(floatingRequestsBeside(const Size(852, 393)), isTrue);
+    expect(floatingRequestsBeside(const Size(393, 852)), isFalse);
+    expect(floatingRequestsBeside(const Size(1280, 800)), isFalse);
   });
 
   test('the time wheels show fewer rows on a short screen', () {

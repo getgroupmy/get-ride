@@ -456,6 +456,24 @@ void main() {
     }
   });
 
+  testWidgets('on its side, Back on the confirm step stays off the route card and the notch', (tester) async {
+    await _pump(tester, _Rides());
+    // Turned on its side (iPhone 15): the notch left and right, the home bar.
+    tester.view.physicalSize = const Size(852, 393);
+    tester.view.padding = const FakeViewPadding(left: 59, right: 59, bottom: 21);
+    tester.view.viewPadding = const FakeViewPadding(left: 59, right: 59, bottom: 21);
+    await _settle(tester);
+    expect(tester.takeException(), isNull);
+    final back = tester.getRect(find.byKey(const ValueKey('confirm-back')));
+    final card = tester.getRect(find.byKey(const ValueKey('confirm-address-card')));
+    expect(back.overlaps(card), isFalse, reason: 'Back beside the route card, not on it');
+    expect(back.left, greaterThanOrEqualTo(59), reason: 'clear of the notch');
+    expect(back.top, greaterThanOrEqualTo(0));
+    await tester.tap(find.byKey(const ValueKey('confirm-back')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('confirm-address-card')), findsNothing);
+  });
+
   testWidgets('the confirm step is laid out as Expo ride-confirm', (tester) async {
     await _pump(tester, _Rides());
 

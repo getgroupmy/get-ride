@@ -978,8 +978,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                       child: BleHandshakeBadge(rideId: r.id, status: r.status.db, driver: false),
                     ),
                   // No Message or Call once the ride is cancelled.
+                  // The sheet never rests lower than this row: on a phone on
+                  // its side or at large text it showed under "Cancel ride".
                   if (r.status != RideStatus.cancelled && (r.partnerPhone != null || rideChatAvailable(r)))
-                    OverflowBar(
+                    MapSheetRestLine(
+                      child: OverflowBar(
                       children: [
                         // An in-app call (migration 0131); a long press offers
                         // the phone call when the number is known.
@@ -993,6 +996,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                             label: const Text('Message'),
                           ),
                       ],
+                      ),
                     ),
                 ],
               ),

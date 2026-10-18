@@ -184,7 +184,8 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
         MapBottomInset.listen(
           context,
           (inset) => Positioned(
-            right: 12,
+            // Clear of the notch on a phone on its side.
+            right: 12 + MediaQuery.paddingOf(context).right,
             bottom: mapAttributionClearance + inset,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               // Traffic (when configured), then map view above recenter.
