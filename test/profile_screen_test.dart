@@ -62,7 +62,7 @@ void main() {
     );
     expect(find.byKey(const ValueKey('profile-name')), findsOneWidget);
     expect(find.text('Aisyah Rahman'), findsOneWidget);
-    expect(find.text('+60123456789'), findsOneWidget);
+    expect(find.text('+60 12-345 6789'), findsOneWidget);
     expect(find.text('Referred by Ahmad A.'), findsOneWidget);
     expect(find.text('3 rides'), findsOneWidget);
     expect(find.text('••••••••5678'), findsOneWidget);

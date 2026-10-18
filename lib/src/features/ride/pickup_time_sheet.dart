@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/pickup_slots.dart';
 import '../../core/scheduled_rides.dart';
 import 'confirm_parts.dart' show accentFill;
+import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/page_style_host.dart';
 
 /// The pickup sheet; null when it is closed without confirming.
@@ -126,7 +127,7 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final c = widget.config;
-    final muted = t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant);
+    final muted = t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t));
     final days = c.maxDaysAhead == 1 ? '1 day' : '${c.maxDaysAhead} days';
     final footer = c.lateCancelFee > 0
         ? 'Free cancellation until ${pickupClock(freeCancelUntil(_at, c))}. Your driver will be there at '
@@ -168,8 +169,10 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
                     },
                     child: Row(
                       children: [
+                        // 2:1:1:1, so the day column holds its words without
+                        // a wide empty gap beside them.
                         Expanded(
-                          flex: 5,
+                          flex: 4,
                           child: _Wheel(
                             key: const ValueKey('pickup-day-wheel'),
                             label: 'Day',
@@ -277,7 +280,8 @@ class _Wheel extends StatelessWidget {
         physics: const FixedExtentScrollPhysics(),
         diameterRatio: 1.8,
         perspective: 0.004,
-        overAndUnderCenterOpacity: 0.4,
+        // Rows off the band stay readable (4.5:1), just quieter.
+        overAndUnderCenterOpacity: 0.65,
         childDelegate: looping
             ? ListWheelChildLoopingListDelegate(children: children)
             : ListWheelChildListDelegate(children: children),

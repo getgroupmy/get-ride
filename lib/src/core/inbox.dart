@@ -72,6 +72,40 @@ List<InboxItem> inboxFor(Iterable<InboxItem> items, String? mode) {
   return out;
 }
 
+/// Rows on the page: notifications repeated word for word about the same
+/// trip (a status push sent again) fold into one row with a count. Display
+/// only: each kept notification stays as it is.
+class InboxGroup {
+  const InboxGroup(this.items);
+
+  /// Newest first; never empty.
+  final List<InboxItem> items;
+
+  InboxItem get latest => items.first;
+  int get count => items.length;
+  bool get unread => items.any((i) => i.unread);
+  List<String> get ids => [for (final i in items) i.id];
+  List<String> get unreadIds => [for (final i in items) if (i.unread) i.id];
+}
+
+/// [items] (newest first) as rows: those with the same trip
+/// (`request_id`), title and text together, at the newest one's place.
+/// One without a trip is a row of its own.
+List<InboxGroup> groupInbox(List<InboxItem> items) {
+  final groups = <String, List<InboxItem>>{};
+  final order = <String>[];
+  for (final i in items) {
+    final trip = '${i.data['request_id'] ?? ''}'.trim();
+    final key = trip.isEmpty ? 'id:${i.id}' : 'trip:$trip\u0000${i.kind}\u0000${i.title.trim()}\u0000${i.body.trim()}';
+    final list = groups.putIfAbsent(key, () {
+      order.add(key);
+      return [];
+    });
+    list.add(i);
+  }
+  return [for (final k in order) InboxGroup(groups[k]!)];
+}
+
 /// The badge on the menu row: unread items in [mode], capped for display.
 int inboxUnread(Iterable<InboxItem> items, String? mode) => inboxFor(items, mode).where((i) => i.unread).length;
 

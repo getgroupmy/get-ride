@@ -148,6 +148,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('help-helpful-no')));
     await tester.pumpAndSettle();
     expect(repo.feedback, [('q2', false)]);
+    // Not helpful: a way on, not only thanks.
+    expect(find.byKey(const ValueKey('help-not-helpful-support')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('help-not-helpful-rephrase')));
+    await tester.tap(find.byKey(const ValueKey('help-not-helpful-rephrase')));
+    await tester.pump();
+    final input = tester.widget<TextField>(find.byKey(const ValueKey('help-input')));
+    expect(input.focusNode?.hasFocus, isTrue, reason: 'back in the question box');
   });
 
   testWidgets('a starter question is asked when tapped', (tester) async {

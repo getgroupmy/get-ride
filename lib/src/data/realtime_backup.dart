@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show Random;
 
 import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:supabase_flutter/supabase_flutter.dart' show RealtimeSubscribeStatus;
@@ -17,6 +18,25 @@ const realtimeBackupHealthyInterval = Duration(seconds: 30);
 /// calls, the inbox, transfers): open on every phone all day, so while
 /// realtime delivers they only check every few minutes.
 const realtimeBackupSlowHealthyInterval = Duration(minutes: 5);
+
+/// The safety net for the app-wide live tables while their channel reports
+/// healthy: Supabase Realtime can stay "subscribed" while silently missing
+/// changes, so even then everything is read again this often -- jittered by
+/// [realtimeBackupSafetyNetJitter] so phones started together do not all
+/// read at the same moment.
+const realtimeBackupSafetyNetInterval = Duration(minutes: 20);
+
+/// How far each healthy wait may move from [RealtimeBackup.healthy] either
+/// way, as a fraction of it, for backups given a jitter.
+const realtimeBackupSafetyNetJitter = 0.2;
+
+/// [base] moved by up to [fraction] of itself either way: [unit] 0 is the
+/// shortest wait, 0.5 [base] itself, 1 the longest. Pure.
+Duration realtimeBackupJittered(Duration base, {required double fraction, required double unit}) {
+  if (fraction <= 0) return base;
+  final scale = 1 + fraction * (2 * unit.clamp(0.0, 1.0) - 1);
+  return Duration(microseconds: (base.inMicroseconds * scale).round());
+}
 
 /// While the channel stays down, the reads that keep to [every] before the
 /// wait starts doubling: a channel still opening costs nothing extra, one
@@ -69,14 +89,19 @@ class RealtimeBackup {
   /// [healthy] null reads nothing on the timer while the channel is open, and
   /// [resumeWhileOpen] false skips the read on coming back to the foreground
   /// while the channel is open and has not dropped since the last read (a
-  /// socket that dropped meanwhile reads as it reopens).
+  /// socket that dropped meanwhile reads as it reopens). [healthyJitter]
+  /// moves each wait while open by up to that fraction of [healthy] either
+  /// way (see [realtimeBackupJittered]); [random] is for tests.
   RealtimeBackup(
     this._refresh, {
     this.every = realtimeBackupInterval,
     this.healthy = realtimeBackupHealthyInterval,
     bool onOpen = true,
     this.resumeWhileOpen = true,
-  }) : _skipOpen = !onOpen {
+    this.healthyJitter = 0,
+    Random? random,
+  }) : _skipOpen = !onOpen,
+       _random = random ?? Random() {
     _schedule();
     try {
       _lifecycle = AppLifecycleListener(onResume: resumed);
@@ -97,6 +122,10 @@ class RealtimeBackup {
   /// Whether coming back to the foreground reads even while the channel is
   /// open and has not dropped since the last read.
   final bool resumeWhileOpen;
+
+  /// The fraction each wait while open may move by either way.
+  final double healthyJitter;
+  final Random _random;
   Timer? _timer;
   AppLifecycleListener? _lifecycle;
   bool _busy = false;
@@ -123,8 +152,11 @@ class RealtimeBackup {
     _timer?.cancel();
     _timer = null;
     if (_disposed) return;
-    final wait = period;
+    var wait = period;
     if (wait == null) return;
+    if (_connected && healthyJitter > 0) {
+      wait = realtimeBackupJittered(wait, fraction: healthyJitter, unit: _random.nextDouble());
+    }
     _timer = Timer(wait, () {
       if (!_connected) _downReads++;
       run();

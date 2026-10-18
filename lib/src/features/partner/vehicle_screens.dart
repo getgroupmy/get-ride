@@ -117,8 +117,10 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
                                     visualDensity: VisualDensity.compact,
                                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   )
+                                // Not submitted yet: a draft, resumed from its next step.
                                 : Chip(
-                                    label: Text('Incomplete: ${step.label}'),
+                                    key: ValueKey('vehicle-draft-${v['id']}'),
+                                    label: Text('Draft · next: ${step.label}'),
                                     visualDensity: VisualDensity.compact,
                                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   ),
@@ -160,6 +162,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   VehicleStep? _viewing;
 
   final _plate = TextEditingController();
+  String? _plateError;
   final _year = TextEditingController();
   final _color = TextEditingController();
   final _ownerName = TextEditingController();
@@ -269,7 +272,8 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
 
   Future<void> _savePlate() async {
     final plate = normalizePlate(_plate.text);
-    if (plate.isEmpty) return showError(context, 'Please enter the plate number.');
+    setState(() => _plateError = plate.isEmpty ? 'Enter the plate number' : null);
+    if (plate.isEmpty) return;
     await _save(() => _repo.startWithPlate(plate, _ctx!.partner));
   }
 
@@ -395,16 +399,26 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
     final steps = VehicleStep.wizard;
     final reachedIndex = reached == VehicleStep.done ? steps.length : steps.indexOf(reached);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(reached == VehicleStep.done ? 'All steps complete' : 'Step ${reachedIndex + 1} of ${steps.length}',
-          style: t.textTheme.labelLarge),
+      // Said once, by the bar below.
+      ExcludeSemantics(
+        child: Text(reached == VehicleStep.done ? 'All steps complete' : 'Step ${reachedIndex + 1} of ${steps.length}',
+            style: t.textTheme.labelLarge),
+      ),
       const SizedBox(height: 8),
       // As the step line counts: full on the last step.
-      LinearProgressIndicator(value: ((reachedIndex + 1) / steps.length).clamp(0.0, 1.0)),
+      // Read as "Step 1 of 6", with the share done as its value.
+      LinearProgressIndicator(
+        value: ((reachedIndex + 1) / steps.length).clamp(0.0, 1.0),
+        semanticsLabel: reached == VehicleStep.done ? 'All steps complete' : 'Step ${reachedIndex + 1} of ${steps.length}',
+        semanticsValue: '${(((reachedIndex + 1) / steps.length).clamp(0.0, 1.0) * 100).round()}%',
+      ),
       const SizedBox(height: 12),
       Wrap(spacing: 8, runSpacing: 8, children: [
         for (final (i, step) in steps.indexed)
           ChoiceChip(
             avatar: i < reachedIndex ? const Icon(Icons.check, size: 16) : null,
+            // Ticks only on finished steps; the open one is filled, no tick.
+            showCheckmark: false,
             label: Text(step.label),
             selected: step == showing,
             // The plate is fixed once the vehicle exists; other finished
@@ -431,13 +445,22 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   Widget _continue(BusyAction? onPressed, {String label = 'Save and continue'}) =>
       BusyButton.filled(onPressed: _busy ? null : onPressed, child: Text(label));
 
-  Widget _field(TextEditingController c, String label, {TextInputType? keyboard, List<TextInputFormatter>? formatters}) =>
+  Widget _field(
+    TextEditingController c,
+    String label, {
+    TextInputType? keyboard,
+    List<TextInputFormatter>? formatters,
+    TextInputAction action = TextInputAction.next,
+    ValueChanged<String>? onSubmitted,
+  }) =>
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: TextField(
           controller: c,
           enabled: !_busy,
           keyboardType: keyboard,
+          textInputAction: action,
+          onSubmitted: onSubmitted,
           inputFormatters: formatters,
           decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
         ),
@@ -452,7 +475,15 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
                 controller: _plate,
                 enabled: !_busy,
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(labelText: 'Plate number', border: OutlineInputBorder()),
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  labelText: 'Plate number',
+                  border: const OutlineInputBorder(),
+                  errorText: _plateError,
+                ),
+                onChanged: (_) {
+                  if (_plateError != null) setState(() => _plateError = null);
+                },
                 onSubmitted: (_) => _savePlate(),
               ),
               const SizedBox(height: 16),
@@ -475,7 +506,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(4),
               ]),
-              _field(_color, 'Colour'),
+              _field(_color, 'Colour', action: TextInputAction.done, onSubmitted: (_) => _saveYearColor()),
               _continue(_saveYearColor),
             ],
           ),
@@ -540,7 +571,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
           const SizedBox(height: 16),
           _field(_ownerName, "Owner's name"),
           _field(_ownerPhone, "Owner's phone", keyboard: TextInputType.phone),
-          _field(_ownerIc, "Owner's ID number"),
+          _field(_ownerIc, "Owner's ID number", action: TextInputAction.done),
           _continue(_saveOwner, label: _ownVehicle == null ? 'Select an option to continue' : 'Save and continue'),
         ],
       );

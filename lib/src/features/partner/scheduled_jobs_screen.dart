@@ -97,7 +97,7 @@ class _UpcomingTab extends ConsumerWidget {
           padding: const EdgeInsets.all(16),
           children: [
             Text(
-              'Every booking still without a driver, from now (${DateFormat('EEE d MMM, HH:mm').format(now)}).',
+              'Every booking still without a driver, from now (${DateFormat('EEE d MMM, h:mm a').format(now)}).',
               key: const ValueKey('scheduled-upcoming-now'),
               style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
             ),

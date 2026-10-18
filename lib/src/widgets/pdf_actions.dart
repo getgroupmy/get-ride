@@ -4,6 +4,7 @@
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
@@ -54,7 +55,9 @@ Future<void> sharePdfOrDownload(
   required String title,
   required Future<Uint8List> Function() build,
 }) async {
-  final action = await askPdfAction(context, title: title);
+  // A browser's "share" only downloads the file too, so the web skips the
+  // question and downloads.
+  final action = kIsWeb ? PdfAction.download : await askPdfAction(context, title: title);
   if (action == null || !context.mounted) return;
   final bytes = await build();
   switch (action) {

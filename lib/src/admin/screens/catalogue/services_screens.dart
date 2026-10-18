@@ -240,14 +240,14 @@ class _ServiceEditorState extends State<_ServiceEditor> {
         onSave: widget.canEdit ? _save : null,
         children: [
           DataUrlImageField(label: 'Icon', value: _icon, onChanged: (u) => setState(() => _icon = u)),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Service Name *', hintText: 'e.g. Car')),
+          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Service name *', hintText: 'e.g. Car')),
           const SizedBox(height: 12),
           TextField(controller: _desc, decoration: const InputDecoration(labelText: 'Description')),
           const SizedBox(height: 12),
           TextField(
             controller: _priority,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Display Priority'),
+            decoration: const InputDecoration(labelText: 'Display priority'),
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -405,7 +405,6 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
   Widget _dispatchField(DispatchField f, String? error) {
     final c = _dispatch[f.key]!;
     final noLimit = f.zeroAllowed && (c.text.trim().isEmpty || num.tryParse(c.text.trim()) == 0);
-    final unit = f.unit == 's' ? 'seconds' : f.unit;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
@@ -415,7 +414,8 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
         keyboardType: TextInputType.numberWithOptions(decimal: !f.wholeNumber),
         onChanged: (_) => setState(() {}),
         decoration: InputDecoration(
-          labelText: '${f.label} (in $unit)',
+          // The unit sits in the field (suffixText), not in the label.
+          labelText: sentenceCaseLabel(f.label),
           hintText: f.zeroAllowed ? 'No limit' : 'Default ${formatDispatchNumber(f.defaultValue)}',
           helperText: f.helper,
           helperMaxLines: 4,
@@ -477,7 +477,7 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
         const SizedBox(height: 16),
         TextField(
             controller: _text['name'],
-            decoration: const InputDecoration(labelText: 'Service Name *', hintText: 'Express')),
+            decoration: const InputDecoration(labelText: 'Service name *', hintText: 'Express')),
         const SizedBox(height: 12),
         TextField(
           controller: _text['description'],
@@ -555,7 +555,7 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
               controller: _numbers[f.key],
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
-                labelText: '${f.label}${f.suffix != null ? ' (in ${f.suffix})' : ''}${f.required ? ' *' : ''}',
+                labelText: '${sentenceCaseLabel(f.label)}${f.required ? ' *' : ''}',
                 hintText: '0',
                 suffixText: f.suffix,
               ),

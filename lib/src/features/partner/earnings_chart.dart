@@ -9,6 +9,11 @@ import 'package:flutter/material.dart';
 
 import '../../core/partner_statement.dart';
 
+/// Whether week [i] of [count] gets its date under the bar: all of them up
+/// to six weeks; beyond, every other one counted back from the newest, so
+/// the spacing is even (8 weeks: 4 dates, the newest among them).
+bool weeklyChartLabelShown(int i, int count) => count <= 6 || (count - 1 - i).isEven;
+
 class WeeklyEarningsChart extends StatefulWidget {
   const WeeklyEarningsChart({super.key, required this.weeks, required this.money});
 
@@ -107,8 +112,7 @@ class _WeeklyEarningsChartState extends State<WeeklyEarningsChart> {
                 for (var i = 0; i < weeks.length; i++)
                   Expanded(
                     child: Text(
-                      // Every other label on a narrow phone, so they never collide.
-                      weeks.length > 6 && i.isOdd && i != weeks.length - 1 ? '' : _day(weeks[i].start),
+                      weeklyChartLabelShown(i, weeks.length) ? _day(weeks[i].start) : '',
                       textAlign: TextAlign.center,
                       maxLines: 1,
                       overflow: TextOverflow.clip,
@@ -152,12 +156,26 @@ class _BarsPainter extends CustomPainter {
     final barWidth = math.min(28.0, slot * 0.56);
     final floor = size.height - 1;
 
+    // A week with nothing earned draws no bar, and its selection is no
+    // tall column either (it read as a grey bar): a short mark on the
+    // baseline instead.
     final highlight = Paint()..color = surface;
     final left = slot * selected;
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTWH(left + 2, 0, slot - 4, size.height), const Radius.circular(6)),
-      highlight,
-    );
+    final selectedValue = selected >= 0 && selected < values.length ? values[selected] : 0.0;
+    if (selectedValue > 0 && top > 0) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(left + 2, 0, slot - 4, size.height), const Radius.circular(6)),
+        highlight,
+      );
+    } else if (selected >= 0 && selected < values.length) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(left + (slot - barWidth) / 2, floor - 3, barWidth, 3),
+          const Radius.circular(1.5),
+        ),
+        Paint()..color = bar.withValues(alpha: 0.6),
+      );
+    }
 
     final fill = Paint()..color = bar;
     for (var i = 0; i < values.length; i++) {

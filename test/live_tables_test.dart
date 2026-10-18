@@ -75,4 +75,13 @@ void main() {
       expect(liveSettingTables, isNot(contains(t)), reason: '$t is too busy for every app\'s channel');
     }
   });
+
+  test('both live channels keep a slow jittered safety net while healthy', () {
+    // Realtime can report "subscribed" while missing changes: neither
+    // channel may go without any timer read while it is open.
+    final src = File('lib/src/data/live_tables.dart').readAsStringSync();
+    expect(src, isNot(contains('healthy: null')));
+    expect('healthy: realtimeBackupSafetyNetInterval'.allMatches(src).length, 2);
+    expect('healthyJitter: realtimeBackupSafetyNetJitter'.allMatches(src).length, 2);
+  });
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/core/app_display.dart';
+import 'package:get_ride/src/core/auth_utils.dart' show signInStepPhone;
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/auth_repository.dart';
 import 'package:get_ride/src/data/device_access.dart';
@@ -95,7 +96,7 @@ void main() {
                 routes: [
                   GoRoute(
                     path: 'closed',
-                    builder: (_, s) => RegistrationClosedScreen(phone: s.uri.queryParameters['phone'] ?? ''),
+                    builder: (_, s) => RegistrationClosedScreen(phone: signInStepPhone(s.uri.queryParameters)),
                   ),
                 ],
               ),
@@ -121,6 +122,13 @@ void main() {
     await tester.tap(find.text('Use a different number'));
     await tester.pumpAndSettle();
     expect(find.byType(PhoneScreen), findsOneWidget);
+  });
+
+  testWidgets("the sign-in country-code button is named by its country, not its flag", (tester) async {
+    final handle = tester.ensureSemantics();
+    await pumpPhone(tester, hasProfile: true, open: true, submit: false);
+    expect(find.bySemanticsLabel('Country code +60, Malaysia'), findsOneWidget);
+    handle.dispose();
   });
 
   testWidgets('the logo on the welcome page follows its switch', (tester) async {

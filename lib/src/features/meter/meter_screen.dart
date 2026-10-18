@@ -37,6 +37,7 @@ import 'meter_leave_launcher.dart';
 import '../../data/meter_trip_sync.dart';
 import 'meter_providers.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/web_overlay_back.dart';
 
 // The console is deliberately not themed: a white screen on a windscreen
 // mount at night is a hazard, so the meter is always the dark instrument it
@@ -134,6 +135,13 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
 
   /// Bumped when what the START popup says may have changed.
   final _gateTicks = ValueNotifier<int>(0);
+
+  /// Bumped when the running meter's readouts moved (fare, distance, time,
+  /// waiting, speed, source): only they rebuild each second, not the console.
+  final _meterTicks = ValueNotifier<int>(0);
+
+  /// Bumped when a GPS fix arrives or goes stale: only the GPS state rebuilds.
+  final _gpsTicks = ValueNotifier<int>(0);
   bool _launchStarted = false;
 
   int _now() => ref.read(meterClockProvider)();
@@ -246,6 +254,8 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _gateTicks.dispose();
+    _meterTicks.dispose();
+    _gpsTicks.dispose();
     _orientation.release();
     _tick?.cancel();
     _fixes?.cancel();
@@ -269,7 +279,14 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     _fixes = location.fixes().listen(
       (f) {
         if (!mounted) return;
-        setState(() => _fix = f);
+        // The first fix may open the START gate; later ones only move the
+        // GPS state.
+        if (_fix == null) {
+          setState(() => _fix = f);
+        } else {
+          _fix = f;
+          _gpsTicks.value++;
+        }
         if (!_areaAsked) _lookUpArea(f);
         _checkHeld();
       },
@@ -321,7 +338,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     });
   }
 
-  /// Whether the GPS fix was fresh at the last idle tick that rebuilt.
+  /// Whether the GPS fix was fresh at the last tick.
   bool? _idleFixFresh;
 
   MeterFix? get _freshFix {
@@ -333,32 +350,38 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   void _onTick() {
     if (!mounted) return;
     _checkHeld();
-    if (!_m.running) {
-      // Idle, the only thing the clock changes on screen is a GPS fix
-      // going stale: rebuild then, not every second.
-      final fresh = _freshFix != null;
-      if (fresh != _idleFixFresh) setState(() => _idleFixFresh = fresh);
-      return;
+    // The clock alone only changes a GPS fix going stale: the GPS state
+    // rebuilds then, not every second.
+    final fresh = _freshFix != null;
+    if (fresh != _idleFixFresh) {
+      _idleFixFresh = fresh;
+      _gpsTicks.value++;
     }
+    if (!_m.running) return;
     // The card takes a sensor away at the source: a GPS-only card never
     // bills on the reader, an OBD-only card never on the phone's GPS.
     final sources = allowedMeterSources(_profile.sourceMode);
     final f = sources.gps ? _freshFix : null;
     final obd = ref.read(obdSessionProvider);
     final useObd = sources.obd && obd.linked;
-    setState(() {
-      _m = applyMeterSample(
-        _m,
-        MeterSample(
-          at: _now(),
-          obdSpeedKmh: useObd ? obd.telemetry['speed'] : null,
-          obdUpdatedAt: useObd ? obd.lastUpdate : null,
-          gpsSpeedKmh: f?.speedKmh,
-          gpsPoint: f == null ? null : MeterPoint(f.latitude, f.longitude, accuracyM: f.accuracyM),
-        ),
-        flagDistanceM: _rates.flagDistanceM,
-      );
-    });
+    final next = applyMeterSample(
+      _m,
+      MeterSample(
+        at: _now(),
+        obdSpeedKmh: useObd ? obd.telemetry['speed'] : null,
+        obdUpdatedAt: useObd ? obd.lastUpdate : null,
+        gpsSpeedKmh: f?.speedKmh,
+        gpsPoint: f == null ? null : MeterPoint(f.latitude, f.longitude, accuracyM: f.accuracyM),
+      ),
+      flagDistanceM: _rates.flagDistanceM,
+    );
+    // A sample only moves the readouts; the keys follow the hire's state.
+    if (next.running != _m.running || next.hasHire != _m.hasHire) {
+      setState(() => _m = next);
+    } else {
+      _m = next;
+      _meterTicks.value++;
+    }
   }
 
   // ---- Keys --------------------------------------------------------------------
@@ -822,7 +845,11 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     ref.watch(partnerProvider);
     ref.watch(meterDriverProvider);
     ref.watch(meterFleetProvider);
-    final obd = ref.watch(obdSessionProvider);
+    // What the console shows of the reader; its telemetry is read by the tick.
+    ref.watch(
+      obdSessionProvider.select((o) => (o.phase, o.adapter, o.device, o.protocol, o.error, o.evProfile, o.ev)),
+    );
+    final obd = ref.read(obdSessionProvider);
     final printer = ref.watch(currentPrinterProvider).value;
     final locked = _m.hasHire || _ending;
     return PopScope(
@@ -859,6 +886,8 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
               onPopWithResult: (_) => _stageNav.currentState?.maybePop(),
               child: Navigator(
                 key: _stageNav,
+                // On the web, Back closes a dialog in the stage first.
+                observers: webOverlayBackObservers() ?? const [],
                 pages: [MaterialPage(key: const ValueKey('console'), child: _scaffold(obd, printer))],
                 onDidRemovePage: (_) {},
               ),
@@ -907,7 +936,10 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         Padding(
           padding: const EdgeInsets.only(right: 4),
           child: Center(
-            child: Text(_connection, style: const TextStyle(color: _muted, fontSize: 12)),
+            child: ValueListenableBuilder(
+              valueListenable: _gpsTicks,
+              builder: (_, _, _) => Text(_connection, style: const TextStyle(color: _muted, fontSize: 12)),
+            ),
           ),
         ),
         if (_access('printer').show)
@@ -1041,18 +1073,20 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   Widget _settingsPanel() {
     final operator = !tariffKeysApply(_card);
     final sources = allowedMeterSources(_profile.sourceMode);
-    final obd = ref.watch(obdSessionProvider);
-    final fix = _freshFix;
-    final String gps;
-    if (!sources.gps) {
-      gps = 'Not used: this rate card bills on the vehicle only';
-    } else if (_locationProblem != null) {
-      gps = _locationProblem!;
-    } else if (fix == null) {
-      gps = _fix == null ? 'Waiting for a fix…' : 'Fix lost, waiting…';
-    } else {
-      gps = fix.accuracyM == null ? 'Fix' : 'Fix ±${fix.accuracyM!.round()} m';
+    final obd = ref.read(obdSessionProvider);
+    String gps() {
+      final fix = _freshFix;
+      if (!sources.gps) {
+        return 'Not used: this rate card bills on the vehicle only';
+      } else if (_locationProblem != null) {
+        return _locationProblem!;
+      } else if (fix == null) {
+        return _fix == null ? 'Waiting for a fix…' : 'Fix lost, waiting…';
+      } else {
+        return fix.accuracyM == null ? 'Fix' : 'Fix ±${fix.accuracyM!.round()} m';
+      }
     }
+
     final String reader;
     if (!sources.obd) {
       reader = 'Not used: this rate card bills on GPS only';
@@ -1111,7 +1145,10 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
               'SENSORS',
               style: TextStyle(color: _muted, fontWeight: FontWeight.w600),
             ),
-            row(Icons.gps_fixed, 'GPS', gps, key: const ValueKey('meter-settings-gps')),
+            ValueListenableBuilder(
+              valueListenable: _gpsTicks,
+              builder: (_, _, _) => row(Icons.gps_fixed, 'GPS', gps(), key: const ValueKey('meter-settings-gps')),
+            ),
             row(Icons.settings_input_component, 'OBD-II', reader, key: const ValueKey('meter-settings-obd')),
             if (obd.evProfile != null)
               row(
@@ -1147,20 +1184,23 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   /// scrolls and never reflows. It ignores the OS font scale: a wound-up
   /// accessibility setting must not push the fare out of its panel.
   Widget _console() {
-    final fare = _fareNow;
-    final total = meterGrandTotal(fare, [_extra]);
     final status = _m.running
         ? 'HIRED'
         : _m.hasHire
         ? 'STOPPED'
         : 'FOR HIRE';
+    // The readouts a running meter moves each second, rebuilt on their own.
+    Widget live(Widget Function() build) =>
+        ValueListenableBuilder(valueListenable: _meterTicks, builder: (_, _, _) => build());
     final fareBox = _Panel(
       children: [
         Row(
           children: [
-            Text(
-              _m.running ? '$status · ${describeMeterSource(_m.source)}' : status,
-              style: TextStyle(color: _m.running ? _amber : _muted, fontWeight: FontWeight.w700),
+            live(
+              () => Text(
+                _m.running ? '$status · ${describeMeterSource(_m.source)}' : status,
+                style: TextStyle(color: _m.running ? _amber : _muted, fontWeight: FontWeight.w700),
+              ),
             ),
             const Spacer(),
             Flexible(
@@ -1173,7 +1213,14 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
           ],
         ),
         const SizedBox(height: 8),
-        _Readout(label: 'FARE', value: total.toStringAsFixed(2), unit: _currency, large: true),
+        live(
+          () => _Readout(
+            label: 'FARE',
+            value: meterGrandTotal(_fareNow, [_extra]).toStringAsFixed(2),
+            unit: _currency,
+            large: true,
+          ),
+        ),
         Text(_extra > 0 ? 'incl. extras ${_money(_extra)}' : ' ', style: const TextStyle(color: _muted, fontSize: 12)),
         if (_m.hasHire && _pickup != null)
           Text(
@@ -1192,20 +1239,22 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         Row(
           children: [
             Expanded(
-              child: _Readout(label: 'DISTANCE', value: formatMeterKm(_m.distanceM), unit: 'km'),
+              child: live(() => _Readout(label: 'DISTANCE', value: formatMeterKm(_m.distanceM), unit: 'km')),
             ),
             Expanded(
-              child: _Readout(label: 'TIME', value: formatMeterClock(_m.elapsedMs)),
+              child: live(() => _Readout(label: 'TIME', value: formatMeterClock(_m.elapsedMs))),
             ),
           ],
         ),
         Row(
           children: [
             Expanded(
-              child: _Readout(label: 'WAITING', value: formatMeterClock(_m.waitingMs), small: true),
+              child: live(() => _Readout(label: 'WAITING', value: formatMeterClock(_m.waitingMs), small: true)),
             ),
             Expanded(
-              child: _Readout(label: 'SPEED', value: _m.speedKmh.toStringAsFixed(0), unit: 'km/h', small: true),
+              child: live(
+                () => _Readout(label: 'SPEED', value: _m.speedKmh.toStringAsFixed(0), unit: 'km/h', small: true),
+              ),
             ),
           ],
         ),

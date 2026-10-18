@@ -297,6 +297,29 @@ void main() {
       expect(find.textContaining('Arrive at'), findsOneWidget);
     });
 
+    testWidgets('the trip clock and GPS fixes rebuild their readouts and the map, not the screen', (tester) async {
+      await pump(tester);
+      rows.add(ride('arrived'));
+      await tester.pump();
+      await fix(tester, pickup);
+      rows.add(ride('on_trip'));
+      await tester.pump();
+      await tester.pump();
+      var screens = 0;
+      debugOnRebuildDirtyWidget = (e, _) {
+        if (e.widget is PartnerTripScreen) screens++;
+      };
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+      now = now.add(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 3));
+      await fix(tester, const LatLng(3.1569, 101.7120)); // ~111 m in 10 s
+      await tester.pump(const Duration(seconds: 1));
+      debugOnRebuildDirtyWidget = null;
+      expect(screens, 0);
+      expect(find.text('0:13'), findsOneWidget, reason: 'the clock still runs');
+      expect(find.text('0.1 km driven'), findsOneWidget, reason: 'and the distance');
+    });
+
     testWidgets('a cancel the driver did not approve sends them back to requests', (tester) async {
       await pump(tester);
       rows.add(ride('on_trip'));

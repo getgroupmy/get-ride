@@ -38,10 +38,18 @@ Future<bool> showSavedPlaceForm(BuildContext context, SavedPlace place, {LatLng?
       false;
 }
 
-/// Adds Home, Work or another place: the address first ("Enter address"),
+/// The address search's title for [kind]: the slot it fills ("Home
+/// address"), or "Enter address" for another place.
+String savedPlaceSearchTitle(SavedPlaceKind kind) => switch (kind) {
+      SavedPlaceKind.home => 'Home address',
+      SavedPlaceKind.work => 'Work address',
+      SavedPlaceKind.other => 'Enter address',
+    };
+
+/// Adds Home, Work or another place: the address first ("Home address"),
 /// then the form. True when one was saved.
 Future<bool> addSavedPlace(BuildContext context, SavedPlaceKind kind, {LatLng? near}) async {
-  final pick = await showPlaceSearch(context, title: 'Enter address', near: near, mode: PlaceSearchMode.address);
+  final pick = await showPlaceSearch(context, title: savedPlaceSearchTitle(kind), near: near, mode: PlaceSearchMode.address);
   final p = pick?.place;
   if (p == null || !context.mounted) return false;
   return showSavedPlaceForm(
@@ -90,7 +98,7 @@ class _SavedPlaceFormState extends ConsumerState<SavedPlaceForm> {
   Future<void> _changeAddress() async {
     final pick = await showPlaceSearch(
       context,
-      title: 'Enter address',
+      title: savedPlaceSearchTitle(_place.kind),
       near: widget.near,
       mode: PlaceSearchMode.address,
     );

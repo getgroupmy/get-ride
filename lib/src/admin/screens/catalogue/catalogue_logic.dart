@@ -140,6 +140,17 @@ ValuesResult buildServiceValues({
 
 const vehicleServicesKey = 'vehicle-services';
 
+/// A form label in sentence case: "Cost Per Km" → "Cost per km"; words in
+/// capitals (KM, GPS, ETA) stay as they are.
+String sentenceCaseLabel(String label) {
+  final words = label.trim().split(RegExp(r'\s+'));
+  if (words.isEmpty || words.first.isEmpty) return label;
+  return [
+    words.first,
+    for (final w in words.skip(1)) w.length > 1 && w == w.toUpperCase() ? w : w.toLowerCase(),
+  ].join(' ');
+}
+
 class NumField {
   const NumField(this.key, this.label, {this.suffix, this.required = false});
   final String key;

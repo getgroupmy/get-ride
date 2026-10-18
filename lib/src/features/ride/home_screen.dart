@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
 import '../../core/app_display.dart';
+import '../../core/overlay_back.dart';
 import '../../core/payment_types.dart';
 import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
@@ -70,6 +71,7 @@ import '../../core/my_qr.dart' show QrBookingError;
 import '../../core/early_end.dart' show serviceTypeIds;
 import '../my_ride/my_ride_settings.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/web_overlay_back.dart';
 
 enum _PinTarget { none, pickup, drop }
 
@@ -97,6 +99,10 @@ const aiEstimateTimeout = Duration(seconds: 30);
 /// A point of a trip GET.ride can't serve ([UnavailableAt]; [stop] is the
 /// stop's index when it is a stop).
 typedef TripGap = ({UnavailableAt at, int stop, CoverageGap gap, String? region, RegionBlock block});
+
+/// Whether the pickup box stands at the top of the map instead of above the
+/// pin: on a phone on its side, where the map above the sheet is too short.
+bool homePillAtTop(Size size) => size.width > size.height && size.height < 500;
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -135,9 +141,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _panelKey = GlobalKey();
   final _foldKey = GlobalKey();
 
+  /// The pickup and current place for an open route sheet: an address that
+  /// arrives after it opened still fills its From and Current location.
+  final _routeEnds = ValueNotifier<RouteSheetEnds>((from: null, current: null));
+
+  void _syncRouteEnds() {
+    final now = (from: _pickup, current: _here);
+    if (_routeEnds.value != now) _routeEnds.value = now;
+  }
+
   /// How tall the sheet must be, all the way down, to show everything to
-  /// the foot of the search bar: its handle, the vehicle bar (when shown)
-  /// and the bar itself. 0 until measured.
+  /// the foot of the search bar: its handle, the vehicle bar (when shown),
+  /// the bar itself and an upcoming ride's card under it. 0 until measured.
   double _foldHeight = 0;
 
   /// Measures [_foldHeight] after a frame; a change sets the sheet's least
@@ -360,6 +375,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Timer? _carsTimer;
   final _rnd = math.Random();
 
+  /// Bumped as the demo cars step: only the map rebuilds for them.
+  final _carsTick = ValueNotifier<int>(0);
+
+  /// The home map as last built, and what it was built from: the sheet's
+  /// providers and settings rebuild the screen around it, not the map
+  /// ([_homeMap]).
+  Widget? _rideMap;
+  List<Object?>? _rideMapDeps;
+
+  /// [build]'s map, or the one already built while [deps] are unchanged.
+  Widget _homeMap(List<Object?> deps, Widget Function() build) {
+    if (_rideMap == null || !listEquals(deps, _rideMapDeps)) {
+      _rideMapDeps = deps;
+      _rideMap = build();
+    }
+    return _rideMap!;
+  }
+
   void _syncCars(bool on) {
     final center = _pickup?.point ?? _me;
     if (!on || center == null || _drop != null) {
@@ -381,7 +414,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _carsTimer ??= Timer.periodic(const Duration(seconds: 1), (_) {
       final c = _carsAround;
       if (!mounted || c == null) return;
-      setState(() => _cars = [for (final car in _cars) stepDemoCar(car, c.latitude, c.longitude, _rnd)]);
+      _cars = [for (final car in _cars) stepDemoCar(car, c.latitude, c.longitude, _rnd)];
+      _carsTick.value++;
     });
   }
 
@@ -406,15 +440,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// of the trip ("Offer your fare") follows its stops and fare.
   final _changes = ValueNotifier<int>(0);
 
+  /// On the web, the confirm step has a browser history entry: Back steps
+  /// back to the search as the back arrow does (web_overlay_back.dart).
+  final _confirmBack = OverlayBackSlot(() => webOverlayBack);
+
   @override
   void setState(VoidCallback fn) {
     super.setState(fn);
     _changes.value++;
+    _confirmBack.set(_drop != null, _leaveConfirm);
   }
 
   @override
   void dispose() {
+    _routeEnds.dispose();
+    _confirmBack.set(false, _leaveConfirm);
     _changes.dispose();
+    _carsTick.dispose();
     _carsTimer?.cancel();
     _lifecycle?.dispose();
     _expiry?.cancel();
@@ -747,6 +789,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _choose(_PinTarget target) async {
     final pickup = target == _PinTarget.pickup;
     // One route sheet for both ends: From over To, opened on the one tapped.
+    _syncRouteEnds();
     final pick = await showPlaceSearch(
       context,
       title: 'Enter your route',
@@ -757,6 +800,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       to: _drop,
       routeEnds: true,
       startOnFrom: pickup,
+      live: _routeEnds,
     );
     if (pick == null || !mounted) return;
     // The route's "From", changed in the same dialog: the pickup.
@@ -1104,7 +1148,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           context,
           title: 'Ride scheduled',
           message:
-              'Pickup ${pickupLabel(later.pickupAt)}'
+              'Pickup ${pickupLabel(confirmedPickupAt(later, scheduleAt))}'
               '${later.bookedForName == null ? '' : ' for ${later.bookedForName}'}. '
               "We'll find your driver before then and let you know.",
         );
@@ -1296,18 +1340,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           title: Text(_pickup?.name ?? 'Set pickup'),
           onTap: () => _choose(_PinTarget.pickup),
         ),
+      // The fold reaches the foot of the upcoming-ride card too, so the
+      // sheet all the way down shows it whole, clear of the home indicator.
       KeyedSubtree(
         key: _foldKey,
-        child: sections.searchBar
-            ? HomeSearchPill(onTap: whereTo)
-            : ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.location_on, color: Colors.red.shade700),
-                title: const Text('Where to?'),
-                onTap: whereTo,
-              ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            sections.searchBar
+                ? HomeSearchPill(onTap: whereTo)
+                : ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.location_on, color: Colors.red.shade700),
+                    title: const Text('Where to?'),
+                    onTap: whereTo,
+                  ),
+            const UpcomingRideCard(),
+          ],
+        ),
       ),
-      const UpcomingRideCard(),
       // Under the search bar only with the sheet up: all the way down it
       // would peek out below it.
       if (recent.isNotEmpty) ...[
@@ -1337,6 +1389,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // An open route sheet follows the pickup and the current place.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncRouteEnds();
+    });
     ref.listenLive(liveRegionTables, _regionsChanged);
     // The ride card follows its ride: a ride that is cancelled, expires or
     // ends (on this device or anywhere else) leaves the home screen, and one
@@ -1381,6 +1437,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ? tollMarks(ai, [for (final p in _route?.points ?? const <LatLng>[]) (lat: p.latitude, lng: p.longitude)])
         : const <TollMark>[];
     final showPill = sections.addressBar && _drop == null && _pinTarget == _PinTarget.none;
+    // A phone on its side (844 × 390): the pickup box sits at the top, not
+    // above the pin, where the short map cut it off.
+    final pillAtTop = homePillAtTop(MediaQuery.sizeOf(context));
     // A destination chosen: the confirm step (Expo ride-confirm).
     final confirming = _drop != null;
     final layout = ConfirmLayout.fromSettings(blob);
@@ -1421,6 +1480,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Admin → Display → Map Layout, while the pickup is being set.
     final mapLayout = confirming ? const HomeMapLayout() : HomeMapLayout.fromSettings(blob);
     _refocusOnLayoutChange(mapLayout);
+    final satellite = ref.watch(mapSatelliteProvider);
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final autoFit = !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged);
+    final fitTop = confirming ? _confirmFitTop : 64.0;
+    final fitBottom = confirming ? _confirmFitBottom : 64.0;
     final map = Stack(children: [
       Positioned(
         // Map height: the map reaches above the top of the screen.
@@ -1428,7 +1492,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         left: 0,
         right: 0,
         bottom: 0,
-        child: MapFocusShift(
+        child: RepaintBoundary(
+          child: MapFocusShift(
           // Drop pin height / left-right: where the pin is kept.
           shift: Offset(mapLayout.pinShift.$1, mapLayout.pinShift.$2),
           child: MapDragPin(
@@ -1441,7 +1506,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               if (mounted && v != _pinMoving) setState(() => _pinMoving = v);
             },
             onDropped: _onPinDropped,
-            child: RideMap(
+            // Built again only when something it shows changes (the demo
+            // cars step on their own tick).
+            child: ValueListenableBuilder(
+              valueListenable: _carsTick,
+              builder: (_, _, _) => _homeMap([
+                _me, _pickup, _pinMoving, confirming, wide, _routeMoved, autoFit, fitTop, fitBottom, _drop?.point,
+                _route, satellite, _cars, serviceIndex, showPill, screenWidth, mapLayout.pillGap, ai, tolls.length,
+                _stops.length, for (final p in _stops) p.point,
+              ], () => RideMap(
               controller: _map,
               me: _me,
               pickup: _pickup?.point,
@@ -1451,30 +1524,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               focusPickup: !wide,
               pointZoom: homeStreetZoom,
               onGesture: confirming && !_routeMoved ? () => setState(() => _routeMoved = true) : null,
-              autoFit: !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged),
-              fitTop: confirming ? _confirmFitTop : 64,
-              fitBottom: confirming ? _confirmFitBottom : 64,
+              autoFit: autoFit,
+              fitTop: fitTop,
+              fitBottom: fitBottom,
               drop: _drop?.point,
               stops: [for (final p in _stops) p.point],
               route: _route?.points ?? const [],
               onTap: _onMapTap,
-              satellite: ref.watch(mapSatelliteProvider),
+              satellite: satellite,
               extraMarkers: [
                 for (final c in _cars) demoCarMarker(c, serviceIndex),
                 // The pickup box stands 5 px above the pickup pin and moves with
                 // it; it hides while the pin is lifted, until it lands.
-                if (showPill && _pickup != null && !_pinMoving)
+                if (showPill && _pickup != null && !_pinMoving && !pillAtTop)
                   labelAbovePin(
                     _pickup!.point,
                     PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup)),
-                    width: math.min(320, MediaQuery.sizeOf(context).width - 32),
+                    width: math.min(320, screenWidth - 32),
                     // Address bar height.
                     gap: mapLayout.pillGap,
                   ),
                 for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
               ],
+            )),
             ),
           ),
+        ),
         ),
       ),
       if (_pinTarget != _PinTarget.none)
@@ -1499,8 +1574,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
       // With no pickup on the map yet there is no pin to stand on: the box
-      // waits at the top until there is.
-      if (showPill && _pickup == null)
+      // waits at the top until there is. A phone on its side keeps it there
+      // too, beside the menu button: above the pin it ran off the top.
+      if (showPill && (_pickup == null || (pillAtTop && !_pinMoving)))
         Positioned(
           top: 16 + math.max(0, mapLayout.pillOffset),
           left: 72,
@@ -1603,7 +1679,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-      if (confirming)
+      // On a wide screen Back heads the panel instead (see below).
+      if (confirming && !wide)
         aboveSheet(
           (inset) => Positioned(
             left: 16 + layout.back.$1,
@@ -1806,7 +1883,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (wide) {
       return Scaffold(
         body: calculating(Row(children: [
-          SizedBox(width: 420, child: SafeArea(child: SingleChildScrollView(child: panel))),
+          SizedBox(
+            width: 420,
+            child: SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Back at the head of the fare panel, not adrift on the map.
+                  if (confirming)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                      child: Row(children: [
+                        IconButton(
+                          key: const ValueKey('confirm-back'),
+                          tooltip: 'Back',
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: _leaveConfirm,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'Choose your ride',
+                            style: Theme.of(context).textTheme.titleMedium,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ]),
+                    ),
+                  Expanded(child: SingleChildScrollView(child: panel)),
+                ],
+              ),
+            ),
+          ),
           const VerticalDivider(width: 1),
           Expanded(child: map),
         ])),
@@ -1830,6 +1939,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // however tall the screen (a fixed share of a short one cut it).
           final fold = !confirming && _foldHeight > 0 && box.maxHeight > 0 ? _foldHeight / box.maxHeight : 0.0;
           final least = math.min(0.6, math.max(0.22, fold));
+          // A phone on its side (844 × 390): the confirm sheet starts lower,
+          // so the map and the pickup above it keep their room.
+          final landscapePhone = box.maxWidth > box.maxHeight && box.maxHeight < 500;
+          final confirmMin = landscapePhone ? 0.4 : 0.5;
+          final confirmStart = landscapePhone ? 0.4 : 0.55;
           return MapSheetLayout(
           map: map,
           // Android's own buttons (three-button navigation, drawn over the
@@ -1839,9 +1953,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             key: _panelKey,
             child: navLift > 0 ? Padding(padding: EdgeInsets.only(bottom: navLift), child: panel) : panel,
           ),
-          min: (confirming ? 0.5 : least) + navLiftFraction,
+          min: (confirming ? confirmMin : least) + navLiftFraction,
           // The main screen's sheet starts fully down; the rider drags it up.
-          initial: (confirming ? 0.55 : least) + navLiftFraction,
+          initial: (confirming ? confirmStart : least) + navLiftFraction,
           hidden: _pinMoving,
           // navLift above already keeps the sheet's foot clear of the system bar.
           padBottom: false,

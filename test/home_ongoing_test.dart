@@ -17,6 +17,7 @@ import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/features/ride/home_screen.dart';
 import 'package:get_ride/src/features/ride/ride_tracking_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/ride_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -64,6 +65,36 @@ List<Override> _overrides(_FakeRides rides, Stream<RideRequest> rows) => [
 ];
 
 void main() {
+  testWidgets("the sheet's providers rebuild the screen around the map, not the map", (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(400, 860);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final rows = StreamController<RideRequest>.broadcast();
+    addTearDown(rows.close);
+    await tester.pumpWidget(
+      ProviderScope(overrides: _overrides(_FakeRides(), rows.stream), child: const MaterialApp(home: HomeScreen())),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+    final c = ProviderScope.containerOf(tester.element(find.byType(HomeScreen)));
+    var maps = 0, screens = 0;
+    debugOnRebuildDirtyWidget = (e, _) {
+      if (e.widget is RideMap) maps++;
+      if (e.widget is HomeScreen) screens++;
+    };
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+    c.invalidate(fareTariffsProvider);
+    c.invalidate(displaySettingsBlobProvider);
+    await tester.pump();
+    await tester.pump();
+    await tester.pump();
+    debugOnRebuildDirtyWidget = null;
+    expect(screens, greaterThan(0), reason: 'the refresh reached the screen');
+    expect(maps, 0);
+  });
+
   testWidgets('a request that expires while the rider is home leaves the card and says so', (tester) async {
     SharedPreferences.setMockInitialValues({});
     tester.view.physicalSize = const Size(1400, 1000);

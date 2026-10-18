@@ -97,6 +97,10 @@ Future<void> maybeAutoLaunchMeter(BuildContext context, WidgetRef ref) async {
   final session = ref.read(meterLaunchSessionProvider);
   if (session == null || ref.read(meterLaunchHandledProvider) == session) return;
   ref.read(meterLaunchHandledProvider.notifier).mark(session);
+  // Only the page the app launched on is a launch: started anywhere but
+  // home, a later visit to home (the Ride tab, Go to home, a link) is the
+  // person's own choice, and it stays.
+  if (!AppLaunch.startedHome) return;
   // Fresh answers for this sign-in, not ones cached from an earlier one.
   ref
     ..invalidate(ongoingRidesProvider)
@@ -111,8 +115,13 @@ Future<void> maybeAutoLaunchMeter(BuildContext context, WidgetRef ref) async {
     // The meter rule is only asked when no ride is in progress.
     final meter = busy ? false : await ref.read(meterAutoLaunchProvider.future).timeout(meterLaunchTimeout);
     // Nor whether a tablet's account is a partner's.
-    final partnerTablet =
-        !busy && !meter && tablet && await ref.read(partnerProvider.future).timeout(meterLaunchTimeout) != null;
+    // Only when this run launched on home: reaching home later (the Ride
+    // tab, Go to home, Book a ride) must stay on the rider's home.
+    final partnerTablet = !busy &&
+        !meter &&
+        tablet &&
+        AppLaunch.startedHome &&
+        await ref.read(partnerProvider.future).timeout(meterLaunchTimeout) != null;
     target = resolveLaunchTarget(
       riderRideInProgress: ongoing.rider,
       partnerTripId: ongoing.partnerTripId,

@@ -114,6 +114,14 @@ List<String> helpKeywords(String raw) {
   return out;
 }
 
+/// The field a [helpArticleProblem] is about: 'question', 'answer', or
+/// null for the rest (said under the form).
+String? helpProblemField(String problem) {
+  if (problem.startsWith('Enter the question') || problem.startsWith('The question')) return 'question';
+  if (problem.startsWith('Enter the answer') || problem.startsWith('The answer')) return 'answer';
+  return null;
+}
+
 /// What stops [a] being saved, or null when it can be (the database's own
 /// checks, said in words).
 String? helpArticleProblem(HelpArticle a) {

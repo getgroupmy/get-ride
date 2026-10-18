@@ -216,7 +216,7 @@ Widget _statusPicker({
         Wrap(spacing: 8, runSpacing: 8, children: [
           for (final c in choices)
             ChoiceChip(
-              label: Text(c),
+              label: Text(StatusChip.labelFor(c)),
               selected: c == current,
               onSelected: !enabled || c == current ? null : (_) => onPick(c),
             ),

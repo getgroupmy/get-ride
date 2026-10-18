@@ -5,7 +5,8 @@
 // so it refetches by itself on the next change — the change shows on every
 // open screen without a reload. A channel that reopens (or coming back to the
 // foreground while it is down) moves every revision, in case an update was
-// missed while the socket was down; while it stays open nothing is re-read.
+// missed while the socket was down; while it stays open only a slow, jittered
+// safety net (about every 20 minutes) re-reads everything.
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -131,12 +132,14 @@ class LiveTables extends Notifier<Map<String, int>> {
       db = client;
       // A channel that reopened, or every couple of minutes (and on coming
       // back to the foreground) while it is down: everything is read again.
-      // While it is open realtime delivers, so nothing is re-read -- each
-      // full read refetched every live provider on the phone.
+      // While it is open realtime delivers, so only a slow, jittered safety
+      // net re-reads (a channel can report healthy while missing changes)
+      // -- each full read refetches every live provider on the phone.
       backup = RealtimeBackup(
         () => changed([...liveSettingTables, ...liveOwnTables.keys]),
         every: const Duration(minutes: 2),
-        healthy: null,
+        healthy: realtimeBackupSafetyNetInterval,
+        healthyJitter: realtimeBackupSafetyNetJitter,
         onOpen: false,
         resumeWhileOpen: false,
       );
@@ -240,11 +243,13 @@ class AdminLiveTables extends Notifier<Map<String, int>> {
     try {
       final client = ref.read(supabaseProvider);
       db = client;
-      // Re-read only while the channel is down (or as it reopens).
+      // Re-read fast only while the channel is down (or as it reopens);
+      // while it reports healthy, only the slow jittered safety net.
       backup = RealtimeBackup(
         () => changed(liveAdminTables),
         every: const Duration(seconds: 30),
-        healthy: null,
+        healthy: realtimeBackupSafetyNetInterval,
+        healthyJitter: realtimeBackupSafetyNetJitter,
         onOpen: false,
         resumeWhileOpen: false,
       );

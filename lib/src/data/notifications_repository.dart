@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/inbox.dart';
 import '../providers.dart';
 import 'realtime_backup.dart';
+import 'realtime_hub.dart';
 
 /// The notifications page's rows (`user_notifications`, migration 0167):
 /// read live, marked read and removed through the owner-only functions.
@@ -34,7 +35,7 @@ class NotificationsRepository {
   /// the table answers an empty list.
   Stream<List<InboxItem>> watch(String userId) {
     final controller = StreamController<List<InboxItem>>();
-    RealtimeChannel? channel;
+    RealtimeListen? channel;
     RealtimeBackup? backup;
     controller.onListen = () {
       Future<void> reread() async {
@@ -47,21 +48,17 @@ class NotificationsRepository {
       }
 
       backup = RealtimeBackup(reread, healthy: realtimeBackupSlowHealthyInterval);
-      channel = _db
-          .channel('user_notifications_${userId}_${DateTime.now().microsecondsSinceEpoch}')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: _table,
-            filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'profile_id', value: userId),
-            callback: (_) => unawaited(reread()),
-          )
-          .subscribe(backup!.onStatus);
+      channel = RealtimeHub.of(_db).listen(
+        table: _table,
+        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'profile_id', value: userId),
+        onChange: (_) => unawaited(reread()),
+        onStatus: backup!.onStatus,
+      );
       unawaited(reread());
     };
     controller.onCancel = () async {
       backup?.dispose();
-      if (channel != null) await _db.removeChannel(channel!);
+      channel?.cancel();
       await controller.close();
     };
     return controller.stream;

@@ -120,6 +120,17 @@ String sessionKeyUseLabel(SessionKey k, DateTime now) {
   return 'Used ${k.uses}× · last $when';
 }
 
+/// A key's row subtitle: the test phone, what it may do, the gateway, when
+/// it ends (or its status) and its use, with the parts it lacks left out
+/// so no " · · " is left behind. [ends] formats the end time.
+String sessionKeySubtitle(SessionKey k, DateTime now, String Function(DateTime) ends) => [
+      k.testPhone.trim(),
+      k.scopes.map((s) => s.label).join(', '),
+      if (k.proxyLabel != null) 'Internet via ${k.proxyLabel}',
+      k.activeAt(now) ? 'Ends ${ends(k.expiresAt.toLocal())}' : sessionKeyStatus(k, now),
+      sessionKeyUseLabel(k, now),
+    ].where((p) => p.trim().isNotEmpty).join(' · ');
+
 /// The test number as the server wants it (`+60123456789`), or null.
 String? normalizeSessionPhone(String raw) {
   final t = raw.replaceAll(RegExp(r'[\s()-]'), '');

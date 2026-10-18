@@ -143,7 +143,7 @@ void main() {
       final admin = await pump(tester, [
         {'status': 'Pending Review'},
       ]);
-      await tester.tap(find.widgetWithText(ChoiceChip, 'approved'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Approved').last);
       await tester.pumpAndSettle();
       expect(find.text('Documents not fully approved'), findsOneWidget);
       expect(admin.patches, isEmpty);
@@ -153,14 +153,14 @@ void main() {
       final admin = await pump(tester, [
         {'status': 'Approved'},
       ]);
-      await tester.tap(find.widgetWithText(ChoiceChip, 'approved'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Approved').last);
       await tester.pumpAndSettle();
       expect(admin.patches.single, {'status': 'approved'});
     });
 
     testWidgets('other statuses are not checked', (tester) async {
       final admin = await pump(tester, const []);
-      await tester.tap(find.widgetWithText(ChoiceChip, 'blocked'));
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Blocked').last);
       await tester.pumpAndSettle();
       expect(admin.patches.single, {'status': 'blocked'});
     });

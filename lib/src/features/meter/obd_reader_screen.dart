@@ -15,6 +15,7 @@ import '../../core/obd_mfi.dart';
 import '../../data/ble.dart';
 import '../../data/obd/obd_mfi_transport.dart';
 import '../../data/obd/obd_session.dart';
+import '../../widgets/back_or_go_button.dart';
 import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
 import 'ev_capture_sheet.dart';
@@ -265,7 +266,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
   Widget build(BuildContext context) {
     final session = ref.watch(obdSessionProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('OBD-II reader')),
+      appBar: AppBar(leading: const BackOrGoButton(fallback: '/meter'), title: const Text('OBD-II reader')),
       floatingActionButton: kIsWeb
           ? null
           : FloatingActionButton.extended(
@@ -516,16 +517,19 @@ class _AddWifiReaderDialogState extends State<_AddWifiReaderDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _name,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(labelText: 'Name (optional)'),
             ),
             TextField(
               controller: _host,
               keyboardType: TextInputType.url,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(labelText: 'IP address', hintText: wifiAdapterHost),
             ),
             TextField(
               controller: _port,
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
               decoration: InputDecoration(labelText: 'Port', hintText: '$wifiAdapterPort'),
             ),
             if (_error != null) ...[

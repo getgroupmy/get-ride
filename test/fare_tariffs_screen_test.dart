@@ -155,6 +155,20 @@ void main() {
     expect(row['vehicle_service'], 'moto');
     await _drain(tester);
   });
+
+  testWidgets('a card with no country says so on the Country field, not in a line below', (tester) async {
+    final admin = await pump(tester, Brightness.light);
+    await tester.tap(find.text('Add tariff'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('tariff-km')), '0.8');
+    await tester.tap(find.byKey(const ValueKey('tariff-save')));
+    await tester.pumpAndSettle();
+    expect(admin.saved, isEmpty);
+    expect(find.text('Enter the country'), findsOneWidget, reason: 'under the field');
+    expect(find.byKey(const ValueKey('tariff-error')), findsNothing, reason: 'no detached line');
+    await tester.tap(find.text('Cancel'));
+    await _drain(tester);
+  });
 }
 
 /// Lets the "Tariff saved" snackbar's timer run out.

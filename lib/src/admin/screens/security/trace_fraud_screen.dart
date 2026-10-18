@@ -91,11 +91,14 @@ class _TraceFraudState extends ConsumerState<AdminTraceFraudScreen> {
           const SizedBox(height: 12),
           DetailTable({
             'Category': f.category.label,
-            'Severity': f.severity.name,
+            'Severity': StatusChip.labelFor(f.severity.name),
             if (suspects.isNotEmpty)
               'Suspects': suspects.map((s) => [s.name ?? 'Unknown', ?s.phone].join(' · ')).join('\n'),
             'Subjects': f.subjects.join('\n'),
-            for (final e in f.evidence.entries) e.key: e.value is List ? (e.value as List).join(', ') : e.value,
+            // "sharedDevices" reads "Shared devices"; a list, such as the
+            // device IDs, one per line.
+            for (final e in f.evidence.entries)
+              humanKey(e.key): e.value is List ? (e.value as List).join('\n') : e.value,
           }),
         ]),
       );

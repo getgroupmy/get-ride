@@ -21,6 +21,27 @@ Map<String, String?> identityPatch({required String country, required String idN
   return {'nationality': v(country), 'ic': v(normalizeIdNumber(idNumber)), 'address': v(address)};
 }
 
+/// Why [email] can't be saved on the profile, or null when it can (empty is
+/// fine: it is optional).
+String? profileEmailProblem(String email) {
+  final e = email.trim();
+  if (e.isEmpty) return null;
+  return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(e) ? null : 'Enter a valid email address';
+}
+
+/// Why [raw] can't be saved as the passport / ID number, or null when it
+/// can (empty is fine): letters, digits, spaces, `-` and `/`, 5 to 20 of
+/// them not counting the separators.
+String? idNumberProblem(String raw) {
+  final v = normalizeIdNumber(raw);
+  if (v.isEmpty) return null;
+  if (!RegExp(r'^[A-Z0-9 /-]+$').hasMatch(v)) return 'Use letters and numbers as printed on your ID';
+  final chars = v.replaceAll(RegExp(r'[\s/-]'), '').length;
+  if (chars < 5) return 'Too short for a passport or ID number';
+  if (chars > 20) return 'Too long for a passport or ID number';
+  return null;
+}
+
 /// Country names for the picker (the same `country-state-city` names Expo
 /// stored), filtered by [query], case-insensitively.
 List<String> searchCountries(String query) {

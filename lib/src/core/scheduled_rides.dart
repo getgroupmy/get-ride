@@ -177,6 +177,14 @@ String? pickupTimeProblem(DateTime at, DateTime now, ScheduledRidesConfig c) {
 }
 
 /// Whether cancelling at [now] is past the free window.
+/// The pickup time the booking confirmation states: the server's echo
+/// when its answer carried one, else the time the rider picked (an answer
+/// without `pickup_at` reads as 1 January 1970).
+DateTime confirmedPickupAt(ScheduledRide booked, DateTime? picked) {
+  final echoed = booked.pickupAt.millisecondsSinceEpoch > 0;
+  return echoed || picked == null ? booked.pickupAt : picked;
+}
+
 bool isLateCancel(DateTime pickupAt, DateTime now, ScheduledRidesConfig c) =>
     now.isAfter(pickupAt.subtract(Duration(minutes: c.freeCancelMinutes)));
 

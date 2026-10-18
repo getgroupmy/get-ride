@@ -229,7 +229,7 @@ void main() {
         vehicles: _FakeVehicles(existing: {..._ready, 'make': null, 'model': null}));
     await tester.pump();
     expect(find.text('WXY 1'), findsOneWidget);
-    expect(find.text('Incomplete: Make & model'), findsOneWidget);
+    expect(find.text('Draft · next: Make & model'), findsOneWidget);
     expect(find.text('Add vehicle'), findsOneWidget);
   });
 
@@ -241,7 +241,7 @@ void main() {
         vehicles: _FakeVehicles(existing: {..._ready, 'make': null, 'model': null}));
     await tester.pump();
     final plate = tester.getRect(find.text('WXY 1'));
-    final status = tester.getRect(find.text('Incomplete: Make & model'));
+    final status = tester.getRect(find.text('Draft · next: Make & model'));
     expect(status.top, greaterThan(plate.bottom), reason: 'below, so the plate keeps its width');
     expect(plate.height, lessThan(40), reason: 'one line, not a letter per line');
     expect(tester.takeException(), isNull);

@@ -47,7 +47,7 @@ void main() {
     await tester.pumpWidget(_app(const ReceiveQrScreen()));
     await tester.pumpAndSettle();
 
-    expect(find.text('AINA HASSAN'), findsOneWidget);
+    expect(find.text('Aina Hassan'), findsOneWidget);
     expect(tester.widget<QrImageView>(find.byKey(const ValueKey('wallet-qr'))), isNotNull);
     expect(find.text(walletAccountNumber(_me)), findsOneWidget);
 
@@ -73,7 +73,7 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(_app(const ReceiveQrScreen(coin: true)));
     await tester.pumpAndSettle();
-    expect(find.text('Scan to send GET.coin to AINA HASSAN'), findsOneWidget);
+    expect(find.text('Scan to send GET.coin to Aina Hassan'), findsOneWidget);
     expect(find.text(_me), findsOneWidget);
     expect(find.textContaining('GET.coin 300'), findsOneWidget);
     expect(find.byKey(const ValueKey('qr-amount')), findsNothing);

@@ -10,6 +10,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/image_share.dart';
 import '../../core/my_ride.dart';
 import '../../data/my_ride_repository.dart';
+import '../../providers.dart' show partnerProvider;
 import '../../widgets/common.dart';
 import '../../widgets/image_share.dart';
 import '../../widgets/back_or_go_button.dart';
@@ -147,6 +148,15 @@ class _MyRideCodeScreenState extends ConsumerState<MyRideCodeScreen> {
         onRetry: () => ref.invalidate(myRideCodeProvider),
         data: (fetched) {
           final c = _rotated ?? fetched;
+          // Riders can't add a driver who isn't approved yet: no code to show.
+          if (!(ref.watch(partnerProvider).value?.approved ?? true)) {
+            return const EmptyState(
+              key: ValueKey('my-ride-after-approval'),
+              icon: Icons.qr_code_2,
+              title: 'Available after approval',
+              message: 'Your My Ride code appears here once an admin approves your partner account.',
+            );
+          }
           if (c == null) {
             return const EmptyState(
               key: ValueKey('my-ride-unavailable'),

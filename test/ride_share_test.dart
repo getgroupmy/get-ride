@@ -147,7 +147,10 @@ void main() {
           rideRepositoryProvider.overrideWithValue(rides),
           geoServiceProvider.overrideWithValue(geo),
           rideSharerProvider.overrideWithValue((text) async => sent.add(text)),
-          sharedRideDialerProvider.overrideWithValue((n) async => dialled.add(n)),
+          sharedRideDialerProvider.overrideWithValue((n) async {
+            dialled.add(n);
+            return true;
+          }),
         ],
         child: const MaterialApp(home: SharedRideScreen(token: _token)),
       ));
@@ -155,6 +158,16 @@ void main() {
       await tester.pump();
       return rides;
     }
+
+    testWidgets('an expired link on a desktop: Open GET.ride is centred, not full width', (tester) async {
+      await pump(tester, null, size: const Size(1366, 768));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('shared-ride-missing')), findsOneWidget);
+      final button = tester.getRect(find.byKey(const ValueKey('shared-ride-open-app')));
+      expect(button.width, lessThanOrEqualTo(320));
+      expect((button.center.dx - 683).abs(), lessThan(2), reason: 'centred');
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('shows the ride, the driver and the car, read-only', (tester) async {
       await pump(tester, _view());

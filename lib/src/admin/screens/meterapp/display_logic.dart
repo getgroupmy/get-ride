@@ -64,7 +64,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   ('wallet', 'Wallet'),
   (myQrMenuItemId, 'My QR'), // GET.Referral / GET.me / GET.now (0161); this app's own
   ('trip-history', 'Trip history'),
-  (scheduledRidesMenuItemId, 'Scheduled Request'), // this app's own; the Expo menu skips it
+  (scheduledRidesMenuItemId, 'Scheduled rides'), // this app's own; the Expo menu skips it
   ('vehicle', 'Vehicle'),
   (vehicleInfoMenuItemId, 'Vehicle information'),
   ('documents', 'Documents'),
@@ -209,10 +209,13 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'serviceEnabled': true,
       'registrationEnabled': true,
       'signInLogo': true,
-      'userMockEnabled': true,
-      'partnerMockEnabled': true,
-      'riderTripSimEnabled': true,
-      'partnerDriveSimEnabled': true,
+      // Off unless stored on, as the apps read them (DemoSettings): a
+      // default of on showed mocks as running when they weren't, and a save
+      // or a reset would have switched them on for real.
+      'userMockEnabled': false,
+      'partnerMockEnabled': false,
+      'riderTripSimEnabled': false,
+      'partnerDriveSimEnabled': false,
       'showAiTollBooths': true,
       'showAiTollCharges': true,
       'connectedPopupEnabled': true,

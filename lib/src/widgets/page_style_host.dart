@@ -10,7 +10,6 @@ import 'package:flutter/material.dart';
 
 import '../core/page_inventory.g.dart';
 import '../core/page_styles.dart';
-import 'web_overlay_back.dart';
 
 /// The admin's values for everything below, and the page they are on.
 class PageStyleScope extends InheritedWidget {
@@ -266,11 +265,9 @@ Future<T?> showAppSheet<T>({
   final dim = s.setNumber('dim');
   final tallest = s.setNumber('maxHeight');
   final screen = MediaQuery.sizeOf(context).height;
-  // On the web the browser's Back closes it (web_overlay_back.dart).
-  final back = OverlayRouteBack();
-  return back.track(showModalBottomSheet<T>(
+  return showModalBottomSheet<T>(
     context: context,
-    builder: (_) => back.wrap(SurfaceFrame(id: surface, styles: s.styles, child: Builder(builder: builder))),
+    builder: (_) => SurfaceFrame(id: surface, styles: s.styles, child: Builder(builder: builder)),
     backgroundColor: s.setColor('background', b) ?? backgroundColor,
     barrierLabel: barrierLabel,
     elevation: elevation,
@@ -292,7 +289,7 @@ Future<T?> showAppSheet<T>({
     anchorPoint: anchorPoint,
     sheetAnimationStyle: sheetAnimationStyle,
     requestFocus: requestFocus,
-  ));
+  );
 }
 
 /// [showDialog] for modal [id] (listed in App Page Settings): its curve,
@@ -316,10 +313,9 @@ Future<T?> showAppDialog<T>({
   final surface = 'modal:$id';
   final s = SurfaceStyle.of(context, surface);
   final dim = s.setNumber('dim');
-  final back = OverlayRouteBack();
-  return back.track(showDialog<T>(
+  return showDialog<T>(
     context: context,
-    builder: (_) => back.wrap(SurfaceFrame(id: surface, styles: s.styles, child: Builder(builder: builder))),
+    builder: (_) => SurfaceFrame(id: surface, styles: s.styles, child: Builder(builder: builder)),
     barrierDismissible: barrierDismissible,
     barrierColor: dim == null ? barrierColor : Colors.black.withValues(alpha: dim / 100),
     barrierLabel: barrierLabel,
@@ -331,7 +327,7 @@ Future<T?> showAppDialog<T>({
     fullscreenDialog: fullscreenDialog,
     requestFocus: requestFocus,
     animationStyle: animationStyle,
-  ));
+  );
 }
 
 /// [showGeneralDialog] for modal [id] (listed in App Page Settings).
@@ -353,11 +349,10 @@ Future<T?> showAppGeneralDialog<T extends Object?>({
   final surface = 'modal:$id';
   final s = SurfaceStyle.of(context, surface);
   final dim = s.setNumber('dim');
-  final back = OverlayRouteBack();
-  return back.track(showGeneralDialog<T>(
+  return showGeneralDialog<T>(
     context: context,
     pageBuilder: (c, a, b) =>
-        back.wrap(SurfaceFrame(id: surface, styles: s.styles, child: Builder(builder: (c) => pageBuilder(c, a, b)))),
+        SurfaceFrame(id: surface, styles: s.styles, child: Builder(builder: (c) => pageBuilder(c, a, b))),
     barrierDismissible: barrierDismissible,
     barrierLabel: barrierLabel,
     barrierColor: dim == null ? barrierColor : Colors.black.withValues(alpha: dim / 100),
@@ -368,7 +363,7 @@ Future<T?> showAppGeneralDialog<T extends Object?>({
     routeSettings: routeSettings,
     anchorPoint: anchorPoint,
     requestFocus: requestFocus,
-  ));
+  );
 }
 
 /// [MaterialPageRoute] for page [id] (listed in App Page Settings).

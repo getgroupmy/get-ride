@@ -9,6 +9,7 @@ import '../../data/ble.dart';
 import '../../data/obd/obd_session.dart' show obdAdapterStoreProvider;
 import '../../data/printer/classic_bluetooth.dart';
 import '../../data/printer/printer_service.dart';
+import '../../widgets/back_or_go_button.dart';
 import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
 import 'classic_paired_sheet.dart';
@@ -196,7 +197,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Receipt printer')),
+      appBar: AppBar(leading: const BackOrGoButton(fallback: '/meter'), title: const Text('Receipt printer')),
       floatingActionButton: kIsWeb
           ? null
           : FloatingActionButton.extended(
@@ -318,15 +319,21 @@ class _AddWifiPrinterDialogState extends State<_AddWifiPrinterDialog> {
       title: const Text('Add Wi-Fi printer'),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name (optional)')),
+          TextField(
+            controller: _name,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(labelText: 'Name (optional)'),
+          ),
           TextField(
             controller: _host,
             keyboardType: TextInputType.url,
+            textInputAction: TextInputAction.next,
             decoration: const InputDecoration(labelText: 'IP address', hintText: '192.168.0.50'),
           ),
           TextField(
             controller: _port,
             keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
             decoration: const InputDecoration(labelText: 'Port', hintText: '$printerWifiPort'),
           ),
           const SizedBox(height: 16),
@@ -405,7 +412,11 @@ class _BluetoothPrinterDialogState extends State<_BluetoothPrinterDialog> {
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(widget.deviceId, style: Theme.of(context).textTheme.bodySmall),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name')),
+          TextField(
+            controller: _name,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(labelText: 'Name'),
+          ),
           const SizedBox(height: 16),
           const Text('Paper width'),
           const SizedBox(height: 8),

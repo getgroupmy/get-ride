@@ -1,7 +1,8 @@
-// Browser Back on the web (tester finding #48): the first Back closes the
-// open sheet, modal or side menu and stays on the page; closing one any
-// other way leaves no entry behind, so the next Back still leaves the page;
-// nested ones unwind one per Back; off the web nothing changes.
+// Browser Back on the web (tester findings #48, #106): the first Back
+// closes the open sheet, modal, menu, picker or side menu and stays on the
+// page; closing one any other way leaves no entry behind, so the next Back
+// still leaves the page; nested ones (a dropdown over a dialog) unwind one
+// per Back; off the web nothing changes.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -264,7 +265,9 @@ void main() {
       return b;
     }
 
-    Widget app(Widget Function(BuildContext) home) => MaterialApp(home: Builder(builder: home));
+    // The app's navigators carry the observer on the web (app.dart).
+    Widget app(Widget Function(BuildContext) home) =>
+        MaterialApp(navigatorObservers: [WebOverlayBackObserver()], home: Builder(builder: home));
 
     testWidgets('off the web the sheet adds no entry', (tester) async {
       final b = install();
@@ -386,6 +389,171 @@ void main() {
       expect(asked, 1);
       expect(b.marker, isNotNull);
       expect(b.stack.markers, hasLength(1));
+    });
+
+    testWidgets('a sheet opened through showAppSheet gets exactly one entry', (tester) async {
+      final b = install();
+      await tester.pumpWidget(
+        app(
+          (c) => TextButton(
+            onPressed: () => showAppSheet(id: 'test.sheet', context: c, builder: (_) => const Text('sheet')),
+            child: const Text('open'),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(b.entries, hasLength(3));
+      expect(b.stack.markers, hasLength(1));
+    });
+
+    testWidgets('a dropdown menu over a dialog: Back closes the menu, then the dialog', (tester) async {
+      final b = install();
+      await tester.pumpWidget(
+        app(
+          (c) => TextButton(
+            onPressed: () => showAppDialog(
+              id: 'test.dialog',
+              context: c,
+              builder: (_) => AlertDialog(
+                content: DropdownButton<int>(
+                  value: 1,
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('Level 1')),
+                    DropdownMenuItem(value: 2, child: Text('Level 2')),
+                  ],
+                  onChanged: (_) {},
+                ),
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Level 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Level 2'), findsOneWidget);
+      expect(b.entries, hasLength(4));
+
+      b.back();
+      await tester.pumpAndSettle();
+      expect(find.text('Level 2'), findsNothing);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      b.back();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(b.router, '/a');
+      b.back();
+      await tester.pumpAndSettle();
+      expect(b.router, '/prev');
+    });
+
+    testWidgets('a pick in the dropdown menu takes its entry off; the dialog keeps its own', (tester) async {
+      final b = install();
+      await tester.pumpWidget(
+        app(
+          (c) => TextButton(
+            onPressed: () => showAppDialog(
+              id: 'test.dialog',
+              context: c,
+              builder: (_) => AlertDialog(
+                content: DropdownButton<int>(
+                  value: 1,
+                  items: const [
+                    DropdownMenuItem(value: 1, child: Text('Level 1')),
+                    DropdownMenuItem(value: 2, child: Text('Level 2')),
+                  ],
+                  onChanged: (_) {},
+                ),
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Level 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Level 2').last);
+      await tester.pumpAndSettle();
+      expect(b.at, 2);
+      b.back();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(b.router, '/a');
+    });
+
+    testWidgets('a popup menu: Back closes it and stays', (tester) async {
+      final b = install();
+      await tester.pumpWidget(
+        app(
+          (c) => Scaffold(
+            body: PopupMenuButton<int>(
+              itemBuilder: (_) => const [PopupMenuItem(value: 1, child: Text('Edit'))],
+              child: const Text('more'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('more'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit'), findsOneWidget);
+      expect(b.marker, isNotNull);
+      b.back();
+      await tester.pumpAndSettle();
+      expect(find.text('Edit'), findsNothing);
+      expect(b.router, '/a');
+      b.back();
+      await tester.pumpAndSettle();
+      expect(b.router, '/prev');
+    });
+
+    testWidgets('a date picker: Back closes it; Cancel takes its entry off', (tester) async {
+      final b = install();
+      await tester.pumpWidget(
+        app(
+          (c) => TextButton(
+            onPressed: () => showDatePicker(context: c, firstDate: DateTime(2026), lastDate: DateTime(2027), initialDate: DateTime(2026, 10, 18)),
+            child: const Text('date'),
+          ),
+        ),
+      );
+      await tester.tap(find.text('date'));
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsOneWidget);
+      b.back();
+      await tester.pumpAndSettle();
+      expect(find.byType(DatePickerDialog), findsNothing);
+      expect(b.at, 1);
+
+      await tester.tap(find.text('date'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(b.at, 1);
+      expect(b.marker, isNull);
+      b.back();
+      await tester.pumpAndSettle();
+      expect(b.router, '/prev');
+    });
+
+    testWidgets('a full page pushed over the app gets no entry', (tester) async {
+      final b = install();
+      await tester.pumpWidget(
+        app(
+          (c) => TextButton(
+            onPressed: () => Navigator.of(c).push(AppPageRoute<void>(id: 'test.page', builder: (_) => const Text('page'))),
+            child: const Text('push'),
+          ),
+        ),
+      );
+      await tester.tap(find.text('push'));
+      await tester.pumpAndSettle();
+      expect(find.text('page'), findsOneWidget);
+      expect(b.entries, hasLength(2));
     });
 
     testWidgets('Back closes the side menu', (tester) async {
