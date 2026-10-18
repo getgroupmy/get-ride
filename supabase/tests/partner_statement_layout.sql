@@ -103,7 +103,12 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000217a1');
 select pg_temp.refused(
   $q$insert into storage.objects (bucket_id, name) values ('app-branding', 'statement-logo-x.png')$q$,
   'a driver uploading a logo');
+-- 0223: a read-only grant no longer writes; edit on the page that uses the bucket does.
 select pg_temp.as_user('00000000-0000-0000-0000-0000000217f1');
+select pg_temp.refused(
+  $q$insert into storage.objects (bucket_id, name) values ('app-branding', 'statement-logo-r.png')$q$,
+  'a read-only admin uploading a logo');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000217e1');
 insert into storage.objects (bucket_id, name) values ('app-branding', 'statement-logo-y.png');
 select pg_temp.check(
   exists (select 1 from storage.objects where bucket_id = 'app-branding' and name = 'statement-logo-y.png'),

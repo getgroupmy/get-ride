@@ -8,6 +8,8 @@ library;
 
 import 'dart:convert';
 
+import '../../../core/avatar.dart';
+
 /// Token a required-document / partner-type list uses for "every type".
 const allToken = '__ALL__';
 
@@ -154,46 +156,18 @@ Map<String, dynamic> idProfilePatch({
 
 // ---- Storage paths ---------------------------------------------------------
 
-/// Expo `edit-profile` `safeSeg`.
-String safeSegment(String s) =>
-    s.replaceAll(RegExp(r'[^A-Za-z0-9_+\-]'), '_').replaceAll(RegExp(r'_+'), '_');
+/// `ID_Image` bucket path: `<owner uid>/id_<ms>.<ext>`. The folder is the
+/// account's (since migration 0095 a non-admin may only write under their
+/// own uid) and the name carries nothing about the person: the bucket's
+/// files are reachable by URL, so a phone number or name in the path would
+/// be published with it.
+String idImagePath({required String owner, required String ext, DateTime? now}) =>
+    '$owner/id_${(now ?? DateTime.now()).millisecondsSinceEpoch}.$ext';
 
-String _ddmmyyyy(DateTime d) =>
-    '${d.day.toString().padLeft(2, '0')}${d.month.toString().padLeft(2, '0')}${d.year}';
-
-/// `ID_Image` bucket path: `<Country>/<phone>_<idNumber>_<ddmmyyyy>.<ext>`,
-/// or, with [owner] (an account's own upload), `<owner>/<Country>_<phone>_…`:
-/// since migration 0095 a non-admin may only write under a folder
-/// named after their own auth uid.
-String idImagePath({
-  required String country,
-  required String phone,
-  required String idNumber,
-  required String ext,
-  String? owner,
-  DateTime? now,
-}) {
-  final c = safeSegment(country.trim().isEmpty ? 'Unknown' : country.trim());
-  final file = '${safeSegment(phone)}_${safeSegment(idNumber)}_${_ddmmyyyy(now ?? DateTime.now())}.$ext';
-  return owner == null ? '$c/$file' : '$owner/${c}_$file';
-}
-
-/// `avatars` bucket path: `<Country>/<phone>_<name>_<ddmmyyyy>.<ext>`, or
-/// `<owner>/<Country>_<phone>_…` for an account's own upload (see
-/// [idImagePath]).
-String avatarPath({
-  required String country,
-  required String phone,
-  required String name,
-  required String ext,
-  String? owner,
-  DateTime? now,
-}) {
-  final n = safeSegment(name.trim().toLowerCase());
-  final c = safeSegment(country.trim().isEmpty ? 'Unknown' : country.trim());
-  final file = '${safeSegment(phone)}_${n.isEmpty ? 'user' : n}_${_ddmmyyyy(now ?? DateTime.now())}.$ext';
-  return owner == null ? '$c/$file' : '$owner/${c}_$file';
-}
+/// `avatars` bucket path: `<owner uid>/avatar_<ms>.<ext>`, as the profile
+/// photo screen names it ([avatarStoragePath]); see [idImagePath].
+String avatarPath({required String owner, required String ext, DateTime? now}) =>
+    avatarStoragePath(owner, ext, now ?? DateTime.now());
 
 /// `provider-documents` / `vehicle-documents` path:
 /// `<ownerId>/<docId>/<side>-<ms>.<ext>`.

@@ -268,8 +268,31 @@ class AuthRepository {
   /// through pin-login, which needs no password kept in step with the PIN,
   /// so this is always true now; the result stays for the screen's sake.
   /// [retryAfter] is no longer used.
-  Future<bool> changePin(String pin, {Duration retryAfter = const Duration(milliseconds: 800)}) async {
-    await _db.rpc('set_login_pin', params: {'p_pin': pin, 'p_device_id': await deviceIdentifier()});
+  ///
+  /// An account that already has a PIN proves it is theirs (migration
+  /// 0223): with [currentPin], or — after "Forgot PIN?" — by the SMS sign-in
+  /// that just happened, which the server sees on the session.
+  Future<bool> changePin(
+    String pin, {
+    String? currentPin,
+    Duration retryAfter = const Duration(milliseconds: 800),
+  }) async {
+    final Object? ok;
+    try {
+      ok = await _db.rpc('set_login_pin', params: {
+        'p_pin': pin,
+        'p_device_id': await deviceIdentifier(),
+        if (currentPin != null && currentPin.isNotEmpty) 'p_current_pin': currentPin,
+      });
+    } on PostgrestException catch (e) {
+      if (e.message.contains('PIN_PROOF_REQUIRED')) {
+        throw const AuthException('Confirm it\'s you first: enter your current PIN, or use "Forgot PIN?".');
+      }
+      final lock = parsePinLockSeconds(e.message);
+      if (lock != null) throw AuthException(pinLockMessage(lock));
+      rethrow;
+    }
+    if (ok == false) throw const AuthException('Incorrect current PIN. Please try again.');
     await retireDerivedPassword();
     return true;
   }

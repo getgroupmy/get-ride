@@ -16,6 +16,7 @@ class _FakeAuth implements AuthRepository {
   final bool synced;
   final checked = <String>[];
   final saved = <String>[];
+  final proofs = <String?>[];
   final otps = <(String, bool)>[];
   final codes = <String>[];
 
@@ -33,8 +34,9 @@ class _FakeAuth implements AuthRepository {
   }
 
   @override
-  Future<bool> changePin(String pin, {Duration retryAfter = Duration.zero}) async {
+  Future<bool> changePin(String pin, {String? currentPin, Duration retryAfter = Duration.zero}) async {
     saved.add(pin);
+    proofs.add(currentPin);
     return synced;
   }
 
@@ -127,6 +129,8 @@ void main() {
       await type(tester, '123456');
 
       expect(auth.saved, ['123456']);
+      // The server is shown the current PIN as proof (0223).
+      expect(auth.proofs, [_FakeAuth.current]);
       expect(find.text('New PIN Has Been Updated'), findsOneWidget);
       await tester.tap(find.text('Close'));
       await tester.pumpAndSettle();
@@ -183,6 +187,8 @@ void main() {
     await type(tester, _FakeAuth.current);
     await type(tester, _FakeAuth.current);
     expect(auth.saved, [_FakeAuth.current]);
+    // No PIN to show: the fresh SMS sign-in is the proof.
+    expect(auth.proofs, [null]);
     expect(auth.checked, isEmpty);
   });
 
