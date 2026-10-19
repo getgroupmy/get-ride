@@ -165,9 +165,15 @@ void main() {
   });
 
   group('welcome page', () {
-    Future<_Auth> pump(WidgetTester tester, {required bool offered, Brightness b = Brightness.light, Uri? fix}) async {
+    Future<_Auth> pump(
+      WidgetTester tester, {
+      required bool offered,
+      Brightness b = Brightness.light,
+      Uri? fix,
+      Size size = const Size(500, 1100),
+    }) async {
       tester.view.devicePixelRatio = 1;
-      tester.view.physicalSize = const Size(500, 1100);
+      tester.view.physicalSize = size;
       addTearDown(tester.view.reset);
       final auth = _Auth();
       await tester.pumpWidget(
@@ -199,6 +205,42 @@ void main() {
     }
 
     tearDown(() => signedOutElsewhere.value = false);
+
+    // Web round 36 (170): "Continue with phone" is the filled primary
+    // button (as Next and Sign in); a passkey is the outlined second way.
+    for (final b in Brightness.values) {
+      for (final size in const [Size(360, 640), Size(640, 360)]) {
+        for (final passkey in ['none', 'here', 'www']) {
+          testWidgets('170: Continue with phone is the primary filled button, passkey $passkey, '
+              '${size.width.toInt()}x${size.height.toInt()} at 1.3x (${b.name})', (tester) async {
+            tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+            addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+            await pump(
+              tester,
+              offered: passkey != 'none',
+              b: b,
+              size: size,
+              fix: passkey == 'www' ? Uri.parse('https://www.getride.my/login') : null,
+            );
+            final phone = find.byKey(const ValueKey('continue-with-phone'));
+            final button = tester.widget<FilledButton>(phone);
+            final scheme = Theme.of(tester.element(phone)).colorScheme;
+            final bg = (button.style?.backgroundColor?.resolve({}) ??
+                FilledButtonTheme.of(tester.element(phone)).style?.backgroundColor?.resolve({}) ??
+                scheme.primary);
+            expect(bg, scheme.primary, reason: 'the primary colour, not grey tonal or inverse');
+            if (passkey == 'here') {
+              expect(tester.widget(find.byKey(const ValueKey('passkey-sign-in'))), isA<OutlinedButton>());
+            }
+            if (passkey == 'www') {
+              expect(tester.widget(find.byKey(const ValueKey('passkey-open-www'))), isA<OutlinedButton>());
+            }
+            expect(find.byType(FilledButton), findsOneWidget, reason: 'one primary action on the page');
+            expect(tester.takeException(), isNull);
+          });
+        }
+      }
+    }
 
     testWidgets('passkeys off: only Continue with phone', (tester) async {
       await pump(tester, offered: false);
