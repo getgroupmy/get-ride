@@ -32,7 +32,7 @@ import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/push_logic.dart';
 import 'core/ride_bidding.dart' show BiddingRegion, pushPlaceAt;
 import 'data/app_icon_service.dart';
-import 'data/app_version_repository.dart' show recordAppVersion;
+import 'data/app_version_repository.dart' show appUpdateProvider, recordAppVersion;
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
 import 'data/branding_cache.dart';
@@ -578,6 +578,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   VoidCallback? _routeListener;
   BrandingSync? _branding;
   MessagingPresence? _presence;
+  late final Future<void> _updateChecked = ref.read(appUpdateProvider.future);
 
   @override
   void initState() {
@@ -610,9 +611,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     _subs.add(push.foreground.listen(_showForeground));
     _startNotificationsWarning(push);
     // Notifications are asked for at launch, as soon as the splash is gone.
-    Future<void>.delayed(splashRemaining(DateTime.now()) + const Duration(milliseconds: 600), () {
-      if (mounted) unawaited(push.askOnLaunch());
-    });
+    unawaited(
+      splashGone.future.then((_) => Future<void>.delayed(const Duration(milliseconds: 600))).then((_) {
+        if (mounted) unawaited(push.askOnLaunch());
+      }),
+    );
     // The notification that launched the app, opened once the router exists.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final route = push.takePendingRoute();
@@ -940,6 +943,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
           child: SplashGate(
             cached: widget.branding,
             live: _branding?.latest,
+            // Ready once the update check has answered (PERF-19), so a build
+            // the admin requires to update goes straight to its notice.
+            ready: _updateChecked,
             child: UpdateGate(
               child: PermissionGate(
                 location: () => router.routerDelegate.currentConfiguration.uri.path,

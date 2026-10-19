@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/fare_offer.dart';
 import '../../core/payment_types.dart';
+import '../../widgets/common.dart' show mutedTextColor;
 import 'confirm_parts.dart';
 
 /// What "Offer your fare" hands back: the fare and the choices made on it,
@@ -45,6 +46,7 @@ class OfferFareScreen extends StatefulWidget {
     this.optionsOn = false,
     this.payments = builtInPayments,
     this.onChanged,
+    this.fareDecimals = 2,
   });
 
   final double recommended;
@@ -71,6 +73,11 @@ class OfferFareScreen extends StatefulWidget {
   /// iOS edge swipe (or the system Back), which pops it with no value.
   final ValueChanged<OfferFareResult>? onChanged;
 
+  /// The decimals the region prices fares in (0 where fares are whole,
+  /// [RegionPricing.fareDecimals]): the field takes and starts with the
+  /// fare to the cent, as the note under it and the confirm card show it.
+  final int fareDecimals;
+
   @override
   State<OfferFareScreen> createState() => _OfferFareScreenState();
 }
@@ -81,8 +88,25 @@ class OfferFareScreen extends StatefulWidget {
     ? (ground: const Color(0xFF121212), card: const Color(0xFF1F1F1F))
     : (ground: const Color(0xFFF3F2EF), card: Colors.white);
 
+/// [fare] as the "Offer your fare" field holds it: whole where the region's
+/// fares are ([decimals] 0), else to the cent ("68.05"), without ".00" on a
+/// whole amount ("68") so it types over easily. Never loses the cents the
+/// note under it and the confirm card show.
+String offerFareFieldText(double fare, int decimals) {
+  if (decimals <= 0) return fare.round().toString();
+  final cents = (fare * 100).round();
+  return cents % 100 == 0 ? (cents ~/ 100).toString() : (cents / 100).toStringAsFixed(2);
+}
+
+/// Digits, and a point with up to two decimals where fares have cents; five
+/// digits before the point at most.
+TextInputFormatter offerFareFormatter(int decimals) {
+  final ok = decimals <= 0 ? RegExp(r'^\d{0,5}$') : RegExp(r'^\d{0,5}(\.\d{0,2})?$');
+  return TextInputFormatter.withFunction((old, next) => ok.hasMatch(next.text) ? next : old);
+}
+
 class _OfferFareScreenState extends State<OfferFareScreen> {
-  late final _fare = TextEditingController(text: widget.current.round().toString());
+  late final _fare = TextEditingController(text: _text(widget.current));
   late String _payment = widget.payment;
   late bool _autoAccept = widget.autoAccept;
   late String _entrance = widget.entrance;
@@ -92,11 +116,12 @@ class _OfferFareScreenState extends State<OfferFareScreen> {
     super.didUpdateWidget(old);
     // The route changed under the page (a stop added, removed or moved): the
     // new fare replaces the old one unless the rider typed their own.
-    final untouched = _fare.text == old.current.round().toString();
-    if (untouched && widget.current.round() != old.current.round()) {
-      _fare.text = widget.current.round().toString();
-    }
+    final untouched = _fare.text == offerFareFieldText(old.current, old.fareDecimals);
+    final next = _text(widget.current);
+    if (untouched && next != _fare.text) _fare.text = next;
   }
+
+  String _text(double fare) => offerFareFieldText(fare, widget.fareDecimals);
 
   @override
   void initState() {
@@ -145,8 +170,9 @@ class _OfferFareScreenState extends State<OfferFareScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final ink = t.colorScheme.onSurface;
-    final muted = t.colorScheme.onSurfaceVariant;
     final colours = _offerColours(context);
+    // Checked against the white (charcoal) card it sits on.
+    final muted = mutedTextColor(t, background: colours.card);
     final problem = _problem;
     final shown = _typed ?? widget.recommended;
     final big = t.textTheme.displayMedium?.copyWith(fontSize: 64, fontWeight: FontWeight.w800, height: 1.1);
@@ -199,11 +225,8 @@ class _OfferFareScreenState extends State<OfferFareScreen> {
                           key: const ValueKey('offer-fare-field'),
                           controller: _fare,
                           autofocus: true,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(5),
-                          ],
+                          keyboardType: TextInputType.numberWithOptions(decimal: widget.fareDecimals > 0),
+                          inputFormatters: [offerFareFormatter(widget.fareDecimals)],
                           style: big?.copyWith(color: ink),
                           cursorColor: ink,
                           decoration: const InputDecoration(

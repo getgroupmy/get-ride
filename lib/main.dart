@@ -29,8 +29,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // The installed version, for the update gate and the launch record.
   await InstalledApp.load();
-  // The splash is held for what is LEFT of five seconds from here, not five
-  // seconds from the first frame, so a slow start is not made slower still.
+  // The splash's least and most hold are counted from here, not from the
+  // first frame, so a slow start is not made slower still.
   markSplashStart();
   // An invite link (getride.my/?ref=CODE) carries the friend's code; it is
   // offered on the set-PIN step of a new account.

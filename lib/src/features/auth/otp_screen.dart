@@ -15,6 +15,10 @@ import '../../widgets/common.dart';
 /// [next] is `set-pin` (new user / forgot PIN → choose a PIN), `resync`
 /// (PIN was right but the Auth password drifted → re-derive it from [pin]) or
 /// `unlock` (the PIN is locked → sign in by SMS, keeping the PIN).
+/// Whether the sign-in pages are short with the keyboard up (a phone on its
+/// side): under 300 between the top and the keyboard.
+bool otpShortScreen(MediaQueryData mq) => mq.size.height - mq.viewInsets.bottom < 300;
+
 class OtpScreen extends ConsumerStatefulWidget {
   const OtpScreen({super.key, required this.phone, required this.next, this.pin, this.createUser = false});
   final String phone;
@@ -102,21 +106,32 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    // Short over the keyboard (a phone on its side): the title moves into a
+    // slimmer back bar, so it is not scrolled away under it as the code
+    // field comes into view.
+    final mq = MediaQuery.of(context);
+    final short = otpShortScreen(mq);
+    const title = 'Verify your number';
     return Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(
+        toolbarHeight: short ? 44 : null,
+        title: short ? Text(title, key: const ValueKey('otp-title'), style: t.textTheme.titleLarge) : null,
+      ),
       body: SingleChildScrollView(
         child: ResponsiveCenter(
           maxWidth: 440,
-          padding: const EdgeInsets.all(24),
+          padding: short ? const EdgeInsets.fromLTRB(24, 4, 24, 16) : const EdgeInsets.all(24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('Verify your number', style: t.textTheme.headlineSmall),
-            const SizedBox(height: 4),
+            if (!short) ...[
+              Text(title, key: const ValueKey('otp-title'), style: t.textTheme.headlineSmall),
+              const SizedBox(height: 4),
+            ],
             Text(
               widget.phone.isEmpty
                   ? 'Enter the 6-digit code sent by SMS to your number'
                   : 'Enter the 6-digit code sent by SMS to ${widget.phone}',
             ),
-            const SizedBox(height: 32),
+            SizedBox(height: short ? 12 : 32),
             CodeField(controller: _code, length: 6, onCompleted: _verify),
             const SizedBox(height: 24),
             // Usable once all six digits are in.

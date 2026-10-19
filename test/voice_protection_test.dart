@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/admin/widgets/trip_audio_panel.dart';
 import 'package:get_ride/src/core/voice_protection.dart';
 import 'package:get_ride/src/data/voice_protection_repository.dart';
@@ -311,6 +312,36 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<SwitchListTile>(tile).value, isTrue);
       expect(device.prefs[_me], isTrue);
+    });
+
+    testWidgets("Settings' card is the switch, one line and Learn more to the Safety page", (tester) async {
+      final router = GoRouter(
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (_, _) => const Scaffold(body: SingleChildScrollView(child: VoiceProtectionCard(compact: true))),
+          ),
+          GoRoute(path: VoiceProtectionCard.safetyPage, builder: (_, _) => const Scaffold(body: Text('safety page'))),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentUserIdProvider.overrideWithValue(_me),
+            voiceDeviceStoreProvider.overrideWithValue(_FakeDevice()),
+            voiceProtectionRepositoryProvider.overrideWithValue(_FakeRepo()),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('voice-protection-switch')), findsOneWidget);
+      expect(find.byKey(const ValueKey('voice-privacy-link')), findsNothing, reason: 'on the Safety page');
+      expect(find.textContaining('By turning this on'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('voice-protection-learn-more')));
+      await tester.pumpAndSettle();
+      expect(find.text('safety page'), findsOneWidget);
     });
 
     testWidgets('an agent requests a recording and sees each state', (tester) async {

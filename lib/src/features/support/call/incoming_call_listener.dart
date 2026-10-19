@@ -10,6 +10,7 @@ import '../../../app.dart' show routerProvider;
 import '../../../core/support_call.dart';
 import '../../../data/support_call_repository.dart';
 import '../../../providers.dart';
+import 'call_session.dart' show callsJoinedHereProvider;
 import 'mic_gate.dart';
 
 /// Rings on any screen (Expo `SupportCallListener`, which only ever rang
@@ -114,6 +115,7 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
     });
     _armRingOut();
     if (ok) {
+      ref.read(callsJoinedHereProvider).add(c.id);
       unawaited(ref.read(routerProvider).push('/call/${c.id}'));
     } else {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
