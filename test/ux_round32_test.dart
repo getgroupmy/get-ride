@@ -1,6 +1,8 @@
 // Web UX round 32 (161) at 412x915 and 1.3x text, light and dark: the
 // driver's Ride request sheet sets its title on a solid band above the map,
-// so it never lands on the tiles or the pickup-distance chip.
+// so it never lands on the tiles or the pickup-distance chip. Round 33
+// (166) at 360x640: the map is tall enough, and fitted with room for the
+// chips, that the car, pickup and drop-off and their chips never stack.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -81,6 +83,56 @@ void main() {
       final chip = find.byKey(const ValueKey('request-chip-pickup'));
       if (chip.evaluate().isNotEmpty) {
         expect(tester.getRect(chip).overlaps(title), isFalse, reason: 'the pickup chip never under the title');
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  for (final dark in [false, true]) {
+    testWidgets('166: at 360x640 the car, pins and chips stand apart (${dark ? 'dark' : 'light'})', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [rideRepositoryProvider.overrideWithValue(_Rides())],
+          child: MaterialApp(
+            theme: dark ? ThemeData.dark() : ThemeData.light(),
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: RideRequestSheet(
+                  request: _open(),
+                  shown: Duration.zero,
+                  now: DateTime.now(),
+                  me: const LatLng(3.165, 101.72),
+                  awayKm: 1.2,
+                  onAccept: () async {},
+                  onSkip: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      final map = tester.getRect(find.byType(RideMap));
+      expect(map.height, greaterThanOrEqualTo(260), reason: 'not the 200 that stacked the pins');
+      final car = tester.getRect(find.ancestor(of: find.byIcon(Icons.local_taxi), matching: find.byType(CircleAvatar)));
+      final pickup = tester.getRect(find.byKey(const ValueKey('map-dot-pickup')));
+      final drop = tester.getRect(find.byKey(const ValueKey('map-dot-drop')));
+      final pickupChip = tester.getRect(find.byKey(const ValueKey('request-chip-pickup')));
+      final tripChip = tester.getRect(find.byKey(const ValueKey('request-chip-trip')));
+      final all = {'car': car, 'pickup': pickup, 'drop': drop, 'pickup chip': pickupChip, 'trip chip': tripChip};
+      for (final a in all.entries) {
+        expect(map.contains(a.value.topLeft) && map.contains(a.value.bottomRight - const Offset(1, 1)), isTrue,
+            reason: '${a.key} inside the map');
+        for (final b in all.entries) {
+          if (a.key.compareTo(b.key) >= 0) continue;
+          expect(a.value.deflate(1).overlaps(b.value.deflate(1)), isFalse, reason: '${a.key} clear of ${b.key}');
+        }
       }
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

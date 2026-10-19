@@ -244,8 +244,12 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           dotPins: true,
           route: _trip,
           framed: [?widget.me, ?a, ?b],
-          // Room for the chips standing over the pins.
-          fitTop: 80,
+          // Room for the chips standing over the pins (the pickup's two
+          // lines sit some 90 above its point), and little below: the pins
+          // stand on their points, so on a short map the three spread out
+          // instead of stacking.
+          fitTop: 96,
+          fitBottom: 28,
           extraMarkers: [
             if (a != null && widget.awayKm != null)
               _chip(
@@ -405,7 +409,12 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: h * 0.94),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SizedBox(height: (h * 0.34).clamp(180.0, 320.0), child: _cachedMap(context)),
+          // The title band, then a map never shorter than 260: at 200 on a
+          // 360x640 phone the car, pickup and drop-off sat on each other.
+          SizedBox(
+            height: (h * 0.42).clamp(260.0, 340.0) + MediaQuery.textScalerOf(context).scale(56),
+            child: _cachedMap(context),
+          ),
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(12, 12, 16, 0),

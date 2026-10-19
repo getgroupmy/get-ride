@@ -286,6 +286,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     );
     final r = widget.ride;
     final route = _target == null ? null : _route;
+    final narrow = MediaQuery.sizeOf(context).width < etaPillNarrowWidth;
     final driver = _driver;
     // Where the passenger is waiting, as their phone shares it (Settings →
     // Show location to your driver), for the driver on the way.
@@ -372,7 +373,10 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
           Positioned(
             top: 12,
             left: 12 + MediaQuery.paddingOf(context).left,
-            right: 12 + MediaQuery.paddingOf(context).right,
+            // On a narrow phone the pill stays left of the map buttons'
+            // column (48 wide, 12 in), which can climb to the top when the
+            // sheet is up.
+            right: 12 + MediaQuery.paddingOf(context).right + (narrow ? 56 : 0),
             child: Center(
               child: Material(
                 key: const ValueKey('eta-chip'),
@@ -393,6 +397,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
                             km: eta.km,
                             now: _now,
                             toPickup: r.status == RideStatus.accepted,
+                            withClock: !narrow,
                           ),
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),

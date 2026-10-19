@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart' show FlutterMap, MarkerLayer;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -417,6 +418,50 @@ void main() {
         expect(find.text('All drivers verified').hitTestable(), findsOneWidget);
         final slot = tester.widget<Visibility>(find.byKey(const ValueKey('search-header-slot')));
         expect(slot.maintainSemantics, isFalse, reason: 'nor read out twice');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final dark in [false, true]) {
+      testWidgets('165: at 360x640 "Choose a driver" covers the whole map, its title on a near-solid band '
+          '(${dark ? 'dark' : 'light'})', (tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final rows = StreamController<RideRequest>();
+        addTearDown(rows.close);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              rideRepositoryProvider.overrideWithValue(_FakeRides()),
+              rideStreamProvider.overrideWith((ref, id) => rows.stream),
+            ],
+            child: MaterialApp(
+              theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+              home: const RideTrackingScreen(requestId: 'r1'),
+            ),
+          ),
+        );
+        rows.add(ride(offered: 25, partner: _other, partnerName: 'Ali'));
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        final overlay = tester.getRect(find.byType(ChooseDriverOverlay));
+        final map = tester.getRect(find.byType(FlutterMap));
+        expect(overlay.contains(map.topLeft) && overlay.contains(map.bottomRight - const Offset(1, 1)), isTrue,
+            reason: 'over the whole map, markers and all');
+        // Painted after the map: the overlay is a later child of the same Stack.
+        final stack = tester.widget<Stack>(find.ancestor(of: find.byType(ChooseDriverOverlay), matching: find.byType(Stack)).first);
+        expect(stack.children.last, isA<Positioned>());
+        final header = find.byKey(const ValueKey('choose-driver-header'));
+        expect(tester.widget<ColoredBox>(header).color.a, greaterThanOrEqualTo(0.9));
+        expect(find.descendant(of: header, matching: find.text('All drivers verified')), findsOneWidget);
+        expect(find.descendant(of: header, matching: find.text('Choose a driver')), findsOneWidget);
+        // Topmost under "All drivers verified" is the overlay, not a pin.
+        final at = tester.getCenter(find.descendant(of: header, matching: find.text('All drivers verified')));
+        final hits = tester.hitTestOnBinding(at).path.map((e) => e.target).whereType<RenderBox>();
+        final markerLayer = find.byType(MarkerLayer).evaluate().map((e) => e.renderObject).toSet();
+        expect(hits.any(markerLayer.contains), isFalse);
         expect(tester.takeException(), isNull);
       });
     }

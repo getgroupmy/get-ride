@@ -817,54 +817,74 @@ class ChooseDriverOverlay extends StatelessWidget {
         duration: const Duration(milliseconds: 250),
         child: ColoredBox(
           color: Colors.black.withValues(alpha: 0.62),
-          child: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Material(
-                      color: const Color(0xFFFCE4E6),
-                      shape: const StadiumBorder(),
-                      child: InkWell(
-                        key: const ValueKey('overlay-cancel-request'),
-                        customBorder: const StadiumBorder(),
-                        onTap: onCancel,
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.close, color: Colors.black87),
-                              SizedBox(width: 10),
-                              Flexible(
-                                child: Text(
-                                  'Cancel request',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w500),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // The title block on a near-solid band: through the 62% scrim
+              // alone a pin on the map below read as if it sat over "All
+              // drivers verified".
+              ColoredBox(
+                key: const ValueKey('choose-driver-header'),
+                color: Colors.black.withValues(alpha: 0.94),
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Material(
+                            color: const Color(0xFFFCE4E6),
+                            shape: const StadiumBorder(),
+                            child: InkWell(
+                              key: const ValueKey('overlay-cancel-request'),
+                              customBorder: const StadiumBorder(),
+                              onTap: onCancel,
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.close, color: Colors.black87),
+                                    SizedBox(width: 10),
+                                    Flexible(
+                                      child: Text(
+                                        'Cancel request',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(color: Colors.black87, fontSize: 17, fontWeight: FontWeight.w500),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Choose a driver',
+                          style: t.textTheme.headlineMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        const DriversVerified(color: Colors.white),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Choose a driver',
-                    style: t.textTheme.headlineMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
-                  const DriversVerified(color: Colors.white),
-                  const SizedBox(height: 16),
-                  OfferStack(offers: offers),
-                ],
+                ),
               ),
-            ),
+              Expanded(
+                child: SafeArea(
+                  top: false,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: OfferStack(offers: offers),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
