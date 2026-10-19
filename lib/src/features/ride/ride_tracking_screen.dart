@@ -61,13 +61,20 @@ import '../my_ride/my_ride_parts.dart' show MyRideSearchBanner;
 import 'rider_handover_card.dart';
 import '../../widgets/page_style_host.dart';
 
-final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>(
-  (ref, id) => ref.watch(rideRepositoryProvider).watch(id),
-);
+final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>((ref, id) {
+  // A demo rider's request lives on the phone alone: it is never asked of
+  // the server.
+  if (isDemoRideId(id)) {
+    final ride = ref.watch(demoRidesProvider.select((m) => m[id]));
+    return ride == null ? Stream.error(StateError('This demo request has ended.')) : Stream.value(ride);
+  }
+  return ref.watch(rideRepositoryProvider).watch(id);
+});
 
 /// The ride's trip code, for its rider (migration 0152); null when there is
 /// none to read.
 final tripCodeProvider = FutureProvider.autoDispose.family<String?, String>((ref, id) async {
+  if (isDemoRideId(id)) return null;
   try {
     return await ref.watch(rideRepositoryProvider).tripCode(id);
   } catch (_) {
@@ -153,7 +160,7 @@ class RideTrackingScreen extends ConsumerWidget {
         title: const Text('Your ride'),
         leading: BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/')),
         actions: [
-          if (ride.value?.status.isOngoing ?? false)
+          if ((ride.value?.status.isOngoing ?? false) && !isDemoRideId(requestId))
             BusyIconButton(
               key: const ValueKey('share-ride'),
               tooltip: 'Share ride',
@@ -241,6 +248,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   /// Admin → Demo → mock driver offers, while the request is open.
   DemoOfferTimeline? _demo;
 
+  /// A demo rider's request, on this phone alone: nothing about it goes to
+  /// the server.
+  bool get _isDemo => isDemoRideId(widget.ride.id);
+
+  DemoRides get _demoRides => ref.read(demoRidesProvider.notifier);
+
   /// Drivers who have looked at the request (the bar over the sheet), and
   /// when they were last asked about.
   RequestViewers _viewers = RequestViewers.none;
@@ -279,7 +292,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   /// The driver's request to cancel, as a popup the passenger answers.
   void _askAboutCancel() {
-    if (!mounted) return;
+    if (!mounted || _isDemo) return;
     final r = widget.ride;
     final asking = r.cancelRequestedAt != null && r.cancelRequestedBy == 'partner' && r.status.isOngoing;
     final repo = ref.read(rideRepositoryProvider);
@@ -335,15 +348,13 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       _tick?.cancel();
       _tick = null;
     }
-    // Demo driver offers only on a demo request that takes offers: never
+    // Demo driver offers only on a demo rider's own demo request: never
     // mixed in with a real request's offers, where taking one would have
     // had to withdraw the real request.
-    final demo = open &&
-        widget.ride.offerMe &&
-        widget.ride.id.startsWith('demo') &&
-        ref.read(demoSettingsProvider).riderOffers;
+    final demo = open && _isDemo && ref.read(demoRiderProvider);
     if (demo && _demo == null) {
-      _demo = DemoOfferTimeline(widget.ride.fare ?? 0, clock: ref.read(searchClockProvider))
+      _demo = DemoOfferTimeline(widget.ride.fare ?? 0,
+          clock: ref.read(searchClockProvider), bidding: widget.ride.offerMe)
         ..addListener(() {
           if (mounted) setState(() {});
         });
@@ -429,7 +440,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final elapsed = searchElapsed(r.createdAt, _now);
     if (!_expiryShown && elapsed >= AppConfig.requestExpiry) {
       _expiryShown = true;
-      unawaited(ref.read(rideRepositoryProvider).expireStaleOpen().catchError((_) {}));
+      if (_isDemo) {
+        _demoRides.expire(r.id);
+      } else {
+        unawaited(ref.read(rideRepositoryProvider).expireStaleOpen().catchError((_) {}));
+      }
       unawaited(_showExpired());
       return;
     }
@@ -447,7 +462,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     if (next <= current) return;
     var raised = false;
     await _run(() async {
-      final updated = await ref.read(rideRepositoryProvider).raiseFare(r.id, next);
+      final updated = await _raiseFare(r.id, next);
       raised = updated != null;
       if (updated == null && mounted) showInfo(context, 'This request is no longer open.');
     });
@@ -458,6 +473,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     });
     showInfo(context, 'You raised the fare to ${r.fareText(next)}. Searching again.');
   }
+
+  /// A raise: on the server, or on the phone for a demo request.
+  Future<RideRequest?> _raiseFare(String id, double fare) async =>
+      isDemoRideId(id) ? _demoRides.raiseFare(id, fare) : ref.read(rideRepositoryProvider).raiseFare(id, fare);
 
   bool _closed = false;
 
@@ -533,7 +552,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   }
 
   void _maybeClaimReward() {
-    if (_rewardClaimed || widget.ride.status != RideStatus.completed) return;
+    if (_rewardClaimed || widget.ride.status != RideStatus.completed || _isDemo) return;
     _rewardClaimed = true;
     final repo = ref.read(rideRepositoryProvider);
     final ride = widget.ride;
@@ -578,7 +597,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final messenger = ScaffoldMessenger.of(context);
     var raised = false;
     await _run(() async {
-      final updated = await ref.read(rideRepositoryProvider).raiseFare(r.id, next);
+      final updated = await _raiseFare(r.id, next);
       raised = updated != null;
       if (updated == null && mounted) showInfo(context, 'This request is no longer open.');
     });
@@ -602,6 +621,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   }
 
   Future<void> _acceptOffer(RideOffer o) async {
+    if (_isDemo) return;
     await _run(() async {
       final won = await ref
           .read(rideRepositoryProvider)
@@ -610,8 +630,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     });
   }
 
-  Future<void> _declineOffer(RideOffer o) =>
-      _run(() => ref.read(rideRepositoryProvider).declineOffer(widget.ride.id, partnerId: o.partnerId));
+  Future<void> _declineOffer(RideOffer o) async {
+    if (_isDemo) return;
+    await _run(() => ref.read(rideRepositoryProvider).declineOffer(widget.ride.id, partnerId: o.partnerId));
+  }
 
   Future<void> _run(Future<void> Function() action) async {
     setState(() => _busy = true);
@@ -659,6 +681,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     if (r.status == RideStatus.open) return _cancelSearch();
     final reason = await showAppDialog<String>(id: 'ride-tracking.cancel', context: context, builder: (_) => _CancelReasonDialog(status: r.status));
     if (reason == null) return;
+    if (_isDemo) return _demoRides.cancel(r.id, reason: reason);
     await _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: reason, by: 'rider'));
   }
 
@@ -670,7 +693,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final messenger = ScaffoldMessenger.of(context);
     var done = false;
     await _run(() async {
-      await ref.read(rideRepositoryProvider).cancel(r, reason: choice.reason, by: 'rider');
+      if (_isDemo) {
+        _demoRides.cancel(r.id, reason: choice.reason);
+      } else {
+        await ref.read(rideRepositoryProvider).cancel(r, reason: choice.reason, by: 'rider');
+      }
       done = true;
     });
     if (!done || !mounted) return;
@@ -847,10 +874,13 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               onChanged: (on) {
                 final n = ref.read(autoAcceptProvider.notifier);
                 on ? n.set(r.id, current) : n.clear(r.id);
-                // Kept on the request too, so it holds with the app closed.
-                unawaited(
-                  ref.read(rideRepositoryProvider).setAutoAccept(r.id, on ? current : null).catchError((_) {}),
-                );
+                // Kept on the request too, so it holds with the app closed
+                // (not a demo request, which the server never sees).
+                if (!_isDemo) {
+                  unawaited(
+                    ref.read(rideRepositoryProvider).setAutoAccept(r.id, on ? current : null).catchError((_) {}),
+                  );
+                }
                 final offer = _visibleOffer;
                 if (on && shouldAutoAccept(limit: current, offer: offer)) _acceptOffer(offer!);
               },
@@ -988,8 +1018,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           ] else ...[
           const SizedBox(height: 16),
           // The driver asking to hand the trip over (0199), or the new one coming.
-          RiderHandoverCard(ride: r),
-          RiderHandoverPrompt(ride: r, pushes: PushService.instance?.received),
+          if (!_isDemo) ...[
+            RiderHandoverCard(ride: r),
+            RiderHandoverPrompt(ride: r, pushes: PushService.instance?.received),
+          ],
           if (r.hasDriver)
             Card(
               child: Column(
@@ -1013,7 +1045,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   // No Message or Call once the ride is cancelled.
                   // The sheet never rests lower than this row: on a phone on
                   // its side or at large text it showed under "Cancel ride".
-                  if (r.status != RideStatus.cancelled && (r.partnerPhone != null || rideChatAvailable(r)))
+                  if (!_isDemo && r.status != RideStatus.cancelled && (r.partnerPhone != null || rideChatAvailable(r)))
                     MapSheetRestLine(
                       child: OverflowBar(
                       children: [
@@ -1092,9 +1124,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           ),
           const SizedBox(height: 12),
           // Trip safety (Phase D4): "Are you in the car?" / "still on your trip?".
-          if (r.status == RideStatus.onTrip) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
-          if (r.status == RideStatus.completed) RideRatingCard(ride: r),
-          if (r.status == RideStatus.completed) LostItemCard(ride: r),
+          if (r.status == RideStatus.onTrip && !_isDemo) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
+          if (r.status == RideStatus.completed && !_isDemo) RideRatingCard(ride: r),
+          if (r.status == RideStatus.completed && !_isDemo) LostItemCard(ride: r),
           // On the trip itself the X only asks: the driver approves it.
           // Before it, on a phone, Cancel ride is pinned under the sheet.
           if (r.status.isOngoing && !riderCancelAsk && (widget.wide || _cancelAction(r) == null))

@@ -59,6 +59,7 @@ import 'auto_accept.dart';
 import 'book_for_sheet.dart';
 import 'confirm_parts.dart';
 import 'offer_fare_screen.dart';
+import 'demo_ride.dart' show demoRiderProvider, demoRidesProvider;
 import 'home_parts.dart';
 import 'place_search.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
@@ -1112,6 +1113,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       final offerMe = _biddingFor(_service, rules: rules, fallback: regionOn);
       final pricing = _pricingFor(_service, rules: rules, base: base);
+      // One of the admin's demo riders (Admin → Display Settings → Demo
+      // riders): the request stays on this phone, where the demo drivers
+      // answer it. Nothing is written, pushed or seen by a real driver. A
+      // booking for later, or for one scanned driver, is a real one.
+      if (scheduleAt == null && direct == null && ref.read(demoRiderProvider)) {
+        final req = ref.read(demoRidesProvider.notifier).create({
+          'rider_id': ref.read(currentUserIdProvider),
+          'rider_name': profile?.name,
+          'service': _service.name,
+          'payment_mode': _payment,
+          'pickup_name': a.name,
+          'pickup_address': a.address,
+          'pickup_lat': a.point.latitude,
+          'pickup_lng': a.point.longitude,
+          'drop_name': b.name,
+          'drop_address': b.address,
+          'drop_lat': b.point.latitude,
+          'drop_lng': b.point.longitude,
+          'distance_km': double.parse(r.distanceKm.toStringAsFixed(2)),
+          'duration_min': r.durationMin.round(),
+          'fare': _fareFor(_service, biddingOn: offerMe),
+          'ride_fare': _fareFor(_service, biddingOn: offerMe),
+          'currency': _currency,
+          'passengers': _options.passengers,
+          'offer_me': offerMe,
+          if (_stops.isNotEmpty) 'stops': [for (final p in _stops.take(maxRideStops)) stopToJson(p)],
+          if (forWhom != null) 'booked_for_name': forWhom.name,
+          if (forWhom != null) 'booked_for_phone': forWhom.phone,
+          if (pricing != RegionPricing.none) ...pricing.toRideColumns(),
+        });
+        if (mounted) context.push('/ride/${req.id}').then((_) => _checkOngoing());
+        return;
+      }
       AreaInfo? area;
       try {
         area = await areaLookup.timeout(const Duration(seconds: 5));

@@ -450,6 +450,13 @@ class AdminRepository {
     );
   }
 
+  /// The people with these profile ids, keyed by id (missing ones left out).
+  Future<Map<String, Map<String, dynamic>>> peopleByIds(List<String> ids) async {
+    if (ids.isEmpty) return const {};
+    final rows = await _db.from('profiles').select('id, name, phone, email, display_id').inFilter('id', ids);
+    return {for (final r in rows) '${r['id']}': Map<String, dynamic>.from(r)};
+  }
+
   // ---- Fare tariffs (0109) --------------------------------------------------
 
   Future<List<Map<String, dynamic>>> fareTariffs() async => List<Map<String, dynamic>>.from(

@@ -7,6 +7,7 @@
 library;
 
 import 'dart:math' as math;
+import '../../../core/demo_mode.dart' show demoAccountIds, demoDriverIdsKey, demoRiderIdsKey;
 
 const displaySettingsTable = 'admin_display_settings';
 const displaySettingsRowId = 'global';
@@ -567,3 +568,20 @@ const mockKeys = ['userMockEnabled', 'riderTripSimEnabled', 'partnerMockEnabled'
 bool anyMockEnabled(Map<String, dynamic> s) => mockKeys.any((k) => displayBool(s, k));
 
 Map<String, dynamic> setAllMocks(Map<String, dynamic> s, bool enabled) => {...s, for (final k in mockKeys) k: enabled};
+
+// --- Demo riders / demo drivers -------------------------------------------------
+
+/// The accounts on a demo list ([demoRiderIdsKey] or [demoDriverIdsKey]).
+List<String> demoAccounts(Map<String, dynamic> s, String key) => demoAccountIds(s[key]);
+
+/// [id] added to the end of the list at [key], once.
+Map<String, dynamic> addDemoAccount(Map<String, dynamic> s, String key, String id) {
+  final ids = demoAccounts(s, key);
+  final t = id.trim();
+  return {...s, key: [...ids, if (t.isNotEmpty && !ids.contains(t)) t]};
+}
+
+/// [id] taken off the list at [key].
+Map<String, dynamic> removeDemoAccount(Map<String, dynamic> s, String key, String id) =>
+    {...s, key: [for (final x in demoAccounts(s, key)) if (x != id.trim()) x]};
+

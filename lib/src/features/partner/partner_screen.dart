@@ -856,7 +856,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     // Lost item reports to answer (Phase D4).
                     const DriverLostItemsCard(),
                     const CurrentVehicleCard(),
-                    if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
+                    if (_online && ref.watch(demoDriverProvider)) const DemoJobFeed(),
                   ];
                 const offline = EmptyState(icon: Icons.local_taxi_outlined, title: 'Go online to receive ride requests');
                 if (wide) {
