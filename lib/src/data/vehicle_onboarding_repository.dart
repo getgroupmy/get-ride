@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../admin/screens/people/people_logic.dart';
 import '../core/vehicle_onboarding.dart';
 import '../providers.dart';
+import 'doc_photos.dart';
 
 /// The plate is already registered to another account. Partners can only
 /// see their own vehicles, so it cannot be claimed from the app; an admin
@@ -24,8 +25,11 @@ class VehiclePlateTaken implements Exception {
 /// Row-level security limits every read to the partner's own vehicles, and
 /// the 0088 guard stops a partner changing a vehicle's status or permit.
 class VehicleOnboardingRepository {
-  VehicleOnboardingRepository(this._db);
+  VehicleOnboardingRepository(this._db, {this.thumbnail});
   final SupabaseClient _db;
+
+  /// Makes a photo's list thumbnail (an isolate by default).
+  final ImageBytesJob? thumbnail;
 
   String get _uid {
     final id = _db.auth.currentUser?.id;
@@ -90,16 +94,14 @@ class VehicleOnboardingRepository {
         .single();
   }
 
-  /// Uploads one of the four photos to `vehicle-documents/<id>/photos/`.
+  /// Uploads one of the four photos to `vehicle-documents/<id>/photos/`,
+  /// with its list thumbnail beside it.
   Future<String> uploadPhoto(String vehicleId, String slot, Uint8List bytes, String fileName) async {
     final ext = guessExt(fileName);
     final path = vehiclePhotoPath(vehicleId, slot, ext);
-    await _db.storage.from('vehicle-documents').uploadBinary(
-          path,
-          bytes,
-          fileOptions: FileOptions(upsert: true, contentType: contentTypeFor(ext)),
-        );
-    return _db.storage.from('vehicle-documents').getPublicUrl(path);
+    final files = _db.storage.from('vehicle-documents');
+    await uploadStoredFile(files, path, bytes, contentType: contentTypeFor(ext), thumbnail: thumbnail);
+    return files.getPublicUrl(path);
   }
 }
 

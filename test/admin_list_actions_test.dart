@@ -32,11 +32,14 @@ class _Admin extends AdminRepository {
   final takenBy = <(String, String)>[];
 
   @override
-  Future<List<Map<String, dynamic>>> users() async => [
-    {'id': 'u1', 'name': 'Una', 'phone': '+60 12-345 6789', 'profile_status': 'approved'},
-    {'id': 'u2', 'name': 'Wan', 'phone': '+60123', 'profile_status': 'unapproved'},
-    {'id': 'u3', 'name': 'Nophone', 'profile_status': 'deleted'},
-  ];
+  Future<RowsPage> users({int limit = adminPeoplePageSize, String query = ''}) async => (
+    rows: [
+      {'id': 'u1', 'name': 'Una', 'phone': '+60 12-345 6789', 'profile_status': 'approved'},
+      {'id': 'u2', 'name': 'Wan', 'phone': '+60123', 'profile_status': 'unapproved'},
+      {'id': 'u3', 'name': 'Nophone', 'profile_status': 'deleted'},
+    ],
+    more: false,
+  );
 
   @override
   Future<void> setUserStatus(String id, String status) async => statuses.add((id, status));

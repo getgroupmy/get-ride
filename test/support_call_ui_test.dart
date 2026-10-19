@@ -73,6 +73,11 @@ class _Repo implements SupportCallRepository {
   @override
   Future<List<Map<String, dynamic>>> iceServers() async => parseIceServers(null);
 
+  var prefetches = 0;
+
+  @override
+  void prefetchIceServers() => prefetches++;
+
   @override
   Future<void> sendSignal(String callId, String kind, Map<String, dynamic> payload) async => log.add('signal:$kind');
 

@@ -42,6 +42,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
   Future<void> _open() async {
     final repo = ref.read(supportCallRepositoryProvider);
+    repo.prefetchIceServers();
     final me = ref.read(currentUserIdProvider);
     try {
       final call = await repo.fetch(widget.callId);
@@ -234,6 +235,8 @@ class _RoundKey extends StatelessWidget {
 Future<void> callSupport(BuildContext context, WidgetRef ref, {String? ticketId, String? name}) async {
   if (!await ensureMicForCall(context, ref) || !context.mounted) return;
   try {
+    // The relay credentials come while the call rings, not after.
+    ref.read(supportCallRepositoryProvider).prefetchIceServers();
     final c = await ref.read(supportCallRepositoryProvider).ringSupport(ticketId: ticketId, callerName: name);
     if (context.mounted) unawaited(context.push('/call/${c.id}'));
   } catch (_) {
@@ -255,6 +258,7 @@ Future<void> callUser(
 }) async {
   if (!await ensureMicForCall(context, ref) || !context.mounted) return;
   try {
+    ref.read(supportCallRepositoryProvider).prefetchIceServers();
     final c = await ref
         .read(supportCallRepositoryProvider)
         .ringUser(profileId: profileId, ticketId: ticketId, agentName: agentName);

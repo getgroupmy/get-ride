@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -14,6 +16,7 @@ import '../account_app_version.dart';
 import '../admin_access.dart';
 import '../admin_filters.dart';
 import '../admin_providers.dart';
+import '../people_paging.dart';
 import '../widgets/admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
@@ -25,9 +28,14 @@ import 'security/sign_in_security_card.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
 
-final adminUsersProvider = FutureProvider.autoDispose((ref) {
+/// How many users the list has loaded and what it searches the server for
+/// (PERF-55: a page at a time).
+final adminUsersRequestProvider =
+    NotifierProvider.autoDispose<PageRequestController, PageRequest>(PageRequestController.new);
+final adminUsersProvider = FutureProvider.autoDispose<RowsPage>((ref) {
   ref.watchAdminLive('profiles');
-  return ref.watch(adminRepositoryProvider).users();
+  final r = ref.watch(adminUsersRequestProvider);
+  return ref.watch(adminRepositoryProvider).users(limit: r.limit, query: r.query);
 });
 final adminPartnersProvider = FutureProvider.autoDispose((ref) {
   ref.watchAdminLive('partners');
@@ -154,6 +162,9 @@ class _RecordList extends ConsumerStatefulWidget {
     required this.onOpen,
     this.initialFilter,
     this.floatingActionButton,
+    this.hasMore,
+    this.onLoadMore,
+    this.onServerSearch,
   });
 
   final String title;
@@ -167,6 +178,13 @@ class _RecordList extends ConsumerStatefulWidget {
   final String? initialFilter;
   final Widget? floatingActionButton;
 
+  /// For a list read a page at a time: whether the server has more rows,
+  /// how to load them, and how to search the rows not loaded yet (called a
+  /// moment after typing stops; the loaded rows are filtered at once).
+  final bool Function(WidgetRef ref)? hasMore;
+  final void Function(WidgetRef ref)? onLoadMore;
+  final void Function(WidgetRef ref, String query)? onServerSearch;
+
   @override
   ConsumerState<_RecordList> createState() => _RecordListState();
 }
@@ -174,10 +192,28 @@ class _RecordList extends ConsumerStatefulWidget {
 class _RecordListState extends ConsumerState<_RecordList> {
   late String _filter = widget.filters.containsKey(widget.initialFilter) ? widget.initialFilter! : 'all';
   String _query = '';
+  Timer? _search;
+
+  @override
+  void dispose() {
+    _search?.cancel();
+    super.dispose();
+  }
+
+  void _onSearch(String q) {
+    setState(() => _query = q);
+    final server = widget.onServerSearch;
+    if (server == null) return;
+    _search?.cancel();
+    _search = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) server(ref, q);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final value = widget.watch(ref);
+    final more = widget.hasMore?.call(ref) ?? false;
     return AdminPage(
       title: widget.title,
       module: widget.module,
@@ -187,7 +223,7 @@ class _RecordListState extends ConsumerState<_RecordList> {
           filters: widget.filters,
           selected: _filter,
           onSelected: (f) => setState(() => _filter = f),
-          onSearch: (q) => setState(() => _query = q),
+          onSearch: _onSearch,
           hint: 'Search name, phone, ID…',
         ),
         Expanded(
@@ -197,17 +233,23 @@ class _RecordListState extends ConsumerState<_RecordList> {
               final list = rows
                   .where((r) => widget.matches(r, _filter) && rowSearch(r, _query, widget.searchColumns))
                   .toList();
-              if (list.isEmpty) return const EmptyState(icon: Icons.inbox_outlined, title: 'Nothing here');
+              if (list.isEmpty && !more) return const EmptyState(icon: Icons.inbox_outlined, title: 'Nothing here');
               return ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: list.length + 1,
+                itemCount: list.length + (more ? 2 : 1),
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (_, i) => i == 0
                     ? Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: Text('${list.length} of ${rows.length}', style: Theme.of(context).textTheme.bodySmall),
+                        child: Text(
+                          // Paged: the filters see the rows loaded so far.
+                          more ? '${list.length} of the first ${rows.length}' : '${list.length} of ${rows.length}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
                       )
-                    : InkWell(onTap: () => widget.onOpen(list[i - 1]), child: widget.tile(list[i - 1])),
+                    : i > list.length
+                        ? LoadMoreRow(loading: value.isLoading, onPressed: () => widget.onLoadMore?.call(ref))
+                        : InkWell(onTap: () => widget.onOpen(list[i - 1]), child: widget.tile(list[i - 1])),
               );
             },
           ),
@@ -413,11 +455,14 @@ class AdminUsersScreen extends ConsumerWidget {
     return _RecordList(
         title: 'Users',
         module: 'users',
-        watch: (r) => r.watch(adminUsersProvider),
+        watch: (r) => r.watch(adminUsersProvider).whenData((p) => p.rows),
+        hasMore: (r) => r.watch(adminUsersProvider).value?.more ?? false,
+        onLoadMore: (r) => r.read(adminUsersRequestProvider.notifier).more(),
+        onServerSearch: (r, q) => r.read(adminUsersRequestProvider.notifier).search(q),
         filters: userFilters,
         initialFilter: initialFilter,
         matches: (u, f) => f == 'final-delete' ? dueForFinalDeletion(u, keepDays, DateTime.now()) : userMatches(u, f),
-        searchColumns: const ['name', 'phone', 'deleted_phone', 'email', 'display_id', 'ic', 'app_version'],
+        searchColumns: userSearchColumns,
         onOpen: (u) => _open(context, ref, u),
         tile: (u) => _RecordCard(
           id: '${u['id']}',

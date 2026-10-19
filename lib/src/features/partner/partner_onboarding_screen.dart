@@ -48,7 +48,7 @@ class PartnerOnboardingScreen extends ConsumerStatefulWidget {
   const PartnerOnboardingScreen({
     super.key,
     this.pickAvatar = pickAvatarImage,
-    this.pickPhoto = pickImage,
+    this.pickPhoto = pickDocumentImage,
     this.startAt,
   });
 

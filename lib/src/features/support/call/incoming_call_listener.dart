@@ -73,6 +73,8 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
         if (i < 0) {
           _ringing.add(c);
           unawaited(HapticFeedback.heavyImpact());
+          // Ready by the time it is answered.
+          ref.read(supportCallRepositoryProvider).prefetchIceServers();
         } else {
           _ringing[i] = c;
         }
