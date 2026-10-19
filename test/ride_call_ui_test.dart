@@ -93,6 +93,11 @@ class _Repo implements RideCallRepository {
   @override
   Future<List<Map<String, dynamic>>> iceServers() async => parseIceServers(null);
 
+  var prefetches = 0;
+
+  @override
+  void prefetchIceServers() => prefetches++;
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -245,6 +250,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(repo.log, ['ring:r1']);
       expect(router.state.matchedLocation, '/ride-call/k1');
+      // The relay credentials are fetched ahead, while it rings.
+      expect(repo.prefetches, greaterThan(0));
       expect(find.text('Ravi'), findsOneWidget);
       expect(find.text('Calling…'), findsOneWidget);
       expect(media.log, ['open']);
@@ -290,6 +297,7 @@ void main() {
       expect(router.state.matchedLocation, '/ride-call/k1', reason: 'it rings full screen over the trip');
       expect(find.text('Aina'), findsOneWidget);
       expect(find.text('Incoming call'), findsOneWidget);
+      expect(repo.prefetches, greaterThan(0), reason: 'credentials fetched while it rings');
       expect(find.byKey(const ValueKey('ride-call-mute')), findsNothing);
       expect(keyColour(tester, 'ride-call-accept'), scheme.primary);
       expect(keyColour(tester, 'ride-call-decline'), scheme.error);
