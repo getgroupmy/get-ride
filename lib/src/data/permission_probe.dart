@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../core/app_permissions.dart';
+import '../core/permission_ask.dart';
 import '../features/support/call/mic_gate.dart' show MicStatus, micPermissionProvider;
 import 'push_service.dart';
 
@@ -37,8 +38,17 @@ abstract class PermissionProbe {
   /// Asks for [p] where the phone can still show its question.
   Future<void> request(AppPermission p);
 
+  /// Asks for [kind] again wherever the phone (or browser) will still show
+  /// its question, and says how it went: refused for good
+  /// ([AskAnswer.blocked]) when it answers without asking.
+  Future<AskResult> ask(AskKind kind);
+
   /// The app's page in the phone's Settings.
   Future<bool> openAppSettings();
+
+  /// The app's Notifications page in the phone's Settings where it has one,
+  /// else the app's page.
+  Future<bool> openNotificationSettings();
 
   /// The phone's Location settings (location switched off altogether).
   Future<bool> openLocationSettings();
@@ -52,6 +62,11 @@ class DevicePermissionProbe implements PermissionProbe {
 
   bool get _ios => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
   bool get _android => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+  /// What was refused for good since launch. Android reads a refusal the
+  /// same whether it may still ask or not, so only an ask tells; until it
+  /// is allowed again it reads as off (its Settings), not "not asked".
+  final _blocked = <AskKind>{};
 
   Future<Map<String, dynamic>> _native() async {
     if (!_ios && !_android) return const {};
@@ -73,12 +88,70 @@ class DevicePermissionProbe implements PermissionProbe {
   };
 
   @override
+  Future<AskResult> ask(AskKind kind) async {
+    final r = switch (kind) {
+      AskKind.location => await _askLocation(),
+      AskKind.notifications => await _askNotifications(),
+    };
+    if (r.answer == AskAnswer.blocked) _blocked.add(kind);
+    if (r.answer == AskAnswer.granted) _blocked.remove(kind);
+    return r;
+  }
+
+  Future<AskResult> _askLocation() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return const AskResult(AskAnswer.serviceOff, prompted: false);
+      var p = await Geolocator.checkPermission();
+      if (p == LocationPermission.always || p == LocationPermission.whileInUse) {
+        return const AskResult(AskAnswer.granted, prompted: false);
+      }
+      // Asked even when refused before: Android answers at once when it
+      // won't ask, and asks when Settings put it back to "Ask every time".
+      final watch = Stopwatch()..start();
+      p = await Geolocator.requestPermission();
+      return switch (p) {
+        LocationPermission.always || LocationPermission.whileInUse => const AskResult(AskAnswer.granted),
+        LocationPermission.unableToDetermine => const AskResult(AskAnswer.unsupported, prompted: false),
+        // iOS and the browser never ask twice.
+        _ => refusal(forever: p == LocationPermission.deniedForever || !_android, took: watch.elapsed),
+      };
+    } catch (_) {
+      return const AskResult(AskAnswer.unsupported, prompted: false);
+    }
+  }
+
+  Future<AskResult> _askNotifications() async {
+    final push = PushService.instance;
+    if (push == null) return const AskResult(AskAnswer.unsupported, prompted: false);
+    try {
+      bool on(AuthorizationStatus s) => s == AuthorizationStatus.authorized || s == AuthorizationStatus.provisional;
+      final before = (await FirebaseMessaging.instance.getNotificationSettings()).authorizationStatus;
+      if (on(before)) return const AskResult(AskAnswer.granted, prompted: false);
+      if (_ios && before == AuthorizationStatus.denied) return const AskResult(AskAnswer.blocked, prompted: false);
+      final watch = Stopwatch()..start();
+      final after = (await FirebaseMessaging.instance.requestPermission()).authorizationStatus;
+      final took = watch.elapsed;
+      await push.recheckPermission();
+      if (on(after)) return const AskResult(AskAnswer.granted);
+      // Put away without an answer: still asks next time.
+      if (after == AuthorizationStatus.notDetermined) return const AskResult(AskAnswer.denied);
+      return refusal(forever: after == AuthorizationStatus.deniedPermanently || _ios, took: took);
+    } catch (_) {
+      return const AskResult(AskAnswer.unsupported, prompted: false);
+    }
+  }
+
+  @override
   Future<PermState> notifications() async {
     if (PushService.instance == null) return PermState.unknown;
     try {
       return switch ((await FirebaseMessaging.instance.getNotificationSettings()).authorizationStatus) {
         AuthorizationStatus.authorized || AuthorizationStatus.provisional => PermState.granted,
-        AuthorizationStatus.denied || AuthorizationStatus.deniedPermanently => PermState.denied,
+        AuthorizationStatus.deniedPermanently => PermState.denied,
+        // Android reads "not allowed yet" as denied: it can still ask until
+        // an ask says it won't.
+        AuthorizationStatus.denied =>
+          _android && !_blocked.contains(AskKind.notifications) ? PermState.notAsked : PermState.denied,
         AuthorizationStatus.notDetermined => PermState.notAsked,
       };
     } catch (_) {
@@ -95,7 +168,10 @@ class DevicePermissionProbe implements PermissionProbe {
         final native = permStateOf((await _native())['location']);
         if (native != PermState.unknown) return (on, native);
       }
-      return (on, _ofLocation(await Geolocator.checkPermission()));
+      final state = _ofLocation(await Geolocator.checkPermission());
+      if (state == PermState.notAsked && _blocked.contains(AskKind.location)) return (on, PermState.denied);
+      if (state == PermState.granted || state == PermState.limited) _blocked.remove(AskKind.location);
+      return (on, state);
     } catch (_) {
       return (true, PermState.unknown);
     }
@@ -165,8 +241,7 @@ class DevicePermissionProbe implements PermissionProbe {
     try {
       switch (p) {
         case AppPermission.notifications:
-          await FirebaseMessaging.instance.requestPermission();
-          await PushService.instance?.recheckPermission();
+          await ask(AskKind.notifications);
         case AppPermission.location:
           await requestLocation();
         case AppPermission.microphone:
@@ -189,6 +264,20 @@ class DevicePermissionProbe implements PermissionProbe {
     } catch (_) {
       return false;
     }
+  }
+
+  @override
+  Future<bool> openNotificationSettings() async {
+    if (kIsWeb) return false;
+    if (_ios || _android) {
+      try {
+        // MainActivity.kt / AppDelegate.swift: the app's Notifications page.
+        if (await permissionsChannel.invokeMethod<bool>('openNotificationSettings') == true) return true;
+      } catch (_) {
+        // A build from before the native half: the app's page instead.
+      }
+    }
+    return openAppSettings();
   }
 
   @override

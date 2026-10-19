@@ -3,9 +3,11 @@ package my.getgroup.get_ride
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -33,6 +35,7 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "statuses" -> result.success(permissionStatuses())
                 "requestLocationAlways" -> requestLocationAlways(result)
+                "openNotificationSettings" -> result.success(openNotificationSettings())
                 else -> result.notImplemented()
             }
         }
@@ -62,6 +65,20 @@ class MainActivity : FlutterActivity() {
         val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
         alwaysResult?.success(if (granted) "always" else "whileInUse")
         alwaysResult = null
+    }
+
+    // The app's own Notifications page (lib/src/core/permission_ask.dart):
+    // where notifications refused for good are switched back on.
+    private fun openNotificationSettings(): Boolean = try {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", packageName, null))
+        }
+        startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (e: Exception) {
+        false
     }
 
     private fun permissionStatuses(): Map<String, String> {
