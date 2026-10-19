@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -41,6 +40,7 @@ import 'data/live_tables.dart';
 import 'data/messaging_repository.dart';
 import 'data/geo_service.dart' show AreaInfo, knownPosition;
 import 'data/notifications_repository.dart';
+import 'data/permission_probe.dart';
 import 'data/push_service.dart';
 import 'data/session_guard.dart';
 import 'data/session_tracker.dart';
@@ -763,7 +763,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       }
       messenger?.showMaterialBanner(
         notificationsOffBanner(
-          onSettings: () => unawaited(Geolocator.openAppSettings()),
+          onSettings: () => unawaited(ref.read(permissionProbeProvider).openNotificationSettings()),
           onDismiss: () {
             _notificationsDismissed = true;
             sync();

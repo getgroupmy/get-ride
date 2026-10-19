@@ -97,8 +97,13 @@ class _PermissionGateState extends ConsumerState<PermissionGate> {
     }
   }
 
+  /// Under the page's own navigator, so an explanation shows over the page
+  /// (the gate sits above the app's navigator).
+  final _page = GlobalKey<NavigatorState>();
+
   Future<void> _fix(PermissionBlock block) async {
-    await resolvePermissionBlock(ref.read(permissionProbeProvider), block);
+    final context = _page.currentContext ?? this.context;
+    await resolvePermissionBlock(context, ref.read(permissionProbeProvider), block);
     // Back from a question the app asked: check now. From Settings, the
     // resume does it.
     await _check();
@@ -116,11 +121,22 @@ class _PermissionGateState extends ConsumerState<PermissionGate> {
       children: [
         widget.child,
         Positioned.fill(
-          child: PermissionsRequiredPage(
-            blocks: _blocks,
-            onFix: (b) => unawaited(_fix(b)),
-            onCheckAgain: () => unawaited(_check()),
-            onSignOut: () => unawaited(ref.read(authRepositoryProvider).signOut()),
+          child: HeroControllerScope.none(
+            child: Navigator(
+              key: _page,
+              pages: [
+                MaterialPage<void>(
+                  key: const ValueKey('permissions-required-page'),
+                  child: PermissionsRequiredPage(
+                    blocks: _blocks,
+                    onFix: (b) => unawaited(_fix(b)),
+                    onCheckAgain: () => unawaited(_check()),
+                    onSignOut: () => unawaited(ref.read(authRepositoryProvider).signOut()),
+                  ),
+                ),
+              ],
+              onDidRemovePage: (_) {},
+            ),
           ),
         ),
       ],
@@ -186,9 +202,12 @@ class PermissionsRequiredPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 8),
                           Text(b.message, style: t.textTheme.bodyMedium),
-                          if (b.settingsPath case final path?) ...[
+                          if (permissionBlockHint(b) == null && b.settingsPath != null) ...[
                             const SizedBox(height: 6),
-                            Text(path, style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600)),
+                            Text(
+                              b.settingsPath!,
+                              style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                            ),
                           ],
                           const SizedBox(height: 12),
                           FilledButton(
@@ -196,6 +215,15 @@ class PermissionsRequiredPage extends StatelessWidget {
                             onPressed: () => onFix(b),
                             child: Text(permissionBlockAction(b)),
                           ),
+                          if (permissionBlockHint(b) case final hint?) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              hint,
+                              key: ValueKey('permission-hint-${b.name}'),
+                              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
                         ],
                       ),
                     ),
