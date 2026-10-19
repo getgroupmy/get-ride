@@ -9,6 +9,7 @@ import 'dart:io' show Platform;
 import 'package:apple_maps_flutter/apple_maps_flutter.dart' as am;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 
 /// Whether this device can draw Apple's map: iPhone and iPad.
@@ -81,31 +82,38 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _follow(camera);
     });
-    return IgnorePointer(
-      child: SizedBox.fromSize(
-        size: camera.nonRotatedSize,
-        child: am.AppleMap(
-          initialCameraPosition: _position(camera),
-          onMapCreated: (c) {
-            _map = c;
-            _shown = null;
-            _follow(MapCamera.of(context));
-          },
-          mapType: switch (widget.type) {
-            'satellite' => am.MapType.satellite,
-            'hybrid' => am.MapType.hybrid,
-            _ => am.MapType.standard,
-          },
-          // The app's own traffic layer draws over it, as over any map.
-          trafficEnabled: false,
-          // Only shows: the app's own map and buttons do the rest.
-          compassEnabled: false,
-          rotateGesturesEnabled: false,
-          scrollGesturesEnabled: false,
-          zoomGesturesEnabled: false,
-          pitchGesturesEnabled: false,
-          myLocationEnabled: false,
-          myLocationButtonEnabled: false,
+    // Apple draws its map light or dark by the phone's setting, not the
+    // app's, and imagery is dark: the status bar over it goes by what is
+    // drawn. Inside the page's own region, this one wins where the map shows.
+    final darkMap = widget.type != 'roadmap' || MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: darkMap ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+      child: IgnorePointer(
+        child: SizedBox.fromSize(
+          size: camera.nonRotatedSize,
+          child: am.AppleMap(
+            initialCameraPosition: _position(camera),
+            onMapCreated: (c) {
+              _map = c;
+              _shown = null;
+              _follow(MapCamera.of(context));
+            },
+            mapType: switch (widget.type) {
+              'satellite' => am.MapType.satellite,
+              'hybrid' => am.MapType.hybrid,
+              _ => am.MapType.standard,
+            },
+            // The app's own traffic layer draws over it, as over any map.
+            trafficEnabled: false,
+            // Only shows: the app's own map and buttons do the rest.
+            compassEnabled: false,
+            rotateGesturesEnabled: false,
+            scrollGesturesEnabled: false,
+            zoomGesturesEnabled: false,
+            pitchGesturesEnabled: false,
+            myLocationEnabled: false,
+            myLocationButtonEnabled: false,
+          ),
         ),
       ),
     );
