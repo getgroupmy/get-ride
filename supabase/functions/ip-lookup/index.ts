@@ -26,13 +26,14 @@
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { handleIpLookup, IpInfoCache, lookupIpWhoIs } from "../_shared/ip_lookup.ts";
+import { handleIpLookup, IpInfoCache, LocalRateLimit, lookupIpWhoIs } from "../_shared/ip_lookup.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
 const cache = new IpInfoCache();
+const local = new LocalRateLimit();
 
 async function rateTake(ip: string): Promise<boolean> {
   const { data: wait, error } = await db.rpc("auth_rate_take", {
@@ -49,6 +50,7 @@ Deno.serve((req: Request) =>
     rateTake,
     lookup: (ip) => lookupIpWhoIs(ip),
     cache,
+    local,
     now: () => Date.now(),
   })
 );

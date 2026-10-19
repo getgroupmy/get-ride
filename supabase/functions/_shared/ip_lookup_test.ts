@@ -12,6 +12,7 @@ import {
   type IpInfo,
   IpInfoCache,
   type IpLookupDeps,
+  LocalRateLimit,
   lookupIpWhoIs,
   wantsIpOnly,
 } from "./ip_lookup.ts";
@@ -131,7 +132,7 @@ Deno.test("a failed lookup or a refused rate check is not kept", async () => {
   assertEquals(calls.lookup, 2);
 });
 
-Deno.test("fails closed: over the limit, or the rate check failing, looks nothing up", async () => {
+Deno.test("fails closed: over the limit, or the rate check failing, gives and keeps nothing", async () => {
   for (
     const rateTake of [
       async () => false,
@@ -140,12 +141,52 @@ Deno.test("fails closed: over the limit, or the rate check failing, looks nothin
       },
     ]
   ) {
-    const { deps, calls } = fakeDeps({ rateTake });
+    const { deps } = fakeDeps({ rateTake });
     const res = await handleIpLookup(request(), deps);
     assertEquals(res.status, 200);
     assertEquals(await res.json(), { ...EMPTY, public_ip: "203.0.113.7" });
-    assertEquals(calls.lookup, 0);
+    assertEquals(deps.cache.size, 0);
   }
+});
+
+Deno.test("on a miss the rate check and the provider are asked together (PERF-76)", async () => {
+  const started: string[] = [];
+  let releaseRate!: (v: boolean) => void;
+  const { deps } = fakeDeps({
+    rateTake: () => {
+      started.push("rate");
+      return new Promise<boolean>((r) => (releaseRate = r));
+    },
+    lookup: async () => {
+      started.push("lookup");
+      return INFO;
+    },
+  });
+  const pending = handleIpLookup(request(), deps);
+  await new Promise((r) => setTimeout(r, 0));
+  // The provider was asked before the rate check answered.
+  assertEquals(started.sort(), ["lookup", "rate"]);
+  releaseRate(true);
+  assertEquals(await (await pending).json(), INFO);
+});
+
+Deno.test("the instance's own count refuses before the database or the provider is asked", async () => {
+  const { deps, calls, tick } = fakeDeps({ local: new LocalRateLimit(2, 1000) });
+  // Different answers each time would be cached, so keep the provider failing.
+  deps.lookup = async () => {
+    calls.lookup++;
+    return null;
+  };
+  for (let i = 0; i < 2; i++) await (await handleIpLookup(request(), deps)).json();
+  assertEquals(calls, { rate: 2, lookup: 2 });
+  assertEquals(await (await handleIpLookup(request(), deps)).json(), { ...EMPTY, public_ip: "203.0.113.7" });
+  assertEquals(calls, { rate: 2, lookup: 2 });
+  // Another address is its own count; and the window slides.
+  await (await handleIpLookup(request({ ip: "203.0.113.8" }), deps)).json();
+  assertEquals(calls, { rate: 3, lookup: 3 });
+  tick(1000);
+  await (await handleIpLookup(request(), deps)).json();
+  assertEquals(calls, { rate: 4, lookup: 4 });
 });
 
 Deno.test("a private address or none is answered without any call", async () => {

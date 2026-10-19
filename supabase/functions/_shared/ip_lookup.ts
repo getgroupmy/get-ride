@@ -15,7 +15,9 @@
  *
  * ipwho.is answers are kept in memory per instance for 24 h (at most 5,000
  * addresses), and a kept answer is given before the rate check, so a repeat
- * caller costs neither a database write nor a provider request.
+ * caller costs neither a database write nor a provider request. On a miss
+ * the database's rate check and the provider run together, behind a
+ * per-instance count that refuses before either is asked.
  */
 
 export interface IpInfo {
@@ -181,7 +183,37 @@ export interface IpLookupDeps {
   rateTake(ip: string): Promise<boolean>;
   lookup(ip: string): Promise<IpInfo | null>;
   cache: IpInfoCache;
+  /** This instance's own per-address count, checked before anything else. */
+  local?: LocalRateLimit;
   now(): number;
+}
+
+/**
+ * A per-instance count of lookups by address in a sliding window, so a
+ * caller over the limit is refused before the database or the provider is
+ * asked. The database's limit still counts across instances.
+ */
+export class LocalRateLimit {
+  #hits = new Map<string, number[]>();
+
+  constructor(readonly limit = 30, readonly windowMs = 10 * 60 * 1000, readonly maxKeys = 5000) {}
+
+  take(key: string, now: number): boolean {
+    const recent = (this.#hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
+    if (recent.length >= this.limit) {
+      this.#hits.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    this.#hits.delete(key);
+    while (this.#hits.size >= this.maxKeys) {
+      const oldest = this.#hits.keys().next().value;
+      if (oldest === undefined) break;
+      this.#hits.delete(oldest);
+    }
+    this.#hits.set(key, recent);
+    return true;
+  }
 }
 
 export async function handleIpLookup(req: Request, deps: IpLookupDeps): Promise<Response> {
@@ -209,19 +241,21 @@ export async function handleIpLookup(req: Request, deps: IpLookupDeps): Promise<
   const kept = deps.cache.get(ip, deps.now());
   if (kept) return json(kept, 200);
 
-  // Fails closed: when the limit can't be checked, nothing is looked up.
-  let allowed = false;
-  try {
-    allowed = await deps.rateTake(ip);
-  } catch {
-    allowed = false;
-  }
-  if (!allowed) {
+  // Over this instance's own count, nothing is asked of the database or
+  // the provider at all.
+  if (deps.local && !deps.local.take(ip, deps.now())) {
     return json({ ...EMPTY, public_ip: ip }, 200);
   }
 
-  const info = await deps.lookup(ip);
-  if (!info) {
+  // The database's limit and the provider are asked together (PERF-76):
+  // the limit's round trip no longer comes before the lookup. Fails closed:
+  // when the limit refuses or can't be checked, the provider's answer is
+  // dropped, neither given nor kept.
+  const [allowed, info] = await Promise.all([
+    deps.rateTake(ip).catch(() => false),
+    deps.lookup(ip).catch(() => null),
+  ]);
+  if (!allowed || !info) {
     return json({ ...EMPTY, public_ip: ip }, 200);
   }
 
