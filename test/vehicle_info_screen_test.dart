@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/obd_adapters.dart';
+import 'package:get_ride/src/core/vehicle_info.dart' show VehicleWriteId, findWriteAction, vehicleWriteActions;
 import 'package:get_ride/src/data/vehicle_fuel_store.dart';
 import 'package:get_ride/src/data/obd/obd_session.dart';
 import 'package:get_ride/src/data/obd/obd_transport.dart';
@@ -102,6 +103,34 @@ void main() {
     expect(find.text('Clear trouble codes'), findsOneWidget);
     expect(find.text('Connect the OBD-II reader first.'), findsWidgets);
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('not connected, the write captions are greyed with their rows; raw says where it goes (${b.name})',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      tester.view.physicalSize = const Size(1200, 8000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final container = ProviderContainer(overrides: [obdTransportFactoryProvider.overrideWithValue((_) => _ScriptedElm())]);
+      addTearDown(container.dispose);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(theme: ThemeData(brightness: b), home: const VehicleInfoScreen()),
+      ));
+      await tester.pump();
+      final theme = Theme.of(tester.element(find.text('Not connected')));
+      for (final a in vehicleWriteActions) {
+        final caption = tester.widget<Text>(find.byKey(ValueKey('write-target-${a.id.id}')));
+        expect(caption.style?.color, theme.disabledColor, reason: '${a.label}: greyed like its title');
+      }
+      final raw = findWriteAction(VehicleWriteId.rawCommand)!;
+      expect(tester.widget<Text>(find.byKey(const ValueKey('write-target-raw-command'))).data,
+          "On the OBD-II reader or the car's ECU");
+      expect(raw.description, contains('AT commands go to the reader itself'));
+      expect(raw.description, contains("OBD-II service commands on to the car's ECUs"));
+      expect(raw.description, isNot(contains('straight to the adapter')));
+    });
+  }
 
   testWidgets('opening it brings the saved reader up and reads the car, no meter needed', (tester) async {
     SharedPreferences.setMockInitialValues({});

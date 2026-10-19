@@ -106,7 +106,10 @@ class _AdminSubAdminsScreenState extends ConsumerState<AdminSubAdminsScreen> {
                 key: const ValueKey('sub-admin-search'),
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.search),
-                  hintText: 'Search name, phone, email, page or note…',
+                  // Short enough for large text; what it searches stays
+                  // under the field.
+                  hintText: 'Search sub-admins',
+                  helperText: 'Name, phone, email, page or note',
                   isDense: true,
                 ),
                 onChanged: (q) => setState(() => _query = q),

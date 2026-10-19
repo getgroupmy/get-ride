@@ -163,15 +163,29 @@ class AdminCommissionScreen extends ConsumerWidget {
           final sorted = [...rows]
             ..sort((a, b) => commissionLevels.indexOf('${a['level']}').compareTo(commissionLevels.indexOf('${b['level']}')));
           return ListView(padding: const EdgeInsets.all(16), children: [
+            // Folded, as the tariffs' "How a booking is priced": one row,
+            // opened for the details.
             Card(
-              child: ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('How rates are chosen'),
-                subtitle: Text('The most specific active rule wins: user > suburb > city > state > country > '
-                    'master. Between rules at the same level, the higher priority wins, then the one naming more '
-                    'of its parents, then the newest. Places are matched by the region map where a region has an '
-                    'outline, otherwise by name. The rate is locked when the driver accepts the trip. With no '
-                    'rules at all, ${(defaultCommissionRate * 100).toStringAsFixed(0)}% applies.'),
+              clipBehavior: Clip.antiAlias,
+              child: Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  key: const ValueKey('commission-how'),
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('How rates are chosen'),
+                  childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'The most specific active rule wins: user > suburb > city > state > country > '
+                      'master. Between rules at the same level, the higher priority wins, then the one naming more '
+                      'of its parents, then the newest. Places are matched by the region map where a region has an '
+                      'outline, otherwise by name. The rate is locked when the driver accepts the trip. With no '
+                      'rules at all, ${(defaultCommissionRate * 100).toStringAsFixed(0)}% applies.',
+                      key: const ValueKey('commission-how-text'),
+                    ),
+                  ],
+                ),
               ),
             ),
             _UnchargedCard(canEdit: canEdit),
@@ -194,8 +208,11 @@ class AdminCommissionScreen extends ConsumerWidget {
               Card(
                 child: BusyListTile(
                   leading: CircleAvatar(child: Text('${r['level']}'.substring(0, 1).toUpperCase())),
-                  title: Text('${_pct(r['rate'])} · ${commissionLevelLabel(r['level'])}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                  // The rate alone as the title, so it never breaks in the
+                  // middle; the level and place on their own line.
+                  title: Text(_pct(r['rate']), key: ValueKey('commission-rate-${r['id']}'), maxLines: 1),
                   subtitle: Text([
+                    commissionLevelLabel(r['level']),
                     commissionScopeLabel(r),
                     if (((r['priority'] as num?) ?? 0) != 0) 'Priority ${r['priority']}',
                     if ('${r['note'] ?? ''}'.trim().isNotEmpty) '${r['note']}'.trim(),

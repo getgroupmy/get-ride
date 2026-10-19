@@ -320,7 +320,23 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
       child: BusyListTile(
         leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked),
         title: Text(a.name),
-        subtitle: Text(describeAdapter(a)),
+        // The link's kind, then its address on its own line, kept whole
+        // (an ellipsis rather than a break inside "192.168.0.10:35000").
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(describeAdapterParts(a).transport),
+            if (describeAdapterParts(a).address case final address?)
+              Text(
+                address,
+                key: ValueKey('obd-address-${a.id}'),
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
         onTap: kIsWeb ? null : () => _use(a),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,

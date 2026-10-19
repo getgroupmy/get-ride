@@ -165,6 +165,18 @@ final _hostname = RegExp(r'^[A-Za-z0-9._-]+$');
   );
 }
 
+/// [describeAdapter] in two parts: the kind of link, and its address (the
+/// Wi-Fi host and port, or the Bluetooth device) when there is one, so the
+/// address can stand on a line of its own and never break inside.
+({String transport, String? address}) describeAdapterParts(SavedObdAdapter a) {
+  final label = obdTransportLabels[a.transport] ?? a.transport;
+  if (a.transport == 'wifi' && a.host != null) return (transport: label, address: '${a.host}:${a.port ?? wifiAdapterPort}');
+  if ((a.transport == 'bluetooth' || a.transport == 'mfi') && a.deviceId != null) {
+    return (transport: label, address: a.deviceId);
+  }
+  return (transport: label, address: null);
+}
+
 String describeAdapter(SavedObdAdapter a) {
   final label = obdTransportLabels[a.transport] ?? a.transport;
   if (a.transport == 'wifi' && a.host != null) return '$label · ${a.host}:${a.port ?? wifiAdapterPort}';

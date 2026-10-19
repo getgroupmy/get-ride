@@ -16,6 +16,8 @@ import 'package:get_ride/src/features/partner/earnings_screen.dart'
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:get_ride/src/admin/screens/meterapp/display_store.dart' show settingsEntriesProvider;
+
 import 'quiet_live.dart';
 import 'text_contrast.dart';
 
@@ -89,7 +91,10 @@ class _Admin extends AdminRepository {
   Future<List<({String name, int trips})>> surchargeNamesSeen() async => const [];
 
   @override
-  Future<List<Map<String, dynamic>>> commissionRates() async => const [];
+  Future<List<Map<String, dynamic>>> commissionRates() async => const [
+        {'id': 'm1', 'level': 'master', 'rate': 0.2, 'active': true},
+        {'id': 'c1', 'level': 'city', 'rate': 0.125, 'city': 'Kajang', 'state': 'Selangor', 'country': 'Malaysia', 'active': true},
+      ];
 
   @override
   Future<List<Map<String, dynamic>>> unchargedCommissions() async => const [];
@@ -108,7 +113,10 @@ Future<(_Admin, List<String>)> _pump(
   bool edit = true,
   Size size = const Size(900, 2000),
   Map<String, String> colors = const {},
+  double textScale = 1,
 }) async {
+  tester.platformDispatcher.textScaleFactorTestValue = textScale;
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   final admin = _Admin();
   final exported = <String>[];
   await tester.binding.setSurfaceSize(size);
@@ -121,6 +129,12 @@ Future<(_Admin, List<String>)> _pump(
         adminAccessProvider.overrideWith((_) async => AdminAccess([AdminGrant(page: '*', edit: edit)])),
         adminRepositoryProvider.overrideWithValue(admin),
         regionsProvider.overrideWith((_) async => _regions),
+        // Vehicle Services names the 'car' key "CAR".
+        settingsEntriesProvider('vehicle-services').overrideWith(
+          (_) async => const [
+            {'id': 'v1', 'values': {'name': 'CAR'}},
+          ],
+        ),
         earningsCsvSharerProvider.overrideWithValue((String csv, String name, Rect? origin) async {
           exported.add('$name\n$csv');
           return CsvShareOutcome.downloaded;
@@ -139,6 +153,13 @@ Future<void> _openTab(WidgetTester tester, String key) async {
 }
 
 void main() {
+  test('a promotion service reads as Vehicle Services names it, else capitalised', () {
+    expect(promoServiceLabel('get xl', const ['Car', 'GET XL']), 'GET XL');
+    expect(promoServiceLabel('premium', const []), 'Premium');
+    expect(promoServiceLabel('moto_bike', const []), 'Moto Bike');
+    expect(promoServiceLabel('meter', const ['Meter']), 'Meter / TEKSI');
+  });
+
   group('promotions (logic)', () {
     final mondayMorning = DateTime.utc(2020, 6, 1, 0); // 08:00 in Malaysia
     CommissionPromotion promo({
@@ -283,6 +304,43 @@ void main() {
     });
 
     group('Admin → Commission → Promotions and Reports (${b.name})', () {
+      testWidgets('Rates at 1.3x: the rate alone is the title, the level and place under it; the explainer is folded '
+          '(${b.name})', (tester) async {
+        await _pump(tester, brightness: b, size: const Size(412, 2000), textScale: 1.3);
+        final title = tester.widget<Text>(find.byKey(const ValueKey('commission-rate-m1')));
+        expect(title.data, '20.00%');
+        expect(title.maxLines, 1);
+        expect(find.textContaining('Master'), findsWidgets);
+        expect(find.textContaining('City · Kajang, Selangor, Malaysia'), findsOneWidget);
+        expect(find.byKey(const ValueKey('commission-how')), findsOneWidget);
+        expect(find.byKey(const ValueKey('commission-how-text')), findsNothing, reason: 'folded at first');
+        await tester.tap(find.text('How rates are chosen'));
+        await tester.pumpAndSettle();
+        final how = tester.widget<Text>(find.byKey(const ValueKey('commission-how-text'))).data!;
+        expect(how, contains('user > suburb > city'));
+        expect(how, isNot(contains('→')));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('Edit promotion: services by their Vehicle Services names; From and To are rounded rectangles '
+          '(${b.name})', (tester) async {
+        await _pump(tester, brightness: b, size: const Size(412, 2000));
+        await tester.ensureVisible(find.byKey(const ValueKey('commission-tab-promotions')));
+        await tester.pumpAndSettle();
+        await _openTab(tester, 'commission-tab-promotions');
+        await tester.tap(find.byKey(const ValueKey('commission-promo-add')));
+        await tester.pumpAndSettle();
+        final chip = tester.widget<FilterChip>(find.byKey(const ValueKey('promo-service-car')));
+        expect((chip.label as Text).data, 'CAR', reason: 'the Vehicle Services name, not the key');
+        expect((tester.widget<FilterChip>(find.byKey(const ValueKey('promo-service-meter'))).label as Text).data,
+            'Meter / TEKSI');
+        for (final key in ['promo-from', 'promo-to']) {
+          final button = tester.widget<OutlinedButton>(find.byKey(ValueKey(key)));
+          expect(button.style?.shape?.resolve({}), isA<RoundedRectangleBorder>(), reason: '$key is not an ellipse');
+        }
+        expect(tester.takeException(), isNull);
+      });
+
       testWidgets('promotions at 412 px: the details run the full card width under the title row (${b.name})',
           (tester) async {
         await _pump(tester, brightness: b, size: const Size(412, 2000));

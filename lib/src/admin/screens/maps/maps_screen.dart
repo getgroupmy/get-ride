@@ -437,13 +437,13 @@ class _DeviceCard extends StatelessWidget {
               ],
             ),
             heading('Map tiles'),
-            Wrap(
+            LayoutBuilder(builder: (context, box) => Wrap(
               spacing: 12,
               runSpacing: 12,
               children: [
                 for (final slot in tileSlots)
                   SizedBox(
-                    width: 240,
+                    width: mapsSlotWidth(box.maxWidth),
                     child: _Choice(
                       key: ValueKey('maps-tile-$device-$slot'),
                       label: tileSlotLabel(slot),
@@ -455,7 +455,7 @@ class _DeviceCard extends StatelessWidget {
                     ),
                   ),
               ],
-            ),
+            )),
             heading('Place search'),
             _Order(
               id: 'maps-search-$device',
@@ -505,6 +505,11 @@ class _DeviceCard extends StatelessWidget {
     );
   }
 }
+
+/// A provider slot's width: 240 beside another where two fit side by side,
+/// else the whole row (a phone), so "Built in (this build's map: TomTom)"
+/// is never cut.
+double mapsSlotWidth(double available) => available >= 2 * 240 + 12 ? 240 : available;
 
 class _Choice extends StatelessWidget {
   const _Choice({
@@ -563,7 +568,9 @@ class _Order extends StatelessWidget {
   static const _none = '';
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) => _slots(context, mapsSlotWidth(box.maxWidth)));
+
+  Widget _slots(BuildContext context, double width) {
     const names = ['First', 'Then', 'Then'];
     final slots = <Widget>[];
     for (var i = 0; i < 3; i++) {
@@ -573,7 +580,7 @@ class _Order extends StatelessWidget {
       final taken = {...value}..remove(current);
       slots.add(
         SizedBox(
-          width: 240,
+          width: width,
           child: SearchableDropdownFormField<String>(
             key: ValueKey('$id-$i'),
             initialValue: current,
@@ -612,7 +619,7 @@ class _Order extends StatelessWidget {
       final t = Theme.of(context);
       slots.add(
         SizedBox(
-          width: 240,
+          width: width,
           child: InputDecorator(
             key: ValueKey('$id-osm'),
             decoration: const InputDecoration(labelText: 'Then, always', isDense: true, enabled: false),

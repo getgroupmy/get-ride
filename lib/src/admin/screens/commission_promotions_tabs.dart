@@ -21,6 +21,7 @@ import '../../widgets/search_select.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import 'geo/geo_data.dart' show regionsProvider;
+import 'meterapp/display_store.dart' show settingsEntriesProvider;
 import 'geo/geo_logic.dart' show RegionEntry, RegionLevel, regionNamesAt;
 
 final commissionPromotionsProvider = FutureProvider.autoDispose<List<CommissionPromotion>>((ref) {
@@ -401,6 +402,12 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
     final muted = mutedTextColor(t, background: t.dialogTheme.backgroundColor ?? t.colorScheme.surfaceContainerHigh);
     final regions = ref.watch(regionsProvider).value ?? const <RegionEntry>[];
     final seen = ref.watch(commissionServiceNamesProvider).value ?? const [];
+    // Admin > Vehicle Services' names, to show a stored key as the admin
+    // named it.
+    final vehicleNames = [
+      for (final v in ref.watch(settingsEntriesProvider('vehicle-services')).value ?? const <Map<String, dynamic>>[])
+        if ('${(v['values'] is Map ? (v['values'] as Map)['name'] : null) ?? ''}'.trim() case final n when n.isNotEmpty) n,
+    ];
     final services = <String, int>{
       meterServiceName: 0,
       for (final s in _services) s: 0,
@@ -415,7 +422,11 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
       child: OutlinedButton(
         key: ValueKey(start ? 'promo-from' : 'promo-to'),
         onPressed: () => _pickMoment(start),
-        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+        // A rounded rectangle: the default stadium drew three lines as an ellipse.
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -479,10 +490,12 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
                     runSpacing: 4,
                     children: [
                       for (final e in services.entries)
-                        if (q.isEmpty || searchSelectMatches(e.key, q) || _services.contains(e.key))
+                        if (q.isEmpty ||
+                            searchSelectMatches('${e.key} ${promoServiceLabel(e.key, vehicleNames)}', q) ||
+                            _services.contains(e.key))
                           FilterChip(
                             key: ValueKey('promo-service-${e.key}'),
-                            label: Text(e.key == meterServiceName ? 'Meter / TEKSI' : e.key),
+                            label: Text(promoServiceLabel(e.key, vehicleNames)),
                             selected: _services.contains(e.key),
                             onSelected: (v) => setState(() => v ? _services.add(e.key) : _services.remove(e.key)),
                           ),
