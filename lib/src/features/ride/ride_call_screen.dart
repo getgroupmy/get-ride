@@ -20,6 +20,11 @@ import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../support/call/mic_gate.dart';
 import '../../widgets/page_style_host.dart';
 
+/// What a device that didn't take the call says: the account's other
+/// device answered it, or placed it.
+String? rideCallElsewhereText(RideCall? call, String? me) =>
+    call != null && call.startedBy(me) ? 'Calling from another device' : 'Answered on another device';
+
 /// Opens the phone's dialer for the fallback phone call (overridden in tests).
 final rideCallDialerProvider = Provider<Future<bool> Function(Uri)>((ref) => launchUrl);
 
@@ -55,6 +60,10 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
   String? _error;
   bool _answering = false;
   bool _leaving = false;
+
+  /// Answered (or rung) on another device signed in to this account: a
+  /// notice and Close, never the call's controls, microphone or connection.
+  bool _elsewhere = false;
   StreamSubscription<String>? _hangUpSub;
   late final CallRinger _ringer;
 
@@ -87,11 +96,20 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
         return;
       }
       final now = ref.read(callClockProvider)();
+      // Joined only where it was rung or answered by a tap: opening or
+      // reloading this page never answers or joins a call by itself.
+      final here = ref.read(callsJoinedHereProvider).contains(call.id);
       if (call.startedBy(me) && !call.status.isOver) {
-        await _join(call);
+        if (here) {
+          await _join(call);
+        } else {
+          _onAnotherDevice(call);
+        }
       } else if (canAnswerRideCall(call, me, now)) {
         setState(() => _call = call);
-        if (widget.answer) {
+        // Accept pressed on this phone's own call screen (never a web
+        // address with ?answer=1 typed or reloaded).
+        if (widget.answer && _ringer.available) {
           unawaited(_answer());
           return;
         }
@@ -101,8 +119,12 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
           if (_session == null && !_answering) _over(call.withStatus(CallStatus.missed));
         });
       } else if (call.status == CallStatus.accepted) {
-        // Back on a call this end had already answered.
-        await _join(call);
+        if (here) {
+          // Back on a call this device had already answered.
+          await _join(call);
+        } else {
+          _onAnotherDevice(call);
+        }
       } else {
         _over(call.status == CallStatus.ringing ? call.withStatus(CallStatus.missed) : call);
       }
@@ -117,9 +139,25 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
     if (!mounted || _session != null || _answering) return;
     if (c.status.isOver) {
       _over(c);
+    } else if (c.status == CallStatus.accepted) {
+      // Answered, but not here: the account's other device took it.
+      _onAnotherDevice(c);
     } else {
       setState(() => _call = c);
     }
+  }
+
+  /// The call is on another device: stop ringing here and say so.
+  void _onAnotherDevice(RideCall c) {
+    if (!mounted) return;
+    unawaited(_ringer.stop(c.id));
+    _ringOut?.cancel();
+    unawaited(_ringSub?.cancel());
+    _ringSub = null;
+    setState(() {
+      _call = c;
+      _elsewhere = true;
+    });
   }
 
   Future<void> _join(RideCall call) async {
@@ -149,6 +187,7 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
     unawaited(_ringSub?.cancel());
     _ringSub = null;
     if (ok) {
+      ref.read(callsJoinedHereProvider).add(c.id);
       setState(() => _answering = false);
       // Answered here: the phone's call screen stops ringing. Answered there:
       // the phone keeps the call (its audio, its timer) until it ends.
@@ -249,9 +288,11 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
       });
       ride = ref.watch(rideStreamProvider(rideId)).value;
     }
-    final incoming = s == null && call != null && call.status == CallStatus.ringing && !call.startedBy(me);
+    final incoming =
+        !_elsewhere && s == null && call != null && call.status == CallStatus.ringing && !call.startedBy(me);
     final headline =
         _error ??
+        (_elsewhere ? rideCallElsewhereText(call, me) : null) ??
         s?.error ??
         (call == null
             ? 'Connecting…'
@@ -313,7 +354,14 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
                       ),
                     ),
                     const Spacer(flex: 2),
-                    if (incoming)
+                    if (_elsewhere)
+                      FilledButton.tonal(
+                        key: const ValueKey('ride-call-close'),
+                        style: FilledButton.styleFrom(minimumSize: const Size(160, 52)),
+                        onPressed: _leave,
+                        child: const Text('Close'),
+                      )
+                    else if (incoming)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
@@ -577,6 +625,8 @@ Future<void> startRideCall(BuildContext context, WidgetRef ref, RideRequest ride
   final dialer = ref.read(rideCallDialerProvider);
   try {
     final c = await repo.ring(ride.id);
+    // Rung from this device: its call screen joins it.
+    ref.read(callsJoinedHereProvider).add(c.id);
     if (context.mounted) unawaited(context.push('/ride-call/${Uri.encodeComponent(c.id)}'));
   } catch (e) {
     try {
