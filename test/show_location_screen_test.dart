@@ -48,4 +48,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Off'), findsOneWidget);
   });
+
+  for (final dark in [false, true]) {
+    testWidgets('banner and switch say the same when; "How it\'s shared" explains it (${dark ? 'dark' : 'light'})',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(theme: dark ? ThemeData.dark() : ThemeData.light(), home: const ShowLocationScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // One wording of when, on both.
+      expect(find.textContaining(showLocationWhen), findsNWidgets(2));
+      expect(find.textContaining('until the ride starts'), findsNothing, reason: 'the old, different wording');
+      expect(find.text('Shared $showLocationWhen.'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('show-location-how')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('show-location-how-sheet')), findsOneWidget);
+      for (final p in showLocationHowItsShared) {
+        expect(find.text(p.title), findsOneWidget);
+      }
+      expect(find.textContaining('stops at pickup'), findsOneWidget);
+      expect(find.textContaining('stays with the ride'), findsOneWidget, reason: 'honest about what is kept');
+      await tester.tap(find.text('Got it'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('show-location-how-sheet')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

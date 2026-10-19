@@ -28,7 +28,7 @@ const _sections = [
       (
         'riderTripSimEnabled',
         'Simulated driver movement',
-        'Animated car on the map plus automatic phase changes (arriving → arrived → on trip → completed). When off, '
+        'Animated car on the map plus automatic phase changes (arriving, arrived, on trip, completed). When off, '
             "the car follows the partner's real live GPS position and the real ride status",
         'Ride Tracking',
         Icons.route_outlined,
@@ -111,7 +111,7 @@ class AdminMockSettingsScreen extends ConsumerWidget {
                 ],
                 const SizedBox(height: 16),
                 const Text('These switches apply within a few seconds. Mock offers and mock requests reach only the '
-                    'accounts listed as Demo riders and Demo drivers (Display Settings → Demo / Mockup Data); with '
+                    'accounts listed as Demo riders and Demo drivers (Display Settings > Demo / Mockup Data); with '
                     'none listed, nobody gets them. Rides already in progress pick up the change on their next screen '
                     'open.'),
               ]),

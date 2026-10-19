@@ -84,6 +84,44 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.coin ? 'GET.coin QR' : 'Receive')),
+      // Share and Download pinned under the page, so a short screen (360 ×
+      // 640) never leaves them below the fold.
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          key: const ValueKey('wallet-qr-actions'),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          // The code as a picture on white, so it scans from a chat in dark
+          // mode too. (A Wrap, centred: its own height, not the screen's.)
+          child: ShareSaveImageButtons(
+            keyPrefix: 'wallet-qr',
+            enabled: !expired,
+            // A browser that can't share images: the account number
+            // and the words to go with it, copied for pasting.
+            copyInstead: walletQrShareText(
+              coin: widget.coin,
+              userId: userId,
+              name: name,
+              amountLabel: _amount == null ? null : formatMoney(_amount),
+            ),
+            image: (origin) async => ShareableImage(
+              png: await ref.read(qrPngRendererProvider)(
+                payload,
+                color: qrColor,
+                caption: walletQrCaption(coin: widget.coin, userId: userId, name: name),
+              ),
+              fileName: walletQrFileName(coin: widget.coin, amount: _amount),
+              text: walletQrShareText(
+                coin: widget.coin,
+                userId: userId,
+                name: name,
+                amountLabel: _amount == null ? null : formatMoney(_amount),
+              ),
+              subject: widget.coin ? 'My GET.coin code' : 'My GET.ride pay code',
+              origin: origin,
+            ),
+          ),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -163,11 +201,12 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
                 const SizedBox(height: 12),
                 Card(
                   child: ListTile(
-                    title: Text(widget.coin ? 'Wallet ID' : 'Account no.'),
-                    // One line in a small monospace face, never broken
-                    // mid-ID; Copy gives the whole of it.
+                    title: const Text('Account no.'),
+                    // The rider-facing account number, as on Receive (the
+                    // user id stays inside the code). One line in a small
+                    // monospace face; Copy gives the whole of it.
                     subtitle: Text(
-                      widget.coin ? userId : walletAccountNumber(userId),
+                      walletAccountNumber(userId),
                       key: const ValueKey('wallet-id'),
                       maxLines: 1,
                       softWrap: false,
@@ -183,7 +222,7 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
                       icon: const Icon(Icons.copy),
                       onPressed: () async {
                         await Clipboard.setData(
-                          ClipboardData(text: widget.coin ? userId : walletAccountNumber(userId)),
+                          ClipboardData(text: walletAccountNumber(userId)),
                         );
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
@@ -212,28 +251,6 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
                     TextButton(onPressed: () => _setAmount(null), child: const Text('Cancel amount')),
                   ],
                 ],
-                const SizedBox(height: 8),
-                // The code as a picture on white, so it scans from a chat in dark mode too.
-                ShareSaveImageButtons(
-                  keyPrefix: 'wallet-qr',
-                  enabled: !expired,
-                  image: (origin) async => ShareableImage(
-                    png: await ref.read(qrPngRendererProvider)(
-                      payload,
-                      color: qrColor,
-                      caption: walletQrCaption(coin: widget.coin, userId: userId, name: name),
-                    ),
-                    fileName: walletQrFileName(coin: widget.coin, amount: _amount),
-                    text: walletQrShareText(
-                      coin: widget.coin,
-                      userId: userId,
-                      name: name,
-                      amountLabel: _amount == null ? null : formatMoney(_amount),
-                    ),
-                    subject: widget.coin ? 'My GET.coin code' : 'My GET.ride pay code',
-                    origin: origin,
-                  ),
-                ),
               ],
             ),
           ),
@@ -342,23 +359,29 @@ Future<void> showScanPayHelp(BuildContext context) => showAppSheet<void>(id: 'wa
 /// GET.coin send flow addressed to that account. Any other code is refused
 /// with the reason: nobody on GET would receive a payment to it.
 class ScanPayScreen extends ConsumerStatefulWidget {
-  const ScanPayScreen({super.key});
+  const ScanPayScreen({super.key, this.scanner});
+
+  /// The camera to read codes with (a fake in tests); the screen makes and
+  /// disposes its own when null.
+  final MobileScannerController? scanner;
 
   @override
   ConsumerState<ScanPayScreen> createState() => _ScanPayScreenState();
 }
 
 class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
-  final _scanner = MobileScannerController(
-    formats: const [BarcodeFormat.qrCode],
-    detectionSpeed: DetectionSpeed.noDuplicates,
-  );
+  late final _scanner =
+      widget.scanner ??
+      MobileScannerController(
+        formats: const [BarcodeFormat.qrCode],
+        detectionSpeed: DetectionSpeed.noDuplicates,
+      );
   final _manual = TextEditingController();
   var _handled = false;
 
   @override
   void dispose() {
-    _scanner.dispose();
+    if (widget.scanner == null) _scanner.dispose();
     _manual.dispose();
     super.dispose();
   }
@@ -497,13 +520,22 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  'Point the camera at a GET.ride QR code.',
-                  textAlign: TextAlign.center,
-                  style: t.textTheme.bodyMedium,
+                // The aiming hint only while there is a camera to aim: with
+                // none (web, desktop, access off) the panel above says so.
+                ValueListenableBuilder<MobileScannerState>(
+                  valueListenable: _scanner,
+                  builder: (_, state, _) => state.error != null
+                      ? const SizedBox(key: ValueKey('scan-hint-none'), height: 16)
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 12, bottom: 16),
+                          child: Text(
+                            'Point the camera at a GET.ride QR code.',
+                            key: const ValueKey('scan-hint'),
+                            textAlign: TextAlign.center,
+                            style: t.textTheme.bodyMedium,
+                          ),
+                        ),
                 ),
-                const SizedBox(height: 16),
                 TextField(
                   key: const ValueKey('scan-manual'),
                   controller: _manual,

@@ -44,7 +44,7 @@ void main() {
 
     expect(find.text('Connected'), findsOneWidget);
     expect(find.text('Taxi dongle'), findsNWidgets(2), reason: 'on the status card and in the list');
-    expect(find.text('Wi-Fi · 192.168.0.10:35000'), findsOneWidget);
+    expect(find.text('192.168.0.10:35000'), findsOneWidget);
     expect(find.text('60 km/h'), findsOneWidget);
     expect(find.text('Odometer 128,450.6 km'), findsOneWidget);
 
@@ -112,7 +112,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(connectedTo, 'AA:BB:CC:00:00:01');
     expect(find.text('Connected'), findsOneWidget);
-    expect(find.text('Bluetooth LE · AA:BB:CC:00:00:01'), findsOneWidget);
+    expect(find.text('AA:BB:CC:00:00:01'), findsOneWidget);
     expect(find.text('48 km/h'), findsOneWidget);
     await tester.tap(find.text('Disconnect'));
     await tester.pump(const Duration(milliseconds: 10));
@@ -167,6 +167,43 @@ void main() {
     await tester.pump(const Duration(milliseconds: 10));
   });
 
+  test('a saved reader reads as its link, then its address apart', () {
+    expect(describeAdapterParts(saved), (transport: 'Wi-Fi', address: '192.168.0.10:35000'));
+    expect(describeAdapter(saved), 'Wi-Fi · 192.168.0.10:35000');
+  });
+
+  for (final dark in [false, true]) {
+    for (final scale in [1.0, 1.3]) {
+      testWidgets('the saved reader row keeps its address whole on its own line ($scale x, ${dark ? 'dark' : 'light'})',
+          (tester) async {
+        tester.view.physicalSize = const Size(412, 1400);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        SharedPreferences.setMockInitialValues(savedPrefs());
+        final elm = FakeElm(speed: 30);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [obdTransportFactoryProvider.overrideWithValue((_) => elm)],
+            child: MaterialApp(theme: dark ? ThemeData.dark() : ThemeData.light(), home: const ObdReaderScreen()),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        final address = tester.widget<Text>(find.byKey(const ValueKey('obd-address-a1')));
+        expect(address.data, '192.168.0.10:35000');
+        expect(address.maxLines, 1, reason: 'never broken inside the address');
+        expect(address.softWrap, isFalse);
+        expect(address.overflow, TextOverflow.ellipsis);
+        expect(find.text('Wi-Fi'), findsWidgets);
+        expect(tester.takeException(), isNull);
+        await tester.tap(find.text('Disconnect'));
+        await tester.pump(const Duration(milliseconds: 10));
+      });
+    }
+  }
+
   testWidgets('a car that never answers the odometer is said so, after two reads', (tester) async {
     SharedPreferences.setMockInitialValues(savedPrefs());
     var reads = 0;
@@ -192,4 +229,39 @@ void main() {
     await tester.tap(find.text('Disconnect'));
     await tester.pump(const Duration(milliseconds: 10));
   });
+
+  // Web round 40 (182): from 600 wide Add reader is in the app bar, not
+  // over the Connected card's speed and coolant; on a phone it floats.
+  for (final dark in [false, true]) {
+    for (final size in const [Size(915, 412), Size(360, 640)]) {
+      testWidgets('182: Add reader at ${size.width.toInt()}x${size.height.toInt()} (${dark ? 'dark' : 'light'})',
+          (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [obdTransportFactoryProvider.overrideWithValue((_) => FakeElm(speed: 60))],
+            child: MaterialApp(
+              theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+              home: const ObdReaderScreen(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final add = find.byKey(const ValueKey('obd-add'));
+        expect(add, findsOneWidget);
+        final inBar = find.descendant(of: find.byType(AppBar), matching: add);
+        if (size.width >= 600) {
+          expect(inBar, findsOneWidget);
+          expect(find.byType(FloatingActionButton), findsNothing);
+        } else {
+          expect(inBar, findsNothing);
+          expect(find.byType(FloatingActionButton), findsOneWidget);
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 }

@@ -8,6 +8,7 @@ import '../../data/help_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/side_menu_tiles.dart' show openRoute;
+import '../../widgets/chip_button.dart';
 
 /// One question and the assistant's reply (null while it is being looked up).
 class _Turn {
@@ -369,7 +370,7 @@ class _Chips extends StatelessWidget {
     child: Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: [for (var i = 0; i < labels.length; i++) ActionChip(label: Text(labels[i]), onPressed: () => onTap(i))],
+      children: [for (var i = 0; i < labels.length; i++) ActionChipButton(label: Text(labels[i]), onPressed: () => onTap(i))],
     ),
   );
 }

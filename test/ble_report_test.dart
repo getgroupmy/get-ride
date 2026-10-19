@@ -88,10 +88,10 @@ void main() {
       final list = BleReportTrip.listFrom(_trips);
       expect(list, hasLength(2), reason: 'an unknown kind is dropped');
       expect(list.first.kind, BleReportKind.separated);
-      expect(list.first.people, 'Rina → Dan');
+      expect(list.first.people, 'Rina to Dan');
       expect(list.first.startedBy, 'Trip code');
       expect(list.first.answeredOk, isTrue);
-      expect(list.last.people, 'Passenger → Driver');
+      expect(list.last.people, 'Passenger to Driver');
       expect(bleReportKindLabel(BleReportKind.noProximity), contains('without the phones meeting'));
     });
   });

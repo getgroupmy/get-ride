@@ -222,7 +222,7 @@ String _sentenceFor(Object error) => switch (error) {
   // tell an empty keychain from a broken app.
   NoCredentialsAvailableException() =>
     'There is no passkey saved on this device for this account. Sign '
-        'in with your PIN, then save one from Settings — after '
+        'in with your PIN, then save one from Settings. After '
         'that this button will work here.',
 
   // Android without a Google account signed in, or with passkey sync
@@ -256,7 +256,7 @@ String _sentenceFor(Object error) => switch (error) {
   // is why it needs its own sentence rather than the generic one.
   ExcludeCredentialsCanNotBeRegisteredException() =>
     'This device already has a passkey for this account. Use it to '
-        'sign in, or save one somewhere else — another phone, or a '
+        'sign in, or save one somewhere else, such as another phone or a '
         'security key.',
 
   // The three ways the plugin refuses a field before it calls the
@@ -296,7 +296,7 @@ String _sentenceFor(Object error) => switch (error) {
 /// into the middle.
 String _unreadable(String detail) =>
     'The security check could not be set up, because this system sent '
-    'something this app could not read — $detail. It is a fault on the '
+    'something this app could not read ($detail). It is a fault on the '
     'site rather than anything you have done: please tell GET.ride '
     'support, and sign in with your PIN for now.';
 

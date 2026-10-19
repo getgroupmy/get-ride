@@ -43,7 +43,7 @@ class _PaymentTypeScreenState extends ConsumerState<PaymentTypeScreen> {
     return AdminPage(
       title: 'Payment Type',
       page: PaymentTypeScreen.page,
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => _edit(entries.value ?? []),
         icon: const Icon(Icons.add),
         label: const Text('Add payment type'),
@@ -73,7 +73,7 @@ class _PaymentTypeScreenState extends ConsumerState<PaymentTypeScreen> {
               }
               return ResponsiveCenter(
                 maxWidth: 820,
-                child: ListView(padding: const EdgeInsets.only(top: 8, bottom: 96), children: [
+                child: ListView(padding: EdgeInsets.only(top: 8, bottom: addActionListBottomPadding(context)), children: [
                   for (final e in rows) _row(e, all, canEdit),
                 ]),
               );
@@ -275,7 +275,7 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
     return AdminPage(
       title: 'Payment Gateways',
       page: PaymentGatewayScreen.page,
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => _add(entries.value ?? []),
         icon: const Icon(Icons.add),
         label: const Text('Add gateway'),
@@ -300,7 +300,7 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
           final withSecrets = all.where((e) => storedSecretKeys(e.values).isNotEmpty).length;
           return ResponsiveCenter(
             maxWidth: 900,
-            child: ListView(padding: const EdgeInsets.only(top: 8, bottom: 96), children: [
+            child: ListView(padding: EdgeInsets.only(top: 8, bottom: addActionListBottomPadding(context)), children: [
               const _SecretNotice(),
               if (withSecrets > 0)
                 Card(

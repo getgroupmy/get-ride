@@ -45,4 +45,44 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('navigation_app'), 'waze');
   });
+
+  for (final dark in [false, true]) {
+    for (final installed in <bool?>[null, true, false]) {
+      testWidgets('Waze: the hint always; greyed "Not installed" only where the phone says so '
+          '(${installed ?? 'web'}, ${dark ? 'dark' : 'light'})', (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final container = ProviderContainer(overrides: [wazeInstalledProvider.overrideWith((ref) async => installed)]);
+        addTearDown(container.dispose);
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: MaterialApp(
+              theme: dark ? ThemeData.dark() : ThemeData.light(),
+              home: const Scaffold(body: NavigationAppCard(apple: false)),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final tile = tester.widget<ListTile>(find.byKey(const ValueKey('nav-app-waze')));
+        final hint = tester.widget<Text>(find.byKey(const ValueKey('nav-app-waze-hint')));
+        expect(hint.data, contains(wazeHint));
+        if (installed == false) {
+          expect(tile.enabled, isFalse);
+          expect(hint.data, startsWith(wazeNotInstalled));
+          await tester.tap(find.byKey(const ValueKey('nav-app-waze')), warnIfMissed: false);
+          await tester.pump();
+          expect(container.read(navigationAppProvider), NavigationApp.google, reason: 'a missing app is not picked');
+        } else {
+          expect(tile.enabled, isTrue);
+          expect(hint.data, isNot(contains(wazeNotInstalled)));
+        }
+        // Google Maps carries no hint.
+        expect(
+          find.descendant(of: find.byKey(const ValueKey('nav-app-google')), matching: find.textContaining('Opens')),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 }

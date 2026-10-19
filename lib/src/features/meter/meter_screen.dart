@@ -38,6 +38,7 @@ import '../../data/meter_trip_sync.dart';
 import 'meter_providers.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/web_overlay_back.dart';
+import '../../widgets/chip_button.dart';
 
 // The console is deliberately not themed: a white screen on a windscreen
 // mount at night is a hazard, so the meter is always the dark instrument it
@@ -239,11 +240,13 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         currency: _currency,
         multiplier: periodMultiplier(_period, _profile.nightMultiplier),
         current: _dest,
+        recent: recentMeterDropoffs(_trips),
+        canClear: true,
       ),
     );
     _inFront = true;
     await _orientation.lockLandscape();
-    if (mounted && picked != null) setState(() => _dest = picked);
+    if (mounted && picked != null) setState(() => _dest = identical(picked, hailDestinationCleared) ? null : picked);
   }
 
   void _navigateToDestination() {
@@ -1048,7 +1051,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
           ),
         ),
         const SizedBox(width: 8),
-        ActionChip(
+        ActionChipButton(
           key: const ValueKey('meter-plate'),
           // Not compact: its tap area is 48 high (a compact one was 40).
           materialTapTargetSize: MaterialTapTargetSize.padded,
@@ -1491,9 +1494,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
                 [
                   formatMeterDistance(t.distanceM),
                   if (t.pickup != null && t.dropoff != null)
-                    '${t.pickup!.label} → ${t.dropoff!.label}'
+                    '${t.pickup!.label} to ${t.dropoff!.label}'
                   else if (t.destination != null)
-                    '→ ${t.destination}',
+                    'to ${t.destination}',
                 ].join(' · '),
               ),
               trailing: Text('${t.currency} ${t.total.toStringAsFixed(2)}', style: _digits(16, _lcd)),

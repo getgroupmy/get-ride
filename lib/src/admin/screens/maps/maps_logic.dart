@@ -617,7 +617,7 @@ String tileHost(String url) => Uri.tryParse(url)?.host ?? '';
 /// Why a map slot set here fell back to the app's own, as the geo function
 /// said (its `refused`), in plain words for Admin → Maps → Test.
 String mapRefusalText(String raw) {
-  if (raw == 'No key') return 'No key for it: add one on the Keys tab or in Admin → API Keys';
+  if (raw == 'No key') return 'No key for it: add one on the Keys tab or in Admin > API Keys';
   if (raw.contains('SERVICE_DISABLED')) {
     return "Google refused: Map Tiles API is not enabled in this key's Google Cloud project";
   }

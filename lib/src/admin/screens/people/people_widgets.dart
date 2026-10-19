@@ -20,6 +20,7 @@ import '../../../data/live_tables.dart';
 import '../../../widgets/storage_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
+import '../../../widgets/chip_button.dart';
 
 /// Wide screens get a two-column form, phones one column.
 class FormColumns extends StatelessWidget {
@@ -419,7 +420,7 @@ class PartnerTypeField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final all = [...options, ...value.where((v) => !options.contains(v))];
-    if (all.isEmpty) return const Text('No partner types configured (Settings → Partner Type).');
+    if (all.isEmpty) return const Text('No partner types configured (Settings > Partner Type).');
     return ListSearchFilter(
   count: all.length,
   hint: 'Search partner types',
@@ -551,7 +552,7 @@ class MakeModelField extends ConsumerWidget {
                 const SizedBox(height: 8),
                 Expanded(
                   child: list.isEmpty
-                      ? const Center(child: Text('No vehicle models (Settings → Vehicle Make & Model).'))
+                      ? const Center(child: Text('No vehicle models (Settings > Vehicle Make & Model).'))
                       : ListView(children: [
                           for (final m in list)
                             ListTile(
@@ -1073,7 +1074,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
           if (r != null && widget.doc.flags.requireDocumentNumber && r.candidateNumbers.length > 1)
             Wrap(spacing: 6, children: [
               for (final n in r.candidateNumbers)
-                ActionChip(label: Text(n), onPressed: () => setState(() => _number.text = n)),
+                ActionChipButton(label: Text(n), onPressed: () => setState(() => _number.text = n)),
             ]),
         ]),
       ),

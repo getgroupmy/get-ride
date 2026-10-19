@@ -136,6 +136,10 @@ class _BookingIdRow extends StatelessWidget {
 const receiptMapHeight = 200.0;
 const receiptMapMargin = 28.0;
 
+/// The room above the framed route: the pickup pin's height over its point
+/// and a little air.
+const receiptMapPinRoom = rideMapPinTop + 8;
+
 class _ReceiptBody extends StatelessWidget {
   const _ReceiptBody({required this.receipt, this.route = const [], this.extra});
   final TripReceipt receipt;
@@ -200,7 +204,10 @@ class _ReceiptBody extends StatelessWidget {
                         drop: route.length > 1 ? route.last : null,
                         stops: route.length > 2 ? route.sublist(1, route.length - 1) : const [],
                         route: route.length > 1 ? route : const [],
-                        fitTop: receiptMapMargin,
+                        // Room above for the pickup pin, which stands on
+                        // its point (it was cut to its base at the top
+                        // edge); the slim margin below.
+                        fitTop: receiptMapPinRoom,
                         fitBottom: receiptMapMargin,
                         pointZoom: 16,
                       ),

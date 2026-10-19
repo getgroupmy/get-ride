@@ -74,7 +74,7 @@ class _PriorityListState extends ConsumerState<_PriorityList> {
     return AdminPage(
       title: widget.title,
       page: c.page,
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => widget.edit(context, entries.value ?? [], null),
         icon: const Icon(Icons.add),
         label: Text(widget.addLabel),
@@ -94,7 +94,7 @@ class _PriorityListState extends ConsumerState<_PriorityList> {
                 child: rows.isEmpty
                     ? EmptyState(icon: Icons.inbox_outlined, title: widget.emptyTitle, message: c.subtitle)
                     : ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 96),
+                        padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)),
                         itemCount: rows.length,
                         itemBuilder: (_, i) {
                           final e = rows[i];

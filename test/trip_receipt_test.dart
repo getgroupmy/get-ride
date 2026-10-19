@@ -6,7 +6,7 @@ import 'package:get_ride/src/core/trip_receipt.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ride/trip_receipt_screen.dart';
 import 'package:get_ride/src/widgets/pdf_actions.dart';
-import 'package:get_ride/src/widgets/ride_map.dart' show openingView;
+import 'package:get_ride/src/widgets/ride_map.dart' show PickupPin, openingView;
 import 'package:get_ride/src/providers.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -300,6 +300,40 @@ void main() {
     await open(trip());
     expect(find.byKey(const ValueKey('receipt-map')), findsNothing);
   });
+
+  // Desktop 138: the pickup pin stands whole inside the map card at 390 px.
+  for (final b in Brightness.values) {
+    testWidgets('138: at 390 wide the pickup pin is wholly inside the receipt map (${b.name})', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      // Pickup north of the drop-off: its pin stands at the top edge.
+      for (final ends in [
+        {'pickup_lat': 3.158, 'pickup_lng': 101.712, 'drop_lat': 3.134, 'drop_lng': 101.686},
+        {'pickup_lat': 3.20, 'pickup_lng': 101.60, 'drop_lat': 3.05, 'drop_lng': 101.75},
+      ]) {
+        await tester.pumpWidget(
+          ProviderScope(
+            key: UniqueKey(),
+            overrides: [
+              currentUserIdProvider.overrideWithValue(_rider),
+              tripProvider.overrideWith((ref, id) async => trip(extra: ends)),
+            ],
+            child: MaterialApp(theme: ThemeData(brightness: b), home: const TripReceiptScreen(requestId: 'x')),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        final card = tester.getRect(find.byKey(const ValueKey('receipt-map')));
+        final pin = tester.getRect(find.byType(PickupPin));
+        expect(pin.top, greaterThanOrEqualTo(card.top), reason: 'the head, not only its base');
+        expect(pin.bottom, lessThanOrEqualTo(card.bottom));
+        expect(pin.left, greaterThanOrEqualTo(card.left));
+        expect(pin.right, lessThanOrEqualTo(card.right));
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
 
   test('a trip the driver ended early says so, at the fare it was stored at', () {
     final early = TripReceipt.fromRide(trip(extra: {'ride_fare': 9.4, 'ended_early_at': '2026-10-05T01:20:00Z'}));

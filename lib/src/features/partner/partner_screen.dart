@@ -61,6 +61,7 @@ import '../../widgets/trip_safety.dart';
 import '../../widgets/net_image.dart';
 import 'trip_handover_panel.dart' show HandoverOffersCard;
 import '../../widgets/page_style_host.dart';
+import '../../widgets/focus_order.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -86,7 +87,12 @@ bool partnerCanDrive(Partner p) {
   return s == 'approved' || s.startsWith('permit-');
 }
 
+/// Below this height the wide driver panel scrolls as a whole instead of
+/// holding its settings fixed over the queue.
+const wideDriverPanelScrollBelow = 640.0;
+
 /// Driver mode: go online, see open requests live, accept one.
+
 class PartnerScreen extends ConsumerStatefulWidget {
   const PartnerScreen({super.key});
 
@@ -893,7 +899,26 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   ];
                 const offline = EmptyState(icon: Icons.local_taxi_outlined, title: 'Go online to receive ride requests');
                 if (wide) {
-                  final panel = Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)]);
+                  // Tall enough, the settings stand over the queue, which
+                  // takes the rest; short (a phone on its side, 915 × 412),
+                  // the whole panel scrolls, the queue a screenful below the
+                  // settings, so nothing overflows.
+                  final panel = LayoutBuilder(
+                    builder: (_, c) => c.maxHeight >= wideDriverPanelScrollBelow
+                        ? Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)])
+                        : CustomScrollView(
+                            key: const ValueKey('partner-panel-scroll'),
+                            slivers: [
+                              SliverList.list(children: head),
+                              SliverToBoxAdapter(
+                                child: SizedBox(
+                                  height: c.maxHeight,
+                                  child: _online ? _queue(p, wide: true) : offline,
+                                ),
+                              ),
+                            ],
+                          ),
+                  );
                   return Row(children: [
                     SizedBox(width: 520, child: panel),
                     const VerticalDivider(width: 1),
@@ -942,7 +967,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         Positioned(
           top: 0,
           right: 0,
-          child: SafeArea(
+          // Floating shortcuts: reached by keyboard after the rail and the
+          // panel, with the map's own buttons (FocusLast).
+          child: FocusLast(child: SafeArea(
             bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 12, 0),
@@ -994,7 +1021,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   ),
               ]),
             ),
-          ),
+          )),
         ),
         // The menu: top left, exactly where the home map has it (on a
         // phone, with its side menu).
@@ -1032,7 +1059,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Widget _requestSheet(Partner partner) {
     final list = ref.watch(openRequestsProvider).value ?? const <RideRequest>[];
     final r = list.where((r) => r.id == _alertId).firstOrNull;
-    return Stack(children: [
+    // While the sheet is up nothing behind it (the demo request card with
+    // its Accept and Decline, the map's buttons) is reachable by a screen
+    // reader (141).
+    return BlockSemantics(blocking: r != null, child: Stack(children: [
       IgnorePointer(
         child: AnimatedOpacity(
           opacity: r == null ? 0 : 1,
@@ -1076,7 +1106,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 ),
         ),
       ),
-    ]);
+    ]));
   }
 
   /// One of the round buttons floating at the top of the page (in place of

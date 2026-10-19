@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/widgets/common.dart' show cardSurfaceColor, contrastRatio;
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/admin_registry.dart';
@@ -201,6 +203,44 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(minutes: 1));
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('at 1.3x text, the no-device note reads on its tinted card, with a faint admin grey (${b.name})',
+        (tester) async {
+      tester.view.physicalSize = const Size(390, 4000);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      // An admin "secondary text" colour that fails on the card.
+      final theme = appTheme(b, colors: {'textSecondary': b == Brightness.light ? '#C8C8C8' : '#4A4A4A'});
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            supabaseProvider.overrideWithValue(_db),
+            adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+            messagingRepositoryProvider.overrideWithValue(_FakeRepo(const [])),
+            messagingClockProvider.overrideWithValue(() => _now),
+          ],
+          child: MaterialApp(theme: theme, home: const AdminMessagingScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // Switched on with no phone to send from, the route says so.
+      await tester.ensureVisible(find.byKey(const ValueKey('messaging-enabled-otp-outbound')));
+      await tester.tap(find.byKey(const ValueKey('messaging-enabled-otp-outbound')));
+      await tester.pumpAndSettle();
+      final notes = find.textContaining(RegExp(r'^No (gateway phone|device) yet'));
+      expect(notes, findsWidgets);
+      final card = cardSurfaceColor(theme);
+      for (final w in tester.widgetList<Text>(notes)) {
+        final c = w.style!.color!;
+        expect(contrastRatio(c, card), greaterThanOrEqualTo(4.5), reason: '"${w.data}" on the card');
+      }
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(minutes: 1));
+    });
+  }
 
   testWidgets('on a phone with large text, each switch and SMS / WhatsApp choice stays on screen', (tester) async {
     tester.view.physicalSize = const Size(390, 4000);

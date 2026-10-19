@@ -74,7 +74,7 @@ class _ClassicPairedSheetState extends ConsumerState<ClassicPairedSheet> {
     final opened = await ref.read(classicBluetoothProvider).openSettings();
     if (opened || !mounted) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('Open Settings → Bluetooth on this phone to pair the printer.')),
+      const SnackBar(content: Text('Open Settings > Bluetooth on this phone to pair the printer.')),
     );
   }
 

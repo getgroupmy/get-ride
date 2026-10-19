@@ -27,6 +27,7 @@ import 'core/auth_utils.dart'
         signInStepPhone,
         signInStepRedirect;
 import 'core/connection_check.dart';
+import 'data/app_connection.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/push_logic.dart';
@@ -471,7 +472,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
           // Driver mode's pages, under the driver menu.
-          GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
+          GoRoute(
+            path: '/drive/onboarding',
+            builder: (_, s) => PartnerOnboardingScreen(startAt: onboardingStepFromQuery(s.uri.queryParameters['step'])),
+          ),
           GoRoute(
             path: '/drive/demo',
             builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
@@ -663,6 +667,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       failedOn: display.connectionFailedPopup,
     );
     if (check == null) return;
+    // What the check found also tells the offline strip (OfflineStrip).
+    if (mounted) ref.read(appOfflineProvider.notifier).reachable(check.reachable);
     final popup = connectionPopupFor(
       check,
       connectedOn: display.connectedPopup,

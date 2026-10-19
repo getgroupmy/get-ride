@@ -247,6 +247,9 @@ class _LinkAccountDialogState extends ConsumerState<LinkAccountDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
+          key: const ValueKey('link-search'),
+          // The dialog's first step is a search: typing goes straight in.
+          autofocus: true,
           decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search old number or name'),
           onSubmitted: (v) => setState(() => _search = v),
         ),
