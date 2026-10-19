@@ -12,6 +12,16 @@ import 'meter_logic.dart';
 
 const meterSettingsTable = 'meter_digital_settings';
 
+/// An update the database accepted but that changed no row: the card is
+/// gone, or this account may not change it.
+class MeterNotSavedException implements Exception {
+  const MeterNotSavedException();
+
+  @override
+  String toString() => 'Not saved: no rate card was changed. It may have been deleted, or this account '
+      'cannot edit rate cards. Reload the page and try again.';
+}
+
 class MeterSettingsStore {
   MeterSettingsStore(this._db);
   final SupabaseClient _db;
@@ -54,7 +64,16 @@ class MeterSettingsStore {
     }
   }
 
+  /// An update by id that may match nothing: PostgREST answers 204 either
+  /// way, so the changed row is asked back, and none is an error rather than
+  /// a "saved" that saved nothing.
+  Future<void> _updateOne(Map<String, dynamic> payload, String id) async {
+    final rows = await _db.from(meterSettingsTable).update(payload).eq('id', id).select('id');
+    if (rows.isEmpty) throw const MeterNotSavedException();
+  }
+
   Exception _friendly(Object e, String what) {
+    if (e is MeterNotSavedException) return e;
     if (_isPermissionDenied(e)) {
       return Exception('The database refused the $what. Rate cards are admin-only — sign in with an admin '
           'account and try again.');
@@ -87,11 +106,11 @@ class MeterSettingsStore {
       await _dropping(() async {
         final payload = meterRowWithoutGroups(row, _missing);
         if (id.isNotEmpty) {
-          await _db.from(meterSettingsTable).update(payload).eq('id', id);
+          await _updateOne(payload, id);
         } else if (profile.level == 'master') {
           final existing = await _masterId();
           if (existing != null) {
-            await _db.from(meterSettingsTable).update(payload).eq('id', existing);
+            await _updateOne(payload, existing);
           } else {
             await _db.from(meterSettingsTable).insert(payload);
           }
@@ -112,7 +131,7 @@ class MeterSettingsStore {
     final panelRow = meterPanelsToRow(panels);
     try {
       if (id.isNotEmpty) {
-        await _db.from(meterSettingsTable).update(panelRow).eq('id', id);
+        await _updateOne(panelRow, id);
         return id;
       }
       if (profile.level != 'master') {
@@ -120,7 +139,7 @@ class MeterSettingsStore {
       }
       final existing = await _masterId();
       if (existing != null) {
-        await _db.from(meterSettingsTable).update(panelRow).eq('id', existing);
+        await _updateOne(panelRow, existing);
         return existing;
       }
       // No global row yet: the toggle creates it from the card on screen.
