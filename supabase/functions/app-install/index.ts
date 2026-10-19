@@ -5,6 +5,11 @@
 // (Admin → App Release, and the public getride.my/install/<platform> page).
 //
 // Request:  GET ?platform=ios|android                  -> AppBuild (JSON)
+//           GET ?platform=android&abi=arm64-v8a|armeabi-v7a
+//               -> the same, with that processor's APK as download_url /
+//               install_url (the universal APK when that split is missing).
+//               Without ?abi= (old clients) they stay the universal
+//               getride.apk, as before the split. `apks` lists every APK.
 //           GET ?platform=ios&format=manifest          -> itms-services manifest
 //
 // Reads the rolling GitHub release `ios-latest` / `android-latest` that the
@@ -21,6 +26,7 @@
 //   supabase functions deploy app-install --no-verify-jwt
 // ============================================================================
 import {
+  abiOf,
   appBuildFrom,
   BUILD_ASSETS,
   DEFAULT_BUILDS_REPOSITORY,
@@ -74,7 +80,13 @@ Deno.serve(async (req) => {
     }
 
     const self = `${Deno.env.get("SUPABASE_URL") ?? ""}/functions/v1/app-install`;
-    const build = appBuildFrom(platform, release, info, `${self}?platform=ios&format=manifest`);
+    const build = appBuildFrom(
+      platform,
+      release,
+      info,
+      `${self}?platform=ios&format=manifest`,
+      abiOf(params.get("abi")),
+    );
 
     if (params.get("format") === "manifest") {
       const plist = manifestPlist(build);
