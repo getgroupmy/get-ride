@@ -210,7 +210,7 @@ class TripReceipt {
   String get text {
     final b = StringBuffer()
       ..writeln('GET.ride trip receipt')
-      ..writeln('$pickup → $drop');
+      ..writeln('$pickup to $drop');
     for (final (k, v) in details) {
       b.writeln('$k: $v');
     }

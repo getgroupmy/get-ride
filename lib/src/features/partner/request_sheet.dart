@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show listEquals;
@@ -27,6 +28,9 @@ import '../ride/promo_parts.dart' show PromoAppliedIcon, rideHasPromo;
 /// to the pickup and of the trip beside A and B), the rider, the fare and
 /// both ends, a countdown line, then "Accept for …", the fare offers
 /// ("Offer your fare": three steps up and a pencil for any amount) and Skip.
+/// The request map's zoom buttons show from this width (beside the chips).
+const requestMapZoomMinWidth = 280.0;
+
 class RideRequestSheet extends ConsumerStatefulWidget {
   const RideRequestSheet({
     super.key,
@@ -217,7 +221,25 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
   Widget _mapPart(BuildContext context) {
     final r = widget.request;
     final a = _pickup, b = _drop;
-    return Stack(children: [
+    // "Ride request" on a solid band above the map (161), so large text never
+    // lands on the tiles or the pickup chip.
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const ColoredBox(
+        key: ValueKey('request-title-band'),
+        color: Color(0xFF151515),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Text(
+            'Ride request',
+            key: ValueKey('request-sheet-title'),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ),
+      Expanded(child: LayoutBuilder(builder: (context, box) => Stack(children: [
       Positioned.fill(
         child: RideMap(
           controller: _map,
@@ -227,8 +249,11 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           dotPins: true,
           route: _trip,
           framed: [?widget.me, ?a, ?b],
-          // Room for "Ride request" and the chips standing over the pins.
-          fitTop: 120,
+          // Room for the chips standing over the pins (two lines, some 90
+          // above the pickup's point), and little below: the pins stand on
+          // their points, so on a short map the three spread out (166).
+          fitTop: 96,
+          fitBottom: 28,
           // Over the car, which near the drop-off used to cover them.
           topMarkers: [
             if (a != null && widget.awayKm != null)
@@ -257,41 +282,9 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           ],
         ),
       ),
-      // "Ride request" over the map, as inDrive's, on a shade that keeps it
-      // legible over any tiles.
-      const Positioned(
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 64,
-        child: IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x99000000), Color(0x00000000)],
-              ),
-            ),
-          ),
-        ),
-      ),
-      const Positioned(
-        top: 12,
-        left: 0,
-        right: 0,
-        child: Text(
-          'Ride request',
-          key: ValueKey('request-sheet-title'),
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            shadows: [Shadow(blurRadius: 6, color: Colors.black87)],
-          ),
-        ),
-      ),
+      // Zoom buttons only where the map has the width for them beside the
+      // chips; a narrow pane (a phone on its side) zooms by pinch or wheel.
+      if (box.maxWidth >= requestMapZoomMinWidth)
       Positioned(
         right: 12,
         top: 0,
@@ -302,6 +295,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           _round(Icons.remove, 'Zoom out', () => _zoom(-1)),
         ]),
       ),
+    ]))),
     ]);
   }
 
@@ -508,8 +502,13 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                     Expanded(
                       // The details get the most room: they must show whole.
                       child: LayoutBuilder(
+                        // The map at least 220 wide, its zoom buttons only
+                        // where there is room beside the chips (they sat on
+                        // the trip chip at 203, 140); the fare offers fit
+                        // their text in the answers' column or take two rows
+                        // (139).
                         builder: (context, c) => Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                          SizedBox(width: c.maxWidth * 0.24, child: _cachedMap(context)),
+                          SizedBox(width: math.max(c.maxWidth * 0.24, 220.0), child: _cachedMap(context)),
                           Expanded(child: details),
                           SizedBox(width: c.maxWidth * 0.3, child: SingleChildScrollView(child: actions)),
                         ]),
@@ -520,7 +519,12 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                 ),
               )
             : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                SizedBox(height: (h * 0.34).clamp(180.0, 320.0), child: _cachedMap(context)),
+                // The title band, then a map never shorter than 260: at 200 on
+                // a 360x640 phone the car, pickup and drop-off sat on each other.
+                SizedBox(
+                  height: (h * 0.42).clamp(260.0, 340.0) + MediaQuery.textScalerOf(context).scale(56),
+                  child: _cachedMap(context),
+                ),
                 Flexible(child: details),
                 const SizedBox(height: 10),
                 countdown,
@@ -540,7 +544,8 @@ ButtonStyle _acceptStyle(BuildContext context, {double height = 52}) => FilledBu
   disabledForegroundColor: Colors.white70,
   minimumSize: Size.fromHeight(height),
   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-  textStyle: const TextStyle(fontWeight: FontWeight.w700),
+  // The theme's font, not the default (a bare TextStyle lost it).
+  textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
 );
 
 /// The fare offers: the accent as a tint, so Accept stays the one to press.
@@ -551,9 +556,16 @@ ButtonStyle _offerStyle(BuildContext context, {double height = 48}) {
     foregroundColor: dark ? const Color(0xFF7FD0F2) : const Color(0xFF0E6E99),
     minimumSize: Size.fromHeight(height),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    textStyle: const TextStyle(fontWeight: FontWeight.w700),
+    // The theme's font, not the default (a bare TextStyle lost it).
+  textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
   );
 }
+
+/// A fare offer's padding either side of its amount.
+const requestOfferPad = 8.0;
+
+/// "RM17" for "RM17.00": a whole fare, where its cents don't fit.
+String requestOfferShortFare(String label) => label.endsWith('.00') ? label.substring(0, label.length - 3) : label;
 
 /// Answering a request: Accept at the rider's fare, the fare offers (+ the
 /// presets and a pencil for another amount) where the rider takes offers,
@@ -599,30 +611,90 @@ class RequestAnswerButtons extends StatelessWidget {
         const SizedBox(height: 12),
         Text('Offer your fare', textAlign: TextAlign.center, style: t.textTheme.bodyMedium?.copyWith(color: muted)),
         const SizedBox(height: 8),
-        Row(spacing: 8, children: [
-          for (var i = 0; i < presets.length; i++)
-            Expanded(
-              child: BusyButton.filled(
+        // The fares whole, never shrunk to nothing (three 47-wide boxes in a
+        // phone on its side showed no text, 139): one row where they fit,
+        // "RM17" for "RM17.00" where that is what fits, else the offers on
+        // a row of their own and the pencil under them.
+        LayoutBuilder(builder: (context, box) {
+          final style = _offerStyle(context).textStyle?.resolve({}) ?? const TextStyle();
+          final base = Theme.of(context).textTheme.labelLarge?.merge(style) ?? style;
+          final scaler = MediaQuery.textScalerOf(context);
+          double width(String text) {
+            final tp = TextPainter(
+              text: TextSpan(text: text, style: base),
+              textDirection: TextDirection.ltr,
+              textScaler: scaler,
+              maxLines: 1,
+            )..layout();
+            final w = tp.width;
+            tp.dispose();
+            return w + 2 * requestOfferPad + 2;
+          }
+          const pencil = 56.0, gap = 8.0;
+          final n = presets.length;
+          final full = [for (final p in presets) r.fareText(p)];
+          final short = [for (final l in full) requestOfferShortFare(l)];
+          bool fits(List<String> labels, double room, int cols) =>
+              labels.every((l) => width(l) <= (room - gap * (cols - 1)) / cols);
+          // The first that fits: all on one row with the pencil, then the
+          // offers on a row of their own, then two a row, then one; each
+          // with the whole fare before "RM17" for "RM17.00".
+          var together = false;
+          var cols = 1;
+          var labels = short;
+          search:
+          for (final (inline, c) in [(true, n), (false, n), (false, 2), (false, 1)]) {
+            for (final l in [full, short]) {
+              if (fits(l, inline ? box.maxWidth - pencil - gap : box.maxWidth, c)) {
+                together = inline;
+                cols = c;
+                labels = l;
+                break search;
+              }
+            }
+          }
+          final chipWidth = ((together ? box.maxWidth - pencil - gap : box.maxWidth) - gap * (cols - 1)) / cols - 0.01;
+          Widget chip(int i) => BusyButton.filled(
                 key: ValueKey('request-offer-$i'),
-                style: _offerStyle(context),
+                style: _offerStyle(context).copyWith(
+                  padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: requestOfferPad)),
+                ),
                 onPressed: busy ? null : () => offer(presets[i]),
-                child: FittedBox(child: Text(r.fareText(presets[i]))),
+                child: Semantics(
+                  label: 'Offer ${full[i]}',
+                  excludeSemantics: true,
+                  child: Text(labels[i], maxLines: 1, softWrap: false, overflow: TextOverflow.visible),
+                ),
+              );
+          // Named on the button itself, the tooltip merged into it (119).
+          final custom = SizedBox(
+            width: together ? pencil : double.infinity,
+            height: 48,
+            child: Semantics(
+              container: true,
+              button: true,
+              enabled: !busy,
+              label: 'Offer another fare',
+              onTap: busy ? null : () => offer(null),
+              excludeSemantics: true,
+              child: IconButton.filled(
+              key: const ValueKey('request-offer-custom'),
+              tooltip: 'Offer another fare',
+              style: _offerStyle(context).copyWith(
+                padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
               ),
+              onPressed: busy ? null : () => offer(null),
+              icon: const Icon(Icons.edit_outlined, size: 20),
             ),
-          SizedBox(
-            width: 56,
-            // Named for screen readers and on a long press (web tester #119).
-            child: Tooltip(
-              message: 'Offer another fare',
-              child: BusyButton.filled(
-                key: const ValueKey('request-offer-custom'),
-                style: _offerStyle(context).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.zero)),
-                onPressed: busy ? null : () => offer(null),
-                child: const Icon(Icons.edit_outlined, size: 20),
-              ),
             ),
-          ),
-        ]),
+          );
+          final chips = Wrap(spacing: gap, runSpacing: gap, children: [
+            for (var i = 0; i < n; i++) SizedBox(width: chipWidth, child: chip(i)),
+            if (together) custom,
+          ]);
+          return together ? chips : Column(children: [chips, const SizedBox(height: gap), custom]);
+        }),
       ],
       const SizedBox(height: 12),
       FilledButton(

@@ -92,8 +92,31 @@ void main() {
     });
   });
 
+  test('recent destinations: drop-offs with a fix, newest first, one per place', () {
+    MeterTrip t(String id, int ended, {String? place, double? lat, double? lng, String? destination}) => MeterTrip.fromJson({
+      'id': id,
+      'endedAt': ended,
+      'destination': ?destination,
+      'dropoff': {'at': ended, 'latitude': ?lat, 'longitude': ?lng, 'place': ?place},
+    })!;
+    final recent = recentMeterDropoffs([
+      t('a', 1, place: 'Mid Valley', lat: 3.118, lng: 101.677),
+      t('b', 3, place: 'KLCC', lat: 3.1579, lng: 101.7116),
+      t('c', 2, place: 'Mid Valley', lat: 3.1181, lng: 101.6771),
+      t('d', 4),
+      t('e', 5, lat: 3.2, lng: 101.6, destination: 'Batu Caves'),
+    ]);
+    expect([for (final r in recent) r.name], ['Batu Caves', 'KLCC', 'Mid Valley']);
+    expect(recentMeterDropoffs([for (var i = 0; i < 9; i++) t('$i', i, place: 'P$i', lat: 3 + i / 10, lng: 101)]),
+        hasLength(5));
+  });
+
   group('the destination screen', () {
-    Future<(_Geo, List<HailDestination?>)> pump(WidgetTester tester) async {
+    Future<(_Geo, List<HailDestination?>)> pump(
+      WidgetTester tester, {
+      HailDestinationArgs? args,
+      Brightness brightness = Brightness.light,
+    }) async {
       tester.view.physicalSize = const Size(800, 1200);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -112,18 +135,61 @@ void main() {
         GoRoute(
           path: '/meter/destination',
           builder: (_, _) => HailDestinationScreen(
-            args: HailDestinationArgs(origin: _klcc, rates: tariffRates['old']!, currency: 'RM'),
+            args: args ?? HailDestinationArgs(origin: _klcc, rates: tariffRates['old']!, currency: 'RM'),
           ),
         ),
       ]);
       addTearDown(router.dispose);
       await tester.pumpWidget(ProviderScope(
         overrides: [geoServiceProvider.overrideWithValue(geo)],
-        child: MaterialApp.router(routerConfig: router),
+        child: MaterialApp.router(theme: ThemeData(brightness: brightness), routerConfig: router),
       ));
       await tester.tap(find.text('OPEN'));
       await tester.pumpAndSettle();
       return (geo, popped);
+    }
+
+    for (final b in Brightness.values) {
+      testWidgets('the sheet offers recent drop-offs, and Clear when one is set (${b.name})', (tester) async {
+        final (geo, popped) = await pump(
+          tester,
+          brightness: b,
+          args: HailDestinationArgs(
+            origin: _klcc,
+            rates: tariffRates['old']!,
+            currency: 'RM',
+            recent: const [(name: 'Mid Valley', latitude: 3.118, longitude: 101.677)],
+          ),
+        );
+        expect(find.text('Recent destinations'), findsOneWidget);
+        expect(find.byKey(const ValueKey('hail-clear')), findsNothing, reason: 'nothing set to clear');
+        await tester.tap(find.byKey(const ValueKey('hail-recent-0')));
+        await tester.pumpAndSettle();
+        expect(geo.routed.single.$2, const LatLng(3.118, 101.677));
+        expect(find.text('Mid Valley'), findsWidgets);
+        await tester.tap(find.byKey(const ValueKey('hail-set')));
+        await tester.pumpAndSettle();
+        expect(popped.single?.name, 'Mid Valley');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('Clear destination pops the cleared marker (${b.name})', (tester) async {
+        final (_, popped) = await pump(
+          tester,
+          brightness: b,
+          args: HailDestinationArgs(
+            origin: _klcc,
+            rates: tariffRates['old']!,
+            currency: 'RM',
+            current: _dest(),
+            canClear: true,
+          ),
+        );
+        await tester.ensureVisible(find.byKey(const ValueKey('hail-clear')));
+        await tester.tap(find.byKey(const ValueKey('hail-clear')));
+        await tester.pumpAndSettle();
+        expect(identical(popped.single, hailDestinationCleared), isTrue);
+      });
     }
 
     testWidgets('a tap on the map is routed from here and quoted on the card', (tester) async {

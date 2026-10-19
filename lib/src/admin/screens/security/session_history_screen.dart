@@ -476,7 +476,7 @@ class _AccountDetailState extends ConsumerState<_AccountDetail> {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Chip(
                 avatar: const Icon(Icons.calendar_today, size: 14),
-                label: Text('${widget.from.isEmpty ? '…' : widget.from} → ${widget.to.isEmpty ? '…' : widget.to}'),
+                label: Text('${widget.from.isEmpty ? '…' : widget.from} to ${widget.to.isEmpty ? '…' : widget.to}'),
               ),
             ),
           if (all.locations.isNotEmpty)

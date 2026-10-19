@@ -364,7 +364,7 @@ class SearchFareStepper extends StatelessWidget {
               disabledBackgroundColor: c.tray,
               disabledForegroundColor: t.colorScheme.onSurface.withValues(alpha: 0.35),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 18, fontWeight: FontWeight.w600),
             ),
             child: Text(confirmLabel),
           ),
@@ -461,7 +461,7 @@ class SearchGreyButton extends StatelessWidget {
         backgroundColor: searchGreyKey(context),
         foregroundColor: Theme.of(context).colorScheme.onSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+        textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 18, fontWeight: FontWeight.w500),
       ),
       child: Text(label),
     ),
@@ -1010,23 +1010,43 @@ class ChooseDriverOverlay extends StatelessWidget {
         duration: const Duration(milliseconds: 250),
         child: ColoredBox(
           color: Colors.black.withValues(alpha: 0.62),
-          child: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Choose a driver',
-                    style: t.textTheme.headlineMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // The title on a near-solid band: through the 62% scrim alone a
+              // pin on the map below read as if it sat over "All drivers
+              // verified" (165).
+              ColoredBox(
+                key: const ValueKey('choose-driver-header'),
+                color: Colors.black.withValues(alpha: 0.94),
+                child: SafeArea(
+                  bottom: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Choose a driver',
+                          style: t.textTheme.headlineMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 4),
+                        const DriversVerified(color: Colors.white),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  const DriversVerified(color: Colors.white),
-                  const SizedBox(height: 16),
-                  OfferStack(offers: offers),
-                ],
+                ),
               ),
-            ),
+              Expanded(
+                child: SafeArea(
+                  top: false,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: OfferStack(offers: offers),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1154,7 +1174,7 @@ class _SureCancelSheet extends StatelessWidget {
                   backgroundColor: accentFill,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
                 child: const Text('Keep searching'),
               ),

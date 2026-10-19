@@ -194,9 +194,9 @@ enum PermissionBlock {
 
   /// Where in the phone's Settings it is changed, when that is the way.
   String? get settingsPath => switch (this) {
-    notAlways || locationOff => 'Settings → GET.ride → Location → Always',
-    notAllTheTime => 'Settings → Apps → GET.ride → Permissions → Location → Allow all the time',
-    notificationsOff => 'Settings → GET.ride → Notifications → Allow',
+    notAlways || locationOff => 'Settings > GET.ride > Location > Always',
+    notAllTheTime => 'Settings > Apps > GET.ride > Permissions > Location > Allow all the time',
+    notificationsOff => 'Settings > GET.ride > Notifications > Allow',
     _ => null,
   };
 }

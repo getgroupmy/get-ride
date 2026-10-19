@@ -36,6 +36,7 @@ import '../../widgets/ble_handshake_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_recenter.dart' show RecenterButton;
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/trip_safety.dart';
 import 'demo_ride.dart';
@@ -195,6 +196,11 @@ class RideTrackingScreen extends ConsumerWidget {
     );
   }
 }
+
+/// How far from the map's right edge the wide layout's offer cards stand:
+/// clear of the map's buttons ([LiveRideMap]'s layers and recenter, 12 in
+/// from the edge and [RecenterButton.size] wide), with a gap.
+double offersClearOfMapButtons(double paddingRight) => 12 + paddingRight + RecenterButton.size + 12;
 
 class _RidePanel extends ConsumerStatefulWidget {
   const _RidePanel({required this.ride, required this.map, this.wide = false});
@@ -821,13 +827,25 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         builder: (_, now, _) {
           final elapsed = searchElapsed(r.createdAt, now);
           final left = searchTimeLeft(elapsed, AppConfig.requestExpiry);
-          return SearchHeader(
+          final header = SearchHeader(
             bidding: bidding,
             elapsed: elapsed,
             left: formatCountdown(left),
             progress: (left.inMilliseconds / AppConfig.requestExpiry.inMilliseconds).clamp(0.0, 1.0),
             waitHint: waitHint,
             offers: (_visibleOffer == null ? 0 : 1) + (_demo?.shown.length ?? 0),
+          );
+          // On a phone "Choose a driver" dims the screen over the sheet and
+          // carries its own "All drivers verified": the header under it
+          // stands down (keeping its room, so the sheet doesn't jump).
+          final covered = !widget.wide && _offerViews().isNotEmpty;
+          return Visibility(
+            key: const ValueKey('search-header-slot'),
+            visible: !covered,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: header,
           );
         },
       ),
@@ -952,7 +970,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           CancelledCountdown(onDone: _close),
           const SizedBox(height: 12),
         ],
-        if (r.status == RideStatus.cancelled && _openedCancelled && (r.cancelReason ?? '').trim().isNotEmpty) ...[
+        // Once only: the driver's cancel card already gives their reason.
+        if (r.status == RideStatus.cancelled &&
+            _openedCancelled &&
+            !cancelledByDriver(r) &&
+            (r.cancelReason ?? '').trim().isNotEmpty) ...[
           Text(
             'Reason: ${cancelReasonLabel(r.cancelReason) ?? r.cancelReason!.trim()}',
             key: const ValueKey('ride-cancel-reason'),
@@ -1282,13 +1304,21 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           SizedBox(width: 420, child: SingleChildScrollView(child: content)),
           const VerticalDivider(width: 1),
           Expanded(
-            child: Stack(children: [
+            child: LayoutBuilder(builder: (context, c) {
+              // The offers stand left of the map's layers and recenter
+              // buttons (right edge), never over them: on a phone on its
+              // side (915 × 412) the second card sat under them.
+              final right = offersClearOfMapButtons(MediaQuery.paddingOf(context).right);
+              final width = (c.maxWidth - right - 16).clamp(0.0, 380.0);
+              return Stack(children: [
               Positioned.fill(child: widget.map),
               if (_sosOn(r)) Positioned.fill(child: RideSosFab(onPressed: () => _sos(r))),
               Positioned(
+                key: const ValueKey('wide-offers'),
                 top: 16,
-                right: 16,
-                width: 380,
+                right: right,
+                bottom: 16,
+                width: width,
                 child: SingleChildScrollView(
                   child: ValueListenableBuilder(
                     valueListenable: _clock,
@@ -1296,7 +1326,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   ),
                 ),
               ),
-            ]),
+            ]);
+            }),
           ),
         ],
       );

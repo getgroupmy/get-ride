@@ -1,12 +1,15 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/admin/screens/people/people_logic.dart';
+import 'package:get_ride/src/core/partner_onboarding.dart';
 import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/data/partner_onboarding_repository.dart';
+import 'package:get_ride/src/features/partner/driver_permit_screen.dart' show permitDocumentsRoute;
 import 'package:get_ride/src/features/partner/partner_onboarding_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/providers.dart';
@@ -130,6 +133,7 @@ Future<_FakeOnboarding> _pump(
 }
 
 void main() {
+  startStepTests();
   testWidgets('a new partner starts at the profile photo', (tester) async {
     await _pump(tester, OnboardingState(profile: const {}, partner: _partner()));
     expect(find.text('Step 1 of 6'), findsOneWidget);
@@ -142,6 +146,55 @@ void main() {
     }
     expect(find.byIcon(Icons.check), findsNothing);
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('steps go in order: done and current steps are chips, later ones locked labels (${b.name})',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pump(
+        tester,
+        OnboardingState(profile: const {'profile_image': 'x.png'}, partner: _partner()),
+        brightness: b,
+      );
+      expect(find.text('Step 2 of 6'), findsOneWidget);
+      // Profile photo (done) and ID number (current) can be opened.
+      final chips = tester.widgetList<ChoiceChip>(find.byType(ChoiceChip)).toList();
+      expect(chips.map((c) => (c.label as Text).data), ['Profile photo', 'ID number']);
+      expect(chips.every((c) => c.onSelected != null), isTrue);
+      expect(chips.first.avatar, isA<Icon>(), reason: 'a finished step keeps its tick');
+      final done = tester.getSemantics(find.byKey(const ValueKey('onboarding-step-avatar'))).getSemanticsData();
+      expect(done.label, contains('Profile photo'));
+      expect(done.tooltip, 'Done: open to review');
+      expect(done.hasAction(SemanticsAction.tap), isTrue);
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('onboarding-step-id'))).getSemanticsData().tooltip,
+        'Current step',
+      );
+      // Later steps are not chips or buttons: a lock and a muted label.
+      for (final label in ['Address', 'Service area', 'Partner type', 'Documents']) {
+        expect(find.widgetWithText(ChoiceChip, label), findsNothing);
+      }
+      expect(find.text('Address · next'), findsOneWidget);
+      expect(find.byIcon(Icons.lock_outline), findsNWidgets(4));
+      final locked = tester.getSemantics(find.byKey(const ValueKey('onboarding-step-address')));
+      expect(locked.label, contains('Address, next'));
+      expect(locked.getSemanticsData().hasAction(SemanticsAction.tap), isFalse);
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('onboarding-step-requirements'))).label,
+        startsWith('Documents, locked'),
+      );
+      await tester.tap(find.text('Address · next'));
+      await tester.pump();
+      expect(find.text('Your ID'), findsOneWidget, reason: 'a locked step does not open');
+
+      // A finished step reopens.
+      await tester.tap(find.widgetWithText(ChoiceChip, 'Profile photo'));
+      await tester.pump();
+      expect(find.text('Add a profile photo'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+  }
 
   testWidgets('the profile photo comes from the avatar picker and is saved to both rows', (tester) async {
     final repo = await _pump(
@@ -245,6 +298,47 @@ void main() {
       final ctx = tester.element(note);
       expect(tester.widget<Text>(note).style?.color, Theme.of(ctx).colorScheme.error);
       expect(find.textContaining('old note'), findsNothing, reason: 'only a rejection shows its note');
+    });
+  }
+}
+
+void startStepTests() {
+  test('"Update documents" opens on Documents unless an earlier step is still missing', () {
+    expect(onboardingStepFromQuery('requirements'), OnboardingStep.requirements);
+    expect(onboardingStepFromQuery('nope'), isNull);
+    expect(onboardingStepFromQuery(null), isNull);
+    expect(onboardingStartStep(OnboardingStep.done, OnboardingStep.requirements), OnboardingStep.requirements);
+    expect(onboardingStartStep(OnboardingStep.requirements, OnboardingStep.requirements), OnboardingStep.requirements);
+    expect(onboardingStartStep(OnboardingStep.id, OnboardingStep.requirements), OnboardingStep.id,
+        reason: 'the steps go in order: the missing ID comes first');
+    expect(permitDocumentsRoute, '/drive/onboarding?step=requirements');
+  });
+
+  for (final b in Brightness.values) {
+    testWidgets('a submitted partner sent for their documents lands on the Documents step (${b.name})',
+        (tester) async {
+      await _pump(
+        tester,
+        OnboardingState(profile: const {}, partner: _partner({..._filledIn, 'documents_ok': true})),
+        brightness: b,
+        screen: const PartnerOnboardingScreen(startAt: OnboardingStep.requirements),
+      );
+      await tester.pump();
+      expect(find.text('Upload your documents'), findsOneWidget);
+      final docs = tester.widget<ChoiceChip>(find.byKey(const ValueKey('onboarding-step-requirements')));
+      expect(docs.selected, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('with the ID still missing it opens there instead (${b.name})', (tester) async {
+      await _pump(
+        tester,
+        OnboardingState(profile: const {'profile_image': 'x.png'}, partner: _partner()),
+        brightness: b,
+        screen: const PartnerOnboardingScreen(startAt: OnboardingStep.requirements),
+      );
+      expect(find.text('Your ID'), findsOneWidget);
+      expect(find.text('Upload your documents'), findsNothing);
     });
   }
 }

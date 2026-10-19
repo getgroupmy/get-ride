@@ -192,8 +192,10 @@ void main() {
     testWidgets('119: the pencil is named "Offer another fare"', (tester) async {
       await pumpSheet(tester);
       expect(find.byTooltip('Offer another fare'), findsOneWidget);
+      // The tooltip is the button's own (IconButton.tooltip), and the
+      // button node carries the name (desktop 119).
       expect(
-        find.descendant(of: find.byTooltip('Offer another fare'), matching: find.byKey(const ValueKey('request-offer-custom'))),
+        find.descendant(of: find.byKey(const ValueKey('request-offer-custom')), matching: find.byTooltip('Offer another fare')),
         findsOneWidget,
       );
     });

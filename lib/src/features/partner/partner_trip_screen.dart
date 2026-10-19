@@ -309,7 +309,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     _leave();
   }
 
-  static String _tripLabel(RideRequest r) => '${r.pickupLabel} → ${r.dropLabel}';
+  static String _tripLabel(RideRequest r) => '${r.pickupLabel} to ${r.dropLabel}';
 
   void _onPosition(TripFix p) {
     if (!mounted) return;
@@ -801,6 +801,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             ),
             RideStopTiles(stops: r.stops, onNavigate: r.status.isOngoing ? (s) => _navigate(s.point) : null),
             ListTile(
+              key: const ValueKey('trip-drop'),
               leading: Icon(Icons.location_on, color: Colors.red.shade700),
               title: Text(r.dropLabel),
               subtitle: r.dropAddress == null ? null : Text(r.dropAddress!, maxLines: 2),
@@ -1141,9 +1142,16 @@ class _CollectCard extends ConsumerWidget {
               key: const ValueKey('trip-collect-other'),
             ),
         ],
+        // The sum at least as large as its parts, and bold (a ListTile's
+        // trailing text is otherwise the small label size).
         ListTile(
-          title: const Text('Total due'),
-          trailing: Text(formatMoney(r.totalDue, r.currency)),
+          key: const ValueKey('trip-collect-total'),
+          title: Text('Total due', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          trailing: Text(
+            formatMoney(r.totalDue, r.currency),
+            key: const ValueKey('trip-collect-total-amount'),
+            style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
         ),
         if (coins > 0)
           ListTile(

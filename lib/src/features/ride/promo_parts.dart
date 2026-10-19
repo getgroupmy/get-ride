@@ -289,6 +289,12 @@ class _PromoCodeSheetState extends State<PromoCodeSheet> {
           children: [
             Text(widget.laterAt == null ? 'Promo code' : 'Promo for your scheduled ride',
                 style: t.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              "From a GET.ride campaign or a friend's invite",
+              key: const ValueKey('promo-help'),
+              style: t.textTheme.bodyMedium?.copyWith(color: muted),
+            ),
             if (widget.laterAt != null)
               Text('Pickup ${formatDateTime(widget.laterAt)}',
                   key: const ValueKey('promo-later-at'), style: t.textTheme.bodySmall?.copyWith(color: muted)),

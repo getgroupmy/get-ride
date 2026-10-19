@@ -663,7 +663,8 @@ const vehicleWriteActions = [
   VehicleWriteAction(
     id: VehicleWriteId.rawCommand,
     label: 'Send raw command',
-    description: 'Sends a command straight to the adapter. For diagnosing an uncooperative reader, or for vehicle-specific commands you already know.',
+    description: 'Sends a command through the reader: AT commands go to the reader itself, OBD-II service commands '
+        'on to the car\'s ECUs. For diagnosing an uncooperative reader, or for vehicle-specific commands you already know.',
     target: WriteTarget.vehicle,
     destructive: true,
     warningTitle: 'Send a raw command?',

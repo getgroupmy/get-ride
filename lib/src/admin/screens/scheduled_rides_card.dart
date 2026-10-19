@@ -321,7 +321,7 @@ class _BookingTile extends StatelessWidget {
       ),
       subtitle: Text(
         [
-          '${ride.pickupAddress ?? 'Pickup'} → ${ride.dropAddress ?? 'Destination'}',
+          '${ride.pickupAddress ?? 'Pickup'} to ${ride.dropAddress ?? 'Destination'}',
           if (ride.bookedForName != null) 'For ${ride.bookedForName}',
           switch (ride.status) {
             ScheduledStatus.scheduled => 'No driver yet',

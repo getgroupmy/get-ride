@@ -138,7 +138,7 @@ void main() {
             {'road': 'ELITE'},
           ],
         }),
-        ['Drive time: heavier than usual', 'Traffic: heavy', '• MEX (Seri Kembangan → Putrajaya) · +8 min', '• ELITE'],
+        ['Drive time: heavier than usual', 'Traffic: heavy', '• MEX (Seri Kembangan to Putrajaya) · +8 min', '• ELITE'],
       );
     });
   });

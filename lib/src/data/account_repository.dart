@@ -112,6 +112,19 @@ class AccountRepository {
     return rows.map(WalletTransaction.new).toList();
   }
 
+  /// When the account's first wallet transaction was made (how far back
+  /// the history goes); null with none.
+  Future<DateTime?> firstWalletTransactionAt() async {
+    final rows = await _db
+        .from('wallet_transactions')
+        .select('created_at')
+        .eq('user_id', _uid)
+        .order('created_at', ascending: true)
+        .limit(1);
+    if (rows.isEmpty) return null;
+    return DateTime.tryParse('${rows.first['created_at']}');
+  }
+
   // ---- Emergency contacts ------------------------------------------------
 
   Future<List<EmergencyContact>> emergencyContacts() async {

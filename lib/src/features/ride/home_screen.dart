@@ -16,7 +16,7 @@ import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
 import '../../core/driver_eta.dart';
 import '../../core/fare.dart';
-import '../../core/fare_info.dart' show fareRateLines;
+import '../../core/fare_info.dart' show demandIncludesNote, demandUplift, demandUpliftLabel, fareRateLines;
 import '../../core/scheduled_rides.dart';
 import '../../core/search_timer.dart';
 import '../../core/smart_address.dart' show isCoordinateLabel;
@@ -780,6 +780,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       title: 'Add a stop',
       near: _me ?? _pickup?.point,
       usage: GateUsage.drop,
+      // A stop, on the trip it joins.
+      fieldLabel: 'Stop',
+      routeLine: addStopRouteLine(_pickup, _stops, _drop),
     );
     if (pick == null || !mounted) return;
     final place = pick.place;
@@ -1019,6 +1022,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             quoteFare(_tariffFor(s), b.distanceKm, b.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
                 .fare,
           );
+  }
+
+  /// [s]'s fare priced on the plain road route, without the AI's traffic:
+  /// what it would be off the trend.
+  double _usualFor(RideService s) {
+    final r = _route;
+    return r == null
+        ? 0
+        : _pricing.roundFare(
+            quoteFare(_tariffFor(s), r.distanceKm, r.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
+                .fare,
+          );
+  }
+
+  /// What high demand adds to [s]'s recommended fare: the fare on the AI's
+  /// traffic-aware basis over the same on the plain route, while the trend
+  /// is up; null otherwise.
+  ({double amount, double factor})? _upliftFor(RideService s) {
+    if (_ai?.trend?.direction != FareTrendDirection.up || _basis == null) return null;
+    return demandUplift(_recommendedFor(s), _usualFor(s));
   }
 
   /// What [s] is booked at: the rider's offer on the selected service where
@@ -1777,8 +1800,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _syncPromos(confirming);
     final showPromo = layout.promoBar && (_promo != null || _promoOffers.isNotEmpty);
     // The back and route buttons stand clear of the promo bar's visible top.
+    // With the promo bar on too, both stand: the band over the bar.
+    final bothBars = demand != null && showPromo;
     final aboveBar = showPromo || demand != null
-        ? SheetTopBar.visibleHeight + (layout.promoBarInFront ? SheetTopBar.tuck : 0) + 12 - layout.promoBarOffset
+        ? SheetTopBar.visibleHeight +
+              (bothBars ? DemandPromoBars.extraHeight : 0) +
+              (layout.promoBarInFront ? SheetTopBar.tuck : 0) +
+              12 -
+              layout.promoBarOffset
         : 12.0;
     // On the confirm map the route is framed between the address card and
     // the promo bar on the sheet, with room for the marks standing over it.
@@ -1792,6 +1821,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Widget aboveSheet(Widget Function(double inset) build) => Positioned.fill(
       child: Builder(builder: (c) => MapBottomInset.listen(c, (inset) => Stack(children: [build(inset)]))),
     );
+    // The promo bar (0242): the code applied, or the codes that fit.
+    Widget confirmPromoBar() => ConfirmPromoBar(
+          offers: _promoOffers,
+          applied: _promo,
+          auto: _promoAuto,
+          fare: _fareFor(_service),
+          currency: _currency,
+          onTap: _openPromoSheet,
+        );
     // The discount bar; in front of the sheet it is drawn on the sheet's
     // layer instead of the map's (Admin → Display → Discount bar in front).
     Widget promoBar() => aboveSheet(
@@ -1803,15 +1841,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             bottom: inset - (layout.promoBarInFront ? 0 : SheetTopBar.tuck) - layout.promoBarOffset,
             // A fixed fare off the usual takes the bar's place: inDrive's
             // demand band, opening why.
-            child: demand != null
-                ? DemandBanner(trend: demand, onTap: () => showDemandSheet(context, demand))
-                : ConfirmPromoBar(
-                    offers: _promoOffers,
-                    applied: _promo,
-                    auto: _promoAuto,
-                    fare: _fareFor(_service),
-                    currency: _currency,
-                    onTap: _openPromoSheet,
+            // The promo bar stays under it, so a code can still be used.
+            child: demand == null
+                ? confirmPromoBar()
+                : bothBars
+                ? DemandPromoBars(
+                    trend: demand,
+                    onDemand: () => showDemandSheet(context, demand, factor: _upliftFor(_service)?.factor),
+                    promo: confirmPromoBar(),
+                  )
+                : DemandBanner(
+                    trend: demand,
+                    onTap: () => showDemandSheet(context, demand, factor: _upliftFor(_service)?.factor),
                   ),
           ),
         );
@@ -2202,6 +2243,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               coinEarnLabel(rideRewardCoins(_fareFor(s), earnRate)),
             ) : null,
       etaFor: etaFor,
+      upliftFor: (s) {
+        final u = _upliftFor(s);
+        return u == null ? null : _fareMoney(u.amount);
+      },
       currency: _currency,
       ongoing: _ongoing,
       forOthers: _forOthers,
@@ -2386,7 +2431,20 @@ class _BookingPanel extends StatelessWidget {
     this.onOpenRide,
     this.currency = AppConfig.currency,
     this.etaFor,
+    this.upliftFor,
   });
+
+  /// What high demand adds to a vehicle's fare (the uplift, formatted);
+  /// null where it adds nothing.
+  final String? Function(RideService)? upliftFor;
+
+  /// The uplift beside [s]'s price ("+RM1"); none on a card whose fare the
+  /// rider has raised or lowered, where the arrows go too.
+  String? _upliftLabel(RideService s) {
+    if (s.name == service.name && fareAdjusted) return null;
+    final u = upliftFor?.call(s);
+    return u == null ? null : demandUpliftLabel(u);
+  }
 
   /// Minutes for the nearest driver to reach the pickup, per vehicle; null
   /// when none is near.
@@ -2444,6 +2502,10 @@ class _BookingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String? s0Uplift() {
+      final u = fareAdjusted ? null : upliftFor?.call(service);
+      return u == null ? null : demandIncludesNote(u);
+    }
     final t = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -2454,7 +2516,7 @@ class _BookingPanel extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.local_taxi),
               title: Text(ongoing!.status.label),
-              subtitle: Text('${ongoing!.pickupLabel} → ${ongoing!.dropLabel}',
+              subtitle: Text('${ongoing!.pickupLabel} to ${ongoing!.dropLabel}',
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               trailing: const Icon(Icons.chevron_right),
               onTap: onOpenOngoing,
@@ -2468,7 +2530,7 @@ class _BookingPanel extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.person_pin_circle_outlined),
               title: Text('For ${r.passengerName} · ${r.status.label}'),
-              subtitle: Text('${r.pickupLabel} → ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${r.pickupLabel} to ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
               trailing: const Icon(Icons.chevron_right),
               onTap: onOpenRide == null ? null : () => onOpenRide!(r),
             ),
@@ -2504,7 +2566,12 @@ class _BookingPanel extends StatelessWidget {
         if (drop != null && route != null && !routing) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-            child: RouteBasisLine(route: route!, ai: ai),
+            child: RouteBasisLine(
+              route: route!,
+              ai: ai,
+              // The fare line says when the chosen fare includes high demand.
+              demandNote: s0Uplift(),
+            ),
           ),
           for (final s in services)
             Padding(
@@ -2522,6 +2589,7 @@ class _BookingPanel extends StatelessWidget {
                 // The arrows stand by the recommended fare: not on a card
                 // whose fare the rider has raised or lowered.
                 trend: s.name == service.name && fareAdjusted ? null : ai?.trend,
+                uplift: _upliftLabel(s),
               ),
             ),
           // Who's riding is a toggle in the footer, under GET.coin; the note
@@ -2546,10 +2614,13 @@ const routeAiExplainer = 'Fare and travel time worked out by AI from current tra
 /// AI Fare Service (`ai-route-proxy`, traffic-aware) the line says so with
 /// the AI mark; the plain road route has none.
 class RouteBasisLine extends StatelessWidget {
-  const RouteBasisLine({super.key, required this.route, this.ai});
+  const RouteBasisLine({super.key, required this.route, this.ai, this.demandNote});
 
   final RouteInfo route;
   final RouteEstimate? ai;
+
+  /// "Includes high demand +RM1" while the trend raises the chosen fare.
+  final String? demandNote;
 
   @override
   Widget build(BuildContext context) {
@@ -2558,7 +2629,8 @@ class RouteBasisLine extends StatelessWidget {
     final text = a == null
         ? '${formatDistance(route.distanceKm)} · ${formatDuration(route.durationMin)}'
         : '${formatDistance(a.distanceKm)} · ${formatDuration(a.durationMin)} with traffic';
-    return Row(children: [
+    final note = demandNote;
+    final line = Row(children: [
       Flexible(child: Text(text, key: const ValueKey('route-basis'), style: t.textTheme.bodyMedium)),
       if (a != null) ...[
         const SizedBox(width: 6),
@@ -2605,6 +2677,21 @@ class RouteBasisLine extends StatelessWidget {
         ),
       ],
     ]);
+    if (note == null) return line;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        line,
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            note,
+            key: const ValueKey('route-demand-note'),
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurface, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
   }
 }
 

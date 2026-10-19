@@ -142,7 +142,7 @@ void main() {
     expect(connected?.transport, 'mfi');
     expect(connected?.deviceId, 'SN-1');
     expect(find.text('Connected'), findsOneWidget);
-    expect(find.text('Bluetooth MFi · SN-1'), findsOneWidget);
+    expect(find.text('SN-1'), findsOneWidget);
     expect(find.text('42 km/h'), findsOneWidget);
     await tester.tap(find.text('Disconnect'));
     await tester.pump(const Duration(milliseconds: 10));

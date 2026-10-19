@@ -335,6 +335,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:searching.show-search-cancel-sheet', SurfaceKind.sheet, 'Searching · Search cancel sheet', 'lib/src/features/ride/searching_parts.dart'),
   SurfaceEntry('sheet:searching.show-search-cancel-sheet-2', SurfaceKind.sheet, 'Searching · Search cancel sheet', 'lib/src/features/ride/searching_parts.dart'),
   SurfaceEntry('sheet:shared-ride.sos', SurfaceKind.sheet, 'Shared ride · Sos', 'lib/src/features/ride/shared_ride_screen.dart'),
+  SurfaceEntry('sheet:show-location.how-its-shared', SurfaceKind.sheet, 'Location · How its shared', 'lib/src/features/settings/show_location_screen.dart'),
   SurfaceEntry('sheet:teksi-pickup.pick-vehicle', SurfaceKind.sheet, 'Teksi pickup · Vehicle', 'lib/src/features/partner/teksi_pickup.dart'),
   SurfaceEntry('sheet:teksi-pickup.pick-vehicle-2', SurfaceKind.sheet, 'Teksi pickup · Vehicle', 'lib/src/features/partner/teksi_pickup.dart'),
   SurfaceEntry('sheet:toll-booths.toll-marker', SurfaceKind.sheet, 'Toll booths · Toll marker', 'lib/src/widgets/toll_booths.dart'),

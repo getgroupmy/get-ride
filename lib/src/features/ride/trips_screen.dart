@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/trip_history.dart';
 import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
+import '../../widgets/offline_strip.dart';
 import '../../widgets/side_menu_host.dart';
 import 'scheduled_rides_screen.dart' show ScheduledRidesList;
 import 'trip_history_view.dart';
@@ -19,7 +20,7 @@ class TripsScreen extends ConsumerWidget {
     if (!scheduled) {
       return Scaffold(
         appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Trips')),
-        body: const TripHistoryView(role: TripHistoryRole.rider),
+        body: OfflineStrip.over(const TripHistoryView(role: TripHistoryRole.rider)),
       );
     }
     return DefaultTabController(
@@ -35,11 +36,13 @@ class TripsScreen extends ConsumerWidget {
             ],
           ),
         ),
-        body: const TabBarView(
-          children: [
-            TripHistoryView(role: TripHistoryRole.rider),
-            ScheduledRidesList(),
-          ],
+        body: OfflineStrip.over(
+          const TabBarView(
+            children: [
+              TripHistoryView(role: TripHistoryRole.rider),
+              ScheduledRidesList(),
+            ],
+          ),
         ),
       ),
     );
