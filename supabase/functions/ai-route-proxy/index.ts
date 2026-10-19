@@ -27,7 +27,10 @@
 //
 // Every attempt is logged to `fare_ai_responses` and per-key counters /
 // cooldowns are updated via the `fare_ai_record_usage` RPC — identical to
-// what the client used to record.
+// what the client used to record. A row for a tester account (Admin →
+// Display Settings → Tester accounts, migration 0241) is marked is_test, from
+// the verified caller id, so the admin's figures can leave it out. Only the
+// label differs: the limit, the keys and the answer are the same.
 //
 // What the AI is asked comes from the config's `request` (Admin → Fare AI →
 // Request & format; see _shared/fare_ai_request.ts); with none saved it is
@@ -49,6 +52,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callerCanEdit, FARE_AI_PAGES } from "../_shared/admin_page.ts";
+import { rpcTestAccountLookup, testAccountCheck } from "../_shared/test_traffic.ts";
 
 import {
   buildPrompt,
@@ -512,6 +516,9 @@ Deno.serve(async (req: Request) => {
   // Alongside the AI: the AI usually takes longer, so this is in by then.
   const standardFuture = standardRoute(origin, destination, stops);
   const cooldownMs = retryPolicyMs(config.retryAfterValue ?? 1, config.retryAfterUnit ?? "hour");
+  // Test traffic (0241): a label for the log only, asked alongside the AI.
+  // Any failure answers "real".
+  const testFuture = testAccountCheck(rpcTestAccountLookup((fn, args) => admin.rpc(fn, args)))(userId);
 
   for (const cand of available) {
     const started = Date.now();
@@ -563,6 +570,8 @@ Deno.serve(async (req: Request) => {
       extra: withStops(parsed ? extrasOf(parsed) : null, stops),
       standard_duration_min: standard?.min ?? null,
       standard_distance_km: standard?.km ?? null,
+      // Only when true: a database before 0241 has no such column.
+      ...((await testFuture) ? { is_test: true } : {}),
     });
     await admin.rpc("fare_ai_record_usage", {
       p_key_id: cand.id,
