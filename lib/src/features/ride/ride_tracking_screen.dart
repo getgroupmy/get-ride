@@ -26,6 +26,7 @@ import '../../core/ride_payment.dart';
 import '../../core/ride_cache.dart' show sameRideApartFromLive;
 import '../../core/search_timer.dart';
 import '../../core/raise_nudge.dart';
+import '../../core/sheet_min_height.dart';
 import '../../config.dart';
 import '../../data/app_display_repository.dart' show displaySettingsBlobProvider;
 import '../../data/fare_coin_store.dart';
@@ -840,13 +841,17 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           // carries its own "All drivers verified": the header under it
           // stands down (keeping its room, so the sheet doesn't jump).
           final covered = !widget.wide && _offerViews().isNotEmpty;
-          return Visibility(
-            key: const ValueKey('search-header-slot'),
-            visible: !covered,
-            maintainSize: true,
-            maintainAnimation: true,
-            maintainState: true,
-            child: header,
+          // However low the admin sets the sheet, the search header stays whole.
+          return MapSheetRestLine(
+            floor: true,
+            child: Visibility(
+              key: const ValueKey('search-header-slot'),
+              visible: !covered,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: header,
+            ),
           );
         },
       ),
@@ -1052,7 +1057,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (r.status != RideStatus.open) RideStatusTitle(ride: r),
+          // However low the admin sets the sheet, the status stays whole.
+          if (r.status != RideStatus.open) MapSheetRestLine(floor: true, child: RideStatusTitle(ride: r)),
           if (r.isForOthers)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -1352,6 +1358,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           },
           // A phone on its side: SOS and the map's buttons beside the sheet.
           besideWhenShort: true,
+          // All the way down it shows what the rest line marks (the route
+          // card while searching, the driver's Call and Message row after),
+          // moved by Admin → Display → Ride Tracking Layout → Bottom sheet
+          // minimum height.
+          minFromContent: true,
+          minAdjust: sheetMinAdjust(ref.watch(displaySettingsBlobProvider).value, trackingSheetMinAdjustKey),
         ),
       ),
       // Down to the pinned footer, so its Cancel request stays the one way

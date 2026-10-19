@@ -33,6 +33,7 @@ import '../../core/ride_rebook.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_confirm.dart';
 import '../../core/ride_stops.dart';
+import '../../core/sheet_min_height.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../../widgets/toll_booths.dart';
@@ -174,10 +175,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// A stop being added: its own steps show, then what it adds.
   bool _addingStop = false;
 
-  /// The home sheet's content and its search bar, measured so the sheet all
-  /// the way down still shows the search bar whole ([_foldHeight]).
+  /// The home sheet's content, the items it shows all the way down and its
+  /// first item (the search bar), measured for the sheet's least height
+  /// ([_foldHeight], [_floorHeight]).
   final _panelKey = GlobalKey();
   final _foldKey = GlobalKey();
+  final _floorKey = GlobalKey();
 
   /// The pickup and current place for an open route sheet: an address that
   /// arrives after it opened still fills its From and Current location.
@@ -188,21 +191,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (_routeEnds.value != now) _routeEnds.value = now;
   }
 
-  /// How tall the sheet must be, all the way down, to show everything to
-  /// the foot of the search bar: its handle, the vehicle bar (when shown),
-  /// the bar itself and an upcoming ride's card under it. 0 until measured.
+  /// How tall the sheet must be, all the way down, to show every item that
+  /// is switched on and shown: its handle, the search bar, the vehicle bar,
+  /// an upcoming ride's card, the recent places and the service boxes, with
+  /// the gaps between them (the automatic part of its least height). 0 until
+  /// measured.
   double _foldHeight = 0;
 
-  /// Measures [_foldHeight] after a frame; a change sets the sheet's least
-  /// height again.
+  /// The least the sheet ever rests at, whatever the admin's adjustment:
+  /// the handle and the search bar (or the Where to? row) whole.
+  double _floorHeight = 0;
+
+  /// Measures [_foldHeight] and [_floorHeight] after a frame; a change sets
+  /// the sheet's least height again.
   void _measureFold() {
     if (!mounted) return;
     final panel = _panelKey.currentContext?.findRenderObject() as RenderBox?;
     final fold = _foldKey.currentContext?.findRenderObject() as RenderBox?;
+    final floor = _floorKey.currentContext?.findRenderObject() as RenderBox?;
     if (panel == null || fold == null || !panel.attached || !fold.attached) return;
-    // The handle above the content, and a margin under the bar.
-    final need = fold.localToGlobal(Offset(0, fold.size.height), ancestor: panel).dy + 22 + 16;
-    if ((need - _foldHeight).abs() > 1) setState(() => _foldHeight = need);
+    // The handle above the content, and a margin under the last item.
+    double foot(RenderBox b) => b.localToGlobal(Offset(0, b.size.height), ancestor: panel).dy + 22 + 16;
+    final need = foot(fold);
+    final least = floor != null && floor.attached ? foot(floor) : 0.0;
+    if ((need - _foldHeight).abs() > 1 || (least - _floorHeight).abs() > 1) {
+      setState(() {
+        _foldHeight = need;
+        _floorHeight = least;
+      });
+    }
   }
   String? _serviceName;
 
@@ -1691,16 +1708,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final firstRecent = recent.take(homeRecentAtRest).toList();
     final moreRecent = recent.skip(homeRecentAtRest).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // Where to first: the destination leads, over the vehicles.
-      sections.searchBar
-          ? HomeSearchPill(onTap: whereTo)
-          : ListTile(
-              key: const ValueKey('home-where-to'),
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.location_on, color: Colors.red.shade700),
-              title: const Text('Where to?'),
-              onTap: whereTo,
-            ),
+      // Where to first: the destination leads, over the vehicles. However
+      // low the admin sets the sheet, it stays whole (the floor).
+      KeyedSubtree(
+        key: _floorKey,
+        child: sections.searchBar
+            ? HomeSearchPill(onTap: whereTo)
+            : ListTile(
+                key: const ValueKey('home-where-to'),
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.location_on, color: Colors.red.shade700),
+                title: const Text('Where to?'),
+                onTap: whereTo,
+              ),
+      ),
       const SizedBox(height: 12),
       if (sections.vehicleBar) ...[
         // Until a catalogue is known -- this read's, or the one this device
@@ -1726,9 +1747,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           title: Text(_pickup?.name ?? 'Set pickup'),
           onTap: () => _choose(_PinTarget.pickup),
         ),
-      // The fold reaches the foot of the upcoming-ride card and the first
-      // recent places too, so the sheet all the way down shows them whole,
-      // clear of the home indicator.
+      // The fold reaches the foot of the last item shown: the upcoming-ride
+      // card, the first recent places and the service boxes, so the sheet
+      // all the way down shows every item switched on whole, clear of the
+      // home indicator (plus Admin → Display → Bottom sheet minimum height).
       KeyedSubtree(
         key: _foldKey,
         child: Column(
@@ -1737,20 +1759,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           children: [
             const UpcomingRideCard(),
             if (firstRecent.isNotEmpty) HomeRecentPlaces(places: firstRecent, onTap: toRecent),
+            if (boxes.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              ServiceBoxesGrid(
+                boxes: boxes,
+                onOpen: (b) =>
+                    b.route == null ? comingSoon(serviceBoxComingSoon(b.title)) : openAppRoute(context, b.route!),
+              ),
+            ],
           ],
         ),
       ),
+      // Recent places past the first ones only with the sheet up.
       if (moreRecent.isNotEmpty)
         MapSheetUpOnly(child: HomeRecentPlaces(places: moreRecent, onTap: toRecent)),
-      if (boxes.isNotEmpty) ...[
-        const SizedBox(height: 16),
-        MapSheetUpOnly(
-          child: ServiceBoxesGrid(
-            boxes: boxes,
-            onOpen: (b) => b.route == null ? comingSoon(serviceBoxComingSoon(b.title)) : openAppRoute(context, b.route!),
-          ),
-        ),
-      ],
     ]);
   }
 
@@ -2368,10 +2390,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           if (!didPop && confirming) _backFromConfirm();
         },
         child: LayoutBuilder(builder: (context, box) {
-          // All the way down, the sheet still shows the search bar whole,
-          // however tall the screen (a fixed share of a short one cut it).
-          final fold = !confirming && _foldHeight > 0 && box.maxHeight > 0 ? _foldHeight / box.maxHeight : 0.0;
-          final least = math.min(0.6, math.max(0.22, fold));
+          // All the way down, the sheet shows every item switched on (the
+          // fold), however tall the screen, moved by the admin's Bottom sheet
+          // minimum height; never less than the search bar whole, never more
+          // than the sheet's highest. A share until it is measured.
+          final sheetTop = (MapSheetLayout.defaultMax - navLiftFraction) * box.maxHeight;
+          final least = !confirming && _foldHeight > 0 && box.maxHeight > 0
+              ? math.min(
+                  MapSheetLayout.defaultMax - navLiftFraction,
+                  effectiveSheetMin(
+                        auto: _foldHeight,
+                        adjust: sheetMinAdjust(blob, homeSheetMinAdjustKey),
+                        floor: _floorHeight,
+                        max: sheetTop,
+                      ) /
+                      box.maxHeight,
+                )
+              : 0.22;
           // A phone on its side (844 × 390): the confirm sheet starts lower,
           // so the map and the pickup above it keep their room.
           final landscapePhone = box.maxWidth > box.maxHeight && box.maxHeight < 500;
@@ -2382,6 +2417,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               : 1.0;
           final confirmMin = math.max(0.25, math.min(landscapePhone ? 0.4 : 0.5, cardFit));
           final confirmStart = math.max(confirmMin, math.min(landscapePhone ? 0.4 : 0.55, cardFit));
+          // The most the vehicles may raise the sheet at rest: the route card
+          // and the bars standing on the sheet's edge stay clear above it, and
+          // so does the map the bars ride on; until the card is measured, the
+          // share the sheet always rested at.
+          final contentCap = _confirmCardBottom > 0 && box.maxHeight > 0
+              ? math.max(
+                  confirmMin,
+                  math.min(
+                    1 - MapSheetLayout.defaultMapMinFraction,
+                    1 - (_confirmCardBottom + 8 + aboveBar) / box.maxHeight,
+                  ),
+                )
+              : confirmMin;
           return MapSheetLayout(
           map: map,
           // Android's own buttons (three-button navigation, drawn over the
@@ -2392,6 +2440,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: navLift > 0 ? Padding(padding: EdgeInsets.only(bottom: navLift), child: panel) : panel,
           ),
           min: (confirming ? confirmMin : least) + navLiftFraction,
+          // The confirm sheet all the way down shows its vehicles and the
+          // distance line over them (its rest line, [confirmMin] only until
+          // measured), moved by the admin's Bottom sheet minimum height; never
+          // so high that the route card over the map is covered.
+          minFromContent: confirming,
+          minAdjust: confirming ? sheetMinAdjust(blob, confirmSheetMinAdjustKey) : 0,
+          minCap: confirming ? contentCap : null,
           revealMax: confirming && cardFit < 1 ? math.max(confirmStart, cardFit) : null,
           // The main screen's sheet starts fully down; the rider drags it up.
           initial: (confirming ? confirmStart : least) + navLiftFraction,
@@ -2517,6 +2572,9 @@ class _BookingPanel extends StatelessWidget {
   /// parts); null keeps the plain pickup / destination card.
   final Widget? idle;
 
+  /// [child] as the sheet's floor ([MapSheetRestLine.floor]) where [on].
+  static Widget _floorIf(bool on, Widget child) => on ? MapSheetRestLine(floor: true, child: child) : child;
+
   @override
   Widget build(BuildContext context) {
     String? s0Uplift() {
@@ -2581,34 +2639,44 @@ class _BookingPanel extends StatelessWidget {
         ],
         if (routing) const Padding(padding: EdgeInsets.all(16), child: LinearProgressIndicator()),
         if (drop != null && route != null && !routing) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-            child: RouteBasisLine(
-              route: route!,
-              ai: ai,
-              // The fare line says when the chosen fare includes high demand.
-              demandNote: s0Uplift(),
-            ),
-          ),
-          for (final s in services)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: ConfirmServiceCard(
-                service: s,
-                price: formatMoney(fareFor(s), currency, fareDecimals),
-                selected: s.name == service.name,
-                etaMinutes: etaFor?.call(s),
-                onTap: () => onService(s),
-                fare: s.name == service.name ? fare : null,
-                onEdit: s.name == service.name ? onEditFare : null,
-                fixed: !bidding,
-                onInfo: s.name == service.name && onFareInfo != null ? () => onFareInfo!(s) : null,
-                // The arrows stand by the recommended fare: not on a card
-                // whose fare the rider has raised or lowered.
-                trend: s.name == service.name && fareAdjusted ? null : ai?.trend,
-                uplift: _upliftLabel(s),
+          // What the sheet shows all the way down: the distance line and
+          // every vehicle (its rest line); however low the admin sets it, the
+          // first vehicle stays whole (its floor).
+          MapSheetRestLine(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                child: RouteBasisLine(
+                  route: route!,
+                  ai: ai,
+                  // The fare line says when the chosen fare includes high demand.
+                  demandNote: s0Uplift(),
+                ),
               ),
-            ),
+              for (final (i, s) in services.indexed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: _floorIf(
+                    i == 0,
+                    ConfirmServiceCard(
+                      service: s,
+                      price: formatMoney(fareFor(s), currency, fareDecimals),
+                      selected: s.name == service.name,
+                      etaMinutes: etaFor?.call(s),
+                      onTap: () => onService(s),
+                      fare: s.name == service.name ? fare : null,
+                      onEdit: s.name == service.name ? onEditFare : null,
+                      fixed: !bidding,
+                      onInfo: s.name == service.name && onFareInfo != null ? () => onFareInfo!(s) : null,
+                      // The arrows stand by the recommended fare: not on a card
+                      // whose fare the rider has raised or lowered.
+                      trend: s.name == service.name && fareAdjusted ? null : ai?.trend,
+                      uplift: _upliftLabel(s),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
           // Who's riding is a toggle in the footer, under GET.coin; the note
           // to the driver is Options → Comments.
           const SizedBox(height: 28),

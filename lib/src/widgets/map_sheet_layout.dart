@@ -7,6 +7,7 @@ import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../core/sheet_min_height.dart';
 import 'page_style_host.dart';
 
 /// Every bottom sheet in the app: rounded top corners and a handle to drag
@@ -133,8 +134,8 @@ class MapSheetLayout extends StatefulWidget {
     this.peek,
     this.initial = 0.45,
     this.min = 0.2,
-    this.max = 0.92,
-    this.mapMinFraction = 0.4,
+    this.max = defaultMax,
+    this.mapMinFraction = defaultMapMinFraction,
     this.locked = false,
     this.hidden = false,
     this.footer,
@@ -143,7 +144,25 @@ class MapSheetLayout extends StatefulWidget {
     this.padBottom = true,
     this.revealMax,
     this.besideWhenShort = false,
+    this.minAdjust = 0,
+    this.minFromContent = false,
+    this.minCap,
   });
+
+  /// Admin → Display Settings → "Bottom sheet minimum height": px added to
+  /// (or, negative, taken off) the least height the content asks for (its
+  /// [MapSheetRestLine]). Never under the [MapSheetRestLine.floor] line
+  /// whole, nor over [max]; what it hides is reached by pulling the sheet up.
+  final double minAdjust;
+
+  /// The least height is what the content's [MapSheetRestLine] needs alone,
+  /// once it is measured; [min] stands only until then. Off, [min] is a
+  /// lower bound as well.
+  final bool minFromContent;
+
+  /// The most the least height may be (a fraction, under [max]): the confirm
+  /// sheet's, so the route card over the map stays in view.
+  final double? minCap;
 
   /// The highest a [MapSheetReveal] may raise the sheet by itself (null:
   /// [max]); its content slides instead. Keeps what the map shows over the
@@ -201,6 +220,13 @@ class MapSheetLayout extends StatefulWidget {
   /// where the screen is wide enough for both ([besideMinWidth]).
   final bool besideWhenShort;
 
+  /// The highest a sheet goes unless told otherwise ([max]).
+  static const defaultMax = 0.92;
+
+  /// The least of the screen kept above the sheet for the map's buttons
+  /// unless told otherwise ([mapMinFraction]).
+  static const defaultMapMinFraction = 0.4;
+
   /// How near [max] counts as up, for [aboveFooter].
   static const upSlack = 0.05;
 
@@ -243,28 +269,77 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   /// The sheet's lowest: [MapSheetLayout.min], or higher so the content
   /// down to its [MapSheetRestLine] shows above the footer (a phone on its
   /// side is 393 high, where a share of it showed only the handle).
-  double get _min {
-    if ((_restLine <= 0 && _softRestLine <= 0) || _h <= 0) return widget.min;
-    final under = widget.footer != null ? _footerHeight : (widget.padBottom ? _bottomPad : 0);
-    var rest = widget.min;
-    if (_restLine > 0) rest = math.max(rest, (_restLine + under) / _h);
+  double get _min => _minWith(widget.minAdjust);
+
+  /// [_min] with [adjust] as the admin's adjustment: what the content needs
+  /// (the automatic part) plus it, clamped to the floor line and the cap.
+  double _minWith(double adjust) {
+    final h = _h;
+    final lines = _restLine > 0 || _softRestLine > 0;
+    if (h <= 0 || (!lines && adjust == 0 && _floorLine <= 0)) return widget.min;
+    final under = widget.footer != null ? _footerHeight : (widget.padBottom ? _bottomPad : 0.0);
+    var rest = widget.minFromContent && _restLine > 0 ? 0.0 : widget.min;
+    if (_restLine > 0) rest = math.max(rest, (_restLine + under) / h);
     // A soft line only where the sheet still leaves a good part of the map.
-    final soft = (_softRestLine + under) / _h;
+    final soft = (_softRestLine + under) / h;
     if (_softRestLine > 0 && soft <= MapSheetRestLine.softMax) rest = math.max(rest, soft);
-    return math.min(widget.max, rest);
+    final cap = math.min(widget.max, widget.minCap ?? widget.max);
+    // The handle at least, else the first item whole over the footer.
+    final floor = (_floorLine > 0 ? _floorLine : 22.0) + under;
+    final least = effectiveSheetMin(auto: math.min(rest, cap) * h, adjust: adjust, floor: floor, max: cap * h) / h;
+    // Exactly the cap at most: px back to a share can land a hair over it.
+    return math.min(cap, least);
   }
+
+  /// A [MapSheetRestLine.floor] line: the least the sheet rests at whatever
+  /// the admin's adjustment (0: none).
+  double _floorLine = 0;
 
   /// A [MapSheetRestLine.soft] line: honoured only while it leaves the map
   /// enough room ([MapSheetRestLine.softMax]).
   double _softRestLine = 0;
 
   /// [MapSheetRestLine] measured [bottom]: the sheet rises to it if it rests lower.
-  void _setRestLine(double bottom, {bool soft = false}) {
-    if ((bottom - (soft ? _softRestLine : _restLine)).abs() <= 0.5 || !mounted) return;
-    setState(() => soft ? _softRestLine = bottom : _restLine = bottom);
+  void _setRestLine(double bottom, {bool soft = false, bool floor = false, Object? owner}) {
+    if (owner != null) _lineOwners[_lineKind(soft: soft, floor: floor)] = owner;
+    final was = floor ? _floorLine : (soft ? _softRestLine : _restLine);
+    if ((bottom - was).abs() <= 0.5 || !mounted) return;
+    setState(() {
+      if (floor) {
+        _floorLine = bottom;
+      } else if (soft) {
+        _softRestLine = bottom;
+      } else {
+        _restLine = bottom;
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_sheet.isAttached || widget.locked) return;
       if (_sheet.size < _min - 0.001) _sheet.jumpTo(_min);
+    });
+  }
+
+  /// The [MapSheetRestLine] that last set each kind of line (0 rest, 1 soft,
+  /// 2 floor), so one that leaves takes its line with it.
+  final _lineOwners = <int, Object>{};
+
+  static int _lineKind({required bool soft, required bool floor}) => floor ? 2 : (soft ? 1 : 0);
+
+  /// [owner] has left the sheet: its line goes too, unless another has
+  /// set that line since (the home sheet back from the confirm step no
+  /// longer rests on the vehicles).
+  void _dropRestLine(Object owner, {required bool soft, required bool floor}) {
+    final kind = _lineKind(soft: soft, floor: floor);
+    if (!mounted || _lineOwners[kind] != owner) return;
+    _lineOwners.remove(kind);
+    setState(() {
+      if (floor) {
+        _floorLine = 0;
+      } else if (soft) {
+        _softRestLine = 0;
+      } else {
+        _restLine = 0;
+      }
     });
   }
 
@@ -518,6 +593,18 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     // The sheet doesn't report a size it is clamped to, only one it is
     // dragged to: tell the map's buttons.
     if (widget.locked && !old.locked) _extent.value = _min;
+    if (widget.minAdjust != old.minAdjust && !widget.locked) {
+      // The admin moved the least height (live): a sheet resting at the old
+      // one moves to the new; one higher up stays where it is.
+      final before = _minWith(old.minAdjust);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_sheet.isAttached) return;
+        final size = _sheet.size;
+        if (size <= before + 0.002 || size < _min - 0.001) {
+          _sheet.animateTo(_min, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+        }
+      });
+    }
     // A new resting height (the home sheet rising for the confirm step, or
     // settling back): the sheet moves to it.
     if ((widget.initial != old.initial || widget.min != old.min) && !widget.locked) {
@@ -882,9 +969,14 @@ class MapSheetUpOnly extends StatelessWidget {
 /// own lowest still applies where it is higher, and its highest caps it.
 /// Nothing outside a [MapSheetLayout].
 class MapSheetRestLine extends StatefulWidget {
-  const MapSheetRestLine({super.key, required this.child, this.soft = false});
+  const MapSheetRestLine({super.key, required this.child, this.soft = false, this.floor = false});
 
   final Widget child;
+
+  /// The floor instead ([MapSheetLayout.minAdjust]): the sheet never rests
+  /// lower than this, the handle and the first always-shown item whole,
+  /// however far the admin takes its least height down.
+  final bool floor;
 
   /// Rested on only while the sheet then covers at most [softMax] of the
   /// screen (a trip's Navigate and Cancel ride under the passenger's row):
@@ -899,16 +991,30 @@ class MapSheetRestLine extends StatefulWidget {
 }
 
 class _MapSheetRestLineState extends State<MapSheetRestLine> {
+  /// The sheet this line was last measured on.
+  _MapSheetLayoutState? _layout;
+
+  @override
+  void dispose() {
+    final layout = _layout;
+    final soft = widget.soft, floor = widget.floor;
+    // After the frame: the tree is locked while this one is taken out.
+    if (layout != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => layout._dropRestLine(this, soft: soft, floor: floor));
+    }
+    super.dispose();
+  }
+
   void _measure() {
     if (!mounted) return;
-    final layout = context.findAncestorStateOfType<_MapSheetLayoutState>();
+    final layout = _layout = context.findAncestorStateOfType<_MapSheetLayoutState>();
     final top = layout?._sheetKey.currentContext?.findRenderObject() as RenderBox?;
     final box = context.findRenderObject() as RenderBox?;
     if (layout == null || top == null || box == null || !box.hasSize || !top.attached || !box.attached) return;
     // Below the sheet's top as it lies at rest, whatever slide or scroll it
     // is under now.
     final bottom = box.localToGlobal(Offset(0, box.size.height), ancestor: top).dy + layout._contentLift;
-    layout._setRestLine(bottom, soft: widget.soft);
+    layout._setRestLine(bottom, soft: widget.soft, floor: widget.floor, owner: this);
   }
 
   @override
