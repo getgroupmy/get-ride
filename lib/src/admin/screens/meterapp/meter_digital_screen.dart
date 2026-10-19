@@ -660,6 +660,31 @@ class _MeterCardEditorState extends ConsumerState<MeterCardEditor> {
               d.autoLaunch,
               (v) => setState(() => _draft = _draft.copyWith(autoLaunch: v)),
             ),
+            KeyedSubtree(
+              key: const ValueKey('meter-at-sign-in'),
+              child: _segmented(
+                'Meter at sign-in',
+                const [
+                  ('off', 'Off', 'Nothing extra at sign-in: “Open the meter on launch” alone decides.'),
+                  (
+                    'ask',
+                    'Ask the driver',
+                    'Right after signing in, TEKSI drivers choose “Turn the meter on” or “Not now”. On opens the '
+                        'meter and the launch rules apply for that sign-in; Not now opens the app as usual and the '
+                        'meter stays shut on reopen until the next sign-in. Drivers can switch it from the meter or '
+                        'the driver menu (Meter on/off).',
+                  ),
+                  (
+                    'always',
+                    'Always on',
+                    'The meter is on at every sign-in, with no question — like “Open the meter on launch”, but only '
+                        'at sign-in. Drivers can turn it off for the sign-in from the meter or the driver menu.',
+                  ),
+                ],
+                d.meterAtSignIn,
+                (k) => setState(() => _draft = _draft.copyWith(meterAtSignIn: k)),
+              ),
+            ),
 
             // Leave
             _group(

@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../core/auth_utils.dart';
 import '../features/auth/passkey/passkey.dart' as pk;
+import 'meter_session_store.dart';
 import 'session_guard.dart';
 import 'function_region.dart';
 
@@ -375,5 +376,9 @@ class AuthRepository {
   // ignore: experimental_member_use
   Future<void> removePasskey(String id) => _db.auth.passkey.delete(passkeyId: id);
 
-  Future<void> signOut() => _db.auth.signOut();
+  /// Signs out, and forgets this sign-in's meter on/off (Meter at sign-in).
+  Future<void> signOut() async {
+    await MeterSessionStore.clear();
+    await _db.auth.signOut();
+  }
 }
