@@ -22,6 +22,9 @@ const _levelSubtitles = [
 const _levelSingular = ['Vehicle Type', 'Energy Type', 'Make', 'Model'];
 const _levelIcons = [Icons.directions_car_outlined, Icons.local_gas_station_outlined, Icons.factory_outlined, Icons.sell_outlined];
 
+/// The room kept clear under an empty list for the pinned Add button.
+const vmmFabClearance = 84.0;
+
 class VehicleMakeModelScreen extends ConsumerStatefulWidget {
   const VehicleMakeModelScreen({super.key});
 
@@ -260,14 +263,24 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
                 CatalogueSearch(controller: _search, onChanged: (_) => setState(() {})),
                 Expanded(
                   child: tiles.isEmpty
-                      // Scrolls, clear of the Add button, when short (a
-                      // phone on its side) and centred otherwise.
+                      // Scrolls when short (a phone on its side) and is
+                      // centred otherwise, always above the pinned Add
+                      // button: the space it takes (56 and its 16 margin,
+                      // and a little more) is kept clear rather than only
+                      // padded at the end, where the caption still came to
+                      // rest under it.
                       ? LayoutBuilder(
-                          builder: (context, box) => SingleChildScrollView(
+                          builder: (context, box) {
+                            // The button also sits above the home bar.
+                            final clear = vmmFabClearance + MediaQuery.paddingOf(context).bottom;
+                            return Padding(
+                            padding: EdgeInsets.only(bottom: clear),
+                            child: SingleChildScrollView(
                             key: const ValueKey('vmm-empty-scroll'),
-                            padding: const EdgeInsets.only(bottom: 96),
                             child: ConstrainedBox(
-                              constraints: BoxConstraints(minHeight: (box.maxHeight - 96).clamp(0.0, double.infinity)),
+                              constraints: BoxConstraints(
+                                minHeight: (box.maxHeight - clear).clamp(0.0, double.infinity),
+                              ),
                               child: EmptyState(
                                 icon: Icons.inbox_outlined,
                                 title: emptyTitle,
@@ -282,6 +295,8 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
                               ),
                             ),
                           ),
+                          );
+                          },
                         )
                       : ListView(padding: const EdgeInsets.only(bottom: 96), children: tiles),
                 ),

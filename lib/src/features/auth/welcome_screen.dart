@@ -78,7 +78,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     final big = const Size.fromHeight(58);
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
     final label = t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600);
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t);
     final page = Scaffold(
       key: const ValueKey('welcome'),
       body: SafeArea(

@@ -122,6 +122,20 @@ void main() {
         'Malaysia',
         reason: 'kept',
       );
+      // A state that repeats the city goes: "Kuala Lumpur", not "Kuala
+      // Lumpur, Federal Territory of Kuala Lumpur".
+      const klcc = Place(
+        name: 'Suria KLCC',
+        address: 'Suria KLCC, Jalan Ampang, 50088 Kuala Lumpur, Federal Territory of Kuala Lumpur, Malaysia',
+        point: LatLng(3.158, 101.712),
+      );
+      expect(shortArea(klcc), 'Jalan Ampang, Kuala Lumpur');
+      expect(
+        shortArea(const Place(name: 'X', address: 'Kuala Lumpur, Federal Territory of Kuala Lumpur', point: LatLng(3, 101))),
+        'Kuala Lumpur',
+      );
+      // And one that is the rider's own state, as before.
+      expect(shortArea(_street, homeRegion: 'Selangor'), 'Semenyih');
       expect(placeIcon(_klia), Icons.flight);
       expect(placeIcon(_street), Icons.home_outlined);
     });

@@ -214,15 +214,28 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             const SizedBox(height: 16),
             Text('Identity', style: t.textTheme.titleMedium),
             const SizedBox(height: 8),
-            ListTile(
-              key: const ValueKey('profile-country'),
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.public),
-              title: const Text('Country'),
-              subtitle: Text(_country.isEmpty ? 'Select country' : _country),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _busy ? null : _chooseCountry,
+            // A picker field like the fields around it: its label, the
+            // country (or what to do), and the chevron that opens the list.
+            Semantics(
+              button: true,
+              child: InkWell(
+                key: const ValueKey('profile-country'),
+                borderRadius: BorderRadius.circular(12),
+                onTap: _busy ? null : _chooseCountry,
+                child: InputDecorator(
+                  isEmpty: _country.isEmpty,
+                  decoration: InputDecoration(
+                    labelText: 'Country',
+                    hintText: 'Select country',
+                    prefixIcon: const Icon(Icons.public),
+                    suffixIcon: const Icon(Icons.expand_more),
+                    enabled: !_busy,
+                  ),
+                  child: Text(_country, style: t.textTheme.bodyLarge),
+                ),
+              ),
             ),
+            const SizedBox(height: 12),
             if (idImage != null && idImage.startsWith('http'))
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),

@@ -137,7 +137,7 @@ class _PasskeysScreenState extends ConsumerState<PasskeysScreen> {
                             children: [
                               Icon(Icons.info_outline, color: muted),
                               const SizedBox(width: 12),
-                              Expanded(child: Text(passkeyWrongAddressMessage(ref.watch(passkeyPageProvider)))),
+                              const Expanded(child: Text(passkeyWrongAddressMessage)),
                             ],
                           ),
                           const SizedBox(height: 12),

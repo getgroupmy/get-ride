@@ -93,13 +93,11 @@ void main() {
       );
     });
 
-    test('says where passkeys work and why not here', () {
-      final insecure = passkeyWrongAddressMessage(Uri.parse('http://getride.my/account'));
-      expect(insecure, contains('only work at www.getride.my'));
-      expect(insecure, contains('open at getride.my without a secure (https) connection'));
-      final other = passkeyWrongAddressMessage(Uri.parse('https://getride.my/account'));
-      expect(other, contains('open at getride.my,'));
-      expect(other, isNot(contains('https) connection')));
+    test('says where passkeys work in plain words, no address details', () {
+      expect(passkeyWrongAddressMessage, contains('Passkeys work on www.getride.my and in the GET.ride phone app'));
+      for (final noise in ['127.0.0.1', 'https', 'http', 'localhost', 'secure']) {
+        expect(passkeyWrongAddressMessage, isNot(contains(noise)));
+      }
     });
   });
 
@@ -290,7 +288,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('passkeys-wrong-address')), findsOneWidget);
-        expect(find.textContaining('This page is open at getride.my without a secure'), findsOneWidget);
+        expect(find.text(passkeyWrongAddressMessage), findsOneWidget);
         expect(find.byKey(const ValueKey('passkeys-open-www')), findsOneWidget);
         await tester.tap(find.byKey(const ValueKey('passkeys-save')));
         await tester.pump();

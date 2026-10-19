@@ -377,7 +377,9 @@ class SessionKeyDialog extends StatelessWidget {
             'or as the environment variable $sessionKeyEnvName. '
             '${ends == null ? '' : 'It works until ${DateFormat('d MMM, h:mm a').format(ends)}. '}'
             'The session calls the backend with it as in $sessionAccessDocs; remove it here to end it early.',
-            style: t.textTheme.bodySmall,
+            key: const ValueKey('session-key-note'),
+            // Checked against the dialog's own fill, light and dark.
+            style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t, background: dialogFill(t))),
           ),
         ],
       ),

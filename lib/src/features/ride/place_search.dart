@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -15,6 +15,7 @@ import '../../data/place_gates_repository.dart';
 import '../../core/saved_places.dart';
 import '../../data/saved_places_repository.dart';
 import '../../providers.dart';
+import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/map_pick_icon.dart';
 import 'map_place_picker.dart';
 import 'saved_place_form.dart';
@@ -248,8 +249,15 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// The search field: outlined, a search icon, its label (From, To or
   /// Address) small over the text, a clear button while there is text, and
   /// the choose-on-map button (inDrive's, 58 high).
+  /// The search field's caption: what it is for.
+  String get _fieldLabel => _editFrom
+      ? 'From'
+      : _route
+      ? 'To'
+      : 'Address';
+
   Widget _field(ThemeData t) {
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t, background: t.colorScheme.surface);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Container(
@@ -264,19 +272,12 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           children: [
             Icon(Icons.search, size: 26, color: t.colorScheme.onSurface),
             const SizedBox(width: 12),
+            // The field fills the box's height, its caption laid over its
+            // top: the whole row is the field to tap (it was a 24 high
+            // strip under the caption, too small a target).
             Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Stack(
                 children: [
-                  Text(
-                    _editFrom
-                        ? 'From'
-                        : _route
-                        ? 'To'
-                        : 'Address',
-                    style: t.textTheme.bodySmall?.copyWith(fontSize: 13, height: 1.2, color: muted),
-                  ),
                   TextField(
                     key: const ValueKey('place-search-field'),
                     controller: _query,
@@ -285,9 +286,19 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                     style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400, height: 1.3),
                     decoration: const InputDecoration.collapsed(hintText: null).copyWith(
                       isDense: true,
-                      contentPadding: const EdgeInsets.only(top: 2),
+                      contentPadding: const EdgeInsets.only(top: 25, bottom: 7),
                     ),
                     onChanged: _onChanged,
+                  ),
+                  PositionedDirectional(
+                    start: 0,
+                    top: 7,
+                    child: IgnorePointer(
+                      child: Text(
+                        _fieldLabel,
+                        style: t.textTheme.bodySmall?.copyWith(fontSize: 13, height: 1.2, color: muted),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -363,7 +374,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                                 style: t.textTheme.bodySmall?.copyWith(
                                   fontSize: 13,
                                   height: 1.2,
-                                  color: t.colorScheme.onSurfaceVariant,
+                                  color: mutedTextColor(t, background: _fill(t)),
                                 ),
                               ),
                               Text(
@@ -379,7 +390,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                             style: t.textTheme.titleMedium?.copyWith(
                               fontSize: 17,
                               fontWeight: FontWeight.w400,
-                              color: t.colorScheme.onSurfaceVariant,
+                              color: mutedTextColor(t, background: _fill(t)),
                             ),
                           ),
                   ),
@@ -503,7 +514,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     final blocked = gated?.blocksPlace ?? false;
     final km = p.pending ? _km[p.placeId] ?? p.km : _km[_at(p.point)];
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t, background: routeSheetBackground(t));
     // A pin, or what the place is (smart address A) where that says more.
     final typed = smart.clean ? placeIcon(p) : null;
     final icon = gates.isNotEmpty
@@ -717,7 +728,8 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
         messenger?.showSnackBar(
           SnackBar(
             key: const ValueKey('place-verified'),
-            content: Text('✓ Address confirmed by Google: ${place.address}'),
+            // No ✓ on the web: the browser would fetch a symbol font for it.
+            content: Text('${kIsWeb ? '' : '✓ '}Address confirmed by Google: ${place.address}'),
           ),
         );
       }
@@ -834,10 +846,11 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           )
         else
           _field(t),
-        const SizedBox(height: 22),
+        // The tabs' 44 high targets take 5 above and below their pills.
+        SizedBox(height: _route ? 17 : 22),
         if (_route)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             // From the left, as inDrive's.
             child: Align(
               alignment: AlignmentDirectional.centerStart,
@@ -955,7 +968,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       return const [ListTile(leading: Icon(Icons.bookmark_border), title: Text('Sign in to save your places'))];
     }
     final v = arrangeSavedPlaces(ref.watch(savedPlacesProvider).value ?? const []);
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t, background: routeSheetBackground(t));
     final titleStyle = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500);
     // The same row as a search result: icon, name over address, distance,
     // and a round button (here: edit).
@@ -1056,21 +1069,40 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    return Material(
-      color: on ? t.colorScheme.onSurface : _fill(t),
-      shape: const StadiumBorder(),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
+    // The pill stays 34 high; the target around it is 44 (a finger).
+    return Semantics(
+      container: true,
+      button: true,
+      selected: on,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            label,
-            style: t.textTheme.titleMedium?.copyWith(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              height: 1.2,
-              color: on ? t.colorScheme.surface : t.colorScheme.onSurface,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Center(
+            widthFactor: 1,
+            child: Material(
+              color: on ? t.colorScheme.onSurface : _fill(t),
+              shape: const StadiumBorder(),
+              child: InkWell(
+                customBorder: const StadiumBorder(),
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Text(
+                    label,
+                    style: t.textTheme.titleMedium?.copyWith(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      height: 1.2,
+                      color: on ? t.colorScheme.surface : t.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),

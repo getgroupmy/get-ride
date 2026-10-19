@@ -45,7 +45,7 @@ const _countries = {
 bool isCoordinateLabel(String label) => RegExp(r'^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$').hasMatch(label);
 
 /// [p]'s address as area parts, nearest the place first: without its name,
-/// house number, street, postcode or country, and no part twice.
+/// house number, postcode or country, and no part twice.
 List<String> _areaParts(Place p) {
   final name = p.name.trim().toLowerCase();
   final parts = <String>[];
@@ -54,8 +54,6 @@ List<String> _areaParts(Place p) {
     final part = all[i].trim().replaceFirst(RegExp(r'^\d{4,6}\s+'), '').replaceFirst(RegExp(r'\s+\d{4,6}$'), '');
     final l = part.toLowerCase();
     if (part.isEmpty || l == name || _countries.contains(l) || RegExp(r'^[\d\s/-]+$').hasMatch(part)) continue;
-    // A street ("Jalan Ampang", "12 Jalan …"), but never the last part.
-    if (i < all.length - 1 && _streetWords.hasMatch(part)) continue;
     if (parts.any((x) => x.toLowerCase() == l)) continue;
     parts.add(part);
   }
@@ -65,7 +63,7 @@ List<String> _areaParts(Place p) {
 String _plain(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
 
 /// Option A's second line, area then city: [p]'s address without its name,
-/// house number, street, postcode or country ("Kuala Lumpur International
+/// house number, postcode or country ("Kuala Lumpur International
 /// Airport (KLIA), 64000 Sepang, Selangor, Malaysia" → "Sepang, Selangor";
 /// "KLCC, 156, Jalan Ampang, Kampung Sungai Baru, 50450 Kuala Lumpur,
 /// Wilayah Persekutuan Kuala Lumpur, Malaysia" → "Kampung Sungai Baru, Kuala
@@ -78,13 +76,13 @@ String shortArea(Place p, {String? homeRegion}) {
   final parts = _areaParts(p);
   if (parts.isEmpty) return p.address;
   var stateGone = false;
-  // "Kuala Lumpur, Wilayah Persekutuan Kuala Lumpur": the state says the city again.
-  if (parts.length > 1) {
+  // A state that only says the city again ("Kuala Lumpur, Federal Territory
+  // of Kuala Lumpur", "Wilayah Persekutuan Kuala Lumpur"), however often.
+  while (parts.length > 1) {
     final last = _plain(parts.last), city = _plain(parts[parts.length - 2]);
-    if (city.isNotEmpty && (last == city || ' $last '.contains(' $city '))) {
-      parts.removeLast();
-      stateGone = true;
-    }
+    if (city.isEmpty || !(last == city || ' $last '.contains(' $city '))) break;
+    parts.removeLast();
+    stateGone = true;
   }
   final home = (homeRegion ?? '').trim().toLowerCase();
   if (!stateGone && home.isNotEmpty && parts.length > 1 && parts.last.toLowerCase() == home) {
@@ -94,12 +92,14 @@ String shortArea(Place p, {String? homeRegion}) {
   if (parts.length <= 2 && !(stateGone && parts.length == 2)) return parts.join(', ');
   final cityAt = stateGone ? parts.length - 1 : parts.length - 2;
   final name = _plain(p.name);
+  // The area nearest the place that the name doesn't already hold: a
+  // neighbourhood before a street ("Jalan Ampang"), a street before none.
   String? area;
-  for (var i = 0; i < cityAt; i++) {
-    final a = _plain(parts[i]);
-    if (a.isNotEmpty && !' $name '.contains(' $a ')) {
+  for (final street in [false, true]) {
+    for (var i = 0; i < cityAt && area == null; i++) {
+      final a = _plain(parts[i]);
+      if (a.isEmpty || ' $name '.contains(' $a ') || _streetWords.hasMatch(parts[i]) != street) continue;
       area = parts[i];
-      break;
     }
   }
   if (area == null) return parts.sublist(parts.length - 2).join(', ');
