@@ -122,8 +122,10 @@ String jobSummary(SmsJob j) {
 
 /// How long a quiet gateway waits between asks for new SMS, by how long it
 /// has been since the last one came in ([quiet]): [every] (5 s) for the
-/// first minute, twice that for the next, then [max] (15 s). Work resets
-/// it, so a burst of sign-ins and resends is served at full speed.
+/// first minute, twice that for the next, then [max] (15 s unless the admin
+/// set another, [pollQuietMaxFrom]). Never longer than [max], so a max under
+/// 10 s caps the second step too. Work resets it, so a burst of sign-ins and
+/// resends is served at full speed.
 ///
 /// Nothing tells the phone an SMS is queued (no push, no realtime: the
 /// paired phone has no account session to subscribe with), so this is also
@@ -132,7 +134,7 @@ String jobSummary(SmsJob j) {
 Duration pollAfter(
   Duration quiet, {
   Duration every = const Duration(seconds: 5),
-  Duration max = const Duration(seconds: 15),
+  Duration max = defaultPollQuietMax,
 }) {
   final d = quiet < const Duration(minutes: 1)
       ? every
@@ -141,6 +143,36 @@ Duration pollAfter(
       : max;
   if (d > max) return max < every ? every : max;
   return d < every ? every : d;
+}
+
+/// The longest a quiet gateway waits between asks when the server doesn't
+/// say ([pollAfter]).
+const defaultPollQuietMax = Duration(seconds: 15);
+
+/// The admin's "Longest wait for a sign-in code" (migration 0236), as the
+/// heartbeat answers it in seconds; null when missing or not a whole number
+/// of 5–60 seconds, so the gateway keeps [defaultPollQuietMax]. Pure.
+Duration? pollQuietMaxFrom(Object? seconds) {
+  final n = seconds is num ? seconds : (seconds is String ? num.tryParse(seconds.trim()) : null);
+  if (n == null || !n.isFinite || n != n.roundToDouble()) return null;
+  final s = n.toInt();
+  if (s < 5 || s > 60) return null;
+  return Duration(seconds: s);
+}
+
+/// What the server answers a heartbeat with: this phone's device row id, and
+/// the longest quiet wait the admin set (null: not said, or not valid).
+class GatewayHeartbeat {
+  const GatewayHeartbeat(this.device, {this.pollQuietMax});
+
+  /// Reads the heartbeat RPC's row; [device] is empty when it has no id.
+  factory GatewayHeartbeat.fromRow(Object? row) => GatewayHeartbeat(
+    row is Map ? '${row['id'] ?? ''}' : '',
+    pollQuietMax: row is Map ? pollQuietMaxFrom(row['poll_max_seconds']) : null,
+  );
+
+  final String device;
+  final Duration? pollQuietMax;
 }
 
 /// How long to wait before talking to the server again after [failures]
