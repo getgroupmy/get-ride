@@ -317,7 +317,7 @@ class _BookingTile extends StatelessWidget {
       dense: true,
       leading: const Icon(Icons.event_outlined),
       title: Text(
-        '${DateFormat('EEE d MMM, HH:mm').format(ride.pickupAt)} · ${formatMoney(ride.total, ride.currency ?? 'MYR')}',
+        '${formatWeekdayDayMonthForUser(ride.pickupAt)}, ${DateFormat('HH:mm').format(ride.pickupAt)} · ${formatMoney(ride.total, ride.currency ?? 'MYR')}',
       ),
       subtitle: Text(
         [

@@ -27,6 +27,7 @@ import 'people/vehicle_screens.dart' show confirmVehicleApprovable;
 import 'security/sign_in_security_card.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
+import '../../core/date_order.dart' show formatStoredDateForUser;
 
 /// How many users the list has loaded and what it searches the server for
 /// (PERF-55: a page at a time), by page size ([adminPeoplePageSizeFor]: 50
@@ -457,7 +458,7 @@ class AdminUsersScreen extends ConsumerWidget {
           'ID verified': u['id_verified'],
           'Nationality': u['nationality'],
           'Gender': u['gender'],
-          'Birth date': u['birth_date'],
+          'Birth date': u['birth_date'] == null ? null : formatStoredDateForUser(u['birth_date']),
           'Address': u['address'],
           'Referral code': u['referral_code'],
           'Total rides': u['total_rides'],

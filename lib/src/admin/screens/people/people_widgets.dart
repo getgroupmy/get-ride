@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/document_ai.dart';
@@ -21,6 +20,7 @@ import '../../../widgets/storage_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
 import '../../../widgets/chip_button.dart';
+import '../../../widgets/date_boxes.dart';
 
 /// Wide screens get a two-column form, phones one column.
 class FormColumns extends StatelessWidget {
@@ -760,9 +760,8 @@ class _PartnerDocsUploaderState extends ConsumerState<PartnerDocsUploader> {
                       Text([
                         if (d.description.isNotEmpty) d.description,
                         d.labels.join(' · '),
-                        if (u?['expiry_date'] != null) 'Expires: ${u!['expiry_date']}',
-                        if (opens != null)
-                          'Renewal opens ${opens.year}-${'${opens.month}'.padLeft(2, '0')}-${'${opens.day}'.padLeft(2, '0')}',
+                        if (u?['expiry_date'] != null) 'Expires: ${formatStoredDateForUser(u!['expiry_date'])}',
+                        if (opens != null) 'Renewal opens ${formatDateForUser(opens)}',
                         d.compulsory ? 'Compulsory' : 'Optional',
                       ].join('\n')),
                       // What to fix before uploading it again.
@@ -817,6 +816,7 @@ class DocUploadDialog extends ConsumerStatefulWidget {
 }
 
 class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
+  final _form = GlobalKey<FormState>();
   PickedPeopleFile? _front, _back;
 
   /// The front is a PDF's first page (see doc_pdf.dart): a single file, so
@@ -869,6 +869,8 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
       insuranceProviderId: _insurerId,
     );
     if (err != null) return showError(context, err);
+    // The date boxes say under themselves what is wrong (an expired date).
+    if (_form.currentState?.validate() == false) return;
     setState(() => _busy = true);
     final repo = ref.read(peopleRepositoryProvider);
     final ok = await runAdminAction(context, () async {
@@ -1084,13 +1086,14 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
   @override
   Widget build(BuildContext context) {
     final f = widget.doc.flags;
-    final dateFormatter = [FilteringTextInputFormatter.allow(RegExp(r'[0-9-]'))];
     return AlertDialog(
       title: Text(widget.doc.name),
       content: SizedBox(
         width: 460,
         child: SingleChildScrollView(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          child: Form(
+            key: _form,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             if (widget.existing != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -1135,12 +1138,21 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
             if (f.requireDocumentNumber)
               PeopleField(controller: _number, label: 'Document number', capitalization: TextCapitalization.characters),
             if (f.requireStartDate)
-              PeopleField(controller: _start, label: 'Start date', hint: 'YYYY-MM-DD', keyboardType: TextInputType.datetime),
+              DateBoxesField(
+                key: const ValueKey('doc-upload-start'),
+                label: 'Start date',
+                controller: _start,
+                isRequired: true,
+              ),
             if (f.requireExpiryDate)
-              TextField(
+              DateBoxesField(
+                key: const ValueKey('doc-upload-expiry'),
+                label: 'Expiry date',
                 controller: _expiry,
-                inputFormatters: dateFormatter,
-                decoration: const InputDecoration(labelText: 'Expiry date', hintText: 'YYYY-MM-DD'),
+                isRequired: true,
+                // An expired document can't be accepted: renew it first.
+                firstDate: DateTime.now(),
+                beforeFirstText: 'This document has expired. Upload the renewed one.',
               ),
             if (f.requireInsuranceProvider) ...[
               const SizedBox(height: 12),
@@ -1161,7 +1173,8 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
                 value: _pwd,
                 onChanged: (v) => setState(() => _pwd = v),
               ),
-          ]),
+            ]),
+          ),
         ),
       ),
       actions: [

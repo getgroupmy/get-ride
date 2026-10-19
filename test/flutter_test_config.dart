@@ -10,9 +10,14 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/date_order.dart';
 
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
+  // Dates in the Malaysian order (day first) unless a test picks a country:
+  // the test machine's locale is en-US.
+  deviceDateCountry = () => 'MY';
   setUp(() {
+    setProfileDateCountry(null);
     final WidgetsBinding binding;
     try {
       binding = WidgetsBinding.instance;
