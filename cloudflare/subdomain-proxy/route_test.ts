@@ -329,3 +329,26 @@ Deno.test("the backend's answer is returned as it is, redirects and upgrades inc
   assertEquals(seen[0].headers.get("apikey"), "k");
   assertEquals(res, upstreamRedirect);
 });
+
+Deno.test("the web app's security headers reach the visitor on a subdomain, redirect or not", async () => {
+  // Vercel sets them (deploy/vercel_output_config.json); the worker must
+  // hand them on, including when it rewrites a Location.
+  const security = {
+    "strict-transport-security": "max-age=31536000",
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "permissions-policy": "camera=(self)",
+    "content-security-policy": "frame-ancestors 'none'",
+    "content-security-policy-report-only": "default-src 'self'",
+  };
+  const redirect: Record<string, string> = { location: "https://www.getride.my/login" };
+  for (const extra of [{}, redirect] as Record<string, string>[]) {
+    const status = "location" in extra ? 307 : 200;
+    const { fetcher } = fakeOrigin(() => new Response(null, { status, headers: { ...security, ...extra } }));
+    const res = await handle(new Request("https://qr.getride.my/me/t"), {}, fetcher);
+    for (const [name, value] of Object.entries(security)) {
+      assertEquals(res.headers.get(name), value, name);
+    }
+  }
+});
