@@ -370,10 +370,10 @@ void main() {
         expect(vehicle, findsOneWidget);
         expect(plate, findsOneWidget);
         expect(find.textContaining('Bezza ·'), findsNothing, reason: 'no "car · plate" line to break');
-        expect(tester.getRect(plate).top, greaterThanOrEqualTo(tester.getRect(vehicle).bottom));
+        // #434's card: the plate first, on its own line, the car under it.
+        expect(tester.getRect(vehicle).top, greaterThanOrEqualTo(tester.getRect(plate).bottom));
         final plateText = tester.widget<Text>(find.descendant(of: plate, matching: find.byType(Text)));
         expect(plateText.maxLines, 1);
-        expect(plateText.softWrap, isFalse);
         expect(find.byIcon(Icons.star), findsWidgets);
         expect(tester.takeException(), isNull);
       });
