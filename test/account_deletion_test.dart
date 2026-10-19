@@ -215,6 +215,33 @@ void main() {
       expect(tester.widget<FilledButton>(find.byKey(const ValueKey('final-delete'))).onPressed, isNull);
     });
 
+    for (final b in Brightness.values) {
+      testWidgets('173: Link previous account opens with its search focused (${b.name})', (tester) async {
+        await tester.pumpWidget(ProviderScope(
+          overrides: [
+            accountEventsProvider.overrideWith((_, _) async => const []),
+            accountRetentionDaysProvider.overrideWith((_) async => 365),
+            accountDeletionRepositoryProvider.overrideWithValue(_NoDeleted()),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(brightness: b),
+            home: const Scaffold(
+              body: SingleChildScrollView(
+                child: AccountDeletionSection(user: {'id': 'new', 'phone': '+60100000194'}, canEdit: true),
+              ),
+            ),
+          ),
+        ));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('link-previous-account')));
+        await tester.pumpAndSettle();
+        final focused = FocusManager.instance.primaryFocus?.context;
+        expect(focused, isNotNull);
+        expect(find.descendant(of: find.byKey(const ValueKey('link-search')), matching: find.byWidget(focused!.widget)),
+            findsOneWidget);
+      });
+    }
+
     testWidgets('an active account offers to link a previous one', (tester) async {
       await tester.pumpWidget(host({'id': 'new', 'phone': '+60100000194'}));
       await tester.pumpAndSettle();
@@ -222,4 +249,12 @@ void main() {
       expect(find.byKey(const ValueKey('account-deleted-card')), findsNothing);
     });
   });
+}
+
+class _NoDeleted implements AccountDeletionRepository {
+  @override
+  Future<List<Map<String, dynamic>>> deletedAccounts({String? phone, String? search}) async => const [];
+
+  @override
+  dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }

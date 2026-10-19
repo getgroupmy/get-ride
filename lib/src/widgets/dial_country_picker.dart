@@ -96,6 +96,8 @@ class _DialCountrySheetState extends State<DialCountrySheet> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: TextField(
                 key: const ValueKey('country-search'),
+                // The sheet is there to search: typing goes straight in.
+                autofocus: true,
                 decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search country or code'),
                 onChanged: (v) => setState(() => _query = v),
               ),
