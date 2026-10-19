@@ -3,7 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/doc_photo.dart' show jpgName;
 import '../../../core/image_crop.dart';
+import '../../../data/doc_photos.dart';
 import '../../../widgets/page_style_host.dart';
 
 /// One picked image: its bytes, file name and a content type guessed from the
@@ -106,6 +108,25 @@ Future<PickedImage> squarePickedImage(
   if (out == null) return photo;
   final base = photo.name.replaceFirst(RegExp(r'\.[A-Za-z0-9]+$'), '');
   return _picked(out, '${base.isEmpty ? 'photo' : base}.jpg');
+}
+
+/// [photo] scaled down for storage as a document photo (at most 1,600 px,
+/// JPEG quality 80, upright), off the UI thread. A file [shrink] can't read
+/// (a PDF, a HEIC the decoder doesn't know) is kept as it is.
+Future<PickedImage> shrinkPickedDocImage(PickedImage photo, {ImageBytesJob? shrink}) async {
+  Uint8List? out;
+  try {
+    out = await (shrink ?? shrinkDocPhotoBytes)(photo.bytes);
+  } catch (_) {}
+  if (out == null) return photo;
+  return _picked(out, jpgName(photo.name));
+}
+
+/// A photo of a document or a vehicle: [pickImage] (camera, gallery or the
+/// file picker), then [shrinkPickedDocImage].
+Future<PickedImage?> pickDocumentImage([BuildContext? context]) async {
+  final photo = await pickImage(context);
+  return photo == null ? null : shrinkPickedDocImage(photo);
 }
 
 /// A profile photo: [pickImage], then cut square.

@@ -3,6 +3,7 @@
 // runs out. Screens showing the same file at once share one signing call.
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/doc_photo.dart' show docThumbUrl;
 import '../core/storage_links.dart';
 
 final _cache = <String, ({String url, DateTime until})>{};
@@ -51,5 +52,39 @@ Future<String> signedStorageUrl(String url, {SupabaseClient? client, DateTime? n
     );
   } catch (_) {
     return url;
+  }
+}
+
+/// Thumbnails found missing this session (uploads from before they were
+/// made), so a list asks for each only once.
+final _missingThumbs = <String>{};
+
+/// Notes that the thumbnail at [thumbUrl] could not be shown, so the full
+/// file is used from now on.
+void markThumbMissing(String thumbUrl) => _missingThumbs.add(thumbUrl);
+
+/// A link to the list thumbnail stored beside [url] (`<path>.thumb.jpg`,
+/// core/doc_photo.dart), or null when there is none to show: not a
+/// document image, an older upload without one, or no link could be made.
+/// The caller then shows [url] itself.
+Future<String?> signedThumbUrl(String url, {SupabaseClient? client, DateTime? now}) async {
+  final thumb = docThumbUrl(url);
+  if (thumb == null || _missingThumbs.contains(thumb)) return null;
+  final ref = privateStorageRef(thumb);
+  if (ref == null) return null;
+  try {
+    final db = client ?? Supabase.instance.client;
+    return await cachedSignedLink(
+      thumb,
+      ttl: documentLinkTtl,
+      now: now,
+      sign: () => db.storage.from(ref.bucket).createSignedUrl(ref.path, documentLinkTtl.inSeconds),
+    );
+  } on StorageException {
+    // Storage answers "Object not found" for an upload without a thumbnail.
+    _missingThumbs.add(thumb);
+    return null;
+  } catch (_) {
+    return null;
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,8 @@ import '../../../core/auth_utils.dart' show capitaliseName;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
+import '../../admin_filters.dart' show RowsPage;
+import '../../people_paging.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import 'people_data.dart';
@@ -118,12 +122,21 @@ void _leave(BuildContext context) => context.canPop() ? context.pop(true) : cont
 
 // ---- Add partner -----------------------------------------------------------
 
-final _eligibleUsersProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+/// How many users the picker has loaded and what it searches the server
+/// for (PERF-55: `profiles` a page at a time).
+final _eligibleUsersRequestProvider =
+    NotifierProvider.autoDispose<PageRequestController, PageRequest>(PageRequestController.new);
+
+final _eligibleUsersProvider = FutureProvider.autoDispose<RowsPage>((ref) async {
   ref.watchAdminLive('profiles');
   ref.watchAdminLive('partners');
   final repo = ref.watch(peopleRepositoryProvider);
-  final r = await Future.wait([repo.profiles(), repo.partners()]);
-  return eligiblePartnerUsers(r[0], r[1]);
+  final req = ref.watch(_eligibleUsersRequestProvider);
+  final users = repo.profiles(limit: req.limit, query: req.query);
+  final partners = repo.partners();
+  await Future.wait([users, partners]);
+  final page = await users;
+  return (rows: eligiblePartnerUsers(page.rows, await partners), more: page.more);
 });
 
 /// `admin-partner-add`: pick an existing user, set area/types/vehicle, then
@@ -139,6 +152,23 @@ class PartnerAddScreen extends ConsumerStatefulWidget {
 class _PartnerAddScreenState extends ConsumerState<PartnerAddScreen> {
   Map<String, dynamic>? _user;
   String _query = '';
+  Timer? _search;
+
+  @override
+  void dispose() {
+    _search?.cancel();
+    super.dispose();
+  }
+
+  /// Filters the loaded users at once, and asks the server a moment after
+  /// typing stops (users not loaded yet are found too).
+  void _onSearch(String v) {
+    setState(() => _query = v);
+    _search?.cancel();
+    _search = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) ref.read(_eligibleUsersRequestProvider.notifier).search(v);
+    });
+  }
   ServiceArea _area = const ServiceArea();
   List<String> _types = const [];
   Map<String, dynamic>? _vehicle;
@@ -222,14 +252,15 @@ class _PartnerAddScreenState extends ConsumerState<PartnerAddScreen> {
         child: TextField(
           decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search), hintText: 'Search users by name, phone, email…', isDense: true),
-          onChanged: (v) => setState(() => _query = v),
+          onChanged: _onSearch,
         ),
       ),
       Expanded(
         child: AsyncView(
           value: value,
           onRetry: () => ref.invalidate(_eligibleUsersProvider),
-          data: (users) {
+          data: (page) {
+            final users = page.rows;
             final q = _query.trim().toLowerCase();
             final list = q.isEmpty
                 ? users
@@ -239,14 +270,20 @@ class _PartnerAddScreenState extends ConsumerState<PartnerAddScreen> {
             return ResponsiveCenter(
               maxWidth: 820,
               child: ListView.separated(
-                itemCount: list.length + 1,
+                itemCount: list.length + (page.more ? 2 : 1),
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (_, i) {
+                  if (i > list.length) {
+                    return LoadMoreRow(
+                      loading: value.isLoading,
+                      onPressed: () => ref.read(_eligibleUsersRequestProvider.notifier).more(),
+                    );
+                  }
                   if (i == 0) {
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Text(
-                        list.isEmpty
+                        list.isEmpty && !page.more
                             ? 'No eligible users. Partners are created from existing app users who are not already partners.'
                             : '${list.length} eligible user${list.length == 1 ? '' : 's'}',
                         style: Theme.of(context).textTheme.bodySmall,
