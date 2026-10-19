@@ -527,7 +527,8 @@ ButtonStyle _acceptStyle(BuildContext context, {double height = 52}) => FilledBu
   disabledForegroundColor: Colors.white70,
   minimumSize: Size.fromHeight(height),
   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-  textStyle: const TextStyle(fontWeight: FontWeight.w700),
+  // The theme's font, not the default (a bare TextStyle lost it).
+  textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
 );
 
 /// The fare offers: the accent as a tint, so Accept stays the one to press.
@@ -538,7 +539,8 @@ ButtonStyle _offerStyle(BuildContext context, {double height = 48}) {
     foregroundColor: dark ? const Color(0xFF7FD0F2) : const Color(0xFF0E6E99),
     minimumSize: Size.fromHeight(height),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    textStyle: const TextStyle(fontWeight: FontWeight.w700),
+    // The theme's font, not the default (a bare TextStyle lost it).
+  textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
   );
 }
 

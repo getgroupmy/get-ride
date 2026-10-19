@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/early_end.dart';
@@ -484,10 +485,12 @@ void main() {
         await tester.pump();
         await tester.pumpAndSettle();
         expect(find.text('Head to pickup'), findsOneWidget);
+        // Each piece fitted on one line (#431's FittedBox), never broken.
         for (final key in ['trip-pax', 'trip-payment']) {
-          final text = tester.widget<Text>(find.byKey(ValueKey(key)));
-          expect(text.maxLines, 1, reason: '$key is never broken across lines');
-          expect(text.softWrap, isFalse);
+          final piece = find.byKey(ValueKey(key));
+          expect(find.ancestor(of: piece, matching: find.byType(FittedBox)), findsWidgets, reason: key);
+          final p = tester.renderObject<RenderParagraph>(find.descendant(of: piece, matching: find.byType(RichText)));
+          expect(p.size.height, lessThan(p.getMaxIntrinsicHeight(double.infinity) * 1.5), reason: '$key on one line');
         }
         // At rest the drop-off row stands whole above the button bar.
         final drop = tester.getRect(find.byKey(const ValueKey('trip-drop')));
