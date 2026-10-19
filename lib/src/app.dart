@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -14,6 +13,7 @@ import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
+import 'core/date_order.dart' show setProfileDateCountry;
 import 'core/launch_destination.dart' show AppLaunch;
 import 'core/auth_utils.dart'
     show
@@ -41,6 +41,7 @@ import 'data/live_tables.dart';
 import 'data/messaging_repository.dart';
 import 'data/geo_service.dart' show AreaInfo, knownPosition;
 import 'data/notifications_repository.dart';
+import 'data/permission_probe.dart';
 import 'data/push_service.dart';
 import 'data/session_guard.dart';
 import 'data/session_tracker.dart';
@@ -611,9 +612,14 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     _startMessagingPresence();
     _startPushLocation();
     // Admin → Settings → Maps: this user's and device's tiles and lookups.
-    // The maps wait for them rather than show the app's own map first.
+    // The maps wait for them rather than show the app's own map first (on a
+    // first launch at most `mapProfileFirstWait`, then the app's own map).
     waitForMapProfile();
     ref.listenManual(mapProfileProvider, (_, _) {}, fireImmediately: true);
+    // Dates are typed and shown in the order of the user's country (the
+    // profile's, else the phone's): DD/MM/YYYY, MM/DD/YYYY or YYYY/MM/DD.
+    ref.listenManual(profileProvider, (_, next) => setProfileDateCountry(next.value?.nationality),
+        fireImmediately: true);
     // The home-screen icon: the admin's season or the passenger's choice.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(ref.read(appIconSyncProvider).sync());
@@ -763,7 +769,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       }
       messenger?.showMaterialBanner(
         notificationsOffBanner(
-          onSettings: () => unawaited(Geolocator.openAppSettings()),
+          onSettings: () => unawaited(ref.read(permissionProbeProvider).openNotificationSettings()),
           onDismiss: () {
             _notificationsDismissed = true;
             sync();

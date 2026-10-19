@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../admin/screens/security/ip_access_logic.dart';
 import '../admin/screens/security/security_data.dart';
 import '../core/session_telemetry.dart' show launchIp;
+import '../providers.dart' show supabaseProvider;
 import 'live_tables.dart';
+import 'session_tracker.dart' show lookupCallerIp;
 
 /// What a blacklisted device is told (Expo `phone-auth` / `ride-confirm`).
 const serviceNotAvailable = 'Service Not Available';
@@ -16,17 +18,27 @@ const serviceNotAvailable = 'Service Not Available';
 ///
 /// Expo's other use of the rules, letting a whitelisted IP skip the admin
 /// PIN, is deliberately not ported: an IP address is not a credential.
-/// The IP ip-lookup already found this launch (session rows) is reused.
+/// The IP is shared for the launch ([launchIp]): the full ip-lookup's for the
+/// session rows when it is already in, else an address-only ip-lookup, which
+/// the server answers from the request headers alone (no rate check, no ISP
+/// lookup), so sign-in never waits on the ISP provider.
 final deviceBlockedProvider = FutureProvider<bool>((ref) async {
   ref.watchLive('ip_access_rules');
   try {
-    final ip = launchIp.value?.publicIp ?? await lookupPublicIp();
+    final ip = await launchIp.publicIp(ref.read(callerIpLookupProvider));
     if (ip == null) return false;
     final type = await ref.read(securityRepositoryProvider).evaluateIp(ip);
     return type == IpListType.blacklist;
   } catch (_) {
     return false;
   }
+});
+
+/// How the device check finds this device's public IP: the address-only
+/// `ip-lookup`, or the public IP providers when it does not answer.
+final callerIpLookupProvider = Provider<Future<String?> Function()>((ref) {
+  final db = ref.watch(supabaseProvider);
+  return () async => await lookupCallerIp(db) ?? await lookupPublicIp();
 });
 
 /// How long a tap waits for a device check still under way.

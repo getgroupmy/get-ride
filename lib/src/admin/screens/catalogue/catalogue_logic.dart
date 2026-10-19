@@ -10,6 +10,7 @@ library;
 import 'dart:convert';
 
 import '../../../core/my_ride.dart';
+import '../../../core/partner_type_rules.dart' show PartnerTypeRules;
 import '../../../core/service_tree.dart';
 import '../../admin_settings_models.dart';
 
@@ -568,9 +569,12 @@ ValuesResult buildPartnerTypeValues({
   required bool vehicleRequired,
   required List<SubService> tree,
   required List<String> docTypes,
+  PartnerTypeRules? rules,
 }) {
   final n = name.trim();
   if (n.isEmpty) return (values: const {}, error: 'Please enter a partner type name.');
+  final ruleProblem = rules?.problem(vehicleRequired: vehicleRequired);
+  if (ruleProblem != null) return (values: const {}, error: ruleProblem);
   if (hasDuplicateName(entries, n, exceptId: editing?.id)) {
     return (values: const {}, error: 'A partner type with this name already exists.');
   }
@@ -584,6 +588,8 @@ ValuesResult buildPartnerTypeValues({
     'vehicleRequired': vehicleRequired,
     'subServicesJson': encodeSubServiceTree(tree),
     'docTypes': jsonEncode(docTypes),
+    // Admin → Partner Type rules (0245); an entry never edited keeps none.
+    if (rules != null) 'rules': rules.toJson() else if (editing?.values['rules'] != null) 'rules': editing!.values['rules'],
   };
   if (editing != null) {
     final prev = editing.values['displayPriority'];

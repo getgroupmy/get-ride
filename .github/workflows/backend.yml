@@ -25,6 +25,14 @@ jobs:
         with:
           version: 2.119.0
       - run: supabase db start
+      # What a migration (run as postgres) cannot do and Supabase support
+      # does once on the hosted project: take pg_net away from anon and
+      # authenticated (0240). supabase/tests/net_grants.sql checks it. The
+      # local stack's superuser has the local stack's password.
+      - name: pg_net lock-down (superuser, see 0240)
+        run: |
+          psql "postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -c "select public.net_api_roles_revoke()"
       - name: SQL tests
         run: |
           for t in supabase/tests/*.sql; do

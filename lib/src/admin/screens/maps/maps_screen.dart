@@ -16,6 +16,7 @@ import '../../../widgets/google_js_map.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../test_traffic.dart';
 import '../security/security_data.dart' show securityRepositoryProvider;
 import 'maps_data.dart';
 import 'maps_logic.dart';
@@ -957,6 +958,12 @@ class _KeyRow extends StatelessWidget {
 class _UsageTab extends ConsumerWidget {
   const _UsageTab();
 
+  /// "12 test calls", or null when the period had none.
+  static String? _testCallsHidden(List<MapUsageRow> rows) {
+    final n = rows.fold<int>(0, (a, r) => a + r.testCalls);
+    return n == 0 ? null : '$n test call${n == 1 ? '' : 's'}';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
@@ -972,7 +979,9 @@ class _UsageTab extends ConsumerWidget {
             'OpenStreetMap lookups go straight from the device and are not counted.',
             style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
+          IncludeTestTrafficSwitch(provider: mapUsageIncludeTestProvider, hidden: _testCallsHidden(rows)),
+          const SizedBox(height: 8),
           if (rows.isEmpty)
             Text('No calls yet.', key: const ValueKey('maps-usage-empty'), style: t.textTheme.bodyMedium)
           else

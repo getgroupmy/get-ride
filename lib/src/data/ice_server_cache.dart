@@ -17,6 +17,10 @@ import 'function_region.dart';
 /// credentials' lifetime.
 const iceServersRenewBefore = Duration(minutes: 30);
 
+/// How long a set without relay servers (`relay: false`: the function has no
+/// TURN secret yet) is kept, so relay set up afterwards reaches calls soon.
+const iceServersNoRelayKeep = Duration(minutes: 5);
+
 /// Until when a set fetched at [fetchedAt] with a lifetime of [ttlSeconds]
 /// may be handed out; null when the answer named no usable lifetime (it is
 /// then not kept at all). Pure.
@@ -99,7 +103,9 @@ class IceServerCache {
     f = _fetch()
         .then((body) {
           final servers = parseIceServers(body);
-          final until = iceServersUsableUntil(at, body is Map ? body['ttl'] : null);
+          var until = iceServersUsableUntil(at, body is Map ? body['ttl'] : null);
+          final noRelay = at.add(iceServersNoRelayKeep);
+          if (until != null && body is Map && body['relay'] != true && until.isAfter(noRelay)) until = noRelay;
           if (until != null && body is Map && body['iceServers'] is List) _cached = _Cached(user, servers, until);
           return servers;
         })

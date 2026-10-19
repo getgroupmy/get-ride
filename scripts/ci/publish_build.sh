@@ -4,12 +4,16 @@
 # download, as an install link and as a QR code (supabase/functions/
 # app-install reads it back).
 #
-#   scripts/ci/publish_build.sh <ios|android> <file> <build number> <installable: true|false> [bundle.aab]
+#   scripts/ci/publish_build.sh <ios|android> <file> <build number> <installable: true|false> [bundle.aab] [abi=split.apk ...]
 #
 # The release holds the app (getride.ipa / getride.apk) and build.json
 # describing it; on Android, given the fifth argument, also getride.aab,
 # the bundle Play takes, for an admin to download and upload by hand (it
-# is not installable, so it gets no install link or QR). It is deleted and created again each time, like
+# is not installable, so it gets no install link or QR), and each
+# `abi=file` after it as getride-<abi>.apk: the APK for one processor
+# (arm64-v8a, armeabi-v7a), about a third of the universal getride.apk,
+# which app-install hands a phone in its place. getride.apk stays, for old
+# links and as the fallback. It is deleted and created again each time, like
 # gateway-latest, so its tag always points at the commit that was built.
 # Needs GH_TOKEN with contents: write.
 set -euo pipefail
@@ -19,6 +23,7 @@ file=$2
 build=$3
 installable=$4
 bundle=${5:-}
+splits=("${@:6}")
 
 case "$platform" in
   ios) asset=getride.ipa; title=iOS ;;
@@ -38,6 +43,22 @@ if [ -n "$bundle" ]; then
   cp "$bundle" "$dir/getride.aab"
   extra=("$dir/getride.aab")
 fi
+# "arm64-v8a": {"asset": "getride-arm64-v8a.apk", "size": 59768832}, ...
+apks=""
+for pair in ${splits[@]+"${splits[@]}"}; do
+  abi=${pair%%=*}
+  path=${pair#*=}
+  [ "$platform" = android ] || { echo "::error::only an Android release has per-processor APKs"; exit 2; }
+  case "$abi" in
+    arm64-v8a|armeabi-v7a|x86_64) ;;
+    *) echo "::error::unknown ABI $abi"; exit 2 ;;
+  esac
+  [ -f "$path" ] || { echo "::warning::no $abi APK at $path; publishing without it"; continue; }
+  name="getride-$abi.apk"
+  cp "$path" "$dir/$name"
+  extra+=("$dir/$name")
+  apks="$apks${apks:+, }\"$abi\": {\"asset\": \"$name\", \"size\": $(wc -c < "$dir/$name" | tr -d ' ')}"
+done
 
 cat > "$dir/build.json" <<JSON
 {
@@ -48,6 +69,7 @@ cat > "$dir/build.json" <<JSON
   "asset": "$asset",
   "size": $size,
   "installable": $installable,
+  "apks": {$apks},
   "sha": "$GITHUB_SHA",
   "run_id": "$GITHUB_RUN_ID",
   "run_number": "$GITHUB_RUN_NUMBER",
@@ -70,4 +92,4 @@ gh release create "$tag" "$dir/$asset" "$dir/build.json" ${extra[@]+"${extra[@]}
   --title "GET.ride $title $version ($build)" \
   --notes "$how Built from ${GITHUB_SHA::7}, run #$GITHUB_RUN_NUMBER."
 
-echo "published $asset ($size bytes)${bundle:+ and getride.aab} as $tag"
+echo "published $asset ($size bytes)${bundle:+ and getride.aab}${apks:+ and per-processor APKs: $apks} as $tag"

@@ -9,6 +9,7 @@ import '../../../widgets/common.dart';
 import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../test_traffic.dart';
 import 'api_keys_logic.dart' show maskSecret;
 import '../../../core/route_estimate.dart' show FareTrend, FareTrendDirection, argbFromHex;
 import '../../../widgets/fare_trend_arrows.dart';
@@ -554,7 +555,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
 
 final _responsesProvider = FutureProvider.autoDispose((ref) {
   ref.watchAdminLive('fare_ai_responses');
-  return ref.watch(securityRepositoryProvider).fareAiResponses();
+  return ref.watch(securityRepositoryProvider).fareAiResponses(includeTest: ref.watch(fareAiLogIncludeTestProvider));
 });
 
 class AdminFareAiLogsScreen extends ConsumerWidget {
@@ -592,6 +593,7 @@ class AdminFareAiLogsScreen extends ConsumerWidget {
             child: ResponsiveCenter(
               maxWidth: 820,
               child: ListView(padding: const EdgeInsets.symmetric(vertical: 12), children: [
+                IncludeTestTrafficSwitch(provider: fareAiLogIncludeTestProvider),
                 Text('${sum.total} records · ${sum.passed} passed · ${sum.failed} failed',
                     style: Theme.of(context).textTheme.bodySmall),
                 if (list.isEmpty)

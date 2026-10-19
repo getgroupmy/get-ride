@@ -46,6 +46,10 @@ import '../../data/fare_tariff_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/live_tables.dart';
 import '../../data/location_source.dart';
+import '../../data/permission_probe.dart';
+import '../../core/app_permissions.dart' show PermState;
+import '../../core/permission_ask.dart';
+import '../permissions/permission_actions.dart' show askPermission;
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
@@ -578,7 +582,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// drops on the fix, as if the map had been dragged under it.
   void _recenter() {
     if (recenterMap(_map, _me, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(_me!);
-    unawaited(_locate(recenter: true));
+    unawaited(_locateAsked());
+  }
+
+  /// Tapped, so location refused or switched off is asked for again, or,
+  /// where the phone won't ask any more, explained with the way to Settings.
+  Future<void> _locateAsked() async {
+    final probe = ref.read(permissionProbeProvider);
+    final (on, state) = await probe.location();
+    if (!on || state == PermState.denied || state == PermState.notAsked) {
+      if (!mounted) return;
+      await askPermission(context, probe, AskKind.location);
+      if (!mounted) return;
+    }
+    await _locate(recenter: true);
   }
 
   /// Where the pin and the rider are kept: the middle of the map above the

@@ -22,6 +22,7 @@ import '../../../core/demo_mode.dart' show demoDriverIdsKey, demoRiderIdsKey;
 import 'display_store.dart';
 import 'pick_image.dart';
 import '../../../core/raise_nudge.dart';
+import 'test_accounts.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
@@ -339,6 +340,7 @@ class _DisplayBody extends ConsumerWidget {
               ),
             ]),
           ),
+          TestAccountsCard(canEdit: canEdit),
           const _Section('Service Boxes'),
           Card(
             child: toggle('Show "NEW" badge', 'Toggle the NEW badge on the featured (large) service box',

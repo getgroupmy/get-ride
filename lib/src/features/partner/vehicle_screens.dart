@@ -9,7 +9,9 @@ import '../../admin/screens/people/people_data.dart';
 import '../../admin/screens/people/people_logic.dart';
 import '../../admin/screens/people/people_widgets.dart';
 import '../../core/partner_onboarding.dart';
+import '../../core/partner_type_rules.dart' show vehicleAgeProblem;
 import '../../core/vehicle_onboarding.dart';
+import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
 import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../data/vehicle_onboarding_repository.dart';
@@ -357,8 +359,11 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
 
   Future<void> _saveYearColor() async {
     final year = _year.text.trim(), color = _color.text.trim();
-    final problem = vehicleYearColorProblem(year, color);
-    if (problem != null) return showError(context, problem);
+    final problem = vehicleYearColorProblem(year, color) ?? await _ageProblem(year);
+    if (problem != null) {
+      if (mounted) showError(context, problem);
+      return;
+    }
     await _save(() => _repo.patch(_v!, {'year': year, 'color': color}));
   }
 
@@ -392,8 +397,34 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
     await _save(() => _repo.patch(_v!, {'owner_name': name, 'owner_phone': phone, 'owner_ic': ic}));
   }
 
+  /// Admin → Partner Type → Max vehicle age (0245): why a vehicle of [year]
+  /// is refused for the partner's types in its registration region (the
+  /// vehicle's own service area, else the partner's), or null. The server
+  /// refuses it too; this says so before the step is saved. Null when the
+  /// types can't be read.
+  Future<String?> _ageProblem(String year) async {
+    final List<Map<String, dynamic>> entries;
+    try {
+      entries = [for (final e in await ref.read(partnerTypeEntriesProvider.future)) e.values];
+    } catch (_) {
+      return null;
+    }
+    final v = _v;
+    final own = v != null && (v['service_countries'] is List) && (v['service_countries'] as List).isNotEmpty;
+    final ownTypes = v == null ? const <String>[] : parseStringList(v['partner_types']);
+    return vehicleAgeProblem(
+      types: ownTypes.isNotEmpty ? ownTypes : parseStringList(_ctx?.partner['partner_types']),
+      year: year,
+      area: ServiceArea.fromRow(own ? v : _ctx?.partner),
+      entries: entries,
+    );
+  }
+
   Future<void> _submit() async {
     if (!_docsComplete) return showError(context, 'Please upload every compulsory document before submitting.');
+    final why = await _ageProblem('${_v?['year'] ?? ''}');
+    if (!mounted) return;
+    if (why != null) return showError(context, why);
     await _save(() => _repo.patch(_v!, {'documents_ok': true}));
   }
 

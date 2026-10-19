@@ -1,12 +1,46 @@
 // Document links that need a signed URL once their bucket is private
 // (lib/src/core/storage_links.dart, lib/src/data/storage_links.dart).
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/storage_links.dart';
 import 'package:get_ride/src/data/storage_links.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 const base = 'https://rqlavogkgywxspuxgiwk.supabase.co/storage/v1/object';
+
+/// A client whose storage answers createSignedUrls like the server does
+/// (a per-path error for a file whose name holds "missing", and for the
+/// thumbnail of one whose name holds "nothumb"), noting each
+/// call's bucket and paths in [calls].
+SupabaseClient _signingClient(List<({String bucket, List<String> paths})> calls) {
+  final db = SupabaseClient(
+    'http://localhost',
+    'anon',
+    authOptions: const AuthClientOptions(autoRefreshToken: false),
+    httpClient: MockClient((r) async {
+      final bucket = r.url.pathSegments.last;
+      final paths = ((jsonDecode(r.body) as Map)['paths'] as List).cast<String>();
+      calls.add((bucket: bucket, paths: paths));
+      return http.Response(
+        jsonEncode([
+          for (final p in paths)
+            p.contains('missing') || (p.contains('nothumb') && p.endsWith('.thumb.jpg'))
+                ? {'path': p, 'error': 'Either the object does not exist or you do not have access to it', 'signedURL': null}
+                : {'path': p, 'signedURL': '/object/sign/$bucket/$p?token=t'},
+        ]),
+        200,
+        request: r,
+      );
+    }),
+  );
+  addTearDown(db.dispose);
+  return db;
+}
 
 void main() {
   group('privateStorageRef', () {
@@ -84,6 +118,134 @@ void main() {
     test('with no client to sign it, the stored link is used (it opens while the bucket is public)', () async {
       const url = '$base/public/ID_Image/u1/a.jpg';
       expect(await signedStorageUrl(url), url);
+    });
+  });
+
+  group('batched signing (PERF-75)', () {
+    setUp(() => SharedPreferences.setMockInitialValues({}));
+
+    test('the links asked for in one frame go out as one call per bucket', () async {
+      final calls = <({String bucket, List<String> paths})>[];
+      final db = _signingClient(calls);
+      final urls = [for (var i = 0; i < 25; i++) '$base/public/vehicle-documents/b1/v$i/front.jpg'];
+      final links = await Future.wait([
+        for (final u in urls) signedThumbUrl(u, client: db),
+        signedStorageUrl('$base/public/ID_Image/b1/u1/id.jpg', client: db),
+      ]);
+      expect(calls, hasLength(2));
+      final vehicle = calls.firstWhere((c) => c.bucket == 'vehicle-documents');
+      expect(vehicle.paths, [for (var i = 0; i < 25; i++) 'b1/v$i/front.jpg.thumb.jpg']);
+      expect(links.first, endsWith('/object/sign/vehicle-documents/b1/v0/front.jpg.thumb.jpg?token=t'));
+      expect(links.last, endsWith('/object/sign/ID_Image/b1/u1/id.jpg?token=t'));
+    });
+
+    test('a missing thumbnail falls back to the file in one more batch, and is not asked for again', () async {
+      final calls = <({String bucket, List<String> paths})>[];
+      final db = _signingClient(calls);
+      final urls = [
+        '$base/public/vehicle-documents/b2/a.jpg',
+        '$base/public/vehicle-documents/b2/nothumb-1.jpg',
+        '$base/public/vehicle-documents/b2/nothumb-2.jpg',
+      ];
+      // As StorageImage does: the thumbnail, else the file.
+      Future<String> show(String u) async => await signedThumbUrl(u, client: db) ?? await signedStorageUrl(u, client: db);
+      final shown = await Future.wait(urls.map(show));
+      expect(calls.map((c) => c.paths), [
+        ['b2/a.jpg.thumb.jpg', 'b2/nothumb-1.jpg.thumb.jpg', 'b2/nothumb-2.jpg.thumb.jpg'],
+        ['b2/nothumb-1.jpg', 'b2/nothumb-2.jpg'],
+      ]);
+      expect(shown[0], contains('a.jpg.thumb.jpg?token=t'));
+      expect(shown[1], endsWith('/vehicle-documents/b2/nothumb-1.jpg?token=t'));
+      calls.clear();
+      expect(await signedThumbUrl(urls[1], client: db), isNull);
+      expect(calls, isEmpty);
+    });
+
+    test('a link already made is handed out without the network', () async {
+      final calls = <({String bucket, List<String> paths})>[];
+      final db = _signingClient(calls);
+      const u = '$base/public/provider-documents/b3/p1/front.jpg';
+      final first = await signedStorageUrl(u, client: db);
+      expect(calls, hasLength(1));
+      expect(await signedStorageUrl(u, client: db), first);
+      expect(calls, hasLength(1));
+    });
+
+    test('a file storage will not sign keeps its stored link', () async {
+      final db = _signingClient([]);
+      const u = '$base/public/ID_Image/b4/missing.jpg';
+      expect(await signedStorageUrl(u, client: db), u);
+    });
+  });
+
+  group('links kept on the device (PERF-75)', () {
+    late DateTime now;
+    late String? user;
+    late int signs;
+
+    StorageLinkBatcher open() => StorageLinkBatcher(
+      (bucket, paths) async {
+        signs++;
+        return {for (final p in paths) p: 'https://s/$bucket/$p?token=$signs'};
+      },
+      user: () => user,
+      clock: () => now,
+      prefs: SharedPreferences.getInstance,
+    );
+
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      now = DateTime(2026, 10, 19, 9);
+      user = 'u1';
+      signs = 0;
+    });
+
+    test('a restart reuses the link until shortly before it expires', () async {
+      final a = await open().link('ID_Image', 'u1/id.jpg');
+      expect(a?.url, 'https://s/ID_Image/u1/id.jpg?token=1');
+      expect(a?.until, now.add(documentLinkTtl - signedLinkRenewBefore));
+
+      // A new process, the same device store.
+      now = now.add(const Duration(minutes: 30));
+      final b = await open().link('ID_Image', 'u1/id.jpg');
+      expect(b?.url, a?.url);
+      expect(signs, 1);
+
+      now = now.add(const Duration(minutes: 20)); // 50 min: inside the margin
+      final c = await open().link('ID_Image', 'u1/id.jpg');
+      expect(c?.url, 'https://s/ID_Image/u1/id.jpg?token=2');
+    });
+
+    test('another account never gets the kept links', () async {
+      await open().link('ID_Image', 'u1/id.jpg');
+      user = 'u2';
+      final b = await open().link('ID_Image', 'u1/id.jpg');
+      expect(b?.url, endsWith('token=2'));
+      expect((await SharedPreferences.getInstance()).getString(signedLinksPrefsKey), contains('"user":"u2"'));
+    });
+
+    test('signing out wipes them', () async {
+      final batcher = open();
+      await batcher.link('ID_Image', 'u1/id.jpg');
+      expect((await SharedPreferences.getInstance()).getString(signedLinksPrefsKey), isNotNull);
+      await batcher.clear();
+      expect((await SharedPreferences.getInstance()).getString(signedLinksPrefsKey), isNull);
+      // And nobody signed in keeps nothing either.
+      user = null;
+      await open().link('ID_Image', 'u1/id.jpg');
+      expect((await SharedPreferences.getInstance()).getString(signedLinksPrefsKey), isNull);
+    });
+
+    test('at most $signedLinksKeepMax are kept, the oldest dropped', () async {
+      final batcher = open();
+      await batcher.link('ID_Image', 'old/0.jpg');
+      await Future.wait([for (var i = 1; i < signedLinksKeepMax; i++) batcher.link('ID_Image', 'old/$i.jpg')]);
+      await batcher.link('ID_Image', 'new.jpg');
+      final raw = (await SharedPreferences.getInstance()).getString(signedLinksPrefsKey)!;
+      final links = (jsonDecode(raw) as Map)['links'] as Map;
+      expect(links, hasLength(signedLinksKeepMax));
+      expect(links.containsKey('ID_Image/old/0.jpg'), isFalse);
+      expect(links.containsKey('ID_Image/new.jpg'), isTrue);
     });
   });
 }

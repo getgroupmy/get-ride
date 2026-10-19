@@ -125,40 +125,21 @@ jobs:
           # store listings, so it gets its clean URL here rather than the app.
           # Every response carries the security headers: no framing by other
           # sites (clickjacking on the admin pages), no MIME sniffing, HTTPS
-          # only, a trimmed referrer, and the camera, microphone and location
-          # for this site alone. The content policy stops there on purpose: the
-          # app loads maps, Supabase, payment pages and APIs from many hosts,
-          # and a script/connect allow-list would break it for no real gain.
+          # only, a trimmed referrer, and only the browser features the web
+          # app uses (camera, microphone, location, clipboard, passkeys,
+          # wake lock). The enforced content policy is the part that does not
+          # depend on hosts (no framing, no <base>, no plugins); the full
+          # allow-list ships as Content-Security-Policy-Report-Only, because
+          # map tiles, styles, Nominatim and OSRM are any https URL the admin
+          # sets, and an enforced list would break the map the day one is
+          # added. scripts/ci/vercel_config_test.ts checks every header.
           # /.well-known/ (the app-link files, next step) is real files or a
           # 404, never the app: a phone asking for apple-app-site-association
           # and handed index.html would cache "no app" for this host. The
           # Apple file has no extension, so its JSON type is set here.
-          # qr.getride.my/<ref|me|now>/<token> reaches the app like any path.
-          cat > .vercel/output/config.json <<'JSON'
-          {
-            "version": 3,
-            "routes": [
-              {
-                "src": "/.*",
-                "headers": {
-                  "content-security-policy": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
-                  "x-frame-options": "DENY",
-                  "x-content-type-options": "nosniff",
-                  "referrer-policy": "strict-origin-when-cross-origin",
-                  "strict-transport-security": "max-age=31536000",
-                  "permissions-policy": "camera=(self), microphone=(self), geolocation=(self), payment=(self), usb=(), interest-cohort=()"
-                },
-                "continue": true
-              },
-              { "src": "/(flutter_service_worker\\.js|flutter_bootstrap\\.js|main\\.dart\\.js|index\\.html|build\\.json)", "headers": { "cache-control": "no-cache" }, "continue": true },
-              { "src": "/\\.well-known/apple-app-site-association", "headers": { "content-type": "application/json", "cache-control": "max-age=3600" }, "continue": true },
-              { "src": "/\\.well-known/assetlinks\\.json", "headers": { "content-type": "application/json", "cache-control": "max-age=3600" }, "continue": true },
-              { "src": "/privacy/?", "dest": "/privacy.html" },
-              { "handle": "filesystem" },
-              { "src": "/(?!_vercel/|\\.well-known/).*", "dest": "/index.html" }
-            ]
-          }
-          JSON
+          # qr.getride.my/<ref|me|now>/<token> reaches the app like any path;
+          # the subdomain worker hands these headers on as they are.
+          cp deploy/vercel_output_config.json .vercel/output/config.json
 
       # Never in the way of the deploy: without these files the links still
       # work, on the web app. Secrets are decoded into the runner's temp

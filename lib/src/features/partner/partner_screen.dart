@@ -26,6 +26,8 @@ import '../../data/models.dart';
 import '../../data/obd/obd_session.dart';
 import '../../data/my_ride_repository.dart' show favouriteRiderIdsProvider, serviceDispatchConfigsProvider;
 import '../../data/partner_doc_check.dart';
+import '../../data/partner_type_check.dart';
+import '../../core/partner_type_rules.dart' show PartnerTypeCheck, hailNotOfferedMessage;
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -147,6 +149,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool get _demoShown => _demoShowing && _demoOn;
   late final DriverOnline _onlineState;
   LatLng? _me;
+
+  /// None of the driver's types is offered where they are (0245): online,
+  /// but no requests show. Set on each build.
+  bool _notHere = false;
   StreamSubscription<LatLng>? _fixes;
   String? _accepting;
   bool _autoAccept = false;
@@ -345,7 +351,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
 
   /// Takes the nearest request that arrived since auto-accept went on.
   void _maybeAutoAccept(List<RideRequest> open) {
-    if (!_online || !_autoAccept || !mounted) return;
+    if (!_online || _notHere || !_autoAccept || !mounted) return;
     final partner = ref.read(partnerProvider).value;
     if (partner == null || !partnerCanDrive(partner)) return;
     // In destination mode only trips heading that way are taken unasked.
@@ -389,6 +395,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         }
       }
     }
+    if (v && !await _typeRulesCleared(teksi: false)) return;
+    if (!mounted) return;
     if (v && _autoAccept) _markQueueSeen();
     // Requests already waiting are in the list; only new ones pop up.
     if (v) _alertSeen.addAll(ref.read(openRequestsProvider).value?.map((r) => r.id) ?? const <String>[]);
@@ -443,17 +451,53 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     return false;
   }
 
+  /// Admin → Partner Type rules (0245), as the server judges them where the
+  /// driver is: for e-hailing, one of their types offered here with its
+  /// permit and a vehicle young enough; for the meter ([teksi]), street hail
+  /// offered here too. Unanswered lets the driver through (the server still
+  /// keeps them offline and refuses bids where it must).
+  Future<bool> _typeRulesCleared({required bool teksi}) async {
+    final PartnerTypeCheck check;
+    try {
+      check = await ref.read(partnerTypeCheckerProvider)(lat: _me?.latitude, lng: _me?.longitude, teksi: teksi);
+    } catch (_) {
+      return true;
+    }
+    final String? why = teksi && check.hailBlocked ? hailNotOfferedMessage : (check.ok ? null : check.reason);
+    if (why == null && check.ok) return true;
+    if (!mounted) return false;
+    await showAppDialog<void>(
+      id: 'partner.type-rules-blocked',
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const ValueKey('type-rules-blocked'),
+        title: Text(teksi ? 'Street hail not available here' : 'Not available here'),
+        content: Text(why ?? 'Your partner type is not offered here.'),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+    return false;
+  }
+
   /// TEKSI from the mode picker or the service list (Expo `partner-teksi`):
   /// the documents and the vehicle, then the permit screen, where Start
   /// Pickup holds the hire to the permit's checks.
   Future<void> _openTeksi(Partner partner) async {
-    if (!await _documentsCleared(partner, teksi: true)) return;
+    if (!await _typeRulesCleared(teksi: true)) return;
+    if (!mounted || !await _documentsCleared(partner, teksi: true)) return;
     if (!mounted || !await _vehicleReady(partner, teksi: true)) return;
     if (mounted) context.push('/drive/permit');
   }
 
   Future<void> _openMeter(Partner partner) async {
-    if (!await _documentsCleared(partner, teksi: true)) return;
+    if (!await _typeRulesCleared(teksi: true)) return;
+    if (!mounted || !await _documentsCleared(partner, teksi: true)) return;
     if (!mounted || !await _vehicleReady(partner, teksi: true)) return;
     if (!mounted || !await _permitCleared()) return;
     if (mounted) context.push('/meter');
@@ -507,6 +551,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final mine = list.where((v) => v.inUseByMe).firstOrNull;
     return mine == null ? const ['No vehicle chosen'] : [mine.title, mine.plate];
   }
+
+  /// Street hail (the meter) is not offered for the driver's types where
+  /// they are (0245). False while unknown.
+  bool _hailBlockedHere() =>
+      ref.watch(partnerTypeCheckProvider(partnerTypeCheckKey(_me?.latitude, _me?.longitude, teksi: true))).value?.hailBlocked ??
+      false;
 
   /// [_vehicleReady]'s check alone: null when the driver may start, else
   /// the vehicles to choose from (maybe none).
@@ -767,7 +817,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     ref.watch(favouriteRiderIdsProvider);
     ref.watch(serviceDispatchConfigsProvider);
     ref.listen(openRequestsProvider, (_, next) {
-      final open = next.value;
+      final open = _notHere ? const <RideRequest>[] : next.value;
       if (open != null) {
         _maybeAutoAccept(open);
         _syncAlert(open);
@@ -810,7 +860,21 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   ref.watch(partnerTypeEntriesProvider).value ?? const [],
                 );
                 final wide = MediaQuery.sizeOf(context).width >= 900;
-                final pins = _online ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const <RideRequest>[];
+                // Admin → Partner Type → Service availability (0245): where
+                // none of the driver's types is offered, no requests show
+                // (the server stops pushing them and refuses bids there).
+                final here = _online
+                    ? ref.watch(partnerTypeCheckProvider(partnerTypeCheckKey(_me?.latitude, _me?.longitude, teksi: false))).value
+                    : null;
+                _notHere = here != null && !here.ok;
+                final showRequests = _online && !_notHere;
+                final notHereCard = EmptyState(
+                  key: const ValueKey('partner-type-not-here'),
+                  icon: Icons.location_off_outlined,
+                  title: 'No jobs for your partner type here',
+                  message: here?.reason ?? 'Your partner type is not offered in this area.',
+                );
+                final pins = showRequests ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const <RideRequest>[];
                 final map = ValueListenableBuilder(
                   valueListenable: _meFix,
                   builder: (_, _, _) => DriverHomeMap(
@@ -906,7 +970,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   // settings, so nothing overflows.
                   final panel = LayoutBuilder(
                     builder: (_, c) => c.maxHeight >= wideDriverPanelScrollBelow
-                        ? Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)])
+                        ? Column(children: [...head, Expanded(child: showRequests ? _queue(p, wide: true) : (_online ? notHereCard : offline))])
                         : CustomScrollView(
                             key: const ValueKey('partner-panel-scroll'),
                             slivers: [
@@ -914,7 +978,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                               SliverToBoxAdapter(
                                 child: SizedBox(
                                   height: c.maxHeight,
-                                  child: _online ? _queue(p, wide: true) : offline,
+                                  child: showRequests ? _queue(p, wide: true) : (_online ? notHereCard : offline),
                                 ),
                               ),
                             ],
@@ -927,7 +991,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                       child: Stack(children: [
                         Positioned.fill(child: map),
                         // A new request flies in over the map on a desktop screen.
-                        if (_online) Positioned(top: 16, right: 16, width: 400, child: _alertOverlay(p)),
+                        if (showRequests) Positioned(top: 16, right: 16, width: 400, child: _alertOverlay(p)),
                       ]),
                     ),
                   ]);
@@ -935,7 +999,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 // A phone: the map fills the screen, the requests float on it and
                 // the sheet holds the driver's settings. While there are requests
                 // the sheet is held down so the list on the map has the room.
-                final open = _online ? ref.watch(openRequestsProvider).value ?? const <RideRequest>[] : const <RideRequest>[];
+                final open = showRequests ? ref.watch(openRequestsProvider).value ?? const <RideRequest>[] : const <RideRequest>[];
                 final queue = _queueOrder(open, wide: false);
                 // The new request is the sheet up from the bottom, not a card here.
                 final floating = queue.sorted;
@@ -950,7 +1014,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   locked: floating.isNotEmpty || _demoShown,
                   map: Stack(children: [
                     Positioned.fill(child: map),
-                    if (_online) _floatingRequests(p, null, floating),
+                    if (showRequests) _floatingRequests(p, null, floating),
                   ]),
                   // All the way down only the online switch shows.
                   // The sheet rests no lower than the whole switch card, over
@@ -958,7 +1022,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   peek: ResponsiveCenter(maxWidth: 760, child: MapSheetRestLine(child: head.first)),
                   sheet: ResponsiveCenter(
                     maxWidth: 760,
-                    child: Column(children: [...head.skip(1), if (!_online) offline]),
+                    child: Column(children: [...head.skip(1), if (!_online) offline, if (_online && _notHere) notHereCard]),
                   ),
                 );
               },
@@ -985,7 +1049,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   ),
                 if (partner.value != null &&
                     partnerCanDrive(partner.value!) &&
-                    hasTeksiPartnerType(partner.value!.raw['partner_types']))
+                    hasTeksiPartnerType(partner.value!.raw['partner_types']) &&
+                    !_hailBlockedHere())
                   _floatingButton(
                     tooltip: 'Meter Digital',
                     icon: Icons.speed,
