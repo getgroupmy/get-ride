@@ -9,6 +9,8 @@ import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
+import 'partner_type_rules_editor.dart';
+import '../../../core/partner_type_rules.dart';
 import '../../../widgets/page_style_host.dart';
 
 const _page = 'admin-settings-partner-type';
@@ -227,6 +229,9 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
   late bool _vehicle = jsBool(v['vehicleRequired']);
   late List<SubService> _tree = parseSubServiceTree(v['subServicesJson']);
   late List<String> _docTypes = parsePartnerDocTypes(v['docTypes']);
+  late PartnerTypeRules _rules = PartnerTypeRules.fromValues(v);
+  bool _rulesTouched = false;
+  bool _tried = false;
   bool _uploading = false;
   String? _error;
 
@@ -325,8 +330,16 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
       vehicleRequired: _vehicle,
       tree: _tree,
       docTypes: _docTypes,
+      // Untouched rules on an entry that never had any are left unset
+      // (today's behaviour), not written out as defaults.
+      rules: _rulesTouched || v['rules'] != null ? _rules : null,
     );
-    if (r.error != null) return setState(() => _error = r.error);
+    if (r.error != null) {
+      return setState(() {
+        _error = r.error;
+        _tried = true;
+      });
+    }
     Navigator.pop(context, r.values);
   }
 
@@ -391,6 +404,16 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
             subtitle: const Text('Partners of this type must register a vehicle.'),
             value: _vehicle,
             onChanged: (x) => setState(() => _vehicle = x),
+          ),
+          PartnerTypeRulesEditor(
+            rules: _rules,
+            vehicleRequired: _vehicle,
+            isTeksi: partnerTypeNameKey(_name.text) == 'teksi',
+            showErrors: _tried,
+            onChanged: (r) => setState(() {
+              _rules = r;
+              _rulesTouched = true;
+            }),
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
