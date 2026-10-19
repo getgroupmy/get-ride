@@ -139,8 +139,52 @@ List<int>? _parseIpv4(String t) {
   return (bytes: bytes, prefix: prefix);
 }
 
-/// A public address, or a network an office rule may name.
-bool isValidIp(String s) => parseIpOrNetwork(s) != null;
+/// The widest IPv4 network an office rule may name (migration 0233).
+const minIpv4Prefix = 24;
+
+/// The widest IPv6 network an office rule may name (migration 0233).
+const minIpv6Prefix = 48;
+
+/// Inside the IPv4-mapped range (`::ffff:0:0/96`) an IPv6 network counts as
+/// IPv4: /24 there is /120.
+const minMappedPrefix = 96 + minIpv4Prefix;
+
+const _mappedRange = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff];
+
+/// Why [s] can not be an office rule, or null when it can: a single address,
+/// an IPv4 network of /24 or narrower, or an IPv6 network of /48 or narrower
+/// (/120 inside the IPv4-mapped range). The database checks the same
+/// (`claude_access_ip_rule_ok`, migration 0233).
+String? ipRuleProblem(String s) {
+  final r = parseIpOrNetwork(s);
+  if (r == null) return 'Enter a public address or network, e.g. $defaultOfficeIp or 2001:db8::/64.';
+  if (r.bytes.length == 4) {
+    return r.prefix < minIpv4Prefix
+        ? 'Too wide: an IPv4 office network can be /$minIpv4Prefix at the widest (256 addresses).'
+        : null;
+  }
+  if (r.prefix < minIpv6Prefix) return 'Too wide: an IPv6 office network can be /$minIpv6Prefix at the widest.';
+  if (r.prefix < minMappedPrefix && _overlapsMapped(r.bytes, r.prefix)) {
+    return 'Too wide: inside ::ffff:0:0/96 (IPv4-mapped) a network can be /$minMappedPrefix at the widest.';
+  }
+  return null;
+}
+
+/// Whether the IPv6 network [bytes]/[prefix] and `::ffff:0:0/96` overlap: their
+/// first min(prefix, 96) bits agree.
+bool _overlapsMapped(List<int> bytes, int prefix) {
+  var bits = prefix < 96 ? prefix : 96;
+  for (var i = 0; bits > 0; i++) {
+    final take = bits >= 8 ? 8 : bits;
+    final mask = (0xff << (8 - take)) & 0xff;
+    if ((bytes[i] & mask) != (_mappedRange[i] & mask)) return false;
+    bits -= take;
+  }
+  return true;
+}
+
+/// A public address, or a network narrow enough for an office rule.
+bool isValidIp(String s) => ipRuleProblem(s) == null;
 
 /// Whether [ip] is [rule] itself or inside the network [rule] names. Never
 /// true across families (an IPv6 address is in no IPv4 network).
@@ -172,16 +216,20 @@ bool ipInRule(String ip, String rule) {
       if (v == null) return (row: null, error: 'Paste the session link (claude.ai/code/session_…) or its id.');
     case ClaudeRuleKind.ip:
       v = value.trim();
-      if (!isValidIp(v)) return (row: null, error: 'Enter a public address or network, e.g. $defaultOfficeIp or 2001:db8::/64.');
+      final problem = ipRuleProblem(v);
+      if (problem != null) return (row: null, error: problem);
   }
   final l = label?.trim() ?? '';
   return (row: {'kind': kind.name, 'value': v, 'label': l.isEmpty ? null : l}, error: null);
 }
 
 /// Whether [ip] is inside an enabled office rule: from there the page may be
-/// changed (the database checks the same on every write).
+/// changed (the database checks the same on every write). A rule too wide to
+/// be an office never counts.
 bool isOfficeIp(String? ip, Iterable<ClaudeAccessRule> rules) =>
-    ip != null && ip.isNotEmpty && rules.any((r) => r.kind == ClaudeRuleKind.ip && r.enabled && ipInRule(ip, r.value));
+    ip != null &&
+    ip.isNotEmpty &&
+    rules.any((r) => r.kind == ClaudeRuleKind.ip && r.enabled && isValidIp(r.value) && ipInRule(ip, r.value));
 
 /// Whether any of a device's public addresses (IPv4 and IPv6, where it has
 /// both) is inside an enabled office rule.
@@ -227,6 +275,9 @@ String? friendlyClaudeRuleError(Object e) {
   final m = '$e';
   if (m.contains('claude_access_last_office_ip')) {
     return 'Add another office IP before removing or disabling this one.';
+  }
+  if (m.contains('claude_access_rules_ip_value_check')) {
+    return 'An office rule is one address, or a network no wider than /$minIpv4Prefix (IPv4) or /$minIpv6Prefix (IPv6).';
   }
   if (m.contains('duplicate key') || m.contains('claude_access_rules_kind_value_key')) {
     return 'That entry is already on the list.';
