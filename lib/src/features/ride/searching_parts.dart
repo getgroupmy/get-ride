@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/payment_types.dart' show paymentModeLabel;
+import '../../core/ride_bidding.dart' show driverTripsLabel;
 import '../../core/request_viewers.dart';
 import '../../core/ride_cancel.dart';
 import '../../core/search_stage.dart';
@@ -359,7 +360,7 @@ class SearchOfferView {
     required this.onDecline,
     this.name,
     this.rating,
-    this.rides,
+    this.trips,
     this.vehicle,
     this.photo,
     this.etaMin,
@@ -380,7 +381,10 @@ class SearchOfferView {
   final VoidCallback? onAccept, onDecline;
   final String? name, vehicle, photo;
   final double? rating;
-  final int? rides, etaMin;
+
+  /// The driver's completed trips (see [driverTripsLabel]); null when unknown.
+  final int? trips;
+  final int? etaMin;
   final bool demo;
   final Key? cardKey, acceptKey, declineKey;
 }
@@ -441,6 +445,7 @@ class SearchOfferCard extends StatelessWidget {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
     final o = offer;
+    final trips = driverTripsLabel(o.trips, locale: Localizations.maybeLocaleOf(context)?.toString());
     return Material(
       key: o.cardKey,
       color: ConfirmCardColors.of(context).card,
@@ -532,9 +537,9 @@ class SearchOfferCard extends StatelessWidget {
                               ),
                               TextSpan(text: o.rating!.toStringAsFixed(o.rating! * 10 % 1 == 0 ? 1 : 2)),
                             ],
-                            if (o.rides != null)
+                            if (trips != null)
                               TextSpan(
-                                text: ' ${o.rides} rides',
+                                text: ' · $trips',
                                 style: TextStyle(color: muted),
                               ),
                           ],

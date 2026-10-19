@@ -29,13 +29,13 @@ import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../data/push_service.dart';
 import '../../providers.dart';
-import '../../widgets/net_image.dart';
 import '../../widgets/ble_handshake_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/trip_safety.dart';
+import 'accepted_driver_tile.dart';
 import 'demo_ride.dart';
 import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
@@ -699,6 +699,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         progress: _offerSeen == null ? 1 : offerProgress(_now.difference(_offerSeen!), counterOfferWindow),
         name: offer.name,
         rating: offer.rating,
+        trips: offer.trips,
         vehicle: [offer.vehicle, offer.plate].whereType<String>().isEmpty
             ? null
             : [offer.vehicle, offer.plate].whereType<String>().join(' · '),
@@ -719,7 +720,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         progress: offerProgress(_now.difference(at), demoOfferLife),
         name: o.name,
         rating: o.rating,
-        rides: o.rides,
+        trips: o.rides,
         vehicle: o.vehicle,
         etaMin: o.etaMin,
         demo: true,
@@ -945,24 +946,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             Card(
               child: Column(
                 children: [
-                  ListTile(
-                    leading: NetAvatar(
-                      key: const ValueKey('driver-photo'),
-                      url: r.partnerPhoto,
-                      fallback: const Icon(Icons.person),
-                    ),
-                    title: Text(r.partnerName ?? 'Your driver'),
-                    subtitle: Text([r.partnerVehicle, r.partnerPlate].whereType<String>().join(' · ')),
-                    trailing: r.partnerRating == null
-                        ? null
-                        : Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.star, size: 18, color: Colors.amber),
-                              Text(r.partnerRating!.toStringAsFixed(1)),
-                            ],
-                          ),
-                  ),
+                  AcceptedDriverTile(ride: r),
                   if (tripCode != null && r.status != RideStatus.onTrip)
                     ListTile(
                       key: const ValueKey('trip-code'),
