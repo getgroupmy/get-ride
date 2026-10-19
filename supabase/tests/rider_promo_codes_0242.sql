@@ -458,6 +458,45 @@ select pg_temp.check((select status = 'completed' and promo_discount = 0 and pro
                      'completed without the promo when settling fails');
 select pg_temp.check(pg_temp.credits('00000000-0000-0000-0000-0000000242fc') = 0, 'no credit when settling fails');
 
+-- ---- 10a. Shown in the app, or only when typed ------------------------------------------------
+insert into public.promo_codes (code, discount_value, show_in_app) values ('HIDDEN7', 7, false);
+insert into public.promo_codes (code, discount_value, auto_apply) values ('AUTOSHOWN', 1, true);
+select pg_temp.refused($$insert into public.promo_codes (code, discount_value, auto_apply, show_in_app)
+                         values ('HIDEAUTO', 5, true, false)$$, 'an auto-apply code added hidden');
+select pg_temp.refused($$update public.promo_codes set show_in_app = false where code = 'AUTOSHOWN'$$,
+                       'an auto-apply code hidden');
+delete from public.auth_rate_hits where bucket = 'promo_check';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000242a3');
+select pg_temp.check(exists (select 1 from public.promo_offers(2, 2, 8, 8, 'Car', 30) where code = 'AUTOSHOWN'),
+                     'a shown code is listed');
+select pg_temp.check(not exists (select 1 from public.promo_offers(2, 2, 8, 8, 'Car', 30) where code = 'HIDDEN7'),
+                     'a hidden code is not listed');
+select pg_temp.check((public.promo_check('hidden7', 2, 2, 8, 8, 'Car', 30))->>'ok' = 'true', 'a hidden code works when typed');
+select pg_temp.check((public.promo_check('hidden7', 2, 2, 8, 8, 'Car', 30))->>'discount' = '7.00', 'its discount');
+insert into public.ride_requests (id, rider_id, status, service, fare, ride_fare, pickup_lat, pickup_lng, drop_lat, drop_lng, promo_code_id)
+values ('00000000-0000-0000-0000-0000000242e3', '00000000-0000-0000-0000-0000000242a3', 'open', 'Car', 30, 30, 2, 2, 8, 8,
+        ((public.promo_check('HIDDEN7', 2, 2, 8, 8, 'Car', 30))->>'code_id')::uuid);
+select pg_temp.check((select promo_code = 'HIDDEN7' and promo_estimate = 7
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000242e3'),
+                     'a typed hidden code is kept at booking');
+update public.ride_requests set status = 'cancelled' where id = '00000000-0000-0000-0000-0000000242e3';
+reset role;
+-- The zone bar counts shown codes only: a shown auto code in the city puts the rider in a zone.
+update public.promo_codes set active = false where code <> 'HIDDEN7';
+insert into public.promo_codes (code, discount_value, regions) values
+  ('HIDDENZONE', 5, '[{"country": "Promoland 242", "city": "Promo City 242"}]');
+update public.promo_codes set show_in_app = false where code = 'HIDDENZONE';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000242a3');
+select pg_temp.check(not public.promo_zone_here(2, 2), 'no zone from hidden or non-auto codes');
+reset role;
+update public.promo_codes set show_in_app = true, auto_apply = true where code = 'HIDDENZONE';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000242a3');
+select pg_temp.check(public.promo_zone_here(2, 2), 'a shown auto code makes the zone');
+reset role;
+
 -- ---- 10. Admin totals ---------------------------------------------------------------------------
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000242c2');

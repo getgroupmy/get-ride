@@ -170,6 +170,7 @@ List<String> promoRuleLines(PromoCode p) => [
         p.discountLabel,
         if (p.minFare != null) 'min fare ${formatMoney(p.minFare)}',
         if (p.autoApply) 'auto apply',
+        if (!p.showInApp && !p.autoApply) 'hidden: typed only',
         if (p.firstRideOnly) 'first ride only',
       ].join(' · '),
       if (p.regions.isNotEmpty)
@@ -422,6 +423,7 @@ class _PromoCodeEditorState extends ConsumerState<PromoCodeEditor> {
   late final Set<String> _services = {...?_p?.services};
   late bool _firstRide = _p?.firstRideOnly ?? false;
   late bool _autoApply = _p?.autoApply ?? false;
+  late bool _showInApp = (_p?.showInApp ?? true) || (_p?.autoApply ?? false);
   late bool _active = _p?.active ?? true;
   String? _error;
 
@@ -610,6 +612,7 @@ class _PromoCodeEditorState extends ConsumerState<PromoCodeEditor> {
       services: [..._services]..sort(),
       firstRideOnly: _firstRide,
       autoApply: _autoApply,
+      showInApp: _showInApp || _autoApply,
       usesCount: _p?.usesCount ?? 0,
       discountTotal: _p?.discountTotal ?? 0,
     );
@@ -960,7 +963,26 @@ class _PromoCodeEditorState extends ConsumerState<PromoCodeEditor> {
                   title: const Text('Apply by itself'),
                   subtitle: const Text('Riders who qualify get it without typing it'),
                   value: _autoApply,
-                  onChanged: (v) => setState(() => _autoApply = v),
+                  onChanged: (v) => setState(() {
+                    _autoApply = v;
+                    // A code that applies by itself is always shown.
+                    if (v) _showInApp = true;
+                  }),
+                ),
+                SwitchListTile(
+                  key: const ValueKey('pc-show-in-app'),
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Show in app'),
+                  subtitle: Text(
+                    _autoApply
+                        ? 'Always shown: a code that applies by itself is listed to riders who qualify.'
+                        : _showInApp
+                            ? 'Listed to riders who qualify on the confirm step.'
+                            : 'Hidden: works only when a rider types the code.',
+                    key: const ValueKey('pc-show-in-app-help'),
+                  ),
+                  value: _showInApp || _autoApply,
+                  onChanged: _autoApply ? null : (v) => setState(() => _showInApp = v),
                 ),
                 SwitchListTile(
                   key: const ValueKey('pc-active'),

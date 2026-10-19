@@ -137,6 +137,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The rider took the auto-applied code off: it isn't put back.
   bool _promoRemoved = false;
 
+  /// [_promo] was typed: a code hidden from the app isn't among the offers,
+  /// so it is checked again when the trip changes.
+  bool _promoTyped = false;
+
   /// The trip [_promoOffers] were read for, and the read in flight.
   String? _promoKey;
   int _promoSeq = 0;
@@ -1393,6 +1397,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             _promoOffers = const [];
             _promo = null;
             _promoAuto = false;
+            _promoTyped = false;
             if (!confirming) _promoRemoved = false;
           });
         });
@@ -1422,11 +1427,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } catch (_) {
       offers = const [];
     }
+    // A typed code that isn't listed (hidden from the app): asked again.
+    final typed = _promoTyped ? _promo : null;
+    if (typed != null && !offers.any((o) => o.codeId == typed.codeId)) {
+      try {
+        final r = await _checkPromo(typed.code);
+        if (r.ok) offers = [...offers, r.offer!];
+      } catch (_) {}
+    }
     if (!mounted || seq != _promoSeq || key != _promoKey) return;
     final next = promoAfterOffers(offers, current: _promo, currentAuto: _promoAuto, removed: _promoRemoved);
     setState(() {
       _promoOffers = offers;
       _promo = next.promo;
+      _promoTyped = typed != null && next.promo?.codeId == typed.codeId;
       _promoAuto = next.auto;
     });
   }
@@ -1456,6 +1470,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     if (choice == null || !mounted) return;
     setState(() {
+      final o0 = choice.offer;
+      _promoTyped = o0 != null && !_promoOffers.any((x) => x.codeId == o0.codeId);
       _promo = choice.offer;
       _promoAuto = false;
       _promoRemoved = choice.offer == null;

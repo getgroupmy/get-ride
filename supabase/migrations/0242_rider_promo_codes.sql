@@ -29,14 +29,17 @@
 --   trip and by admins with the page; written only by the settlement.
 --
 -- Rider RPCs (SECURITY DEFINER, signed-in callers):
---   * promo_offers(pickup, drop, service, fare): the codes that apply now to
+--   Each code is shown in the app (show_in_app, default) or not: a hidden code
+--   is never listed and works only when the rider types it. A code that
+--   applies by itself is always shown (a check holds it).
+--   * promo_offers(pickup, drop, service, fare): the shown codes that apply now to
 --     the caller, with the estimated discount, which one auto-applies (the
 --     largest auto-apply discount) and whether it is about the pickup only.
 --     Codes the caller doesn't qualify for are never listed.
 --   * promo_check(code, pickup, drop, service, fare): a typed code; one plain
 --     reason when it doesn't apply. 20 tries per 10 minutes per account.
---   * promo_zone_here(lat, lng): the caller stands in the area of an active
---     auto-apply code about the pickup (one with regions) they qualify for.
+--   * promo_zone_here(lat, lng): the caller stands in the area of an active,
+--     shown auto-apply code about the pickup (one with regions) they qualify for.
 --
 -- The ride: the app books with promo_code_id. The database checks it again
 -- (BEFORE INSERT) against the ride's own pickup, drop-off, service and fare;
@@ -99,6 +102,9 @@ create table if not exists public.promo_codes (
   services            text[] not null default '{}' check (cardinality(services) <= 50),
   first_ride_only     boolean not null default false,
   auto_apply          boolean not null default false,
+  -- Listed to riders (promo_offers, the zone bar). Off: works only when typed.
+  -- A code that applies by itself is always shown.
+  show_in_app         boolean not null default true,
   uses_count          integer not null default 0,
   discount_total      numeric(12,2) not null default 0,
   legacy              jsonb,
@@ -106,6 +112,7 @@ create table if not exists public.promo_codes (
   updated_by          uuid,
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
+  check (show_in_app or not auto_apply),
   check (discount_type = 'percent' or max_discount is null),
   check (discount_type = 'fixed' or discount_value <= 100),
   check (starts_at is null or ends_at is null or ends_at > starts_at),
@@ -516,7 +523,7 @@ begin
   if v_uid is null or p_pickup_lat is null or p_pickup_lng is null then
     return;
   end if;
-  if not exists (select 1 from public.promo_codes c where c.active) then
+  if not exists (select 1 from public.promo_codes c where c.active and c.show_in_app) then
     return;
   end if;
   v_pick := public.promo_places(p_pickup_lat, p_pickup_lng);
@@ -526,7 +533,7 @@ begin
   with fit as (
     select c.*, public.promo_amount(c, v_fare) as est
       from public.promo_codes c
-     where c.active
+     where c.active and c.show_in_app
        and public.promo_reason(c, v_uid, now(), v_tz, v_pick, v_drop, v_has_drop,
                                nullif(btrim(p_service), ''), v_fare) is null
   ),
@@ -636,7 +643,7 @@ begin
     return false;
   end if;
   if not exists (select 1 from public.promo_codes c
-                  where c.active and c.auto_apply and c.applies_to = 'pickup'
+                  where c.active and c.show_in_app and c.auto_apply and c.applies_to = 'pickup'
                     and jsonb_array_length(c.regions) > 0) then
     return false;
   end if;
@@ -644,7 +651,7 @@ begin
   v_tz := public.promo_tz(p_lat, p_lng);
   return exists (
     select 1 from public.promo_codes c
-     where c.active and c.auto_apply and c.applies_to = 'pickup'
+     where c.active and c.show_in_app and c.auto_apply and c.applies_to = 'pickup'
        and jsonb_array_length(c.regions) > 0
        and public.promo_reason(c, v_uid, now(), v_tz, v_pick, null, false, null, null) is null);
 end;

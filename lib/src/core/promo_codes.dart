@@ -136,6 +136,7 @@ class PromoCode {
     this.services = const [],
     this.firstRideOnly = false,
     this.autoApply = false,
+    this.showInApp = true,
     this.usesCount = 0,
     this.discountTotal = 0,
   });
@@ -170,6 +171,7 @@ class PromoCode {
       services: list(r['services'], (x) => '${x ?? ''}'.trim().isEmpty ? null : '$x'.trim()),
       firstRideOnly: r['first_ride_only'] == true,
       autoApply: r['auto_apply'] == true,
+      showInApp: r['show_in_app'] != false,
       usesCount: _intOrNull(r['uses_count']) ?? 0,
       discountTotal: _num(r['discount_total']),
     );
@@ -221,6 +223,10 @@ class PromoCode {
   final bool firstRideOnly;
   final bool autoApply;
 
+  /// Listed to riders on the confirm step and the zone bar; off, the code
+  /// works only when typed. A code that applies by itself is always shown.
+  final bool showInApp;
+
   /// Kept by the server's settlement.
   final int usesCount;
   final double discountTotal;
@@ -267,6 +273,8 @@ class PromoCode {
         'services': services,
         'first_ride_only': firstRideOnly,
         'auto_apply': autoApply,
+        // Applying by itself means being shown (the server holds it too).
+        'show_in_app': showInApp || autoApply,
       };
 
   /// What is wrong with the code as entered, or null.

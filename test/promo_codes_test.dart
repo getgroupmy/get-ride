@@ -203,6 +203,13 @@ void main() {
       expect(row['weekdays'], isEmpty);
     });
 
+    test('a code shown in the app unless hidden; auto apply is always shown', () {
+      expect(PromoCode.fromRow({'code': 'A1', 'discount_value': 1}).showInApp, isTrue);
+      expect(PromoCode.fromRow({'code': 'A1', 'discount_value': 1, 'show_in_app': false}).showInApp, isFalse);
+      expect(const PromoCode(code: 'A1', discountValue: 1, showInApp: false).toRow()['show_in_app'], isFalse);
+      expect(const PromoCode(code: 'A1', discountValue: 1, showInApp: false, autoApply: true).toRow()['show_in_app'], isTrue);
+    });
+
     test('problems the editor stops', () {
       expect(const PromoCode(code: 'a', discountValue: 1).problem, isNotNull);
       expect(const PromoCode(code: 'OK1', discountValue: 0).problem, isNotNull);
@@ -373,6 +380,36 @@ void main() {
         expect(p.riderIds, ['u1']);
         expect(p.services, ['car']);
         expect((p.firstRideOnly, p.autoApply, p.active), (true, true, true));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('show in app: on by default, off for a typed-only code, always on with auto apply', (tester) async {
+        final admin = await _pumpAdmin(tester, b);
+        await _tapKey(tester, 'pc-add');
+        await tester.enterText(find.byKey(const ValueKey('pc-code')), 'secret9');
+        await tester.enterText(find.byKey(const ValueKey('pc-value')), '9');
+        SwitchListTile show() => tester.widget<SwitchListTile>(find.byKey(const ValueKey('pc-show-in-app')));
+        expect(show().value, isTrue);
+        expect(find.text('Listed to riders who qualify on the confirm step.'), findsOneWidget);
+        await _tapKey(tester, 'pc-show-in-app');
+        expect(show().value, isFalse);
+        expect(find.text('Hidden: works only when a rider types the code.'), findsOneWidget);
+        await _tapKey(tester, 'pc-save');
+        expect(admin.saved.single.showInApp, isFalse);
+        expect(admin.saved.single.toRow()['show_in_app'], isFalse);
+
+        // Auto apply turns it on and holds it there.
+        await _tapKey(tester, 'pc-add');
+        await tester.enterText(find.byKey(const ValueKey('pc-code')), 'auto9');
+        await tester.enterText(find.byKey(const ValueKey('pc-value')), '9');
+        await _tapKey(tester, 'pc-show-in-app');
+        expect(show().value, isFalse);
+        await _tapKey(tester, 'pc-auto-apply');
+        expect(show().value, isTrue);
+        expect(show().onChanged, isNull, reason: 'an auto-apply code can\'t be hidden');
+        expect(find.text('Always shown: a code that applies by itself is listed to riders who qualify.'), findsOneWidget);
+        await _tapKey(tester, 'pc-save');
+        expect((admin.saved.last.autoApply, admin.saved.last.showInApp), (true, true));
         expect(tester.takeException(), isNull);
       });
 
