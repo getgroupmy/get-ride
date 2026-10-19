@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../core/auth_utils.dart';
 import '../features/auth/passkey/passkey.dart' as pk;
 import 'session_guard.dart';
+import 'function_region.dart';
 
 /// What the server knows about a phone number (`profile_phone_lookup`).
 class PhoneLookup {
@@ -170,7 +171,7 @@ class AuthRepository {
 
   Future<PinLoginOutcome> _pinLogin(String phone, String pin) async {
     try {
-      final res = await _db.functions.invoke('pin-login', body: {'phone': normalizeE164(phone), 'pin': pin});
+      final res = await _db.functions.invokeNearDb('pin-login', body: {'phone': normalizeE164(phone), 'pin': pin});
       return pinLoginOutcome(res.status, res.data);
     } on FunctionException catch (e) {
       return pinLoginOutcome(e.status, e.details);

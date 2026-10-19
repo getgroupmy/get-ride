@@ -44,6 +44,7 @@ import '../../data/fare_coin_store.dart';
 import '../../data/fare_tariff_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/live_tables.dart';
+import '../../data/location_source.dart';
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
@@ -94,8 +95,10 @@ final nearbyDriversProvider = FutureProvider.autoDispose.family<Map<String, doub
 /// at, with the pickup in the middle and the nearby streets around it.
 const homeStreetZoom = 17.0;
 
-/// How long the confirm screen waits for the AI fare estimate.
-const aiEstimateTimeout = Duration(seconds: 30);
+/// How long the AI fare estimate is waited for (PERF-33: was 30 s). The
+/// confirm step shows "Calculating fare" meanwhile; past this, the standard
+/// tariff's fare shows instead, and an AI answer later still is ignored.
+const aiEstimateTimeout = Duration(seconds: 5);
 
 /// A point of a trip GET.ride can't serve ([UnavailableAt]; [stop] is the
 /// stop's index when it is a stop).
@@ -582,18 +585,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _pin.currentState?.dropAt(p));
   }
 
+  /// The rider and the pickup on the last known (or a quick) fix at once,
+  /// then moved onto the accurate one when it comes (PERF-4): the pickup
+  /// only while it is still the one set here and no destination is chosen.
   Future<void> _locate({bool recenter = false}) async {
-    final p = await currentPosition();
-    if (p == null || !mounted) return;
-    setState(() => _me = p);
-    if (recenter && recenterMap(_map, p, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(p);
-    final place = await ref.read(geoServiceProvider).reverse(p);
-    if (!mounted) return;
-    setState(() {
-      _here = place;
-      _pickup ??= place;
-    });
-    _updateRoute();
+    Place? set;
+    await for (final p in locateFastThenFine(ref.read(locationSourceProvider))) {
+      if (!mounted) return;
+      setState(() => _me = p);
+      if (recenter && recenterMap(_map, p, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(p);
+      final place = await ref.read(geoServiceProvider).reverse(p);
+      if (!mounted) return;
+      setState(() {
+        _here = place;
+        if (_pickup == null || (identical(_pickup, set) && _drop == null)) _pickup = set = place;
+      });
+      _updateRoute();
+    }
   }
 
   /// The first point of the trip GET.ride can't serve (outside every
@@ -686,7 +694,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // trip with stops is asked about through them, in their order, so adding
     // or rearranging stops prices (and judges high or low) the trip again.
     final via = [for (final p in _stops) p.point];
-    // The proxy may try several keys; past this the map route prices it.
+    // The proxy may try several keys; past this (or on an error) the map
+    // route prices it with the standard tariff, and an AI answer that comes
+    // later still is dropped with the timed-out future.
     final aiFuture = ref
         .read(routeEstimateRepositoryProvider)
         .estimateDetailed(a.point, b.point, via: via)
@@ -695,10 +705,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted || seq != _routeSeq) return;
     setState(() => _route = r);
     onRouted?.call();
-    // Both before the fare shows (Expo's "Calculating fare" overlay stays up
-    // through the AI estimate): the fare is never shown, or booked, on the
-    // map route only to change a moment later.
-    final ai = await aiFuture;
+    // Both before the fare shows ("Calculating fare" stays up through the AI
+    // estimate, PERF-33: for 5 s at most): the fare shown, and booked, is
+    // the one fare for this route and never changes a moment later.
+    ({RouteEstimate? estimate, bool unavailable})? ai;
+    try {
+      ai = await aiFuture;
+    } catch (_) {
+      ai = null;
+    }
     if (!mounted || seq != _routeSeq) return;
     setState(() {
       // Only an estimate through every stop prices this trip.
