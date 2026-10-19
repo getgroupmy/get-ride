@@ -23,10 +23,6 @@ import '../../widgets/image_share.dart' show shareOriginOf;
 import '../../widgets/side_menu_host.dart';
 import 'earnings_chart.dart';
 
-/// The Earnings page's clock: the period, its CSV and the day names all
-/// read it (pinned in tests, so they never depend on when they run).
-final earningsClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
-
 /// The driver's completed trips far enough back for the month and the
 /// weekly chart: every period and the chart are slices of it, so switching
 /// period reads nothing new.
@@ -171,7 +167,9 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
     final rides = ref.read(driverMonthTripsProvider).value ?? const <RideRequest>[];
     final uid = ref.read(currentUserIdProvider) ?? '';
     final now = ref.read(earningsClockProvider)();
-    final csv = earningsCsv(rides, driverId: uid, period: _period, now: now);
+    // The week starts as the totals' does (Admin → statement settings).
+    final sunday = ref.read(statementSettingsProvider).value?.weekStartsSunday ?? false;
+    final csv = earningsCsv(rides, driverId: uid, period: _period, now: now, sunday: sunday);
     final messenger = ScaffoldMessenger.of(context);
     // Only the header line: nothing to hand an accountant.
     if (csv.split('\r\n').where((l) => l.isNotEmpty).length <= 1) {
@@ -180,7 +178,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
     }
     final outcome = await ref.read(earningsCsvSharerProvider)(
       csv,
-      earningsCsvFileName(_period, now),
+      earningsCsvFileName(_period, now, sunday: sunday),
       shareOriginOf(button),
     );
     final note = switch (outcome) {

@@ -10,6 +10,7 @@
 library;
 
 import '../data/models.dart';
+import 'partner_statement.dart' show earningsRange, earningsWeeksRange, malaysiaDate;
 import 'trip_receipt.dart';
 
 /// The spans the page can total.
@@ -22,16 +23,16 @@ enum EarningsPeriod {
   final String label;
 }
 
-/// Where [period] starts for a device clock reading [now] (local time):
-/// midnight today, Monday's midnight, or the 1st of the month.
-DateTime earningsPeriodStart(EarningsPeriod period, DateTime now) {
-  final today = DateTime(now.year, now.month, now.day);
-  return switch (period) {
-    EarningsPeriod.today => today,
-    EarningsPeriod.week => today.subtract(Duration(days: today.weekday - DateTime.monday)),
-    EarningsPeriod.month => DateTime(now.year, now.month),
-  };
-}
+/// The day [period] starts on, in Malaysia, at the instant [now]: today,
+/// the week's first day (Monday, or Sunday with [sunday]) or the 1st; a UTC
+/// date with no time, as [malaysiaDate]. The same days the server's totals
+/// on the page use ([earningsRange]), whatever the device's time zone.
+DateTime earningsPeriodStart(EarningsPeriod period, DateTime now, {bool sunday = false}) =>
+    malaysiaDate(earningsRange(period, now, sunday: sunday).from);
+
+/// [at] as Malaysia's wall clock (a UTC DateTime holding Malaysia's date and
+/// time), for a day or a time printed beside the page's totals.
+DateTime malaysiaWallClock(DateTime at) => at.toUtc().add(const Duration(hours: 8));
 
 /// The totals for a set of trips.
 class EarningsTotals {
@@ -71,7 +72,7 @@ class EarningsTotals {
 class EarningsDay {
   const EarningsDay(this.date, this.totals);
 
-  /// Local midnight of the day.
+  /// The day in Malaysia (a UTC date with no time).
   final DateTime date;
   final EarningsTotals totals;
 }
@@ -90,26 +91,28 @@ class EarningsSummary {
 /// Totals [rides] driven by [driverId] and completed within [period] of
 /// [now]. Anything else in the list (rides taken as a passenger, cancelled
 /// or unfinished requests, trips before the period) is left out, so the
-/// caller can hand over a plain trip history. Days are the device's local
-/// days, by when the trip was completed.
+/// caller can hand over a plain trip history. Periods and days are
+/// Malaysia's, as the page's totals ([earningsRange]), by when the trip was
+/// completed.
 EarningsSummary summarizeEarnings(
   List<RideRequest> rides, {
   required String driverId,
   required EarningsPeriod period,
   required DateTime now,
+  bool sunday = false,
 }) {
-  final start = earningsPeriodStart(period, now);
+  final range = earningsRange(period, now, sunday: sunday);
   var totals = const EarningsTotals();
   final byDay = <DateTime, EarningsTotals>{};
   String? currency;
   for (final r in rides) {
     if (r.partnerId != driverId || r.status != RideStatus.completed) continue;
-    final at = (r.completedAt ?? r.createdAt)?.toLocal();
-    if (at == null || at.isBefore(start) || at.isAfter(now)) continue;
+    final done = r.completedAt ?? r.createdAt;
+    if (done == null || done.isBefore(range.from) || !done.isBefore(range.to)) continue;
     final receipt = TripReceipt.fromRide(r, asDriver: true);
     currency ??= r.currency;
     totals = totals.add(receipt);
-    final day = DateTime(at.year, at.month, at.day);
+    final day = malaysiaDate(done);
     byDay[day] = (byDay[day] ?? const EarningsTotals()).add(receipt);
   }
   final days = [for (final e in byDay.entries) EarningsDay(e.key, e.value)]..sort((a, b) => b.date.compareTo(a.date));
@@ -119,11 +122,13 @@ EarningsSummary summarizeEarnings(
 /// How many weeks the Earnings chart shows.
 const earningsChartWeeks = 8;
 
-/// Where the page's trip history must start for [now]: far enough back for
-/// both the month and the chart's [weeks] weeks.
+/// The instant the page's trip history must start from at [now]: far
+/// enough back, in Malaysia's days, for both the month and the chart's
+/// [weeks] weeks (counted from Sunday, the earlier of the two week starts,
+/// so either admin setting is covered).
 DateTime earningsHistoryStart(DateTime now, {int weeks = earningsChartWeeks}) {
-  final month = earningsPeriodStart(EarningsPeriod.month, now);
-  final firstWeek = earningsPeriodStart(EarningsPeriod.week, now).subtract(Duration(days: 7 * (weeks - 1)));
+  final month = earningsRange(EarningsPeriod.month, now).from;
+  final firstWeek = earningsWeeksRange(now, weeks: weeks, sunday: true).from;
   return month.isBefore(firstWeek) ? month : firstWeek;
 }
 
@@ -136,14 +141,18 @@ String earningsCsv(
   required String driverId,
   required EarningsPeriod period,
   required DateTime now,
+  bool sunday = false,
 }) {
-  final start = earningsPeriodStart(period, now);
+  // The page's own period, in Malaysia's days: "Today" here is the totals
+  // card's today, whatever the device's time zone.
+  final range = earningsRange(period, now, sunday: sunday);
   final rows = <({DateTime at, RideRequest ride})>[];
   for (final r in rides) {
     if (r.partnerId != driverId || r.status != RideStatus.completed) continue;
-    final at = (r.completedAt ?? r.createdAt)?.toLocal();
-    if (at == null || at.isBefore(start) || at.isAfter(now)) continue;
-    rows.add((at: at, ride: r));
+    final done = r.completedAt ?? r.createdAt;
+    if (done == null || done.isBefore(range.from) || !done.isBefore(range.to)) continue;
+    // Dated and timed on Malaysia's clock, as the totals.
+    rows.add((at: malaysiaWallClock(done), ride: r));
   }
   rows.sort((a, b) => a.at.compareTo(b.at));
   String two(int n) => n.toString().padLeft(2, '0');
@@ -183,8 +192,8 @@ String csvField(String v) {
 }
 
 /// The export's file name, e.g. `earnings-this-week-2026-10-12.csv`. Pure.
-String earningsCsvFileName(EarningsPeriod period, DateTime now) {
-  final d = earningsPeriodStart(period, now);
+String earningsCsvFileName(EarningsPeriod period, DateTime now, {bool sunday = false}) {
+  final d = earningsPeriodStart(period, now, sunday: sunday);
   String two(int n) => n.toString().padLeft(2, '0');
   return 'earnings-${period.label.toLowerCase().replaceAll(' ', '-')}-${d.year}-${two(d.month)}-${two(d.day)}.csv';
 }

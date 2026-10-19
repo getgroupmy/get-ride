@@ -78,7 +78,85 @@ List<Override> overrides({required List<RideRequest> trips, List<(String, String
   ];
 }
 
+/// The server's totals and series, recording the ranges asked for.
+class _Statements implements PartnerStatementRepository {
+  final earningsAsked = <({DateTime from, DateTime to})>[];
+
+  @override
+  Future<StatementTotals> earnings(DateTime from, DateTime to) async {
+    earningsAsked.add((from: from, to: to));
+    return _today;
+  }
+
+  @override
+  Future<List<EarningsBucket>> series(DateTime from, DateTime to, String bucket) async => bucket == 'day'
+      // The day the server buckets the range's first moment into: Malaysia's.
+      ? [EarningsBucket(malaysiaDate(from), _today)]
+      : [
+          for (var i = 0; i < 8; i++)
+            EarningsBucket(malaysiaDate(from).add(Duration(days: 7 * i)), StatementTotals({'net': 1, 'trips': 1})),
+        ];
+
+  @override
+  dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
+/// An instant given as Malaysia's wall clock.
+DateTime _myt(int y, int m, int d, int h, int min) => DateTime.utc(y, m, d, h, min).subtract(const Duration(hours: 8));
+
 void main() {
+  // Run under any TZ (CI checks UTC and America/Los_Angeles): the export's
+  // "Today" is the totals card's day, Malaysia's, either side of midnight
+  // there, whatever the device's own day is.
+  for (final now in [_myt(2026, 10, 18, 23, 59), _myt(2026, 10, 19, 0, 1)]) {
+    testWidgets('the export\'s Today is the totals card\'s day (${malaysiaWallClock(now)} in Malaysia, '
+        'TZ ${DateTime.now().timeZoneName})', (tester) async {
+      tester.view.physicalSize = const Size(420, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final statements = _Statements();
+      final shared = <(String, String)>[];
+      // One trip just before Malaysia's midnight, one just after.
+      final trips = [
+        ride('late', _myt(2026, 10, 18, 23, 50), 20, commission: 3),
+        ride('early', _myt(2026, 10, 19, 0, 0), 30, commission: 4.5),
+      ];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentUserIdProvider.overrideWithValue('me'),
+            earningsClockProvider.overrideWithValue(() => now),
+            statementSettingsProvider.overrideWith((_) async => const StatementSettings()),
+            partnerStatementRepositoryProvider.overrideWithValue(statements),
+            driverMonthTripsProvider.overrideWith((_) async => trips),
+            earningsCsvSharerProvider.overrideWithValue((csv, name, _) async {
+              shared.add((csv, name));
+              return CsvShareOutcome.shared;
+            }),
+          ],
+          child: const MaterialApp(home: EarningsScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // The totals card's day: the start of the range the server was asked
+      // for, in Malaysia, and the day row it shows as "Today".
+      final cardDay = malaysiaDate(statements.earningsAsked.first.from);
+      expect(cardDay, malaysiaDate(now));
+      expect(find.text('Today'), findsWidgets);
+
+      await tester.tap(find.byKey(const ValueKey('earnings-export')));
+      await tester.pumpAndSettle();
+      String two(int n) => n.toString().padLeft(2, '0');
+      final day = '${cardDay.year}-${two(cardDay.month)}-${two(cardDay.day)}';
+      expect(shared.single.$2, 'earnings-today-$day.csv');
+      final rows = shared.single.$1.split('\r\n').where((l) => l.isNotEmpty).skip(1).toList();
+      expect(rows, hasLength(1), reason: 'only the trip of that Malaysian day');
+      expect(rows.single, startsWith('$day,'));
+      expect(rows.single, contains(cardDay.day == 18 ? ',20.00,3.00,17.00,MYR' : ',30.00,4.50,25.50,MYR'));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   for (final dark in [false, true]) {
     testWidgets('server totals: taxes and tolls apart from what was earned (${dark ? 'dark' : 'light'})', (
       tester,
@@ -151,13 +229,13 @@ void main() {
   // wall clock, and from midnight to 00:05 it lay in the future, so the
   // export (rightly) left it out and the test failed for five minutes a day.
   for (final now in [
-    DateTime(2026, 10, 15, 14, 30), // an ordinary afternoon
-    DateTime(2026, 10, 19, 0, 3), // just after midnight, the old failing window; a Monday
-    DateTime(2026, 11, 1, 0, 3), // the 1st of a month, and a Sunday
-    DateTime(2026, 10, 18, 23, 58), // a Sunday night
-    DateTime(2026, 12, 31, 23, 59), // the last minute of the year
+    _myt(2026, 10, 15, 14, 30), // an ordinary afternoon (all in Malaysia's time)
+    _myt(2026, 10, 19, 0, 3), // just after midnight, the old failing window; a Monday
+    _myt(2026, 11, 1, 0, 3), // the 1st of a month, and a Sunday
+    _myt(2026, 10, 18, 23, 58), // a Sunday night
+    _myt(2026, 12, 31, 23, 59), // the last minute of the year
   ]) {
-    testWidgets('weekly chart reads out the tapped week; export hands over the CSV (at $now)', (tester) async {
+    testWidgets('weekly chart reads out the tapped week; export hands over the CSV (${malaysiaWallClock(now)} in Malaysia)', (tester) async {
       tester.view.physicalSize = const Size(420, 1800);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -192,7 +270,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(shared, hasLength(1));
       String two(int n) => n.toString().padLeft(2, '0');
-      expect(shared.single.$2, 'earnings-today-${now.year}-${two(now.month)}-${two(now.day)}.csv');
+      final d = malaysiaDate(now);
+      expect(shared.single.$2, 'earnings-today-${d.year}-${two(d.month)}-${two(d.day)}.csv');
       expect(shared.single.$1, contains('KLCC,"Bangsar, KL"'));
       expect(shared.single.$1, contains(',20.00,3.00,17.00,MYR'));
       expect(shared.single.$1, isNot(contains(',50.00,')), reason: "last week's trip is not today's");
