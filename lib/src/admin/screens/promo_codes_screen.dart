@@ -20,6 +20,7 @@ import '../../core/promo_codes.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/date_boxes.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart';
 import '../admin_access.dart';
@@ -453,28 +454,11 @@ class _PromoCodeEditorState extends ConsumerState<PromoCodeEditor> {
 
   Future<DateTime?> _pickMoment(DateTime? current) async {
     final base = current ?? DateTime.now();
-    final d = await showDatePicker(context: context, initialDate: base, firstDate: DateTime(2020), lastDate: DateTime(2100));
+    final d = await pickDateFromCalendar(context, initial: base, firstDate: DateTime(2020), lastDate: DateTime(2100));
     if (d == null || !mounted) return null;
     final t = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(base));
     if (!mounted) return null;
     return DateTime(d.year, d.month, d.day, t?.hour ?? 0, t?.minute ?? 0);
-  }
-
-  Future<void> _pickDates() async {
-    final now = DateTime.now();
-    final range = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      initialDateRange: _dateFrom != null && _dateTo != null
-          ? DateTimeRange(start: _dateFrom!, end: _dateTo!)
-          : DateTimeRange(start: DateTime(now.year, now.month, now.day), end: DateTime(now.year, now.month, now.day + 7)),
-    );
-    if (range == null || !mounted) return;
-    setState(() {
-      _dateFrom = range.start;
-      _dateTo = range.end;
-    });
   }
 
   Future<void> _pickTime(bool from) async {
@@ -803,24 +787,22 @@ class _PromoCodeEditorState extends ConsumerState<PromoCodeEditor> {
                 }),
                 heading('When'),
                 hint('Malaysia time. Nothing set: any day, any time.'),
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      key: const ValueKey('pc-dates'),
-                      onPressed: _pickDates,
-                      icon: const Icon(Icons.date_range_outlined),
-                      label: Text(_dateFrom == null || _dateTo == null
-                          ? 'Any date'
-                          : '${_day(_dateFrom!)} – ${_day(_dateTo!)}'),
-                    ),
-                  ),
-                  if (_dateFrom != null)
-                    IconButton(
-                      tooltip: 'Clear dates',
-                      icon: const Icon(Icons.close),
-                      onPressed: () => setState(() => _dateFrom = _dateTo = null),
-                    ),
-                ]),
+                DateBoxesField(
+                  key: const ValueKey('pc-date-from'),
+                  label: 'From date (blank for any)',
+                  initialValue: _dateFrom,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(2100, 12, 31),
+                  onChanged: (d) => setState(() => _dateFrom = d),
+                ),
+                DateBoxesField(
+                  key: const ValueKey('pc-date-to'),
+                  label: 'To date (blank for any)',
+                  initialValue: _dateTo,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime(2100, 12, 31),
+                  onChanged: (d) => setState(() => _dateTo = d),
+                ),
                 const SizedBox(height: 6),
                 Wrap(spacing: 6, runSpacing: 4, children: [
                   for (var d = 1; d <= 7; d++)
