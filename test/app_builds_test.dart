@@ -39,6 +39,8 @@ AppBuild _android() => AppBuild.fromJson('android', {
 });
 
 void main() {
+  _splitTests();
+
   group('the build', () {
     test('read from app-install', () {
       final b = _ios();
@@ -325,6 +327,262 @@ void main() {
     testWidgets('an unknown platform is not a page', (tester) async {
       await pump(tester, 'windows', const AppBuild(platform: 'windows'));
       expect(find.text('There is no build for that platform.'), findsOneWidget);
+    });
+  });
+}
+
+const _dl = 'https://github.com/getgroupmy/get-ride/releases/download/android-latest';
+
+/// What app-install answers once the per-processor APKs are published: the
+/// 64-bit one picked by default, every APK listed.
+AppBuild _split({bool with32 = true, bool universal = true}) => AppBuild.fromJson('android', {
+  'available': true,
+  'version': '1.5.0',
+  'build': '120',
+  'size': 57 * 1024 * 1024,
+  'installable': true,
+  'abi': 'arm64-v8a',
+  'download_url': '$_dl/getride-arm64-v8a.apk',
+  'install_url': '$_dl/getride-arm64-v8a.apk',
+  'apks': [
+    {'abi': 'arm64-v8a', 'url': '$_dl/getride-arm64-v8a.apk', 'size': 57 * 1024 * 1024},
+    if (with32) {'abi': 'armeabi-v7a', 'url': '$_dl/getride-armeabi-v7a.apk', 'size': 52 * 1024 * 1024},
+    if (universal) {'abi': 'universal', 'url': '$_dl/getride.apk', 'size': 154 * 1024 * 1024},
+  ],
+});
+
+const _phone64 = ['arm64-v8a', 'armeabi-v7a', 'armeabi'];
+const _phone32 = ['armeabi-v7a', 'armeabi'];
+
+void _splitTests() {
+  group('per-processor APKs', () {
+    test('a phone gets its own: 64-bit, 32-bit when that is all it runs, 64-bit when unknown', () {
+      expect(wantedApkAbi(_phone64), abiArm64);
+      expect(wantedApkAbi(_phone32), abiArm32);
+      expect(wantedApkAbi(const []), abiArm64);
+      expect(wantedApkAbi(const ['x86_64']), abiUniversal, reason: 'an emulator or Chromebook: the universal one');
+
+      final b64 = _split().forDevice(_phone64);
+      expect(b64.installUrl, '$_dl/getride-arm64-v8a.apk');
+      expect(b64.fileName, 'getride-arm64-v8a.apk');
+      expect(formatBuildSize(b64.size), '57.0 MB');
+
+      final b32 = _split().forDevice(_phone32);
+      expect(b32.abi, abiArm32);
+      expect(b32.installUrl, '$_dl/getride-armeabi-v7a.apk');
+      expect(b32.downloadUrl, b32.installUrl);
+      expect(b32.fileName, 'getride-armeabi-v7a.apk');
+      expect(formatBuildSize(b32.size), '52.0 MB');
+      expect(b32.otherApk?.abi, abiArm64);
+      expect(b64.otherApk?.abi, abiArm32);
+
+      expect(_split().forDevice(const []).abi, abiArm64);
+      expect(_split().forDevice(const ['x86_64']).installUrl, '$_dl/getride.apk');
+    });
+
+    test('a missing split falls back to the universal APK', () {
+      final b = _split(with32: false).forDevice(_phone32);
+      expect(b.abi, abiUniversal);
+      expect(b.installUrl, '$_dl/getride.apk');
+      expect(b.fileName, 'getride.apk');
+      expect(formatBuildSize(b.size), '154 MB');
+      expect(b.otherApk, isNull, reason: 'no choice to offer from the universal one');
+      expect(_split(with32: false).forDevice(_phone64).otherApk, isNull, reason: 'no 32-bit one published');
+    });
+
+    test('without a universal APK: the phone\'s own split, never one it can\'t run', () {
+      final only64 = _split(with32: false, universal: false);
+      expect(only64.forDevice(_phone32).available, isFalse, reason: 'a 32-bit phone cannot run the 64-bit APK');
+      expect(only64.forDevice(const []).installUrl, '$_dl/getride-arm64-v8a.apk');
+      final apks = [const AppApk(abi: abiArm32, url: '$_dl/getride-armeabi-v7a.apk')];
+      expect(pickApk(apks, const [])?.abi, abiArm32, reason: 'a phone that said nothing: what there is');
+      expect(pickApk(apks, _phone64)?.abi, abiArm32, reason: 'a 64-bit phone runs 32-bit apps too');
+      expect(pickApk(apks, const ['arm64-v8a']), isNull, reason: 'a 64-bit-only phone does not');
+      expect(pickApk(const [], _phone64), isNull);
+    });
+
+    test('an older app-install (no APK list) and iPhone builds are left as they are', () {
+      expect(_android().apks, isEmpty);
+      expect(_android().forDevice(_phone32).installUrl, _apk);
+      expect(_ios().forDevice(_phone32).installUrl, _itms);
+      expect(
+        AppBuild.fromJson('ios', {
+          'available': true,
+          'download_url': _ipa,
+          'apks': [
+            {'abi': 'arm64-v8a', 'url': '$_dl/getride-arm64-v8a.apk'},
+          ],
+        }).apks,
+        isEmpty,
+      );
+      expect(
+        AppBuild.fromJson('android', {
+          'available': true,
+          'download_url': _apk,
+          'apks': [
+            {'abi': 'arm64-v8a', 'url': 'http://evil/x.apk'},
+            {'url': '$_dl/getride.apk'},
+            'nope',
+          ],
+        }).apks,
+        isEmpty,
+        reason: 'https only, and every entry names its processor',
+      );
+    });
+
+    test('what a browser lets on about the phone', () {
+      const chrome = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/141.0 Mobile Safari/537.36';
+      expect(deviceAbisFromUserAgent(chrome), isEmpty, reason: 'reduced UA: unknown, so 64-bit');
+      expect(deviceAbisFromUserAgent(chrome, bitness: '32', architecture: 'arm'), [abiArm32]);
+      expect(deviceAbisFromUserAgent(chrome, bitness: '64', architecture: 'arm'), [abiArm64, abiArm32]);
+      expect(deviceAbisFromUserAgent(chrome, bitness: '', architecture: ''), isEmpty);
+      expect(deviceAbisFromUserAgent('Mozilla/5.0 (Linux; U; Android 4.4.2; armv7l; SM-T110)'), [abiArm32]);
+      expect(
+        deviceAbisFromUserAgent('Mozilla/5.0 (Linux; Android 9; Linux armv8l) Chrome/90'),
+        [abiArm32],
+        reason: 'armv8l is a 32-bit system on a 64-bit processor',
+      );
+      expect(deviceAbisFromUserAgent('Mozilla/5.0 (Linux; Android 12; aarch64)'), [abiArm64, abiArm32]);
+      expect(deviceAbisFromUserAgent('Mozilla/5.0 (X11; Linux armv7l) Chrome/90'), isEmpty, reason: 'not a phone');
+      expect(
+        wantedApkAbi(deviceAbisFromUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)', bitness: '64', architecture: 'x86')),
+        abiArm64,
+        reason: 'a computer gets the 64-bit default (its QR leads the phone to its own)',
+      );
+    });
+
+    test('new clients always name the processor; iPhone needs none', () {
+      expect(appInstallQuery('android', const []), {'platform': 'android', 'abi': abiArm64});
+      expect(appInstallQuery('android', _phone32), {'platform': 'android', 'abi': abiArm32});
+      expect(appInstallQuery('android', _phone64), {'platform': 'android', 'abi': abiArm64});
+      expect(appInstallQuery('android', const ['x86_64']), {'platform': 'android', 'abi': abiUniversal});
+      expect(appInstallQuery('ios', _phone64), {'platform': 'ios'});
+    });
+
+    test('an old-client answer (universal picked, APKs listed) is re-picked for this phone', () {
+      final old = AppBuild.fromJson('android', {
+        'available': true,
+        'installable': true,
+        'abi': 'universal',
+        'download_url': '$_dl/getride.apk',
+        'install_url': '$_dl/getride.apk',
+        'apks': [
+          {'abi': 'arm64-v8a', 'url': '$_dl/getride-arm64-v8a.apk'},
+          {'abi': 'armeabi-v7a', 'url': '$_dl/getride-armeabi-v7a.apk'},
+          {'abi': 'universal', 'url': '$_dl/getride.apk'},
+        ],
+      });
+      expect(old.installUrl, '$_dl/getride.apk');
+      expect(old.forDevice(_phone32).installUrl, '$_dl/getride-armeabi-v7a.apk');
+      expect(old.forDevice(const []).installUrl, '$_dl/getride-arm64-v8a.apk');
+    });
+
+    test('the update link: the universal APK becomes the phone\'s own; anything else stays', () {
+      const universal = '$_dl/getride.apk';
+      expect(isUniversalApkLink(universal), isTrue);
+      expect(isUniversalApkLink('https://play.google.com/store/apps/details?id=com.taxxee.teksi'), isFalse);
+      expect(isUniversalApkLink('$_dl/getride-arm64-v8a.apk'), isFalse);
+      expect(updateApkLink(universal, _split(), _phone64), '$_dl/getride-arm64-v8a.apk');
+      expect(updateApkLink(universal, _split(), _phone32), '$_dl/getride-armeabi-v7a.apk');
+      expect(updateApkLink(universal, _split(with32: false), _phone32), universal);
+      expect(updateApkLink(universal, _android(), _phone64), universal, reason: 'no APK list yet');
+      expect(updateApkLink(universal, const AppBuild(platform: 'android'), _phone64), universal);
+      const play = 'https://play.google.com/store/apps/details?id=com.taxxee.teksi';
+      expect(updateApkLink(play, _split(), _phone64), play);
+    });
+
+    for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+      testWidgets('the install page installs the phone\'s APK and offers the other (${mode.name})', (tester) async {
+        for (final (abis, own, other, link) in [
+          (_phone64, 'getride-arm64-v8a.apk', 'getride-armeabi-v7a.apk', 'Download the 32-bit version'),
+          (_phone32, 'getride-armeabi-v7a.apk', 'getride-arm64-v8a.apk', 'Download the 64-bit version'),
+        ]) {
+          tester.view.physicalSize = const Size(400, 900);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final opened = <String>[];
+          await tester.pumpWidget(
+            ProviderScope(
+              key: UniqueKey(),
+              overrides: [
+                appBuildProvider.overrideWith((ref, p) async => _split()),
+                deviceAbisProvider.overrideWith((ref) async => abis),
+                installBrandingProvider.overrideWith((ref) async => const AppBranding()),
+                appLinkOpenerProvider.overrideWithValue((u) async {
+                  opened.add(u);
+                  return true;
+                }),
+              ],
+              child: MaterialApp(
+                theme: appTheme(Brightness.light),
+                darkTheme: appTheme(Brightness.dark),
+                themeMode: mode,
+                home: const AppInstallScreen(platform: 'android'),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('Download $own'), findsOneWidget);
+          await tester.tap(find.byKey(const ValueKey('app-install-button')));
+          await tester.pump();
+          expect(opened, ['$_dl/$own']);
+          await tester.ensureVisible(find.byKey(const ValueKey('app-install-other-apk')));
+          expect(find.textContaining(link), findsOneWidget);
+          await tester.tap(find.byKey(const ValueKey('app-install-other-apk')));
+          await tester.pump();
+          expect(opened.last, '$_dl/$other');
+          expect(tester.takeException(), isNull);
+        }
+      });
+
+      testWidgets('Admin → App Release downloads both processors\' APKs (${mode.name})', (tester) async {
+        final opened = <String>[];
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appBuildProvider.overrideWith((ref, p) async => _split()),
+              deviceAbisProvider.overrideWith((ref) async => const []),
+              appLinkOpenerProvider.overrideWithValue((u) async {
+                opened.add(u);
+                return true;
+              }),
+            ],
+            child: MaterialApp(
+              theme: appTheme(Brightness.light),
+              darkTheme: appTheme(Brightness.dark),
+              themeMode: mode,
+              home: const Scaffold(body: AppBuildPanel(platform: 'android')),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.textContaining('1.5.0 (120) · 57.0 MB'), findsOneWidget);
+        expect(find.text('Download .apk (64-bit)'), findsOneWidget);
+        expect(find.text('Download .apk (32-bit)'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('app-build-download-android')));
+        await tester.tap(find.byKey(const ValueKey('app-build-download-other-android')));
+        await tester.pump();
+        expect(opened, ['$_dl/getride-arm64-v8a.apk', '$_dl/getride-armeabi-v7a.apk']);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('a release from before the split shows one download, as before', (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appBuildProvider.overrideWith((ref, p) async => _android()),
+            deviceAbisProvider.overrideWith((ref) async => _phone32),
+          ],
+          child: MaterialApp(
+            theme: appTheme(Brightness.light),
+            home: const AppInstallScreen(platform: 'android'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Download getride.apk'), findsOneWidget);
+      expect(find.byKey(const ValueKey('app-install-other-apk')), findsNothing);
     });
   });
 }
