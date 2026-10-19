@@ -146,6 +146,26 @@ void main() {
     expect(fetches, 5);
   });
 
+  test('a set without relay is kept only a few minutes, so TURN set up later reaches calls', () async {
+    reply = () => {
+      'iceServers': [
+        {
+          'urls': ['stun:stun.example.com:3478'],
+        },
+      ],
+      'ttl': 21600,
+      'relay': false,
+    };
+    expect(relayed(await cache.get()), isFalse);
+    now = now.add(iceServersNoRelayKeep - const Duration(seconds: 1));
+    await cache.get();
+    expect(fetches, 1);
+    reply = _answer;
+    now = now.add(const Duration(seconds: 2));
+    expect(relayed(await cache.get()), isTrue);
+    expect(fetches, 2);
+  });
+
   test('another account signed in gets credentials of its own', () async {
     await cache.get();
     user = 'u2';
