@@ -54,7 +54,13 @@ class FormDialogScaffold extends StatelessWidget {
           actions: [
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: BusyButton.filled(onPressed: onSave, child: Text(saveLabel)),
+              // Its own width: the theme's full-width filled button is an
+              // infinite width in the bar's row and breaks the bar's layout.
+              child: BusyButton.filled(
+                onPressed: onSave,
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+                child: Text(saveLabel),
+              ),
 
             ),
           ],

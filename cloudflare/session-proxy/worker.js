@@ -58,6 +58,13 @@
  * (the session sees the 3xx and decides), and it strips the session key
  * and the hop-by-hop headers before anything reaches the phone.
  *
+ * It only reaches the public internet: never the phone itself, the Wi-Fi
+ * it sits on or the carrier's network. `checkTarget` refuses what is
+ * plainly not public up front (localhost and local names, private,
+ * loopback and link-local IP literals, user info); the phone checks again
+ * on every address its DNS returns, which this worker cannot see
+ * (gateway/android/.../TargetGuard.kt).
+ *
  * ## Deploying it
  *
  *     npx wrangler deploy            # from this directory
@@ -102,23 +109,176 @@ export const WS_OPEN = 1;
 /**
  * The absolute URL a session asked for, from the path it called:
  * `/https://example.com/a?b=1` -> `https://example.com/a?b=1`. A path that
- * is not an http(s) URL is null. A client that collapsed `//` to `/` is
- * read the same.
+ * is not an http(s) URL, or a target [checkTarget] refuses, is null. A
+ * client that collapsed `//` to `/` is read the same.
  *
  * @param {string} pathAndQuery the request URL's pathname plus search
  * @returns {string | null}
  */
 export function targetFrom(pathAndQuery) {
+  const t = checkTarget(pathAndQuery);
+  return "target" in t ? t.target : null;
+}
+
+/** Name suffixes that only ever mean a local network. */
+const LOCAL_SUFFIXES = [
+  ".localhost", ".local", ".localdomain", ".internal", ".intranet", ".lan", ".home", ".corp",
+  ".home.arpa", ".in-addr.arpa", ".ip6.arpa",
+];
+
+/**
+ * The target a session asked for, or why it is refused:
+ * `{ target }`, or `{ status, error, hint }`.
+ *
+ *   - 400 NO_TARGET: not an absolute http(s) URL after the first slash;
+ *   - 400 TARGET_USERINFO: the URL carries a user name or password;
+ *   - 403 TARGET_NOT_PUBLIC: localhost, a local-only name (.local,
+ *     .internal, .lan, ...), a one-label name, or an IP literal that is
+ *     loopback, private, link-local, carrier-grade NAT, multicast or
+ *     otherwise not public (IPv4 in any spelling, since the URL parser
+ *     reads 2130706433 and 0x7f.1 as 127.0.0.1; IPv6 including its
+ *     IPv4-mapped forms).
+ *
+ * A public name that resolves to a private address passes here (a worker
+ * cannot see the phone's DNS); the phone refuses it.
+ *
+ * @param {string} pathAndQuery
+ * @returns {{ target: string } | { status: number, error: string, hint: string }}
+ */
+export function checkTarget(pathAndQuery) {
+  const noTarget = {
+    status: 400,
+    error: "NO_TARGET",
+    hint: "Call /https://host/path: the URL to fetch goes after the first slash.",
+  };
   const m = /^\/(https?):\/{1,2}(.+)$/i.exec(pathAndQuery);
-  if (!m) return null;
-  const url = `${m[1].toLowerCase()}://${m[2]}`;
+  if (!m) return noTarget;
+  let u;
   try {
-    const u = new URL(url);
-    if (!u.hostname || u.hostname.endsWith(".")) return null;
-    return u.toString();
+    u = new URL(`${m[1].toLowerCase()}://${m[2]}`);
   } catch {
-    return null;
+    return noTarget;
   }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return noTarget;
+  if (!u.hostname || u.hostname.endsWith(".")) return noTarget;
+  if (u.username || u.password) {
+    return {
+      status: 400,
+      error: "TARGET_USERINFO",
+      hint: "The target URL may not carry a user name or password; send credentials as a header.",
+    };
+  }
+  const why = notPublicHost(u.hostname);
+  if (why) {
+    return {
+      status: 403,
+      error: "TARGET_NOT_PUBLIC",
+      hint: `${u.hostname} ${why}: the relay only reaches the public internet ` +
+        "(never the gateway phone, its Wi-Fi network or the carrier's).",
+    };
+  }
+  return { target: u.toString() };
+}
+
+/**
+ * Why a URL's hostname (as `new URL` normalised it) is not on the public
+ * internet, or null when it may be.
+ *
+ * @param {string} hostname
+ * @returns {string | null}
+ */
+export function notPublicHost(hostname) {
+  const h = hostname.toLowerCase();
+  if (h.startsWith("[")) {
+    const bytes = ipv6Bytes(h.slice(1, -1));
+    if (!bytes) return "is not an IPv6 address that can be read";
+    return isPublicV6(bytes) ? null : "is not a public address";
+  }
+  const v4 = ipv4Bytes(h);
+  if (v4) return isPublicV4(v4) ? null : "is not a public address";
+  if (h === "localhost" || LOCAL_SUFFIXES.some((s) => h.endsWith(s))) return "is a local network name";
+  if (!h.includes(".")) return "is a one-label name, which only a local network resolves";
+  return null;
+}
+
+/** a.b.c.d (as the URL parser writes every IPv4 host) -> 4 bytes, else null. */
+function ipv4Bytes(h) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!m) return null;
+  const b = m.slice(1).map(Number);
+  return b.every((n) => n <= 255) ? b : null;
+}
+
+/** An IPv6 literal (no brackets) -> 16 bytes, else null. */
+export function ipv6Bytes(text) {
+  let s = text.toLowerCase();
+  if (s.includes("%")) return null;
+  let tail = null;
+  const last = s.lastIndexOf(":");
+  if (last >= 0 && s.slice(last + 1).includes(".")) {
+    tail = ipv4Bytes(s.slice(last + 1));
+    if (!tail) return null;
+    s = s.slice(0, last + 1) + "0:0";
+  }
+  const halves = s.split("::");
+  if (halves.length > 2) return null;
+  const words = (part) => {
+    if (part === "") return [];
+    const out = [];
+    for (const w of part.split(":")) {
+      if (!/^[0-9a-f]{1,4}$/.test(w)) return null;
+      out.push(parseInt(w, 16));
+    }
+    return out;
+  };
+  const head = words(halves[0]);
+  if (!head) return null;
+  let all;
+  if (halves.length === 2) {
+    const back = words(halves[1]);
+    if (!back || head.length + back.length > 7) return null;
+    all = [...head, ...new Array(8 - head.length - back.length).fill(0), ...back];
+  } else {
+    if (head.length !== 8) return null;
+    all = head;
+  }
+  const out = [];
+  for (const w of all) out.push(w >> 8, w & 0xff);
+  if (tail) out.splice(12, 4, ...tail);
+  return out;
+}
+
+/** @param {number[]} b 4 bytes */
+export function isPublicV4(b) {
+  const [a0, a1, a2] = b;
+  if (a0 === 0 || a0 === 10 || a0 === 127) return false; // this network, private, loopback
+  if (a0 === 100 && a1 >= 64 && a1 <= 127) return false; // carrier-grade NAT
+  if (a0 === 169 && a1 === 254) return false; // link-local, cloud metadata
+  if (a0 === 172 && a1 >= 16 && a1 <= 31) return false; // private
+  if (a0 === 192 && a1 === 168) return false; // private
+  if (a0 === 192 && a1 === 0 && (a2 === 0 || a2 === 2)) return false; // protocol assignments, TEST-NET-1
+  if (a0 === 192 && a1 === 88 && a2 === 99) return false; // 6to4 relay anycast
+  if (a0 === 198 && (a1 === 18 || a1 === 19)) return false; // benchmarking
+  if (a0 === 198 && a1 === 51 && a2 === 100) return false; // TEST-NET-2
+  if (a0 === 203 && a1 === 0 && a2 === 113) return false; // TEST-NET-3
+  if (a0 >= 224) return false; // multicast, reserved, broadcast
+  return true;
+}
+
+/** @param {number[]} b 16 bytes */
+export function isPublicV6(b) {
+  const zero = (from, to) => b.slice(from, to).every((x) => x === 0);
+  // ::ffff:a.b.c.d (mapped) and ::a.b.c.d (compatible; also :: and ::1).
+  if (zero(0, 10) && b[10] === 0xff && b[11] === 0xff) return isPublicV4(b.slice(12));
+  if (zero(0, 12)) return isPublicV4(b.slice(12));
+  // 64:ff9b::/96 NAT64: the IPv4 address it reaches.
+  if (b[0] === 0 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b && zero(4, 12)) return isPublicV4(b.slice(12));
+  // Everything else public is in 2000::/3 (not fe80::/10, fc00::/7, ff00::/8, ...).
+  if ((b[0] & 0xe0) !== 0x20) return false;
+  if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x0d && b[3] === 0xb8) return false; // documentation
+  if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0 && b[3] === 0) return false; // Teredo
+  if (b[0] === 0x20 && b[1] === 0x02) return isPublicV4(b.slice(2, 6)); // 6to4
+  return true;
 }
 
 /**
@@ -376,10 +536,9 @@ export async function handle(request, env, deps) {
     return deps.relay(String(r.id), req);
   }
 
-  const target = targetFrom(url.pathname + url.search);
-  if (!target) {
-    return refuse(400, "NO_TARGET", "Call /https://host/path: the URL to fetch goes after the first slash.");
-  }
+  const checked = checkTarget(url.pathname + url.search);
+  if (!("target" in checked)) return refuse(checked.status, checked.error, checked.hint);
+  const target = checked.target;
   const key = bearerFrom(request.headers);
   if (!key) {
     return refuse(401, "SESSION_KEY_MISSING", "Send the session key as Authorization: Bearer <key>.");

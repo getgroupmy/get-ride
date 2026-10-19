@@ -245,7 +245,7 @@ void main() {
       expect(find.text('Accept for RM12.00'), findsOneWidget);
       expect(find.text('Skip'), findsOneWidget);
       expect(
-        find.descendant(of: find.byKey(const ValueKey('request-chip-trip')), matching: find.text('14 min.\n5.0 km')),
+        find.descendant(of: find.byKey(const ValueKey('request-chip-trip')), matching: find.text('Trip\n14 min · 5.0 km')),
         findsOneWidget,
         reason: "the trip's time and distance beside B",
       );

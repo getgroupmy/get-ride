@@ -96,8 +96,8 @@ class _AdminFareTariffsScreenState extends ConsumerState<AdminFareTariffsScreen>
     return AdminPage(
       title: 'Fare tariffs',
       module: 'fare-tariffs',
-      floatingActionButton: canEdit
-          ? FloatingActionButton.extended(
+      addAction: canEdit
+          ? PageAddAction(
               onPressed: () => _edit(null),
               icon: const Icon(Icons.add),
               label: const Text('Add tariff'),
@@ -112,19 +112,31 @@ class _AdminFareTariffsScreenState extends ConsumerState<AdminFareTariffsScreen>
           final names = {for (final t in types) t.id: t.name, for (final v in vehicles) v.id: v.name};
           return ListView(
             // The last card scrolls clear of Add tariff.
-            padding: EdgeInsets.fromLTRB(16, 16, 16, fabListBottomPadding(context)),
+            padding: EdgeInsets.fromLTRB(16, 16, 16, addActionListBottomPadding(context)),
             children: [
-              const Card(
-                child: ListTile(
-                  leading: Icon(Icons.info_outline),
-                  title: Text('How a booking is priced'),
-                  subtitle: Text(
-                    'The most specific place with a card for the service wins: suburb → city → state → country → '
-                    "everywhere. There, a vehicle's own card beats its service type's, which beats a card for every "
-                    'service. Fare = the larger of the minimum fare and (base + per km + per minute), plus the booking '
-                    "fee, in the card's currency; cards for a type or every service are multiplied by the vehicle's "
-                    'multiplier. With no card, the built-in TEKSI tariff applies in ringgit. Meter Digital keeps its '
-                    'own rate cards.',
+              // Folded, as Earnings' "Collected for others": one row over
+              // the filters, opened for the details.
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: const ExpansionTile(
+                    key: ValueKey('fare-tariffs-how'),
+                    leading: Icon(Icons.info_outline),
+                    title: Text('How a booking is priced'),
+                    childrenPadding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'The most specific place with a card for the service wins: suburb > city > state > country > '
+                        "everywhere. There, a vehicle's own card beats its service type's, which beats a card for every "
+                        'service. Fare = the larger of the minimum fare and (base + per km + per minute), plus the booking '
+                        "fee, in the card's currency; cards for a type or every service are multiplied by the vehicle's "
+                        'multiplier. With no card, the built-in TEKSI tariff applies in ringgit. Meter Digital keeps its '
+                        'own rate cards.',
+                        key: ValueKey('fare-tariffs-how-text'),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -410,8 +422,8 @@ class _ServiceFares extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: Text(
                 type == null
-                    ? 'No vehicle services yet (Admin → Vehicle Services).'
-                    : 'No vehicle service has ${type.name} as its Service type (Admin → Vehicle Services).',
+                    ? 'No vehicle services yet (Admin > Vehicle Services).'
+                    : 'No vehicle service has ${type.name} as its Service type (Admin > Vehicle Services).',
                 style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
               ),
             ),

@@ -23,6 +23,12 @@ import '../../widgets/search_select.dart';
 /// OBD-II reader".
 String writeTargetCaption(WriteTarget t) => t == WriteTarget.vehicle ? "On the car's ECU" : 'On the OBD-II reader';
 
+/// An action's caption: its target's, except a raw command, which goes to
+/// the reader (AT commands) or on to the car's ECUs (OBD-II services), as
+/// [validateRawCommand] sorts it, and its description says.
+String writeActionCaption(VehicleWriteAction a) =>
+    a.id == VehicleWriteId.rawCommand ? "On the OBD-II reader or the car's ECU" : writeTargetCaption(a.target);
+
 /// Everything the linked OBD-II reader can tell about the vehicle it is
 /// plugged into (Expo `app/vehicle-information.tsx`): identity (VIN,
 /// calibration IDs, ECU name), trouble codes and readiness monitors, every
@@ -646,10 +652,14 @@ class _WritesCardState extends ConsumerState<_WritesCard> {
                     children: [
                       Text(a.description),
                       // What it writes to, as a caption (a chip read like a button).
+                      // Greyed with the title and description while it
+                      // can't run (no reader connected).
                       Text(
-                        writeTargetCaption(a.target),
+                        writeActionCaption(a),
                         key: ValueKey('write-target-${a.id.id}'),
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: mutedTextColor(Theme.of(context))),
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: avail.allowed ? mutedTextColor(Theme.of(context)) : Theme.of(context).disabledColor,
+                        ),
                       ),
                       if (avail.reason case final reason? when !offline)
                         Text(reason, style: TextStyle(color: Theme.of(context).colorScheme.error)),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'focus_order.dart';
 
 /// Whether the maps show satellite imagery (Expo's map-type toggle). One
 /// choice for the session, so the driver or rider who switched it on the
@@ -19,8 +20,12 @@ final mapSatelliteProvider = NotifierProvider<MapSatellite, bool>(MapSatellite.n
 class MapTypeButton extends ConsumerWidget {
   const MapTypeButton({super.key});
 
+  // Floats over the map: reached after the page's own content
+  // ([FocusLast], on wide layouts).
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context, WidgetRef ref) => FocusLast(child: _build(context, ref));
+
+  Widget _build(BuildContext context, WidgetRef ref) {
     final on = ref.watch(mapSatelliteProvider);
     final scheme = Theme.of(context).colorScheme;
     return Semantics(

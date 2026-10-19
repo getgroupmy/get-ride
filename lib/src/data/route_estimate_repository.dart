@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/route_estimate.dart';
 import '../providers.dart';
+import 'function_region.dart';
 
 /// Asks `ai-route-proxy` for a traffic-aware estimate. Any failure (function
 /// not deployed, AI switched off, no keys, offline) is no estimate: the map
@@ -26,7 +27,7 @@ class RouteEstimateRepository {
   }) async {
     Map<String, double> point(LatLng p) => {'latitude': p.latitude, 'longitude': p.longitude};
     try {
-      final res = await _db.functions.invoke(
+      final res = await _db.functions.invokeNearDb(
         'ai-route-proxy',
         body: {
           'origin': point(from),

@@ -168,7 +168,7 @@ class _SosOpsCardState extends ConsumerState<SosOpsCard> {
                   key: const ValueKey('sos-ops-sms'),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Also text the ops numbers'),
-                  subtitle: const Text('Sent by the gateway phone on the "Ops alert" channel (Admin → SMS).'),
+                  subtitle: const Text('Sent by the gateway phone on the "Ops alert" channel (Admin > SMS).'),
                   value: _sms,
                   onChanged: widget.canEdit ? (v) => setState(() => _sms = v) : null,
                 ),

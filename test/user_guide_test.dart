@@ -41,4 +41,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Nothing matches "qqqq".'), findsOneWidget);
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('an opened topic draws no rule outside its card (${b.name})', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(412, 915);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(theme: ThemeData(brightness: b), home: const UserGuideScreen()));
+      await tester.enterText(find.byKey(const ValueKey('guide-search')), 'wallet');
+      await tester.pumpAndSettle();
+      final tiles = tester.widgetList<ExpansionTile>(find.byType(ExpansionTile)).toList();
+      expect(tiles, isNotEmpty);
+      for (final tile in tiles) {
+        expect(tile.initiallyExpanded, isTrue);
+        expect(tile.shape, const Border(), reason: 'no divider above or below an open topic');
+        expect(tile.collapsedShape, const Border());
+      }
+      for (final card in tester.widgetList<Card>(find.byType(Card))) {
+        expect(card.clipBehavior, Clip.antiAlias, reason: 'the tiles stay inside the rounded corners');
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

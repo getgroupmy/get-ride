@@ -317,11 +317,11 @@ class _BookingTile extends StatelessWidget {
       dense: true,
       leading: const Icon(Icons.event_outlined),
       title: Text(
-        '${DateFormat('EEE d MMM, HH:mm').format(ride.pickupAt)} · ${formatMoney(ride.total, ride.currency ?? 'MYR')}',
+        '${formatWeekdayDayMonthForUser(ride.pickupAt)}, ${DateFormat('HH:mm').format(ride.pickupAt)} · ${formatMoney(ride.total, ride.currency ?? 'MYR')}',
       ),
       subtitle: Text(
         [
-          '${ride.pickupAddress ?? 'Pickup'} → ${ride.dropAddress ?? 'Destination'}',
+          '${ride.pickupAddress ?? 'Pickup'} to ${ride.dropAddress ?? 'Destination'}',
           if (ride.bookedForName != null) 'For ${ride.bookedForName}',
           switch (ride.status) {
             ScheduledStatus.scheduled => 'No driver yet',

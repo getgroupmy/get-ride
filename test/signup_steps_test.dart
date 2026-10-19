@@ -78,6 +78,7 @@ void main() {
       Map<String, dynamic> profile,
       _FakeAccount account, {
       _FakeAuth? auth,
+      Brightness brightness = Brightness.light,
     }) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1;
@@ -89,7 +90,7 @@ void main() {
             accountRepositoryProvider.overrideWithValue(account),
             profileProvider.overrideWith((ref) async => Profile(profile)),
           ],
-          child: MaterialApp.router(routerConfig: _router('/set-pin')),
+          child: MaterialApp.router(theme: ThemeData(brightness: brightness), routerConfig: _router('/set-pin')),
         ),
       );
       await tester.pumpAndSettle();
@@ -120,6 +121,29 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('drive'), findsOneWidget);
     });
+
+    for (final b in Brightness.values) {
+      testWidgets('Driver picked says what comes after; no em dash in the PIN line (${b.name})', (tester) async {
+        await pump(tester, {'id': 'me'}, _FakeAccount(), brightness: b);
+        expect(find.text('Use this 6-digit PIN to sign in on any device. No SMS needed.'), findsOneWidget);
+        expect(find.byKey(const ValueKey('signup-driver-note')), findsNothing, reason: 'a passenger needs no note');
+        await tester.tap(find.text('Driver'));
+        await tester.pumpAndSettle();
+        expect(find.text(driverSignupNote), findsOneWidget);
+        // Right under the Passenger/Driver control.
+        final control = tester.getRect(find.byKey(const ValueKey('signup-role')));
+        final note = tester.getRect(find.text(driverSignupNote));
+        expect(note.top, greaterThan(control.bottom));
+        expect(note.top - control.bottom, lessThan(48));
+        for (final w in tester.widgetList<Text>(find.byType(Text))) {
+          expect(w.data ?? '', isNot(contains('—')), reason: 'no em dash on Set PIN: "${w.data}"');
+        }
+        await tester.tap(find.text('Passenger'));
+        await tester.pumpAndSettle();
+        expect(find.text(driverSignupNote), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('a new account must give its name, which is tidied', (tester) async {
       final auth = _FakeAuth();

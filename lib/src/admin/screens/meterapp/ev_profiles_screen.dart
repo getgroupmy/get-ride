@@ -53,7 +53,7 @@ class AdminEvProfilesScreen extends ConsumerWidget {
       child: AdminPage(
         title: 'EV profiles',
         page: evProfilesPage,
-        floatingActionButton: FloatingActionButton.extended(
+        addAction: PageAddAction(
           key: const ValueKey('ev-profile-new'),
           onPressed: () => _open(context, null),
           icon: const Icon(Icons.add),
@@ -93,7 +93,7 @@ class _ProfilesTab extends ConsumerWidget {
       value: ref.watch(adminEvProfilesProvider),
       onRetry: () => ref.invalidate(adminEvProfilesProvider),
       data: (list) => ListView(
-        padding: const EdgeInsets.fromLTRB(0, 16, 0, 96),
+        padding: EdgeInsets.fromLTRB(0, 16, 0, addActionListBottomPadding(context)),
         children: [
           ResponsiveCenter(
             maxWidth: 760,
@@ -201,7 +201,7 @@ class _CapturesTab extends ConsumerWidget {
       data: (list) => RefreshIndicator(
         onRefresh: () async => ref.invalidate(adminObdCapturesProvider),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(0, 16, 0, 96),
+          padding: EdgeInsets.fromLTRB(0, 16, 0, addActionListBottomPadding(context)),
           children: [
             ResponsiveCenter(
               maxWidth: 760,
@@ -694,7 +694,7 @@ class _EvProfileEditorState extends ConsumerState<EvProfileEditor> {
             )
           : null,
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+        padding: EdgeInsets.fromLTRB(16, 8, 16, fabListBottomPadding(context)),
         children: [
           ResponsiveCenter(
             maxWidth: 900,

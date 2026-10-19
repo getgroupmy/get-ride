@@ -149,9 +149,12 @@ void main() {
     Future<(_FakeRides, StreamController<RideRequest>, StreamController<LatLng>)> pump(
       WidgetTester tester, {
       Map<String, Object> prefs = const {},
+      Size size = const Size(1200, 2400),
+      bool dark = false,
+      double textScale = 1,
     }) async {
       SharedPreferences.setMockInitialValues(prefs);
-      tester.view.physicalSize = const Size(1200, 2400);
+      tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final rides = _FakeRides();
@@ -169,7 +172,14 @@ void main() {
             walletBalancesProvider.overrideWith((ref) async => const []),
             walletTxProvider.overrideWith((ref) async => const []),
           ],
-          child: const MaterialApp(home: RideTrackingScreen(requestId: 'r1')),
+          child: MaterialApp(
+            theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+              child: child!,
+            ),
+            home: const RideTrackingScreen(requestId: 'r1'),
+          ),
         ),
       );
       return (rides, rows, gps);
@@ -325,7 +335,10 @@ void main() {
       expect(find.text('Your driver cancelled this ride: Passenger no-show'), findsOneWidget);
       expect(find.text('Call'), findsNothing, reason: 'no contact once cancelled');
       expect(find.byKey(const ValueKey('ride-message')), findsNothing);
-      expect(find.text('Closing in 5s'), findsOneWidget);
+      // It stays for the rider to leave (web tester #131, WCAG 2.2.1).
+      expect(find.textContaining('Closing in'), findsNothing);
+      await tester.pump(const Duration(seconds: 10));
+      expect(find.byKey(const ValueKey('ride-book-again')), findsOneWidget);
     });
 
     testWidgets('a ride opened already cancelled stays, with the reason and Book another ride', (tester) async {
@@ -333,11 +346,53 @@ void main() {
       rows.add(ride('cancelled', askedBy: 'partner', reason: 'passenger_no_show'));
       await settle(tester);
       expect(find.textContaining('Closing in'), findsNothing, reason: 'no countdown home');
-      expect(find.byKey(const ValueKey('ride-cancel-reason')), findsOneWidget);
+      // The reason once (156): the driver's card says it, so no "Reason:" line.
+      expect(find.textContaining('Passenger no-show'), findsOneWidget);
+      expect(find.byKey(const ValueKey('ride-cancel-reason')), findsNothing);
       expect(find.byKey(const ValueKey('ride-not-charged')), findsOneWidget, reason: 'not its quote as a price');
       expect(find.byKey(const ValueKey('ride-book-again')), findsOneWidget);
       await tester.pump(const Duration(seconds: 10));
       expect(find.byKey(const ValueKey('ride-book-again')), findsOneWidget, reason: 'still on the page');
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('the driver card puts the plate on its own line, as a plate (${dark ? 'dark' : 'light'})', (tester) async {
+        final (_, rows, _) = await pump(tester, size: const Size(412, 915), dark: dark, textScale: 1.3);
+        rows.add(RideRequest({
+          ...ride('accepted').raw,
+          'partner_vehicle': 'White Perodua Bezza',
+          'partner_plate': 'VAB 1234',
+          'partner_rating': 4.8,
+        }));
+        await settle(tester);
+        final vehicle = find.byKey(const ValueKey('driver-vehicle'));
+        final plate = find.byKey(const ValueKey('driver-plate'));
+        expect(vehicle, findsOneWidget);
+        expect(plate, findsOneWidget);
+        expect(find.textContaining('Bezza ·'), findsNothing, reason: 'no "car · plate" line to break');
+        // #434's card: the plate first, on its own line, the car under it.
+        expect(tester.getRect(vehicle).top, greaterThanOrEqualTo(tester.getRect(plate).bottom));
+        final plateText = tester.widget<Text>(find.descendant(of: plate, matching: find.byType(Text)));
+        expect(plateText.maxLines, 1);
+        expect(find.byIcon(Icons.star), findsWidgets);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets("the driver's own words show once too", (tester) async {
+      final (_, rows, _) = await pump(tester);
+      rows.add(ride('cancelled', askedBy: 'partner', reason: 'Flat tyre on the highway'));
+      await settle(tester);
+      expect(find.textContaining('Flat tyre on the highway'), findsOneWidget);
+      expect(find.byKey(const ValueKey('ride-cancel-reason')), findsNothing);
+    });
+
+    testWidgets("the passenger's own cancel keeps its Reason line", (tester) async {
+      final (_, rows, _) = await pump(tester);
+      rows.add(ride('cancelled', reason: 'Changed my plans'));
+      await settle(tester);
+      expect(find.byKey(const ValueKey('ride-cancel-reason')), findsOneWidget);
+      expect(find.textContaining('Changed my plans'), findsOneWidget);
     });
 
     testWidgets("the driver's request to cancel is a popup the passenger answers", (tester) async {

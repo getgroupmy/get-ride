@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_permissions.dart';
+import '../../core/permission_ask.dart';
 import '../../data/permission_probe.dart';
+import '../permissions/permission_actions.dart';
 
 final permissionStatusesProvider = FutureProvider.autoDispose<Map<AppPermission, PermState>>(
   (ref) => ref.watch(permissionProbeProvider).statuses(),
@@ -47,7 +49,15 @@ class _PermissionsCardState extends ConsumerState<PermissionsCard> {
 
   Future<void> _change(AppPermission p, PermState s) async {
     final probe = ref.read(permissionProbeProvider);
-    if (s == PermState.notAsked) {
+    final kind = switch (p) {
+      AppPermission.location => AskKind.location,
+      AppPermission.notifications => AskKind.notifications,
+      _ => null,
+    };
+    if (kind != null && s != PermState.granted && s != PermState.limited) {
+      // Asked again where the phone still can; else why not, and Settings.
+      await askPermission(context, probe, kind, explain: s == PermState.notAsked);
+    } else if (s == PermState.notAsked) {
       await probe.request(p);
     } else {
       await probe.openAppSettings();

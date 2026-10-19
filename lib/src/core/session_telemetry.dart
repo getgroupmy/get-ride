@@ -71,14 +71,39 @@ class IpInfo {
   };
 }
 
+/// The `ip-lookup` request for the caller's address alone (no ISP).
+const ipOnlyBody = <String, dynamic>{'ip_only': true};
+
 /// The `ip-lookup` answer, looked up once per launch and shared: every
-/// session row of the launch and the device blacklist check reuse it. A
-/// failed or empty lookup is tried again by the next caller.
+/// session row of the launch reuses it. The device blacklist check only needs
+/// the address, so it asks for that alone ([publicIp], `ip_only`: no rate
+/// check and no ISP lookup on the server) instead of waiting for the full
+/// answer; the full one fills the session rows when it comes. A failed or
+/// empty lookup is tried again by the next caller.
 class LaunchIpCache {
   Future<IpInfo?>? _inFlight;
+  Future<String?>? _ipInFlight;
+  String? _ip;
 
   /// The answer, once one came back.
   IpInfo? value;
+
+  /// The public address as far as known: the full answer's, or the
+  /// address-only one's.
+  String? get knownIp => value?.publicIp ?? _ip;
+
+  /// The public address, asked once per launch with [lookupIp] unless the
+  /// full answer (or an earlier address-only one) already has it.
+  Future<String?> publicIp(Future<String?> Function() lookupIp) {
+    final known = knownIp;
+    if (known != null) return Future.value(known);
+    return _ipInFlight ??= Future.sync(lookupIp)
+        .then((ip) {
+          if (ip != null) _ip = ip;
+          return value?.publicIp ?? ip;
+        })
+        .whenComplete(() => _ipInFlight = null);
+  }
 
   Future<IpInfo?> get(Future<IpInfo?> Function() lookup) {
     final known = value;

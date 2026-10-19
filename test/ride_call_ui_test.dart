@@ -93,6 +93,11 @@ class _Repo implements RideCallRepository {
   @override
   Future<List<Map<String, dynamic>>> iceServers() async => parseIceServers(null);
 
+  var prefetches = 0;
+
+  @override
+  void prefetchIceServers() => prefetches++;
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -245,6 +250,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(repo.log, ['ring:r1']);
       expect(router.state.matchedLocation, '/ride-call/k1');
+      // The relay credentials are fetched ahead, while it rings.
+      expect(repo.prefetches, greaterThan(0));
       expect(find.text('Ravi'), findsOneWidget);
       expect(find.text('Calling…'), findsOneWidget);
       expect(media.log, ['open']);
@@ -290,6 +297,7 @@ void main() {
       expect(router.state.matchedLocation, '/ride-call/k1', reason: 'it rings full screen over the trip');
       expect(find.text('Aina'), findsOneWidget);
       expect(find.text('Incoming call'), findsOneWidget);
+      expect(repo.prefetches, greaterThan(0), reason: 'credentials fetched while it rings');
       expect(find.byKey(const ValueKey('ride-call-mute')), findsNothing);
       expect(keyColour(tester, 'ride-call-accept'), scheme.primary);
       expect(keyColour(tester, 'ride-call-decline'), scheme.error);
@@ -312,6 +320,85 @@ void main() {
       expect(repo.log.last, 'finish:ended');
       expect(find.text('trip'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  }
+
+  // Web round 38 (175): a web tab signed in to the same account as the
+  // phone never answers or joins a call it didn't take.
+  for (final brightness in Brightness.values) {
+    testWidgets('175: answered on another device while ringing here: a notice and Close, no call '
+        '(${brightness.name})', (tester) async {
+      final router = await pump(tester, me: driver, brightness: brightness);
+      repo.incoming.add(RideCall(callRow()));
+      await tester.pumpAndSettle();
+      expect(router.state.matchedLocation, '/ride-call/k1');
+      expect(find.byKey(const ValueKey('ride-call-accept')), findsOneWidget);
+      // The phone answers it.
+      repo.rows.add(RideCall(callRow(status: 'answered')));
+      await tester.pumpAndSettle();
+      expect(find.text('Answered on another device'), findsOneWidget);
+      expect(find.byKey(const ValueKey('ride-call-close')), findsOneWidget);
+      for (final k in ['ride-call-mute', 'ride-call-end', 'ride-call-speaker', 'ride-call-accept', 'ride-call-decline']) {
+        expect(find.byKey(ValueKey(k)), findsNothing, reason: k);
+      }
+      expect(media.log, isEmpty, reason: 'no microphone, no peer connection');
+      expect(repo.log.where((l) => l.startsWith('answer') || l.startsWith('signal')), isEmpty);
+      await tester.tap(find.byKey(const ValueKey('ride-call-close')));
+      await tester.pumpAndSettle();
+      expect(find.text('trip'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('175: opening or reloading the page of a call answered elsewhere never joins it '
+        '(${brightness.name})', (tester) async {
+      final router = await pump(tester, me: driver, brightness: brightness);
+      repo.current = callRow(status: 'answered');
+      unawaited(router.push('/ride-call/k1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Answered on another device'), findsOneWidget);
+      expect(find.byKey(const ValueKey('ride-call-mute')), findsNothing);
+      expect(media.log, isEmpty);
+      // Entered again (a reload, Back and forward): the same.
+      router.pop();
+      await tester.pumpAndSettle();
+      unawaited(router.push('/ride-call/k1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Answered on another device'), findsOneWidget);
+      expect(media.log, isEmpty);
+      expect(repo.log, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('175: a web address with ?answer=1 never answers by itself (${brightness.name})', (tester) async {
+      final router = await pump(tester, me: driver, brightness: brightness);
+      unawaited(router.push('/ride-call/k1?answer=1'));
+      await tester.pumpAndSettle();
+      expect(repo.log, isEmpty, reason: 'only a tap answers where there is no phone call screen');
+      expect(find.byKey(const ValueKey('ride-call-accept')), findsOneWidget);
+      expect(media.log, isEmpty);
+      // The tap does.
+      await tester.tap(find.byKey(const ValueKey('ride-call-accept')));
+      await tester.pump();
+      await tester.pump();
+      expect(repo.log, ['answer:k1']);
+      expect(media.log, ['open']);
+      expect(find.byKey(const ValueKey('ride-call-mute')), findsOneWidget);
+      expect(find.text('Answered on another device'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('ride-call-end')));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('175: the account\'s other device placing a call shows here without joining (${brightness.name})',
+        (tester) async {
+      final router = await pump(tester, me: rider, brightness: brightness);
+      // The rider's phone rang the driver; this tab opens that call's page.
+      unawaited(router.push('/ride-call/k1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Calling from another device'), findsOneWidget);
+      expect(find.byKey(const ValueKey('ride-call-close')), findsOneWidget);
+      expect(media.log, isEmpty);
+      expect(repo.log, isEmpty);
     });
   }
 

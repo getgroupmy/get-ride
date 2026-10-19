@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -35,6 +36,12 @@ import 'road_info_layers.dart';
   ).fit(MapCamera(crs: const Epsg3857(), center: first, zoom: 14, rotation: 0, nonRotatedSize: size));
   return (center: fitted.center, zoom: fitted.zoom);
 }
+
+/// The least zoom at which one copy of the world spans a map [width] wide
+/// (256 px a tile), so flutter_map never draws it, and the pins on it,
+/// twice side by side. 0 for an unbounded or empty width.
+double worldOnceZoom(double width) =>
+    width.isFinite && width > 256 ? math.log(width / 256) / math.ln2 + 0.05 : 0;
 
 /// How far up from the map's bottom edge (or the sheet over it) the
 /// bottom-right map buttons start. The OpenStreetMap credit sits bottom
@@ -155,6 +162,7 @@ class RideMap extends StatefulWidget {
     this.onTap,
     this.controller,
     this.extraMarkers = const [],
+    this.topMarkers = const [],
     this.framed = const [],
     this.satellite = false,
     this.autoFit = true,
@@ -189,6 +197,10 @@ class RideMap extends StatefulWidget {
 
   /// Further marks drawn above the route (toll booths and the like).
   final List<Marker> extraMarkers;
+
+  /// Labels drawn over everything, the car included (the request map's
+  /// time and distance chips, which the car near the drop-off covered).
+  final List<Marker> topMarkers;
 
   /// Further points the camera keeps in frame (the driver home map's
   /// request pickups).
@@ -267,6 +279,7 @@ class _RideMapState extends State<RideMap> {
   @override
   void didUpdateWidget(covariant RideMap old) {
     super.didUpdateWidget(old);
+    _shown.value = widget;
     if (_ready &&
         widget.autoFit &&
         (old.pickup != widget.pickup ||
@@ -318,6 +331,41 @@ class _RideMapState extends State<RideMap> {
   }
 
   @override
+  void dispose() {
+    _shown.dispose();
+    super.dispose();
+  }
+
+  /// The map's moving parts (pins, the car, the route): handed to the layers
+  /// that draw them through here, so a new position redraws those layers
+  /// alone. The [FlutterMap] itself, its options and its base tiles are kept
+  /// as they are, and the tiles redraw only when the camera moves.
+  late final _shown = ValueNotifier<RideMap>(widget);
+
+  /// The parts of the map kept from one build to the next (see [_shown]).
+  MapOptions? _options;
+  Widget? _base, _credit;
+  bool? _baseSatellite;
+  (bool, bool)? _creditFor;
+  FlutterMap? _map;
+  late final Widget _layers = ValueListenableBuilder<RideMap>(
+    valueListenable: _shown,
+    builder: (context, w, _) => _movingLayers(context, w),
+  );
+
+  void _onTap(TapPosition _, LatLng p) => widget.onTap?.call(p);
+
+  void _onPositionChanged(MapCamera _, bool gesture) {
+    if (gesture) widget.onGesture?.call();
+  }
+
+  void _onMapReady() {
+    _ready = true;
+    if (widget.autoFit) _fit();
+    widget.onReady?.call();
+  }
+
+  @override
   Widget build(BuildContext context) {
     // The opening view is worked out here, against the size the map is laid
     // out at, rather than handed to flutter_map as `initialCameraFit`: that
@@ -327,150 +375,178 @@ class _RideMapState extends State<RideMap> {
     // drop-off — then showed only grey until it was dragged.
     return LayoutBuilder(
       builder: (context, constraints) {
-        final start = openingView(
-          _points,
-          widget.route,
-          Size(constraints.maxWidth, constraints.maxHeight),
-          bottom: MapBottomInset.of(context) + widget.fitBottom - 64,
-          top: widget.fitTop,
-          pointZoom: widget.pointZoom,
-        );
-        return FlutterMap(
-          mapController: _controller,
-          options: MapOptions(
+        // Only the first opens the map: flutter_map keeps its camera through
+        // later options, so they are made once and kept (new options would
+        // redraw every layer, the tiles included).
+        _options ??= () {
+          final start = openingView(
+            _points,
+            widget.route,
+            Size(constraints.maxWidth, constraints.maxHeight),
+            bottom: MapBottomInset.of(context) + widget.fitBottom - 64,
+            top: widget.fitTop,
+            pointZoom: widget.pointZoom,
+          );
+          final minZoom = worldOnceZoom(constraints.maxWidth);
+          return MapOptions(
             initialCenter: start.center,
-            initialZoom: start.zoom,
+            initialZoom: math.max(start.zoom, minZoom),
+            // Never so far out that the world shows twice across the map, its
+            // pins and labels with it (a wide, short map framing a ride).
+            minZoom: minZoom,
             // North stays up: two fingers pinch and pan but never turn the
             // map (a trip map that follows the car still turns it itself).
-            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
-            onTap: widget.onTap == null ? null : (_, p) => widget.onTap!(p),
-            onPositionChanged: widget.onGesture == null
-                ? null
-                : (_, gesture) {
-                    if (gesture) widget.onGesture!();
-                  },
-            onMapReady: () {
-              _ready = true;
-              if (widget.autoFit) _fit();
-              widget.onReady?.call();
-            },
-          ),
-          children: [
-            baseTileLayer(context, satellite: widget.satellite),
-            ...widget.tileOverlays,
-            if (widget.route.length > 1)
-              PolylineLayer(
-                polylines: [
-                  widget.dotPins
-                      ? Polyline(points: widget.route, strokeWidth: 4, color: _markerInk(context).fill)
-                      : Polyline(points: widget.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
-                ],
-              ),
-            if (widget.trafficSignals) const TrafficSignalsLayer(),
-            ...widget.extraLayers,
-            if (widget.extraMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: widget.extraMarkers),
-            MarkerLayer(
-              // Pins stand upright on a map turned to the car's heading…
-              rotate: true,
-              markers: [
-                if (widget.me != null)
-                  Marker(
-                    point: widget.me!,
-                    width: 22,
-                    height: 22,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.blue,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 3),
-                        boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black26)],
-                      ),
-                    ),
-                  ),
-                if (widget.dotPins) ...[
-                  if (widget.pickup != null && widget.showPickup) _pickupBadge(widget.pickup!),
-                  for (var i = 0; i < widget.stops.length; i++)
-                    _badge(
-                      widget.stops[i],
-                      'stop-$i',
-                      size: 26,
-                      glyph: (ink) => Text(
-                        '${i + 1}',
-                        style: TextStyle(color: ink, fontSize: 14, fontWeight: FontWeight.w700, height: 1),
-                      ),
-                    ),
-                  if (widget.drop != null)
-                    _badge(widget.drop!, 'drop', glyph: (ink) => Icon(Icons.flag, color: ink, size: 22)),
-                ],
-                if (!widget.dotPins && widget.pickup != null && widget.showPickup)
-                  Marker(
-                    point: widget.pickup!,
-                    width: pickupPinHead,
-                    height: pickupPinHeight,
-                    alignment: Alignment.topCenter,
-                    child: const PickupPin(),
-                  ),
-                if (!widget.dotPins)
-                  for (var i = 0; i < widget.stops.length; i++)
-                  Marker(
-                    point: widget.stops[i],
-                    width: 26,
-                    height: 26,
-                    child: CircleAvatar(
-                      backgroundColor: Colors.orange.shade800,
-                      child: Text(
-                        '${i + 1}',
-                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ),
-                if (!widget.dotPins && widget.drop != null) _pin(widget.drop!, Colors.red.shade700, Icons.location_on),
-                if (widget.driver != null)
-                  Marker(
-                    point: widget.driver!,
-                    // …but the car turns with the map, so it keeps pointing
-                    // the way it drives.
-                    rotate: false,
-                    width: 40,
-                    height: 40,
-                    child: CircleAvatar(
-                      backgroundColor: Colors.black,
-                      child: widget.driverHeading == null
-                          ? const Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22)
-                          : Transform.rotate(
-                              key: const ValueKey('driver-heading'),
-                              angle: widget.driverHeading! * math.pi / 180,
-                              child: const Icon(Icons.navigation, color: Color(0xFFFFD400), size: 22),
-                            ),
-                    ),
-                  ),
-              ],
-            ),
-            // Above any sheet floating over the map, so the credit stays reachable.
-            MapBottomInset.listen(
-              context,
-              (inset) => TweenAnimationBuilder<double>(
-                tween: Tween(end: widget.hideCredit ? 1 : 0),
-                duration: MapSheetLayout.hideDuration,
-                curve: widget.hideCredit ? Curves.easeIn : Curves.easeOut,
-                builder: (_, t, child) => IgnorePointer(
-                  ignoring: widget.hideCredit,
-                  child: Opacity(
-                    opacity: 1 - t,
-                    // Down past the map's bottom edge, as the sheet goes.
-                    child: Transform.translate(offset: Offset(0, t * (inset + 56)), child: child),
-                  ),
-                ),
-                child: Padding(
-                  key: const ValueKey('map-credit'),
-                  padding: EdgeInsets.only(bottom: inset),
-                  child: MapCreditLayer(satellite: widget.satellite),
-                ),
-              ),
-            ),
-          ],
-        );
+            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate, keyboardOptions: mapKeyboardOptions),
+            onTap: _onTap,
+            onPositionChanged: _onPositionChanged,
+            onMapReady: _onMapReady,
+          );
+        }();
+        // The base tiles follow the theme and Admin → Settings → Maps by
+        // themselves; only satellite makes new ones.
+        if (_baseSatellite != widget.satellite) {
+          _baseSatellite = widget.satellite;
+          _base = baseTileLayer(context, satellite: widget.satellite);
+        }
+        final creditFor = (widget.hideCredit, widget.satellite);
+        if (_creditFor != creditFor) {
+          _creditFor = creditFor;
+          _credit = _creditLayer(widget.hideCredit, widget.satellite);
+        }
+        final children = [_base!, ...widget.tileOverlays, _layers, _credit!];
+        final kept = _map;
+        if (kept == null || !listEquals(kept.children, children)) {
+          _map = FlutterMap(mapController: _controller, options: _options!, children: children);
+        }
+        return _map!;
       },
+    );
+  }
+
+  /// The OpenStreetMap credit, above any sheet floating over the map so it
+  /// stays reachable.
+  static Widget _creditLayer(bool hide, bool satellite) => Builder(
+    builder: (context) => MapBottomInset.listen(
+      context,
+      (inset) => TweenAnimationBuilder<double>(
+        tween: Tween(end: hide ? 1 : 0),
+        duration: MapSheetLayout.hideDuration,
+        curve: hide ? Curves.easeIn : Curves.easeOut,
+        builder: (_, t, child) => IgnorePointer(
+          ignoring: hide,
+          child: Opacity(
+            opacity: 1 - t,
+            // Down past the map's bottom edge, as the sheet goes.
+            child: Transform.translate(offset: Offset(0, t * (inset + 56)), child: child),
+          ),
+        ),
+        child: Padding(
+          key: const ValueKey('map-credit'),
+          padding: EdgeInsets.only(bottom: inset),
+          child: MapCreditLayer(satellite: satellite),
+        ),
+      ),
+    ),
+  );
+
+  /// The route, pins and car of [w], over the base tiles: what a new
+  /// position redraws. Stacked as flutter_map stacks its own layers.
+  Widget _movingLayers(BuildContext context, RideMap w) {
+    final ink = _markerInk(context);
+    return Stack(
+      fit: StackFit.passthrough,
+      children: [
+        if (w.route.length > 1)
+          PolylineLayer(
+            polylines: [
+              w.dotPins
+                  ? Polyline(points: w.route, strokeWidth: 4, color: ink.fill)
+                  : Polyline(points: w.route, strokeWidth: 5, color: const Color(0xFF2DABE2)),
+            ],
+          ),
+        if (w.trafficSignals) const TrafficSignalsLayer(),
+        ...w.extraLayers,
+        if (w.extraMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: w.extraMarkers),
+        MarkerLayer(
+          // Pins stand upright on a map turned to the car's heading…
+          rotate: true,
+          markers: [
+            if (w.me != null)
+              Marker(
+                point: w.me!,
+                width: 22,
+                height: 22,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.blue,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                    boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black26)],
+                  ),
+                ),
+              ),
+            if (w.dotPins) ...[
+              if (w.pickup != null && w.showPickup) _pickupBadge(w.pickup!, ink),
+              for (var i = 0; i < w.stops.length; i++)
+                _badge(
+                  w.stops[i],
+                  'stop-$i',
+                  ink,
+                  size: 26,
+                  glyph: (ink) => Text(
+                    '${i + 1}',
+                    style: TextStyle(color: ink, fontSize: 14, fontWeight: FontWeight.w700, height: 1),
+                  ),
+                ),
+              if (w.drop != null)
+                _badge(w.drop!, 'drop', ink, glyph: (ink) => Icon(Icons.flag, color: ink, size: 22)),
+            ],
+            if (!w.dotPins && w.pickup != null && w.showPickup)
+              Marker(
+                point: w.pickup!,
+                width: pickupPinHead,
+                height: pickupPinHeight,
+                alignment: Alignment.topCenter,
+                child: const PickupPin(),
+              ),
+            if (!w.dotPins)
+              for (var i = 0; i < w.stops.length; i++)
+              Marker(
+                point: w.stops[i],
+                width: 26,
+                height: 26,
+                child: CircleAvatar(
+                  backgroundColor: Colors.orange.shade800,
+                  child: Text(
+                    '${i + 1}',
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            if (!w.dotPins && w.drop != null) _pin(w.drop!, Colors.red.shade700, Icons.location_on),
+            if (w.driver != null)
+              Marker(
+                point: w.driver!,
+                // …but the car turns with the map, so it keeps pointing
+                // the way it drives.
+                rotate: false,
+                width: 40,
+                height: 40,
+                child: CircleAvatar(
+                  backgroundColor: Colors.black,
+                  child: w.driverHeading == null
+                      ? const Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22)
+                      : Transform.rotate(
+                          key: const ValueKey('driver-heading'),
+                          angle: w.driverHeading! * math.pi / 180,
+                          child: const Icon(Icons.navigation, color: Color(0xFFFFD400), size: 22),
+                        ),
+                ),
+              ),
+          ],
+        ),
+        if (w.topMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: w.topMarkers),
+      ],
     );
   }
 
@@ -483,8 +559,13 @@ class _RideMapState extends State<RideMap> {
 
   /// A rounded square on the point holding [glyph] (a stop's number, the
   /// drop-off's flag).
-  Marker _badge(LatLng p, String name, {double size = confirmBadgeSize, required Widget Function(Color ink) glyph}) {
-    final c = _markerInk(context);
+  static Marker _badge(
+    LatLng p,
+    String name,
+    ({Color fill, Color ink}) c, {
+    double size = confirmBadgeSize,
+    required Widget Function(Color ink) glyph,
+  }) {
     return Marker(
       point: p,
       width: size,
@@ -504,8 +585,7 @@ class _RideMapState extends State<RideMap> {
 
   /// The pickup: the waving rider in a rounded square, stood just above a
   /// ringed dot on the point itself.
-  Marker _pickupBadge(LatLng p) {
-    final c = _markerInk(context);
+  static Marker _pickupBadge(LatLng p, ({Color fill, Color ink}) c) {
     const gap = confirmPickupGap, dot = confirmPickupDot;
     const h = confirmBadgeSize + gap + dot;
     return Marker(

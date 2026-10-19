@@ -7,6 +7,7 @@ import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/app_branding.dart';
 import 'package:get_ride/src/core/app_builds.dart';
 import 'package:get_ride/src/features/install/app_install_screen.dart';
+import 'package:get_ride/src/core/format.dart' show formatDateTime;
 import 'package:get_ride/src/widgets/app_build_widgets.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -294,6 +295,34 @@ void main() {
       expect(find.byKey(const ValueKey('install-icon-admin')), findsOneWidget);
       expect(find.text('For iPhone'), findsOneWidget);
     });
+
+    for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+      testWidgets('at 317 px the date has a line of its own, never broken inside (${mode.name})', (tester) async {
+        final b = AppBuild.fromJson('android', {
+          'available': true,
+          'version': '1.4.10',
+          'build': '137',
+          'size': 147 * 1024 * 1024,
+          'installable': true,
+          'download_url': _apk,
+          'install_url': _apk,
+          'created_at': '2026-10-18T15:31:00Z',
+        });
+        final lines = appBuildSummaryLines(b);
+        expect(lines, hasLength(2));
+        expect(lines.first.replaceAll('\u00A0', ' '), '1.4.10 (137) · 147 MB');
+        expect(lines.last, isNot(contains(' ')), reason: 'the date is kept whole');
+        expect(lines.last.replaceAll('\u00A0', ' '), formatDateTime(b.createdAt));
+        await pump(tester, 'android', b, size: const Size(317, 900), mode: mode);
+        expect(find.byKey(const ValueKey('install-summary-0')), findsOneWidget);
+        expect(find.byKey(const ValueKey('install-summary-1')), findsOneWidget);
+        expect(
+          tester.getRect(find.byKey(const ValueKey('install-summary-1'))).top,
+          greaterThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('install-summary-0'))).bottom),
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('an unknown platform is not a page', (tester) async {
       await pump(tester, 'windows', const AppBuild(platform: 'windows'));

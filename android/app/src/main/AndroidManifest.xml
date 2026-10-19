@@ -365,6 +365,11 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- Settings → Navigation app greys out Waze when it is not installed. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="waze" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

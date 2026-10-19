@@ -87,7 +87,8 @@ void main() {
     test('the partner and sign-up avatar pickers cut square', () {
       expect(identical(const PartnerOnboardingScreen().pickAvatar, pickAvatarImage), isTrue);
       expect(identical(const SignupPhotoScreen(next: '/').pickPhoto, pickAvatarImage), isTrue);
-      expect(identical(const PartnerOnboardingScreen().pickPhoto, pickImage), isTrue, reason: 'the ID is not squared');
+      expect(identical(const PartnerOnboardingScreen().pickPhoto, pickDocumentImage), isTrue,
+          reason: 'the ID is not squared, but is scaled down');
     });
   });
 }

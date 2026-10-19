@@ -30,3 +30,26 @@ Any list the user picks from that can get long gets a search box
 - Long chip, tick-box or record lists sit inside `ListSearchFilter`.
 
 `test/search_select_test.dart` fails when a plain `DropdownButtonFormField` is used.
+
+## Dates are typed in separate boxes
+
+Every date the user enters — rider, driver or admin — is a `DateBoxesField`
+(`lib/src/widgets/date_boxes.dart`): a day, a month and a year box with the
+calendar as a shortcut button.
+
+- The boxes follow the user's country (`lib/src/core/date_order.dart`):
+  `dateOrderFor` gives day first for most countries, month first for the US
+  and the Philippines, year first for China, Japan, Korea and a few others.
+  The country is the profile's (`profiles.nationality`), else the phone's,
+  else Malaysia.
+- Give it a `controller` to keep the date as `yyyy-mm-dd`, as stored, and
+  `firstDate` / `lastDate` for limits (an expiry from today, a birth date in
+  the past).
+- Show a date the user typed with `formatDateForUser` / `formatStoredDateForUser`
+  so it reads in the same order.
+- Open the calendar with `pickDateFromCalendar`, never a bare `showDatePicker`.
+
+`test/date_boxes_test.dart` fails when a single-box date field (a `YYYY-MM-DD`
+hint, `TextInputType.datetime`) or a bare `showDatePicker` appears outside the
+widget, unless that file is on its allow-list with the reason (report date-range
+filters, date-and-time pickers).

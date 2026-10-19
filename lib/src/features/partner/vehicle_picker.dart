@@ -121,9 +121,13 @@ class _CurrentVehicleCardState extends ConsumerState<CurrentVehicleCard> {
 /// Every vehicle the driver may drive, with its role and whether it can be
 /// taken now. Pops with the chosen one.
 class VehiclePickerSheet extends StatelessWidget {
-  const VehiclePickerSheet({super.key, required this.vehicles});
+  const VehiclePickerSheet({super.key, required this.vehicles, this.preselect});
 
   final List<AssignableVehicle> vehicles;
+
+  /// The vehicle picked out to start with (the only one that can be
+  /// driven): highlighted and focused, taken with a tap or Enter.
+  final String? preselect;
 
   @override
   Widget build(BuildContext context) {
@@ -144,6 +148,8 @@ class VehiclePickerSheet extends StatelessWidget {
       ListTile(
                 key: ValueKey('pick-${v.id}'),
                 enabled: v.selectable,
+                selected: v.id == preselect,
+                autofocus: v.id == preselect,
                 leading: Icon(
                   v.inUseByMe ? Icons.check_circle : Icons.directions_car_outlined,
                   color: v.inUseByMe ? Colors.green : null,

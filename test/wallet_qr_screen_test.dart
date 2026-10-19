@@ -51,6 +51,9 @@ void main() {
     expect(tester.widget<QrImageView>(find.byKey(const ValueKey('wallet-qr'))), isNotNull);
     expect(find.text(walletAccountNumber(_me)), findsOneWidget);
 
+    // Under the pinned Share bar on this short screen: scrolled to first.
+    await tester.ensureVisible(find.byKey(const ValueKey('qr-amount')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('qr-amount')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '12.5');
@@ -60,21 +63,31 @@ void main() {
 
     await tester.pump(const Duration(seconds: 61));
     expect(find.text('QR code expired'), findsOneWidget);
+    // Under the pinned Share bar on this short screen: scrolled to first.
+    await tester.ensureVisible(find.text('Regenerate'));
+    await tester.pump();
     await tester.tap(find.text('Regenerate'));
     await tester.pump();
     expect(find.text('Valid for 60s'), findsOneWidget);
+    // Under the pinned Share bar on this short screen: scrolled to first.
+    await tester.ensureVisible(find.text('Cancel amount'));
+    await tester.pump();
     await tester.tap(find.text('Cancel amount'));
     await tester.pump();
     expect(find.textContaining('Valid for'), findsNothing);
   });
 
-  testWidgets('the GET.coin code shows the wallet id and coin balance', (tester) async {
+  testWidgets('the GET.coin code shows the same account number as Receive, and the coin balance', (tester) async {
     tester.view.physicalSize = const Size(1000, 2400);
     addTearDown(tester.view.reset);
     await tester.pumpWidget(_app(const ReceiveQrScreen(coin: true)));
     await tester.pumpAndSettle();
     expect(find.text('Scan to send GET.coin to Aina Hassan'), findsOneWidget);
-    expect(find.text(_me), findsOneWidget);
+    expect(find.text('Account no.'), findsOneWidget);
+    expect(find.text(walletAccountNumber(_me)), findsOneWidget);
+    // The internal user id is not shown to the rider (the code carries it).
+    expect(find.text('Wallet ID'), findsNothing);
+    expect(find.text(_me), findsNothing);
     expect(find.textContaining('GET.coin 300'), findsOneWidget);
     expect(find.byKey(const ValueKey('qr-amount')), findsNothing);
   });

@@ -266,6 +266,15 @@ final class PermissionsPlugin: NSObject, FlutterPlugin, CLLocationManagerDelegat
       result(["camera": Self.camera(), "bluetooth": Self.bluetooth(), "location": locationStatus()])
     case "requestLocationAlways":
       requestAlways(result)
+    case "openNotificationSettings":
+      // The app's Notifications page where iOS has one (16+), else its page.
+      var link = UIApplication.openSettingsURLString
+      if #available(iOS 16.0, *) { link = UIApplication.openNotificationSettingsURLString }
+      guard let url = URL(string: link) else {
+        result(false)
+        return
+      }
+      UIApplication.shared.open(url) { opened in result(opened) }
     default:
       result(FlutterMethodNotImplemented)
     }

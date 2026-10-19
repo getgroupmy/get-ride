@@ -7,6 +7,7 @@ import '../../core/ride_bidding.dart';
 import '../../data/models.dart';
 import '../../data/ride_repository.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/chip_button.dart';
 
 /// Asks how much to counter-offer on [r]; answers the amount, or null.
 Future<double?> askCounterOffer(BuildContext context, RideRequest r) => showAppSheet<double>(id: 'driver.counter-offer',
@@ -51,7 +52,7 @@ class _OfferSheetState extends State<_OfferSheet> {
         children: [
           Text('Make an offer', style: t.textTheme.titleLarge),
           Text(
-            'The rider asks ${r.fareText(_fare)} for ${r.pickupLabel} → ${r.dropLabel}.',
+            'The rider asks ${r.fareText(_fare)} for ${r.pickupLabel} to ${r.dropLabel}.',
             style: t.textTheme.bodyMedium,
           ),
           const SizedBox(height: 12),
@@ -59,7 +60,7 @@ class _OfferSheetState extends State<_OfferSheet> {
             spacing: 8,
             children: [
               for (final p in counterOfferPresets(_fare))
-                ActionChip(
+                ActionChipButton(
                   label: Text(r.fareText(p)),
                   onPressed: () => setState(() => _c.text = p.toStringAsFixed(0)),
                 ),

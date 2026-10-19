@@ -2,6 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/driver_earnings.dart';
 import 'package:get_ride/src/data/models.dart';
 
+/// An instant given as Malaysia's wall clock.
+DateTime myt(int y, int m, int d, [int h = 0, int min = 0]) => DateTime.utc(y, m, d, h, min).subtract(const Duration(hours: 8));
+
 RideRequest ride(
   String id, {
   String partner = 'me',
@@ -29,25 +32,27 @@ RideRequest ride(
 
 void main() {
   // Thursday 15 October 2026, 18:00 local.
-  final now = DateTime(2026, 10, 15, 18);
+  // Thursday 15 October 2026, 18:00 in Malaysia, whatever the device's zone.
+  final now = myt(2026, 10, 15, 18);
 
   test('periods start at midnight, on Monday, on the 1st', () {
-    expect(earningsPeriodStart(EarningsPeriod.today, now), DateTime(2026, 10, 15));
-    expect(earningsPeriodStart(EarningsPeriod.week, now), DateTime(2026, 10, 12));
-    expect(earningsPeriodStart(EarningsPeriod.month, now), DateTime(2026, 10));
+    expect(earningsPeriodStart(EarningsPeriod.today, now), DateTime.utc(2026, 10, 15));
+    expect(earningsPeriodStart(EarningsPeriod.week, now), DateTime.utc(2026, 10, 12));
+    expect(earningsPeriodStart(EarningsPeriod.week, now, sunday: true), DateTime.utc(2026, 10, 11));
+    expect(earningsPeriodStart(EarningsPeriod.month, now), DateTime.utc(2026, 10));
     // A Monday is its own week's start.
-    expect(earningsPeriodStart(EarningsPeriod.week, DateTime(2026, 10, 12, 9)), DateTime(2026, 10, 12));
+    expect(earningsPeriodStart(EarningsPeriod.week, myt(2026, 10, 12, 9)), DateTime.utc(2026, 10, 12));
   });
 
   final rides = [
-    ride('a', completed: DateTime(2026, 10, 15, 9), fare: 20, commission: 3, km: 8),
-    ride('b', completed: DateTime(2026, 10, 15, 12), fare: 30, tolls: 2.5, commission: 4.5, km: 12.5),
-    ride('c', completed: DateTime(2026, 10, 13, 22), fare: 15, commission: 2.25, km: 5),
-    ride('d', completed: DateTime(2026, 10, 2, 8), fare: 50, commission: 7.5, km: 30),
+    ride('a', completed: myt(2026, 10, 15, 9), fare: 20, commission: 3, km: 8),
+    ride('b', completed: myt(2026, 10, 15, 12), fare: 30, tolls: 2.5, commission: 4.5, km: 12.5),
+    ride('c', completed: myt(2026, 10, 13, 22), fare: 15, commission: 2.25, km: 5),
+    ride('d', completed: myt(2026, 10, 2, 8), fare: 50, commission: 7.5, km: 30),
     // Not counted: taken as a passenger, cancelled, before the month.
-    ride('e', partner: 'someone', rider: 'me', completed: DateTime(2026, 10, 15, 10), fare: 99),
-    ride('f', status: 'cancelled', completed: DateTime(2026, 10, 15, 11), fare: 99),
-    ride('g', completed: DateTime(2026, 9, 30, 23), fare: 99),
+    ride('e', partner: 'someone', rider: 'me', completed: myt(2026, 10, 15, 10), fare: 99),
+    ride('f', status: 'cancelled', completed: myt(2026, 10, 15, 11), fare: 99),
+    ride('g', completed: myt(2026, 9, 30, 23), fare: 99),
   ];
 
   test('today: fares and tolls in, commission out', () {
@@ -57,14 +62,14 @@ void main() {
     expect(s.totals.commission, 7.5);
     expect(s.totals.net, 45);
     expect(s.totals.distanceKm, 20.5);
-    expect(s.days.single.date, DateTime(2026, 10, 15));
+    expect(s.days.single.date, DateTime.utc(2026, 10, 15));
     expect(s.currency, 'MYR');
   });
 
   test('the week and month add up by day, newest first', () {
     final week = summarizeEarnings(rides, driverId: 'me', period: EarningsPeriod.week, now: now);
     expect(week.totals.trips, 3);
-    expect([for (final d in week.days) d.date], [DateTime(2026, 10, 15), DateTime(2026, 10, 13)]);
+    expect([for (final d in week.days) d.date], [DateTime.utc(2026, 10, 15), DateTime.utc(2026, 10, 13)]);
     expect(week.days.last.totals.net, 12.75);
 
     final month = summarizeEarnings(rides, driverId: 'me', period: EarningsPeriod.month, now: now);
@@ -75,7 +80,7 @@ void main() {
 
   test('a commission not yet charged leaves the whole fare', () {
     final s = summarizeEarnings(
-      [ride('x', completed: DateTime(2026, 10, 15, 9), fare: 20)],
+      [ride('x', completed: myt(2026, 10, 15, 9), fare: 20)],
       driverId: 'me',
       period: EarningsPeriod.today,
       now: now,
@@ -92,9 +97,11 @@ void main() {
 
   group('trip history', () {
     test('history reaches back for the month and the eight weeks', () {
-      expect(earningsHistoryStart(now), DateTime(2026, 8, 24));
+      // Malaysia's midnight of Sunday 23 Aug: eight weeks counted from Sunday,
+      // so either week start the admin picks is covered.
+      expect(earningsHistoryStart(now), DateTime.utc(2026, 8, 22, 16));
       // With a short chart late in the month, the month start is the earlier.
-      expect(earningsHistoryStart(DateTime(2026, 12, 31), weeks: 2), DateTime(2026, 12));
+      expect(earningsHistoryStart(myt(2026, 12, 31, 12), weeks: 2), DateTime.utc(2026, 11, 30, 16));
     });
   });
 

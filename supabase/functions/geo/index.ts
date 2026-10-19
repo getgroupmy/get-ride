@@ -19,6 +19,10 @@
 // Place search, reverse, routes, distances, details and address checks need a
 // signed-in user (they spend the keys); tiles and links don't.
 //
+// The app POSTs its parameters as a JSON body to the bare function URL, so
+// a browser asks the CORS preflight once and keeps it (Access-Control-Max-Age);
+// a GET with a query string still works.
+//
 // Deploy (the gateway checks for the project's key or a session):
 //   supabase functions deploy geo
 // ============================================================================
@@ -28,9 +32,11 @@ import countries from "npm:world-countries@5.1.0";
 import { fallbackKey, googleMapType, tokenCacheKey } from "../_shared/geo.ts";
 import {
   errorDetail,
+  geoParams,
   googleSessionBody,
   handleGeo,
   parseGoogleSession,
+  rateTakers,
   RefusedSessions,
 } from "../_shared/geo_handler.ts";
 import { clientIp } from "../_shared/pin_login.ts";
@@ -38,24 +44,49 @@ import { clientIp } from "../_shared/pin_login.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Max-Age": "7200",
 };
 
 const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-// The settings change rarely: read at most every 30 s per instance.
+// Work that goes on after the answer is sent (a count, an error kept, a
+// settings refresh): kept alive by the runtime where it can, else left to
+// finish alone. Never rejects.
+function background(p: Promise<unknown>) {
+  const settled = p.catch((e) => console.error("geo: background:", e instanceof Error ? e.message : "failed"));
+  (globalThis as { EdgeRuntime?: { waitUntil?(p: Promise<unknown>): void } }).EdgeRuntime?.waitUntil?.(settled);
+}
+
+// The settings change rarely: read at most every 30 s per instance, and
+// then in the background while the one held answers (PERF-73). Only a cold
+// instance, or one that held them over a minute, waits for the read; an
+// Admin change shows within 30-60 s.
 let settingsAt = 0;
-let settingsCache: { config: unknown; apiProviders: unknown } = { config: null, apiProviders: null };
+let settingsCache: { config: unknown; apiProviders: unknown } | null = null;
+let settingsRead: Promise<{ config: unknown; apiProviders: unknown }> | null = null;
+
+function readSettings() {
+  // One read at a time, however many requests find them stale.
+  settingsRead ??= (async () => {
+    const { data, error } = await db.from("app_settings").select("key, value").in("key", ["map_config", "api_providers"]);
+    if (error) throw error;
+    const by = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
+    settingsCache = { config: by.map_config ?? null, apiProviders: by.api_providers ?? null };
+    settingsAt = Date.now();
+    return settingsCache;
+  })().finally(() => {
+    settingsRead = null;
+  });
+  return settingsRead;
+}
 
 async function settings() {
-  if (Date.now() - settingsAt < 30_000) return settingsCache;
-  const { data, error } = await db.from("app_settings").select("key, value").in("key", ["map_config", "api_providers"]);
-  if (error) throw error;
-  const by = Object.fromEntries((data ?? []).map((r) => [r.key, r.value]));
-  settingsCache = { config: by.map_config ?? null, apiProviders: by.api_providers ?? null };
-  settingsAt = Date.now();
+  const age = Date.now() - settingsAt;
+  if (!settingsCache || age >= 60_000) return await readSettings();
+  if (age >= 30_000) background(readSettings());
   return settingsCache;
 }
 
@@ -86,6 +117,10 @@ async function callerOf(authorization: string | null): Promise<string | null> {
   return uid;
 }
 
+// The two rate limits in one round trip (geo_take2, migration 0235), or two
+// geo_take calls until that migration is run.
+const limits = rateTakers((fn, args) => db.rpc(fn, args));
+
 async function call(req: { url: string; method?: string; headers?: Record<string, string>; body?: string }) {
   const res = await fetch(req.url, {
     method: req.method ?? "GET",
@@ -105,8 +140,16 @@ async function call(req: { url: string; method?: string; headers?: Record<string
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "GET") return new Response("Method not allowed", { status: 405, headers: corsHeaders });
-  const params = new URL(req.url).searchParams;
+  if (req.method !== "GET" && req.method !== "POST") {
+    return new Response("Method not allowed", { status: 405, headers: corsHeaders });
+  }
+  const params = await geoParams(req);
+  if (!params) {
+    return new Response(JSON.stringify({ error: "Give the parameters as a JSON object." }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
   // A failed call, kept for Admin → Maps → Usage (the last 30 days).
   const logError = async (provider: string, kind: string, detail: string) => {
     await db.rpc("geo_log_error", {
@@ -121,12 +164,11 @@ Deno.serve(async (req) => {
     const answer = await handleGeo(params, clientIp(req.headers), {
       settings,
       call,
-      take: async (bucket, limit) => {
-        const { data, error } = await db.rpc("geo_take", { p_bucket: bucket, p_limit: limit });
-        // Fails closed: a limit that can't be counted refuses.
-        return !error && data === true;
-      },
+      // Both fail closed: a limit that can't be counted refuses.
+      take: limits.take,
+      takePair: limits.takePair,
       caller: () => callerOf(req.headers.get("Authorization")),
+      // Not awaited by the handler: it finishes in the background.
       count: async (provider, kind, ok, cached, detail) => {
         await db.rpc("geo_count", { p_provider: provider, p_kind: kind, p_ok: ok, p_cached: cached });
         if (!ok && detail) await logError(provider, kind, detail).catch(() => {});
@@ -163,8 +205,10 @@ Deno.serve(async (req) => {
         } catch (e) {
           // Google refused (API off, key restricted, billing): say why in the function's logs.
           console.error(`geo: Google ${slot} tile session refused:`, e instanceof Error ? e.message : "failed");
-          await db.rpc("geo_count", { p_provider: "google", p_kind: "tiles", p_ok: false, p_cached: false });
-          await logError("google", "tiles", `${slot} map: ${errorDetail(e)}`).catch(() => {});
+          background((async () => {
+            await db.rpc("geo_count", { p_provider: "google", p_kind: "tiles", p_ok: false, p_cached: false });
+            await logError("google", "tiles", `${slot} map: ${errorDetail(e)}`);
+          })());
           throw e;
         }
         const s = parseGoogleSession(answer);
@@ -174,12 +218,15 @@ Deno.serve(async (req) => {
           session: s.session,
           expires_at: new Date(s.expiresAt).toISOString(),
         });
-        await db.rpc("geo_count", { p_provider: "google", p_kind: "tiles", p_ok: true, p_cached: false });
+        background((async () => {
+          await db.rpc("geo_count", { p_provider: "google", p_kind: "tiles", p_ok: true, p_cached: false });
+        })());
         return s.session;
       },
       iso3: (cc) => iso3By.get(cc.toLowerCase()) ?? null,
       fallbackKey: (slot) => fallbackKey(slot, (name) => Deno.env.get(name)),
       refusedSessions,
+      background,
       redirect: async (url) => {
         const res = await fetch(url, {
           redirect: "manual",

@@ -2,8 +2,10 @@
 // both themes.
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui' show CheckedState;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -100,12 +102,12 @@ class _Rides implements RideRepository {
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
-RideRequest _ride(String status) => RideRequest({
+RideRequest _ride(String status, {String partnerName = 'Ravi'}) => RideRequest({
   'id': 'r1',
   'rider_id': 'rider',
   'partner_id': 'driver',
   'rider_name': 'Aina',
-  'partner_name': 'Ravi',
+  'partner_name': partnerName,
   'partner_phone': '+60123456789',
   'status': status,
   'pickup_name': 'KLCC',
@@ -140,8 +142,10 @@ void main() {
     required String status,
     Brightness brightness = Brightness.light,
     List<Override> extra = const [],
+    Size size = const Size(500, 1000),
+    String partnerName = 'Ravi',
   }) async {
-    tester.view.physicalSize = const Size(500, 1000);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final repo = _Repo();
@@ -151,7 +155,7 @@ void main() {
       ProviderScope(
         overrides: [
           rideChatRepositoryProvider.overrideWithValue(repo),
-          rideStreamProvider.overrideWith((ref, id) => Stream.value(_ride(status))),
+          rideStreamProvider.overrideWith((ref, id) => Stream.value(_ride(status, partnerName: partnerName))),
           currentUserIdProvider.overrideWithValue(me),
           tripFixProvider.overrideWithValue(() async => const LatLng(2.93, 101.83)),
           rideChatLauncherProvider.overrideWithValue((uri) async {
@@ -247,6 +251,95 @@ void main() {
       expect(find.byKey(const ValueKey('ride-chat-input')), findsNothing);
       expect(find.byKey(const ValueKey('ride-chat-quick')), findsNothing);
       expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final brightness in Brightness.values) {
+    for (final width in const [320.0, 390.0]) {
+      testWidgets('quick replies are buttons, all on screen at $width px (${brightness.name})', (tester) async {
+        final handle = tester.ensureSemantics();
+        final (repo, _) = await pumpChat(
+          tester,
+          me: 'rider',
+          status: 'accepted',
+          brightness: brightness,
+          size: Size(width, 800),
+        );
+        await tester.pump();
+        for (final line in const ["I'm at the pickup point", 'Running 2 minutes late', 'Please call me', 'OK']) {
+          final chip = find.byKey(ValueKey('quick-$line'));
+          final rect = tester.getRect(chip);
+          expect(rect.left, greaterThanOrEqualTo(0), reason: '"$line" starts on screen');
+          expect(rect.right, lessThanOrEqualTo(width), reason: '"$line" is wholly on screen, none hidden off the edge');
+          final data = tester.getSemantics(chip).getSemanticsData();
+          expect(data.label, line);
+          expect(data.flagsCollection.isButton, isTrue, reason: '"$line" is an action');
+          expect(data.flagsCollection.isChecked, isNot(CheckedState.isTrue));
+          expect(data.flagsCollection.isChecked, CheckedState.none, reason: 'not a checkbox');
+          expect(data.hasAction(SemanticsAction.tap), isTrue);
+        }
+        await tester.tap(find.byKey(const ValueKey('quick-OK')));
+        await tester.pump();
+        expect(repo.sent, isNotEmpty);
+        expect(tester.takeException(), isNull);
+        handle.dispose();
+      });
+    }
+  }
+
+  // Web round 32: the quick replies wrap onto more rows (no line cut off at
+  // the right edge to fade), for the passenger's and the driver's lines.
+  for (final brightness in Brightness.values) {
+    for (final me in const ['rider', 'driver']) {
+      testWidgets('412x915 at 1.3x the $me\'s quick replies are all on screen (${brightness.name})', (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await pumpChat(tester, me: me, status: 'accepted', brightness: brightness, size: const Size(412, 915));
+        await tester.pump();
+        final row = tester.getRect(find.byKey(const ValueKey('ride-chat-quick')));
+        expect(find.descendant(of: find.byKey(const ValueKey('ride-chat-quick')), matching: find.byType(Scrollable)),
+            findsNothing, reason: 'nothing to scroll sideways');
+        for (final line in rideQuickReplies(me == 'rider' ? RideChatRole.rider : RideChatRole.partner)) {
+          final rect = tester.getRect(find.byKey(ValueKey('quick-$line')));
+          expect(rect.left, greaterThanOrEqualTo(row.left));
+          expect(rect.right, lessThanOrEqualTo(412), reason: '"$line" wholly on screen');
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  for (final brightness in Brightness.values) {
+    testWidgets('a long name wraps to two lines in the app bar; Call names them in full (${brightness.name})',
+        (tester) async {
+      final handle = tester.ensureSemantics();
+      const name = 'Kabeer Singh Maand A/L Gurdev Singh Maand';
+      await pumpChat(
+        tester,
+        me: 'rider',
+        status: 'accepted',
+        brightness: brightness,
+        size: const Size(412, 915),
+        partnerName: name,
+      );
+      await tester.pump();
+      final title = tester.widget<Text>(find.byKey(const ValueKey('ride-chat-peer')));
+      expect(title.data, name);
+      expect(title.maxLines, 2);
+      expect(title.overflow, TextOverflow.ellipsis);
+      final para = tester.renderObject<RenderParagraph>(find.byKey(const ValueKey('ride-chat-peer')));
+      final lineHeight = para.getFullHeightForCaret(const TextPosition(offset: 0));
+      expect(para.size.height, greaterThan(lineHeight * 1.5), reason: 'the name takes a second line before any ellipsis');
+      // The name, the role and the bar all fit: nothing spills.
+      expect(find.text('Your driver'), findsOneWidget);
+      final bar = tester.getRect(find.byType(AppBar));
+      expect(tester.getRect(find.text('Your driver')).bottom, lessThanOrEqualTo(bar.bottom));
+      expect(tester.getRect(find.byKey(const ValueKey('ride-chat-peer'))).top, greaterThanOrEqualTo(bar.top));
+      // The call button carries the whole name.
+      expect(find.bySemanticsLabel('Call $name'), findsWidgets);
+      expect(find.byTooltip('Call $name'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
     });
   }
 
