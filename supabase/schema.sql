@@ -9097,6 +9097,11 @@ create table if not exists public.meter_digital_settings (
   -- Open /meter-digital at app launch for partners carrying the TEKSI type.
   auto_launch boolean not null default false,
 
+  -- 0243: meter on or off right after sign-in — off (auto_launch decides),
+  -- ask (the driver chooses), always (on at every sign-in).
+  meter_at_sign_in text not null default 'off'
+    check (meter_at_sign_in in ('off','ask','always')),
+
   -- Leaving the console: what the popup's two keys do. The passenger key can
   -- close the app instead of opening passenger mode (without signing the driver
   -- out), and the e-hailing key can open another dispatch app instead of
@@ -9169,7 +9174,7 @@ create table if not exists public.meter_digital_settings (
   updated_at timestamptz not null default now()
 );
 
--- 0084/0085/0086: added after the table shipped, so an existing project picks
+-- 0084/0085/0086/0243: added after the table shipped, so an existing project picks
 -- them up here. Each defaults to what the console did before it existed.
 alter table public.meter_digital_settings
   add column if not exists auto_launch boolean not null default false,
@@ -9180,10 +9185,20 @@ alter table public.meter_digital_settings
   add column if not exists leave_ehailing_app_id        text,
   add column if not exists leave_ehailing_store_ios     text,
   add column if not exists leave_ehailing_store_android text,
-  add column if not exists leave_ehailing_store_huawei  text;
+  add column if not exists leave_ehailing_store_huawei  text,
+  add column if not exists meter_at_sign_in text not null default 'off';
 
 do $$
 begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'meter_digital_settings_meter_at_sign_in_check'
+  ) then
+    alter table public.meter_digital_settings
+      add constraint meter_digital_settings_meter_at_sign_in_check
+      check (meter_at_sign_in in ('off','ask','always'));
+  end if;
+
   if not exists (
     select 1 from pg_constraint
     where conname = 'meter_digital_settings_leave_passenger_action_check'
