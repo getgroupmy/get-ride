@@ -8,10 +8,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// The database's region: where [dbPinnedFunctions] are asked to run.
 const functionDbRegion = 'ap-northeast-2';
 
-/// The functions pinned to [functionDbRegion]: the ones that chain database
-/// calls. Functions that mostly call third parties elsewhere (push, TURN,
+/// The functions pinned to [functionDbRegion]: the ones that call the
+/// database or Auth (turn-credentials makes one Auth check and signs the rest
+/// locally). Functions that mostly call third parties elsewhere (push,
 /// document AI, releases) are left to run near the caller.
-const dbPinnedFunctions = {'geo', 'pin-login', 'ip-lookup', 'ai-route-proxy'};
+const dbPinnedFunctions = {'geo', 'pin-login', 'ip-lookup', 'ai-route-proxy', 'turn-credentials'};
 
 /// The query parameter that pins [name] (Supabase reads it as well as the
 /// `x-region` header); empty for a function that is not pinned. Sent on

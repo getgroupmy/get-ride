@@ -37,9 +37,9 @@ void main() {
   }
 
   test('the database-heavy functions only', () {
-    expect(dbPinnedFunctions, {'geo', 'pin-login', 'ip-lookup', 'ai-route-proxy'});
+    expect(dbPinnedFunctions, {'geo', 'pin-login', 'ip-lookup', 'ai-route-proxy', 'turn-credentials'});
     expect(functionRegionHeaders('geo', isWeb: false), {'x-region': 'ap-northeast-2'});
-    for (final name in ['send-push', 'turn-credentials', 'document-ai-verify', 'region-defaults', 'key-test']) {
+    for (final name in ['send-push', 'document-ai-verify', 'region-defaults', 'key-test']) {
       expect(functionRegionHeaders(name, isWeb: false), isEmpty, reason: name);
       expect(functionRegionQuery(name), isEmpty, reason: name);
     }
