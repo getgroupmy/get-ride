@@ -71,7 +71,7 @@ class SideMenuLogoutDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      const Divider(key: ValueKey('menu-logout-divider'), height: 17, indent: 16, endIndent: 16);
+      const Divider(key: ValueKey('menu-logout-divider'), height: 9, indent: 16, endIndent: 16);
 }
 
 /// The rider side menu (Expo `MenuSideSheet`): the admin's rider menu,
