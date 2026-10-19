@@ -8,6 +8,7 @@ import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/chip_button.dart';
 
 const _page = 'admin-settings-vehicle-make-model';
 
@@ -20,6 +21,9 @@ const _levelSubtitles = [
 ];
 const _levelSingular = ['Vehicle Type', 'Energy Type', 'Make', 'Model'];
 const _levelIcons = [Icons.directions_car_outlined, Icons.local_gas_station_outlined, Icons.factory_outlined, Icons.sell_outlined];
+
+/// The room kept clear under an empty list for the pinned Add button.
+const vmmFabClearance = 84.0;
 
 class VehicleMakeModelScreen extends ConsumerStatefulWidget {
   const VehicleMakeModelScreen({super.key});
@@ -161,7 +165,7 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
     return [
       for (var i = 0; i < items.length; i++) ...[
         if (i > 0) const Icon(Icons.chevron_right, size: 16),
-        ActionChip(
+        ActionChipButton(
           avatar: i == 0 ? const Icon(Icons.home_outlined, size: 16) : null,
           label: Text(items[i].$1),
           onPressed: items[i].$2 == null ? null : () => _goTo(items[i].$2!),
@@ -187,7 +191,7 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
           if (level > 0)
             IconButton(tooltip: 'Up one level', icon: const Icon(Icons.arrow_upward), onPressed: () => _goTo(_path.parent)),
         ],
-        floatingActionButton: FloatingActionButton.extended(
+        addAction: PageAddAction(
           onPressed: () => _addPicker(data.value ?? []),
           icon: const Icon(Icons.add),
           label: const Text('Add'),
@@ -259,14 +263,24 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
                 CatalogueSearch(controller: _search, onChanged: (_) => setState(() {})),
                 Expanded(
                   child: tiles.isEmpty
-                      // Scrolls, clear of the Add button, when short (a
-                      // phone on its side) and centred otherwise.
+                      // Scrolls when short (a phone on its side) and is
+                      // centred otherwise, always above the pinned Add
+                      // button: the space it takes (56 and its 16 margin,
+                      // and a little more) is kept clear rather than only
+                      // padded at the end, where the caption still came to
+                      // rest under it.
                       ? LayoutBuilder(
-                          builder: (context, box) => SingleChildScrollView(
+                          builder: (context, box) {
+                            // The button also sits above the home bar.
+                            final clear = vmmFabClearance + MediaQuery.paddingOf(context).bottom;
+                            return Padding(
+                            padding: EdgeInsets.only(bottom: clear),
+                            child: SingleChildScrollView(
                             key: const ValueKey('vmm-empty-scroll'),
-                            padding: const EdgeInsets.only(bottom: 96),
                             child: ConstrainedBox(
-                              constraints: BoxConstraints(minHeight: (box.maxHeight - 96).clamp(0.0, double.infinity)),
+                              constraints: BoxConstraints(
+                                minHeight: (box.maxHeight - clear).clamp(0.0, double.infinity),
+                              ),
                               child: EmptyState(
                                 icon: Icons.inbox_outlined,
                                 title: emptyTitle,
@@ -281,8 +295,10 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
                               ),
                             ),
                           ),
+                          );
+                          },
                         )
-                      : ListView(padding: const EdgeInsets.only(bottom: 96), children: tiles),
+                      : ListView(padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)), children: tiles),
                 ),
               ]),
             );
@@ -397,7 +413,7 @@ class _CategoryEditorState extends State<_CategoryEditor> {
           SectionLabel(_renaming ? 'Existing at this level' : 'Already exists — tap to open instead of duplicating'),
           Wrap(spacing: 6, runSpacing: 4, children: [
             for (final s in suggestions)
-              ActionChip(
+              ActionChipButton(
                 label: Text(s),
                 onPressed: () {
                   if (_renaming) {
@@ -526,7 +542,7 @@ class _ModelEditorState extends State<_ModelEditor> {
           const SectionLabel('Existing models — tap to edit instead'),
           Wrap(spacing: 6, runSpacing: 4, children: [
             for (final m in existing)
-              ActionChip(
+              ActionChipButton(
                 label: Text('${m.model} ${formatYearRange(m.yearFrom, m.yearTo)}'.trim()),
                 onPressed: () => setState(() {
                   // Switch this form to editing the existing row.

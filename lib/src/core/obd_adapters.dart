@@ -15,7 +15,7 @@ String obdRetryHint(String? transport) => switch (transport) {
       'bluetooth' => 'Retrying every few seconds. Check the ignition is on, the reader is plugged in and close by, '
           'and no other app or phone is connected to it.',
       'mfi' => 'Retrying every few seconds. Check the ignition is on and the reader is paired in '
-          'Settings → Bluetooth and not in use by another app.',
+          'Settings > Bluetooth and not in use by another app.',
       'usb' => 'Retrying every few seconds. Check the ignition is on and the cable is plugged in.',
       _ => "Retrying every few seconds. Check the ignition is on and the phone is on the reader's Wi-Fi.",
     };
@@ -163,6 +163,18 @@ final _hostname = RegExp(r'^[A-Za-z0-9._-]+$');
       createdAt: createdAt,
     ),
   );
+}
+
+/// [describeAdapter] in two parts: the kind of link, and its address (the
+/// Wi-Fi host and port, or the Bluetooth device) when there is one, so the
+/// address can stand on a line of its own and never break inside.
+({String transport, String? address}) describeAdapterParts(SavedObdAdapter a) {
+  final label = obdTransportLabels[a.transport] ?? a.transport;
+  if (a.transport == 'wifi' && a.host != null) return (transport: label, address: '${a.host}:${a.port ?? wifiAdapterPort}');
+  if ((a.transport == 'bluetooth' || a.transport == 'mfi') && a.deviceId != null) {
+    return (transport: label, address: a.deviceId);
+  }
+  return (transport: label, address: null);
 }
 
 String describeAdapter(SavedObdAdapter a) {

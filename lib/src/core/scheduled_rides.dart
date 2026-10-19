@@ -2,6 +2,8 @@
 // app shows it, and the rules the booking screens apply. Pure.
 import 'package:flutter/foundation.dart';
 
+import 'date_order.dart' show formatWeekdayDayMonthForUser;
+
 /// Admin → App Settings → Scheduled rides, as `scheduled_rides_config()`
 /// returns it. Off until the admin turns it on.
 @immutable
@@ -393,16 +395,15 @@ class ScheduledOffer {
   String get waitingLabel => 'Waiting for ${otherName ?? 'the driver'} to accept';
 }
 
-/// "Today", "Tomorrow" or "Fri 16 Oct": the day headings on Upcoming.
+/// "Today", "Tomorrow" or "Fri 16 Oct" ("Fri Oct 16" where the month comes
+/// first): the day headings on Upcoming.
 String bookingDayLabel(DateTime at, DateTime now) {
   final day = DateTime(at.year, at.month, at.day);
   final today = DateTime(now.year, now.month, now.day);
   final diff = day.difference(today).inDays;
   if (diff == 0) return 'Today';
   if (diff == 1) return 'Tomorrow';
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return '${days[at.weekday - 1]} ${at.day} ${months[at.month - 1]}';
+  return formatWeekdayDayMonthForUser(at);
 }
 
 /// [items] in runs of the same day, keeping their order (soonest first).

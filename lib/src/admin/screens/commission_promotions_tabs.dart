@@ -21,6 +21,7 @@ import '../../widgets/search_select.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import 'geo/geo_data.dart' show regionsProvider;
+import 'meterapp/display_store.dart' show settingsEntriesProvider;
 import 'geo/geo_logic.dart' show RegionEntry, RegionLevel, regionNamesAt;
 
 final commissionPromotionsProvider = FutureProvider.autoDispose<List<CommissionPromotion>>((ref) {
@@ -87,7 +88,7 @@ class CommissionPromotionsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t);
     final now = DateTime.now().toUtc();
     return AsyncView(
       value: ref.watch(commissionPromotionsProvider),
@@ -165,70 +166,91 @@ class _PromotionCard extends ConsumerWidget {
     final (bg, fg) = switch (status) {
       'Running' => (cs.primaryContainer, cs.onPrimaryContainer),
       'Scheduled' => (cs.tertiaryContainer, cs.onTertiaryContainer),
-      _ => (cs.surfaceContainerHighest, cs.onSurfaceVariant),
+      _ => (cs.surfaceContainerHighest, mutedTextColor(t, background: cs.surfaceContainerHighest)),
     };
+    final toggle = Semantics(
+      label: '${p.name} on',
+      child: Switch(
+        key: ValueKey('commission-promo-active-${p.id}'),
+        value: p.active,
+        onChanged: canEdit
+            ? (v) async {
+                if (await runAdminAction(
+                    context, () => ref.read(adminRepositoryProvider).saveCommissionPromotion(p.copyWith(active: v)),
+                    success: v ? 'Promotion turned on' : 'Promotion turned off')) {
+                  ref.invalidate(commissionPromotionsProvider);
+                }
+              }
+            : null,
+      ),
+    );
     return Card(
-      child: ListTile(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
         key: ValueKey('commission-promo-${p.id}'),
-        leading: Icon(Icons.local_offer_outlined, color: status == 'Running' ? cs.primary : cs.outline),
-        // The name gets the width (two lines), with its status under it.
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
-              child: Text(status, style: t.textTheme.labelSmall?.copyWith(color: fg)),
-            ),
-          ],
-        ),
-        subtitle: Text(
-          [
-            p.summary,
-            '${formatDateTime(p.startsAt)} – ${formatDateTime(p.endsAt)}',
-            if (p.note.isNotEmpty) p.note,
-          ].join('\n'),
-          style: TextStyle(color: cs.onSurfaceVariant),
-        ),
-        isThreeLine: true,
         onTap: canEdit ? onEdit : null,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Semantics(
-              label: '${p.name} on',
-              child: Switch(
-              key: ValueKey('commission-promo-active-${p.id}'),
-              value: p.active,
-              onChanged: canEdit
-                  ? (v) async {
-                      if (await runAdminAction(
-                          context, () => ref.read(adminRepositoryProvider).saveCommissionPromotion(p.copyWith(active: v)),
-                          success: v ? 'Promotion turned on' : 'Promotion turned off')) {
-                        ref.invalidate(commissionPromotionsProvider);
-                      }
-                    }
-                  : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // The name, its status, the switch and delete on one row...
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Icon(Icons.local_offer_outlined, color: status == 'Running' ? cs.primary : cs.outline),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+                          child: Text(status, style: t.textTheme.labelSmall?.copyWith(color: fg)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  toggle,
+                  if (canEdit)
+                    BusyIconButton(
+                      key: ValueKey('commission-promo-delete-${p.id}'),
+                      tooltip: 'Delete',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () async {
+                        if (!await confirm(context, 'Delete promotion?', p.name, ok: 'Delete')) return;
+                        if (!context.mounted) return;
+                        if (await runAdminAction(
+                            context, () => ref.read(adminRepositoryProvider).deleteCommissionPromotion(p.id!))) {
+                          ref.invalidate(commissionPromotionsProvider);
+                        }
+                      },
+                    ),
+                ],
               ),
-            ),
-            if (canEdit)
-              BusyIconButton(
-                key: ValueKey('commission-promo-delete-${p.id}'),
-                tooltip: 'Delete',
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () async {
-                  if (!await confirm(context, 'Delete promotion?', p.name, ok: 'Delete')) return;
-                  if (!context.mounted) return;
-                  if (await runAdminAction(
-                      context, () => ref.read(adminRepositoryProvider).deleteCommissionPromotion(p.id!))) {
-                    ref.invalidate(commissionPromotionsProvider);
-                  }
-                },
+              const SizedBox(height: 8),
+              // ...and what it does across the card's whole width under them.
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(
+                  [
+                    p.summary,
+                    '${formatDateTime(p.startsAt)} – ${formatDateTime(p.endsAt)}',
+                    if (p.note.isNotEmpty) p.note,
+                  ].join('\n'),
+                  key: ValueKey('commission-promo-details-${p.id}'),
+                  style: t.textTheme.bodyMedium?.copyWith(color: mutedTextColor(t, background: cardSurfaceColor(t))),
+                ),
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -376,9 +398,16 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    // On the dialog's own tinted surface.
+    final muted = mutedTextColor(t, background: t.dialogTheme.backgroundColor ?? t.colorScheme.surfaceContainerHigh);
     final regions = ref.watch(regionsProvider).value ?? const <RegionEntry>[];
     final seen = ref.watch(commissionServiceNamesProvider).value ?? const [];
+    // Admin > Vehicle Services' names, to show a stored key as the admin
+    // named it.
+    final vehicleNames = [
+      for (final v in ref.watch(settingsEntriesProvider('vehicle-services')).value ?? const <Map<String, dynamic>>[])
+        if ('${(v['values'] is Map ? (v['values'] as Map)['name'] : null) ?? ''}'.trim() case final n when n.isNotEmpty) n,
+    ];
     final services = <String, int>{
       meterServiceName: 0,
       for (final s in _services) s: 0,
@@ -393,7 +422,11 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
       child: OutlinedButton(
         key: ValueKey(start ? 'promo-from' : 'promo-to'),
         onPressed: () => _pickMoment(start),
-        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+        // A rounded rectangle: the default stadium drew three lines as an ellipse.
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -457,10 +490,12 @@ class _PromotionDialogState extends ConsumerState<_PromotionDialog> {
                     runSpacing: 4,
                     children: [
                       for (final e in services.entries)
-                        if (q.isEmpty || searchSelectMatches(e.key, q) || _services.contains(e.key))
+                        if (q.isEmpty ||
+                            searchSelectMatches('${e.key} ${promoServiceLabel(e.key, vehicleNames)}', q) ||
+                            _services.contains(e.key))
                           FilterChip(
                             key: ValueKey('promo-service-${e.key}'),
-                            label: Text(e.key == meterServiceName ? 'Meter / TEKSI' : e.key),
+                            label: Text(promoServiceLabel(e.key, vehicleNames)),
                             selected: _services.contains(e.key),
                             onSelected: (v) => setState(() => v ? _services.add(e.key) : _services.remove(e.key)),
                           ),
@@ -614,7 +649,7 @@ class _CommissionReportsTabState extends ConsumerState<CommissionReportsTab> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t);
     final q = _query;
     final report = ref.watch(commissionReportProvider(q));
     final below = ref.watch(driversBelowCreditProvider);
@@ -697,7 +732,7 @@ class _CommissionReportsTabState extends ConsumerState<CommissionReportsTab> {
                 ],
               ),
               Text(
-                'Drivers who can\'t take work until they top up (Settings → GET.credit below zero).',
+                'Drivers who can\'t take work until they top up (Settings > GET.credit below zero).',
                 style: t.textTheme.bodySmall?.copyWith(color: muted),
               ),
               const SizedBox(height: 8),
@@ -725,7 +760,7 @@ class _CommissionReportsTabState extends ConsumerState<CommissionReportsTab> {
                                     subtitle: Text(
                                       [d.displayId ?? d.uid, if (d.phone != null) d.phone!,
                                         'limit ${formatMoney(d.floor)}'].join(' · '),
-                                      style: TextStyle(color: muted),
+                                      style: TextStyle(color: mutedTextColor(t, background: cardSurfaceColor(t))),
                                     ),
                                     trailing: Text(
                                       formatMoney(d.balance),
@@ -754,7 +789,8 @@ class _ReportView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    // Its lines sit on the report's card.
+    final muted = mutedTextColor(t, background: cardSurfaceColor(t));
     final total = rows.fold<double>(0, (s, r) => s + r.commission);
     final trips = rows.fold<int>(0, (s, r) => s + r.trips);
     final meter = rows.fold<int>(0, (s, r) => s + r.meterTrips);

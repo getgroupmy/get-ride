@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../admin/screens/meterapp/meter_logic.dart';
 import '../../core/meter_console.dart';
+import '../../core/meter_sign_in.dart' show showMeterSessionToggle;
 import '../../core/meter_trip.dart';
 import '../../core/vehicle_assignment.dart';
 import '../../core/escpos.dart';
@@ -33,11 +34,13 @@ import '../../widgets/net_image.dart';
 import '../partner/vehicle_picker.dart';
 import 'hail_destination_screen.dart';
 import 'landscape_stage.dart';
+import 'meter_auto_launch.dart' show meterAtSignInProvider, meterSessionChoiceProvider;
 import 'meter_leave_launcher.dart';
 import '../../data/meter_trip_sync.dart';
 import 'meter_providers.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/web_overlay_back.dart';
+import '../../widgets/chip_button.dart';
 
 // The console is deliberately not themed: a white screen on a windscreen
 // mount at night is a hazard, so the meter is always the dark instrument it
@@ -48,6 +51,15 @@ const _lcd = Color(0xFF7CFF6B);
 const _lcdDim = Color(0xFF2E4A2B);
 const _amber = Color(0xFFFFC94D);
 const _muted = Color(0xFF8A9A94);
+
+/// The readouts' captions (DISTANCE, TIME, WAITING, SPEED): lighter than
+/// [_muted] (9.9:1 on [_panel], against its 5.9) and a touch heavier, as
+/// the console is scaled down to fit and they come out about 9 pt on a
+/// phone, where thin grey letters read far fainter than their colour.
+const meterCaption = Color(0xFFB9C6C1);
+
+/// The readouts' panel, for the contrast tests.
+const meterPanel = _panel;
 
 /// A fix older than this is not used: repeating it would read as standing
 /// still while the car is moving.
@@ -230,11 +242,13 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         currency: _currency,
         multiplier: periodMultiplier(_period, _profile.nightMultiplier),
         current: _dest,
+        recent: recentMeterDropoffs(_trips),
+        canClear: true,
       ),
     );
     _inFront = true;
     await _orientation.lockLandscape();
-    if (mounted && picked != null) setState(() => _dest = picked);
+    if (mounted && picked != null) setState(() => _dest = identical(picked, hailDestinationCleared) ? null : picked);
   }
 
   void _navigateToDestination() {
@@ -782,6 +796,15 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     }
   }
 
+  /// "Meter on/off" (Meter at sign-in, 0243): turns the meter off for this
+  /// sign-in and goes to the app, so a reopen no longer lands here. A hire
+  /// in progress has to end first.
+  Future<void> _turnMeterOff() async {
+    if (_m.hasHire) return _explain('Meter on', 'End the hire before turning the meter off.');
+    await ref.read(meterSessionChoiceProvider.notifier).set(false);
+    if (mounted) GoRouter.of(context).go('/');
+  }
+
   void _explain(String title, String message) => showAppDialog<void>(id: 'meter.explain',
     context: _stageContext,
     useRootNavigator: false,
@@ -942,6 +965,22 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
             ),
           ),
         ),
+        if (showMeterSessionToggle(ref.watch(meterAtSignInProvider).value ?? 'off'))
+          Tooltip(
+            message: 'Meter on/off: turn the meter off for this sign-in',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('METER', style: TextStyle(color: _muted, fontSize: 12)),
+                Switch(
+                  key: const ValueKey('meter-session-switch'),
+                  value: true,
+                  activeThumbColor: _lcd,
+                  onChanged: (_) => _turnMeterOff(),
+                ),
+              ],
+            ),
+          ),
         if (_access('printer').show)
           IconButton(
             key: const ValueKey('meter-panel-printer'),
@@ -1039,7 +1078,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
           ),
         ),
         const SizedBox(width: 8),
-        ActionChip(
+        ActionChipButton(
           key: const ValueKey('meter-plate'),
           // Not compact: its tap area is 48 high (a compact one was 40).
           materialTapTargetSize: MaterialTapTargetSize.padded,
@@ -1193,7 +1232,8 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     // The readouts a running meter moves each second, rebuilt on their own.
     Widget live(Widget Function() build) =>
         ValueListenableBuilder(valueListenable: _meterTicks, builder: (_, _, _) => build());
-    final fareBox = _Panel(
+    // [scale]: what the console is scaled by to fit ([_consoleScale]).
+    Widget fareBox(double scale) => _Panel(
       children: [
         Row(
           children: [
@@ -1231,7 +1271,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: _muted, fontSize: 12),
           ),
-        _destinationRow(),
+        _destinationRow(scale),
       ],
     );
     final readouts = _Panel(
@@ -1264,6 +1304,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     return LayoutBuilder(
       builder: (context, c) {
         final layout = meterConsoleLayout(c.biggest);
+        final scale = meterConsoleScale(c.biggest, layout);
         return Padding(
           padding: const EdgeInsets.all(6),
           child: FittedBox(
@@ -1278,7 +1319,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          fareBox,
+                          fareBox(scale),
                           Expanded(child: readouts),
                         ],
                       ),
@@ -1294,7 +1335,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     );
   }
 
-  Widget _destinationRow() {
+  /// The destination and SET / CHANGE; [scale] is what the console is
+  /// scaled by, so the button is still 44 high on the screen.
+  Widget _destinationRow(double scale) {
     final d = _dest, quote = _quote;
     return Row(
       children: [
@@ -1320,8 +1363,12 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
           ),
         TextButton(
           key: const ValueKey('meter-destination'),
-          // 44 high: a finger-sized target.
-          style: TextButton.styleFrom(minimumSize: const Size(44, 44)),
+          // 44 high on the screen, however far the console is scaled down
+          // to fit (it read 39 on an iPhone 15): a finger-sized target.
+          style: TextButton.styleFrom(
+            minimumSize: Size.square(meterTargetSize(scale)),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
           onPressed: _ending ? null : _setDestination,
           child: Text(d == null ? 'SET' : 'CHANGE'),
         ),
@@ -1474,9 +1521,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
                 [
                   formatMeterDistance(t.distanceM),
                   if (t.pickup != null && t.dropoff != null)
-                    '${t.pickup!.label} → ${t.dropoff!.label}'
+                    '${t.pickup!.label} to ${t.dropoff!.label}'
                   else if (t.destination != null)
-                    '→ ${t.destination}',
+                    'to ${t.destination}',
                 ].join(' · '),
               ),
               trailing: Text('${t.currency} ${t.total.toStringAsFixed(2)}', style: _digits(16, _lcd)),
@@ -1572,7 +1619,10 @@ class _Readout extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: _muted, fontSize: 11, letterSpacing: 1.2)),
+        Text(
+          label,
+          style: const TextStyle(color: meterCaption, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.2),
+        ),
         // Shrinks rather than overflowing, and ignores the OS font scale: the
         // fare must stay inside its panel.
         FittedBox(

@@ -9,6 +9,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 
 import '../config.dart';
 import '../core/backend_route.dart';
+import '../core/doc_photo.dart' show docThumbMaxSide;
 import '../core/storage_links.dart';
 import 'storage_image.dart';
 
@@ -74,6 +75,14 @@ ImageFrameBuilder boneUntilPainted({double? width, double? height, bool circle =
   }
 }
 
+/// Whether a [width] x [height] box at [dpr] is small enough for a stored
+/// document photo's list thumbnail ([docThumbMaxSide] px, a little
+/// stretched at most) rather than the file itself. Pure.
+bool thumbIsEnough({double? width, double? height, required double dpr}) {
+  if (width == null || height == null || !width.isFinite || !height.isFinite) return false;
+  return math.max(width, height) * dpr <= docThumbMaxSide * 1.25;
+}
+
 /// A network picture: the skeleton while it loads, [fallback] (the base
 /// icon) only if it fails.
 class NetImage extends StatelessWidget {
@@ -101,12 +110,8 @@ class NetImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final frame = boneUntilPainted(width: width, height: height, circle: circle, radius: radius);
     Widget error(BuildContext _, Object _, StackTrace? _) => fallback ?? SizedBox(width: width, height: height);
-    final decode = imageDecodeSize(
-      width: width,
-      height: height,
-      fit: fit,
-      dpr: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1,
-    );
+    final dpr = MediaQuery.maybeDevicePixelRatioOf(context) ?? 1;
+    final decode = imageDecodeSize(width: width, height: height, fit: fit, dpr: dpr);
     // A file in a private document bucket (a permit portrait, a vehicle
     // photo) opens through a signed link; anything else as it is.
     if (privateStorageRef(url) != null) {
@@ -120,6 +125,7 @@ class NetImage extends StatelessWidget {
         errorBuilder: error,
         cacheWidth: decode.width,
         cacheHeight: decode.height,
+        preferThumb: thumbIsEnough(width: width, height: height, dpr: dpr),
       );
     }
     // A stored file on the project's host loads through whichever address

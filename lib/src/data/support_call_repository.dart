@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/support_call.dart';
 import '../providers.dart';
+import 'ice_server_cache.dart';
 import 'realtime_backup.dart';
 import 'realtime_hub.dart';
 
@@ -103,6 +104,7 @@ class SupportCallRepository implements CallSignalling<SupportCall> {
       final c = await fetch(callId);
       return c == null ? const [] : [c.raw];
     },
+    healthy: callRowsInCallHealthyInterval,
   ).map(SupportCall.new);
 
   /// Calls an agent is ringing [uid] with, and their changes.
@@ -151,20 +153,18 @@ class SupportCallRepository implements CallSignalling<SupportCall> {
       event: PostgresChangeEvent.insert,
       initial: () async =>
           List<Map<String, dynamic>>.from(await _db.from(_signals).select().eq('call_id', callId).order('id')),
+      healthy: callRowsInCallHealthyInterval,
     ).map(CallSignal.fromRow).where((s) => seen.add(s.id));
   }
 
-  /// The ICE servers for a call (turn-credentials); STUN only when the
-  /// function is unreachable or not deployed.
+  /// The ICE servers for a call (turn-credentials, kept while its
+  /// credentials last: [IceServerCache]); STUN only when the function is
+  /// unreachable or not deployed.
   @override
-  Future<List<Map<String, dynamic>>> iceServers() async {
-    try {
-      final res = await _db.functions.invoke('turn-credentials');
-      return parseIceServers(res.data);
-    } catch (_) {
-      return parseIceServers(null);
-    }
-  }
+  Future<List<Map<String, dynamic>>> iceServers() => IceServerCache.of(_db).get();
+
+  /// Fetches the ICE servers ahead of a call about to start.
+  void prefetchIceServers() => IceServerCache.of(_db).prefetch();
 
   Stream<Map<String, dynamic>> _watchRows(
     String name,
@@ -172,13 +172,26 @@ class SupportCallRepository implements CallSignalling<SupportCall> {
     PostgresChangeFilter filter, {
     PostgresChangeEvent event = PostgresChangeEvent.all,
     required Future<List<Map<String, dynamic>>> Function() initial,
-  }) => watchCallRows(_db, name, table, filter, event: event, initial: initial);
+    Duration? healthy = realtimeBackupSlowHealthyInterval,
+  }) => watchCallRows(_db, name, table, filter, event: event, initial: initial, healthy: healthy);
 }
+
+/// How often a call's own row and its WebRTC setup messages are read again
+/// while their channel is open (PERF-70). They are followed only while the
+/// call is up, and a setup message realtime dropped would otherwise hold the
+/// call on "Connecting…" until the slow safety net came round.
+const callRowsInCallHealthyInterval = Duration(seconds: 3);
 
 /// Rows of [table] matching [filter]: [initial] first, then every change, as
 /// one stream (support calls and ride calls follow their rows this way). The
 /// channel is shared with any other stream on the same rows ([RealtimeHub]);
 /// [name] is kept for the callers' sake.
+///
+/// While the channel is open the rows are read again every [healthy]: the
+/// slow default suits the watchers open app-wide for an incoming ring; a
+/// watcher that lives only for a call (its row, its WebRTC setup) passes
+/// [callRowsInCallHealthyInterval], so one dropped change cannot leave the
+/// call stuck "Connecting…" for minutes.
 Stream<Map<String, dynamic>> watchCallRows(
   SupabaseClient db,
   String name,
@@ -186,6 +199,7 @@ Stream<Map<String, dynamic>> watchCallRows(
   PostgresChangeFilter filter, {
   PostgresChangeEvent event = PostgresChangeEvent.all,
   required Future<List<Map<String, dynamic>>> Function() initial,
+  Duration? healthy = realtimeBackupSlowHealthyInterval,
 }) {
   final controller = StreamController<Map<String, dynamic>>();
   RealtimeListen? channel;
@@ -196,12 +210,13 @@ Stream<Map<String, dynamic>> watchCallRows(
     }
 
     // A call rings or hangs up within seconds: read it again often while
-    // realtime is down. While it is up realtime delivers the ring, so only
-    // a slow safety net (these watchers stay open app-wide on every phone).
+    // realtime is down. While it is up realtime delivers the ring, so the
+    // app-wide ring watchers keep only a slow safety net; a call's own
+    // watchers stay quick (see [healthy]).
     backup = RealtimeBackup(
       () async => (await initial()).forEach(emit),
       every: const Duration(seconds: 3),
-      healthy: realtimeBackupSlowHealthyInterval,
+      healthy: healthy,
     );
 
     channel = RealtimeHub.of(db).listen(

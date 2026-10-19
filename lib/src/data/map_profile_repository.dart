@@ -12,6 +12,7 @@ import '../core/map_profile.dart';
 import '../providers.dart';
 import 'live_tables.dart';
 import 'notifications_repository.dart' show appModeProvider;
+import 'function_region.dart';
 
 /// Calls the `geo` function for the signed-in mode (rider or partner) on
 /// this kind of device. The client is looked up on first use, so building
@@ -24,11 +25,13 @@ class GeoProxy {
   final MapDevice device;
 
   /// The function's JSON answer for [params], or null when it gave none.
+  /// Sent as a POST body to the function's bare URL: the same URL every
+  /// time, so a browser asks its CORS preflight once and keeps it (PERF-74).
   Future<Map<String, dynamic>?> get(Map<String, String> params) async {
-    final res = await _db().functions.invoke(
+    final res = await _db().functions.invokeNearDb(
       'geo',
-      method: HttpMethod.get,
-      queryParameters: {...params, 'role': role(), 'device': device.name},
+      method: HttpMethod.post,
+      body: {...params, 'role': role(), 'device': device.name},
     );
     final data = res.data is String ? jsonDecode(res.data as String) : res.data;
     return data is Map ? Map<String, dynamic>.from(data) : null;

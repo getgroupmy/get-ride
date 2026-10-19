@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -5,14 +7,16 @@ import '../../core/app_branding.dart';
 import '../../data/branding_cache.dart';
 import '../../widgets/net_image.dart';
 
-/// Holds the app behind the splash for what is left of [splashHold] since the
-/// process started, then shows it (iAkauntan's `SplashGate`). In the Android
-/// and iOS apps only; elsewhere this is its child and nothing else.
+/// Holds the app behind the splash until it is [ready] — but at least what is
+/// left of [splashMinHold] since the process started, so it never flashes,
+/// and at most [splashMaxHold], so a slow network never keeps it up — then
+/// shows it (iAkauntan's `SplashGate`). In the Android and iOS apps only;
+/// elsewhere this is its child and nothing else.
 ///
 /// The app is not built until the splash is done, so nothing it asks for on
 /// its first screen (a location prompt, a restored ride) appears over it.
 class SplashGate extends StatefulWidget {
-  const SplashGate({super.key, required this.child, this.cached, this.live, this.held, this.now});
+  const SplashGate({super.key, required this.child, this.cached, this.live, this.ready, this.held, this.now});
 
   final Widget child;
 
@@ -22,6 +26,11 @@ class SplashGate extends StatefulWidget {
   /// The branding fetched by this launch, which wins once it arrives — so a
   /// fresh install, with nothing cached, still shows the admin's picture.
   final ValueListenable<AppBranding?>? live;
+
+  /// Completes when the app is ready to be shown (the update check has
+  /// answered, so a build the admin requires to update never flashes the
+  /// app first). Null: ready at once. An error counts as ready.
+  final Future<void>? ready;
 
   /// Whether this surface holds a splash; null asks [splashHeld]. For tests.
   final bool? held;
@@ -35,19 +44,52 @@ class SplashGate extends StatefulWidget {
 
 class _SplashGateState extends State<SplashGate> {
   bool _done = false;
+  bool _leastPassed = false;
+  bool _ready = false;
+  Timer? _least;
+  Timer? _cap;
 
   @override
   void initState() {
     super.initState();
     final held = widget.held ?? splashHeld(isWeb: kIsWeb, platform: defaultTargetPlatform);
-    final left = held ? splashRemaining((widget.now ?? DateTime.now)()) : Duration.zero;
-    if (left == Duration.zero) {
+    final now = (widget.now ?? DateTime.now)();
+    final cap = held ? splashRemaining(now, hold: splashMaxHold) : Duration.zero;
+    if (cap == Duration.zero) {
       _done = true;
+      if (!splashGone.isCompleted) splashGone.complete();
       return;
     }
-    Future<void>.delayed(left, () {
-      if (mounted) setState(() => _done = true);
+    _cap = Timer(cap, _finish);
+    _least = Timer(splashRemaining(now), () {
+      _leastPassed = true;
+      if (_ready) _finish();
     });
+    final ready = widget.ready;
+    if (ready == null) {
+      _ready = true;
+    } else {
+      unawaited(
+        ready.then<void>((_) {}, onError: (Object _) {}).whenComplete(() {
+          _ready = true;
+          if (_leastPassed) _finish();
+        }),
+      );
+    }
+  }
+
+  void _finish() {
+    _least?.cancel();
+    _cap?.cancel();
+    if (!splashGone.isCompleted) splashGone.complete();
+    if (!_done && mounted) setState(() => _done = true);
+  }
+
+  @override
+  void dispose() {
+    _least?.cancel();
+    _cap?.cancel();
+    super.dispose();
   }
 
   @override

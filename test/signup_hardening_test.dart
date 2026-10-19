@@ -194,6 +194,28 @@ void main() {
     expect(find.text('pin'), findsOneWidget);
   });
 
+  // Web round 37 (173): the picker is there to search, so typing goes
+  // straight into its field (desktop web, a hardware keyboard).
+  for (final b in Brightness.values) {
+    testWidgets('173: the country search has the focus when the picker opens (${b.name})', (tester) async {
+      await pump(tester, _Auth(lookup: const PhoneLookup(hasProfile: true, hasPin: true, isDeleted: false)), b);
+      await tester.tap(find.byKey(const ValueKey('dial-country')));
+      await tester.pumpAndSettle();
+      final focused = FocusManager.instance.primaryFocus?.context;
+      expect(focused, isNotNull);
+      expect(
+        find.descendant(of: find.byKey(const ValueKey('country-search')), matching: find.byWidget(focused!.widget)),
+        findsOneWidget,
+        reason: 'the search field, not the sheet',
+      );
+      // Typed with no tap first.
+      tester.testTextInput.enterText('singa');
+      await tester.pumpAndSettle();
+      expect(find.text('Singapore'), findsOneWidget);
+      expect(find.text('Malaysia'), findsNothing);
+    });
+  }
+
   testWidgets('diagnostics is a tap away', (tester) async {
     await pump(tester, _Auth(lookup: _new), Brightness.light);
     await tester.tap(find.byKey(const ValueKey('phone-diagnostics')));

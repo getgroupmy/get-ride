@@ -22,6 +22,7 @@ import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 import '../../widgets/net_image.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/plate_chip.dart';
 
 /// Dials a number from the shared page's SOS: the phone app, overridden in
 /// tests. False when nothing here can place a call.
@@ -256,7 +257,13 @@ class _SharedRideView extends ConsumerWidget {
                 ListTile(
                   leading: NetAvatar(url: r.driverPhoto, fallback: const Icon(Icons.person)),
                   title: Text(r.driverName!),
-                  subtitle: r.driverRating == null ? null : Text('★ ${r.driverRating!.toStringAsFixed(1)}'),
+                  // The star icon and the number, as Your ride shows them.
+                  subtitle: r.driverRating == null
+                      ? null
+                      : Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: RatingStars(key: const ValueKey('shared-rating'), rating: r.driverRating!),
+                        ),
                 ),
                 // The car to look out for: plate, make and model, colour.
                 if (r.plate != null || car != null)
@@ -264,25 +271,7 @@ class _SharedRideView extends ConsumerWidget {
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: Row(
                       children: [
-                        if (r.plate != null)
-                          Container(
-                            key: const ValueKey('shared-plate'),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.black,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: t.colorScheme.outline),
-                            ),
-                            child: Text(
-                              r.plate!.toUpperCase(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                          ),
+                        if (r.plate != null) PlateChip(key: const ValueKey('shared-plate'), plate: r.plate!),
                         if (r.plate != null && car != null) const SizedBox(width: 12),
                         if (car != null)
                           Expanded(
@@ -290,7 +279,8 @@ class _SharedRideView extends ConsumerWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(car, key: const ValueKey('shared-car'), style: t.textTheme.titleMedium),
-                                if (r.vehicleColor != null)
+                                // Not "Colour: white" under "White Perodua Bezza".
+                                if (r.vehicleColor != null && !modelStatesColour(car, r.vehicleColor!))
                                   Row(children: [
                                     Container(
                                       width: 12,

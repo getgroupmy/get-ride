@@ -15,6 +15,7 @@ import '../../widgets/side_menu_style.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../partner/driver_online.dart';
 import '../partner/partner_menu.dart' show partnerMenuAction, partnerMenuRowShows;
+import '../meter/meter_session_toggle.dart';
 import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../profile/account_screen.dart' show riderMenuAction, riderMenuRowShows;
 
@@ -65,6 +66,15 @@ class _AppSideMenuHostState extends State<AppSideMenuHost> {
   );
 }
 
+/// The line above Log out (the rider's) and Sign out (the driver's).
+class SideMenuLogoutDivider extends StatelessWidget {
+  const SideMenuLogoutDivider({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const Divider(key: ValueKey('menu-logout-divider'), height: 9, indent: 16, endIndent: 16);
+}
+
 /// The rider side menu (Expo `MenuSideSheet`): the admin's rider menu,
 /// then the driver mode button.
 class RiderSideMenu extends ConsumerWidget {
@@ -84,7 +94,9 @@ class RiderSideMenu extends ConsumerWidget {
       onProfile: profile.comingSoon ? showComingSoon : SideMenuPanel.editProfile,
       rows: [
         for (final e in resolveSideMenu(blob, 'user'))
-          if (riderMenuRowShows(e.id, scheduledRides: scheduled))
+          if (riderMenuRowShows(e.id, scheduledRides: scheduled)) ...[
+            // Log out set apart from the pages above it.
+            if (e.id == 'logout') const SideMenuLogoutDivider(),
             SideMenuTile(
               entry: e,
               plain: true,
@@ -93,6 +105,7 @@ class RiderSideMenu extends ConsumerWidget {
               beforeOpen: close,
               builtIn: (c, id) => riderMenuAction(c, ref, id, beforeOpen: close),
             ),
+          ],
       ],
       modeLabel: mode?.label,
       modeKey: const ValueKey('menu-partner-mode'),
@@ -121,11 +134,18 @@ class PartnerSideMenu extends ConsumerWidget {
     final approved = ref.watch(partnerProvider).value?.approved ?? true;
     final mode = sideMenuModeButton(blob, 'partner');
     final profile = sideMenuProfile(blob, 'partner');
+    final meterRouter = GoRouter.maybeOf(context);
     return SideMenuPanel(
       key: const ValueKey('partner-side-menu'),
       showProfile: profile.show,
       onProfile: profile.comingSoon ? showComingSoon : SideMenuPanel.editProfile,
       rows: [
+        MeterSessionToggle(
+          onTurnedOn: () {
+            close();
+            meterRouter?.push('/meter');
+          },
+        ),
         for (final e in resolveSideMenu(blob, 'partner'))
           if (partnerMenuRowShows(
             e.id,
@@ -133,7 +153,8 @@ class PartnerSideMenu extends ConsumerWidget {
             hasMyRideCode: hasCode,
             scheduledRides: scheduled,
             approved: approved,
-          ))
+          )) ...[
+            if (e.id == 'sign-out') const SideMenuLogoutDivider(),
             SideMenuTile(
               entry: e,
               plain: true,
@@ -141,6 +162,7 @@ class PartnerSideMenu extends ConsumerWidget {
               beforeOpen: close,
               builtIn: (c, id) => partnerMenuAction(c, ref, id, close: close),
             ),
+          ],
       ],
       modeLabel: mode?.label,
       modeKey: const ValueKey('menu-passenger-mode'),
@@ -223,8 +245,8 @@ class SideMenuPanel extends ConsumerWidget {
               key: const ValueKey('menu-admin'),
               style: OutlinedButton.styleFrom(
                 minimumSize: const Size.fromHeight(46),
-                foregroundColor: SideMenuStyle.button,
-                side: const BorderSide(color: SideMenuStyle.button),
+                foregroundColor: SideMenuStyle.outlineOn(Theme.of(context).brightness),
+                side: BorderSide(color: SideMenuStyle.outlineOn(Theme.of(context).brightness)),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               icon: const Icon(Icons.admin_panel_settings_outlined),

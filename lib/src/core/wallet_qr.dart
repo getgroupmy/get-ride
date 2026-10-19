@@ -151,10 +151,12 @@ String walletQrFileName({required bool coin, double? amount}) {
   return amount != null && amount > 0 ? '$base-${amount.toStringAsFixed(2).replaceAll('.', '-')}.png' : '$base.png';
 }
 
-/// The caption printed under a shared wallet code.
+/// The caption printed under a shared wallet code. GET.wallet and GET.coin
+/// codes both name the rider's account number, never the internal user id
+/// (the code itself carries that).
 String walletQrCaption({required bool coin, required String userId, String? name}) {
   final who = (name ?? '').trim().toUpperCase();
-  final id = coin ? userId : 'Account no. ${walletAccountNumber(userId)}';
+  final id = 'Account no. ${walletAccountNumber(userId)}';
   return who.isEmpty ? id : '$who\n$id';
 }
 
@@ -168,7 +170,7 @@ String walletQrShareText({required bool coin, required String userId, String? na
         ? 'Scan this code in GET.ride to send GET.coin${who.isEmpty ? '' : ' to $who'}.'
         : 'Scan this code in GET.ride to pay ${who.isEmpty ? 'me' : who}.',
     if (amountLabel != null) 'Amount: $amountLabel (the code expires after ${walletAmountQrTtl.inSeconds} seconds).',
-    coin ? 'Wallet ID: $userId' : 'Account no. ${walletAccountNumber(userId)}',
+    'Account no. ${walletAccountNumber(userId)}',
   ].join('\n');
 }
 

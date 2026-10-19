@@ -289,6 +289,13 @@ void main() {
       expect(filterSurfaces(pageInventory, '/wallet/history', null).single.id, 'route:/wallet/history');
     });
 
+    testWidgets('the search hint is short; what it searches stays under it', (tester) async {
+      await pump(tester);
+      final field = tester.widget<TextField>(find.byKey(const ValueKey('page-settings-search')));
+      expect(field.decoration?.hintText, 'Search pages');
+      expect(field.decoration?.helperText, 'Pages, sheets and modals');
+    });
+
     for (final b in Brightness.values) {
       testWidgets('lists every surface, opens one with its preview and edits it (${b.name})', (tester) async {
         await pump(tester, b: b);

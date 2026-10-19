@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,8 @@ import '../../../core/auth_utils.dart' show capitaliseName;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
+import '../../admin_filters.dart' show RowsPage, adminPeoplePageSizeFor, pagedCountLabel;
+import '../../people_paging.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import 'people_data.dart';
@@ -118,12 +122,22 @@ void _leave(BuildContext context) => context.canPop() ? context.pop(true) : cont
 
 // ---- Add partner -----------------------------------------------------------
 
-final _eligibleUsersProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+/// How many users the picker has loaded and what it searches the server
+/// for (PERF-55: `profiles` a page at a time).
+final _eligibleUsersRequestProvider =
+    NotifierProvider.autoDispose.family<PageRequestController, PageRequest, int>(PageRequestController.new);
+
+/// By page size, as the users list ([adminPeoplePageSizeFor]).
+final _eligibleUsersProvider = FutureProvider.autoDispose.family<RowsPage, int>((ref, pageSize) async {
   ref.watchAdminLive('profiles');
   ref.watchAdminLive('partners');
   final repo = ref.watch(peopleRepositoryProvider);
-  final r = await Future.wait([repo.profiles(), repo.partners()]);
-  return eligiblePartnerUsers(r[0], r[1]);
+  final req = ref.watch(_eligibleUsersRequestProvider(pageSize));
+  final users = repo.profiles(limit: req.limit, query: req.query);
+  final partners = repo.partners();
+  await Future.wait([users, partners]);
+  final page = await users;
+  return (rows: eligiblePartnerUsers(page.rows, await partners), more: page.more);
 });
 
 /// `admin-partner-add`: pick an existing user, set area/types/vehicle, then
@@ -139,6 +153,23 @@ class PartnerAddScreen extends ConsumerStatefulWidget {
 class _PartnerAddScreenState extends ConsumerState<PartnerAddScreen> {
   Map<String, dynamic>? _user;
   String _query = '';
+  Timer? _search;
+
+  @override
+  void dispose() {
+    _search?.cancel();
+    super.dispose();
+  }
+
+  /// Filters the loaded users at once, and asks the server a moment after
+  /// typing stops (users not loaded yet are found too).
+  void _onSearch(String v) {
+    setState(() => _query = v);
+    _search?.cancel();
+    _search = Timer(const Duration(milliseconds: 350), () {
+      if (mounted) ref.read(_eligibleUsersRequestProvider(_page).notifier).search(v);
+    });
+  }
   ServiceArea _area = const ServiceArea();
   List<String> _types = const [];
   Map<String, dynamic>? _vehicle;
@@ -214,57 +245,75 @@ class _PartnerAddScreenState extends ConsumerState<PartnerAddScreen> {
     );
   }
 
+  /// The picker's page size for this width (50 on a phone).
+  int get _page => adminPeoplePageSizeFor(MediaQuery.sizeOf(context).width);
+
   Widget _userStep() {
-    final value = ref.watch(_eligibleUsersProvider);
+    final page = _page;
+    final value = ref.watch(_eligibleUsersProvider(page));
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
         child: TextField(
           decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search), hintText: 'Search users by name, phone, email…', isDense: true),
-          onChanged: (v) => setState(() => _query = v),
+          onChanged: _onSearch,
         ),
       ),
       Expanded(
         child: AsyncView(
           value: value,
-          onRetry: () => ref.invalidate(_eligibleUsersProvider),
-          data: (users) {
+          onRetry: () => ref.invalidate(_eligibleUsersProvider(page)),
+          data: (result) {
+            final users = result.rows;
             final q = _query.trim().toLowerCase();
             final list = q.isEmpty
                 ? users
                 : users
                     .where((u) => ['name', 'phone', 'email', 'ic'].any((k) => '${u[k] ?? ''}'.toLowerCase().contains(q)))
                     .toList();
-            return ResponsiveCenter(
-              maxWidth: 820,
-              child: ListView.separated(
-                itemCount: list.length + 1,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (_, i) {
-                  if (i == 0) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        list.isEmpty
-                            ? 'No eligible users. Partners are created from existing app users who are not already partners.'
-                            : '${list.length} eligible user${list.length == 1 ? '' : 's'}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    );
-                  }
-                  final u = list[i - 1];
-                  final name = '${u['name'] ?? ''}';
-                  return ListTile(
-                    leading: CircleAvatar(child: Text(name.isEmpty ? '?' : name[0].toUpperCase())),
-                    title: Text(name.isEmpty ? '(no name)' : name),
-                    subtitle: Text('${u['phone'] ?? ''} • ${u['email'] ?? ''}'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => setState(() => _user = u),
+            // The count heads the list, or with more to load sits in the
+            // pinned bar under it instead.
+            final head = result.more ? 0 : 1;
+            final listView = ListView.separated(
+              itemCount: list.length + head,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (_, i) {
+                if (i < head) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      list.isEmpty
+                          ? 'No eligible users. Partners are created from existing app users who are not already partners.'
+                          : '${list.length} eligible user${list.length == 1 ? '' : 's'}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   );
-                },
-              ),
+                }
+                final u = list[i - head];
+                final name = '${u['name'] ?? ''}';
+                return ListTile(
+                  leading: CircleAvatar(child: Text(name.isEmpty ? '?' : name[0].toUpperCase())),
+                  title: Text(name.isEmpty ? '(no name)' : name),
+                  subtitle: Text('${u['phone'] ?? ''} • ${u['email'] ?? ''}'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => setState(() => _user = u),
+                );
+              },
             );
+            // More on the server: the count and Load more stay pinned under
+            // the list (as the users list), in reach without scrolling.
+            return Column(children: [
+              Expanded(child: ResponsiveCenter(maxWidth: 820, child: listView)),
+              if (result.more)
+                PagedListBar(
+                  count: q.isEmpty
+                      ? '${list.length} eligible user${list.length == 1 ? '' : 's'} among the newest loaded'
+                      : pagedCountLabel(shown: list.length, loaded: users.length, more: true, filtered: true),
+                  loading: value.isLoading,
+                  onLoadMore: () => ref.read(_eligibleUsersRequestProvider(page).notifier).more(),
+                ),
+            ]);
           },
         ),
       ),

@@ -1,5 +1,9 @@
 import 'package:intl/intl.dart';
 
+// Dates the user typed, in their country's order (DD/MM/YYYY, MM/DD/YYYY or
+// YYYY/MM/DD).
+export 'date_order.dart' show formatDateForUser, formatStoredDateForUser, formatWeekdayDayMonthForUser;
+
 /// How an ISO 4217 currency is written: its symbol, which side of the
 /// amount it goes, and how many minor digits it shows. The symbols are
 /// Expo's (`constants/currency.ts`), so both apps print the same amount the

@@ -43,6 +43,7 @@ export const corsHeaders = {
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  "Access-Control-Max-Age": "7200",
 };
 
 /** How long ipwho.is gets before the address is answered without it. */

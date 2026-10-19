@@ -14,7 +14,8 @@ import 'package:get_ride/src/data/voice_recorder.dart';
 import 'package:get_ride/src/features/support/call/mic_gate.dart';
 import 'package:get_ride/src/widgets/voice_note.dart';
 import 'package:get_ride/src/features/support/support_chat_screen.dart';
-import 'package:get_ride/src/features/support/support_screen.dart' show supportStatusLabel, ticketsProvider;
+import 'package:get_ride/src/features/support/support_screen.dart'
+    show SupportScreen, emptySupportTicketGrace, supportClockProvider, supportStatusLabel, supportTicketListed, ticketsProvider;
 import 'package:get_ride/src/providers.dart';
 
 import 'chat_media_fakes.dart';
@@ -22,6 +23,7 @@ import 'fake_mic.dart';
 
 class _FakeAccount implements AccountRepository {
   final sent = <String>[];
+  int opened = 0;
 
   @override
   Future<void> markTicketRead(String ticketId) async {}
@@ -40,7 +42,10 @@ class _FakeAccount implements AccountRepository {
   }) async => sent.add('$ticketId:voice:$ext:${duration.inSeconds}');
 
   @override
-  Future<SupportTicket> openTicket(String subject) async => SupportTicket({'id': 't9', 'subject': subject});
+  Future<SupportTicket> openTicket(String subject) async {
+    opened++;
+    return SupportTicket({'id': 't9', 'subject': subject});
+  }
 
   @override
   Future<void> sendMessage(String ticketId, String body, {String? senderName}) async => sent.add('$ticketId:$body');
@@ -266,6 +271,101 @@ void main() {
     await tester.pumpAndSettle();
     expect(account.sent, ['t9:My card was charged twice']);
     expect(router.routeInformationProvider.value.uri.path, '/account/support/t9');
+  });
+
+  // Web round 37 (174): no ticket until the first message, and an empty
+  // one left by a failed first send drops off the list after 30 minutes.
+  Future<(_FakeAccount, GoRouter)> pumpNew(WidgetTester tester, Brightness b, {SupportAttachment? file}) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(360, 640);
+    addTearDown(tester.view.reset);
+    final account = _FakeAccount();
+    final router = GoRouter(
+      initialLocation: '/account/support/new',
+      routes: [
+        GoRoute(path: '/account', builder: (_, _) => const Scaffold(body: Text('account'))),
+        GoRoute(
+          path: '/account/support/:ticketId',
+          builder: (_, s) => SupportChatScreen(ticketId: s.pathParameters['ticketId']!, pickAttachment: () async => file),
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          accountRepositoryProvider.overrideWithValue(account),
+          profileProvider.overrideWith((ref) async => Profile({'id': 'me', 'name': 'Ali'})),
+          supportMessagesProvider.overrideWith((ref, id) => Stream.value(const <SupportMessage>[])),
+          photoCameraAvailableProvider.overrideWithValue(false),
+          ticketsProvider.overrideWith((ref) async => const <SupportTicket>[]),
+        ],
+        child: MaterialApp.router(theme: ThemeData(brightness: b), routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return (account, router);
+  }
+
+  for (final b in Brightness.values) {
+    testWidgets('174: opening a new chat and leaving makes no ticket (${b.name})', (tester) async {
+      final (account, router) = await pumpNew(tester, b);
+      await tester.enterText(find.byType(TextField), 'half a thought');
+      await tester.pump();
+      router.go('/account');
+      await tester.pumpAndSettle();
+      expect(find.text('account'), findsOneWidget);
+      expect(account.opened, 0, reason: 'a draft only: no ticket row');
+      expect(account.sent, isEmpty);
+    });
+
+    testWidgets('174: a photo as the first message makes the ticket with it (${b.name})', (tester) async {
+      final (account, router) = await pumpNew(tester, b, file: (bytes: Uint8List(8), name: 'shot.jpg'));
+      expect(account.opened, 0);
+      await tester.tap(find.byKey(const ValueKey('support-attach')));
+      await tester.pumpAndSettle();
+      expect(account.opened, 1);
+      expect(account.sent, ['t9:shot.jpg:8']);
+      expect(router.routeInformationProvider.value.uri.path, '/account/support/t9');
+    });
+
+    testWidgets('174: an empty ticket older than 30 minutes is not listed (${b.name})', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(360, 640);
+      addTearDown(tester.view.reset);
+      final now = DateTime.utc(2026, 10, 19, 12);
+      String ago(int m) => now.subtract(Duration(minutes: m)).toIso8601String();
+      final tickets = [
+        SupportTicket({'id': 'a', 'ticket_number': 3, 'subject': 'Support request', 'created_at': ago(600),
+            'last_message': 'Charged twice', 'last_message_at': ago(590)}),
+        SupportTicket({'id': 'b', 'ticket_number': 4, 'subject': 'Support request', 'created_at': ago(45)}),
+        SupportTicket({'id': 'c', 'ticket_number': 5, 'subject': 'Support request', 'created_at': ago(5)}),
+      ];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            accountRepositoryProvider.overrideWithValue(_FakeAccount()),
+            ticketsProvider.overrideWith((ref) async => tickets),
+            supportClockProvider.overrideWithValue(() => now),
+          ],
+          child: MaterialApp(theme: ThemeData(brightness: b), home: const SupportScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('#3 · Support request'), findsOneWidget);
+      expect(find.text('#4 · Support request'), findsNothing, reason: 'empty and 45 minutes old');
+      expect(find.text('#5 · Support request'), findsOneWidget, reason: 'empty but just made: a send may be under way');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  test('which tickets the list shows', () {
+    final now = DateTime.utc(2026, 10, 19, 12);
+    SupportTicket t(Map<String, dynamic> m) => SupportTicket({'id': 'x', ...m});
+    final old = now.subtract(emptySupportTicketGrace + const Duration(minutes: 1)).toIso8601String();
+    expect(supportTicketListed(t({'created_at': old}), now), isFalse);
+    expect(supportTicketListed(t({'created_at': old, 'last_message': 'hi', 'last_message_at': old}), now), isTrue);
+    expect(supportTicketListed(t({'created_at': now.toIso8601String()}), now), isTrue);
+    expect(supportTicketListed(t(const {}), now), isTrue, reason: 'no date: keep it');
   });
 
   testWidgets('the chat is headed by its ticket and status', (tester) async {

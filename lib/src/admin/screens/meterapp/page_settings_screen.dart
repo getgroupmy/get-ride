@@ -121,7 +121,13 @@ class _AdminPageSettingsScreenState extends ConsumerState<AdminPageSettingsScree
                   child: TextField(
                     key: const ValueKey('page-settings-search'),
                     controller: _query,
-                    decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search pages, sheets and modals'),
+                    // A short hint that fits at large text; what it searches
+                    // stays under the field.
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search),
+                      hintText: 'Search pages',
+                      helperText: 'Pages, sheets and modals',
+                    ),
                     onChanged: (_) => setState(() {}),
                   ),
                 ),

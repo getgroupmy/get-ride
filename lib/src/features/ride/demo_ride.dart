@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/demo_mode.dart';
 import '../../core/format.dart';
 import '../../data/app_display_repository.dart';
+import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
@@ -17,6 +18,68 @@ final demoSettingsProvider = Provider<DemoSettings>((ref) {
   final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
   return DemoSettings.fromSettings(blob);
 });
+
+/// Whether the signed-in rider is one of the admin's demo riders with demo
+/// offers on: Find driver then books a demo request on this phone alone
+/// ([demoRidesProvider]). Nobody else ever sees a demo offer.
+final demoRiderProvider = Provider<bool>((ref) {
+  final s = ref.watch(demoSettingsProvider);
+  // The account is only asked about when there is a list to be on.
+  if (!s.riderOffers || s.riders.isEmpty) return false;
+  return s.offersFor(ref.watch(currentUserIdProvider));
+});
+
+/// Whether the signed-in driver is one of the admin's demo drivers with
+/// demo incoming requests on.
+final demoDriverProvider = Provider<bool>((ref) {
+  final s = ref.watch(demoSettingsProvider);
+  if (!s.partnerRequests || s.drivers.isEmpty) return false;
+  return s.requestsFor(ref.watch(currentUserIdProvider));
+});
+
+/// A demo rider's requests, kept on this phone alone: never written to the
+/// database, never pushed, never seen by a real driver. The searching
+/// screen follows one as it would a ride ([isDemoRideId]).
+final demoRidesProvider = NotifierProvider<DemoRides, Map<String, RideRequest>>(DemoRides.new);
+
+class DemoRides extends Notifier<Map<String, RideRequest>> {
+  int _count = 0;
+
+  @override
+  Map<String, RideRequest> build() => const {};
+
+  /// A new open request (`demo-<n>`) from [row], the columns a real
+  /// request would have had.
+  RideRequest create(Map<String, dynamic> row, {DateTime? now}) {
+    final id = 'demo-${++_count}';
+    final ride = RideRequest({
+      ...row,
+      'id': id,
+      'status': 'open',
+      'created_at': (now ?? DateTime.now()).toUtc().toIso8601String(),
+    });
+    state = {...state, id: ride};
+    return ride;
+  }
+
+  RideRequest? _patch(String id, Map<String, dynamic> patch) {
+    final r = state[id];
+    if (r == null) return null;
+    final next = RideRequest({...r.raw, ...patch});
+    state = {...state, id: next};
+    return next;
+  }
+
+  /// The fare raised while it is still open; null otherwise (as
+  /// `RideRepository.raiseFare`).
+  RideRequest? raiseFare(String id, double fare) =>
+      state[id]?.status == RideStatus.open ? _patch(id, {'fare': fare, 'ride_fare': fare}) : null;
+
+  void cancel(String id, {String? reason}) =>
+      _patch(id, {'status': 'cancelled', 'cancel_reason': reason, 'cancelled_at': DateTime.now().toUtc().toIso8601String()});
+
+  void expire(String id) => _patch(id, {'status': 'expired'});
+}
 
 /// The "DEMO" mark on everything the demo shows, so it is never mistaken for
 /// a real driver.
@@ -39,12 +102,12 @@ class DemoChip extends StatelessWidget {
 /// (Expo's `userMockEnabled`). The search screen draws them with the real
 /// offers; this only keeps the time.
 class DemoOfferTimeline extends ChangeNotifier {
-  DemoOfferTimeline(double fare, {DateTime Function()? clock}) : _clock = clock ?? DateTime.now {
+  DemoOfferTimeline(double fare, {DateTime Function()? clock, bool bidding = true}) : _clock = clock ?? DateTime.now {
     _timers.add(Timer(demoViewersAfter, () {
       viewers = true;
       notifyListeners();
     }));
-    for (final (after, offer) in demoOffers(fare)) {
+    for (final (after, offer) in demoOffers(fare, bidding: bidding)) {
       _timers.add(Timer(after, () {
         _shown.add((offer, _clock()));
         notifyListeners();

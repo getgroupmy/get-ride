@@ -4,7 +4,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show DeviceOrientation;
+import 'package:flutter/services.dart' show DeviceOrientation, SystemChannels;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -97,14 +97,25 @@ class _Seams {
   final qrs = <({String data, Color color, String? caption})>[];
   var torches = 0;
 
+  /// False: a browser with no Web Share for files.
+  var fileShare = true;
+
+  /// The image share fails for a passing reason.
+  var shareFails = false;
+
+  /// The download fails.
+  var saveFails = false;
+
   List<Override> get overrides => [
+    fileSharingAvailableProvider.overrideWithValue(fileShare),
     imageSharerProvider.overrideWithValue((i) async {
+      if (shareFails) throw Exception('busy');
       shared.add(i);
       return false;
     }),
     imageSaverProvider.overrideWithValue((i) async {
       saved.add(i);
-      return const ImageSaveResult(ImageSaveOutcome.downloaded);
+      return ImageSaveResult(saveFails ? ImageSaveOutcome.failed : ImageSaveOutcome.downloaded);
     }),
     textSharerProvider.overrideWithValue((t, {subject, origin}) async {
       texts.add(t);
@@ -154,7 +165,7 @@ void main() {
     });
 
     test('what a save tells the rider', () {
-      expect(imageSaveMessage(const ImageSaveResult(ImageSaveOutcome.downloaded)), 'Image downloaded');
+      expect(imageSaveMessage(const ImageSaveResult(ImageSaveOutcome.downloaded)), 'Image saved to your downloads');
       expect(
         imageSaveMessage(const ImageSaveResult(ImageSaveOutcome.savedToFile, path: '/d/x.png')),
         contains('/d/x.png'),
@@ -168,9 +179,13 @@ void main() {
       expect(text, contains('pay Aina'));
       expect(text, contains('RM12.50'));
       expect(text, contains(walletAccountNumber(_me)));
-      expect(walletQrShareText(coin: true, userId: _me), contains('Wallet ID: $_me'));
+      // GET.coin codes name the same account number as GET.wallet ones,
+      // never the internal user id.
+      final coin = walletQrShareText(coin: true, userId: _me);
+      expect(coin, contains('Account no. ${walletAccountNumber(_me)}'));
+      expect(coin, isNot(contains(_me)));
       expect(walletQrCaption(coin: false, userId: _me, name: 'aina'), startsWith('AINA\nAccount no.'));
-      expect(walletQrCaption(coin: true, userId: _me), _me);
+      expect(walletQrCaption(coin: true, userId: _me), 'Account no. ${walletAccountNumber(_me)}');
     });
 
     test('the invite card names the inviter when there is one', () {
@@ -254,10 +269,45 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('wallet-qr-save')));
         await tester.pumpAndSettle();
         expect(seams.saved.single.fileName, 'getride-wallet-qr.png');
-        expect(find.text('Image downloaded'), findsOneWidget);
+        expect(find.text('Image saved to your downloads'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }
+
+    for (final brightness in Brightness.values) {
+      for (final coin in [false, true]) {
+        testWidgets('${coin ? 'GET.coin' : 'Receive'}: a browser that cannot share images copies the account number '
+            '(${brightness.name})', (tester) async {
+          _tall(tester);
+          final copied = <String>[];
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+            if (call.method == 'Clipboard.setData') copied.add((call.arguments as Map)['text'] as String);
+            return null;
+          });
+          addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+          final seams = _Seams()..fileShare = false;
+          await tester.pumpWidget(_app(ReceiveQrScreen(coin: coin), seams, brightness: brightness));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const ValueKey('wallet-qr-share')));
+          await tester.pumpAndSettle();
+          expect(seams.shared, isEmpty, reason: 'no image share is tried where it can never work');
+          expect(copied.single, contains('Account no. ${walletAccountNumber(_me)}'));
+          expect(find.text(copiedForPasting), findsOneWidget);
+          expect(find.textContaining('Please try again'), findsNothing);
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
+    testWidgets('a passing share failure still says try again', (tester) async {
+      _tall(tester);
+      final seams = _Seams()..shareFails = true;
+      await tester.pumpWidget(_app(const ReceiveQrScreen(), seams));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('wallet-qr-share')));
+      await tester.pumpAndSettle();
+      expect(find.text("Couldn't share the image. Please try again."), findsOneWidget);
+    });
 
     testWidgets('an amount code shares with its amount, and not once it has expired', (tester) async {
       _tall(tester);
@@ -284,7 +334,7 @@ void main() {
       expect(seams.shared, hasLength(1));
     });
 
-    testWidgets('the GET.coin code shares in black with the wallet id', (tester) async {
+    testWidgets('the GET.coin code shares in black with the account number', (tester) async {
       _tall(tester);
       final seams = _Seams();
       await tester.pumpWidget(_app(const ReceiveQrScreen(coin: true), seams, brightness: Brightness.dark));
@@ -293,7 +343,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(seams.shared.single.fileName, 'getride-coin-qr.png');
       expect(seams.qrs.single.color, Colors.black);
-      expect(seams.shared.single.text, contains('Wallet ID: $_me'));
+      expect(seams.shared.single.text, contains('Account no. ${walletAccountNumber(_me)}'));
+      expect(seams.shared.single.text, isNot(contains(_me)));
+      expect(seams.qrs.single.data, walletQrPayload(_me), reason: 'the code itself still carries the user id');
       expect(tester.takeException(), isNull);
     });
   });
@@ -341,6 +393,73 @@ void main() {
       });
     }
 
+    for (final brightness in Brightness.values) {
+      testWidgets('web: Share card copies the invite where images cannot be shared; Download says it saved '
+          '(${brightness.name})', (tester) async {
+        _tall(tester);
+        final copied = <String>[];
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') copied.add((call.arguments as Map)['text'] as String);
+          return null;
+        });
+        addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+        final seams = _Seams()..fileShare = false;
+        await tester.pumpWidget(
+          _app(
+            const ReferralScreen(),
+            seams,
+            brightness: brightness,
+            more: [referralRepositoryProvider.overrideWithValue(_FakeReferrals())],
+          ),
+        );
+        await tester.pumpAndSettle();
+        final code = referralCodeFor(userId: _me);
+        await tester.ensureVisible(find.byKey(const ValueKey('referral-card-share')));
+        await tester.tap(find.byKey(const ValueKey('referral-card-share')));
+        await tester.pumpAndSettle();
+        expect(seams.shared, isEmpty);
+        expect(copied.single, referralMessage(code, referralLink(code)));
+        expect(find.text(copiedForPasting), findsOneWidget);
+
+        ScaffoldMessenger.of(tester.element(find.byKey(const ValueKey('referral-card-save')))).clearSnackBars();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('referral-card-save')));
+        await tester.pumpAndSettle();
+        expect(seams.saved.single.fileName, referralCardFileName(code));
+        expect(find.text('Image saved to your downloads'), findsOneWidget);
+
+        // A download that fails says so.
+        ScaffoldMessenger.of(tester.element(find.byKey(const ValueKey('referral-card-save')))).clearSnackBars();
+        seams.saveFails = true;
+        await tester.pumpWidget(
+          _app(
+            const ReferralScreen(),
+            seams,
+            brightness: brightness,
+            more: [referralRepositoryProvider.overrideWithValue(_FakeReferrals())],
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(const ValueKey('referral-card-save')));
+        await tester.tap(find.byKey(const ValueKey('referral-card-save')));
+        await tester.pumpAndSettle();
+        expect(find.text("Couldn't save the image. Try Share instead."), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('a card that could not be drawn says so instead of nothing', (tester) async {
+      _tall(tester);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: ShareSaveImageButtons(keyPrefix: 'x', image: (_) async => null),
+        ),
+      ));
+      await tester.tap(find.byKey(const ValueKey('x-share')));
+      await tester.pumpAndSettle();
+      expect(find.text(imageNotReadyMessage), findsOneWidget);
+    });
+
     testWidgets('with no share sheet the invite is copied, and it says so', (tester) async {
       _tall(tester);
       final seams = _Seams()..textCopied = true;
@@ -378,6 +497,27 @@ void main() {
       expect(find.byKey(const ValueKey('scan-help-sheet')), findsNothing);
       expect(tester.takeException(), isNull);
     });
+
+    for (final brightness in Brightness.values) {
+      testWidgets('with no camera the aiming hint goes, the panel says why ($brightness)', (tester) async {
+        _tall(tester);
+        final scanner = MobileScannerController(autoStart: false);
+        addTearDown(scanner.dispose);
+        await tester.pumpWidget(_app(ScanPayScreen(scanner: scanner), _Seams(), brightness: brightness));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('scan-hint')), findsOneWidget, reason: 'a camera to aim: the hint shows');
+
+        // Web or desktop with no camera: the scanner reports an error.
+        scanner.value = scanner.value.copyWith(
+          error: const MobileScannerException(errorCode: MobileScannerErrorCode.unsupported),
+        );
+        await tester.pump();
+        expect(find.text('Point the camera at a GET.ride QR code.'), findsNothing);
+        expect(find.byKey(const ValueKey('scan-hint-none')), findsOneWidget);
+        expect(find.byKey(const ValueKey('scan-manual')), findsOneWidget, reason: 'the code can still be pasted');
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   group('emergency contacts', () {

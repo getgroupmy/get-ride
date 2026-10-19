@@ -23,6 +23,11 @@ abstract final class SideMenuStyle {
   /// A row the admin menu has open.
   static const selected = Color(0xFF333333);
 
+  /// [button] as words or an outline on the panel: the bright accent on
+  /// the charcoal panel, [buttonFill] on the white one, where the bright
+  /// accent reads at only about 2.6:1.
+  static Color outlineOn(Brightness b) => b == Brightness.dark ? button : buttonFill;
+
   /// Share of the screen the panel takes, at most [maxWidth].
   static const widthFraction = 0.8;
   static const maxWidth = 360.0;
@@ -235,7 +240,13 @@ class SideMenuFrame extends StatelessWidget {
           children: [
             if (header != null) ...[header!, line],
             Expanded(
-              child: ListView(padding: const EdgeInsets.symmetric(vertical: 6), children: rows),
+              // 6 more under the last row, so it ends clear of the line and
+              // the pinned footer below (not flush against them).
+              child: ListView(
+                key: const ValueKey('side-menu-rows'),
+                padding: const EdgeInsets.only(top: 6, bottom: 12),
+                children: rows,
+              ),
             ),
             line,
             Padding(

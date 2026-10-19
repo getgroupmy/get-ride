@@ -143,3 +143,9 @@ String inboxWhen(DateTime at, DateTime now) {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return '${at.day} ${months[at.month - 1]}${at.year == now.year ? '' : ' ${at.year}'}';
 }
+
+/// A stored notification body as shown: its first character capitalised
+/// (older pushes were saved as "your car is waiting at …"); nothing else in
+/// the text changes. Pure.
+String inboxBodyText(String body) =>
+    body.isEmpty ? body : body.substring(0, 1).toUpperCase() + body.substring(1);

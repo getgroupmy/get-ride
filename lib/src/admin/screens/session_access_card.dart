@@ -169,7 +169,7 @@ class SessionAccessCard extends ConsumerWidget {
     await showAppDialog<void>(
       id: 'messaging.session-key',
       context: context,
-      builder: (c) => _ShowKeyDialog(label: draft.label, made: result),
+      builder: (c) => SessionKeyDialog(label: draft.label, made: result),
     );
   }
 }
@@ -323,8 +323,8 @@ class _AddSessionDialogState extends State<_AddSessionDialog> {
 }
 
 /// The key, once: copy it into the session's environment.
-class _ShowKeyDialog extends StatelessWidget {
-  const _ShowKeyDialog({required this.label, required this.made});
+class SessionKeyDialog extends StatelessWidget {
+  const SessionKeyDialog({super.key, required this.label, required this.made});
   final String label;
   final ({String key, DateTime? expiresAt}) made;
 
@@ -334,7 +334,11 @@ class _ShowKeyDialog extends StatelessWidget {
     final ends = made.expiresAt?.toLocal();
     return AlertDialog(
       title: Text('Key for "$label"'),
+      // Scrolls when large text on a small phone makes it taller than the
+      // screen, instead of overflowing.
+      scrollable: true,
       content: Column(
+        key: const ValueKey('session-key-body'),
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -373,7 +377,9 @@ class _ShowKeyDialog extends StatelessWidget {
             'or as the environment variable $sessionKeyEnvName. '
             '${ends == null ? '' : 'It works until ${DateFormat('d MMM, h:mm a').format(ends)}. '}'
             'The session calls the backend with it as in $sessionAccessDocs; remove it here to end it early.',
-            style: t.textTheme.bodySmall,
+            key: const ValueKey('session-key-note'),
+            // Checked against the dialog's own fill, light and dark.
+            style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t, background: dialogFill(t))),
           ),
         ],
       ),

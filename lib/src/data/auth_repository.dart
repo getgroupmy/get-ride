@@ -7,7 +7,9 @@ import 'package:uuid/uuid.dart';
 
 import '../core/auth_utils.dart';
 import '../features/auth/passkey/passkey.dart' as pk;
+import 'meter_session_store.dart';
 import 'session_guard.dart';
+import 'function_region.dart';
 
 /// What the server knows about a phone number (`profile_phone_lookup`).
 class PhoneLookup {
@@ -170,7 +172,7 @@ class AuthRepository {
 
   Future<PinLoginOutcome> _pinLogin(String phone, String pin) async {
     try {
-      final res = await _db.functions.invoke('pin-login', body: {'phone': normalizeE164(phone), 'pin': pin});
+      final res = await _db.functions.invokeNearDb('pin-login', body: {'phone': normalizeE164(phone), 'pin': pin});
       return pinLoginOutcome(res.status, res.data);
     } on FunctionException catch (e) {
       return pinLoginOutcome(e.status, e.details);
@@ -374,5 +376,9 @@ class AuthRepository {
   // ignore: experimental_member_use
   Future<void> removePasskey(String id) => _db.auth.passkey.delete(passkeyId: id);
 
-  Future<void> signOut() => _db.auth.signOut();
+  /// Signs out, and forgets this sign-in's meter on/off (Meter at sign-in).
+  Future<void> signOut() async {
+    await MeterSessionStore.clear();
+    await _db.auth.signOut();
+  }
 }

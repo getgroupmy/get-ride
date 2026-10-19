@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/early_end.dart';
@@ -189,7 +190,7 @@ void main() {
     late _FakeRides rides;
     late _Geo geo;
 
-    Future<void> pump(WidgetTester tester) async {
+    Future<void> pump(WidgetTester tester, {Brightness brightness = Brightness.light}) async {
       tester.view.physicalSize = const Size(1200, 1800);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -232,7 +233,7 @@ void main() {
             rideServicesProvider.overrideWith((ref) async => const []),
             serviceBoxNamesProvider.overrideWith((ref) async => const {}),
           ],
-          child: MaterialApp.router(routerConfig: router),
+          child: MaterialApp.router(theme: ThemeData(brightness: brightness), routerConfig: router),
         ),
       );
     }
@@ -460,7 +461,9 @@ void main() {
       final before = tester.getTopLeft(handle).dy;
       await tester.drag(find.text('Head to pickup'), const Offset(0, -300));
       await tester.pumpAndSettle();
-      expect(tester.getTopLeft(handle).dy, lessThan(before - 200), reason: 'the sheet itself moved up');
+      // (It rests higher since Navigate and Cancel ride count for its rest
+      // line, web tester #133, so it has less way to go.)
+      expect(tester.getTopLeft(handle).dy, lessThan(before - 100), reason: 'the sheet itself moved up');
       ScrollPosition content() =>
           tester.state<ScrollableState>(find.descendant(of: sheet, matching: find.byType(Scrollable)).first).position;
       expect(content().pixels, 0, reason: 'a drag expands the sheet; nothing scrolls');
@@ -469,6 +472,61 @@ void main() {
       await tester.pumpAndSettle();
       expect(content().pixels, 0);
     });
+
+    for (final b in Brightness.values) {
+      testWidgets('Head to pickup at 1.3x text: one-line pieces, and it rests with the drop-off above the buttons '
+          '(${b.name})', (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await pump(tester, brightness: b);
+        tester.view.physicalSize = const Size(412, 915);
+        rows.add(ride('accepted', extra: {'passengers': 1, 'payment_mode': 'Cash'}));
+        await tester.pump();
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(find.text('Head to pickup'), findsOneWidget);
+        // Each piece fitted on one line (#431's FittedBox), never broken.
+        for (final key in ['trip-pax', 'trip-payment']) {
+          final piece = find.byKey(ValueKey(key));
+          expect(find.ancestor(of: piece, matching: find.byType(FittedBox)), findsWidgets, reason: key);
+          final p = tester.renderObject<RenderParagraph>(find.descendant(of: piece, matching: find.byType(RichText)));
+          expect(p.size.height, lessThan(p.getMaxIntrinsicHeight(double.infinity) * 1.5), reason: '$key on one line');
+        }
+        // At rest the drop-off row stands whole above the button bar.
+        final drop = tester.getRect(find.byKey(const ValueKey('trip-drop')));
+        expect(find.text('KL Sentral'), findsOneWidget);
+        expect(drop.bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('trip-footer'))).top + 1));
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final b in Brightness.values) {
+      for (final status in ['arrived', 'on_trip']) {
+        testWidgets('412x915 at 1.3x, $status: the destination rests above the action bar, and scrolls clear of it '
+            '(${b.name})', (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await pump(tester, brightness: b);
+          tester.view.physicalSize = const Size(412, 915);
+          rows.add(ride(status, extra: {'passengers': 1, 'payment_mode': 'Cash'}));
+          await tester.pump();
+          await tester.pump();
+          await tester.pumpAndSettle();
+          final footer = find.byKey(const ValueKey('trip-footer'));
+          final drop = find.byKey(const ValueKey('trip-drop'));
+          expect(drop, findsOneWidget);
+          expect(tester.getRect(drop).bottom, lessThanOrEqualTo(tester.getRect(footer).top + 1), reason: 'at rest');
+          // Pulled all the way up and scrolled to the end, the last of the
+          // sheet still ends above the bar (its height plus the safe area).
+          await tester.fling(drop, const Offset(0, -600), 2000);
+          await tester.pumpAndSettle();
+          await tester.fling(drop, const Offset(0, -2000), 2000);
+          await tester.pumpAndSettle();
+          expect(tester.getRect(drop).bottom, lessThanOrEqualTo(tester.getRect(footer).top + 1), reason: 'scrolled');
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
 
     testWidgets('the sheet scrolls only once fully expanded, and only when more is below', (tester) async {
       await pump(tester);

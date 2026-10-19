@@ -8,17 +8,12 @@ import '../../widgets/common.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../admin_shell.dart';
+import '../../widgets/page_add_action.dart';
 import '../../widgets/page_style_host.dart';
 
+export '../../widgets/page_add_action.dart';
+
 /// Standard admin page: title bar, optional actions, read-only banner.
-/// The room under a list for the floating button over its foot: the
-/// button (as tall as the text makes it) and its margin above and below,
-/// the home bar, and a gap, so the last row scrolls whole above it at any
-/// width or text size.
-double fabListBottomPadding(BuildContext context) {
-  final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 2.0);
-  return kFloatingActionButtonMargin * 2 + 56 * scale + MediaQuery.viewPaddingOf(context).bottom + 16;
-}
 
 class AdminPage extends ConsumerWidget {
   const AdminPage({
@@ -29,8 +24,14 @@ class AdminPage extends ConsumerWidget {
     required this.body,
     this.actions = const [],
     this.floatingActionButton,
+    this.addAction,
     this.bottom,
   });
+
+  /// The page's "Add …": a floating button on a phone, an app-bar action
+  /// from 600 wide ([PageAddAction]). Shown to editors only, as
+  /// [floatingActionButton].
+  final PageAddAction? addAction;
 
   final String title;
   /// Admin module id (core screens) or Expo page key (ported screens);
@@ -62,11 +63,11 @@ class AdminPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
-        actions: actions,
+        actions: [...actions, if (level == AccessLevel.edit) ...pageAddActions(context, addAction)],
         leading: _leading(context),
         bottom: bottom,
       ),
-      floatingActionButton: level == AccessLevel.edit ? floatingActionButton : null,
+      floatingActionButton: level == AccessLevel.edit ? floatingActionButton ?? pageAddFab(context, addAction) : null,
       body: Column(children: [
         if (level == AccessLevel.read)
           MaterialBanner(

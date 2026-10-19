@@ -15,6 +15,7 @@ import '../../../widgets/net_image.dart';
 import '../../../data/live_tables.dart';
 import '../../../widgets/storage_image.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/date_boxes.dart';
 
 void _leave(BuildContext context) => context.canPop() ? context.pop(true) : context.go('/admin/users');
 
@@ -85,8 +86,9 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
   Future<void> _save() async {
     final err = validateUserForm(name: _name.text, phone: _phone.text);
     if (err != null) return showError(context, err);
-    if (_birth.text.trim().isNotEmpty && !isValidIsoDate(_birth.text)) {
-      return showError(context, 'Birth date must be YYYY-MM-DD.');
+    final birth = parseIsoDate(_birth.text);
+    if (_birth.text.trim().isNotEmpty && (birth == null || birth.isAfter(DateTime.now()))) {
+      return showError(context, 'Check the birth date.');
     }
     setState(() => _saving = true);
     final repo = ref.read(peopleRepositoryProvider);
@@ -205,12 +207,12 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
             const SizedBox(height: 12),
             FormColumns(children: [
               PeopleField(controller: _nationality, label: 'Nationality', hint: 'Malaysian', icon: Icons.public, enabled: canEdit),
-              PeopleField(
-                  controller: _birth,
+              DateBoxesField(
+                  key: const ValueKey('user-birth-date'),
                   label: 'Birth date',
-                  hint: 'YYYY-MM-DD',
-                  icon: Icons.calendar_today_outlined,
-                  keyboardType: TextInputType.datetime,
+                  controller: _birth,
+                  firstDate: DateTime(1900),
+                  lastDate: DateTime.now(),
                   enabled: canEdit),
             ]),
             Text('Gender', style: t.textTheme.labelLarge),
@@ -287,7 +289,7 @@ class _UserIdDocumentsScreenState extends ConsumerState<UserIdDocumentsScreen> {
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: StorageImage(url, width: 56, height: 40, fit: BoxFit.cover,
+      child: StorageImage(url, width: 56, height: 40, fit: BoxFit.cover, preferThumb: true,
           frameBuilder: boneUntilPainted(width: 56, height: 40),
           errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined)),
     );
@@ -452,7 +454,11 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
                     capitalization: TextCapitalization.none),
                 PeopleField(controller: c['ic']!, label: 'IC'),
                 PeopleField(controller: c['nationality']!, label: 'Nationality'),
-                PeopleField(controller: c['id_expiry_date']!, label: 'ID expiry', hint: 'YYYY-MM-DD'),
+                DateBoxesField(
+                  key: const ValueKey('user-id-expiry'),
+                  label: 'ID expiry',
+                  controller: c['id_expiry_date']!,
+                ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Documents OK'),
@@ -483,7 +489,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
       x.dispose();
     }
     if (save != true || !mounted) return;
-    if (expiry.trim().isNotEmpty && !isValidIsoDate(expiry)) return showError(context, 'ID expiry must be YYYY-MM-DD.');
+    if (expiry.trim().isNotEmpty && !isValidIsoDate(expiry)) return showError(context, 'Check the ID expiry date.');
     await _update(patch, 'Saved');
   }
 
@@ -525,7 +531,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         'Email': _row['email'] ?? '—',
         'IC': _row['ic'] ?? '—',
         'Nationality': _row['nationality'] ?? '—',
-        'ID Expiry': _row['id_expiry_date'] ?? '—',
+        'ID Expiry': formatStoredDateForUser(_row['id_expiry_date']),
         'Documents OK': _row['documents_ok'] == true ? 'Yes' : 'No',
       }),
       if (canEdit) ...[

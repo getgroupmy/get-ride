@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/image_crop.dart';
+import '../../admin_filters.dart' show RowsPage, adminPeoplePageSize, rowsPage, searchOrFilter;
+import '../../../data/doc_photos.dart';
 import '../../../providers.dart';
 import '../meterapp/pick_image.dart';
 import 'people_logic.dart';
@@ -12,8 +14,11 @@ import 'people_logic.dart';
 /// Data access for the People add/edit forms. Every call runs as the signed-in
 /// admin, so the RLS policies (`caller_is_admin()`) are the real gate.
 class PeopleRepository {
-  PeopleRepository(this._db);
+  PeopleRepository(this._db, {this.thumbnail});
   final SupabaseClient _db;
+
+  /// Makes a document image's list thumbnail (an isolate by default).
+  final ImageBytesJob? thumbnail;
 
   String get _now => DateTime.now().toUtc().toIso8601String();
 
@@ -21,8 +26,15 @@ class PeopleRepository {
 
   Future<Map<String, dynamic>?> profile(String id) => _db.from('profiles').select().eq('id', id).maybeSingle();
 
-  Future<List<Map<String, dynamic>>> profiles() async =>
-      List<Map<String, dynamic>>.from(await _db.from('profiles').select().order('joined_at', ascending: false));
+  /// The newest [limit] profiles, or those matching [query] by name, phone,
+  /// email or IC (PERF-55: a page at a time, never the whole table).
+  Future<RowsPage> profiles({int limit = adminPeoplePageSize, String query = ''}) async {
+    var q = _db.from('profiles').select();
+    final or = searchOrFilter(query, partnerUserSearchColumns);
+    if (or != null) q = q.or(or);
+    final rows = await q.order('joined_at', ascending: false).order('id').range(0, limit);
+    return rowsPage(List<Map<String, dynamic>>.from(rows), limit);
+  }
 
   /// Updates one profile and fails loudly when nothing changed: the live
   /// `profiles` table has only a self-update policy, so a refused admin write
@@ -200,15 +212,19 @@ class PeopleRepository {
 
   // ---- Storage -------------------------------------------------------------
 
+  /// Uploads [file] (and, for a document image, its list thumbnail beside
+  /// it) and returns its public-form URL. [path] is always new (it carries
+  /// the upload time), so the file is cached for a year.
   Future<String> upload(String bucket, String path, PickedPeopleFile file) async {
-    await _db.storage.from(bucket).uploadBinary(
-          path,
-          file.bytes,
-          fileOptions: FileOptions(upsert: true, contentType: contentTypeFor(guessExt(file.name))),
-        );
-    return _db.storage.from(bucket).getPublicUrl(path);
+    final files = _db.storage.from(bucket);
+    await uploadStoredFile(files, path, file.bytes,
+        contentType: contentTypeFor(guessExt(file.name)), thumbnail: thumbnail);
+    return files.getPublicUrl(path);
   }
 }
+
+/// What the partner form's user picker searches.
+const partnerUserSearchColumns = ['name', 'phone', 'email', 'ic'];
 
 final peopleRepositoryProvider = Provider((ref) => PeopleRepository(ref.watch(supabaseProvider)));
 
@@ -216,10 +232,11 @@ final peopleRepositoryProvider = Provider((ref) => PeopleRepository(ref.watch(su
 typedef PickedPeopleFile = ({Uint8List bytes, String name});
 
 /// Picks one image (Expo only ever stores images in these buckets; a PDF is
-/// rasterised to its first page first, see doc_pdf.dart). With [context], a
-/// phone asks whether to take the photo or choose one (see [pickImage]).
+/// rasterised to its first page first, see doc_pdf.dart), scaled down for
+/// storage ([pickDocumentImage]). With [context], a phone asks whether to
+/// take the photo or choose one (see [pickImage]).
 Future<PickedPeopleFile?> pickPeopleFile([BuildContext? context]) async {
-  final img = await pickImage(context);
+  final img = await pickDocumentImage(context);
   return img == null ? null : (bytes: img.bytes, name: img.name);
 }
 

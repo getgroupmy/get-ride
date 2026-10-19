@@ -11,6 +11,7 @@ import 'package:get_ride/src/admin/admin_repository.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/admin/screens/people_screens.dart';
 import 'package:get_ride/src/admin/screens/support_agents.dart';
+import 'package:get_ride/src/admin/widgets/admin_widgets.dart' show StatusChip;
 import 'package:get_ride/src/admin/screens/support_screens.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/data/models.dart';
@@ -31,11 +32,14 @@ class _Admin extends AdminRepository {
   final takenBy = <(String, String)>[];
 
   @override
-  Future<List<Map<String, dynamic>>> users() async => [
-    {'id': 'u1', 'name': 'Una', 'phone': '+60 12-345 6789', 'profile_status': 'approved'},
-    {'id': 'u2', 'name': 'Wan', 'phone': '+60123', 'profile_status': 'unapproved'},
-    {'id': 'u3', 'name': 'Nophone', 'profile_status': 'deleted'},
-  ];
+  Future<RowsPage> users({int limit = adminPeoplePageSize, String query = ''}) async => (
+    rows: [
+      {'id': 'u1', 'name': 'Una', 'phone': '+60 12-345 6789', 'profile_status': 'approved'},
+      {'id': 'u2', 'name': 'Wan', 'phone': '+60123', 'profile_status': 'unapproved'},
+      {'id': 'u3', 'name': 'Nophone', 'profile_status': 'deleted'},
+    ],
+    more: false,
+  );
 
   @override
   Future<void> setUserStatus(String id, String status) async => statuses.add((id, status));
@@ -130,10 +134,14 @@ void main() {
         Widget screen, {
         bool edit = true,
         List<Map<String, dynamic>> docs = const [],
+        Size size = const Size(1000, 1600),
+        double textScale = 1,
       }) async {
         final admin = _Admin();
         final dialled = <Uri>[];
-        await tester.binding.setSurfaceSize(const Size(1000, 1600));
+        tester.platformDispatcher.textScaleFactorTestValue = textScale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.binding.setSurfaceSize(size);
         addTearDown(() => tester.binding.setSurfaceSize(null));
         await tester.pumpWidget(
           ProviderScope(
@@ -181,6 +189,32 @@ void main() {
         await tester.pumpAndSettle();
         expect(admin.statuses.last, ('u1', 'blocked'));
         expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('users at 1.3x on a 412 phone: the name and phone take the width, status and call go below',
+          (tester) async {
+        final (_, dialled) = await pump(tester, const AdminUsersScreen(), size: const Size(412, 915), textScale: 1.3);
+        final meta = find.byKey(const ValueKey('record-meta-u1'));
+        expect(meta, findsOneWidget);
+        final call = find.byKey(const ValueKey('call-u1'));
+        expect(find.descendant(of: meta, matching: call), findsOneWidget, reason: 'call on the row below');
+        expect(find.descendant(of: meta, matching: find.byType(StatusChip)), findsOneWidget);
+        // The name's column reaches the card's right edge (no chip beside it).
+        final tile = find.ancestor(of: find.byKey(const ValueKey('record-meta-u1')), matching: find.byType(Column)).first;
+        final title = find.descendant(of: tile, matching: find.byType(ListTile)).first;
+        final tileRect = tester.getRect(title);
+        final sub = tester.getRect(find.descendant(of: title, matching: find.byType(RichText)).at(1));
+        expect(sub.width, greaterThan(tileRect.width - 72 - 16 - 40), reason: 'the phone line takes the remaining width');
+        await tester.tap(call);
+        await tester.pumpAndSettle();
+        expect(dialled, hasLength(1));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('users at 1x keep the status and call beside the name', (tester) async {
+        await pump(tester, const AdminUsersScreen(), size: const Size(412, 915));
+        expect(find.byKey(const ValueKey('record-meta-u1')), findsNothing);
+        expect(find.byKey(const ValueKey('call-u1')), findsOneWidget);
       });
 
       testWidgets('view-only access: the call button, no status actions', (tester) async {

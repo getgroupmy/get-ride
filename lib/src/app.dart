@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -14,6 +13,7 @@ import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
+import 'core/date_order.dart' show setProfileDateCountry;
 import 'core/launch_destination.dart' show AppLaunch;
 import 'core/auth_utils.dart'
     show
@@ -27,12 +27,13 @@ import 'core/auth_utils.dart'
         signInStepPhone,
         signInStepRedirect;
 import 'core/connection_check.dart';
+import 'data/app_connection.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/push_logic.dart';
 import 'core/ride_bidding.dart' show BiddingRegion, pushPlaceAt;
 import 'data/app_icon_service.dart';
-import 'data/app_version_repository.dart' show recordAppVersion;
+import 'data/app_version_repository.dart' show appUpdateProvider, recordAppVersion;
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
 import 'data/branding_cache.dart';
@@ -40,6 +41,7 @@ import 'data/live_tables.dart';
 import 'data/messaging_repository.dart';
 import 'data/geo_service.dart' show AreaInfo, knownPosition;
 import 'data/notifications_repository.dart';
+import 'data/permission_probe.dart';
 import 'data/push_service.dart';
 import 'data/session_guard.dart';
 import 'data/session_tracker.dart';
@@ -334,6 +336,8 @@ final routerProvider = Provider<GoRouter>((ref) {
                       GoRoute(path: 'scheduled', builder: (_, _) => const ScheduledRidesScreen()),
                       GoRoute(
                         path: ':id',
+                        // A demo request has no receipt: the server never saw it.
+                        redirect: (_, s) => isDemoRideId(s.pathParameters['id'] ?? '') ? '/trips' : null,
                         builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!),
                       ),
                     ],
@@ -387,6 +391,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                         routes: [
                           GoRoute(
                             path: ':id',
+                            redirect: (_, s) => isDemoRideId(s.pathParameters['id'] ?? '') ? '/drive/history' : null,
                             builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!),
                           ),
                         ],
@@ -457,13 +462,21 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: 'chat',
+                // A demo request has no driver to message.
+                redirect: (_, s) {
+                  final id = s.pathParameters['id'] ?? '';
+                  return isDemoRideId(id) ? '/ride/$id' : null;
+                },
                 builder: (_, s) => RideChatScreen(requestId: s.pathParameters['id']!),
               ),
             ],
           ),
           GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
           // Driver mode's pages, under the driver menu.
-          GoRoute(path: '/drive/onboarding', builder: (_, _) => const PartnerOnboardingScreen()),
+          GoRoute(
+            path: '/drive/onboarding',
+            builder: (_, s) => PartnerOnboardingScreen(startAt: onboardingStepFromQuery(s.uri.queryParameters['step'])),
+          ),
           GoRoute(
             path: '/drive/demo',
             builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
@@ -476,6 +489,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/drive/trip/:id',
+            // Demo jobs play out on /drive/demo, never as a real trip.
+            redirect: (_, s) => isDemoRideId(s.pathParameters['id'] ?? '') ? '/drive' : null,
             builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!),
             routes: [
               GoRoute(
@@ -578,6 +593,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   VoidCallback? _routeListener;
   BrandingSync? _branding;
   MessagingPresence? _presence;
+  late final Future<void> _updateChecked = ref.read(appUpdateProvider.future);
 
   @override
   void initState() {
@@ -600,6 +616,10 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     // first launch at most `mapProfileFirstWait`, then the app's own map).
     waitForMapProfile();
     ref.listenManual(mapProfileProvider, (_, _) {}, fireImmediately: true);
+    // Dates are typed and shown in the order of the user's country (the
+    // profile's, else the phone's): DD/MM/YYYY, MM/DD/YYYY or YYYY/MM/DD.
+    ref.listenManual(profileProvider, (_, next) => setProfileDateCountry(next.value?.nationality),
+        fireImmediately: true);
     // The home-screen icon: the admin's season or the passenger's choice.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(ref.read(appIconSyncProvider).sync());
@@ -611,9 +631,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     _subs.add(push.foreground.listen(_showForeground));
     _startNotificationsWarning(push);
     // Notifications are asked for at launch, as soon as the splash is gone.
-    Future<void>.delayed(splashRemaining(DateTime.now()) + const Duration(milliseconds: 600), () {
-      if (mounted) unawaited(push.askOnLaunch());
-    });
+    unawaited(
+      splashGone.future.then((_) => Future<void>.delayed(const Duration(milliseconds: 600))).then((_) {
+        if (mounted) unawaited(push.askOnLaunch());
+      }),
+    );
     // The notification that launched the app, opened once the router exists.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final route = push.takePendingRoute();
@@ -651,6 +673,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       failedOn: display.connectionFailedPopup,
     );
     if (check == null) return;
+    // What the check found also tells the offline strip (OfflineStrip).
+    if (mounted) ref.read(appOfflineProvider.notifier).reachable(check.reachable);
     final popup = connectionPopupFor(
       check,
       connectedOn: display.connectedPopup,
@@ -745,7 +769,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       }
       messenger?.showMaterialBanner(
         notificationsOffBanner(
-          onSettings: () => unawaited(Geolocator.openAppSettings()),
+          onSettings: () => unawaited(ref.read(permissionProbeProvider).openNotificationSettings()),
           onDismiss: () {
             _notificationsDismissed = true;
             sync();
@@ -941,6 +965,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
           child: SplashGate(
             cached: widget.branding,
             live: _branding?.latest,
+            // Ready once the update check has answered (PERF-19), so a build
+            // the admin requires to update goes straight to its notice.
+            ready: _updateChecked,
             child: UpdateGate(
               child: PermissionGate(
                 location: () => router.routerDelegate.currentConfiguration.uri.path,

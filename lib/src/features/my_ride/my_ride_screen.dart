@@ -348,6 +348,42 @@ class _AddFavouriteSheetState extends ConsumerState<AddFavouriteSheet> {
         ),
       );
     }
+    // The sheet takes the keyboard's height itself ([FitSheetBody]): the
+    // room left is read from the screen.
+    final view = MediaQueryData.fromView(View.of(context));
+    final short = view.size.height - view.viewInsets.bottom < 320;
+    final field = TextField(
+      key: const ValueKey('favourite-code'),
+      controller: _code,
+      enabled: !_busy,
+      autofocus: widget.initialCode == null,
+      textCapitalization: TextCapitalization.characters,
+      autocorrect: false,
+      enableSuggestions: false,
+      maxLength: 40,
+      style: t.textTheme.titleMedium?.copyWith(letterSpacing: 2),
+      decoration: InputDecoration(
+        labelText: 'My Ride code',
+        hintText: 'ABCD EFGH',
+        counterText: '',
+        prefixIcon: const Icon(Icons.keyboard_outlined),
+        errorText: _error,
+        errorMaxLines: 3,
+        border: const OutlineInputBorder(),
+      ),
+      onChanged: (_) {
+        if (_error != null) setState(() => _error = null);
+      },
+      onSubmitted: (_) => _submit(),
+    );
+    Widget add(Size? size) => FilledButton(
+      key: const ValueKey('favourite-code-add'),
+      style: size == null ? null : FilledButton.styleFrom(minimumSize: size),
+      onPressed: _busy ? null : () => _submit(),
+      child: _busy
+          ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+          : Text(size == null ? 'Add driver' : 'Add'),
+    );
     return ResponsiveCenter(
       maxWidth: 520,
       child: Padding(
@@ -363,38 +399,23 @@ class _AddFavouriteSheetState extends ConsumerState<AddFavouriteSheet> {
               style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
-            TextField(
-              key: const ValueKey('favourite-code'),
-              controller: _code,
-              enabled: !_busy,
-              autofocus: widget.initialCode == null,
-              textCapitalization: TextCapitalization.characters,
-              autocorrect: false,
-              enableSuggestions: false,
-              maxLength: 40,
-              style: t.textTheme.titleMedium?.copyWith(letterSpacing: 2),
-              decoration: InputDecoration(
-                labelText: 'My Ride code',
-                hintText: 'ABCD EFGH',
-                counterText: '',
-                prefixIcon: const Icon(Icons.keyboard_outlined),
-                errorText: _error,
-                errorMaxLines: 3,
-                border: const OutlineInputBorder(),
-              ),
-              onChanged: (_) {
-                if (_error != null) setState(() => _error = null);
-              },
-              onSubmitted: (_) => _submit(),
-            ),
-            const SizedBox(height: 12),
-            FilledButton(
-              key: const ValueKey('favourite-code-add'),
-              onPressed: _busy ? null : () => _submit(),
-              child: _busy
-                  ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Add driver'),
-            ),
+            // Short over the keyboard (a phone on its side): Add beside the
+            // field, so it is on screen with it rather than under the
+            // keyboard's edge.
+            if (short)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: field),
+                  const SizedBox(width: 8),
+                  add(const Size(96, 56)),
+                ],
+              )
+            else ...[
+              field,
+              const SizedBox(height: 12),
+              add(null),
+            ],
             const SizedBox(height: 8),
             OutlinedButton.icon(
               key: const ValueKey('favourite-scan'),

@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers.dart';
+import 'app_connection.dart';
 import 'realtime_backup.dart';
 
 /// The tables admins configure that the app reads. Each must be in the
@@ -183,7 +184,12 @@ class LiveTables extends Notifier<Map<String, int>> {
           );
         }
       }
-      channel = c.subscribe(backup.onStatus);
+      final status = backup.onStatus;
+      channel = c.subscribe((s, [e]) {
+        status(s, e);
+        // The connection strip (OfflineStrip) hears it too: no probe of its own.
+        if (ref.mounted) ref.read(appOfflineProvider.notifier).realtime(s);
+      });
     } catch (_) {
       // No client (tests, an unconfigured build): settings are read once, as before.
     }
@@ -282,7 +288,12 @@ class AdminLiveTables extends Notifier<Map<String, int>> {
           callback: (_) => changed([table]),
         );
       }
-      channel = c.subscribe(backup.onStatus);
+      final status = backup.onStatus;
+      channel = c.subscribe((s, [e]) {
+        status(s, e);
+        // The connection strip (OfflineStrip) hears it too: no probe of its own.
+        if (ref.mounted) ref.read(appOfflineProvider.notifier).realtime(s);
+      });
     } catch (_) {
       // No client (tests): admin lists are read once, as before.
     }

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/meter_logic.dart';
 import 'package:get_ride/src/core/meter_console.dart';
@@ -14,12 +15,15 @@ import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/obd/obd_session.dart';
 import 'package:get_ride/src/data/printer/printer_service.dart';
+import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/features/meter/meter_leave_launcher.dart';
 import 'package:get_ride/src/features/meter/meter_providers.dart';
 import 'package:get_ride/src/core/teksi_tariff.dart';
 import 'package:get_ride/src/features/meter/meter_receipt_pdf.dart';
 import 'package:get_ride/src/features/meter/meter_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/data/meter_session_store.dart';
 import 'package:http/http.dart' as http;
 import 'package:go_router/go_router.dart';
 import 'package:http/testing.dart';
@@ -101,6 +105,7 @@ Future<_FakeLocation> _pump(
   List<AssignableVehicle>? fleet,
   List<String>? claims,
   MeterDriverIdentity driver = const MeterDriverIdentity(name: 'Aina'),
+  List<Override> extra = const [],
 }) async {
   // A reader is "saved" on the phone when the test brings one.
   SharedPreferences.setMockInitialValues({
@@ -140,6 +145,7 @@ Future<_FakeLocation> _pump(
           systemPrints?.add('${trip.plate} $subtitle');
           return true;
         }),
+        ...extra,
       ],
       child: app ?? const MaterialApp(home: MeterScreen()),
     ),
@@ -208,6 +214,17 @@ void main() {
     expect(find.text('1 hire · 1.60 km'), findsOneWidget);
   });
 
+  for (final size in const [Size(852, 393), Size(667, 375)]) {
+    testWidgets('SET is 44 on the screen on a phone on its side ($size)', (tester) async {
+      await _pump(tester, size: size);
+      await tester.pumpAndSettle();
+      // It read 39 on an iPhone 15: a 44 button in a console scaled to fit.
+      final set = tester.getRect(find.byKey(const ValueKey('meter-destination')));
+      expect(set.shortestSide, greaterThanOrEqualTo(44 - 0.01));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('a street hail goes to its destination: quoted, metered, and both on the receipt', (tester) async {
     final orientation = _FakeOrientation();
     final router = GoRouter(
@@ -242,7 +259,9 @@ void main() {
     );
     expect(find.text('NO DESTINATION'), findsOneWidget);
     // SET is a finger-sized target, and so is the vehicle chip's tap area.
-    expect(tester.getSize(find.byKey(const ValueKey('meter-destination'))).height, greaterThanOrEqualTo(44));
+    // 44 as it is on the screen, the console's scaling taken into account.
+    final set = tester.getRect(find.byKey(const ValueKey('meter-destination')));
+    expect(set.shortestSide, greaterThanOrEqualTo(44 - 0.01));
     expect(tester.getSize(find.byKey(const ValueKey('meter-plate'))).height, greaterThanOrEqualTo(44));
     await tester.tap(find.byKey(const ValueKey('meter-destination')));
     await tester.pumpAndSettle();
@@ -847,5 +866,58 @@ void main() {
       expect(find.textContaining('• '), findsWidgets);
       expect(find.text('Waiting for a fix…'), findsOneWidget);
     });
+  });
+
+  group('Meter on/off (Meter at sign-in)', () {
+    for (final b in Brightness.values) {
+      Future<_FakeLocation> pumpWith(WidgetTester tester, String mode) async {
+        final router = GoRouter(
+          initialLocation: '/meter',
+          routes: [
+            GoRoute(path: '/', builder: (_, _) => const Scaffold(body: Text('HOME'))),
+            GoRoute(path: '/meter', builder: (_, _) => const MeterScreen()),
+          ],
+        );
+        addTearDown(router.dispose);
+        final loc = await _pump(
+          tester,
+          size: const Size(1600, 900),
+          app: MaterialApp.router(theme: appTheme(b), routerConfig: router),
+          extra: [
+            meterAtSignInProvider.overrideWith((_) async => mode),
+            meterLaunchSessionProvider.overrideWithValue('u1|09:00'),
+          ],
+        );
+        await tester.pumpAndSettle();
+        return loc;
+      }
+
+      testWidgets('turns the meter off for the sign-in and opens the app (${b.name})', (tester) async {
+        await pumpWith(tester, 'ask');
+        expect(find.byKey(const ValueKey('meter-session-switch')), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('meter-session-switch')));
+        await tester.pumpAndSettle();
+        expect(find.text('HOME'), findsOneWidget);
+        expect(await MeterSessionStore().read('u1|09:00'), isFalse);
+      });
+
+      testWidgets('no switch where the card leaves it to Open the meter on launch (${b.name})', (tester) async {
+        await pumpWith(tester, 'off');
+        expect(find.byKey(const ValueKey('meter-session-switch')), findsNothing);
+      });
+
+      testWidgets('a hire in progress stays on the meter (${b.name})', (tester) async {
+        final loc = await pumpWith(tester, 'always');
+        loc.controller.add(_fixAt(0));
+        await tester.pump();
+        await tester.tap(find.text('START'));
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('meter-session-switch')));
+        await tester.pumpAndSettle();
+        expect(find.text('End the hire before turning the meter off.'), findsOneWidget);
+        expect(find.text('HOME'), findsNothing);
+        expect(await MeterSessionStore().read('u1|09:00'), isNull);
+      });
+    }
   });
 }

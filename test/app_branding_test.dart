@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -17,13 +18,18 @@ void main() {
   group('how long is left', () {
     final start = DateTime(2026, 10, 6, 8);
 
-    test('five seconds, all of it at process start', () {
-      expect(splashHold, const Duration(seconds: 5));
-      expect(splashRemaining(start, started: start), splashHold);
+    test('a moment, not five seconds (PERF-19), all of it at process start', () {
+      expect(splashMinHold <= const Duration(milliseconds: 600), isTrue);
+      expect(splashMaxHold < const Duration(seconds: 5), isTrue);
+      expect(splashRemaining(start, started: start), splashMinHold);
+      expect(splashRemaining(start, started: start, hold: splashMaxHold), splashMaxHold);
     });
 
     test('less once start-up has taken a while, and never negative', () {
-      expect(splashRemaining(start.add(const Duration(seconds: 2)), started: start), const Duration(seconds: 3));
+      expect(
+        splashRemaining(start.add(const Duration(milliseconds: 200)), started: start),
+        splashMinHold - const Duration(milliseconds: 200),
+      );
       expect(splashRemaining(start.add(const Duration(seconds: 9)), started: start), Duration.zero);
     });
   });
@@ -61,23 +67,30 @@ void main() {
     expect(await BrandingCache.load(), isNull);
   });
 
-  Widget gate({CachedBranding? cached, ValueListenable<AppBranding?>? live, bool held = true, DateTime? now}) =>
+  Widget gate({
+    CachedBranding? cached,
+    ValueListenable<AppBranding?>? live,
+    Future<void>? ready,
+    bool held = true,
+    DateTime? now,
+  }) =>
       MaterialApp(
         home: SplashGate(
           cached: cached,
           live: live,
+          ready: ready,
           held: held,
           now: () => now ?? splashStarted,
           child: const Text('home'),
         ),
       );
 
-  testWidgets('holds the app behind the splash for the rest of the five seconds', (tester) async {
+  testWidgets('holds the app behind the splash only for the least hold when ready', (tester) async {
     await tester.pumpWidget(gate(cached: CachedBranding(const AppBranding(splashImageUrl: 'https://cdn/s.png'), _png)));
     expect(find.byKey(const ValueKey('splash')), findsOneWidget);
     expect(find.byKey(const ValueKey('splash-image')), findsOneWidget);
     expect(find.text('home'), findsNothing); // not built until the splash is done
-    await tester.pump(splashHold);
+    await tester.pump(splashMinHold);
     expect(find.byKey(const ValueKey('splash')), findsNothing);
     expect(find.text('home'), findsOneWidget);
   });
@@ -87,7 +100,7 @@ void main() {
     expect(find.byKey(const ValueKey('splash-wordmark')), findsOneWidget);
     expect(find.text('GET.'), findsOneWidget);
     expect(tester.widget<Text>(find.text('GET.')).style!.color, const Color(0xFF2DABE2));
-    await tester.pump(splashHold);
+    await tester.pump(splashMaxHold);
   });
 
   testWidgets('a picture fetched by this launch replaces the cached one', (tester) async {
@@ -97,7 +110,33 @@ void main() {
     live.value = const AppBranding(splashImageUrl: 'https://cdn/new.png');
     await tester.pump();
     expect(find.byKey(const ValueKey('splash-image')), findsOneWidget);
-    await tester.pump(splashHold);
+    await tester.pump(splashMaxHold);
+  });
+
+  testWidgets('waits for the app to be ready, but no longer than the most hold', (tester) async {
+    final ready = Completer<void>();
+    await tester.pumpWidget(gate(ready: ready.future));
+    await tester.pump(splashMinHold);
+    expect(find.byKey(const ValueKey('splash')), findsOneWidget); // still checking for updates
+    ready.complete();
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('home'), findsOneWidget);
+    expect(splashGone.isCompleted, isTrue);
+
+    await tester.pumpWidget(Container());
+    await tester.pumpWidget(gate(ready: Completer<void>().future)); // never answers
+    await tester.pump(splashMaxHold - const Duration(milliseconds: 1));
+    expect(find.text('home'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(find.text('home'), findsOneWidget);
+
+    await tester.pumpWidget(Container());
+    final failing = Completer<void>();
+    await tester.pumpWidget(gate(ready: failing.future));
+    failing.completeError('offline'); // an error counts as ready
+    await tester.pump(splashMinHold);
+    expect(find.text('home'), findsOneWidget);
   });
 
   testWidgets('no splash on the web or after a start that used the whole hold', (tester) async {

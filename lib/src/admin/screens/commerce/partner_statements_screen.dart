@@ -18,6 +18,7 @@ import '../../widgets/admin_widgets.dart';
 import '../../../widgets/page_style_host.dart';
 import 'statement_layout_tab.dart';
 import '../../../widgets/search_select.dart';
+import '../../../widgets/date_boxes.dart';
 
 /// The `admin_access` page these settings sit under.
 const statementsPage = 'admin-settings-partner-statements';
@@ -490,26 +491,12 @@ class _EntryDialogState extends ConsumerState<_EntryDialog> {
               ),
               if (!widget.incentive) ...[
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(_date == null ? 'Dated today' : 'Dated ${_date!.day}/${_date!.month}/${_date!.year}'),
-                    ),
-                    TextButton(
-                      key: const ValueKey('entry-date'),
-                      onPressed: () async {
-                        final now = DateTime.now();
-                        final d = await showDatePicker(
-                          context: context,
-                          initialDate: _date ?? now,
-                          firstDate: DateTime(now.year - 7),
-                          lastDate: now,
-                        );
-                        if (d != null) setState(() => _date = d);
-                      },
-                      child: const Text('Change'),
-                    ),
-                  ],
+                DateBoxesField(
+                  key: const ValueKey('entry-date'),
+                  label: 'Date (blank for today)',
+                  firstDate: DateTime(DateTime.now().year - 7),
+                  lastDate: DateTime.now(),
+                  onChanged: (d) => _date = d,
                 ),
               ],
             ],
