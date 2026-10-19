@@ -37,6 +37,8 @@ import 'landscape_stage.dart';
 import 'meter_auto_launch.dart' show meterAtSignInProvider, meterSessionChoiceProvider;
 import 'meter_leave_launcher.dart';
 import '../../data/meter_trip_sync.dart';
+import '../../data/partner_type_check.dart';
+import '../../core/partner_type_rules.dart' show hailNotOfferedMessage;
 import 'meter_providers.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/web_overlay_back.dart';
@@ -427,6 +429,13 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
       return;
     }
     if (_opening) return;
+    // Admin → Partner Type → Allow hail service (0245): a new hire is a
+    // street hail, refused where the driver's type may not take one. Known
+    // from the check kept for this spot; unknown lets it open.
+    if (ref.read(partnerTypeCheckProvider(_hailKey)).value?.hailBlocked ?? false) {
+      _held = false;
+      return _explain('Street hail not available here', hailNotOfferedMessage);
+    }
     if (!onGps && !_gate.canStart) {
       // The press is held: the sensor is asked for, and the hire opens by
       // itself when it answers (or the driver gives up on the popup).
@@ -859,8 +868,13 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
 
   // ---- Layout --------------------------------------------------------------------
 
+  /// Where the street-hail check is asked: the fix, to about a kilometre.
+  PartnerTypeCheckKey get _hailKey => partnerTypeCheckKey(_fix?.latitude, _fix?.longitude, teksi: true);
+
   @override
   Widget build(BuildContext context) {
+    // Kept fresh for START ([_start]).
+    ref.watch(partnerTypeCheckProvider(_hailKey));
     ref.listen(meterCardsProvider, (_, _) => _resolveCard());
     ref.listen(obdSessionProvider, (_, _) => _checkHeld());
     // Keeps the partner, the permit and the fleet loaded: the plate and the

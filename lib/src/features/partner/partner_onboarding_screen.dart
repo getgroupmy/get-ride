@@ -10,6 +10,7 @@ import '../../admin/screens/people/people_logic.dart';
 import '../../admin/screens/people/people_widgets.dart';
 import '../../core/partner_doc_check.dart' show renewalWindowDays;
 import '../../core/partner_onboarding.dart';
+import '../../core/partner_type_rules.dart' show EffectiveTypeRules, partnerTypesAvailableIn;
 import '../../core/vehicle_onboarding.dart';
 import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
@@ -252,6 +253,11 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
 
   Future<void> _saveTypes() async {
     if (_types.isEmpty) return showError(context, 'Please select at least one partner type.');
+    final entries = _typeEntries.map((e) => e.values);
+    final unavailable = _types.where((t) => !EffectiveTypeRules.of(t, entries).availableIn(_area)).toList();
+    if (unavailable.isNotEmpty) {
+      return showError(context, '${unavailable.join(', ')} is not offered in your service area.');
+    }
     await _save((s) async => s.copyWith(partner: await _repo.patchPartner(s, partnerTypeColumns(_types))));
   }
 
@@ -399,7 +405,13 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
             subtitle: 'Pick every service you will offer.',
             children: [
               PartnerTypeField(
-                options: partnerTypeOptions(_typeEntries.map((e) => e.values)),
+                // Only types offered in the chosen service area (Admin →
+                // Partner Type → Service availability; the server agrees).
+                options: partnerTypesAvailableIn(
+                  partnerTypeOptions(_typeEntries.map((e) => e.values)),
+                  _typeEntries.map((e) => e.values),
+                  _area,
+                ),
                 value: _types,
                 enabled: !_busy,
                 onChanged: (v) => setState(() => _types = v),

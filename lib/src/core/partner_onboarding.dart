@@ -10,6 +10,7 @@
 // The required-document rules themselves are shared with the admin panel
 // (`resolveRequiredDocs` in people_logic.dart).
 import '../admin/screens/people/people_logic.dart';
+import 'partner_type_rules.dart' show permitRequirements;
 import 'vehicle_onboarding.dart';
 
 enum OnboardingStep {
@@ -130,20 +131,70 @@ bool compulsoryDocsComplete(List<RequiredDoc> docs, Map<String, Map<String, dyna
 /// applied to their partner types and service area. Documents tagged with
 /// the Vehicle document type ([vehicleTypeIds]) are left out: they are
 /// uploaded per vehicle in vehicle onboarding, not once for the partner.
+///
+/// Where Admin → Partner Type → Permit makes a permit required for one of
+/// the partner's types in their service area, the permit documents
+/// (Required Documents marked "taxi permit") are compulsory, whatever their
+/// own rules say ([withRequiredPermit]).
 List<RequiredDoc> requiredDocsFor({
   required Iterable<({String id, Map<String, dynamic> values})> requiredDocuments,
   required Iterable<Map<String, dynamic>> partnerTypeValues,
   required List<String> partnerTypes,
   required ServiceArea area,
   Set<String> vehicleTypeIds = const {},
-}) =>
-    resolveRequiredDocs(
-      requiredDocuments.where((e) => !isVehicleDocument(e.values, vehicleTypeIds)),
-      docTypeIds: partnerTypeDocTypeIds(partnerTypeValues, partnerTypes),
-      partnerTypeNames: partnerTypes,
-      countries: area.countries,
-      states: area.statePairs(),
+}) {
+  final partnerDocs = requiredDocuments.where((e) => !isVehicleDocument(e.values, vehicleTypeIds)).toList();
+  final docs = resolveRequiredDocs(
+    partnerDocs,
+    docTypeIds: partnerTypeDocTypeIds(partnerTypeValues, partnerTypes),
+    partnerTypeNames: partnerTypes,
+    countries: area.countries,
+    states: area.statePairs(),
+  );
+  return withRequiredPermit(docs, partnerDocs, permitRequirements(partnerTypes, partnerTypeValues, area));
+}
+
+/// [docs] with every active permit document of [requiredDocuments]
+/// compulsory when [needs] is not empty (added when its own rules left it
+/// out). Compulsory first, then by name, as [resolveRequiredDocs] sorts.
+List<RequiredDoc> withRequiredPermit(
+  List<RequiredDoc> docs,
+  Iterable<({String id, Map<String, dynamic> values})> requiredDocuments,
+  List<({String type, String region})> needs,
+) {
+  if (needs.isEmpty) return docs;
+  final permits = [
+    for (final e in requiredDocuments)
+      if (DocFlags.fromValues(e.values).isTaxiPermit &&
+          '${e.values['active'] ?? true}' != 'false' &&
+          '${e.values['name'] ?? ''}'.trim().isNotEmpty)
+        e,
+  ];
+  if (permits.isEmpty) return docs;
+  final need = needs.first;
+  final label = need.region.isEmpty ? 'Required for ${need.type}' : 'Required for ${need.type} in ${need.region}';
+  final out = [...docs];
+  for (final e in permits) {
+    final i = out.indexWhere((d) => d.id == e.id);
+    final current = i < 0 ? null : out[i];
+    final doc = RequiredDoc(
+      id: e.id,
+      name: current?.name ?? '${e.values['name']}'.trim(),
+      description: current?.description ?? '${e.values['description'] ?? ''}'.trim(),
+      compulsory: true,
+      scope: current?.scope ?? 'global',
+      labels: [...?current?.labels, label],
+      flags: current?.flags ?? DocFlags.fromValues(e.values),
     );
+    if (i < 0) {
+      out.add(doc);
+    } else {
+      out[i] = doc;
+    }
+  }
+  out.sort((a, b) => a.compulsory != b.compulsory ? (a.compulsory ? -1 : 1) : a.name.compareTo(b.name));
+  return out;
+}
 
 /// The country used to file the photo and ID image in storage: the first
 /// service country, else the profile's nationality.

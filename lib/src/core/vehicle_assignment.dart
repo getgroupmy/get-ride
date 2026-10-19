@@ -133,6 +133,14 @@ String claimVehicleErrorMessage(Object error) {
   if (msg.contains('vehicle_in_use')) return 'Another driver is using this vehicle. Ask them to hand it back first.';
   if (msg.contains('user_busy')) return "You're already driving another vehicle. Hand that one back first.";
   if (msg.contains('not_assigned')) return "You're not assigned to this vehicle any more.";
+  // Admin → Partner Type → Max vehicle age (0245): the server says why.
+  if (msg.contains('vehicle_too_old')) {
+    String? hint;
+    try {
+      hint = (error as dynamic).hint as String?;
+    } catch (_) {}
+    return (hint ?? '').trim().isNotEmpty ? hint!.trim() : 'This vehicle is too old for your partner type here.';
+  }
   return "Couldn't select this vehicle. Please try again.";
 }
 
