@@ -161,7 +161,7 @@ class InboxTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 2),
-          Text(item.body, maxLines: 3, overflow: TextOverflow.ellipsis),
+          Text(inboxBodyText(item.body), maxLines: 3, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 4),
           Text(inboxWhen(item.createdAt, now), style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         ],

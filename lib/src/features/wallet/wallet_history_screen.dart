@@ -8,6 +8,7 @@ import '../../core/wallet_history.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/edge_fade_scroll.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart' show showSearchPicker;
 
@@ -138,8 +139,8 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  // Two named rows of chips that wrap, so none hides past
-                  // the edge and the two "All"s read as two filters.
+                  // Two named one-line rows of chips, each scrolling with a
+                  // fade, so the two "All"s read as two filters.
                   _FilterRow(
                     label: 'Wallet',
                     chips: [
@@ -253,15 +254,19 @@ class _FilterRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    return Wrap(
-      spacing: 8,
-      runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Text(label, style: t.textTheme.labelLarge?.copyWith(color: mutedTextColor(t))),
-        ...chips,
-      ],
-    );
+    // One line that scrolls sideways, faded at the edge with more: every
+    // option still reachable and in view, without the wrapped rows taking
+    // most of a small or sideways screen.
+    return Row(children: [
+      Text(label, style: t.textTheme.labelLarge?.copyWith(color: mutedTextColor(t))),
+      const SizedBox(width: 8),
+      Expanded(
+        child: EdgeFadeScroll(
+          key: ValueKey('history-filter-$label'),
+          child: Row(spacing: 8, children: chips),
+        ),
+      ),
+    ]);
   }
 }
 

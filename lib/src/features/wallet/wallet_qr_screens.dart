@@ -84,6 +84,44 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.coin ? 'GET.coin QR' : 'Receive')),
+      // Share and Download pinned under the page, so a short screen (360 ×
+      // 640) never leaves them below the fold.
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          key: const ValueKey('wallet-qr-actions'),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          // The code as a picture on white, so it scans from a chat in dark
+          // mode too. (A Wrap, centred: its own height, not the screen's.)
+          child: ShareSaveImageButtons(
+            keyPrefix: 'wallet-qr',
+            enabled: !expired,
+            // A browser that can't share images: the account number
+            // and the words to go with it, copied for pasting.
+            copyInstead: walletQrShareText(
+              coin: widget.coin,
+              userId: userId,
+              name: name,
+              amountLabel: _amount == null ? null : formatMoney(_amount),
+            ),
+            image: (origin) async => ShareableImage(
+              png: await ref.read(qrPngRendererProvider)(
+                payload,
+                color: qrColor,
+                caption: walletQrCaption(coin: widget.coin, userId: userId, name: name),
+              ),
+              fileName: walletQrFileName(coin: widget.coin, amount: _amount),
+              text: walletQrShareText(
+                coin: widget.coin,
+                userId: userId,
+                name: name,
+                amountLabel: _amount == null ? null : formatMoney(_amount),
+              ),
+              subject: widget.coin ? 'My GET.coin code' : 'My GET.ride pay code',
+              origin: origin,
+            ),
+          ),
+        ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -213,36 +251,6 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
                     TextButton(onPressed: () => _setAmount(null), child: const Text('Cancel amount')),
                   ],
                 ],
-                const SizedBox(height: 8),
-                // The code as a picture on white, so it scans from a chat in dark mode too.
-                ShareSaveImageButtons(
-                  keyPrefix: 'wallet-qr',
-                  enabled: !expired,
-                  // A browser that can't share images: the account number
-                  // and the words to go with it, copied for pasting.
-                  copyInstead: walletQrShareText(
-                    coin: widget.coin,
-                    userId: userId,
-                    name: name,
-                    amountLabel: _amount == null ? null : formatMoney(_amount),
-                  ),
-                  image: (origin) async => ShareableImage(
-                    png: await ref.read(qrPngRendererProvider)(
-                      payload,
-                      color: qrColor,
-                      caption: walletQrCaption(coin: widget.coin, userId: userId, name: name),
-                    ),
-                    fileName: walletQrFileName(coin: widget.coin, amount: _amount),
-                    text: walletQrShareText(
-                      coin: widget.coin,
-                      userId: userId,
-                      name: name,
-                      amountLabel: _amount == null ? null : formatMoney(_amount),
-                    ),
-                    subject: widget.coin ? 'My GET.coin code' : 'My GET.ride pay code',
-                    origin: origin,
-                  ),
-                ),
               ],
             ),
           ),

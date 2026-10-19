@@ -51,6 +51,9 @@ void main() {
     expect(tester.widget<QrImageView>(find.byKey(const ValueKey('wallet-qr'))), isNotNull);
     expect(find.text(walletAccountNumber(_me)), findsOneWidget);
 
+    // Under the pinned Share bar on this short screen: scrolled to first.
+    await tester.ensureVisible(find.byKey(const ValueKey('qr-amount')));
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('qr-amount')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '12.5');
@@ -60,9 +63,15 @@ void main() {
 
     await tester.pump(const Duration(seconds: 61));
     expect(find.text('QR code expired'), findsOneWidget);
+    // Under the pinned Share bar on this short screen: scrolled to first.
+    await tester.ensureVisible(find.text('Regenerate'));
+    await tester.pump();
     await tester.tap(find.text('Regenerate'));
     await tester.pump();
     expect(find.text('Valid for 60s'), findsOneWidget);
+    // Under the pinned Share bar on this short screen: scrolled to first.
+    await tester.ensureVisible(find.text('Cancel amount'));
+    await tester.pump();
     await tester.tap(find.text('Cancel amount'));
     await tester.pump();
     expect(find.textContaining('Valid for'), findsNothing);

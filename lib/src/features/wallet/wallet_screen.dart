@@ -28,13 +28,20 @@ final walletTxProvider = FutureProvider.autoDispose<List<WalletTransaction>>((re
 });
 
 /// Each balance card's width in [room] for [n] cards: one row of equal
-/// cards when each gets 200 or more, else one full-width card a row. The
-/// row's width is rounded down so the cards never wrap on a rounding error.
+/// cards when each gets 200 or more (160 on a screen 600 wide or more, so a
+/// tablet or a phone on its side sets all three side by side), else one
+/// full-width card a row. The row's width is rounded down so the cards never
+/// wrap on a rounding error.
 double walletCardWidth(double room, int n) {
   if (n <= 1) return room;
   final across = ((room - 12 * (n - 1)) / n).floorToDouble();
-  return across >= 200 ? across : room;
+  final least = room >= walletWideRoom ? 160 : 200;
+  return across >= least ? across : room;
 }
+
+/// The cards' room from which they sit side by side at 160 each: a screen
+/// 600 wide less the page's 16 each side.
+const walletWideRoom = 568.0;
 
 /// GET.wallet / GET.coin / credit balances and history. Money only moves
 /// through the server-side wallet RPCs (GET.coin trades: `CoinTradeScreen`).
@@ -90,6 +97,7 @@ class WalletScreen extends ConsumerWidget {
                             children: [
                               for (final b in balances)
                                 SizedBox(
+                                  key: ValueKey('wallet-card-${b.walletType}'),
                                   width: widthOf(b.walletType),
                                   child: Card(
                                     color: b.walletType == 'get_wallet' ? Colors.black : null,

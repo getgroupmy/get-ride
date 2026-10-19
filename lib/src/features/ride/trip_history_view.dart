@@ -14,6 +14,7 @@ import '../../core/trip_history.dart';
 import '../../data/models.dart';
 import '../../data/trip_history_repository.dart';
 import '../../widgets/common.dart';
+import '../../widgets/edge_fade_scroll.dart';
 
 class TripHistoryView extends ConsumerStatefulWidget {
   const TripHistoryView({super.key, required this.role});
@@ -75,8 +76,10 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
   @override
   Widget build(BuildContext context) {
     final partner = widget.role == TripHistoryRole.partner;
-    final chips = SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    // Scrolls sideways with a fade at the edge with more, so a cut-off
+    // "Cancelled" reads as more to come.
+    final chips = EdgeFadeScroll(
+      key: const ValueKey('trip-filters'),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Row(
         spacing: 8,
