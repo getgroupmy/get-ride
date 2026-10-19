@@ -73,14 +73,14 @@ String askBlockedMessage(AskKind kind, {bool serviceOff = false, bool web = fals
   }
   return switch (kind) {
     AskKind.location when ios =>
-      'Location is turned off for GET.ride. Open Settings → Location and choose While Using the App.',
+      'Location is turned off for GET.ride. Open Settings > Location and choose While Using the App.',
     AskKind.location =>
-      'Location is turned off for GET.ride. Open Settings → Permissions → Location and choose Allow while using '
+      'Location is turned off for GET.ride. Open Settings > Permissions > Location and choose Allow while using '
           'the app.',
     AskKind.notifications when ios =>
-      'Notifications are turned off for GET.ride. Open Settings → Notifications and turn on Allow Notifications.',
+      'Notifications are turned off for GET.ride. Open Settings > Notifications and turn on Allow Notifications.',
     AskKind.notifications =>
-      'Notifications are turned off for GET.ride. Open Settings → Notifications and turn on All GET.ride '
+      'Notifications are turned off for GET.ride. Open Settings > Notifications and turn on All GET.ride '
           'notifications.',
   };
 }

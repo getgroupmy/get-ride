@@ -248,7 +248,7 @@ void main() {
             find.text(location ? 'Location is turned off for GET.ride' : 'Notifications are turned off for GET.ride'),
             findsOneWidget,
           );
-          expect(find.textContaining('Open Settings →'), findsOneWidget);
+          expect(find.textContaining('Open Settings >'), findsOneWidget);
           await tester.tap(find.byKey(const ValueKey('permission-settings-open')));
           await tester.pumpAndSettle();
           expect(find.byKey(const ValueKey('permission-settings')), findsNothing);
@@ -353,7 +353,7 @@ void main() {
       expect(refusal(forever: false, took: const Duration(milliseconds: 40)).answer, AskAnswer.blocked);
       expect(refusal(forever: false, took: const Duration(seconds: 2)).answer, AskAnswer.denied);
       expect(refusal(forever: true, took: const Duration(seconds: 2)), const AskResult(AskAnswer.blocked));
-      expect(askBlockedMessage(AskKind.location), contains('Permissions → Location'));
+      expect(askBlockedMessage(AskKind.location), contains('Permissions > Location'));
       expect(askBlockedMessage(AskKind.notifications, ios: true), contains('Allow Notifications'));
       expect(askBlockedMessage(AskKind.location, web: true), contains('lock icon'));
     });
