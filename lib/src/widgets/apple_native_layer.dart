@@ -46,11 +46,32 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
 
   /// The app's camera, moved to at once (no animation: the layers on top
   /// are already there).
+  ///
+  /// The plugin turns a zoom into a camera height by a rule of thumb, which
+  /// leaves Apple's roads a little bigger or smaller than the app's route
+  /// and pins on top, more so away from the centre. Unturned, the map is
+  /// given the exact area the app shows instead; turned (heading up on a
+  /// trip), the zoom is all there is.
   void _follow(MapCamera c) {
     final map = _map;
     if (map == null || _shown == c) return;
+    final turned = (_shown?.rotation ?? 0) != 0;
     _shown = c;
-    unawaited(map.moveCamera(am.CameraUpdate.newCameraPosition(_position(c))).catchError((_) {}));
+    if (c.rotation != 0 || turned) {
+      unawaited(map.moveCamera(am.CameraUpdate.newCameraPosition(_position(c))).catchError((_) {}));
+    }
+    if (c.rotation == 0) {
+      final b = c.visibleBounds;
+      unawaited(map
+          .moveCamera(am.CameraUpdate.newLatLngBounds(
+            am.LatLngBounds(
+              southwest: am.LatLng(b.south, b.west),
+              northeast: am.LatLng(b.north, b.east),
+            ),
+            0,
+          ))
+          .catchError((_) {}));
+    }
   }
 
   @override
