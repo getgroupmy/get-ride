@@ -175,21 +175,29 @@ class ConfirmAddressCard extends StatelessWidget {
                         constraints: const BoxConstraints(minHeight: 44),
                         child: Align(
                           alignment: AlignmentDirectional.centerStart,
-                          child: Text.rich(
-                            TextSpan(
-                              children: [
-                                TextSpan(text: stops.isEmpty ? drop.name : '${stops.length + 1} route stops'),
-                                if (duration.isNotEmpty)
-                                  TextSpan(
-                                    text: '  $duration',
-                                    style: TextStyle(color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w400),
-                                  ),
-                              ],
+                          // The name ellipsised before the time, which stays
+                          // whole on its right ("~14 min" never broken).
+                          child: Row(children: [
+                            Expanded(
+                              child: Text(
+                                stops.isEmpty ? drop.name : '${stops.length + 1} route stops',
+                                key: const ValueKey('confirm-drop-name'),
+                                style: text,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            style: text,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                            if (duration.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                duration,
+                                key: const ValueKey('confirm-duration'),
+                                maxLines: 1,
+                                softWrap: false,
+                                style: text?.copyWith(color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w400),
+                              ),
+                            ],
+                          ]),
                         ),
                       ),
                     ),
@@ -1751,6 +1759,12 @@ class _PromoSheetState extends State<_PromoSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text('Promo code', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          "From a GET.ride campaign or a friend's invite",
+          key: const ValueKey('promo-help'),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: mutedTextColor(Theme.of(context))),
+        ),
         const SizedBox(height: 12),
         TextField(
           key: const ValueKey('promo-code'),

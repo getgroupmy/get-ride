@@ -72,6 +72,10 @@ class NavigationAppCard extends ConsumerWidget {
                       ),
                 trailing: app == selected ? Icon(Icons.check, color: t.colorScheme.primary) : null,
                 selected: app == selected,
+                // Neutral in both themes: the tick carries the choice (dark
+                // mode painted the whole row in the accent).
+                selectedColor: t.colorScheme.onSurface,
+                selectedTileColor: Colors.transparent,
                 onTap: () => ref.read(navigationAppProvider.notifier).set(app),
               );
             }(),

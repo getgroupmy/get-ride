@@ -44,6 +44,12 @@ class NotificationsScreen extends ConsumerWidget {
           if (anyUnread)
             TextButton(
               key: const ValueKey('notifications-read-all'),
+              // A button in the app bar: the theme's accent and button label
+              // style, not the bar's title ink (it read as a label in dark).
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.primary,
+                textStyle: Theme.of(context).textTheme.labelLarge,
+              ),
               onPressed: () => run(
                 () => repo().markRead([
                   for (final i in items)
