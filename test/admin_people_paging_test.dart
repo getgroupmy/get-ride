@@ -126,6 +126,27 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    // Web round 39 (179): from 600 wide a row's action stays on its line.
+    for (final width in const [915.0, 600.0]) {
+      testWidgets('179: at ${width.toInt()} wide name, call, status and Block on one line (${b.name})', (tester) async {
+        await _users(tester, Size(width, 412), b, n: 3);
+        final tile = tester.getRect(find.byKey(const ValueKey('record-tile-u0')));
+        final block = find.byKey(const ValueKey('quick-blocked-u0'));
+        expect(block, findsOneWidget);
+        final r = tester.getRect(block);
+        expect(r.top, greaterThanOrEqualTo(tile.top));
+        expect(r.bottom, lessThanOrEqualTo(tile.bottom), reason: 'inside the row, not on a line under it');
+        expect(tester.getRect(find.text('User 0')).right, lessThanOrEqualTo(r.left));
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('179: under 600 the action keeps its own line (${b.name})', (tester) async {
+      await _users(tester, const Size(360, 740), b, n: 3);
+      final tile = tester.getRect(find.byKey(const ValueKey('record-tile-u0')));
+      expect(tester.getRect(find.byKey(const ValueKey('quick-blocked-u0'))).top, greaterThanOrEqualTo(tile.bottom));
+    });
+
     for (final size in const [Size(360, 740), Size(1366, 768)]) {
       testWidgets('Add Partner picker pages the same way at ${size.width.toInt()} (${b.name})', (tester) async {
         final people = _People(300);

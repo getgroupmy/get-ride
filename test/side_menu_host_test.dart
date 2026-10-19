@@ -161,6 +161,7 @@ void main() {
 
   routerTests();
   narrowContrastTests();
+  lastRowClearTests();
 
   testWidgets("the panel: profile with stars, plain rows, driver mode, social links", (tester) async {
     tester.view.physicalSize = const Size(400, 900);
@@ -250,6 +251,51 @@ void narrowContrastTests() {
         await tester.tapAt(const Offset(350, 400));
         await tester.pumpAndSettle();
       }
+    });
+  }
+}
+
+/// Web round 39 (176): scrolled to its end, the menu's last row ends at
+/// least 6 clear of the line over the pinned footer.
+void lastRowClearTests() {
+  for (final b in Brightness.values) {
+    testWidgets('176: the last menu row ends clear of the footer (${b.name})', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final router = GoRouter(
+        routes: [
+          ShellRoute(
+            builder: (_, state, child) => AppSideMenuHost(location: state.uri.path, child: child),
+            routes: [GoRoute(path: '/', builder: (_, _) => const _Page())],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            profileProvider.overrideWith((ref) async => Profile({'id': 'u1', 'name': 'Kabeer', 'rider_rating': 4.8})),
+            adminAccessProvider.overrideWith((ref) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+            displaySettingsBlobProvider.overrideWith((ref) async => const <String, dynamic>{}),
+          ],
+          child: MaterialApp.router(theme: appTheme(b), routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('side-menu-button')));
+      await tester.pumpAndSettle();
+      final rows = find.byKey(const ValueKey('side-menu-rows'));
+      final position = tester.state<ScrollableState>(find.descendant(of: rows, matching: find.byType(Scrollable))).position;
+      position.jumpTo(position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      final viewport = tester.getRect(rows);
+      // The lowest row's box inside the list.
+      final tiles = tester
+          .widgetList<Widget>(find.descendant(of: rows, matching: find.byWidgetPredicate((w) => w is InkWell)))
+          .map((w) => tester.getRect(find.byWidget(w)));
+      final lastBottom = tiles.map((r) => r.bottom).reduce((a, c) => a > c ? a : c);
+      expect(lastBottom, lessThanOrEqualTo(viewport.bottom - 12), reason: 'the list ends 12 below it');
+      expect(tester.widget<ListView>(rows).padding, const EdgeInsets.only(top: 6, bottom: 12));
     });
   }
 }

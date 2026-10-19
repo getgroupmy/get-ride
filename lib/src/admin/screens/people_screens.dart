@@ -95,11 +95,45 @@ class _RecordCard extends ConsumerWidget {
               if (!ok && context.mounted) showInfo(context, 'Call $phone');
             },
           );
-    // Large text: the name and phone take the whole width, and the status
-    // and call move to a row of their own under them.
-    final stacked = recordCardStacks(MediaQuery.textScalerOf(context));
+    return LayoutBuilder(builder: (context, box) => _build(context, box.maxWidth, actions, c, callButton));
+  }
+
+  Widget _build(
+    BuildContext context,
+    double width,
+    List<QuickStatusAction> actions,
+    ColorScheme c,
+    Widget? callButton,
+  ) {
+    // A list 600 wide or more (a tablet, a phone on its side, a desktop;
+    // the card sits 16 in from each side): the name and phone, call, status
+    // and the actions all on one line.
+    final wide = width + 32 >= 600;
+    // Large text on a phone: the name and phone take the whole width, and
+    // the status and call move to a row of their own under them.
+    final stacked = !wide && recordCardStacks(MediaQuery.textScalerOf(context));
+    Widget actionButton(QuickStatusAction a) => a.destructive
+        ? OutlinedButton(
+            key: ValueKey('quick-${a.next}-$id'),
+            // 48 tall: a finger's target (Android's minimum).
+            style: OutlinedButton.styleFrom(
+              foregroundColor: c.error,
+              side: BorderSide(color: c.error.withValues(alpha: 0.6)),
+              minimumSize: const Size(64, 48),
+            ),
+            onPressed: () => onAction(a),
+            child: Text(a.label),
+          )
+        : FilledButton.tonal(
+            key: ValueKey('quick-${a.next}-$id'),
+            // Not the theme's full-width filled button.
+            style: FilledButton.styleFrom(minimumSize: const Size(64, 48)),
+            onPressed: () => onAction(a),
+            child: Text(a.label),
+          );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ListTile(
+        key: ValueKey('record-tile-$id'),
         leading: leading,
         title: Text(title),
         subtitle: Text(subtitle),
@@ -108,6 +142,8 @@ class _RecordCard extends ConsumerWidget {
             : Row(mainAxisSize: MainAxisSize.min, children: [
                 ?callButton,
                 StatusChip(status),
+                if (wide)
+                  for (final a in actions) ...[const SizedBox(width: 8), actionButton(a)],
               ]),
       ),
       if (stacked)
@@ -120,30 +156,11 @@ class _RecordCard extends ConsumerWidget {
             ?callButton,
           ]),
         ),
-      if (actions.isNotEmpty)
+      if (actions.isNotEmpty && !wide)
         Padding(
           padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
           child: Wrap(spacing: 8, runSpacing: 4, alignment: WrapAlignment.end, children: [
-            for (final a in actions)
-              a.destructive
-                  ? OutlinedButton(
-                      key: ValueKey('quick-${a.next}-$id'),
-                      // 48 tall: a finger's target (Android's minimum).
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: c.error,
-                        side: BorderSide(color: c.error.withValues(alpha: 0.6)),
-                        minimumSize: const Size(64, 48),
-                      ),
-                      onPressed: () => onAction(a),
-                      child: Text(a.label),
-                    )
-                  : FilledButton.tonal(
-                      key: ValueKey('quick-${a.next}-$id'),
-                      // Not the theme's full-width filled button.
-                      style: FilledButton.styleFrom(minimumSize: const Size(64, 48)),
-                      onPressed: () => onAction(a),
-                      child: Text(a.label),
-                    ),
+            for (final a in actions) actionButton(a),
           ]),
         ),
     ]);

@@ -240,7 +240,13 @@ class SideMenuFrame extends StatelessWidget {
           children: [
             if (header != null) ...[header!, line],
             Expanded(
-              child: ListView(padding: const EdgeInsets.symmetric(vertical: 6), children: rows),
+              // 6 more under the last row, so it ends clear of the line and
+              // the pinned footer below (not flush against them).
+              child: ListView(
+                key: const ValueKey('side-menu-rows'),
+                padding: const EdgeInsets.only(top: 6, bottom: 12),
+                children: rows,
+              ),
             ),
             line,
             Padding(
