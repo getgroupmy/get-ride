@@ -61,7 +61,9 @@ begin
                         'no key, no limit');
   perform pg_temp.check(public.auth_rate_take('t229', '203.0.113.31', 0, interval '10 minutes') > 0,
                         'a limit of none refuses');
-  update public.auth_rate_counts set window_start = window_start - interval '10 minutes' where bucket = 't229';
+  -- Two windows on (0234: the window before the current one still weighs in;
+  -- security_batch9_0234.sql tests that).
+  update public.auth_rate_counts set window_start = window_start - interval '20 minutes' where bucket = 't229';
   perform pg_temp.check(public.auth_rate_take('t229', '203.0.113.29', 5, interval '10 minutes') = 0,
                         'a new window starts afresh');
   perform pg_temp.check((select count(*) from public.auth_rate_hits) = v_hits_before,

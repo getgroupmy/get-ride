@@ -4,6 +4,7 @@ import '../core/commission_promotions.dart';
 import '../core/commission_settings.dart';
 import '../core/fare_tariff.dart' show fareTariffRowWithoutServices;
 import 'admin_access.dart';
+import 'admin_filters.dart' show RowsPage, adminPeoplePageSize, rowsPage, searchOrFilter, userSearchColumns;
 import 'admin_settings_models.dart';
 import 'profile_search.dart';
 import 'saved_push.dart';
@@ -130,8 +131,16 @@ class AdminRepository {
 
   // ---- People & vehicles ---------------------------------------------------
 
-  Future<List<Map<String, dynamic>>> users() async =>
-      List<Map<String, dynamic>>.from(await _db.from('profiles').select().order('joined_at', ascending: false));
+  /// The newest [limit] users, or those matching [query] in any of the
+  /// [userSearchColumns] (PERF-55: never the whole table). One row past
+  /// [limit] is asked for only to know whether there are more.
+  Future<RowsPage> users({int limit = adminPeoplePageSize, String query = ''}) async {
+    var q = _db.from('profiles').select();
+    final or = searchOrFilter(query, userSearchColumns);
+    if (or != null) q = q.or(or);
+    final rows = await q.order('joined_at', ascending: false).order('id').range(0, limit);
+    return rowsPage(List<Map<String, dynamic>>.from(rows), limit);
+  }
 
   /// Mirrors Expo `upsertUser`: `profile_status` carries the admin decision;
   /// `status` mirrors it except for "deleted", which `user_status` lacks.

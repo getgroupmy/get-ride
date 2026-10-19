@@ -247,6 +247,7 @@ class _RuleDialogState extends State<_RuleDialog> {
             decoration: InputDecoration(
               labelText: isSession ? 'Session link or id' : 'Address or network',
               hintText: isSession ? 'https://claude.ai/code/session_…' : 'e.g. $defaultOfficeIp or 2001:db8::/64',
+              helperText: isSession ? null : 'One address, or a network up to /$minIpv4Prefix (IPv4) or /$minIpv6Prefix (IPv6)',
               errorText: _error,
             ),
             onChanged: (_) => setState(() => _error = null),
