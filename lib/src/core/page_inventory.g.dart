@@ -63,6 +63,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:meter.print', SurfaceKind.modal, 'Meter · Print', 'lib/src/features/meter/meter_screen.dart'),
   SurfaceEntry('modal:meter.print-2', SurfaceKind.modal, 'Meter · Print', 'lib/src/features/meter/meter_screen.dart'),
   SurfaceEntry('modal:meter.show-gate', SurfaceKind.modal, 'Meter · Gate', 'lib/src/features/meter/meter_screen.dart'),
+  SurfaceEntry('modal:meter.sign-in-choice', SurfaceKind.modal, 'Meter · Sign in choice', 'lib/src/features/meter/meter_sign_in_prompt.dart'),
   SurfaceEntry('modal:mic-gate.ensure-mic', SurfaceKind.modal, 'Mic gate · Ensure mic', 'lib/src/features/support/call/mic_gate.dart'),
   SurfaceEntry('modal:mic-gate.ensure-mic-2', SurfaceKind.modal, 'Mic gate · Ensure mic', 'lib/src/features/support/call/mic_gate.dart'),
   SurfaceEntry('modal:my-qr.expire', SurfaceKind.modal, 'My qr · Expire', 'lib/src/features/my_qr/my_qr_screen.dart'),
