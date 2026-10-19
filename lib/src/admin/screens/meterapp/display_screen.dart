@@ -19,6 +19,7 @@ import '../../widgets/admin_widgets.dart';
 import 'display_logic.dart';
 import 'display_store.dart';
 import 'pick_image.dart';
+import 'test_accounts.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
@@ -298,6 +299,7 @@ class _DisplayBody extends ConsumerWidget {
                   !displayBool(s, 'partnerMockEnabled'), (v) => set('partnerMockEnabled', !v)),
             ]),
           ),
+          TestAccountsCard(canEdit: canEdit),
           const _Section('Service Boxes'),
           Card(
             child: toggle('Show "NEW" badge', 'Toggle the NEW badge on the featured (large) service box',

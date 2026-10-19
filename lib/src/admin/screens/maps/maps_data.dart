@@ -12,6 +12,7 @@ import '../../../data/function_region.dart';
 import '../security/api_keys_logic.dart';
 import '../security/security_data.dart';
 import 'maps_logic.dart';
+import '../../test_traffic.dart' show mapUsageIncludeTestProvider;
 
 /// The server's refusal as one sentence (its hint, when it gives one).
 class MapSettingsError implements Exception {
@@ -33,6 +34,7 @@ class MapUsageRow {
     required this.calls,
     required this.cached,
     required this.failures,
+    this.testCalls = 0,
   });
 
   final String provider;
@@ -40,6 +42,10 @@ class MapUsageRow {
   final int calls;
   final int cached;
   final int failures;
+
+  /// Calls from the tester accounts in the period (migration 0241), whether
+  /// or not they are counted in [calls].
+  final int testCalls;
 
   factory MapUsageRow.fromRow(Map<String, dynamic> r) {
     int n(Object? v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}') ?? 0;
@@ -49,6 +55,7 @@ class MapUsageRow {
       calls: n(r['calls']),
       cached: n(r['cached']),
       failures: n(r['failures']),
+      testCalls: n(r['test_calls']),
     );
   }
 }
@@ -117,10 +124,18 @@ class MapsRepository {
       MapErrorRow.fromRow(Map<String, dynamic>.from(r as Map)),
   ];
 
-  Future<List<MapUsageRow>> usage({int days = 30}) async => [
-    for (final r in await _db.rpc('map_usage', params: {'p_days': days}) as List)
-      MapUsageRow.fromRow(Map<String, dynamic>.from(r as Map)),
-  ];
+  /// Calls per provider and kind; the tester accounts' only with
+  /// [includeTest] (migration 0241; an older database counts them all).
+  Future<List<MapUsageRow>> usage({int days = 30, bool includeTest = false}) async {
+    Object? rows;
+    try {
+      rows = await _db.rpc('map_usage', params: {'p_days': days, 'p_include_test': includeTest});
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202') rethrow;
+      rows = await _db.rpc('map_usage', params: {'p_days': days});
+    }
+    return [for (final r in rows as List) MapUsageRow.fromRow(Map<String, dynamic>.from(r as Map))];
+  }
 }
 
 final mapsRepositoryProvider = Provider((ref) => MapsRepository(ref.watch(supabaseProvider)));
@@ -131,7 +146,7 @@ final adminMapSettingsProvider = FutureProvider.autoDispose<MapSettings>((ref) {
 });
 
 final adminMapUsageProvider = FutureProvider.autoDispose<List<MapUsageRow>>(
-  (ref) => ref.watch(mapsRepositoryProvider).usage(),
+  (ref) => ref.watch(mapsRepositoryProvider).usage(includeTest: ref.watch(mapUsageIncludeTestProvider)),
 );
 
 /// Admin → API Keys' providers (to pick each map provider's key).

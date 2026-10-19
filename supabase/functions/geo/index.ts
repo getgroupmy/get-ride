@@ -9,7 +9,10 @@
 // OpenStreetMap's Nominatim and OSRM are called by the device itself.
 //
 // Answers are cached (except Google's, whose terms forbid it), counted per
-// provider for the admin page, and limited per caller address. See
+// provider for the admin page, and limited per caller address. Calls from a
+// tester account (Admin → Display Settings → Tester accounts, migration 0241)
+// are counted apart, as test traffic, from the verified caller; they are
+// limited and answered like any other. See
 // _shared/geo_handler.ts for the requests and answers.
 //
 // Google keys left empty in Admin → API Keys fall back to the function's own
@@ -34,6 +37,7 @@ import {
   RefusedSessions,
 } from "../_shared/geo_handler.ts";
 import { clientIp } from "../_shared/pin_login.ts";
+import { rpcTestAccountLookup, testAccountCheck } from "../_shared/test_traffic.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -86,6 +90,27 @@ async function callerOf(authorization: string | null): Promise<string | null> {
   return uid;
 }
 
+// Test traffic (0241): whether the caller is a listed tester, kept a minute
+// per id. Only labels the usage count; a failure counts the call as real.
+const isTestAccount = testAccountCheck(rpcTestAccountLookup((fn, args) => db.rpc(fn, args)));
+
+async function isTestCaller(authorization: string | null): Promise<boolean> {
+  try {
+    return await isTestAccount(await callerOf(authorization));
+  } catch {
+    return false;
+  }
+}
+
+// Counts one call through geo_usage_daily; a tester's apart (0241).
+async function countCall(provider: string, kind: string, ok: boolean, cached: boolean, authorization: string | null) {
+  if (await isTestCaller(authorization)) {
+    await db.rpc("geo_count", { p_provider: provider, p_kind: kind, p_ok: ok, p_cached: cached, p_test: true });
+  } else {
+    await db.rpc("geo_count", { p_provider: provider, p_kind: kind, p_ok: ok, p_cached: cached });
+  }
+}
+
 async function call(req: { url: string; method?: string; headers?: Record<string, string>; body?: string }) {
   const res = await fetch(req.url, {
     method: req.method ?? "GET",
@@ -128,7 +153,7 @@ Deno.serve(async (req) => {
       },
       caller: () => callerOf(req.headers.get("Authorization")),
       count: async (provider, kind, ok, cached, detail) => {
-        await db.rpc("geo_count", { p_provider: provider, p_kind: kind, p_ok: ok, p_cached: cached });
+        await countCall(provider, kind, ok, cached, req.headers.get("Authorization"));
         if (!ok && detail) await logError(provider, kind, detail).catch(() => {});
       },
       cacheGet: async (key) => {
@@ -163,7 +188,7 @@ Deno.serve(async (req) => {
         } catch (e) {
           // Google refused (API off, key restricted, billing): say why in the function's logs.
           console.error(`geo: Google ${slot} tile session refused:`, e instanceof Error ? e.message : "failed");
-          await db.rpc("geo_count", { p_provider: "google", p_kind: "tiles", p_ok: false, p_cached: false });
+          await countCall("google", "tiles", false, false, req.headers.get("Authorization"));
           await logError("google", "tiles", `${slot} map: ${errorDetail(e)}`).catch(() => {});
           throw e;
         }
@@ -174,7 +199,7 @@ Deno.serve(async (req) => {
           session: s.session,
           expires_at: new Date(s.expiresAt).toISOString(),
         });
-        await db.rpc("geo_count", { p_provider: "google", p_kind: "tiles", p_ok: true, p_cached: false });
+        await countCall("google", "tiles", true, false, req.headers.get("Authorization"));
         return s.session;
       },
       iso3: (cc) => iso3By.get(cc.toLowerCase()) ?? null,

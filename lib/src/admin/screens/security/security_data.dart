@@ -341,16 +341,31 @@ class SecurityRepository {
       'latency_ms, raw_response';
 
   /// The log, with the fare-range / traffic answers (`extra`, migration 0114)
-  /// where the database has them; an older one is read without.
-  Future<List<Map<String, dynamic>>> fareAiResponses({int limit = 150}) async {
-    Future<List<Map<String, dynamic>>> read(String cols) async => List<Map<String, dynamic>>.from(
-          await _db.from('fare_ai_responses').select(cols).order('created_at', ascending: false).limit(limit),
-        );
+  /// where the database has them; an older one is read without. Calls from
+  /// the tester accounts (`is_test`, migration 0241) are left out unless
+  /// [includeTest]; a database before 0241 has none to leave out.
+  Future<List<Map<String, dynamic>>> fareAiResponses({int limit = 150, bool includeTest = false}) async {
+    Future<List<Map<String, dynamic>>> read(String cols, {required bool realOnly}) async {
+      var q = _db.from('fare_ai_responses').select(cols);
+      if (realOnly) q = q.eq('is_test', false);
+      return List<Map<String, dynamic>>.from(await q.order('created_at', ascending: false).limit(limit));
+    }
+
+    Future<List<Map<String, dynamic>>> withExtra({required bool realOnly}) async {
+      try {
+        return await read('$_responseColumns, extra', realOnly: realOnly);
+      } on PostgrestException catch (e) {
+        if (!e.message.contains('extra')) rethrow;
+        return read(_responseColumns, realOnly: realOnly);
+      }
+    }
+
+    if (includeTest) return withExtra(realOnly: false);
     try {
-      return await read('$_responseColumns, extra');
+      return await withExtra(realOnly: true);
     } on PostgrestException catch (e) {
-      if (!e.message.contains('extra')) rethrow;
-      return read(_responseColumns);
+      if (!e.message.contains('is_test')) rethrow;
+      return withExtra(realOnly: false);
     }
   }
 
