@@ -134,7 +134,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     if (mounted && on != _demoShowing) setState(() => _demoShowing = on);
   }
 
-  bool get _demoOn => _online && ref.watch(demoSettingsProvider).partnerRequests;
+  // Only the admin's demo drivers (Admin → Display Settings → Demo drivers).
+  bool get _demoOn => _online && ref.watch(demoDriverProvider);
 
   bool get _demoShown => _demoShowing && _demoOn;
   late final DriverOnline _onlineState;

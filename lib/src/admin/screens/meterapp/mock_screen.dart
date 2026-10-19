@@ -110,8 +110,10 @@ class AdminMockSettingsScreen extends ConsumerWidget {
                   ),
                 ],
                 const SizedBox(height: 16),
-                const Text('These switches apply globally to every device within a few seconds. Rides already in '
-                    'progress pick up the change on their next screen open.'),
+                const Text('These switches apply within a few seconds. Mock offers and mock requests reach only the '
+                    'accounts listed as Demo riders and Demo drivers (Display Settings → Demo / Mockup Data); with '
+                    'none listed, nobody gets them. Rides already in progress pick up the change on their next screen '
+                    'open.'),
               ]),
             ),
           ]);

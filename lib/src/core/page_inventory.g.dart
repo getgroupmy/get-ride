@@ -327,7 +327,6 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:qr-result.open-scanned-get-qr', SurfaceKind.sheet, 'Qr result · Scanned get qr', 'lib/src/features/my_qr/qr_result_sheet.dart'),
   SurfaceEntry('sheet:ride-call.options', SurfaceKind.sheet, 'Ride call · Options', 'lib/src/features/ride/ride_call_screen.dart'),
   SurfaceEntry('sheet:ride-sos.show-ride-sos', SurfaceKind.sheet, 'Ride sos · Ride sos', 'lib/src/features/safety/ride_sos.dart'),
-  SurfaceEntry('sheet:ride-tracking.prompt-raise', SurfaceKind.sheet, 'Ride tracking · Raise', 'lib/src/features/ride/ride_tracking_screen.dart'),
   SurfaceEntry('sheet:ride.demand-details', SurfaceKind.sheet, 'Ride · Demand details', 'lib/src/features/ride/confirm_parts.dart'),
   SurfaceEntry('sheet:ride.pickup-time', SurfaceKind.sheet, 'Ride · Pickup time', 'lib/src/features/ride/pickup_time_sheet.dart'),
   SurfaceEntry('sheet:saved-place-form.show-saved-place-form', SurfaceKind.sheet, 'Saved place form · Saved place form', 'lib/src/features/ride/saved_place_form.dart'),

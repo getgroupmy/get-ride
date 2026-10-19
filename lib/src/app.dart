@@ -334,6 +334,8 @@ final routerProvider = Provider<GoRouter>((ref) {
                       GoRoute(path: 'scheduled', builder: (_, _) => const ScheduledRidesScreen()),
                       GoRoute(
                         path: ':id',
+                        // A demo request has no receipt: the server never saw it.
+                        redirect: (_, s) => isDemoRideId(s.pathParameters['id'] ?? '') ? '/trips' : null,
                         builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!),
                       ),
                     ],
@@ -387,6 +389,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                         routes: [
                           GoRoute(
                             path: ':id',
+                            redirect: (_, s) => isDemoRideId(s.pathParameters['id'] ?? '') ? '/drive/history' : null,
                             builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!),
                           ),
                         ],
@@ -457,6 +460,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: 'chat',
+                // A demo request has no driver to message.
+                redirect: (_, s) {
+                  final id = s.pathParameters['id'] ?? '';
+                  return isDemoRideId(id) ? '/ride/$id' : null;
+                },
                 builder: (_, s) => RideChatScreen(requestId: s.pathParameters['id']!),
               ),
             ],
@@ -476,6 +484,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/drive/trip/:id',
+            // Demo jobs play out on /drive/demo, never as a real trip.
+            redirect: (_, s) => isDemoRideId(s.pathParameters['id'] ?? '') ? '/drive' : null,
             builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!),
             routes: [
               GoRoute(

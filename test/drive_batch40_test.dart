@@ -82,7 +82,9 @@ Future<void> pumpDrive(
         profileProvider.overrideWith((ref) async => Profile({'id': 'me'})),
         assignableVehiclesProvider.overrideWith((ref) async => vehicles),
         partnerDocCheckProvider.overrideWithValue((_, {required teksi}) async => const []),
-        demoSettingsProvider.overrideWithValue(DemoSettings(partnerRequests: demo)),
+        // Demo requests reach the admin's demo drivers only: this one is listed.
+        demoSettingsProvider.overrideWithValue(DemoSettings(partnerRequests: demo, drivers: const {'me'})),
+        currentUserIdProvider.overrideWithValue('me'),
         partnerTypeEntriesProvider.overrideWith(
           (ref) async => [
             (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false}),
