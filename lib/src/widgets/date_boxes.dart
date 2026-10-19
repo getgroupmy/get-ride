@@ -339,10 +339,11 @@ class DateBoxesFieldState extends State<DateBoxesField> {
     );
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 8),
-      child: LayoutBuilder(builder: (context, size) {
-        // On a narrow dialog the calendar sits beside the name, leaving the
-        // whole width to the boxes.
-        final inline = size.maxWidth >= 320;
+      // On a phone the calendar sits beside the name, leaving the whole width
+      // to the boxes. (Not a LayoutBuilder: dialogs measure their content's
+      // intrinsic width, which a LayoutBuilder can't give.)
+      child: Builder(builder: (context) {
+        final inline = MediaQuery.sizeOf(context).width >= 480;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
