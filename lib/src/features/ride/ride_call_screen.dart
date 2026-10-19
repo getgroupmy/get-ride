@@ -76,6 +76,8 @@ class _RideCallScreenState extends ConsumerState<RideCallScreen> {
 
   Future<void> _open() async {
     final repo = ref.read(rideCallRepositoryProvider);
+    // Ready by the time the call is joined (an incoming one while it rings).
+    repo.prefetchIceServers();
     final me = ref.read(currentUserIdProvider);
     try {
       final call = await repo.fetch(widget.callId);
@@ -570,6 +572,8 @@ Future<void> startRideCall(BuildContext context, WidgetRef ref, RideRequest ride
   // The other phone only rings once this one can be heard.
   if (!await ensureMicForCall(context, ref) || !context.mounted) return;
   final repo = ref.read(rideCallRepositoryProvider);
+  // The relay credentials come while the call rings, not after.
+  repo.prefetchIceServers();
   final dialer = ref.read(rideCallDialerProvider);
   try {
     final c = await repo.ring(ride.id);
@@ -671,7 +675,10 @@ class _RideCallListenerState extends ConsumerState<RideCallListener> {
       return;
     }
     final ring = callRingFromCall(c, _uid, ref.read(callClockProvider)());
-    if (ring != null) unawaited(_ring(ring));
+    if (ring != null) {
+      ref.read(rideCallRepositoryProvider).prefetchIceServers();
+      unawaited(_ring(ring));
+    }
   }
 
   void _onPush(Map<String, dynamic> data) {

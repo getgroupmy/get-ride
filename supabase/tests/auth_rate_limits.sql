@@ -49,8 +49,9 @@ begin
   if public.auth_rate_take('t137', null, 0, interval '10 minutes') <> 0 then
     raise exception 'FAILED: a request without an address is not limited';
   end if;
-  -- Tries that left the window no longer count (0229: windows are fixed).
-  update public.auth_rate_counts set window_start = window_start - interval '10 minutes' where bucket = 't137';
+  -- Tries that left the window no longer count (0229: windows are fixed; 0234:
+  -- the one before the current window still weighs in, so go back two).
+  update public.auth_rate_counts set window_start = window_start - interval '20 minutes' where bucket = 't137';
   if public.auth_rate_take('t137', '203.0.113.9', 3, interval '10 minutes') <> 0 then
     raise exception 'FAILED: old tries should have left the window';
   end if;
