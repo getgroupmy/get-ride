@@ -680,11 +680,14 @@ void _batch2() {
   });
 
   for (final route in [null, '/']) {
-    testWidgets('City is "coming soon", never a jump home or to Drive (route $route)', (tester) async {
+    testWidgets('City: no link is "coming soon", the admin\'s home link goes home, never Drive (route $route)',
+        (tester) async {
       final router = GoRouter(
+        initialLocation: '/menu',
         routes: [
+          GoRoute(path: '/', builder: (_, _) => const Text('HOME')),
           GoRoute(
-            path: '/',
+            path: '/menu',
             builder: (_, _) => Scaffold(
               body: Consumer(
                 builder: (context, ref, _) => SideMenuTile(
@@ -700,7 +703,8 @@ void _batch2() {
       await tester.pumpWidget(ProviderScope(child: MaterialApp.router(routerConfig: router)));
       await tester.tap(find.text('City'));
       await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('menu-coming-soon')), findsOneWidget);
+      expect(find.byKey(const ValueKey('menu-coming-soon')), route == null ? findsOneWidget : findsNothing);
+      expect(find.text('HOME'), route == null ? findsNothing : findsOneWidget);
       expect(find.text('DRIVE'), findsNothing);
     });
   }
