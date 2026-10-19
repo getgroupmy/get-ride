@@ -224,6 +224,9 @@ class ScheduledRide {
     this.cancelFee = 0,
     this.cancelFeeStatus = 'none',
     this.cancelledBy,
+    this.promoCode,
+    this.promoEstimate,
+    this.promoError,
   });
 
   final String id;
@@ -250,6 +253,12 @@ class ScheduledRide {
   final String cancelFeeStatus;
   final String? cancelledBy;
 
+  /// The promo code kept on the booking (migration 0242), its estimated
+  /// discount on the fare, or why the code sent with it was dropped.
+  final String? promoCode;
+  final double? promoEstimate;
+  final String? promoError;
+
   static double _num(Object? v) => v is num ? v.toDouble() : double.tryParse('${v ?? ''}') ?? 0;
 
   factory ScheduledRide.fromRow(Map<String, dynamic> r) => ScheduledRide(
@@ -271,6 +280,9 @@ class ScheduledRide {
     cancelFee: _num(r['cancel_fee']),
     cancelFeeStatus: (r['cancel_fee_status'] as String?) ?? 'none',
     cancelledBy: r['cancelled_by'] as String?,
+    promoCode: (r['promo_code'] as String?)?.trim().isEmpty ?? true ? null : (r['promo_code'] as String).trim(),
+    promoEstimate: r['promo_estimate'] == null ? null : _num(r['promo_estimate']),
+    promoError: r['promo_error'] as String?,
   );
 
   /// Still to happen: the rider can cancel it.

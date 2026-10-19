@@ -16,8 +16,10 @@ class PromoRepository {
   final SupabaseClient? _db;
 
   Map<String, dynamic> _trip(double pickupLat, double pickupLng, double? dropLat, double? dropLng, String? service,
-          double? fare) =>
+          double? fare, DateTime? pickupAt) =>
       {
+        // A scheduled ride: the rules are judged at its pickup time.
+        if (pickupAt != null) 'p_pickup_at': pickupAt.toUtc().toIso8601String(),
         'p_pickup_lat': pickupLat,
         'p_pickup_lng': pickupLng,
         'p_drop_lat': dropLat,
@@ -35,11 +37,12 @@ class PromoRepository {
     double? dropLng,
     String? service,
     double? fare,
+    DateTime? pickupAt,
   }) async {
     final db = _db;
     if (db == null) return const [];
     try {
-      final rows = await db.rpc('promo_offers', params: _trip(pickupLat, pickupLng, dropLat, dropLng, service, fare));
+      final rows = await db.rpc('promo_offers', params: _trip(pickupLat, pickupLng, dropLat, dropLng, service, fare, pickupAt));
       return [
         for (final r in (rows is List ? rows : const []))
           if (r is Map) PromoOffer.fromRow(Map<String, dynamic>.from(r)),
@@ -59,6 +62,7 @@ class PromoRepository {
     double? dropLng,
     String? service,
     double? fare,
+    DateTime? pickupAt,
   }) async {
     final c = normalizePromoCode(code);
     if (!isPromoCodeShape(c)) return const PromoCheckResult.refused('not_found', "This code isn't valid.");
@@ -67,7 +71,7 @@ class PromoRepository {
     try {
       final v = await db.rpc('promo_check', params: {
         'p_code': c,
-        ..._trip(pickupLat, pickupLng, dropLat, dropLng, service, fare),
+        ..._trip(pickupLat, pickupLng, dropLat, dropLng, service, fare, pickupAt),
       });
       return v is Map ? PromoCheckResult.fromJson(Map<String, dynamic>.from(v)) : const PromoCheckResult.refused('not_found');
     } on PostgrestException catch (e) {

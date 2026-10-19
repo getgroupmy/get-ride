@@ -57,6 +57,18 @@ enum PromoAppliesTo {
   static PromoAppliesTo parse(Object? v) => values.firstWhere((e) => e.db == v, orElse: () => pickup);
 }
 
+/// Which rides a code is for: rides now, scheduled rides, or both.
+enum PromoRideKinds {
+  now('now', 'Now rides'),
+  scheduled('scheduled', 'Scheduled'),
+  both('both', 'Both');
+
+  const PromoRideKinds(this.db, this.label);
+  final String db;
+  final String label;
+  static PromoRideKinds parse(Object? v) => values.firstWhere((e) => e.db == v, orElse: () => now);
+}
+
 /// The genders a profile can have (profiles.gender).
 const promoGenders = ['male', 'female', 'other'];
 
@@ -137,6 +149,7 @@ class PromoCode {
     this.firstRideOnly = false,
     this.autoApply = false,
     this.showInApp = true,
+    this.rideKinds = PromoRideKinds.now,
     this.usesCount = 0,
     this.discountTotal = 0,
   });
@@ -172,6 +185,7 @@ class PromoCode {
       firstRideOnly: r['first_ride_only'] == true,
       autoApply: r['auto_apply'] == true,
       showInApp: r['show_in_app'] != false,
+      rideKinds: PromoRideKinds.parse(r['ride_kinds']),
       usesCount: _intOrNull(r['uses_count']) ?? 0,
       discountTotal: _num(r['discount_total']),
     );
@@ -227,6 +241,10 @@ class PromoCode {
   /// works only when typed. A code that applies by itself is always shown.
   final bool showInApp;
 
+  /// Rides now (the default), scheduled rides, or both. A scheduled ride is
+  /// judged at its pickup time.
+  final PromoRideKinds rideKinds;
+
   /// Kept by the server's settlement.
   final int usesCount;
   final double discountTotal;
@@ -275,6 +293,7 @@ class PromoCode {
         'auto_apply': autoApply,
         // Applying by itself means being shown (the server holds it too).
         'show_in_app': showInApp || autoApply,
+        'ride_kinds': rideKinds.db,
       };
 
   /// What is wrong with the code as entered, or null.
@@ -371,6 +390,7 @@ String promoReasonText(String? reason) => switch (reason) {
   'not_found' || 'inactive' => "This code isn't valid.",
   'not_started' => "This code isn't active yet.",
   'expired' => 'This code has expired.',
+  'ride_type' => "This code can't be used on this kind of ride.",
   'not_for_you' => "This code isn't available on your account.",
   'first_ride_only' => 'This code is for your first ride only.',
   'not_now' => "This code can't be used at this time.",

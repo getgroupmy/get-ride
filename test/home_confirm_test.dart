@@ -21,6 +21,8 @@ import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/location_source.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/promo_repository.dart';
+import 'package:get_ride/src/data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
+import 'package:get_ride/src/core/scheduled_rides.dart' show ScheduledRidesConfig;
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/promo_codes.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
@@ -116,8 +118,12 @@ class _StopsAi implements RouteEstimateRepository {
 
 /// The promo codes the server would answer (migration 0242).
 class _Promos extends PromoRepository {
-  _Promos([this.list = const [], this.zone = false]) : super(null);
+  _Promos([this.list = const [], this.zone = false, this.later = const []]) : super(null);
   List<PromoOffer> list;
+
+  /// The codes for a ride for later (asked with its pickup time).
+  List<PromoOffer> later;
+  final pickupTimes = <DateTime?>[];
   bool zone;
   final checked = <String>[];
   final zoneAsked = <LatLng>[];
@@ -131,9 +137,11 @@ class _Promos extends PromoRepository {
     double? dropLng,
     String? service,
     double? fare,
+    DateTime? pickupAt,
   }) async {
     offersAsked++;
-    return list;
+    pickupTimes.add(pickupAt);
+    return pickupAt == null ? list : later;
   }
 
   @override
@@ -145,6 +153,7 @@ class _Promos extends PromoRepository {
     double? dropLng,
     String? service,
     double? fare,
+    DateTime? pickupAt,
   }) async {
     checked.add(code);
     if (code == 'GOOD3') {
@@ -169,6 +178,7 @@ const _ride5 = PromoOffer(
   estimatedDiscount: 5,
   autoApply: true,
 );
+const _sched7 = PromoOffer(codeId: 's7', code: 'SCHED7', discountValue: 7, estimatedDiscount: 7, autoApply: true);
 const _pct = PromoOffer(
   codeId: 'c10',
   code: 'TENPC',
@@ -213,6 +223,7 @@ Future<ProviderContainer> _pump(
   Map<String, dynamic> display = const <String, dynamic>{},
   PromoRepository? promos,
   LatLng? here,
+  ScheduledRidesConfig? scheduled,
   Brightness? brightness,
 }) async {
   SharedPreferences.setMockInitialValues({});
@@ -242,6 +253,7 @@ Future<ProviderContainer> _pump(
       meterLaunchSessionProvider.overrideWithValue(null),
       promoRepositoryProvider.overrideWithValue(promos ?? PromoRepository(null)),
       if (here != null) locationSourceProvider.overrideWithValue(_Here(here)),
+      if (scheduled != null) scheduledRidesConfigProvider.overrideWith((ref) async => scheduled),
     ],
   );
   addTearDown(container.dispose);
@@ -1168,6 +1180,35 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
       }
       expect(rides.created![#promoCodeId], 'c5');
+    });
+
+    testWidgets('promo: a ride for later gets the codes for its pickup time, then is booked with one (${b.name})',
+        (tester) async {
+      final rides = _Rides();
+      final promos = _Promos([_ride5], false, [_sched7]);
+      await _pump(tester, rides, promos: promos, brightness: b,
+          scheduled: const ScheduledRidesConfig(enabled: true, feeFixed: 2));
+      await _settle(tester);
+      expect(find.text('RIDE5 applied automatically'), findsOneWidget, reason: 'a ride now first');
+      await tester.tap(find.byKey(const ValueKey('book-later')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('pickup-confirm')));
+      await _settle(tester);
+      // The same promo sheet, with the codes for that pickup time: the
+      // now-only code gone, the scheduled one applied by itself.
+      expect(promos.pickupTimes.whereType<DateTime>(), isNotEmpty, reason: 'asked with the pickup time');
+      expect(find.text('Promo for your scheduled ride'), findsOneWidget);
+      expect(find.byKey(const ValueKey('promo-later-at')), findsOneWidget);
+      expect(find.byKey(const ValueKey('promo-offer-SCHED7')), findsOneWidget);
+      expect(find.byKey(const ValueKey('promo-offer-RIDE5')), findsNothing);
+      expect(find.text('Book with SCHED7'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('promo-continue')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(rides.created![#scheduleAt], isNotNull);
+      expect(rides.created![#promoCodeId], 's7', reason: 'stored on the booking; the server checks it at pickup time');
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('home: the promo zone bar shows only inside a zone (${b.name})', (tester) async {

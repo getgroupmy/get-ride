@@ -210,6 +210,13 @@ void main() {
       expect(const PromoCode(code: 'A1', discountValue: 1, showInApp: false, autoApply: true).toRow()['show_in_app'], isTrue);
     });
 
+    test('ride type: now unless set', () {
+      expect(PromoCode.fromRow({'code': 'A1', 'discount_value': 1}).rideKinds, PromoRideKinds.now);
+      expect(PromoCode.fromRow({'code': 'A1', 'discount_value': 1, 'ride_kinds': 'both'}).rideKinds, PromoRideKinds.both);
+      expect(PromoCheckResult.fromJson({'ok': false, 'reason': 'ride_type'}).message,
+          "This code can't be used on this kind of ride.");
+    });
+
     test('problems the editor stops', () {
       expect(const PromoCode(code: 'a', discountValue: 1).problem, isNotNull);
       expect(const PromoCode(code: 'OK1', discountValue: 0).problem, isNotNull);
@@ -328,7 +335,7 @@ void main() {
         await tester.enterText(find.byKey(const ValueKey('pc-min-fare')), '15');
 
         // Both points in Kajang, picked from the region lists.
-        await tester.tap(find.text('Both'));
+        await tester.tap(find.descendant(of: find.byKey(const ValueKey('pc-applies')), matching: find.text('Both')));
         await tester.pumpAndSettle();
         expect(find.text('Both the pickup and the drop-off must be inside.'), findsOneWidget);
         await _tapKey(tester, 'pc-region-country-');
@@ -410,6 +417,35 @@ void main() {
         expect(find.text('Always shown: a code that applies by itself is listed to riders who qualify.'), findsOneWidget);
         await _tapKey(tester, 'pc-save');
         expect((admin.saved.last.autoApply, admin.saved.last.showInApp), (true, true));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('ride type: now by default, scheduled or both', (tester) async {
+        final admin = await _pumpAdmin(tester, b);
+        await _tapKey(tester, 'pc-add');
+        await tester.enterText(find.byKey(const ValueKey('pc-code')), 'later5');
+        await tester.enterText(find.byKey(const ValueKey('pc-value')), '5');
+        SegmentedButton<PromoRideKinds> kinds() =>
+            tester.widget<SegmentedButton<PromoRideKinds>>(find.byKey(const ValueKey('pc-ride-kinds')));
+        expect(kinds().selected, {PromoRideKinds.now});
+        expect(find.text('Rides booked for now only.'), findsOneWidget);
+        await tester.ensureVisible(find.byKey(const ValueKey('pc-ride-kinds')));
+        await tester.tap(find.descendant(of: find.byKey(const ValueKey('pc-ride-kinds')), matching: find.text('Scheduled')));
+        await tester.pumpAndSettle();
+        expect(kinds().selected, {PromoRideKinds.scheduled});
+        expect(find.textContaining('judged at the pickup time'), findsOneWidget);
+        await _tapKey(tester, 'pc-save');
+        expect(admin.saved.single.rideKinds, PromoRideKinds.scheduled);
+        expect(admin.saved.single.toRow()['ride_kinds'], 'scheduled');
+
+        await _tapKey(tester, 'pc-add');
+        await tester.enterText(find.byKey(const ValueKey('pc-code')), 'any5');
+        await tester.enterText(find.byKey(const ValueKey('pc-value')), '5');
+        await tester.ensureVisible(find.byKey(const ValueKey('pc-ride-kinds')));
+        await tester.tap(find.descendant(of: find.byKey(const ValueKey('pc-ride-kinds')), matching: find.text('Both')));
+        await tester.pumpAndSettle();
+        await _tapKey(tester, 'pc-save');
+        expect(admin.saved.last.rideKinds, PromoRideKinds.both);
         expect(tester.takeException(), isNull);
       });
 

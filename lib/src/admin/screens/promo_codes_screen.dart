@@ -171,6 +171,8 @@ List<String> promoRuleLines(PromoCode p) => [
         if (p.minFare != null) 'min fare ${formatMoney(p.minFare)}',
         if (p.autoApply) 'auto apply',
         if (!p.showInApp && !p.autoApply) 'hidden: typed only',
+        if (p.rideKinds == PromoRideKinds.scheduled) 'scheduled rides only',
+        if (p.rideKinds == PromoRideKinds.both) 'now and scheduled rides',
         if (p.firstRideOnly) 'first ride only',
       ].join(' · '),
       if (p.regions.isNotEmpty)
@@ -423,6 +425,7 @@ class _PromoCodeEditorState extends ConsumerState<PromoCodeEditor> {
   late final Set<String> _services = {...?_p?.services};
   late bool _firstRide = _p?.firstRideOnly ?? false;
   late bool _autoApply = _p?.autoApply ?? false;
+  late PromoRideKinds _rideKinds = _p?.rideKinds ?? PromoRideKinds.now;
   late bool _showInApp = (_p?.showInApp ?? true) || (_p?.autoApply ?? false);
   late bool _active = _p?.active ?? true;
   String? _error;
@@ -613,6 +616,7 @@ class _PromoCodeEditorState extends ConsumerState<PromoCodeEditor> {
       firstRideOnly: _firstRide,
       autoApply: _autoApply,
       showInApp: _showInApp || _autoApply,
+      rideKinds: _rideKinds,
       usesCount: _p?.usesCount ?? 0,
       discountTotal: _p?.discountTotal ?? 0,
     );
@@ -782,6 +786,21 @@ class _PromoCodeEditorState extends ConsumerState<PromoCodeEditor> {
                     label: const Text('Add region'),
                   ),
                 ),
+                heading('Ride type'),
+                SegmentedButton<PromoRideKinds>(
+                  key: const ValueKey('pc-ride-kinds'),
+                  segments: [
+                    for (final k in PromoRideKinds.values) ButtonSegment(value: k, label: Text(k.label)),
+                  ],
+                  selected: {_rideKinds},
+                  onSelectionChanged: (v) => setState(() => _rideKinds = v.first),
+                ),
+                hint(switch (_rideKinds) {
+                  PromoRideKinds.now => 'Rides booked for now only.',
+                  PromoRideKinds.scheduled => 'Rides booked for later only. Their validity, dates, days and hours '
+                      'are judged at the pickup time.',
+                  PromoRideKinds.both => 'Rides now and for later; a ride for later is judged at its pickup time.',
+                }),
                 heading('When'),
                 hint('Malaysia time. Nothing set: any day, any time.'),
                 Row(children: [

@@ -4,7 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../core/format.dart' show formatMoney;
+import '../../core/format.dart' show formatDateTime, formatMoney;
 import '../../core/promo_codes.dart';
 import '../../data/models.dart';
 import '../../widgets/page_style_host.dart';
@@ -203,12 +203,14 @@ Future<PromoChoice?> showPromoCodeSheet(
   required double fare,
   required Future<PromoCheckResult> Function(String code) onCheck,
   String currency = 'MYR',
+  DateTime? laterAt,
 }) =>
     showAppSheet<PromoChoice>(
       id: 'confirm.show-promo-sheet',
       context: context,
       isScrollControlled: true,
-      builder: (_) => PromoCodeSheet(offers: offers, applied: applied, fare: fare, onCheck: onCheck, currency: currency),
+      builder: (_) => PromoCodeSheet(
+          offers: offers, applied: applied, fare: fare, onCheck: onCheck, currency: currency, laterAt: laterAt),
     );
 
 class PromoCodeSheet extends StatefulWidget {
@@ -219,7 +221,12 @@ class PromoCodeSheet extends StatefulWidget {
     required this.fare,
     required this.onCheck,
     this.currency = 'MYR',
+    this.laterAt,
   });
+
+  /// A ride for later, booked once the rider goes on from here: the codes
+  /// are the ones for this pickup time.
+  final DateTime? laterAt;
 
   final List<PromoOffer> offers;
   final PromoOffer? applied;
@@ -280,7 +287,11 @@ class _PromoCodeSheetState extends State<PromoCodeSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Promo code', style: t.textTheme.titleMedium),
+            Text(widget.laterAt == null ? 'Promo code' : 'Promo for your scheduled ride',
+                style: t.textTheme.titleMedium),
+            if (widget.laterAt != null)
+              Text('Pickup ${formatDateTime(widget.laterAt)}',
+                  key: const ValueKey('promo-later-at'), style: t.textTheme.bodySmall?.copyWith(color: muted)),
             if (widget.offers.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text('For this trip', style: t.textTheme.labelLarge?.copyWith(color: muted)),
@@ -343,6 +354,15 @@ class _PromoCodeSheetState extends State<PromoCodeSheet> {
                     : const Text('Apply'),
               ),
             ),
+            if (widget.laterAt != null) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(
+                key: const ValueKey('promo-continue'),
+                style: OutlinedButton.styleFrom(padding: const EdgeInsets.all(14)),
+                onPressed: () => Navigator.pop(context, PromoChoice(widget.applied)),
+                child: Text(widget.applied == null ? 'Book without a promo' : 'Book with ${widget.applied!.code}'),
+              ),
+            ],
           ],
         ),
       ),

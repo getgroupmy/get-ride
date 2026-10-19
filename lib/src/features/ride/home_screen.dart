@@ -1268,9 +1268,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             targetDriverIds: myRideTargets,
             myRideMaxKm: myRideTargets.isEmpty ? null : myRideSettings.maxKm,
             directQrToken: scheduleAt == null ? direct?.token : null,
-            promoCodeId: scheduleAt == null ? _promo?.codeId : null,
+            // Checked again by the server: at booking, and for a ride for
+            // later at its pickup time and again when it is dispatched.
+            promoCodeId: _promo?.codeId,
           );
       final later = booked.later;
+      final promoSent = _promo;
+      if (later != null && promoSent != null && later.promoCode == null && mounted) {
+        showInfo(context, 'Promo ${promoSent.code} was not applied. ${promoReasonText(later.promoError)}');
+      }
       if (later != null) {
         ref.invalidate(myScheduledRidesProvider);
         ref.invalidate(owedFeesProvider);
@@ -1304,7 +1310,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       // The server checks the code again: one that no longer applies is
       // dropped and the ride is booked at its full fare.
-      final sent = scheduleAt == null ? _promo : null;
+      final sent = _promo;
       if (sent != null && req.promo == null && mounted) {
         showInfo(context, 'Promo ${sent.code} was not applied. ${promoReasonText(req.raw['promo_error'] as String?)}');
       }
@@ -1385,7 +1391,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// again (debounced) whenever it changes.
   void _syncPromos(bool confirming) {
     final a = _pickup, b = _drop;
-    final ready = confirming && a != null && b != null && _basis != null && !_routing && _scheduleAt == null && !_promoOff;
+    // A ride for later too: its codes are judged at its pickup time.
+    final ready = confirming && a != null && b != null && _basis != null && !_routing && !_promoOff;
     if (!ready) {
       if (_promoKey != null || _promoOffers.isNotEmpty || _promo != null) {
         _promoTimer?.cancel();
@@ -1405,14 +1412,50 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
     final fare = _fareFor(_service);
-    final key = promoTripKey(pickup: a.point, drop: b.point, service: _service.name, fare: fare);
+    final at = _scheduleAt;
+    final key = _promoKeyFor(a.point, b.point, fare, at);
     if (key == _promoKey) return;
     _promoKey = key;
     _promoTimer?.cancel();
-    _promoTimer = Timer(const Duration(milliseconds: 400), () => _loadPromos(key, a.point, b.point, _service.name, fare));
+    _promoTimer =
+        Timer(const Duration(milliseconds: 400), () => _loadPromos(key, a.point, b.point, _service.name, fare, at));
   }
 
-  Future<void> _loadPromos(String key, LatLng a, LatLng b, String service, double fare) async {
+  String _promoKeyFor(LatLng a, LatLng b, double fare, DateTime? at) =>
+      '${promoTripKey(pickup: a, drop: b, service: _service.name, fare: fare)}|${at?.toUtc().toIso8601String() ?? 'now'}';
+
+  /// A ride for later: the codes for its pickup time, on the same promo
+  /// sheet, before it is booked. False when the rider closed the sheet
+  /// (nothing is booked).
+  Future<bool> _promosForLater(DateTime at) async {
+    final a = _pickup, b = _drop;
+    if (a == null || b == null || _promoOff) return true;
+    final fare = _fareFor(_service);
+    final key = _promoKeyFor(a.point, b.point, fare, at);
+    _promoTimer?.cancel();
+    _promoKey = key;
+    await _loadPromos(key, a.point, b.point, _service.name, fare, at);
+    if (!mounted) return false;
+    if (_promoOffers.isEmpty && _promo == null) return true;
+    final choice = await showPromoCodeSheet(
+      context,
+      offers: _promoOffers,
+      applied: _promo,
+      fare: fare,
+      currency: _currency,
+      onCheck: _checkPromo,
+      laterAt: at,
+    );
+    if (choice == null || !mounted) return false;
+    setState(() {
+      _promo = choice.offer;
+      _promoAuto = false;
+      _promoRemoved = choice.offer == null;
+    });
+    return true;
+  }
+
+  Future<void> _loadPromos(String key, LatLng a, LatLng b, String service, double fare, DateTime? pickupAt) async {
     final seq = ++_promoSeq;
     List<PromoOffer> offers;
     try {
@@ -1423,6 +1466,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             dropLng: b.longitude,
             service: service,
             fare: fare,
+            pickupAt: pickupAt,
           );
     } catch (_) {
       offers = const [];
@@ -1456,6 +1500,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           dropLng: b.point.longitude,
           service: _service.name,
           fare: _fareFor(_service),
+          pickupAt: _scheduleAt,
         );
   }
 
@@ -1535,6 +1580,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted) return;
     setState(() => _scheduleAt = at);
     try {
+      // The codes for that pickup time, to keep, change or take off first.
+      if (!await _promosForLater(at)) return;
       await _find();
     } finally {
       if (mounted && _scheduleAt != null) setState(() => _scheduleAt = null);

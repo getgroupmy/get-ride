@@ -497,6 +497,97 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000242a3');
 select pg_temp.check(public.promo_zone_here(2, 2), 'a shown auto code makes the zone');
 reset role;
 
+-- ---- 10b. Ride type: now, scheduled or both; a scheduled ride judged at its pickup time ---------
+update public.promo_codes set active = false;
+insert into public.promo_codes (code, discount_value, ride_kinds, starts_at, ends_at) values
+  ('NOWONLY', 2, 'now', null, null),
+  ('SCHEDONLY', 3, 'scheduled', null, null),
+  ('BOTHKINDS', 4, 'both', null, null),
+  ('EXPIRING', 5, 'both', null, now() + interval '1 hour'),
+  ('LATESTART', 6, 'both', now() + interval '1 hour', null);
+select pg_temp.refused($$insert into public.promo_codes (code, discount_value, ride_kinds) values ('ODDKIND', 1, 'later')$$,
+                       'a ride type that is none of the three');
+select pg_temp.check((select ride_kinds from public.promo_codes where code = 'NOWONLY') = 'now', 'now rides by default');
+delete from public.auth_rate_hits where bucket = 'promo_check';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000242a3');
+create temp table kinds_now as select code from public.promo_offers(2, 2, 8, 8, 'Car', 30);
+create temp table kinds_later as select code from public.promo_offers(2, 2, 8, 8, 'Car', 30, now() + interval '3 hours');
+select pg_temp.check((select array_agg(code order by code) from kinds_now) = '{BOTHKINDS,EXPIRING,NOWONLY}',
+                     'a ride now: now and both codes, not scheduled-only nor one not started');
+select pg_temp.check((select array_agg(code order by code) from kinds_later) = '{BOTHKINDS,LATESTART,SCHEDONLY}',
+                     'a scheduled ride: scheduled and both codes, judged at pickup (one expired by then, one started)');
+select pg_temp.check((public.promo_check('SCHEDONLY', 2, 2, 8, 8, 'Car', 30))->>'message'
+                     = 'This code is for scheduled rides only.', 'a scheduled-only code refused on a ride now');
+select pg_temp.check((public.promo_check('NOWONLY', 2, 2, 8, 8, 'Car', 30, now() + interval '3 hours'))->>'reason'
+                     = 'ride_type', 'a now-only code refused on a scheduled ride');
+select pg_temp.check((public.promo_check('EXPIRING', 2, 2, 8, 8, 'Car', 30))->>'ok' = 'true', 'valid now');
+select pg_temp.check((public.promo_check('EXPIRING', 2, 2, 8, 8, 'Car', 30, now() + interval '3 hours'))->>'reason'
+                     = 'expired', 'valid at booking but expired by the pickup');
+select pg_temp.check((public.promo_check('LATESTART', 2, 2, 8, 8, 'Car', 30))->>'reason' = 'not_started', 'not started now');
+select pg_temp.check((public.promo_check('LATESTART', 2, 2, 8, 8, 'Car', 30, now() + interval '3 hours'))->>'ok'
+                     = 'true', 'started by the pickup');
+-- A ride now can't take a scheduled-only code, even by id.
+insert into public.ride_requests (id, rider_id, status, service, fare, ride_fare, pickup_lat, pickup_lng, drop_lat, drop_lng, promo_code_id)
+values ('00000000-0000-0000-0000-0000000242e4', '00000000-0000-0000-0000-0000000242a3', 'open', 'Car', 30, 30, 2, 2, 8, 8,
+        (select code_id from public.promo_offers(2, 2, 8, 8, 'Car', 30, now() + interval '3 hours') where code = 'SCHEDONLY'));
+select pg_temp.check((select promo_code_id is null and promo_error = 'ride_type'
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000242e4'),
+                     'a scheduled-only code dropped from a ride now');
+update public.ride_requests set status = 'cancelled' where id = '00000000-0000-0000-0000-0000000242e4';
+reset role;
+
+-- Scheduled bookings: the code is checked at booking (at the pickup time) and again at the release.
+update public.app_settings set value = value || '{"enabled": true, "feeFixed": 2}' where key = 'scheduled_rides';
+create or replace function pg_temp.book(p_code text, p_at timestamptz) returns public.scheduled_rides language plpgsql as $$
+declare
+  r public.scheduled_rides;
+begin
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', '00000000-0000-0000-0000-0000000242a3', 'role', 'authenticated')::text, true);
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000242a3', true);
+  select * into r from public.schedule_ride(jsonb_build_object(
+    'service', 'Car', 'fare', 30, 'ride_fare', 30, 'pickup_lat', 2, 'pickup_lng', 2, 'drop_lat', 8, 'drop_lng', 8,
+    'promo_code_id', (select id from public.promo_codes where code = p_code)), p_at);
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('request.jwt.claim.sub', '', true);
+  return r;
+end $$;
+create temp table booked as
+  select 'late' k, * from pg_temp.book('LATESTART', now() + interval '3 hours')
+  union all select 'expiring', * from pg_temp.book('EXPIRING', now() + interval '3 hours')
+  union all select 'sched', * from pg_temp.book('SCHEDONLY', now() + interval '4 hours');
+select pg_temp.check((select promo_code = 'LATESTART' and promo_estimate = 6 and request ? 'promo_code_id'
+                        from booked where k = 'late'), 'a code that applies at the pickup time is kept on the booking');
+select pg_temp.check((select promo_code_id is null and promo_error = 'expired' and not request ? 'promo_code_id'
+                        from booked where k = 'expiring'), 'a code expired by the pickup is dropped from the booking');
+select pg_temp.check((select scheduling_fee = 2 and promo_estimate = 3 from booked where k = 'sched'),
+                     'the discount is on the fare; the scheduling fee is apart');
+
+-- Released while it still applies: the ride carries it.
+select public.scheduled_ride_release((select id from booked where k = 'sched'));
+select pg_temp.check((select r.promo_code = 'SCHEDONLY' and r.promo_estimate = 3
+                        from public.ride_requests r join booked b on b.id = r.scheduled_ride_id where b.k = 'sched'),
+                     'a scheduled-only code kept when the booking becomes a ride');
+update public.ride_requests set status = 'cancelled'
+ where scheduled_ride_id = (select id from booked where k = 'sched');
+-- No longer valid at the release: dropped, with the reason on the ride and the booking.
+update public.promo_codes set active = false where code = 'LATESTART';
+select public.scheduled_ride_release((select id from booked where k = 'late'));
+select pg_temp.check((select r.promo_code_id is null and r.promo_error = 'inactive'
+                        from public.ride_requests r join booked b on b.id = r.scheduled_ride_id where b.k = 'late'),
+                     'a code no longer valid at dispatch is dropped from the ride');
+select pg_temp.check((select promo_code_id is null and promo_error = 'inactive'
+                        from public.scheduled_rides where id = (select id from booked where k = 'late')),
+                     'and from the booking, with the reason');
+
+-- The zone bar counts only codes usable for a ride now.
+update public.promo_codes set active = true, ride_kinds = 'scheduled' where code = 'HIDDENZONE';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000242a3');
+select pg_temp.check(not public.promo_zone_here(2, 2), 'a scheduled-only code makes no zone');
+reset role;
+
 -- ---- 10. Admin totals ---------------------------------------------------------------------------
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000242c2');

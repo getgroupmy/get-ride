@@ -105,6 +105,8 @@ create table if not exists public.promo_codes (
   -- Listed to riders (promo_offers, the zone bar). Off: works only when typed.
   -- A code that applies by itself is always shown.
   show_in_app         boolean not null default true,
+  -- Rides now, scheduled rides, or both.
+  ride_kinds          text not null default 'now' check (ride_kinds in ('now', 'scheduled', 'both')),
   uses_count          integer not null default 0,
   discount_total      numeric(12,2) not null default 0,
   legacy              jsonb,
@@ -153,6 +155,14 @@ alter table public.ride_requests
   add column if not exists promo_payable    numeric(10,2),
   add column if not exists promo_settled_at timestamptz,
   add column if not exists promo_error      text;
+
+-- A scheduled booking's code (checked when booked, at its pickup time, and
+-- again when it becomes a ride).
+alter table public.scheduled_rides
+  add column if not exists promo_code_id  uuid,
+  add column if not exists promo_code     text,
+  add column if not exists promo_estimate numeric(10,2),
+  add column if not exists promo_error    text;
 
 -- One promo credit per ride in the ledger.
 alter table public.wallet_transactions add column if not exists ride_id uuid;
@@ -261,6 +271,12 @@ begin
 end $$;
 
 -- ---- The rules ----------------------------------------------------------------------------------
+-- Earlier shapes of these functions, so the migration can be run again.
+drop function if exists public.promo_reason(public.promo_codes, uuid, timestamptz, text, text[], text[], boolean, text, numeric, uuid);
+drop function if exists public.promo_offers(double precision, double precision, double precision, double precision, text, numeric);
+drop function if exists public.promo_check(text, double precision, double precision, double precision, double precision, text, numeric);
+drop function if exists public.promo_ride_quote(uuid, uuid, text, double precision, double precision, double precision, double precision, text, numeric);
+
 -- The places holding a point, as {country, state, city, suburb}; null without a point.
 create or replace function public.promo_places(p_lat double precision, p_lng double precision)
 returns text[]
@@ -348,8 +364,10 @@ revoke execute on function public.promo_amount(public.promo_codes, numeric) from
 --   p_check_drop: false asks about the pickup alone (the home bar);
 --   p_service / p_fare: null skips that rule;
 --   p_ride: a trip to leave out of "first ride".
--- Reasons: inactive, not_started, expired, not_for_you, first_ride_only,
--- not_now, outside_area, service, min_fare, used_up, used_by_you.
+--   p_kind: 'now' or 'scheduled' (then [p_at] is the pickup time, which the
+--   expiry, the date range, the weekdays and the hours are judged at).
+-- Reasons: inactive, not_started, expired, ride_type, not_for_you,
+-- first_ride_only, not_now, outside_area, service, min_fare, used_up, used_by_you.
 create or replace function public.promo_reason(
   c public.promo_codes,
   p_rider uuid,
@@ -360,7 +378,8 @@ create or replace function public.promo_reason(
   p_check_drop boolean,
   p_service text,
   p_fare numeric,
-  p_ride uuid default null
+  p_ride uuid default null,
+  p_kind text default 'now'
 )
 returns text
 language plpgsql
@@ -384,6 +403,9 @@ begin
   end if;
   if c.ends_at is not null and p_at >= c.ends_at then
     return 'expired';
+  end if;
+  if c.ride_kinds <> 'both' and c.ride_kinds <> coalesce(p_kind, 'now') then
+    return 'ride_type';
   end if;
   if p_rider is null then
     return 'not_for_you';
@@ -451,7 +473,7 @@ begin
 end;
 $$;
 revoke execute on function public.promo_reason(public.promo_codes, uuid, timestamptz, text, text[], text[],
-  boolean, text, numeric, uuid) from public, anon, authenticated;
+  boolean, text, numeric, uuid, text) from public, anon, authenticated;
 
 -- What the rider is told when a code doesn't apply.
 create or replace function public.promo_reason_text(p_reason text, c public.promo_codes default null,
@@ -466,6 +488,9 @@ as $$
     when 'inactive' then 'This code isn''t valid.'
     when 'not_started' then 'This code isn''t active yet.'
     when 'expired' then 'This code has expired.'
+    when 'ride_type' then case c.ride_kinds
+        when 'scheduled' then 'This code is for scheduled rides only.'
+        else 'This code can''t be used on a scheduled ride.' end
     when 'not_for_you' then 'This code isn''t available on your account.'
     when 'first_ride_only' then 'This code is for your first ride only.'
     when 'not_now' then 'This code can''t be used at this time.'
@@ -491,7 +516,8 @@ create or replace function public.promo_offers(
   p_drop_lat double precision default null,
   p_drop_lng double precision default null,
   p_service text default null,
-  p_fare numeric default null
+  p_fare numeric default null,
+  p_pickup_at timestamptz default null
 )
 returns table (
   code_id uuid,
@@ -519,6 +545,9 @@ declare
   v_drop text[];
   v_tz text;
   v_has_drop boolean := p_drop_lat is not null and p_drop_lng is not null;
+  -- A scheduled ride is judged at its pickup time.
+  v_kind text := case when p_pickup_at is not null and p_pickup_at > now() then 'scheduled' else 'now' end;
+  v_at timestamptz := case when p_pickup_at is not null and p_pickup_at > now() then p_pickup_at else now() end;
 begin
   if v_uid is null or p_pickup_lat is null or p_pickup_lng is null then
     return;
@@ -534,8 +563,8 @@ begin
     select c.*, public.promo_amount(c, v_fare) as est
       from public.promo_codes c
      where c.active and c.show_in_app
-       and public.promo_reason(c, v_uid, now(), v_tz, v_pick, v_drop, v_has_drop,
-                               nullif(btrim(p_service), ''), v_fare) is null
+       and public.promo_reason(c, v_uid, v_at, v_tz, v_pick, v_drop, v_has_drop,
+                               nullif(btrim(p_service), ''), v_fare, null, v_kind) is null
   ),
   best as (
     select f.id from fit f where f.auto_apply
@@ -550,9 +579,9 @@ begin
 end;
 $$;
 revoke execute on function public.promo_offers(double precision, double precision, double precision,
-  double precision, text, numeric) from public, anon;
+  double precision, text, numeric, timestamptz) from public, anon;
 grant execute on function public.promo_offers(double precision, double precision, double precision,
-  double precision, text, numeric) to authenticated;
+  double precision, text, numeric, timestamptz) to authenticated;
 
 -- A code the rider typed: {ok, code_id, code, discount, payable, applies_to,
 -- auto_apply} or {ok: false, reason, message}.
@@ -563,7 +592,8 @@ create or replace function public.promo_check(
   p_drop_lat double precision default null,
   p_drop_lng double precision default null,
   p_service text default null,
-  p_fare numeric default null
+  p_fare numeric default null,
+  p_pickup_at timestamptz default null
 )
 returns jsonb
 language plpgsql
@@ -575,6 +605,8 @@ declare
   v_code text := upper(btrim(coalesce(p_code, '')));
   v_fare numeric := case when p_fare is not null and p_fare > 0 and p_fare < 1000000000 then round(p_fare, 2) end;
   v_has_drop boolean := p_drop_lat is not null and p_drop_lng is not null;
+  v_kind text := case when p_pickup_at is not null and p_pickup_at > now() then 'scheduled' else 'now' end;
+  v_at timestamptz := case when p_pickup_at is not null and p_pickup_at > now() then p_pickup_at else now() end;
   v_wait integer;
   v_reason text;
   v_est numeric;
@@ -597,10 +629,10 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'not_found', 'message', public.promo_reason_text('not_found'));
   end if;
   v_reason := public.promo_reason(
-    c, v_uid, now(), public.promo_tz(p_pickup_lat, p_pickup_lng),
+    c, v_uid, v_at, public.promo_tz(p_pickup_lat, p_pickup_lng),
     public.promo_places(p_pickup_lat, p_pickup_lng),
     case when v_has_drop then public.promo_places(p_drop_lat, p_drop_lng) end,
-    true, nullif(btrim(p_service), ''), v_fare);
+    true, nullif(btrim(p_service), ''), v_fare, null, v_kind);
   if v_reason is null and p_pickup_lat is null then
     v_reason := 'outside_area';
   end if;
@@ -621,9 +653,9 @@ begin
 end;
 $$;
 revoke execute on function public.promo_check(text, double precision, double precision, double precision,
-  double precision, text, numeric) from public, anon;
+  double precision, text, numeric, timestamptz) from public, anon;
 grant execute on function public.promo_check(text, double precision, double precision, double precision,
-  double precision, text, numeric) to authenticated;
+  double precision, text, numeric, timestamptz) to authenticated;
 
 -- The home bar: the caller stands in the area of an active auto-apply code
 -- about the pickup that they qualify for.
@@ -644,7 +676,7 @@ begin
   end if;
   if not exists (select 1 from public.promo_codes c
                   where c.active and c.show_in_app and c.auto_apply and c.applies_to = 'pickup'
-                    and jsonb_array_length(c.regions) > 0) then
+                    and c.ride_kinds <> 'scheduled' and jsonb_array_length(c.regions) > 0) then
     return false;
   end if;
   v_pick := public.promo_places(p_lat, p_lng);
@@ -652,8 +684,8 @@ begin
   return exists (
     select 1 from public.promo_codes c
      where c.active and c.show_in_app and c.auto_apply and c.applies_to = 'pickup'
-       and jsonb_array_length(c.regions) > 0
-       and public.promo_reason(c, v_uid, now(), v_tz, v_pick, null, false, null, null) is null);
+       and c.ride_kinds <> 'scheduled' and jsonb_array_length(c.regions) > 0
+       and public.promo_reason(c, v_uid, now(), v_tz, v_pick, null, false, null, null, null, 'now') is null);
 end;
 $$;
 revoke execute on function public.promo_zone_here(double precision, double precision) from public, anon;
@@ -670,7 +702,9 @@ create or replace function public.promo_ride_quote(
   p_drop_lat double precision,
   p_drop_lng double precision,
   p_service text,
-  p_fare numeric
+  p_fare numeric,
+  p_kind text default 'now',
+  p_at timestamptz default null
 )
 returns jsonb
 language plpgsql
@@ -691,9 +725,9 @@ begin
     return jsonb_build_object('reason', 'not_found');
   end if;
   v_reason := public.promo_reason(
-    c, p_rider, now(), coalesce(p_tz, public.promo_tz(p_pickup_lat, p_pickup_lng)),
+    c, p_rider, coalesce(p_at, now()), coalesce(p_tz, public.promo_tz(p_pickup_lat, p_pickup_lng)),
     public.promo_places(p_pickup_lat, p_pickup_lng), public.promo_places(p_drop_lat, p_drop_lng),
-    true, coalesce(p_service, ''), p_fare);
+    true, coalesce(p_service, ''), p_fare, null, coalesce(p_kind, 'now'));
   if v_reason is not null then
     return jsonb_build_object('reason', v_reason);
   end if;
@@ -703,9 +737,9 @@ $$;
 -- The booking trigger runs as the app's role, so the app may call it; it
 -- answers only about the caller's own ride and a code id it was given.
 revoke execute on function public.promo_ride_quote(uuid, uuid, text, double precision, double precision,
-  double precision, double precision, text, numeric) from public, anon;
+  double precision, double precision, text, numeric, text, timestamptz) from public, anon;
 grant execute on function public.promo_ride_quote(uuid, uuid, text, double precision, double precision,
-  double precision, double precision, text, numeric) to authenticated;
+  double precision, double precision, text, numeric, text, timestamptz) to authenticated;
 
 -- The estimate of a ride's code on a new fare (null: the code is gone).
 create or replace function public.promo_ride_estimate(p_code_id uuid, p_fare numeric)
@@ -720,6 +754,32 @@ $$;
 revoke execute on function public.promo_ride_estimate(uuid, numeric) from public, anon;
 grant execute on function public.promo_ride_estimate(uuid, numeric) to authenticated;
 
+-- A scheduled booking's pickup time, and its code dropped at the release.
+create or replace function public.promo_scheduled_pickup(p_id uuid)
+returns timestamptz
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select pickup_at from public.scheduled_rides where id = p_id;
+$$;
+revoke execute on function public.promo_scheduled_pickup(uuid) from public, anon, authenticated;
+
+create or replace function public.promo_scheduled_dropped(p_id uuid, p_reason text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.scheduled_rides
+     set promo_code_id = null, promo_estimate = null, promo_error = left(p_reason, 300)
+   where id = p_id;
+end;
+$$;
+revoke execute on function public.promo_scheduled_dropped(uuid, text) from public, anon, authenticated;
+
 -- At booking the code is checked again against the ride itself; while the
 -- request is open the estimate follows the fare. The rest is the server's.
 -- Not SECURITY DEFINER: it tells the apps (client roles) from the server.
@@ -732,6 +792,7 @@ declare
   v_client boolean := current_user in ('anon', 'authenticated') and not public.caller_is_admin();
   v_quote jsonb;
   v_fare numeric;
+  v_pickup_at timestamptz;
 begin
   if tg_op = 'INSERT' then
     new.promo_code := null;
@@ -744,10 +805,17 @@ begin
       return new;
     end if;
     v_fare := round(coalesce(new.ride_fare, new.fare), 2);
+    -- A scheduled booking turned into a ride by the server (never one from
+    -- the apps) is checked again as a scheduled ride, at its pickup time.
+    if new.scheduled_ride_id is not null and not v_client then
+      v_pickup_at := public.promo_scheduled_pickup(new.scheduled_ride_id);
+    end if;
     begin
       v_quote := public.promo_ride_quote(new.promo_code_id, new.rider_id, new.timezone,
                                          new.pickup_lat, new.pickup_lng, new.drop_lat, new.drop_lng,
-                                         new.service, v_fare);
+                                         new.service, v_fare,
+                                         case when v_pickup_at is null then 'now' else 'scheduled' end,
+                                         coalesce(v_pickup_at, now()));
     exception when others then
       v_quote := jsonb_build_object('reason', 'check_failed');
     end;
@@ -755,6 +823,9 @@ begin
       -- The booking goes ahead without the code.
       new.promo_code_id := null;
       new.promo_error := v_quote->>'reason';
+      if v_pickup_at is not null then
+        perform public.promo_scheduled_dropped(new.scheduled_ride_id, v_quote->>'reason');
+      end if;
     else
       new.promo_code := v_quote->>'code';
       new.promo_estimate := (v_quote->>'estimate')::numeric;
@@ -786,6 +857,92 @@ drop trigger if exists trg_ride_requests_d_promo on public.ride_requests;
 create trigger trg_ride_requests_d_promo
   before insert or update on public.ride_requests
   for each row execute function public.ride_requests_promo_guard();
+
+-- ---- Scheduled bookings ----------------------------------------------------------------------
+-- The booking keeps the code the app sent (0221's list, plus promo_code_id).
+create or replace function public.scheduled_request_clean(p_request jsonb, p_fee numeric default null)
+returns jsonb
+language sql
+immutable
+set search_path = public
+as $$
+  select coalesce((
+    select jsonb_object_agg(e.key,
+      case when e.key = 'charges' then (
+        select coalesce(jsonb_agg(
+          case when p_fee is not null and c->>'name' = 'Scheduling fee' and c->'value' = to_jsonb(p_fee)
+                    and c->>'kind' = 'surcharge'
+               then c else c - 'platform' end), '[]'::jsonb)
+          from jsonb_array_elements(e.value) c
+         where jsonb_typeof(c) = 'object')
+      else e.value end)
+      from jsonb_each(coalesce(p_request, '{}'::jsonb)) e
+     where e.key = any (array[
+       'rider_name', 'rider_phone', 'rider_photo', 'service', 'payment_mode',
+       'pickup_name', 'pickup_address', 'pickup_lat', 'pickup_lng',
+       'drop_name', 'drop_address', 'drop_lat', 'drop_lng', 'stops',
+       'distance_km', 'duration_min', 'fare', 'ride_fare', 'currency',
+       'passengers', 'luggage', 'note', 'offer_me', 'otp', 'device_os',
+       'user_accept_lat', 'user_accept_lng', 'booked_for_name', 'booked_for_phone',
+       'country', 'state', 'city', 'suburb', 'full_address', 'ip_address', 'gender',
+       'whole_fare', 'tax_name', 'tax_kind', 'tax_value', 'charges', 'timezone',
+       'promo_code_id'])
+       and (e.key <> 'charges' or jsonb_typeof(e.value) = 'array')
+  ), '{}'::jsonb);
+$$;
+revoke execute on function public.scheduled_request_clean(jsonb, numeric) from public, anon, authenticated;
+
+-- A booking with a code: checked as a scheduled ride at its pickup time, on
+-- the fare (the scheduling fee is a charge on top, never discounted). A code
+-- that doesn't apply is dropped (promo_error says why) and the booking goes
+-- ahead; one that does stays in the request, so the release carries it to
+-- the ride, where it is checked again.
+create or replace function public.scheduled_rides_promo()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+  v_quote jsonb;
+  v_req jsonb := coalesce(new.request, '{}'::jsonb);
+begin
+  new.promo_code_id := null;
+  new.promo_code := null;
+  new.promo_estimate := null;
+  new.promo_error := null;
+  if coalesce(v_req->>'promo_code_id', '') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+    v_id := (v_req->>'promo_code_id')::uuid;
+  end if;
+  if v_id is null then
+    new.request := v_req - 'promo_code_id';
+    return new;
+  end if;
+  begin
+    v_quote := public.promo_ride_quote(
+      v_id, new.rider_id, nullif(v_req->>'timezone', ''), new.pickup_lat, new.pickup_lng, new.drop_lat, new.drop_lng,
+      new.service, round(new.fare, 2), 'scheduled', new.pickup_at);
+  exception when others then
+    v_quote := jsonb_build_object('reason', 'check_failed');
+  end;
+  if v_quote ? 'reason' then
+    new.promo_error := v_quote->>'reason';
+    new.request := v_req - 'promo_code_id';
+  else
+    new.promo_code_id := v_id;
+    new.promo_code := v_quote->>'code';
+    new.promo_estimate := (v_quote->>'estimate')::numeric;
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.scheduled_rides_promo() from public, anon, authenticated;
+
+drop trigger if exists trg_scheduled_rides_promo on public.scheduled_rides;
+create trigger trg_scheduled_rides_promo
+  before insert on public.scheduled_rides
+  for each row execute function public.scheduled_rides_promo();
 
 -- What is left to pay (0142): less the promo the trip was settled with.
 create or replace function public.ride_left_to_pay(r public.ride_requests)

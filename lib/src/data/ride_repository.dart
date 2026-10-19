@@ -172,8 +172,7 @@ class RideRepository {
     if (scheduleAt != null) {
       // Favourites and a scanned driver are for a ride now; the server
       // drops them from a booking anyway.
-      // A promo code is checked for a ride now, so a booking for later goes without it.
-      for (final k in ['target_driver_ids', 'my_ride_max_km', 'direct_qr_token', 'auto_accept_fare', 'promo_code_id']) {
+      for (final k in ['target_driver_ids', 'my_ride_max_km', 'direct_qr_token', 'auto_accept_fare']) {
         row.remove(k);
       }
       return (now: null, later: await ScheduledRideRepository(_db).schedule(row, scheduleAt));
