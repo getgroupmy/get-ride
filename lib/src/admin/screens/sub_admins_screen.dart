@@ -70,8 +70,8 @@ class _AdminSubAdminsScreenState extends ConsumerState<AdminSubAdminsScreen> {
     return AdminPage(
       title: 'Sub-admins',
       module: 'sub-admins',
-      floatingActionButton: canEdit && async.hasValue
-          ? FloatingActionButton.extended(
+      addAction: canEdit && async.hasValue
+          ? PageAddAction(
               key: const ValueKey('grant-access'),
               onPressed: () => _edit(async.value!),
               icon: const Icon(Icons.person_add_alt),
@@ -100,7 +100,7 @@ class _AdminSubAdminsScreenState extends ConsumerState<AdminSubAdminsScreen> {
               )
               .toList();
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, addActionListBottomPadding(context)),
             children: [
               TextField(
                 key: const ValueKey('sub-admin-search'),

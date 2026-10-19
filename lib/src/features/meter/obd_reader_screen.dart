@@ -16,6 +16,7 @@ import '../../data/ble.dart';
 import '../../data/obd/obd_mfi_transport.dart';
 import '../../data/obd/obd_session.dart';
 import '../../widgets/back_or_go_button.dart';
+import '../../widgets/page_add_action.dart';
 import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
 import 'ev_capture_sheet.dart';
@@ -265,17 +266,20 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(obdSessionProvider);
+    // A floating Add on a phone; beside the title from 600 wide, where it
+    // sat over the Connected card's speed and coolant.
+    final add = kIsWeb
+        ? null
+        : PageAddAction(key: const ValueKey('obd-add'), onPressed: _add, label: const Text('Add reader'));
     return Scaffold(
-      appBar: AppBar(leading: const BackOrGoButton(fallback: '/meter'), title: const Text('OBD-II reader')),
-      floatingActionButton: kIsWeb
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _add,
-              icon: const Icon(Icons.add),
-              label: const Text('Add reader'),
-            ),
+      appBar: AppBar(
+        leading: const BackOrGoButton(fallback: '/meter'),
+        title: const Text('OBD-II reader'),
+        actions: pageAddActions(context, add),
+      ),
+      floatingActionButton: pageAddFab(context, add),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, add == null ? 16 : addActionListBottomPadding(context)),
         children: [
           if (kIsWeb)
             const Card(

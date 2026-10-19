@@ -229,4 +229,39 @@ void main() {
     await tester.tap(find.text('Disconnect'));
     await tester.pump(const Duration(milliseconds: 10));
   });
+
+  // Web round 40 (182): from 600 wide Add reader is in the app bar, not
+  // over the Connected card's speed and coolant; on a phone it floats.
+  for (final dark in [false, true]) {
+    for (final size in const [Size(915, 412), Size(360, 640)]) {
+      testWidgets('182: Add reader at ${size.width.toInt()}x${size.height.toInt()} (${dark ? 'dark' : 'light'})',
+          (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [obdTransportFactoryProvider.overrideWithValue((_) => FakeElm(speed: 60))],
+            child: MaterialApp(
+              theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+              home: const ObdReaderScreen(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final add = find.byKey(const ValueKey('obd-add'));
+        expect(add, findsOneWidget);
+        final inBar = find.descendant(of: find.byType(AppBar), matching: add);
+        if (size.width >= 600) {
+          expect(inBar, findsOneWidget);
+          expect(find.byType(FloatingActionButton), findsNothing);
+        } else {
+          expect(inBar, findsNothing);
+          expect(find.byType(FloatingActionButton), findsOneWidget);
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 }

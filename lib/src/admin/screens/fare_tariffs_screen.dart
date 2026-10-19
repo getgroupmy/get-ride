@@ -96,8 +96,8 @@ class _AdminFareTariffsScreenState extends ConsumerState<AdminFareTariffsScreen>
     return AdminPage(
       title: 'Fare tariffs',
       module: 'fare-tariffs',
-      floatingActionButton: canEdit
-          ? FloatingActionButton.extended(
+      addAction: canEdit
+          ? PageAddAction(
               onPressed: () => _edit(null),
               icon: const Icon(Icons.add),
               label: const Text('Add tariff'),
@@ -112,7 +112,7 @@ class _AdminFareTariffsScreenState extends ConsumerState<AdminFareTariffsScreen>
           final names = {for (final t in types) t.id: t.name, for (final v in vehicles) v.id: v.name};
           return ListView(
             // The last card scrolls clear of Add tariff.
-            padding: EdgeInsets.fromLTRB(16, 16, 16, fabListBottomPadding(context)),
+            padding: EdgeInsets.fromLTRB(16, 16, 16, addActionListBottomPadding(context)),
             children: [
               // Folded, as Earnings' "Collected for others": one row over
               // the filters, opened for the details.

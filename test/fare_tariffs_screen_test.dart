@@ -83,45 +83,69 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  for (final (size, scale) in const [(Size(1280, 768), 1.0), (Size(1280, 768), 1.3), (Size(360, 640), 1.3)]) {
-    testWidgets('the last card scrolls clear of Add tariff (${size.width.toInt()}x${size.height.toInt()} @$scale)', (tester) async {
-      await tester.binding.setSurfaceSize(size);
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            supabaseProvider.overrideWithValue(_db),
-            adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
-            geoAdminRepositoryProvider.overrideWithValue(_Geo()),
-            adminRepositoryProvider.overrideWithValue(_Admin(many: true)),
-          ],
-          child: MaterialApp(
-            builder: (c, child) => MediaQuery(
-              data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
-              child: child!,
+  // Web round 40 (180): from 600 wide Add tariff is in the app bar (it sat
+  // over the filters and the first card's Edit fare at 915 x 412); on a
+  // phone it floats, and the last card scrolls clear of it.
+  for (final dark in [false, true]) {
+    for (final (size, scale) in const [
+      (Size(1280, 768), 1.0),
+      (Size(915, 412), 1.0),
+      (Size(915, 412), 1.3),
+      (Size(360, 640), 1.0),
+      (Size(360, 640), 1.3),
+    ]) {
+      testWidgets('Add tariff at ${size.width.toInt()}x${size.height.toInt()} @$scale (${dark ? 'dark' : 'light'})',
+          (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              supabaseProvider.overrideWithValue(_db),
+              adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+              geoAdminRepositoryProvider.overrideWithValue(_Geo()),
+              adminRepositoryProvider.overrideWithValue(_Admin(many: true)),
+            ],
+            child: MaterialApp(
+              theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+              builder: (c, child) => MediaQuery(
+                data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: const AdminFareTariffsScreen(),
             ),
-            home: const AdminFareTariffsScreen(),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final scroll = tester.state<ScrollableState>(
-        find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first,
-      );
-      // A lazy list learns its full length as it scrolls: to the end until
-      // the end stays put.
-      for (var i = 0; i < 5; i++) {
-        scroll.position.jumpTo(scroll.position.maxScrollExtent);
+        );
         await tester.pumpAndSettle();
-      }
-      final fab = tester.getRect(find.byType(FloatingActionButton));
-      final cards = find.descendant(of: find.byType(ListView), matching: find.byType(Card));
-      final last = tester.getRect(cards.last);
-      expect(last.bottom, lessThanOrEqualTo(fab.top - 8), reason: 'the last card clear of the button');
-      // Let the live tables' disconnect timer run out.
-      await tester.pumpWidget(const SizedBox());
-      await tester.pump(const Duration(minutes: 1));
-    });
+        final add = find.text('Add tariff');
+        expect(add, findsOneWidget);
+        if (size.width >= 600) {
+          expect(find.byType(FloatingActionButton), findsNothing, reason: 'nothing floats over the cards');
+          expect(find.descendant(of: find.byType(AppBar), matching: add), findsOneWidget);
+          // Nothing over the first card's buttons.
+          final first = find.descendant(of: find.byType(ListView), matching: find.byType(Card)).at(1);
+          expect(tester.getRect(add).overlaps(tester.getRect(first)), isFalse);
+        } else {
+          final scroll = tester.state<ScrollableState>(
+            find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first,
+          );
+          // A lazy list learns its full length as it scrolls: to the end until
+          // the end stays put.
+          for (var i = 0; i < 5; i++) {
+            scroll.position.jumpTo(scroll.position.maxScrollExtent);
+            await tester.pumpAndSettle();
+          }
+          final fab = tester.getRect(find.byType(FloatingActionButton));
+          final cards = find.descendant(of: find.byType(ListView), matching: find.byType(Card));
+          expect(tester.getRect(cards.last).bottom, lessThanOrEqualTo(fab.top - 8), reason: 'the last card clear of the button');
+        }
+        expect(tester.takeException(), isNull);
+        // Let the live tables' disconnect timer run out.
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(minutes: 1));
+      });
+    }
   }
 
   for (final brightness in Brightness.values) {

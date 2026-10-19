@@ -504,6 +504,13 @@ void _landscapeKeyboard() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+      // From 600 wide (a phone on its side) Add is in the app bar (round 40):
+      // nothing floats over the page.
+      if (tester.view.physicalSize.width / tester.view.devicePixelRatio >= 600) {
+        expect(find.byType(FloatingActionButton), findsNothing);
+        expect(find.descendant(of: find.byType(AppBar), matching: find.byType(FilledButton)), findsOneWidget);
+        return;
+      }
       final fab = tester.getRect(find.byType(FloatingActionButton));
       // The list stops above the button: nothing of it rests under it.
       expect(tester.getRect(find.byKey(const ValueKey('vmm-empty-scroll'))).bottom, lessThanOrEqualTo(fab.top));

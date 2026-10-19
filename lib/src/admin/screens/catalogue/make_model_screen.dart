@@ -191,7 +191,7 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
           if (level > 0)
             IconButton(tooltip: 'Up one level', icon: const Icon(Icons.arrow_upward), onPressed: () => _goTo(_path.parent)),
         ],
-        floatingActionButton: FloatingActionButton.extended(
+        addAction: PageAddAction(
           onPressed: () => _addPicker(data.value ?? []),
           icon: const Icon(Icons.add),
           label: const Text('Add'),
@@ -298,7 +298,7 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
                           );
                           },
                         )
-                      : ListView(padding: const EdgeInsets.only(bottom: 96), children: tiles),
+                      : ListView(padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)), children: tiles),
                 ),
               ]),
             );

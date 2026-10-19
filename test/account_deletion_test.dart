@@ -159,6 +159,29 @@ void main() {
       }
     }
 
+    // Web round 40 (181): on its side the buttons share a row and the bar
+    // leaves the page most of the height.
+    for (final dark in [false, true]) {
+      testWidgets('181: at 915x412 Keep beside Delete, a compact reason, more bullets (${dark ? 'dark' : 'light'})',
+          (tester) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(915, 412);
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(host(const AccountDeletionCheck(bookings: 2), theme: dark ? ThemeData.dark() : null));
+        await tester.pumpAndSettle();
+        final delete = tester.getRect(find.byKey(const ValueKey('delete-continue')));
+        final keep = tester.getRect(find.byKey(const ValueKey('delete-keep')));
+        expect((delete.center.dy - keep.center.dy).abs(), lessThan(2), reason: 'one row');
+        final bar = tester.getRect(find.ancestor(
+          of: find.byKey(const ValueKey('delete-continue')),
+          matching: find.byWidgetPredicate((w) => w is Material && w.elevation == 4),
+        ));
+        expect(bar.height, lessThan(412 * 0.25), reason: 'not 55% of the height');
+        expect(tester.widget<TextField>(find.byKey(const ValueKey('delete-reason'))).maxLines, 1);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('not during a ride, in dark mode too', (tester) async {
       await tester.pumpWidget(host(const AccountDeletionCheck(activeRide: true), theme: ThemeData.dark()));
       await tester.pumpAndSettle();

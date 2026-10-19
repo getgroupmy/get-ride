@@ -14,6 +14,7 @@ import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../data/vehicle_onboarding_repository.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/page_add_action.dart';
 import '../../widgets/common.dart';
 import '../../widgets/loading_skeleton.dart';
 import '../../widgets/back_or_go_button.dart';
@@ -111,13 +112,16 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
     return _scaffold(context);
   }
 
+  /// A floating Add on a phone; beside the title from 600 wide.
+  late final _add = PageAddAction(onPressed: () => _open('/drive/vehicles/new'), label: const Text('Add vehicle'));
+
   Widget _scaffold(BuildContext context) => Scaffold(
-        appBar: AppBar(leading: sideMenuLeading(context), title: const Text('My vehicles')),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _open('/drive/vehicles/new'),
-          icon: const Icon(Icons.add),
-          label: const Text('Add vehicle'),
+        appBar: AppBar(
+          leading: sideMenuLeading(context),
+          title: const Text('My vehicles'),
+          actions: pageAddActions(context, _add),
         ),
+        floatingActionButton: pageAddFab(context, _add),
         body: FutureBuilder<List<Map<String, dynamic>>>(
           future: _vehicles,
           builder: (context, snap) {
@@ -141,7 +145,7 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
             }
             return ResponsiveCenter(
               maxWidth: 640,
-              child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 96), children: [
+              child: ListView(padding: EdgeInsets.fromLTRB(16, 16, 16, addActionListBottomPadding(context)), children: [
                 for (final v in list)
                   Builder(builder: (context) {
                     final step = firstVehicleStep(v);

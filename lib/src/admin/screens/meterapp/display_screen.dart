@@ -716,10 +716,8 @@ class SideMenuEditorScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(pageAccessProvider(displayPage)) == AccessLevel.edit;
     final value = ref.watch(displaySettingsProvider);
-    return Scaffold(
-      appBar: AppBar(title: Text(menu == 'user' ? 'User Side Menu' : 'Partner Side Menu')),
-      floatingActionButton: canEdit
-          ? FloatingActionButton.extended(
+    final add = canEdit
+        ? PageAddAction(
               icon: const Icon(Icons.add),
               label: const Text('Add new item'),
               onPressed: () async {
@@ -732,7 +730,13 @@ class SideMenuEditorScreen extends ConsumerWidget {
                 await applyDisplay(context, ref, (x) => addCustomMenuItem(x, menu, res.$1, res.$3, res.$2, id: id));
               },
             )
-          : null,
+        : null;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(menu == 'user' ? 'User Side Menu' : 'Partner Side Menu'),
+        actions: pageAddActions(context, add),
+      ),
+      floatingActionButton: pageAddFab(context, add),
       body: AsyncView(
         value: value,
         onRetry: () => ref.invalidate(displaySettingsProvider),
@@ -787,7 +791,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                 ),
               );
 
-          return ListView(padding: const EdgeInsets.fromLTRB(0, 16, 0, 96), children: [
+          return ListView(padding: EdgeInsets.fromLTRB(0, 16, 0, addActionListBottomPadding(context)), children: [
             ResponsiveCenter(
               maxWidth: 820,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

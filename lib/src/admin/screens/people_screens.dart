@@ -179,7 +179,7 @@ class _RecordList extends ConsumerStatefulWidget {
     required this.tile,
     required this.onOpen,
     this.initialFilter,
-    this.floatingActionButton,
+    this.addAction,
     this.hasMore,
     this.onLoadMore,
     this.onServerSearch,
@@ -194,7 +194,8 @@ class _RecordList extends ConsumerStatefulWidget {
   final Widget Function(Map<String, dynamic>) tile;
   final void Function(Map<String, dynamic>) onOpen;
   final String? initialFilter;
-  final Widget? floatingActionButton;
+  /// The list's "Add …" ([PageAddAction]).
+  final PageAddAction? addAction;
 
   /// For a list read a page at a time: whether the server has more rows,
   /// how to load them, and how to search the rows not loaded yet (called a
@@ -235,7 +236,7 @@ class _RecordListState extends ConsumerState<_RecordList> {
     return AdminPage(
       title: widget.title,
       module: widget.module,
-      floatingActionButton: widget.floatingActionButton,
+      addAction: widget.addAction,
       body: Column(children: [
         FilterBar(
           filters: widget.filters,
@@ -263,7 +264,13 @@ class _RecordListState extends ConsumerState<_RecordList> {
               // pinned bar under it instead.
               final head = more ? 0 : 1;
               final listView = ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                // Room under the last row for a floating Add.
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  widget.addAction != null ? addActionListBottomPadding(context) : 8,
+                ),
                 itemCount: list.length + head,
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (_, i) => i < head
@@ -706,10 +713,9 @@ class AdminPartnersScreen extends ConsumerWidget {
             ? const ['plate', 'make', 'model', 'owner_name', 'owner_phone', 'display_id', 'vin']
             : const ['name', 'phone', 'plate', 'email', 'display_id'],
         onOpen: (p) => _open(context, ref, p),
-        floatingActionButton: ref.watch(pageAccessProvider(vehicles ? 'admin-vehicle-add' : 'admin-partner-add')) ==
+        addAction: ref.watch(pageAccessProvider(vehicles ? 'admin-vehicle-add' : 'admin-partner-add')) ==
                 AccessLevel.edit
-            ? FloatingActionButton.extended(
-                icon: const Icon(Icons.add),
+            ? PageAddAction(
                 label: Text(vehicles ? 'Add vehicle' : 'Add partner'),
                 onPressed: () async {
                   await context.push(vehicles ? '/admin/m/vehicle-add' : '/admin/m/partner-add');

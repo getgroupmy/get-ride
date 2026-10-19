@@ -180,18 +180,16 @@ class AdminCategoryScreen extends ConsumerWidget {
     final c = category;
     final canEdit = _categoryLevel(ref, c) == AccessLevel.edit;
     final entries = ref.watch(_entriesProvider(categoryKey));
+    final add = canEdit
+        ? PageAddAction(onPressed: () => _edit(context, ref, entries.value ?? []), label: const Text('Add'))
+        : null;
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/admin/settings')),
         title: Text(parentLabel == null ? c.title : '${c.title} · $parentLabel'),
+        actions: pageAddActions(context, add),
       ),
-      floatingActionButton: canEdit
-          ? FloatingActionButton.extended(
-              onPressed: () => _edit(context, ref, entries.value ?? []),
-              icon: const Icon(Icons.add),
-              label: const Text('Add'),
-            )
-          : null,
+      floatingActionButton: pageAddFab(context, add),
       body: AsyncView(
         value: entries,
         onRetry: () => ref.invalidate(_entriesProvider(categoryKey)),
@@ -317,7 +315,7 @@ class _SearchableEntriesState extends State<_SearchableEntries> {
                 message: 'Nothing in ${c.title} matches "${_query.trim()}".',
               )
             : ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                padding: EdgeInsets.fromLTRB(16, 8, 16, addActionListBottomPadding(context)),
                 itemCount: shown.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (_, k) => widget.itemBuilder(widget.rows[shown[k]], shown[k], searching),

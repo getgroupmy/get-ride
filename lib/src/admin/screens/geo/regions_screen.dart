@@ -179,7 +179,7 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
           onPressed: () => ref.invalidate(regionsProvider),
         ),
       ],
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => _edit(entries),
         icon: const Icon(Icons.add),
         label: Text('Add ${regionLevelLabel(level)}'),
@@ -242,7 +242,7 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
                       )
                     : ListView.separated(
                         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.only(bottom: 96),
+                        padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)),
                         itemCount: rows.length,
                         separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (_, i) => _RegionTile(

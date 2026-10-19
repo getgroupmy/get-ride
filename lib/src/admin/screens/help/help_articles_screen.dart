@@ -84,7 +84,7 @@ class _AdminHelpArticlesScreenState extends ConsumerState<AdminHelpArticlesScree
       child: AdminPage(
         title: 'Help articles',
         page: helpArticlesPage,
-        floatingActionButton: FloatingActionButton.extended(
+        addAction: PageAddAction(
           key: const ValueKey('help-article-new'),
           onPressed: () => _edit(null),
           icon: const Icon(Icons.add),
@@ -111,7 +111,7 @@ class _AdminHelpArticlesScreenState extends ConsumerState<AdminHelpArticlesScree
     data: (all) {
       final shown = filterHelpArticles(all, _query);
       return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+        padding: EdgeInsets.fromLTRB(16, 12, 16, addActionListBottomPadding(context)),
         children: [
           TextField(
             key: const ValueKey('help-article-search'),
@@ -183,7 +183,7 @@ class _AdminHelpArticlesScreenState extends ConsumerState<AdminHelpArticlesScree
             message: 'Questions the assistant could not answer, or whose answer was marked unhelpful, show here.',
           )
         : ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, addActionListBottomPadding(context)),
             children: [
               for (final q in questions)
                 Card(

@@ -10,6 +10,7 @@ import '../../data/obd/obd_session.dart' show obdAdapterStoreProvider;
 import '../../data/printer/classic_bluetooth.dart';
 import '../../data/printer/printer_service.dart';
 import '../../widgets/back_or_go_button.dart';
+import '../../widgets/page_add_action.dart';
 import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
 import 'classic_paired_sheet.dart';
@@ -196,17 +197,19 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // A floating Add on a phone; beside the title from 600 wide.
+    final add = kIsWeb
+        ? null
+        : PageAddAction(key: const ValueKey('printer-add'), onPressed: _add, label: const Text('Add printer'));
     return Scaffold(
-      appBar: AppBar(leading: const BackOrGoButton(fallback: '/meter'), title: const Text('Receipt printer')),
-      floatingActionButton: kIsWeb
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _add,
-              icon: const Icon(Icons.add),
-              label: const Text('Add printer'),
-            ),
+      appBar: AppBar(
+        leading: const BackOrGoButton(fallback: '/meter'),
+        title: const Text('Receipt printer'),
+        actions: pageAddActions(context, add),
+      ),
+      floatingActionButton: pageAddFab(context, add),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, add == null ? 16 : addActionListBottomPadding(context)),
         children: [
           if (kIsWeb)
             const Card(

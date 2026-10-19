@@ -115,7 +115,7 @@ class _ApiProvidersState extends ConsumerState<AdminApiProvidersScreen> {
       actions: [
         IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(apiProvidersProvider)),
       ],
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
           onPressed: _add, icon: const Icon(Icons.add), label: const Text('Add provider')),
       body: AsyncView(
         value: providers,
@@ -125,7 +125,7 @@ class _ApiProvidersState extends ConsumerState<AdminApiProvidersScreen> {
           final visible = list.where((p) => matchesProvider(p, _query)).toList();
           return ResponsiveCenter(
             maxWidth: 760,
-            child: ListView(padding: const EdgeInsets.only(top: 12, bottom: 96), children: [
+            child: ListView(padding: EdgeInsets.only(top: 12, bottom: addActionListBottomPadding(context)), children: [
               Text('${list.length} providers · ${totals.services} services · ${totals.keys} keys',
                   style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 8),
@@ -242,9 +242,9 @@ class _ApiServicesState extends ConsumerState<AdminApiServicesScreen> {
               icon: const Icon(Icons.library_add_outlined),
               onPressed: () => _bulkAdd(provider)),
       ],
-      floatingActionButton: provider == null
+      addAction: provider == null
           ? null
-          : FloatingActionButton.extended(onPressed: _add, icon: const Icon(Icons.add), label: const Text('Add service')),
+          : PageAddAction(onPressed: _add, icon: const Icon(Icons.add), label: const Text('Add service')),
       body: AsyncView(
         value: providers,
         onRetry: () => ref.invalidate(apiProvidersProvider),
@@ -253,7 +253,7 @@ class _ApiServicesState extends ConsumerState<AdminApiServicesScreen> {
           final visible = provider.services.where((s) => matchesService(s, _query)).toList();
           return ResponsiveCenter(
             maxWidth: 760,
-            child: ListView(padding: const EdgeInsets.only(top: 12, bottom: 96), children: [
+            child: ListView(padding: EdgeInsets.only(top: 12, bottom: addActionListBottomPadding(context)), children: [
               Text('${provider.services.length} services', style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 8),
               TextField(
@@ -476,9 +476,9 @@ class AdminApiKeysScreen extends ConsumerWidget {
             onPressed: () => _test(context, testable, canEdit),
           ),
       ],
-      floatingActionButton: service == null
+      addAction: service == null
           ? null
-          : FloatingActionButton.extended(
+          : PageAddAction(
               onPressed: () => _add(context, ref), icon: const Icon(Icons.add), label: const Text('Add key')),
       body: AsyncView(
         value: providers,
@@ -487,7 +487,7 @@ class AdminApiKeysScreen extends ConsumerWidget {
           if (service == null) return const EmptyState(icon: Icons.search_off, title: 'Service not found.');
           return ResponsiveCenter(
             maxWidth: 760,
-            child: ListView(padding: const EdgeInsets.only(top: 12, bottom: 96), children: [
+            child: ListView(padding: EdgeInsets.only(top: 12, bottom: addActionListBottomPadding(context)), children: [
               Text('${provider!.name} · ${service.keys.length} keys', style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 8),
               Card(
