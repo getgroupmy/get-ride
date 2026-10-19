@@ -420,11 +420,11 @@ void main() {
     expect(find.byKey(const ValueKey('fare-trend-up')), findsNothing, reason: 'pickup → drop-off only: map route');
   });
 
-  testWidgets('"Calculating fare" does not wait for the AI estimate (PERF-33)', (tester) async {
+  testWidgets('"Calculating fare" covers the confirm step until the AI estimate is in', (tester) async {
     final ai = _SlowAi();
     await _pump(tester, _Rides(), ai: ai);
-    // The route is in: the standard tariff's fare shows while the AI works.
-    expect(find.byKey(const ValueKey('calculating-fare')), findsNothing);
+    expect(find.byKey(const ValueKey('calculating-fare')), findsOneWidget);
+    expect(find.text('Calculating fare'), findsOneWidget);
     ai.answer.complete((estimate: null, unavailable: false));
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 100));

@@ -95,7 +95,8 @@ final nearbyDriversProvider = FutureProvider.autoDispose.family<Map<String, doub
 const homeStreetZoom = 17.0;
 
 /// How long the AI fare estimate is waited for (PERF-33: was 30 s). The
-/// standard tariff's fare shows meanwhile; past this it stays.
+/// confirm step shows "Calculating fare" meanwhile; past this, the standard
+/// tariff's fare shows instead, and an AI answer later still is ignored.
 const aiEstimateTimeout = Duration(seconds: 5);
 
 /// A point of a trip GET.ride can't serve ([UnavailableAt]; [stop] is the
@@ -687,25 +688,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // trip with stops is asked about through them, in their order, so adding
     // or rearranging stops prices (and judges high or low) the trip again.
     final via = [for (final p in _stops) p.point];
-    // The proxy may try several keys; past this the map route prices it.
+    // The proxy may try several keys; past this (or on an error) the map
+    // route prices it with the standard tariff, and an AI answer that comes
+    // later still is dropped with the timed-out future.
     final aiFuture = ref
         .read(routeEstimateRepositoryProvider)
         .estimateDetailed(a.point, b.point, via: via)
         .timeout(aiEstimateTimeout, onTimeout: () => null);
     final r = await ref.read(geoServiceProvider).route(a.point, b.point, via: via);
     if (!mounted || seq != _routeSeq) return;
-    // The standard tariff's fare shows (and can be booked) as soon as the
-    // route is in (PERF-33); the AI's takes its place when it comes.
+    setState(() => _route = r);
+    onRouted?.call();
+    // Both before the fare shows ("Calculating fare" stays up through the AI
+    // estimate, PERF-33: for 5 s at most): the fare shown, and booked, is
+    // the one fare for this route and never changes a moment later.
+    ({RouteEstimate? estimate, bool unavailable})? ai;
+    try {
+      ai = await aiFuture;
+    } catch (_) {
+      ai = null;
+    }
+    if (!mounted || seq != _routeSeq) return;
     setState(() {
-      _route = r;
+      // Only an estimate through every stop prices this trip.
+      _ai = estimateCoversStops(ai?.estimate, via.length) ? ai?.estimate : null;
       _routing = false;
     });
-    onRouted?.call();
-    final ai = await aiFuture;
-    if (!mounted || seq != _routeSeq) return;
-    // Only an estimate through every stop prices this trip.
-    final estimate = estimateCoversStops(ai?.estimate, via.length) ? ai?.estimate : null;
-    if (estimate != null) _swapInAi(seq, estimate);
     if (ai != null && ai.unavailable && mounted) {
       unawaited(showAppDialog<void>(id: 'home.update-route',
         context: context,
@@ -717,25 +725,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ));
     }
-  }
-
-  /// Set from the tap on "Find a driver" until that booking is done: the
-  /// fare booked is the one the rider saw when they tapped.
-  bool _fareHeld = false;
-
-  /// An AI estimate that came while [_fareHeld], for after.
-  ({int seq, RouteEstimate estimate})? _heldAi;
-
-  /// The AI's fare in place of the tariff's on route [seq] — not while a
-  /// booking is under way (held until it is done), and not over an offer
-  /// the rider has already set themselves.
-  void _swapInAi(int seq, RouteEstimate estimate) {
-    if (!mounted || seq != _routeSeq || _adjust != 0) return;
-    if (_fareHeld) {
-      _heldAi = (seq: seq, estimate: estimate);
-      return;
-    }
-    setState(() => _ai = estimate);
   }
 
   ({double distanceKm, double durationMin})? get _basis {
@@ -1050,18 +1039,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _book() async {
-    _fareHeld = true;
-    try {
-      await _bookShown();
-    } finally {
-      _fareHeld = false;
-      final held = _heldAi;
-      _heldAi = null;
-      if (held != null) _swapInAi(held.seq, held.estimate);
-    }
-  }
-
-  Future<void> _bookShown() async {
     final a = _pickup, b = _drop, r = _basis;
     if (a == null || b == null || r == null) return;
     final forWhom = _forOther ? bookedFor(_otherName.text, _otherPhone.text) : null;
