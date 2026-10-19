@@ -267,6 +267,16 @@ class _MeterCardEditorState extends ConsumerState<MeterCardEditor> {
   String? _panelBusy;
   ({String kind, String text})? _panelNote;
 
+  /// The card as it opened, in the shape it saves — what "unsaved changes"
+  /// is measured against.
+  late final String _opened;
+
+  @override
+  void initState() {
+    super.initState();
+    _opened = _snapshot();
+  }
+
   @override
   void dispose() {
     for (final c in [..._num.values, ..._stores.values, ..._scope.values, _label, _currency, _url, _caption]) {
@@ -302,6 +312,30 @@ class _MeterCardEditorState extends ConsumerState<MeterCardEditor> {
       ),
     );
     return mergeMeterFields(withText, {for (final e in _num.entries) e.key: e.value.text});
+  }
+
+  /// The card as it would save, minus what is not the Save button's to keep:
+  /// the panel switches write through live, and that write may give a new
+  /// global card its id.
+  String _snapshot() => meterProfileToRow(_merged().copyWith(id: widget.initial.id, panels: widget.initial.panels))
+      .toString();
+
+  bool get _dirty => _canEdit && _snapshot() != _opened;
+
+  /// X or Back with unsaved changes: ask first.
+  Future<void> _leave() async {
+    final discard = await showAppDialog<bool>(id: 'admin-meter.discard-changes',
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: const Text('This rate card has changes that are not saved. Leave without saving them?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep editing')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Discard')),
+        ],
+      ),
+    );
+    if (discard == true && mounted) Navigator.pop(context, false);
   }
 
   Future<void> _submit() async {
@@ -499,20 +533,70 @@ class _MeterCardEditorState extends ConsumerState<MeterCardEditor> {
     final linkInvalid = d.leave.ehailing == 'link' && _url.text.trim().isNotEmpty && normalizeMeterLeaveUrl(_url.text) == null;
     final title = level == 'master' ? 'Global rate card' : '${d.id.isNotEmpty ? 'Edit' : 'Add'} $level card';
 
-    return Scaffold(
+    final narrow = MediaQuery.sizeOf(context).width < 600;
+    final saveLabel = _busy ? 'Saving…' : (d.id.isNotEmpty ? 'Save rate card' : 'Create rate card');
+
+    return PopScope<bool>(
+      // Decided at the pop, not at the last build: a typed change does not
+      // rebuild the editor.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_dirty) {
+          _leave();
+        } else {
+          Navigator.pop(context, false);
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(title),
         actions: [
           if (canEdit)
             Padding(
-              padding: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.only(left: 8, right: 12),
               child: BusyButton.filled(
+                key: const ValueKey('meter-card-save-bar'),
+                // The app's filled buttons are full width (Size.fromHeight);
+                // in the bar's unbounded row that is an infinite width, which
+                // fails the bar's layout and takes the title and this button
+                // with it.
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
                 onPressed: _busy ? null : _submit,
-                child: Text(_busy ? 'Saving…' : (d.id.isNotEmpty ? 'Save rate card' : 'Create rate card')),
+                // On a phone the bar keeps room for the title; the bar below
+                // carries the full label.
+                child: Text(narrow && !_busy ? 'Save' : saveLabel),
               ),
             ),
         ],
       ),
+      // Save stays in reach however long the card is.
+      bottomNavigationBar: !canEdit
+          ? null
+          : Material(
+              elevation: 8,
+              color: t.colorScheme.surfaceContainer,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Center(
+                    heightFactor: 1,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 720),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: BusyButton.filled(
+                          key: const ValueKey('meter-card-save-bottom'),
+                          onPressed: _busy ? null : _submit,
+                          child: Text(saveLabel),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
       body: ListView(padding: const EdgeInsets.symmetric(vertical: 16), children: [
         ResponsiveCenter(
           maxWidth: 720,
@@ -823,6 +907,7 @@ class _MeterCardEditorState extends ConsumerState<MeterCardEditor> {
           ]),
         ),
       ]),
+      ),
     );
   }
 
