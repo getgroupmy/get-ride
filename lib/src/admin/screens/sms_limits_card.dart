@@ -78,13 +78,14 @@ class _LimitsFormState extends ConsumerState<_LimitsForm> {
   late final _resend = TextEditingController(text: '${widget.limits.minResendSeconds}');
   late final _global = TextEditingController(text: '${widget.limits.globalPerHour}');
   late final _valid = TextEditingController(text: '${widget.limits.codeValidMinutes}');
+  late final _wait = TextEditingController(text: '${widget.limits.gatewayPollMaxSeconds}');
   late final _prefixes = TextEditingController(text: widget.limits.allowedPrefixes.join(', '));
   late final _blocked = TextEditingController(text: widget.limits.blockedNumbers.join(', '));
   late final _template = TextEditingController(text: widget.limits.messageTemplate);
 
   @override
   void dispose() {
-    for (final c in [_hour, _day, _resend, _global, _valid, _prefixes, _blocked, _template]) {
+    for (final c in [_hour, _day, _resend, _global, _valid, _wait, _prefixes, _blocked, _template]) {
       c.dispose();
     }
     super.dispose();
@@ -97,6 +98,7 @@ class _LimitsFormState extends ConsumerState<_LimitsForm> {
     minResendSeconds: int.tryParse(_resend.text.trim()) ?? 0,
     globalPerHour: int.tryParse(_global.text.trim()) ?? 0,
     codeValidMinutes: int.tryParse(_valid.text.trim()) ?? 0,
+    gatewayPollMaxSeconds: int.tryParse(_wait.text.trim()) ?? 0,
     allowedPrefixes: parsePhoneList(_prefixes.text),
     blockedNumbers: parsePhoneList(_blocked.text),
     messageTemplate: _template.text.trim(),
@@ -125,14 +127,14 @@ class _LimitsFormState extends ConsumerState<_LimitsForm> {
     );
   }
 
-  Widget _number(String key, TextEditingController c, String label, String hint) => SizedBox(
-    width: 200,
+  Widget _number(String key, TextEditingController c, String label, String hint, {double width = 200}) => SizedBox(
+    width: width,
     child: TextField(
       key: ValueKey('sms-limits-$key'),
       controller: c,
       enabled: widget.canEdit,
       keyboardType: TextInputType.number,
-      decoration: InputDecoration(labelText: label, helperText: hint),
+      decoration: InputDecoration(labelText: label, helperText: hint, helperMaxLines: 3),
     ),
   );
 
@@ -162,6 +164,15 @@ class _LimitsFormState extends ConsumerState<_LimitsForm> {
             _number('resend', _resend, 'Seconds between codes', '15–600'),
             _number('global', _global, 'Total codes per hour', 'All numbers together'),
             _number('valid', _valid, 'Code valid for (minutes)', '1–60 · same as Supabase SMS OTP Expiry'),
+            // The gateway phone reads it from its heartbeat (migration 0236).
+            _number(
+              'gateway-wait',
+              _wait,
+              'Longest wait for a sign-in code (seconds)',
+              '5–60 · how long a code can wait for the gateway phone. Shorter: faster codes, '
+                  'but more server calls from the gateway phone. Applies within a minute.',
+              width: 300,
+            ),
           ],
         ),
         const SizedBox(height: 12),

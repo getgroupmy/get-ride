@@ -16,6 +16,10 @@ final accountDeletionCheckProvider = FutureProvider.autoDispose<AccountDeletionC
 
 enum _Step { review, pin, code }
 
+/// A short window (a phone on its side): the Delete page's buttons share
+/// one row and its reason field is a single dense line.
+bool deleteAccountLandscape(BuildContext context) => MediaQuery.sizeOf(context).height < 500;
+
 class DeleteAccountScreen extends ConsumerStatefulWidget {
   const DeleteAccountScreen({super.key});
 
@@ -180,8 +184,16 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             key: const ValueKey('delete-reason'),
             controller: _reason,
             maxLength: 300,
-            maxLines: 2,
-            decoration: const InputDecoration(labelText: 'Why are you leaving? (optional)'),
+            // On its side: one line, dense.
+            maxLines: deleteAccountLandscape(context) ? 1 : 2,
+            // Tapped where it peeks out above the pinned buttons (or the
+            // keyboard), the whole field scrolls into view, its second
+            // line and counter too, not just the caret.
+            scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
+            decoration: InputDecoration(
+              labelText: 'Why are you leaving? (optional)',
+              isDense: deleteAccountLandscape(context),
+            ),
           ),
           const SizedBox(height: 8),
           if (c.activeRide)
@@ -219,22 +231,32 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             heightFactor: 1,
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 432),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  FilledButton(
-                    key: const ValueKey('delete-continue'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: t.colorScheme.error,
-                      foregroundColor: t.colorScheme.onError,
-                    ),
-                    onPressed: c.activeRide || _busy ? null : _start,
-                    child: const Text('Delete my account'),
+              child: Builder(builder: (context) {
+                final delete = FilledButton(
+                  key: const ValueKey('delete-continue'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: t.colorScheme.error,
+                    foregroundColor: t.colorScheme.onError,
                   ),
-                  TextButton(onPressed: _busy ? null : () => context.pop(), child: const Text('Keep my account')),
-                ],
-              ),
+                  onPressed: c.activeRide || _busy ? null : _start,
+                  child: const Text('Delete my account', maxLines: 1, overflow: TextOverflow.ellipsis),
+                );
+                final keep = TextButton(
+                  key: const ValueKey('delete-keep'),
+                  onPressed: _busy ? null : () => context.pop(),
+                  child: const Text('Keep my account', maxLines: 1, overflow: TextOverflow.ellipsis),
+                );
+                // A phone on its side: Keep beside Delete on one row, so the
+                // bar leaves the page most of the height.
+                if (deleteAccountLandscape(context)) {
+                  return Row(children: [Expanded(child: keep), const SizedBox(width: 12), Expanded(child: delete)]);
+                }
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [delete, keep],
+                );
+              }),
             ),
           ),
         ),
@@ -280,10 +302,14 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(color: t.colorScheme.error),
           ),
-        TextButton(
-          key: const ValueKey('delete-use-sms'),
-          onPressed: _busy ? null : _sendCode,
-          child: Text(pin ? 'Use an SMS code instead' : 'Resend code'),
+        // A button, not a line of text: an icon and its own width.
+        Center(
+          child: TextButton.icon(
+            key: const ValueKey('delete-use-sms'),
+            onPressed: _busy ? null : _sendCode,
+            icon: Icon(pin ? Icons.sms_outlined : Icons.refresh),
+            label: Text(pin ? 'Use an SMS code instead' : 'Resend code'),
+          ),
         ),
       ],
     );

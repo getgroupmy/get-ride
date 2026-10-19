@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/app_permissions.dart';
+import 'package:get_ride/src/core/permission_ask.dart';
 import 'package:get_ride/src/data/permission_probe.dart';
 import 'package:get_ride/src/data/permission_rules.dart';
 import 'package:get_ride/src/features/partner/online_gate.dart';
@@ -69,6 +70,28 @@ class FakeProbe implements PermissionProbe {
   Future<bool> openLocationSettings() async {
     locationSettingsOpened++;
     return false;
+  }
+
+  @override
+  Future<bool> openNotificationSettings() async {
+    settingsOpened++;
+    return false;
+  }
+
+  /// A refusal here is the phone's own: no question shown.
+  @override
+  Future<AskResult> ask(AskKind kind) async {
+    if (kind == AskKind.notifications) await request(AppPermission.notifications);
+    if (kind == AskKind.location) {
+      if (!service) return const AskResult(AskAnswer.serviceOff, prompted: false);
+      await requestLocation();
+    }
+    return switch (kind == AskKind.location ? loc : notif) {
+      PermState.granted || PermState.limited => const AskResult(AskAnswer.granted),
+      PermState.notAsked => const AskResult(AskAnswer.denied),
+      PermState.denied => const AskResult(AskAnswer.blocked, prompted: false),
+      PermState.unknown => const AskResult(AskAnswer.unsupported, prompted: false),
+    };
   }
 }
 
@@ -279,6 +302,7 @@ void main() {
   for (final dark in [false, true]) {
     testWidgets('the card lists each permission and its state (${dark ? 'dark' : 'light'})', (tester) async {
       final probe = FakeProbe(
+        notif: PermState.denied,
         statusMap: {
           AppPermission.notifications: PermState.denied,
           AppPermission.location: PermState.limited,
@@ -301,7 +325,8 @@ void main() {
       expect(find.text('While using the app'), findsOneWidget);
       expect(find.text('Allowed'), findsOneWidget);
       expect(find.byKey(const ValueKey('permissions-open-settings')), findsOneWidget);
-      // Never asked: the phone's question; refused: its Settings.
+      // Never asked: the phone's question; refused (the phone answers at
+      // once, without asking): its Settings.
       await tester.tap(find.byKey(const ValueKey('permission-microphone')));
       await tester.pumpAndSettle();
       expect(probe.requested, [AppPermission.microphone]);

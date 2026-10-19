@@ -468,3 +468,24 @@ String meterReceiptText(MeterTrip t, {String title = 'GET TAXI METER'}) => [
       meterReceiptFooterNote(t),
       'Thank you for riding.',
     ].join('\n');
+
+/// Where recent hires ended, newest first, for the destination page's
+/// shortcuts: each trip's drop-off with a GPS fix, named by its place (else
+/// the destination set for it), one entry per place, at most [max].
+List<({String name, double latitude, double longitude})> recentMeterDropoffs(List<MeterTrip> trips, {int max = 5}) {
+  final sorted = [...trips]..sort((a, b) => b.endedAt.compareTo(a.endedAt));
+  final out = <({String name, double latitude, double longitude})>[];
+  final seen = <String>{};
+  for (final t in sorted) {
+    final d = t.dropoff;
+    final lat = d?.latitude, lng = d?.longitude;
+    if (d == null || lat == null || lng == null) continue;
+    final name = (d.place ?? '').isNotEmpty ? d.place! : (t.destination ?? d.label);
+    // The same place twice (by name, or within ~100 m) is one shortcut.
+    final key = '${name.toLowerCase()}|${lat.toStringAsFixed(3)},${lng.toStringAsFixed(3)}';
+    if (!seen.add(key) || !seen.add(name.toLowerCase())) continue;
+    out.add((name: name, latitude: lat, longitude: lng));
+    if (out.length >= max) break;
+  }
+  return out;
+}

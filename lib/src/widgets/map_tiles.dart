@@ -30,6 +30,11 @@ import 'apple_native_layer.dart';
 import 'google_native_layer.dart';
 import 'maplibre_layer.dart';
 
+/// How the app's maps take the keyboard: arrow keys pan once the map is
+/// focused, but a map never takes the focus by itself, so on a desktop Tab
+/// starts at the rail and the page, not after the map (WCAG 2.4.3).
+const mapKeyboardOptions = KeyboardOptions(autofocus: false);
+
 const osmTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 const _configuredLight = String.fromEnvironment('MAP_TILE_URL');

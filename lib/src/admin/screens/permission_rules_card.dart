@@ -130,7 +130,7 @@ class PermissionRulesCard extends ConsumerWidget {
                   p.notifications,
                   (v) => partner(p.copyWith(notifications: v)),
                 ),
-                section('App Settings page', 'The app\'s Settings → Permissions card.'),
+                section('App Settings page', 'The app\'s Settings > Permissions card.'),
                 SwitchListTile(
                   key: const ValueKey('permission-rule-show-card'),
                   contentPadding: EdgeInsets.zero,

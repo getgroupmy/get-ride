@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../admin/screens/meterapp/meter_logic.dart';
 import '../../core/meter_console.dart';
+import '../../core/meter_sign_in.dart' show showMeterSessionToggle;
 import '../../core/meter_trip.dart';
 import '../../core/vehicle_assignment.dart';
 import '../../core/escpos.dart';
@@ -33,11 +34,13 @@ import '../../widgets/net_image.dart';
 import '../partner/vehicle_picker.dart';
 import 'hail_destination_screen.dart';
 import 'landscape_stage.dart';
+import 'meter_auto_launch.dart' show meterAtSignInProvider, meterSessionChoiceProvider;
 import 'meter_leave_launcher.dart';
 import '../../data/meter_trip_sync.dart';
 import 'meter_providers.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/web_overlay_back.dart';
+import '../../widgets/chip_button.dart';
 
 // The console is deliberately not themed: a white screen on a windscreen
 // mount at night is a hazard, so the meter is always the dark instrument it
@@ -239,11 +242,13 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         currency: _currency,
         multiplier: periodMultiplier(_period, _profile.nightMultiplier),
         current: _dest,
+        recent: recentMeterDropoffs(_trips),
+        canClear: true,
       ),
     );
     _inFront = true;
     await _orientation.lockLandscape();
-    if (mounted && picked != null) setState(() => _dest = picked);
+    if (mounted && picked != null) setState(() => _dest = identical(picked, hailDestinationCleared) ? null : picked);
   }
 
   void _navigateToDestination() {
@@ -791,6 +796,15 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     }
   }
 
+  /// "Meter on/off" (Meter at sign-in, 0243): turns the meter off for this
+  /// sign-in and goes to the app, so a reopen no longer lands here. A hire
+  /// in progress has to end first.
+  Future<void> _turnMeterOff() async {
+    if (_m.hasHire) return _explain('Meter on', 'End the hire before turning the meter off.');
+    await ref.read(meterSessionChoiceProvider.notifier).set(false);
+    if (mounted) GoRouter.of(context).go('/');
+  }
+
   void _explain(String title, String message) => showAppDialog<void>(id: 'meter.explain',
     context: _stageContext,
     useRootNavigator: false,
@@ -951,6 +965,22 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
             ),
           ),
         ),
+        if (showMeterSessionToggle(ref.watch(meterAtSignInProvider).value ?? 'off'))
+          Tooltip(
+            message: 'Meter on/off: turn the meter off for this sign-in',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('METER', style: TextStyle(color: _muted, fontSize: 12)),
+                Switch(
+                  key: const ValueKey('meter-session-switch'),
+                  value: true,
+                  activeThumbColor: _lcd,
+                  onChanged: (_) => _turnMeterOff(),
+                ),
+              ],
+            ),
+          ),
         if (_access('printer').show)
           IconButton(
             key: const ValueKey('meter-panel-printer'),
@@ -1048,7 +1078,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
           ),
         ),
         const SizedBox(width: 8),
-        ActionChip(
+        ActionChipButton(
           key: const ValueKey('meter-plate'),
           // Not compact: its tap area is 48 high (a compact one was 40).
           materialTapTargetSize: MaterialTapTargetSize.padded,
@@ -1491,9 +1521,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
                 [
                   formatMeterDistance(t.distanceM),
                   if (t.pickup != null && t.dropoff != null)
-                    '${t.pickup!.label} → ${t.dropoff!.label}'
+                    '${t.pickup!.label} to ${t.dropoff!.label}'
                   else if (t.destination != null)
-                    '→ ${t.destination}',
+                    'to ${t.destination}',
                 ].join(' · '),
               ),
               trailing: Text('${t.currency} ${t.total.toStringAsFixed(2)}', style: _digits(16, _lcd)),

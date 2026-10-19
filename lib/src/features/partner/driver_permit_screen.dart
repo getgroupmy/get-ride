@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../admin/screens/people/people_data.dart';
 import '../../core/driver_permit.dart';
+import '../../core/date_order.dart' show formatDateForUser;
 import '../../data/live_tables.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../providers.dart';
@@ -46,7 +46,10 @@ final currentPlateProvider = FutureProvider.autoDispose<String?>((ref) async {
   return null;
 });
 
-final _date = DateFormat('dd/MM/yyyy');
+
+/// "Update documents" from the permit page: the onboarding form opened on
+/// its Documents step (or an earlier step still missing).
+const permitDocumentsRoute = '/drive/onboarding?step=requirements';
 
 /// Taxi driver permit (Expo `partner-teksi`, the TEKSI landing screen): the
 /// permit's details, its expiry and review state, and the two ways to drive
@@ -139,7 +142,7 @@ class _PermitBody extends StatelessWidget {
                   FilledButton.icon(
                     key: const ValueKey('permit-update-documents'),
                     icon: const Icon(Icons.upload_file),
-                    onPressed: () => context.push('/drive/onboarding'),
+                    onPressed: () => context.push(permitDocumentsRoute),
                     label: const Text('Update documents'),
                   ),
                 ],
@@ -173,7 +176,7 @@ class _PermitBody extends StatelessWidget {
               title: const Text('No taxi driver permit uploaded'),
               subtitle: const Text('Upload your permit with your partner documents to show it here.'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/drive/onboarding'),
+              onTap: () => context.push(permitDocumentsRoute),
             ),
           ),
         Card(
@@ -226,8 +229,8 @@ class _PermitBody extends StatelessWidget {
                           _field(t, 'Permit no.', p.permitNumber),
                           _field(t, 'Vehicle', p.vehiclePlate),
                           _field(t, 'Class', p.licenceClass),
-                          _field(t, 'Valid from', p.issueDate == null ? null : _date.format(p.issueDate!)),
-                          _field(t, 'Valid to', p.expiryDate == null ? null : _date.format(p.expiryDate!)),
+                          _field(t, 'Valid from', p.issueDate == null ? null : formatDateForUser(p.issueDate)),
+                          _field(t, 'Valid to', p.expiryDate == null ? null : formatDateForUser(p.expiryDate)),
                           _field(t, 'Address', p.address),
                         ],
                       ),
@@ -314,7 +317,7 @@ class _PermitBody extends StatelessWidget {
             OutlinedButton.icon(
               icon: const Icon(Icons.upload_file),
               label: const Text('Update documents'),
-              onPressed: () => context.push('/drive/onboarding'),
+              onPressed: () => context.push(permitDocumentsRoute),
             ),
             FilledButton.tonalIcon(
               key: const ValueKey('permit-open-meter'),
@@ -392,7 +395,7 @@ Future<void> showPermitBlock(BuildContext context, PermitBlock block, DriverPerm
               if (block == PermitBlock.plateMismatch) {
                 context.go('/drive');
               } else {
-                context.push('/drive/onboarding');
+                context.push(permitDocumentsRoute);
               }
             },
             child: Text(block == PermitBlock.plateMismatch ? 'Choose vehicle' : 'Update documents'),

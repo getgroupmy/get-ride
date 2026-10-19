@@ -221,10 +221,18 @@ class _MyQrScreenState extends ConsumerState<MyQrScreen> {
         ),
       ],
       bottom: kinds.length > 1 && available
-          ? TabBar(
-              key: const ValueKey('my-qr-tabs'),
-              tabs: [for (final k in kinds) Tab(key: ValueKey('my-qr-tab-${k.wire}'), text: k.label)],
-            )
+          ? () {
+              // Equal tabs while every label fits its share of the width;
+              // on a narrow phone they scroll from the start instead of
+              // being cut ("GET.Referra").
+              final fit = tabLabelsFit(context, [for (final k in kinds) k.label], MediaQuery.sizeOf(context).width);
+              return TabBar(
+                key: const ValueKey('my-qr-tabs'),
+                isScrollable: !fit,
+                tabAlignment: fit ? null : TabAlignment.start,
+                tabs: [for (final k in kinds) Tab(key: ValueKey('my-qr-tab-${k.wire}'), text: k.label)],
+              );
+            }()
           : null,
     );
     if (codes.hasValue && codes.value == null) {
@@ -248,6 +256,28 @@ class _MyQrScreenState extends ConsumerState<MyQrScreen> {
       ),
     );
   }
+}
+
+/// Whether [labels] fit as equal tabs across [width]: each label, in the
+/// tab bar's label style, plus a tab's side padding within its share.
+bool tabLabelsFit(BuildContext context, List<String> labels, double width) {
+  if (labels.isEmpty) return true;
+  final t = Theme.of(context);
+  final style = t.tabBarTheme.labelStyle ?? t.textTheme.titleSmall ?? const TextStyle(fontSize: 14);
+  final scaler = MediaQuery.textScalerOf(context);
+  final share = width / labels.length;
+  for (final l in labels) {
+    final p = TextPainter(
+      text: TextSpan(text: l, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final needed = p.width + 32; // kTabLabelPadding, both sides
+    p.dispose();
+    if (needed > share) return false;
+  }
+  return true;
 }
 
 /// One kind's page: its active code (or a way to make one) and the codes

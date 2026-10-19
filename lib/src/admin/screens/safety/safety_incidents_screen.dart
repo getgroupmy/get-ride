@@ -183,7 +183,7 @@ class _IncidentCard extends ConsumerWidget {
                   if (i.reporterPhone != null) SelectableText('Phone: ${i.reporterPhone}'),
                   if (i.plate != null || i.partnerName != null)
                     Text('Driver: ${[i.partnerName, i.plate, i.vehicle].whereType<String>().join(' · ')}'),
-                  if (i.pickupName != null) Text('Trip: ${i.pickupName} → ${i.dropName ?? '?'}'),
+                  if (i.pickupName != null) Text('Trip: ${i.pickupName} to ${i.dropName ?? '?'}'),
                   Text(
                     i.locationAt == null
                         ? 'Location: unknown'

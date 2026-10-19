@@ -29,8 +29,8 @@ class _FakeRepo implements EvOrderRepository {
                 {'name': 'SST', 'amount': 7500, 'enabled': true},
               ]),
               'exteriorColors': jsonEncode([
-                {'id': 'e1', 'name': 'Pearl White', 'enabled': true},
-                {'id': 'e2', 'name': 'Sky Blue', 'enabled': true},
+                {'id': 'e1', 'name': 'Pearl White', 'code': '#F5F5F5', 'enabled': true},
+                {'id': 'e2', 'name': 'Sky Blue', 'code': '#3A7BD5', 'enabled': true},
               ]),
               'interiorColors': jsonEncode([
                 {'id': 'i1', 'name': 'Charcoal', 'enabled': true},
@@ -92,8 +92,13 @@ class _FakeRepo implements EvOrderRepository {
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
-Future<_FakeRepo> _pump(WidgetTester tester, {_FakeRepo? repo}) async {
-  tester.view.physicalSize = const Size(900, 2400);
+Future<_FakeRepo> _pump(
+  WidgetTester tester, {
+  _FakeRepo? repo,
+  Size size = const Size(900, 2400),
+  Brightness brightness = Brightness.light,
+}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final r = repo ?? _FakeRepo();
@@ -102,18 +107,69 @@ Future<_FakeRepo> _pump(WidgetTester tester, {_FakeRepo? repo}) async {
       evOrderRepositoryProvider.overrideWithValue(r),
       profileProvider.overrideWith((_) async => Profile({'id': 'u1', 'name': 'Aina', 'phone': '+60123'})),
     ],
-    child: const MaterialApp(home: EvOrderScreen()),
+    child: MaterialApp(theme: ThemeData(brightness: brightness), home: const EvOrderScreen()),
   ));
   await tester.pumpAndSettle();
   return r;
 }
 
 Future<void> _next(WidgetTester tester) async {
-  await tester.tap(find.text('Continue'));
+  await tester.tap(find.byKey(const ValueKey('ev-continue')));
   await tester.pumpAndSettle();
 }
 
 void main() {
+  // Web round 36 (171, 172): Specification at 360x640 and 640x360, 1.3x text.
+  for (final b in Brightness.values) {
+    for (final size in const [Size(360, 640), Size(640, 360)]) {
+      testWidgets('171/172: the price summary scrolls clear of Back / Continue; the chosen colour keeps its swatch '
+          '(${size.width.toInt()}x${size.height.toInt()}, ${b.name})', (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await _pump(tester, size: size, brightness: b);
+        await tester.tap(find.text('JUNEYAO JY AIR'));
+        await tester.pump();
+        await _next(tester);
+        expect(find.text('Step 2 of 9'), findsOneWidget);
+
+        // 172: the selected colour chip shows its swatch, no tick over it,
+        // and says it is chosen with a strong outline.
+        final white = find.byKey(const ValueKey('ev-colour-Pearl White'));
+        await tester.ensureVisible(white);
+        await tester.pumpAndSettle();
+        final chip = tester.widget<ChoiceChip>(white);
+        expect(chip.selected, isTrue, reason: 'the first colour is preselected');
+        expect(chip.showCheckmark, isFalse);
+        expect(chip.side?.width, 2);
+        expect(find.descendant(of: white, matching: find.byKey(const ValueKey('ev-swatch-F5F5F5'))), findsOneWidget);
+        expect(find.descendant(of: white, matching: find.byIcon(Icons.check)), findsNothing);
+        final swatch = tester.getRect(find.byKey(const ValueKey('ev-swatch-F5F5F5')));
+        expect(swatch.width, greaterThanOrEqualTo(15), reason: 'the swatch is not replaced by the tick');
+        await tester.tap(find.text('Sky Blue'));
+        await tester.pumpAndSettle();
+        expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('ev-colour-Sky Blue'))).selected, isTrue);
+        expect(find.byKey(const ValueKey('ev-swatch-3A7BD5')), findsOneWidget);
+
+        // 171: scrolled to the end, the summary stands whole above the bar.
+        final list = find.byType(Scrollable).first;
+        final position = tester.state<ScrollableState>(list).position;
+        position.jumpTo(position.maxScrollExtent);
+        await tester.pumpAndSettle();
+        final summary = tester.getRect(find.byKey(const ValueKey('ev-price-summary')));
+        final bar = tester.getRect(find.ancestor(of: find.text('Back'), matching: find.byType(SafeArea)).first);
+        expect(summary.bottom, lessThanOrEqualTo(bar.top - 24), reason: 'well clear of Back / Continue');
+        // The running total in the bar, whole or ellipsised, never overflowing.
+        final next = tester.widget<Text>(
+          find.descendant(of: find.byKey(const ValueKey('ev-continue')), matching: find.byType(Text)),
+        );
+        expect(next.data, startsWith('Continue · RM'));
+        expect(next.maxLines, 1);
+        expect(tester.getRect(find.byKey(const ValueKey('ev-continue'))).right, lessThanOrEqualTo(size.width));
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets('a custom build is ordered, set up and scheduled without anything being charged', (tester) async {
     final repo = await _pump(tester);
     expect(find.text('Step 1 of 9'), findsOneWidget);
@@ -129,7 +185,12 @@ void main() {
     await tester.tap(find.text('Sky Blue'));
     await tester.tap(find.text('Wireless Charger'));
     await tester.pump();
-    expect(find.text('RM 82,950'), findsOneWidget, reason: '75,000 + 7,500 tax + 450');
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('ev-price-summary')), matching: find.text('RM 82,950')),
+      findsOneWidget,
+      reason: '75,000 + 7,500 tax + 450',
+    );
+    expect(find.text('Continue · RM 82,950'), findsOneWidget, reason: 'the running total in the bar');
     await _next(tester);
 
     // Order fee: recorded as due.

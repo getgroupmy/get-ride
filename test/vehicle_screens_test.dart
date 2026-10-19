@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
@@ -301,7 +302,7 @@ void main() {
         vehicles: _FakeVehicles(existing: {..._ready, 'make': null, 'model': null}));
     await tester.pump();
     expect(find.text('WXY 1'), findsOneWidget);
-    expect(find.text('Draft · next: Make & model'), findsOneWidget);
+    expect(find.text('Draft · Make & model next'), findsOneWidget);
     expect(find.text('Add vehicle'), findsOneWidget);
   });
 
@@ -313,11 +314,38 @@ void main() {
         vehicles: _FakeVehicles(existing: {..._ready, 'make': null, 'model': null}));
     await tester.pump();
     final plate = tester.getRect(find.text('WXY 1'));
-    final status = tester.getRect(find.text('Draft · next: Make & model'));
+    final status = tester.getRect(find.text('Draft · Make & model next'));
     expect(status.top, greaterThan(plate.bottom), reason: 'below, so the plate keeps its width');
     expect(plate.height, lessThan(40), reason: 'one line, not a letter per line');
     expect(tester.takeException(), isNull);
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('412x915 at 1.3x: a draft beside its delete and chevron shows its whole status (${b.name})',
+        (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pump(tester, const VehiclesScreen(),
+          brightness: b, vehicles: _FakeVehicles(existing: {..._ready, 'image_front': null}));
+      tester.view.physicalSize = const Size(412, 915);
+      await tester.pumpAndSettle();
+      final label = find.text('Draft · Photos next');
+      expect(label, findsOneWidget);
+      expect(find.byKey(const ValueKey('vehicle-remove-v1')), findsOneWidget);
+      expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(of: label, matching: find.byType(RichText)),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse, reason: 'wraps rather than clips');
+      final chip = tester.getRect(find.byKey(const ValueKey('vehicle-draft-v1')));
+      final text = tester.getRect(label);
+      expect(text.top, greaterThanOrEqualTo(chip.top));
+      expect(text.bottom, lessThanOrEqualTo(chip.bottom), reason: 'the chip grows with its lines');
+      expect(tester.getRect(label).right, lessThanOrEqualTo(chip.right));
+      expect(chip.right, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('vehicle-remove-v1'))).left));
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('the year must be four digits in range', (tester) async {
     final repo = await _pump(

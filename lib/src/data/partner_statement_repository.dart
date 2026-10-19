@@ -297,12 +297,16 @@ final statementLayoutProvider = FutureProvider.autoDispose<StatementLayout>((ref
 });
 
 /// The Earnings page's totals for a period, and the same per day (days with trips only, newest first).
+/// The Earnings page's clock: the totals, the chart, the trips, the CSV and
+/// the day names all read it, so they share one "now" (pinned in tests).
+final earningsClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 final earningsTotalsProvider = FutureProvider.autoDispose
     .family<({StatementTotals totals, List<EarningsBucket> days}), EarningsPeriod>((ref, period) async {
       ref.watchLive('wallets');
       final settings = await ref.watch(statementSettingsProvider.future);
       final repo = ref.watch(partnerStatementRepositoryProvider);
-      final r = earningsRange(period, DateTime.now(), sunday: settings.weekStartsSunday);
+      final r = earningsRange(period, ref.watch(earningsClockProvider)(), sunday: settings.weekStartsSunday);
       final results = await Future.wait([repo.earnings(r.from, r.to), repo.series(r.from, r.to, 'day')]);
       final days = (results[1] as List<EarningsBucket>).where((d) => d.totals.trips > 0).toList()
         ..sort((a, b) => b.start.compareTo(a.start));
@@ -313,6 +317,6 @@ final earningsTotalsProvider = FutureProvider.autoDispose
 final earningsWeeksProvider = FutureProvider.autoDispose<List<EarningsBucket>>((ref) async {
   ref.watchLive('wallets');
   final settings = await ref.watch(statementSettingsProvider.future);
-  final r = earningsWeeksRange(DateTime.now(), sunday: settings.weekStartsSunday);
+  final r = earningsWeeksRange(ref.watch(earningsClockProvider)(), sunday: settings.weekStartsSunday);
   return ref.watch(partnerStatementRepositoryProvider).series(r.from, r.to, 'week');
 });

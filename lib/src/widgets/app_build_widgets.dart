@@ -13,19 +13,41 @@ import '../core/app_branding.dart';
 import '../core/app_builds.dart';
 import '../core/format.dart';
 import '../data/branding_cache.dart' show readBrandingRow;
+import '../platform/device_abis.dart';
 import '../providers.dart';
 import 'common.dart' show BrandMark;
 import 'net_image.dart';
 import 'page_style_host.dart';
 
-/// The latest published build for a platform ('ios' / 'android').
+/// The latest published build for a platform ('ios' / 'android'). Android
+/// always names this device's processor (`abi`, 64-bit when it can't tell):
+/// app-install answers a request without one with the universal APK, which
+/// is what old app builds keep getting.
 final appBuildProvider = FutureProvider.autoDispose.family<AppBuild, String>((ref, platform) async {
+  final abis = platform == 'android' ? await ref.watch(deviceAbisProvider.future) : const <String>[];
   final res = await ref
       .watch(supabaseProvider)
       .functions
-      .invoke('app-install', method: HttpMethod.get, queryParameters: {'platform': platform});
+      .invoke('app-install', method: HttpMethod.get, queryParameters: appInstallQuery(platform, abis));
   return AppBuild.fromJson(platform, res.data);
 });
+
+/// The processor ABIs of the phone (or browser) this runs on, best first;
+/// empty when it can't be told, which means 64-bit (core/app_builds.dart).
+final deviceAbisProvider = FutureProvider<List<String>>((ref) => readDeviceAbis());
+
+/// [b] with the APK this device runs as the one to download and install.
+/// Until the device has answered, the 64-bit default.
+AppBuild appBuildForDevice(WidgetRef ref, AppBuild b) =>
+    b.forDevice(ref.watch(deviceAbisProvider).value ?? const []);
+
+/// "64-bit", "32-bit", or "all phones" for the universal APK.
+String apkAbiLabel(String abi) => switch (abi) {
+  abiArm64 => '64-bit',
+  abiArm32 => '32-bit',
+  abiUniversal => 'all phones',
+  _ => abi,
+};
 
 /// The admin's branding (Admin → App Settings), for the public install page:
 /// `app_branding` is readable without an account. Never fails: no row, or no
@@ -138,6 +160,18 @@ String appBuildSummary(AppBuild b) => [
   if (b.createdAt != null) formatDateTime(b.createdAt),
 ].join(' · ');
 
+/// The install page's version line in two: "1.4.3 (107) · 52.3 MB", then
+/// the date on a line of its own, each part kept whole (non-breaking
+/// spaces), so a narrow phone never breaks inside the date.
+List<String> appBuildSummaryLines(AppBuild b) {
+  String whole(String s) => s.replaceAll(' ', '\u00A0');
+  final size = formatBuildSize(b.size);
+  return [
+    [whole(b.label), if (size.isNotEmpty) whole(size)].join(' · '),
+    if (b.createdAt != null) whole(formatDateTime(b.createdAt)),
+  ];
+}
+
 /// The QR code a tester scans to open the install page, with its link.
 Future<void> showAppInstallQr(BuildContext context, AppBuild b) {
   final url = appInstallPageUrl(b.platform);
@@ -231,7 +265,9 @@ class AppBuildPanel extends ConsumerWidget {
                 icon: const Icon(Icons.refresh),
               ),
             ),
-      data: (b) {
+      data: (latest) {
+        final b = appBuildForDevice(ref, latest);
+        final other = b.otherApk;
         if (!b.available) {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
@@ -258,8 +294,18 @@ class AppBuildPanel extends ConsumerWidget {
                   key: ValueKey('app-build-download-$platform'),
                   onPressed: () => _open(context, ref, b.downloadUrl!),
                   icon: const Icon(Icons.download_outlined),
-                  label: Text('Download .${b.ios ? 'ipa' : 'apk'}'),
+                  label: Text(
+                    b.ios || b.abi == null ? 'Download .${b.ios ? 'ipa' : 'apk'}' : 'Download .apk (${apkAbiLabel(b.abi!)})',
+                  ),
                 ),
+                // The other processor's APK, for a phone that isn't this one.
+                if (other != null)
+                  OutlinedButton.icon(
+                    key: ValueKey('app-build-download-other-$platform'),
+                    onPressed: () => _open(context, ref, other.url),
+                    icon: const Icon(Icons.download_outlined),
+                    label: Text('Download .apk (${apkAbiLabel(other.abi)})'),
+                  ),
                 // The bundle Play takes: a download only, since no phone
                 // installs an .aab (so no share link or QR for it).
                 if (b.bundleUrl != null)
@@ -306,6 +352,30 @@ class AppInstallButton extends ConsumerWidget {
     icon: const Icon(Icons.install_mobile),
     label: Text('Install ${app.label}'),
   );
+}
+
+/// On the public page, the other processor's APK beside the one this phone
+/// was given: "Older phone?" for the 32-bit one, "Newer phone?" back.
+class AppOtherApkLink extends ConsumerWidget {
+  const AppOtherApkLink({super.key, required this.app});
+
+  final AppBuild app;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final other = app.otherApk;
+    if (other == null) return const SizedBox.shrink();
+    return TextButton(
+      key: const ValueKey('app-install-other-apk'),
+      onPressed: () => _open(context, ref, other.url),
+      child: Text(
+        other.abi == abiArm32
+            ? "Older phone, or it won't install? Download the 32-bit version"
+            : 'Newer phone? Download the 64-bit version',
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
 }
 
 /// Downloading the file itself, on the public page.

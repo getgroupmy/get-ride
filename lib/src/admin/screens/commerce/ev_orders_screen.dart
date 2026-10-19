@@ -161,7 +161,7 @@ class _OrderDetail extends ConsumerWidget {
     });
     if (!context.mounted) return;
     if (advisors.isEmpty) {
-      showInfo(context, 'No DAs configured. Add advisors in Settings → TEKSI EV → Delivery Advisors.');
+      showInfo(context, 'No DAs configured. Add advisors in Settings > TEKSI EV > Delivery Advisors.');
       return;
     }
     final pickedId = await showSearchPicker<String>(
@@ -370,7 +370,7 @@ class _OrderDetail extends ConsumerWidget {
       if (items.isEmpty)
         const Padding(
           padding: EdgeInsets.symmetric(vertical: 6),
-          child: Text('No checklist items configured. Add them in Settings → TEKSI EV → Delivery Checklist.'),
+          child: Text('No checklist items configured. Add them in Settings > TEKSI EV > Delivery Checklist.'),
         )
       else
         for (final it in items)
@@ -439,7 +439,7 @@ class _ChecklistFormState extends State<_ChecklistForm> {
 
   Future<void> _submit() async {
     if (_items.isEmpty) {
-      showInfo(context, 'Add handover items in Settings → TEKSI EV → Delivery Checklist first.');
+      showInfo(context, 'Add handover items in Settings > TEKSI EV > Delivery Checklist first.');
       return;
     }
     final outstanding = _items.where((x) => !x.done).length;
@@ -464,7 +464,7 @@ class _ChecklistFormState extends State<_ChecklistForm> {
           const Text('Tick each item and add any notes, then submit for the customer to accept.'),
           const SizedBox(height: 12),
           if (_items.isEmpty)
-            const Text('No checklist items configured. Add them in Settings → TEKSI EV → Delivery Checklist.'),
+            const Text('No checklist items configured. Add them in Settings > TEKSI EV > Delivery Checklist.'),
           for (var i = 0; i < _items.length; i++)
             Card(
               child: Padding(

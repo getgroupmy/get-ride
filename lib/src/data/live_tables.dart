@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers.dart';
+import 'app_connection.dart';
 import 'realtime_backup.dart';
 
 /// The tables admins configure that the app reads. Each must be in the
@@ -93,6 +94,26 @@ const liveOwnTables = <String, String>{
 /// legacy settings entries) that decide bidding, pricing and services.
 const liveRegionTables = <String>['countries', 'states', 'cities', 'suburbs', 'settings_entries'];
 
+/// The `app_settings` rows the map profile is made from (the `geo`
+/// function reads these two alone). A change to one also moves
+/// [liveMapSettings], so the map profile is asked for again only then, not
+/// on every page-style, app-icon or other app setting an admin saves.
+const mapSettingKeys = <String>{'map_config', 'api_providers'};
+
+/// The revision that moves when one of [mapSettingKeys] changes; watched
+/// like a table (`ref.watchLive(liveMapSettings)`).
+const liveMapSettings = 'app_settings:map';
+
+/// What a change to a row of [table] moves: the table, and for an
+/// `app_settings` row of [mapSettingKeys] (or one whose key is not known)
+/// [liveMapSettings] too. Pure.
+List<String> liveRevisionsFor(String table, Map<String, dynamic> newRecord, Map<String, dynamic> oldRecord) {
+  if (table != 'app_settings') return [table];
+  final keys = [newRecord['key'], oldRecord['key']].whereType<String>();
+  final map = keys.isEmpty || keys.any(mapSettingKeys.contains);
+  return map ? [table, liveMapSettings] : [table];
+}
+
 /// One number for [tables] that moves whenever any of them changes (each
 /// revision only grows). Pure.
 int liveStamp(Map<String, int> revisions, Iterable<String> tables) {
@@ -136,7 +157,7 @@ class LiveTables extends Notifier<Map<String, int>> {
       // net re-reads (a channel can report healthy while missing changes)
       // -- each full read refetches every live provider on the phone.
       backup = RealtimeBackup(
-        () => changed([...liveSettingTables, ...liveOwnTables.keys]),
+        () => changed([...liveSettingTables, liveMapSettings, ...liveOwnTables.keys]),
         every: const Duration(minutes: 2),
         healthy: realtimeBackupSafetyNetInterval,
         healthyJitter: realtimeBackupSafetyNetJitter,
@@ -149,7 +170,7 @@ class LiveTables extends Notifier<Map<String, int>> {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: table,
-          callback: (_) => changed([table]),
+          callback: (p) => changed(liveRevisionsFor(table, p.newRecord, p.oldRecord)),
         );
       }
       if (uid != null) {
@@ -163,7 +184,12 @@ class LiveTables extends Notifier<Map<String, int>> {
           );
         }
       }
-      channel = c.subscribe(backup.onStatus);
+      final status = backup.onStatus;
+      channel = c.subscribe((s, [e]) {
+        status(s, e);
+        // The connection strip (OfflineStrip) hears it too: no probe of its own.
+        if (ref.mounted) ref.read(appOfflineProvider.notifier).realtime(s);
+      });
     } catch (_) {
       // No client (tests, an unconfigured build): settings are read once, as before.
     }
@@ -262,7 +288,12 @@ class AdminLiveTables extends Notifier<Map<String, int>> {
           callback: (_) => changed([table]),
         );
       }
-      channel = c.subscribe(backup.onStatus);
+      final status = backup.onStatus;
+      channel = c.subscribe((s, [e]) {
+        status(s, e);
+        // The connection strip (OfflineStrip) hears it too: no probe of its own.
+        if (ref.mounted) ref.read(appOfflineProvider.notifier).realtime(s);
+      });
     } catch (_) {
       // No client (tests): admin lists are read once, as before.
     }

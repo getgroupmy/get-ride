@@ -102,7 +102,7 @@ class _DocumentTypeScreenState extends ConsumerState<DocumentTypeScreen> {
             onPressed: () => _syncDefaults(all!),
           ),
       ],
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => _edit(all ?? []),
         icon: const Icon(Icons.add),
         label: const Text('Add document type'),
@@ -127,7 +127,7 @@ class _DocumentTypeScreenState extends ConsumerState<DocumentTypeScreen> {
                     ? const EmptyState(
                         icon: Icons.inbox_outlined, title: 'No document types', message: 'Categorize required documents')
                     : ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 96),
+                        padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)),
                         itemCount: rows.length,
                         itemBuilder: (_, i) {
                           final e = rows[i];
@@ -311,7 +311,7 @@ class _RequiredDocumentsScreenState extends ConsumerState<RequiredDocumentsScree
     return AdminPage(
       title: 'Required Documents',
       page: c.page,
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => _edit(entries.value ?? [], docTypes),
         icon: const Icon(Icons.add),
         label: const Text('Add document'),
@@ -337,7 +337,7 @@ class _RequiredDocumentsScreenState extends ConsumerState<RequiredDocumentsScree
                     ? const EmptyState(
                         icon: Icons.inbox_outlined, title: 'No required documents', message: 'Partner onboarding docs')
                     : ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 96),
+                        padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)),
                         itemCount: visible.length,
                         itemBuilder: (_, i) => _row(visible[i], all, docTypes, canEdit),
                       ),

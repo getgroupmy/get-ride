@@ -21,6 +21,8 @@ class HailDestinationArgs {
     required this.currency,
     this.multiplier = 1,
     this.current,
+    this.recent = const [],
+    this.canClear = false,
   });
 
   final LatLng? origin;
@@ -28,7 +30,17 @@ class HailDestinationArgs {
   final String currency;
   final double multiplier;
   final HailDestination? current;
+
+  /// Where recent hires ended ([recentMeterDropoffs]), one tap each.
+  final List<({String name, double latitude, double longitude})> recent;
+
+  /// Offers "Clear destination" while one is set (the meter's; the TEKSI
+  /// pickup flow needs one to go on).
+  final bool canClear;
 }
+
+/// Popped by "Clear destination": the hire has none any more.
+const hailDestinationCleared = HailDestination(name: '', latitude: 0, longitude: 0);
 
 /// A street hail's destination (Expo `partner-teksi.tsx`): searched for, or
 /// tapped on the map, with the route from here and what the meter's card
@@ -91,6 +103,41 @@ class _HailDestinationScreenState extends ConsumerState<HailDestinationScreen> {
     });
   }
 
+  /// The recent drop-offs, under a heading; none when there are none.
+  List<Widget> _recentTiles(ThemeData t) {
+    final recent = widget.args.recent;
+    if (recent.isEmpty) return const [];
+    return [
+      const SizedBox(height: 12),
+      Text('Recent destinations', style: t.textTheme.titleSmall),
+      for (final (i, r) in recent.indexed)
+        ListTile(
+          key: ValueKey('hail-recent-$i'),
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.history),
+          title: Text(r.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          enabled: !_busy,
+          onTap: () => _choose(
+            LatLng(r.latitude, r.longitude),
+            place: Place(name: r.name, address: '', point: LatLng(r.latitude, r.longitude)),
+          ),
+        ),
+    ];
+  }
+
+  /// Nothing chosen yet: the hint, then the recent drop-offs.
+  Widget _empty(ThemeData t) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(
+        _busy ? 'Finding the route…' : 'Search, or tap the map where the passenger is going.',
+        style: t.textTheme.bodyLarge,
+      ),
+      ..._recentTiles(t),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -126,10 +173,7 @@ class _HailDestinationScreenState extends ConsumerState<HailDestinationScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: d == null
-                      ? Text(
-                          _busy ? 'Finding the route…' : 'Search, or tap the map where the passenger is going.',
-                          style: t.textTheme.bodyLarge,
-                        )
+                      ? _empty(t)
                       : Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           mainAxisSize: MainAxisSize.min,
@@ -168,6 +212,14 @@ class _HailDestinationScreenState extends ConsumerState<HailDestinationScreen> {
                               icon: const Icon(Icons.flag_outlined),
                               label: const Text('Set destination'),
                             ),
+                            if (widget.args.canClear && widget.args.current != null)
+                              TextButton.icon(
+                                key: const ValueKey('hail-clear'),
+                                onPressed: _busy ? null : () => context.pop(hailDestinationCleared),
+                                icon: const Icon(Icons.close),
+                                label: const Text('Clear destination'),
+                              ),
+                            ..._recentTiles(t),
                           ],
                         ),
                 ),

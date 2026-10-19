@@ -12,6 +12,7 @@ import '../../widgets/admin_widgets.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/chip_button.dart';
 
 /// Base tiles shared by the geography map editors (same tiles as `RideMap`).
 List<Widget> osmBaseLayers(BuildContext context) => [baseTileLayer(context)];
@@ -409,14 +410,14 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
         Text('Fetch boundary', style: t.textTheme.titleSmall),
         const SizedBox(height: 8),
         Wrap(spacing: 8, children: [
-          ActionChip(
+          ActionChipButton(
             avatar: _busy
                 ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.public, size: 18),
             label: const Text('OSM'),
             onPressed: _busy || _mode != _DrawMode.off ? null : _fetchOsm,
           ),
-          ActionChip(
+          ActionChipButton(
             avatar: const Icon(Icons.crop_square, size: 18),
             label: const Text('BBOX'),
             onPressed: _busy || _mode != _DrawMode.off ? null : _applyBBox,

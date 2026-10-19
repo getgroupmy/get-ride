@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/auth_utils.dart';
@@ -6,6 +7,7 @@ import 'package:get_ride/src/data/auth_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/settings/change_phone_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/dial_country_picker.dart' show debugFlagsAsCodes;
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthException;
 
 class _FakeAuth implements AuthRepository {
@@ -41,8 +43,8 @@ void main() {
     expect(phoneChangeProblem('+60129999999', '60123456789', takenByAnother: false), isNull);
   });
 
-  Future<_FakeAuth> pump(WidgetTester tester, _FakeAuth auth) async {
-    tester.view.physicalSize = const Size(1000, 1600);
+  Future<_FakeAuth> pump(WidgetTester tester, _FakeAuth auth, {Brightness b = Brightness.light, Size size = const Size(1000, 1600)}) async {
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
@@ -51,11 +53,31 @@ void main() {
           authRepositoryProvider.overrideWithValue(auth),
           profileProvider.overrideWith((ref) async => Profile({'id': 'me', 'phone': '60123456789'})),
         ],
-        child: const MaterialApp(home: ChangePhoneScreen()),
+        child: MaterialApp(theme: ThemeData(brightness: b), home: const ChangePhoneScreen()),
       ),
     );
     await tester.pumpAndSettle();
     return auth;
+  }
+
+  // Web round 39 (178): as on the sign-in page, the web draws the ISO chip,
+  // never an emoji flag (no colour emoji font), here and in the picker.
+  for (final b in Brightness.values) {
+    testWidgets('178: on the web Change phone shows "MY", not an emoji flag (${b.name})', (tester) async {
+      debugFlagsAsCodes = true;
+      addTearDown(() => debugFlagsAsCodes = null);
+      await pump(tester, _FakeAuth(), b: b, size: const Size(390, 844));
+      final button = find.byKey(const ValueKey('new-phone-country'));
+      expect(find.descendant(of: button, matching: find.byKey(const ValueKey('flag-code-MY'))), findsOneWidget);
+      bool emoji(String s) => RegExp('[\u{1F1E6}-\u{1F1FF}]', unicode: true).hasMatch(s);
+      Iterable<String> painted() =>
+          tester.renderObjectList<RenderParagraph>(find.byType(RichText)).map((p) => p.text.toPlainText());
+      expect(painted().where(emoji), isEmpty);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('country-search')), findsOneWidget, reason: "the sign-in page's picker");
+      expect(painted().where(emoji), isEmpty);
+    });
   }
 
   testWidgets('Send code waits for a whole number', (tester) async {

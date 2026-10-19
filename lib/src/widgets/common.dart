@@ -48,6 +48,11 @@ Color mutedTextColor(ThemeData t, {Color? background}) {
   return ink;
 }
 
+/// What a [Card] is painted with: the theme's card colour, else Material
+/// 3's tinted surfaceContainerLow. The ground to pass to [mutedTextColor]
+/// for text on a card.
+Color cardSurfaceColor(ThemeData t) => t.cardTheme.color ?? t.colorScheme.surfaceContainerLow;
+
 /// What a Material 3 dialog is painted with: the admin's modal colour
 /// (App Page Settings, in the theme) or the theme's own.
 Color dialogFill(ThemeData t) => t.dialogTheme.backgroundColor ?? t.colorScheme.surfaceContainerHigh;

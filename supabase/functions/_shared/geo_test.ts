@@ -46,12 +46,18 @@ import {
 } from "./geo.ts";
 import {
   type GeoDeps,
+  geoParams,
   googleApiOf,
   googleSearchOf,
   handleGeo,
+  isMissingFunction,
   parseGoogleSession,
+  RATE_LIMIT,
+  rateTakers,
   RefusedSessions,
+  type Rpc,
   smartAddressOf,
+  USER_RATE_LIMIT,
 } from "./geo_handler.ts";
 
 const apiProviders = [
@@ -1170,4 +1176,213 @@ Deno.test("the caller cache keys a token by its SHA-256, never the token", async
   assertEquals(await tokenCacheKey("abc"), key);
   assert(!key.includes("abc"));
   assert(await tokenCacheKey("abd") !== key);
+});
+
+// PERF-73: five database hops one after another made a search take ~3.9 s.
+
+/** A promise and the hands that settle it. */
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+Deno.test("PERF-73: the settings and the caller are asked at once, the limit after the caller", async () => {
+  const asked: string[] = [];
+  const s = deferred<{ config: unknown; apiProviders: unknown }>();
+  const u = deferred<string | null>();
+  const { d } = deps({
+    settings: () => {
+      asked.push("settings");
+      return s.promise;
+    },
+    caller: () => {
+      asked.push("caller");
+      return u.promise;
+    },
+    takePair: () => {
+      asked.push("takePair");
+      return Promise.resolve(null);
+    },
+  });
+  const pending = handleGeo(q("action=reverse&provider=here&role=rider&device=android&lat=3.1&lng=101.6"), "ip", d);
+  await new Promise((r) => setTimeout(r, 0));
+  assertEquals(asked, ["caller", "settings"], "both asked before either answered");
+  s.resolve({ config, apiProviders });
+  await new Promise((r) => setTimeout(r, 0));
+  assertEquals(asked, ["caller", "settings"], "the limit waits on the user");
+  u.resolve("u1");
+  assertEquals((await pending).status, 200);
+  assertEquals(asked, ["caller", "settings", "takePair"]);
+
+  // The profile and the share links need no user: nobody is asked who it is.
+  const plain = deps({ caller: () => Promise.reject(new Error("not asked")) });
+  let callers = 0;
+  plain.d.caller = () => (callers++, Promise.resolve("u1"));
+  await handleGeo(q("action=profile&role=rider&device=android"), "ip", plain.d);
+  await handleGeo(q("action=bogus&role=rider&device=android"), "ip", plain.d);
+  assertEquals(callers, 0);
+});
+
+Deno.test("PERF-73: both limits in one call when the pair is there, a refusal from either is 429", async () => {
+  const pairs: unknown[][] = [];
+  const takes: string[] = [];
+  const pair = (answer: () => Promise<"user" | "ip" | null>) =>
+    deps({
+      take: (b) => (takes.push(b), Promise.resolve(true)),
+      takePair: (...a) => (pairs.push(a), answer()),
+    }).d;
+  const url = "action=reverse&provider=here&role=rider&device=android&lat=3.1&lng=101.6";
+  assertEquals((await handleGeo(q(url), "9.9.9.9", pair(() => Promise.resolve(null)))).status, 200);
+  assertEquals(pairs, [["user:u1", USER_RATE_LIMIT, "ip:9.9.9.9", RATE_LIMIT]]);
+  assertEquals(takes, [], "not one bucket at a time");
+  assertEquals((await handleGeo(q(url), "ip", pair(() => Promise.resolve("user")))).status, 429);
+  assertEquals((await handleGeo(q(url), "ip", pair(() => Promise.resolve("ip")))).status, 429);
+  assertEquals((await handleGeo(q(url), "ip", pair(() => Promise.reject(new Error("db down"))))).status, 429,
+    "fails closed");
+
+  // No user: no limit taken. A share link has the address's limit only, one call.
+  const anon = deps({ caller: () => Promise.resolve(null), takePair: (...a) => (pairs.push(a), Promise.resolve(null)) });
+  pairs.length = 0;
+  assertEquals((await handleGeo(q(url), "ip", anon.d)).status, 401);
+  assertEquals(pairs, []);
+  const links = deps({
+    take: (b) => (takes.push(b), Promise.resolve(true)),
+    takePair: (...a) => (pairs.push(a), Promise.resolve(null)),
+    redirect: () => Promise.resolve(null),
+  }).d;
+  await handleGeo(q("action=expand&url=https://maps.app.goo.gl/AbC123"), "1.2.3.4", links);
+  assertEquals([takes, pairs], [["ip:1.2.3.4"], []]);
+});
+
+Deno.test("PERF-73: geo_take2 in one round trip, two geo_take calls while 0235 is not run", async () => {
+  const rpcs: string[] = [];
+  let pairAnswer: { data: unknown; error: { code?: string; message?: string } | null } = { data: null, error: null };
+  const single = new Map<string, boolean>();
+  const rpc: Rpc = (fn, args) => {
+    rpcs.push(`${fn} ${JSON.stringify(args)}`);
+    if (fn === "geo_take2") return Promise.resolve(pairAnswer);
+    return Promise.resolve({ data: single.get(args.p_bucket as string) ?? true, error: null });
+  };
+  let clock = 0;
+  const { take, takePair } = rateTakers(rpc, 60_000, () => clock);
+
+  assertEquals(await takePair("user:u", 60, "ip:x", 120), null);
+  assertEquals(rpcs, [`geo_take2 {"p_user_bucket":"user:u","p_user_limit":60,"p_ip_bucket":"ip:x","p_ip_limit":120}`]);
+  pairAnswer = { data: "user", error: null };
+  assertEquals(await takePair("user:u", 60, "ip:x", 120), "user");
+  pairAnswer = { data: "ip", error: null };
+  assertEquals(await takePair("user:u", 60, "ip:x", 120), "ip");
+  pairAnswer = { data: "bogus", error: null };
+  assertEquals(await takePair("user:u", 60, "ip:x", 120), "user", "an answer it can't read refuses");
+  pairAnswer = { data: null, error: { code: "57014", message: "canceling statement due to statement timeout" } };
+  rpcs.length = 0;
+  assertEquals(await takePair("user:u", 60, "ip:x", 120), "user", "fails closed, not two calls instead");
+  assertEquals(rpcs.length, 1);
+
+  // Deployed before migration 0235: PostgREST says the function isn't there.
+  pairAnswer = {
+    data: null,
+    error: { code: "PGRST202", message: "Could not find the function public.geo_take2(...) in the schema cache" },
+  };
+  rpcs.length = 0;
+  assertEquals(await takePair("user:u", 60, "ip:x", 120), null);
+  assertEquals(rpcs.map((r) => r.split(" ")[0]), ["geo_take2", "geo_take", "geo_take"]);
+  assertEquals(rpcs.slice(1), [
+    `geo_take {"p_bucket":"user:u","p_limit":60}`,
+    `geo_take {"p_bucket":"ip:x","p_limit":120}`,
+  ]);
+  rpcs.length = 0;
+  single.set("user:u", false);
+  assertEquals(await takePair("user:u", 60, "ip:x", 120), "user");
+  assertEquals(rpcs, [`geo_take {"p_bucket":"user:u","p_limit":60}`], "geo_take2 not asked again; the address not taken");
+  single.set("user:u", true).set("ip:x", false);
+  assertEquals(await takePair("user:u", 60, "ip:x", 120), "ip");
+
+  // A minute on, asked again: the migration may have run since.
+  clock = 60_000;
+  pairAnswer = { data: null, error: null };
+  rpcs.length = 0;
+  assertEquals(await takePair("user:u", 60, "ip:x", 120), null);
+  assertEquals(rpcs.map((r) => r.split(" ")[0]), ["geo_take2"]);
+
+  // A single bucket fails closed too.
+  const broken = rateTakers((fn) =>
+    fn === "geo_take" ? Promise.resolve({ data: null, error: { message: "down" } }) : Promise.reject(new Error("net"))
+  );
+  assertEquals(await broken.take("ip:x", 120), false);
+  assertEquals(await broken.takePair("user:u", 60, "ip:x", 120), "user", "a thrown call refuses");
+  const missing = rateTakers((fn) =>
+    Promise.resolve(fn === "geo_take2"
+      ? { data: null, error: { code: "42883", message: "function public.geo_take2 does not exist" } }
+      : { data: null, error: { message: "down" } })
+  );
+  assertEquals(await missing.takePair("user:u", 60, "ip:x", 120), "user", "the fallback fails closed");
+  assertEquals(await take("ip:other", 120), true);
+
+  assert(isMissingFunction({ code: "PGRST202" }));
+  assert(isMissingFunction({ message: "function public.geo_take2(text, integer, text, integer) does not exist" }));
+  assert(!isMissingFunction({ code: "42501", message: "permission denied for function geo_take2" }));
+  assert(!isMissingFunction(null));
+});
+
+Deno.test("PERF-73: counts and cache writes are not awaited before the answer", async () => {
+  const kept: Promise<unknown>[] = [];
+  const never = new Promise<void>(() => {});
+  const { d, log } = deps({
+    count: (p, k, ok, cached) => (log.push(`count ${p} ${k} ${ok} ${cached}`), never),
+    cachePut: () => (log.push("cachePut"), never),
+    background: (p) => kept.push(p),
+  });
+  const r = await handleGeo(q("action=reverse&provider=here&role=rider&device=android&lat=3.1&lng=101.6"), "ip", d);
+  assertEquals(r.status, 200, "answered while the count and the cache write still run");
+  assertEquals(log.filter((l) => !l.startsWith("call")), ["count here reverse true false", "cachePut"]);
+  assertEquals(kept.length, 2, "both handed to the runtime to finish");
+
+  // A count that fails is caught, and the answer is the same without a background hook.
+  const failing = deps({ count: () => Promise.reject(new Error("db down")) }).d;
+  assertEquals((await handleGeo(q("action=route&provider=tomtom&role=partner&device=web&points=3.1,101.6;3.2,101.7"),
+    "ip", failing)).status, 502);
+  const kept2: Promise<unknown>[] = [];
+  const failing2 = deps({ count: () => Promise.reject(new Error("db down")), background: (p) => kept2.push(p) }).d;
+  await handleGeo(q("action=reverse&provider=here&role=rider&device=android&lat=3.1&lng=101.6"), "ip", failing2);
+  await Promise.all(kept2);
+  assertEquals(kept2.length, 2, "settled, never rejected");
+});
+
+Deno.test("PERF-74: a POST's JSON body is read as the query string, a GET as before", async () => {
+  const at = "https://x.supabase.co/functions/v1/geo";
+  const post = (body: string, query = "") =>
+    geoParams(new Request(at + query, { method: "POST", body, headers: { "Content-Type": "application/json" } }));
+
+  const g = await geoParams(new Request(`${at}?action=search&q=klcc&role=rider`));
+  assertEquals([g!.get("action"), g!.get("q"), g!.get("role")], ["search", "klcc", "rider"]);
+
+  const p = await post(JSON.stringify({ action: "reverse", provider: "here", role: "rider", device: "android",
+    lat: "3.1", lng: 101.6, countries: "my,sg" }));
+  assertEquals(Object.fromEntries(p!), {
+    action: "reverse", provider: "here", role: "rider", device: "android", lat: "3.1", lng: "101.6", countries: "my,sg",
+  });
+  const merged = await post(JSON.stringify({ action: "profile" }), "?forceFunctionRegion=ap-northeast-2&action=x");
+  assertEquals(Object.fromEntries(merged!), { forceFunctionRegion: "ap-northeast-2", action: "profile" },
+    "the body's over the query's; the query's own kept");
+  assertEquals(Object.fromEntries((await post(JSON.stringify({ a: { b: 1 }, c: [1], d: null, e: true })))!),
+    { e: "true" }, "only plain values");
+  assertEquals(Object.fromEntries((await post("", "?action=fallbacks"))!), { action: "fallbacks" });
+  assertEquals(await post("not json"), null);
+  assertEquals(await post("[1, 2]"), null);
+  assertEquals(await post('"text"'), null);
+  assertEquals(await post(JSON.stringify({ q: "x".repeat(20_000) })), null, "too big");
+
+  // Through the handler: the same answer either way.
+  const { d } = deps();
+  const viaPost = await handleGeo(
+    (await post(JSON.stringify({ action: "reverse", provider: "here", role: "rider", device: "android", lat: 3.1,
+      lng: 101.6 })))!,
+    "ip",
+    d,
+  );
+  const viaGet = await handleGeo(q("action=reverse&provider=here&role=rider&device=android&lat=3.1&lng=101.6"), "ip", d);
+  assertEquals(viaPost, viaGet);
+  assertEquals(viaPost.status, 200);
 });

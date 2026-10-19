@@ -45,8 +45,8 @@ class PasskeyFailure implements Exception {
 /// the box would simply go back to being red.
 const passkeyDomainNotAssociated =
     'This app is not set up for passkeys on this system yet. It is a '
-    'setting on the site rather than anything you have done — '
-    'please tell GET.ride support, and sign in with your PIN '
+    'setting on the site rather than anything you have done. '
+    'Please tell GET.ride support, and sign in with your PIN '
     'for now.';
 
 /// The sentence for a browser that refused because the site's passkey
@@ -54,8 +54,8 @@ const passkeyDomainNotAssociated =
 /// not match the page's address: a `SecurityError`.
 const passkeySiteMismatch =
     "Your browser refused the passkey: this site's passkey setting doesn't match "
-    'its address. It is a setting on the site rather than anything you have done — '
-    'please tell GET.ride support, and sign in with your PIN for now.';
+    'its address. It is a setting on the site rather than anything you have done. '
+    'Please tell GET.ride support, and sign in with your PIN for now.';
 
 /// What to say when a browser's WebAuthn call failed with the
 /// `DOMException` [name]; null for a dismissal or a timeout, which say

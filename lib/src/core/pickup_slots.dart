@@ -3,6 +3,8 @@
 // wheels on a time that can be booked. Pure.
 import 'package:intl/intl.dart';
 
+import 'date_order.dart' show formatWeekdayDayMonthForUser;
+
 import 'scheduled_rides.dart';
 
 /// The wheel's minute steps.
@@ -45,9 +47,9 @@ DateTime clampPickup(DateTime at, DateTime now, ScheduledRidesConfig c) {
   return on;
 }
 
-/// "Today", or "Fri 16 Oct".
+/// "Today", or "Fri 16 Oct" ("Fri Oct 16" where the month comes first).
 String pickupDayLabel(DateTime day, DateTime now) =>
-    _day(day) == _day(now) ? 'Today' : DateFormat('EEE d MMM').format(day);
+    _day(day) == _day(now) ? 'Today' : formatWeekdayDayMonthForUser(day);
 
 /// The wheels' four positions for [at]: the hour 1–12 (index 0 is 1), the
 /// minute step and AM (0) or PM (1).

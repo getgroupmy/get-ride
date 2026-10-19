@@ -7,6 +7,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -463,6 +464,36 @@ void main() {
       expect(qr.generated, isEmpty);
     });
 
+    for (final b in Brightness.values) {
+      for (final width in const [320.0, 390.0, 1400.0]) {
+        testWidgets('the tab labels are never cut: they scroll when they do not fit ($width px, ${b.name})',
+            (tester) async {
+          final qr = _FakeQr([_qr('r1', QrKind.referral, _tokRef), _qr('m1', QrKind.me, _tokMe)]);
+          await _app(tester, qr: qr, partner: true, brightness: b, size: Size(width, 800));
+          final bar = tester.widget<TabBar>(find.byKey(const ValueKey('my-qr-tabs')));
+          final fit = tabLabelsFit(
+            tester.element(find.byKey(const ValueKey('my-qr-tabs'))),
+            [for (final k in QrKind.values) k.label],
+            width,
+          );
+          expect(bar.isScrollable, !fit);
+          if (width == 320) expect(bar.isScrollable, isTrue, reason: 'three labels cannot share 320 px');
+          if (width == 1400) expect(bar.isScrollable, isFalse, reason: 'equal tabs on a wide screen');
+          for (final k in QrKind.values) {
+            final label = find.descendant(of: find.byKey(ValueKey('my-qr-tab-${k.wire}')), matching: find.text(k.label));
+            final para = tester.renderObject<RenderParagraph>(label);
+            expect(para.size.width, greaterThanOrEqualTo(para.getMaxIntrinsicWidth(double.infinity) - 0.5),
+                reason: '"${k.label}" is shown whole');
+          }
+          expect(tester.getRect(find.byKey(const ValueKey('my-qr-tab-referral'))).left, greaterThanOrEqualTo(0));
+          await tester.tap(find.byKey(const ValueKey('my-qr-tab-me')));
+          await _settle(tester);
+          expect(find.byKey(const ValueKey('my-qr-code-me')), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
     testWidgets('a driver has three tabs; the active code with share and save', (tester) async {
       final qr = _FakeQr([
         _qr('r1', QrKind.referral, _tokRef, expiresIn: const Duration(hours: 3)),
@@ -609,6 +640,9 @@ void main() {
           ]);
           await _app(tester, qr: qr, partner: true, brightness: b, size: size);
           expect(find.byKey(const ValueKey('my-qr-code-referral')), findsOneWidget);
+          // On a narrow screen the tabs may scroll: bring GET.now into view.
+          await tester.ensureVisible(find.byKey(const ValueKey('my-qr-tab-now')));
+          await tester.pump();
           await tester.tap(find.byKey(const ValueKey('my-qr-tab-now')));
           await _settle(tester);
           expect(find.byKey(const ValueKey('my-qr-empty-now')), findsOneWidget);
