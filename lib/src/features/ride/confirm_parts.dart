@@ -1408,6 +1408,9 @@ Future<void> showRideOptionsSheet(
 }) => showAppSheet<void>(id: 'confirm.show-ride-options-sheet',
   context: context,
   isScrollControlled: true,
+  // On a phone on its side (393 high) the three switches, Comments and
+  // Close did not fit: the sheet scrolls instead of cutting Close off.
+  fitContent: true,
   showDragHandle: false,
   builder: (_) => _RideOptionsSheet(options: options, onChanged: onChanged, note: note),
 );

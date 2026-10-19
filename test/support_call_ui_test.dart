@@ -73,6 +73,11 @@ class _Repo implements SupportCallRepository {
   @override
   Future<List<Map<String, dynamic>>> iceServers() async => parseIceServers(null);
 
+  var prefetches = 0;
+
+  @override
+  void prefetchIceServers() => prefetches++;
+
   @override
   Future<void> sendSignal(String callId, String kind, Map<String, dynamic> payload) async => log.add('signal:$kind');
 
@@ -268,4 +273,26 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
   });
+
+  // Web round 38 (175): the call page opened on the account's other device
+  // (a web tab beside the phone, or a reload) never joins the call.
+  for (final status in ['accepted', 'ringing']) {
+    testWidgets('175: a support call not taken here shows a notice and Close ($status)', (tester) async {
+      final router = await pump(tester, me: user);
+      repo.current = status == 'accepted' ? row(status: 'accepted') : row(fromUser: true);
+      unawaited(router.push('/call/c1'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(status == 'accepted' ? 'Answered on another device' : 'Calling from another device'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('call-close')), findsOneWidget);
+      expect(find.byKey(const ValueKey('call-mute')), findsNothing);
+      expect(media.log, isEmpty, reason: 'no microphone, no peer connection');
+      expect(repo.log, isEmpty);
+      await tester.tap(find.byKey(const ValueKey('call-close')));
+      await tester.pumpAndSettle();
+      expect(find.text('home'), findsOneWidget);
+    });
+  }
 }

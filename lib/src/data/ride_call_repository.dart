@@ -4,7 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/ride_call.dart';
 import '../core/support_call.dart';
 import '../providers.dart';
-import 'support_call_repository.dart' show watchCallRows;
+import 'ice_server_cache.dart';
+import 'support_call_repository.dart' show callRowsInCallHealthyInterval, watchCallRows;
 
 /// Rider ↔ driver calls (migration 0131): ringing, answering and hanging up
 /// on `ride_calls`, and the WebRTC setup on `ride_call_signals`. The client
@@ -73,6 +74,7 @@ class RideCallRepository implements CallSignalling<RideCall> {
       final c = await fetch(callId);
       return c == null ? const [] : [c.raw];
     },
+    healthy: callRowsInCallHealthyInterval,
   ).map(RideCall.new);
 
   /// Calls ringing [uid], and their changes (so one the caller cancels stops
@@ -108,20 +110,18 @@ class RideCallRepository implements CallSignalling<RideCall> {
       event: PostgresChangeEvent.insert,
       initial: () async =>
           List<Map<String, dynamic>>.from(await _db.from(_signals).select().eq('call_id', callId).order('id')),
+      healthy: callRowsInCallHealthyInterval,
     ).map(CallSignal.fromRow).where((s) => seen.add(s.id));
   }
 
   /// The same relay credentials as a support call (turn-credentials hands
-  /// them to any signed-in account); STUN only when it is unreachable.
+  /// them to any signed-in account, and both kinds of call share the kept
+  /// set: [IceServerCache]); STUN only when it is unreachable.
   @override
-  Future<List<Map<String, dynamic>>> iceServers() async {
-    try {
-      final res = await _db.functions.invoke('turn-credentials');
-      return parseIceServers(res.data);
-    } catch (_) {
-      return parseIceServers(null);
-    }
-  }
+  Future<List<Map<String, dynamic>>> iceServers() => IceServerCache.of(_db).get();
+
+  /// Fetches the ICE servers ahead of a call about to start.
+  void prefetchIceServers() => IceServerCache.of(_db).prefetch();
 }
 
 final rideCallRepositoryProvider = Provider((ref) => RideCallRepository(ref.watch(supabaseProvider)));

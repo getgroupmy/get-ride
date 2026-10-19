@@ -53,6 +53,30 @@ void main() {
       expect(isValidIp(''), isFalse);
     });
 
+    test('ipRuleProblem: one address, IPv4 to /24, IPv6 to /48, mapped IPv4 to /120 (0233)', () {
+      // The rules on the live list pass.
+      expect(ipRuleProblem('202.188.231.237'), isNull);
+      expect(ipRuleProblem('2001:d08:1c01:6873::/64'), isNull);
+      expect(ipRuleProblem('203.0.113.0/24'), isNull);
+      expect(ipRuleProblem('203.0.113.64/26'), isNull);
+      expect(ipRuleProblem('203.0.113.9/32'), isNull);
+      expect(ipRuleProblem('2001:db8:1::/48'), isNull);
+      expect(ipRuleProblem('2001:db8::1'), isNull);
+      expect(ipRuleProblem('::ffff:203.0.113.0/120'), isNull);
+      expect(ipRuleProblem('203.0.112.0/23'), allOf(contains('Too wide'), contains('/24')));
+      expect(ipRuleProblem('10.0.0.0/8'), contains('Too wide'));
+      expect(ipRuleProblem('0.0.0.0/0'), contains('Too wide'));
+      expect(ipRuleProblem('2001:db8::/47'), allOf(contains('Too wide'), contains('/48')));
+      expect(ipRuleProblem('::/0'), contains('Too wide'));
+      expect(ipRuleProblem('2000::/3'), contains('Too wide'));
+      expect(ipRuleProblem('::/48'), contains('IPv4-mapped'), reason: 'covers ::ffff:0:0/96');
+      expect(ipRuleProblem('::ffff:0:0/96'), contains('IPv4-mapped'));
+      expect(ipRuleProblem('::ffff:203.0.112.0/119'), contains('/120'));
+      expect(ipRuleProblem('office'), contains('address or network'));
+      expect(isValidIp('198.51.0.0/16'), isFalse);
+      expect(isValidIp('::/0'), isFalse);
+    });
+
     test('ipInRule: exact, inside a network, outside it, never across families', () {
       expect(ipInRule('202.188.231.237', '202.188.231.237'), isTrue);
       expect(ipInRule('202.188.231.238', '202.188.231.237'), isFalse);
@@ -83,6 +107,9 @@ void main() {
       expect(claudeRuleRow(kind: ClaudeRuleKind.ip, value: 'nope').error, contains('address or network'));
       expect(claudeRuleRow(kind: ClaudeRuleKind.ip, value: ' 2001:db8::/64 ').row?['value'], '2001:db8::/64');
       expect(claudeRuleRow(kind: ClaudeRuleKind.session, value: 'nope').error, contains('session link'));
+      expect(claudeRuleRow(kind: ClaudeRuleKind.ip, value: '0.0.0.0/0').error, contains('Too wide'));
+      expect(claudeRuleRow(kind: ClaudeRuleKind.ip, value: '::/0').row, isNull);
+      expect(claudeRuleRow(kind: ClaudeRuleKind.ip, value: '198.51.100.0/24').row?['value'], '198.51.100.0/24');
     });
   });
 
@@ -102,6 +129,12 @@ void main() {
       expect(isOfficeIp('198.51.100.1', rules), isFalse);
       expect(isOfficeIp(null, rules), isFalse);
       expect(isOfficeIp('', rules), isFalse);
+    });
+    test('a rule too wide to be an office never counts', () {
+      final wide = [rule(ClaudeRuleKind.ip, '0.0.0.0/0'), rule(ClaudeRuleKind.ip, '::/0'), rule(ClaudeRuleKind.ip, '198.51.0.0/16')];
+      expect(isOfficeIp('198.51.100.1', wide), isFalse);
+      expect(isOfficeIp('2001:db8::1', wide), isFalse);
+      expect(isOfficeDevice(['198.51.100.1', '2001:db8::1'], wide), isFalse);
     });
     test('a dual-stack device is at the office if either address is', () {
       expect(isOfficeDevice(['198.51.100.1', '2001:d08:1c01:6873::abcd'], rules), isTrue);
@@ -139,6 +172,10 @@ void main() {
       expect(friendlyClaudeRuleError(Exception('P0001: claude_access_last_office_ip')), contains('another office IP'));
       expect(friendlyClaudeRuleError(Exception('duplicate key value violates unique constraint')), contains('already'));
       expect(friendlyClaudeRuleError(Exception('new row violates row-level security policy')), contains('office IP'));
+      expect(
+          friendlyClaudeRuleError(Exception(
+              'new row for relation "claude_access_rules" violates check constraint "claude_access_rules_ip_value_check"')),
+          allOf(contains('/24'), contains('/48')));
       expect(friendlyClaudeRuleError(Exception('socket closed')), isNull);
     });
   });

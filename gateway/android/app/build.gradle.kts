@@ -75,4 +75,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.16.0")
     // The relay WebSocket and the requests it hands this phone (ProxyClient).
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // TargetGuardTest (plain JVM: ./gradlew :app:testDebugUnitTest).
+    testImplementation("junit:junit:4.13.2")
 }
