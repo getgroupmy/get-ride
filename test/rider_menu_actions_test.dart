@@ -131,8 +131,8 @@ void main() {
       expect(ids, isNot(contains('user-guide')));
     });
 
-    testWidgets("City linked home by the admin still says coming soon", (tester) async {
-      expect((await tap(tester, 'city', settings: live)).$2, isTrue);
+    testWidgets("City linked home by the admin goes home", (tester) async {
+      expect(await tap(tester, 'city', settings: live), ('/', false));
     });
 
     testWidgets("Settings follows the admin's link (Expo /settings) to this app's settings", (tester) async {
