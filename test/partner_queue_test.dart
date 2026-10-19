@@ -261,6 +261,22 @@ void main() {
       }
     }
 
+    // Desktop 141: with the request sheet up, nothing behind it is reachable
+    // by a screen reader.
+    for (final b in Brightness.values) {
+      testWidgets('141: at 844x390 the page behind the request sheet leaves the semantics tree (${b.name})',
+          (tester) async {
+        await pump(tester, size: const Size(844, 390), brightness: b);
+        final handle = tester.ensureSemantics();
+        expect(find.semantics.byLabel(RegExp('You are online')), findsOne, reason: 'there before');
+        open.add([_req('r1')]);
+        await tester.pumpAndSettle();
+        expect(find.semantics.byLabel(RegExp('You are online')), findsNothing, reason: 'blocked behind the sheet');
+        expect(find.semantics.byLabel(RegExp('Accept for')), findsOne, reason: 'the sheet itself is read');
+        handle.dispose();
+      });
+    }
+
     testWidgets('Accept keeps the theme font (a ButtonStyle textStyle copied from the theme)', (tester) async {
       await pump(tester);
       open.add([_req('r1')]);

@@ -4,6 +4,7 @@
 // (166) at 360x640: the map is tall enough, and fitted with room for the
 // chips, that the car, pickup and drop-off and their chips never stack.
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/request_viewers.dart';
@@ -138,4 +139,75 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     });
   }
+
+  // Desktop 139, 140, 119 at 844 x 390 (a phone on its side), light and dark.
+  for (final dark in [false, true]) {
+    testWidgets('139/140/119: offers keep their text, the map pane its room, the pencil its name (${dark ? 'dark' : 'light'})',
+        (tester) async {
+      tester.view.physicalSize = const Size(844, 390);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [rideRepositoryProvider.overrideWithValue(_Rides())],
+          child: MaterialApp(
+            theme: dark ? ThemeData.dark() : ThemeData.light(),
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.bottomCenter,
+                child: RideRequestSheet(
+                  request: _open(),
+                  shown: Duration.zero,
+                  now: DateTime.now(),
+                  me: const LatLng(3.165, 101.72),
+                  awayKm: 1.2,
+                  onAccept: () async {},
+                  onSkip: () {},
+                  onOffer: (_) async {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      // 139: every offer's amount drawn whole, at its full size.
+      for (var i = 0; i < 3; i++) {
+        final chip = find.byKey(ValueKey('request-offer-$i'));
+        final text = tester.widget<Text>(find.descendant(of: chip, matching: find.byType(Text)));
+        expect(text.data, matches(RegExp(r'^RM ?\d')), reason: 'offer $i shows its amount');
+        final p = tester.renderObject<RenderParagraph>(find.descendant(of: chip, matching: find.byType(RichText)));
+        expect(p.textScaler.scale(14), greaterThanOrEqualTo(14), reason: 'not shrunk');
+        final r = tester.getRect(find.descendant(of: chip, matching: find.byType(RichText)));
+        expect(r.width, greaterThanOrEqualTo(p.getMaxIntrinsicWidth(double.infinity) - 0.5), reason: 'whole');
+        expect(r.left, greaterThanOrEqualTo(tester.getRect(chip).left - 0.5));
+        expect(r.right, lessThanOrEqualTo(tester.getRect(chip).right + 0.5));
+        expect(tester.getSemantics(chip).label, startsWith('Offer RM'));
+      }
+      // 140: the map pane wide enough; the zoom buttons never on a chip.
+      final map = tester.getRect(find.byType(RideMap));
+      expect(map.width, greaterThanOrEqualTo(220));
+      final zoomIn = find.byTooltip('Zoom in');
+      for (final k in ['request-chip-pickup', 'request-chip-trip']) {
+        final chip = find.byKey(ValueKey(k));
+        if (chip.evaluate().isEmpty || zoomIn.evaluate().isEmpty) continue;
+        expect(tester.getRect(chip).overlaps(tester.getRect(zoomIn)), isFalse, reason: k);
+      }
+      // 119: the pencil is a button named "Offer another fare" itself.
+      final pencil = tester.getSemantics(find.ancestor(of: find.byKey(const ValueKey('request-offer-custom')), matching: find.byType(Semantics)).first);
+      final data = pencil.getSemanticsData();
+      expect(data.label, contains('Offer another fare'));
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  test('a whole fare drops its cents only where asked', () {
+    expect(requestOfferShortFare('RM17.00'), 'RM17');
+    expect(requestOfferShortFare('RM17.50'), 'RM17.50');
+  });
 }

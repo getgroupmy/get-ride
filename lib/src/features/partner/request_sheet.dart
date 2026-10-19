@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show listEquals;
@@ -26,6 +27,9 @@ import 'my_ride_badges.dart';
 /// to the pickup and of the trip beside A and B), the rider, the fare and
 /// both ends, a countdown line, then "Accept for …", the fare offers
 /// ("Offer your fare": three steps up and a pencil for any amount) and Skip.
+/// The request map's zoom buttons show from this width (beside the chips).
+const requestMapZoomMinWidth = 280.0;
+
 class RideRequestSheet extends ConsumerStatefulWidget {
   const RideRequestSheet({
     super.key,
@@ -234,7 +238,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           ),
         ),
       ),
-      Expanded(child: Stack(children: [
+      Expanded(child: LayoutBuilder(builder: (context, box) => Stack(children: [
       Positioned.fill(
         child: RideMap(
           controller: _map,
@@ -277,6 +281,9 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           ],
         ),
       ),
+      // Zoom buttons only where the map has the width for them beside the
+      // chips; a narrow pane (a phone on its side) zooms by pinch or wheel.
+      if (box.maxWidth >= requestMapZoomMinWidth)
       Positioned(
         right: 12,
         top: 0,
@@ -287,7 +294,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           _round(Icons.remove, 'Zoom out', () => _zoom(-1)),
         ]),
       ),
-    ])),
+    ]))),
     ]);
   }
 
@@ -490,8 +497,13 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                     Expanded(
                       // The details get the most room: they must show whole.
                       child: LayoutBuilder(
+                        // The map at least 220 wide, its zoom buttons only
+                        // where there is room beside the chips (they sat on
+                        // the trip chip at 203, 140); the fare offers fit
+                        // their text in the answers' column or take two rows
+                        // (139).
                         builder: (context, c) => Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                          SizedBox(width: c.maxWidth * 0.24, child: _cachedMap(context)),
+                          SizedBox(width: math.max(c.maxWidth * 0.24, 220.0), child: _cachedMap(context)),
                           Expanded(child: details),
                           SizedBox(width: c.maxWidth * 0.3, child: SingleChildScrollView(child: actions)),
                         ]),
@@ -544,6 +556,12 @@ ButtonStyle _offerStyle(BuildContext context, {double height = 48}) {
   );
 }
 
+/// A fare offer's padding either side of its amount.
+const requestOfferPad = 8.0;
+
+/// "RM17" for "RM17.00": a whole fare, where its cents don't fit.
+String requestOfferShortFare(String label) => label.endsWith('.00') ? label.substring(0, label.length - 3) : label;
+
 /// Answering a request: Accept at the rider's fare, the fare offers (+ the
 /// presets and a pencil for another amount) where the rider takes offers,
 /// and Skip. The same on the phone's request sheet and the desktop's
@@ -588,30 +606,90 @@ class RequestAnswerButtons extends StatelessWidget {
         const SizedBox(height: 12),
         Text('Offer your fare', textAlign: TextAlign.center, style: t.textTheme.bodyMedium?.copyWith(color: muted)),
         const SizedBox(height: 8),
-        Row(spacing: 8, children: [
-          for (var i = 0; i < presets.length; i++)
-            Expanded(
-              child: BusyButton.filled(
+        // The fares whole, never shrunk to nothing (three 47-wide boxes in a
+        // phone on its side showed no text, 139): one row where they fit,
+        // "RM17" for "RM17.00" where that is what fits, else the offers on
+        // a row of their own and the pencil under them.
+        LayoutBuilder(builder: (context, box) {
+          final style = _offerStyle(context).textStyle?.resolve({}) ?? const TextStyle();
+          final base = Theme.of(context).textTheme.labelLarge?.merge(style) ?? style;
+          final scaler = MediaQuery.textScalerOf(context);
+          double width(String text) {
+            final tp = TextPainter(
+              text: TextSpan(text: text, style: base),
+              textDirection: TextDirection.ltr,
+              textScaler: scaler,
+              maxLines: 1,
+            )..layout();
+            final w = tp.width;
+            tp.dispose();
+            return w + 2 * requestOfferPad + 2;
+          }
+          const pencil = 56.0, gap = 8.0;
+          final n = presets.length;
+          final full = [for (final p in presets) r.fareText(p)];
+          final short = [for (final l in full) requestOfferShortFare(l)];
+          bool fits(List<String> labels, double room, int cols) =>
+              labels.every((l) => width(l) <= (room - gap * (cols - 1)) / cols);
+          // The first that fits: all on one row with the pencil, then the
+          // offers on a row of their own, then two a row, then one; each
+          // with the whole fare before "RM17" for "RM17.00".
+          var together = false;
+          var cols = 1;
+          var labels = short;
+          search:
+          for (final (inline, c) in [(true, n), (false, n), (false, 2), (false, 1)]) {
+            for (final l in [full, short]) {
+              if (fits(l, inline ? box.maxWidth - pencil - gap : box.maxWidth, c)) {
+                together = inline;
+                cols = c;
+                labels = l;
+                break search;
+              }
+            }
+          }
+          final chipWidth = ((together ? box.maxWidth - pencil - gap : box.maxWidth) - gap * (cols - 1)) / cols - 0.01;
+          Widget chip(int i) => BusyButton.filled(
                 key: ValueKey('request-offer-$i'),
-                style: _offerStyle(context),
+                style: _offerStyle(context).copyWith(
+                  padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: requestOfferPad)),
+                ),
                 onPressed: busy ? null : () => offer(presets[i]),
-                child: FittedBox(child: Text(r.fareText(presets[i]))),
+                child: Semantics(
+                  label: 'Offer ${full[i]}',
+                  excludeSemantics: true,
+                  child: Text(labels[i], maxLines: 1, softWrap: false, overflow: TextOverflow.visible),
+                ),
+              );
+          // Named on the button itself, the tooltip merged into it (119).
+          final custom = SizedBox(
+            width: together ? pencil : double.infinity,
+            height: 48,
+            child: Semantics(
+              container: true,
+              button: true,
+              enabled: !busy,
+              label: 'Offer another fare',
+              onTap: busy ? null : () => offer(null),
+              excludeSemantics: true,
+              child: IconButton.filled(
+              key: const ValueKey('request-offer-custom'),
+              tooltip: 'Offer another fare',
+              style: _offerStyle(context).copyWith(
+                padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
               ),
+              onPressed: busy ? null : () => offer(null),
+              icon: const Icon(Icons.edit_outlined, size: 20),
             ),
-          SizedBox(
-            width: 56,
-            // Named for screen readers and on a long press (web tester #119).
-            child: Tooltip(
-              message: 'Offer another fare',
-              child: BusyButton.filled(
-                key: const ValueKey('request-offer-custom'),
-                style: _offerStyle(context).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.zero)),
-                onPressed: busy ? null : () => offer(null),
-                child: const Icon(Icons.edit_outlined, size: 20),
-              ),
             ),
-          ),
-        ]),
+          );
+          final chips = Wrap(spacing: gap, runSpacing: gap, children: [
+            for (var i = 0; i < n; i++) SizedBox(width: chipWidth, child: chip(i)),
+            if (together) custom,
+          ]);
+          return together ? chips : Column(children: [chips, const SizedBox(height: gap), custom]);
+        }),
       ],
       const SizedBox(height: 12),
       FilledButton(

@@ -1058,7 +1058,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Widget _requestSheet(Partner partner) {
     final list = ref.watch(openRequestsProvider).value ?? const <RideRequest>[];
     final r = list.where((r) => r.id == _alertId).firstOrNull;
-    return Stack(children: [
+    // While the sheet is up nothing behind it (the demo request card with
+    // its Accept and Decline, the map's buttons) is reachable by a screen
+    // reader (141).
+    return BlockSemantics(blocking: r != null, child: Stack(children: [
       IgnorePointer(
         child: AnimatedOpacity(
           opacity: r == null ? 0 : 1,
@@ -1102,7 +1105,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 ),
         ),
       ),
-    ]);
+    ]));
   }
 
   /// One of the round buttons floating at the top of the page (in place of
