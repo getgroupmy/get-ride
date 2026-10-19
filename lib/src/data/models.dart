@@ -130,6 +130,12 @@ class RideRequest {
   String? get partnerVehicle => raw['partner_vehicle'] as String?;
   String? get partnerPlate => raw['partner_plate'] as String?;
   double? get partnerRating => _d(raw['partner_rating']);
+
+  /// The driver's completed trips when they bid or took the ride, stamped by
+  /// the server (migration 0237): 0 when the stamp is empty (a new driver).
+  /// Null when the row has no such column (a server from before 0237), so
+  /// the cards show the rating alone rather than calling everyone new.
+  int? get partnerTrips => raw.containsKey('partner_trips') ? (_i(raw['partner_trips']) ?? 0) : null;
   String? get partnerPhoto => raw['partner_photo'] as String?;
   /// Where the driver was when they accepted or made their offer.
   double? get partnerAcceptLat => _d(raw['partner_accept_lat']);

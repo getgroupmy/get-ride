@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/driver_eta.dart';
+import '../../core/ride_bidding.dart' show driverTripsLabel;
 import '../../data/models.dart';
 import '../../widgets/net_image.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
@@ -93,6 +94,7 @@ class DriverCardHeader extends StatelessWidget {
     final plate = ride.partnerPlate?.trim();
     final vehicle = ride.partnerVehicle?.trim();
     final rating = ride.partnerRating;
+    final trips = driverTripsLabel(ride.partnerTrips, locale: Localizations.maybeLocaleOf(context)?.toString());
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Row(
@@ -134,6 +136,14 @@ class DriverCardHeader extends StatelessWidget {
                             Text(rating.toStringAsFixed(1), style: t.textTheme.bodyMedium),
                           ],
                         ),
+                      ),
+                    // The driver's completed trips beside the rating ("312 trips", "New driver").
+                    if (trips != null)
+                      Text(
+                        trips,
+                        key: const ValueKey('driver-trips'),
+                        maxLines: 1,
+                        style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                       ),
                   ],
                 ),

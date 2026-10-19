@@ -753,6 +753,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         progress: _offerSeen == null ? 1 : offerProgress(_now.difference(_offerSeen!), counterOfferWindow),
         name: offer.name,
         rating: offer.rating,
+        trips: offer.trips,
         vehicle: [offer.vehicle, offer.plate].whereType<String>().isEmpty
             ? null
             : [offer.vehicle, offer.plate].whereType<String>().join(' · '),
@@ -776,7 +777,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         progress: offerProgress(_now.difference(at), demoOfferLife),
         name: o.name,
         rating: o.rating,
-        rides: o.rides,
+        trips: o.rides,
         vehicle: o.vehicle,
         etaMin: o.etaMin,
         demo: true,
