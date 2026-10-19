@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 // The confirm-ride screen's parts, drawn as Expo's `app/ride-confirm.tsx`:
 // the address card floating over the map, the vehicle cards with the fare
 // inside the chosen one, the fixed bar with "Find a driver", and the
@@ -185,7 +186,9 @@ class ConfirmAddressCard extends StatelessWidget {
                           alignment: AlignmentDirectional.centerStart,
                           // The name ellipsised before the time, which stays
                           // whole on its right ("~14 min" never broken).
-                          child: Row(children: [
+                          child: LayoutBuilder(builder: (context, row) {
+                            final rowWidth = row.maxWidth;
+                            return Row(children: [
                             Expanded(
                               child: Text(
                                 stops.isEmpty ? drop.name : '${stops.length + 1} route stops',
@@ -197,15 +200,24 @@ class ConfirmAddressCard extends StatelessWidget {
                             ),
                             if (duration.isNotEmpty) ...[
                               const SizedBox(width: 8),
-                              Text(
-                                duration,
-                                key: const ValueKey('confirm-duration'),
-                                maxLines: 1,
-                                softWrap: false,
-                                style: text?.copyWith(color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w400),
+                              // Whole wherever there is room for it; in a
+                              // sliver of a row (on its side, large text) it
+                              // fades rather than overflows.
+                              ConstrainedBox(
+                                  // Some of the name always shows beside it.
+                                  constraints: BoxConstraints(maxWidth: math.max(0, rowWidth - 8 - 48)),
+                                  child: Text(
+                                    duration,
+                                    key: const ValueKey('confirm-duration'),
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    overflow: TextOverflow.fade,
+                                    style: text?.copyWith(color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w400),
+                                  ),
                               ),
                             ],
-                          ]),
+                          ]);
+                          }),
                         ),
                       ),
                     ),

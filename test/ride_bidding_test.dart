@@ -504,8 +504,11 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
         final overlay = tester.getRect(find.byType(ChooseDriverOverlay));
         final map = tester.getRect(find.byType(FlutterMap));
-        expect(overlay.contains(map.topLeft) && overlay.contains(map.bottomRight - const Offset(1, 1)), isTrue,
-            reason: 'over the whole map, markers and all');
+        // Over the map from its top edge, side to side; since #434 the dim
+        // stops above the sheet's footer instead of covering it.
+        expect(overlay.top, lessThanOrEqualTo(map.top + 0.5), reason: 'over the map from its top, markers and all');
+        expect(overlay.left, lessThanOrEqualTo(map.left + 0.5));
+        expect(overlay.right, greaterThanOrEqualTo(map.right - 0.5));
         // Painted after the map: the overlay is a later child of the same Stack.
         final stack = tester.widget<Stack>(find.ancestor(of: find.byType(ChooseDriverOverlay), matching: find.byType(Stack)).first);
         expect(stack.children.last, isA<Positioned>());
