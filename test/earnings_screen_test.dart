@@ -49,12 +49,16 @@ const _today = StatementTotals({
   'distanceKm': 12.4,
 });
 
-List<Override> overrides({required List<RideRequest> trips, List<(String, String)>? shared}) => [
+List<Override> overrides({required List<RideRequest> trips, List<(String, String)>? shared, DateTime? now}) {
+  // One instant for the whole test, the screen's clock included.
+  final at = now ?? DateTime.now();
+  return [
   currentUserIdProvider.overrideWithValue('me'),
+  earningsClockProvider.overrideWithValue(() => at),
   statementSettingsProvider.overrideWith((_) async => const StatementSettings()),
   earningsTotalsProvider.overrideWith(
     (ref, period) async => period == EarningsPeriod.today
-        ? (totals: _today, days: [EarningsBucket(malaysiaDate(DateTime.now()), _today)])
+        ? (totals: _today, days: [EarningsBucket(malaysiaDate(at), _today)])
         : (totals: StatementTotals.zero, days: const <EarningsBucket>[]),
   ),
   earningsWeeksProvider.overrideWith(
@@ -71,7 +75,8 @@ List<Override> overrides({required List<RideRequest> trips, List<(String, String
     shared?.add((csv, name));
     return CsvShareOutcome.shared;
   }),
-];
+  ];
+}
 
 void main() {
   for (final dark in [false, true]) {
@@ -141,43 +146,58 @@ void main() {
     }
   }
 
-  testWidgets('weekly chart reads out the tapped week; export hands over the CSV', (tester) async {
-    tester.view.physicalSize = const Size(420, 1800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day, 0, 5);
-    final lastWeek = today.subtract(const Duration(days: 7));
-    final shared = <(String, String)>[];
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: overrides(
-          trips: [ride('aa', today, 20, commission: 3), ride('bb', lastWeek, 50, commission: 7.5)],
-          shared: shared,
+  // The clock is pinned: the trips are placed against it, so the test means
+  // the same at any hour. Before, "today's trip" was put at 00:05 by the
+  // wall clock, and from midnight to 00:05 it lay in the future, so the
+  // export (rightly) left it out and the test failed for five minutes a day.
+  for (final now in [
+    DateTime(2026, 10, 15, 14, 30), // an ordinary afternoon
+    DateTime(2026, 10, 19, 0, 3), // just after midnight, the old failing window; a Monday
+    DateTime(2026, 11, 1, 0, 3), // the 1st of a month, and a Sunday
+    DateTime(2026, 10, 18, 23, 58), // a Sunday night
+    DateTime(2026, 12, 31, 23, 59), // the last minute of the year
+  ]) {
+    testWidgets('weekly chart reads out the tapped week; export hands over the CSV (at $now)', (tester) async {
+      tester.view.physicalSize = const Size(420, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      // Today's trip a minute before the pinned now, last week's a week before.
+      final today = now.subtract(const Duration(minutes: 1));
+      final lastWeek = today.subtract(const Duration(days: 7));
+      final shared = <(String, String)>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: overrides(
+            trips: [ride('aa', today, 20, commission: 3), ride('bb', lastWeek, 50, commission: 7.5)],
+            shared: shared,
+            now: now,
+          ),
+          child: const MaterialApp(home: EarningsScreen()),
         ),
-        child: const MaterialApp(home: EarningsScreen()),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('earnings-weekly-chart')), findsOneWidget);
-    expect(find.text('Last 8 weeks'), findsOneWidget);
-    final readout = find.byKey(const ValueKey('earnings-week-readout'));
-    expect(tester.widget<Text>(readout).data, contains('RM'));
-    expect(tester.widget<Text>(readout).data, contains('1 trip'));
-    expect(tester.widget<Text>(readout).data, contains('22.00'));
+      expect(find.byKey(const ValueKey('earnings-weekly-chart')), findsOneWidget);
+      expect(find.text('Last 8 weeks'), findsOneWidget);
+      final readout = find.byKey(const ValueKey('earnings-week-readout'));
+      expect(tester.widget<Text>(readout).data, contains('RM'));
+      expect(tester.widget<Text>(readout).data, contains('1 trip'));
+      expect(tester.widget<Text>(readout).data, contains('22.00'));
 
-    await tester.tap(find.byKey(const ValueKey('earnings-week-6')));
-    await tester.pump();
-    expect(tester.widget<Text>(readout).data, contains('42.50'));
+      await tester.tap(find.byKey(const ValueKey('earnings-week-6')));
+      await tester.pump();
+      expect(tester.widget<Text>(readout).data, contains('42.50'));
 
-    await tester.tap(find.byKey(const ValueKey('earnings-export')));
-    await tester.pumpAndSettle();
-    expect(shared, hasLength(1));
-    expect(shared.single.$2, startsWith('earnings-today-'));
-    expect(shared.single.$1, contains('KLCC,"Bangsar, KL"'));
-    expect(shared.single.$1, contains(',20.00,3.00,17.00,MYR'));
-  });
+      await tester.tap(find.byKey(const ValueKey('earnings-export')));
+      await tester.pumpAndSettle();
+      expect(shared, hasLength(1));
+      String two(int n) => n.toString().padLeft(2, '0');
+      expect(shared.single.$2, 'earnings-today-${now.year}-${two(now.month)}-${two(now.day)}.csv');
+      expect(shared.single.$1, contains('KLCC,"Bangsar, KL"'));
+      expect(shared.single.$1, contains(',20.00,3.00,17.00,MYR'));
+      expect(shared.single.$1, isNot(contains(',50.00,')), reason: "last week's trip is not today's");
+    });
+  }
 
   testWidgets('nothing to export says so', (tester) async {
     final shared = <(String, String)>[];

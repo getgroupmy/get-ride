@@ -23,11 +23,15 @@ import '../../widgets/image_share.dart' show shareOriginOf;
 import '../../widgets/side_menu_host.dart';
 import 'earnings_chart.dart';
 
+/// The Earnings page's clock: the period, its CSV and the day names all
+/// read it (pinned in tests, so they never depend on when they run).
+final earningsClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 /// The driver's completed trips far enough back for the month and the
 /// weekly chart: every period and the chart are slices of it, so switching
 /// period reads nothing new.
 final driverMonthTripsProvider = FutureProvider.autoDispose<List<RideRequest>>((ref) {
-  return ref.watch(rideRepositoryProvider).completedAsDriver(earningsHistoryStart(DateTime.now()));
+  return ref.watch(rideRepositoryProvider).completedAsDriver(earningsHistoryStart(ref.watch(earningsClockProvider)()));
 });
 
 /// Hands the earnings CSV to the system share sheet (Save to Files, email,
@@ -137,7 +141,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
                       for (final d in s.days)
                         Card(
                           child: ListTile(
-                            title: Text(_dayLabel(d.start)),
+                            title: Text(_dayLabel(d.start, ref.read(earningsClockProvider)())),
                             subtitle: Text(
                               '${_trips(d.totals.trips)} · ${_km(d.totals.distanceKm)}'
                               '${d.totals.commission > 0 ? ' · commission ${money(d.totals.commission)}' : ''}',
@@ -166,7 +170,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
   Future<void> _export(BuildContext button) async {
     final rides = ref.read(driverMonthTripsProvider).value ?? const <RideRequest>[];
     final uid = ref.read(currentUserIdProvider) ?? '';
-    final now = DateTime.now();
+    final now = ref.read(earningsClockProvider)();
     final csv = earningsCsv(rides, driverId: uid, period: _period, now: now);
     final messenger = ScaffoldMessenger.of(context);
     // Only the header line: nothing to hand an accountant.
@@ -192,8 +196,8 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
 
   static String _km(double km) => '${km.toStringAsFixed(km >= 100 ? 0 : 1)} km';
 
-  static String _dayLabel(DateTime d) {
-    final today = malaysiaDate(DateTime.now());
+  static String _dayLabel(DateTime d, DateTime now) {
+    final today = malaysiaDate(now);
     d = DateTime.utc(d.year, d.month, d.day);
     if (d == today) return 'Today';
     if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
