@@ -16,6 +16,7 @@ import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/admin/screens/security/api_keys_logic.dart';
 import 'package:get_ride/src/admin/screens/security/security_data.dart';
 import 'package:get_ride/src/core/map_profile.dart';
+import 'package:get_ride/src/data/function_region.dart' show functionDbRegion;
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/map_profile_repository.dart' show GeoProxy, mapRole;
 import 'package:get_ride/src/widgets/map_tiles.dart';
@@ -362,7 +363,9 @@ void main() {
       expect(answer, {'places': []});
       await proxy.get({'action': 'reverse', 'provider': 'here', 'lat': '3.2', 'lng': '101.7'});
       expect(sent.map((r) => r.method), ['POST', 'POST']);
-      expect(sent.map((r) => r.url.toString()).toSet(), {'http://localhost/functions/v1/geo'},
+      // geo is pinned near the database (PERF-71); still one URL for every lookup.
+      expect(sent.map((r) => r.url.toString()).toSet(),
+          {'http://localhost/functions/v1/geo?forceFunctionRegion=$functionDbRegion'},
           reason: 'one URL for every lookup, so the preflight is kept');
       expect(sent.first.headers['content-type'], contains('application/json'));
       expect(jsonDecode(sent.first.body), {
