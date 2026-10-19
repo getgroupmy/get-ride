@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../config.dart';
 import '../../data/voice_protection_repository.dart';
@@ -12,31 +13,71 @@ Color privacyLinkColor(ThemeData t) =>
     t.brightness == Brightness.dark ? const Color(0xFF7CC4F0) : const Color(0xFF0C6AA6);
 
 /// The VoiceProtection switch and what it means (Expo `app/safety.tsx`).
+/// [compact] (Settings): the switch with a one-line summary and "Learn
+/// more" to the whole card on the Safety page, where it also lives; the
+/// two paragraphs and the Privacy Notice pushed the rest of Settings below
+/// the fold on a small phone.
 class VoiceProtectionCard extends ConsumerWidget {
-  const VoiceProtectionCard({super.key});
+  const VoiceProtectionCard({super.key, this.compact = false});
+
+  final bool compact;
+
+  /// Where the whole card is.
+  static const safetyPage = '/account/safety';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final s = ref.watch(voiceProtectionProvider);
     final supported = voiceRecordingSupported;
+    final toggle = BusySwitchListTile(
+      key: const ValueKey('voice-protection-switch'),
+      contentPadding: EdgeInsets.zero,
+      secondary: const Icon(Icons.mic_none),
+      title: const Text('VoiceProtection'),
+      subtitle: Text(
+        !supported
+            ? 'Available in the phone app'
+            : compact
+            ? 'Records trip audio, kept on your phone for 24 hours'
+            : 'Record trip audio while you drive',
+      ),
+      value: s.enabled,
+      onChanged: !s.loaded || (!supported && !s.enabled)
+          ? null
+          : (v) => ref.read(voiceProtectionProvider.notifier).setEnabled(v),
+    );
+    if (compact) {
+      return Card(
+        key: const ValueKey('voice-protection-compact'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              toggle,
+              TextButton(
+                key: const ValueKey('voice-protection-learn-more'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(44, 44),
+                  foregroundColor: privacyLinkColor(t),
+                ),
+                onPressed: () => context.push(safetyPage),
+                child: const Text('Learn more'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            BusySwitchListTile(
-              key: const ValueKey('voice-protection-switch'),
-              contentPadding: EdgeInsets.zero,
-              secondary: const Icon(Icons.mic_none),
-              title: const Text('VoiceProtection'),
-              subtitle: Text(supported ? 'Record trip audio while you drive' : 'Available in the phone app'),
-              value: s.enabled,
-              onChanged: !s.loaded || (!supported && !s.enabled)
-                  ? null
-                  : (v) => ref.read(voiceProtectionProvider.notifier).setEnabled(v),
-            ),
+            toggle,
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Column(

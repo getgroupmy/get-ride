@@ -335,7 +335,7 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
     final hasImage = _splashPicked != null || _splashUrl != null;
     return _section(
       'Splash Screen',
-      'Shown for ${splashHold.inSeconds} seconds when the Android and iOS apps start. Without a picture '
+      'Shown while the Android and iOS apps start, for under a second on most phones. Without a picture '
           '"GET." is shown. The website has no splash screen.',
       [
         Wrap(alignment: WrapAlignment.center, spacing: 16, runSpacing: 16, children: [

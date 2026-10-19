@@ -287,7 +287,7 @@ class _UserIdDocumentsScreenState extends ConsumerState<UserIdDocumentsScreen> {
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: StorageImage(url, width: 56, height: 40, fit: BoxFit.cover,
+      child: StorageImage(url, width: 56, height: 40, fit: BoxFit.cover, preferThumb: true,
           frameBuilder: boneUntilPainted(width: 56, height: 40),
           errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined)),
     );

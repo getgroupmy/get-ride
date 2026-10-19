@@ -11,6 +11,7 @@ import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/fare.dart';
 import 'package:get_ride/src/core/overlay_back.dart';
 import 'package:get_ride/src/core/region_pricing.dart';
+import 'package:get_ride/src/core/ride_rebook.dart';
 import 'package:get_ride/src/core/route_estimate.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/coin_trade_repository.dart';
@@ -986,6 +987,34 @@ void main() {
     expect(history.moves, [-1]);
     expect(find.byKey(const ValueKey('place-search-field')), findsOneWidget, reason: 'the arrow does the same');
   });
+
+  for (final bidding in const [true, false]) {
+    testWidgets('a ride to book again comes filled in on the confirm step (#131${bidding ? ', offer mode' : ''})',
+        (tester) async {
+      final rides = _Rides(bidding: bidding);
+      final container = await _pump(tester, rides, book: false);
+      container.read(rideRebookProvider.notifier).set(
+        const RideRebook(pickup: _eco, drop: _klcc, service: 'GET XL', fare: 33, payment: 'Cash'),
+      );
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(container.read(rideRebookProvider), isNull, reason: 'filled in once');
+      expect(find.byKey(const ValueKey('book')), findsOneWidget, reason: 'on the confirm step');
+      expect(find.text('Eco Majestic'), findsWidgets);
+      // Sent by the rider, through the booking every ride takes.
+      expect(rides.created, isNull);
+      await tester.tap(find.byKey(const ValueKey('book')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(rides.created![#pickupName], 'Eco Majestic');
+      expect(rides.created![#dropName], 'KLCC');
+      expect(rides.created![#service], 'GET XL');
+      if (bidding) expect(rides.created![#fare], 33, reason: 'the same fare offered again');
+      expect(find.text('ride r9'), findsOneWidget);
+    });
+  }
 }
 
 /// The browser's history, as far as the confirm step's entry goes.
