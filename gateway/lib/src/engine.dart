@@ -3,7 +3,9 @@
 //     shows it online and the server knows which device row it is;
 //   - asks every few seconds for the SMS routed to it, sends each from the
 //     chosen SIM and reports how it went (every 5 s while there is work and
-//     for a minute after, easing to every 15 s when quiet: `pollAfter`);
+//     for a minute after, easing to every 10 s and then to the admin's
+//     "Longest wait for a sign-in code" when quiet, 15 s unless set, which
+//     each heartbeat brings (migration 0236): `pollAfter`);
 //   - hands every SMS the phone receives to the server, and only then drops
 //     it from the phone's own queue, so nothing received is lost to a
 //     dropped connection.
@@ -64,7 +66,7 @@ class GatewayEngine extends ChangeNotifier {
     required this.config,
     this.appVersion,
     this.pollEvery = const Duration(seconds: 5),
-    this.pollQuietMax = const Duration(seconds: 15),
+    this.pollQuietMax = defaultPollQuietMax,
     this.heartbeatEvery = const Duration(minutes: 1),
     this.schedule = true,
     this.relayUrl = defaultRelayUrl,
@@ -78,10 +80,15 @@ class GatewayEngine extends ChangeNotifier {
   final GatewayConfig Function() config;
   final String? appVersion;
   /// How often to ask for new SMS while busy, and at most how long to wait
-  /// once quiet (`pollAfter`): the second is the longest a sign-in code
-  /// can wait for this phone.
+  /// once quiet (`pollAfter`) while the server hasn't said otherwise: the
+  /// second is the longest a sign-in code can wait for this phone.
   final Duration pollEvery;
   final Duration pollQuietMax;
+
+  /// The longest quiet wait in use: the admin's, as the last heartbeat
+  /// answered it, else [pollQuietMax].
+  Duration? _serverQuietMax;
+  Duration get quietMax => _serverQuietMax ?? pollQuietMax;
   final Duration heartbeatEvery;
 
   /// Where the shared internet connects (empty: never shared).
@@ -238,11 +245,11 @@ class GatewayEngine extends ChangeNotifier {
   }
 
   /// How long the next timed round waits, as quiet as it is now.
-  Duration get pollInterval => pollAfter(_now().difference(_lastWork), every: pollEvery, max: pollQuietMax);
+  Duration get pollInterval => pollAfter(_now().difference(_lastWork), every: pollEvery, max: quietMax);
 
   /// Arms one timer for the next round: when the backoff after a failure
   /// ends, else [pollInterval] after the last round ([pollAfter]: 5 s while
-  /// busy, easing to 15 s when quiet). Every round that runs re-arms it, so
+  /// busy, easing to [quietMax] when quiet). Every round that runs re-arms it, so
   /// a received or claimed SMS moves it to the busy interval at once, and
   /// nothing wakes the gateway between due times.
   void _arm() {
@@ -273,13 +280,15 @@ class GatewayEngine extends ChangeNotifier {
     try {
       if (_device == null || _lastHeartbeat == null || now.difference(_lastHeartbeat!) >= heartbeatEvery) {
         final c = config();
-        _device = await backend.heartbeat(
+        final hb = await backend.heartbeat(
           deviceId: c.deviceId,
           label: c.label,
           simNumber: c.simNumber,
           appVersion: appVersion,
         );
+        _device = hb.device;
         _lastHeartbeat = now;
+        _setQuietMax(hb.pollQuietMax);
       }
       final device = _device!;
       await _flushInbound(device);
@@ -341,6 +350,17 @@ class GatewayEngine extends ChangeNotifier {
       _unreported.remove(job.id);
     }
     await _safe(() => platform.startService(_serviceText()));
+  }
+
+  /// Takes the admin's longest quiet wait from a heartbeat (null: keep
+  /// [pollQuietMax]); the round that brought it arms the next one with it.
+  void _setQuietMax(Duration? max) {
+    final before = quietMax;
+    _serverQuietMax = max;
+    if (quietMax != before) {
+      _info('Longest wait for a sign-in code: ${quietMax.inSeconds} s.');
+      notifyListeners();
+    }
   }
 
   void _recovered() {

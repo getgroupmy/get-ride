@@ -25,11 +25,20 @@ class FakeBackend implements GatewayBackend {
     if (f != null) throw f;
   }
 
+  /// What the heartbeat answers as the admin's longest quiet wait, in
+  /// seconds (null: the field is missing, as from a database before 0236).
+  Object? pollMaxSeconds;
+
   @override
-  Future<String> heartbeat({required String deviceId, String? label, String? simNumber, String? appVersion}) async {
+  Future<GatewayHeartbeat> heartbeat({
+    required String deviceId,
+    String? label,
+    String? simNumber,
+    String? appVersion,
+  }) async {
     _maybeFail();
     heartbeats.add(deviceId);
-    return 'dev-1';
+    return GatewayHeartbeat.fromRow({'id': 'dev-1', 'poll_max_seconds': ?pollMaxSeconds});
   }
 
   @override
