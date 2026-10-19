@@ -680,6 +680,11 @@ declare
   t text;
   types text[];
 begin
+  -- No rules set on any type: everywhere, as before (and nothing to look up).
+  if not exists (select 1 from public.settings_entries e
+                  where e.category = 'partner-type' and e.values ? 'rules') then
+    return true;
+  end if;
   select * into p from public.partners where auth_user_id = auth.uid() order by created_at limit 1;
   if not found then
     return true;
@@ -852,7 +857,9 @@ begin
   v_online := coalesce(p_online, false) and public.caller_is_approved_partner();
   -- The partner type rules (0245): where it is offered, the permit, the
   -- vehicle's age. Without a fix this report, the last known position.
-  if v_online then
+  -- Only once an admin has set rules on some type: until then, as before.
+  if v_online and exists (select 1 from public.settings_entries e
+                           where e.category = 'partner-type' and e.values ? 'rules') then
     v_online := coalesce((public.ptr_driver_check(
       auth.uid(),
       coalesce(v_lat, (select d.lat from public.driver_presence d where d.profile_id = auth.uid())),
