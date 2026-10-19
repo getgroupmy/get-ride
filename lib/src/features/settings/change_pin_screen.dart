@@ -261,14 +261,26 @@ class _ChangePinFlowState extends ConsumerState<_ChangePinFlow> {
                     textAlign: TextAlign.center,
                     style: TextStyle(color: t.colorScheme.error),
                   ),
+                // Actions read as buttons: an icon, the button's colour and
+                // its own width, not a full-width line of centred text.
                 if (_step == PinChangeStep.verify)
-                  TextButton(
-                    key: const ValueKey('pin-forgot'),
-                    onPressed: _busy ? null : _forgot,
-                    child: const Text('Forgot PIN? Verify by SMS'),
+                  Center(
+                    child: TextButton.icon(
+                      key: const ValueKey('pin-forgot'),
+                      onPressed: _busy ? null : _forgot,
+                      icon: const Icon(Icons.sms_outlined),
+                      label: const Text('Forgot PIN? Verify by SMS'),
+                    ),
                   ),
                 if (_step == PinChangeStep.code)
-                  TextButton(onPressed: _busy ? null : _resend, child: const Text('Resend code')),
+                  Center(
+                    child: TextButton.icon(
+                      key: const ValueKey('pin-resend'),
+                      onPressed: _busy ? null : _resend,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Resend code'),
+                    ),
+                  ),
               ],
             ),
           ),

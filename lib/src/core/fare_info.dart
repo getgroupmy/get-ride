@@ -62,3 +62,26 @@ String demandHeadline(FareTrendDirection d) =>
 
 String demandDetail(FareTrendDirection d) =>
     d == FareTrendDirection.up ? 'High demand — fare is temporarily higher' : 'Low demand — fare is temporarily lower';
+
+/// What the demand trend adds to a fare: [withTrend] is the fare priced on
+/// the AI's traffic-aware distance and time (what is booked), [usual] the
+/// same fare priced on the plain road route. Null when it adds nothing.
+({double amount, double factor})? demandUplift(double withTrend, double usual) {
+  if (!(usual > 0) || withTrend - usual < 0.005) return null;
+  return (amount: withTrend - usual, factor: withTrend / usual);
+}
+
+/// The uplift beside a price ("+RM1").
+String demandUpliftLabel(String money) => '+$money';
+
+/// The fare line's note while the trend raises the fare.
+String demandIncludesNote(String money) => 'Includes high demand +$money';
+
+/// The demand sheet's first line: how much higher, from the real [factor]
+/// when known (else without a number).
+String demandHigherLine(double? factor) {
+  final pct = factor == null ? 0 : ((factor - 1) * 100).round();
+  final how = pct > 0 ? '$pct% higher' : 'higher';
+  return 'Fares are $how right now because of demand and traffic on this route. '
+      'They come back down as it eases.';
+}

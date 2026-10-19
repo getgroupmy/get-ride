@@ -6,6 +6,7 @@
 // listener on the shared channel, which closes with the last of them.
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -96,6 +97,10 @@ class RealtimeHub {
         .subscribe(onStatus),
     (channel) => unawaited(db.removeChannel(channel as RealtimeChannel).then((_) {}, onError: (Object _) {})),
   );
+
+  /// Makes [hub] the hub of [db], so streams built on [db] follow a fake.
+  @visibleForTesting
+  static void debugUse(SupabaseClient db, RealtimeHub hub) => _hubs[db] = hub;
 
   final RealtimeOpen _open;
   final RealtimeClose _close;

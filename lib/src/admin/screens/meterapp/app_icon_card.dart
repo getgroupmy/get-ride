@@ -122,7 +122,7 @@ class _AppIconCardState extends ConsumerState<AppIconCard> {
                   title: const Text('Show "App icon" in Settings'),
                   subtitle: Text(
                     c.showInSettings
-                        ? 'Passengers and drivers see Settings → App icon.'
+                        ? 'Passengers and drivers see Settings > App icon.'
                         : 'Hidden: everyone follows the icon set here, whatever they picked before.',
                   ),
                   value: c.showInSettings,

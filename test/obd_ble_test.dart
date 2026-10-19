@@ -97,7 +97,7 @@ void main() {
   test('the retry hint names what to check for how the reader is linked', () {
     expect(obdRetryHint('bluetooth'), contains('no other app or phone is connected'));
     expect(obdRetryHint('bluetooth'), isNot(contains('Wi-Fi')));
-    expect(obdRetryHint('mfi'), contains('Settings → Bluetooth'));
+    expect(obdRetryHint('mfi'), contains('Settings > Bluetooth'));
     expect(obdRetryHint('wifi'), contains("reader's Wi-Fi"));
     expect(obdRetryHint(null), contains("reader's Wi-Fi"));
   });

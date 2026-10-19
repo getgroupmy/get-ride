@@ -53,4 +53,18 @@ void main() {
     expect(demandDetail(FareTrendDirection.up), contains('temporarily higher'));
     expect(demandDetail(FareTrendDirection.down), contains('temporarily lower'));
   });
+
+  test('high demand: the uplift and how much higher come from the fare with and without the trend', () {
+    expect(demandUplift(7, 7), isNull);
+    expect(demandUplift(6, 7), isNull, reason: 'lower is no uplift');
+    expect(demandUplift(8, 0), isNull);
+    final u = demandUplift(12, 10)!;
+    expect(u.amount, 2);
+    expect(u.factor, 1.2);
+    expect(demandUpliftLabel('RM2'), '+RM2');
+    expect(demandIncludesNote('RM2'), 'Includes high demand +RM2');
+    expect(demandHigherLine(1.2), startsWith('Fares are 20% higher right now because of demand'));
+    expect(demandHigherLine(null), startsWith('Fares are higher right now'), reason: 'no number without a multiplier');
+    expect(demandHigherLine(1.001), startsWith('Fares are higher right now'));
+  });
 }

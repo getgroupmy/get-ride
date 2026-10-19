@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/core/app_display.dart';
-import 'package:get_ride/src/core/auth_utils.dart' show signInStepPhone;
+import 'package:get_ride/src/core/auth_utils.dart' show SignInPhone, signInStepPhone;
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/auth_repository.dart';
 import 'package:get_ride/src/data/device_access.dart';
@@ -123,6 +123,41 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PhoneScreen), findsOneWidget);
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('/login/closed reloaded (no number in memory) still explains itself (${b.name})', (tester) async {
+      SignInPhone.value = null; // a reload empties memory
+      await tester.pumpWidget(
+        MaterialApp.router(
+          theme: ThemeData(brightness: b),
+          routerConfig: GoRouter(
+            initialLocation: '/login/closed',
+            routes: [
+              GoRoute(
+                path: '/login',
+                builder: (_, _) => const Text('welcome'),
+                routes: [
+                  GoRoute(path: 'phone', builder: (_, _) => const Text('number page')),
+                  GoRoute(
+                    path: 'closed',
+                    builder: (_, s) => RegistrationClosedScreen(phone: signInStepPhone(s.uri.queryParameters)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(registrationClosedTitle), findsOneWidget);
+      expect(find.text(registrationClosedNoNumberMessage), findsOneWidget);
+      expect(find.text(registrationClosedMessage), findsNothing, reason: 'no "this number" with no number');
+      await tester.tap(find.text('Sign in with your number'));
+      await tester.pumpAndSettle();
+      expect(find.text('number page'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets("the sign-in country-code button is named by its country, not its flag", (tester) async {
     final handle = tester.ensureSemantics();

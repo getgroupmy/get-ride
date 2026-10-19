@@ -187,7 +187,7 @@ void main() {
     await tester.pump();
     expect(find.text('Driver on the way'), findsNothing);
     expect(find.text('Cancelled'), findsNothing, reason: 'a finished ride is not shown as in progress');
-    expect(find.textContaining('Eco Majestic → KLCC'), findsNothing);
+    expect(find.textContaining('Eco Majestic to KLCC'), findsNothing);
   });
 
   testWidgets('a ride booked for someone else leaves the home screen when it is cancelled', (tester) async {

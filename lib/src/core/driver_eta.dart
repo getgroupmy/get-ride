@@ -37,3 +37,21 @@ double? nearestDriverKm(RideService service, Map<String, double> byType) {
   }
   return byType.values.reduce(math.min);
 }
+
+/// Minutes until the driver on the way reaches the pickup, from where they
+/// last were (their live position, else where they accepted) in a straight
+/// line at [driverApproachKmh]; null when either end is unknown.
+int? approachMinutes({double? driverLat, double? driverLng, double? pickupLat, double? pickupLng}) {
+  if (driverLat == null || driverLng == null || pickupLat == null || pickupLng == null) return null;
+  const r = 6371.0;
+  double rad(double d) => d * math.pi / 180;
+  final dLat = rad(pickupLat - driverLat), dLng = rad(pickupLng - driverLng);
+  final a = math.pow(math.sin(dLat / 2), 2) +
+      math.cos(rad(driverLat)) * math.cos(rad(pickupLat)) * math.pow(math.sin(dLng / 2), 2);
+  final km = 2 * r * math.asin(math.sqrt(a));
+  return driverEtaMinutes(km);
+}
+
+/// The ride screen's title: "Driver on the way · 4 min" with [minutes],
+/// else the status alone.
+String withEta(String label, int? minutes) => minutes == null ? label : '$label · $minutes min';

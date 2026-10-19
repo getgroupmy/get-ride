@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/widgets/chip_button.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/admin_registry.dart';
@@ -137,8 +138,8 @@ void main() {
     await _ask(tester, 'walet');
     expect(find.text('I found a few things that might help:'), findsOneWidget);
     const pick = 'What are GET.wallet, GET.credit and GET.coin?';
-    expect(find.widgetWithText(ActionChip, pick), findsOneWidget);
-    await tester.tap(find.widgetWithText(ActionChip, pick));
+    expect(find.widgetWithText(ActionChipButton, pick), findsOneWidget);
+    await tester.tap(find.widgetWithText(ActionChipButton, pick));
     await tester.pumpAndSettle();
     final article = helpKnowledgeBase.singleWhere((a) => a.title == pick);
     expect(find.text(article.answer), findsOneWidget);
@@ -160,7 +161,7 @@ void main() {
   testWidgets('a starter question is asked when tapped', (tester) async {
     final repo = _FakeRepo();
     await _pumpAssistant(tester, repo);
-    await tester.tap(find.widgetWithText(ActionChip, 'I forgot my PIN'));
+    await tester.tap(find.widgetWithText(ActionChipButton, 'I forgot my PIN'));
     await tester.pumpAndSettle();
     final forgot = helpKnowledgeBase.singleWhere((a) => a.title == 'I forgot my PIN');
     expect(find.text(forgot.answer), findsOneWidget);

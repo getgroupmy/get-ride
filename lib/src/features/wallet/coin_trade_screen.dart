@@ -17,6 +17,7 @@ import '../../providers.dart';
 import '../../widgets/common.dart';
 import 'wallet_screen.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/chip_button.dart';
 
 /// Buy and sell GET.coin against GET.wallet (Expo `app/wallet-trade.tsx`,
 /// Buy / Sell tabs). Priced at the admin rate, or with market pricing on, a
@@ -229,6 +230,9 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
             labelText: 'GC to send',
             suffixText: 'GC',
             helperText: 'GET.coin ${formatCoins(q.coinBalance)}',
+            // Readable on the page's own (possibly tinted) background.
+            helperStyle: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
+            helperMaxLines: 2,
             errorText: coins > 0 && to != null && problem != null ? problem : null,
           ),
           onChanged: changed,
@@ -237,8 +241,8 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
       const SizedBox(height: 8),
       Wrap(spacing: 8, children: [
         for (final v in const [10.0, 50.0, 100.0])
-          ActionChip(label: Text(formatRate(v)), onPressed: _busy ? null : () => _setAmount(v)),
-        ActionChip(
+          ActionChipButton(label: Text(formatRate(v)), onPressed: _busy ? null : () => _setAmount(v)),
+        ActionChipButton(
           label: const Text('MAX'),
           onPressed: _busy || q.coinBalance <= 0 ? null : () => _setAmount((q.coinBalance * 100).floorToDouble() / 100),
         ),
@@ -363,6 +367,8 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
               helperText: buy
                   ? 'GET.wallet ${formatMoney(q.walletBalance)} · up to ${formatCoins(max)}'
                   : 'GET.coin ${formatCoins(q.coinBalance)}',
+              helperStyle: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
+              helperMaxLines: 2,
               errorText: showProblem ? problem : null,
             ),
             onChanged: (_) => setState(() {
@@ -376,8 +382,8 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
           spacing: 8,
           children: [
             for (final v in const [10.0, 50.0, 100.0])
-              ActionChip(label: Text(formatRate(v)), onPressed: _busy ? null : () => _setAmount(v)),
-            ActionChip(label: const Text('MAX'), onPressed: _busy || max <= 0 ? null : () => _setAmount(max)),
+              ActionChipButton(label: Text(formatRate(v)), onPressed: _busy ? null : () => _setAmount(v)),
+            ActionChipButton(label: const Text('MAX'), onPressed: _busy || max <= 0 ? null : () => _setAmount(max)),
           ],
         ),
         const SizedBox(height: 16),

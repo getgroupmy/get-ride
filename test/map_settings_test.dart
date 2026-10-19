@@ -484,10 +484,11 @@ void main() {
     bool edit = true,
     Set<String> fallbacks = const {},
     SecurityRepository? security,
+    Size size = const Size(500, 5000),
   }) async {
     final repo = _FakeRepo()..fallbacks = fallbacks;
     final probe = _FakeProbe();
-    await tester.binding.setSurfaceSize(const Size(500, 5000));
+    await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       ProviderScope(
@@ -525,6 +526,21 @@ void main() {
 
   for (final dark in [false, true]) {
     final mode = dark ? 'dark' : 'light';
+
+    testWidgets('provider slots take the whole row on a 412 px phone, 240 side by side when wide ($mode)', (tester) async {
+      expect(mapsSlotWidth(380), 380);
+      expect(mapsSlotWidth(800), 240);
+      await pump(tester, dark: dark, size: const Size(412, 5000));
+      final slot = find.byKey(const ValueKey('maps-search-android-0'));
+      final box = tester.getRect(find.ancestor(of: slot, matching: find.byType(SizedBox)).first);
+      expect(box.width, greaterThan(300), reason: 'one slot fills the row');
+      final tile = find.byWidgetPredicate((w) => w.key is ValueKey<String> &&
+          (w.key! as ValueKey<String>).value.startsWith('maps-tile-android-'));
+      final tileBox = tester.getRect(find.ancestor(of: tile.first, matching: find.byType(SizedBox)).first);
+      expect(tileBox.width, greaterThan(300));
+      expect(find.textContaining("Built in (this build's map: TomTom)"), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets("Google's search on Google's map: no note ($mode)", (tester) async {
       await pump(tester, dark: dark);

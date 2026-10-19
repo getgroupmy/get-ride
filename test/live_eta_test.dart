@@ -7,6 +7,7 @@ import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ride/live_ride_map.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/map_recenter.dart';
 import 'package:latlong2/latlong.dart';
 
 const pickup = LatLng(3.1579, 101.7116);
@@ -95,6 +96,8 @@ void main() {
       expect(etaLabel(minutes: 5.2, km: 2.34, now: t0, toPickup: true), 'Arriving in 6 min · 10:36 · 2.3 km');
       expect(etaLabel(minutes: 14, km: 9.8, now: t0, toPickup: false), 'Arrive at 10:44 · 14 min · 9.8 km');
       expect(etaLabel(minutes: 0.1, km: 0.05, now: t0, toPickup: true), startsWith('Arriving in 1 min'));
+      expect(etaLabel(minutes: 5.2, km: 2.34, now: t0, toPickup: true, withClock: false), 'Arriving in 6 min · 2.3 km');
+      expect(etaLabel(minutes: 14, km: 9.8, now: t0, toPickup: false, withClock: false), '14 min · 9.8 km');
     });
   });
 
@@ -107,11 +110,19 @@ void main() {
       LatLng? driverAt,
       double? heading,
       DateTime Function()? now,
+      Size? size,
+      bool dark = false,
     }) async {
+      if (size != null) {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+      }
       await tester.pumpWidget(
         ProviderScope(
           overrides: [geoServiceProvider.overrideWithValue(geo)],
           child: MaterialApp(
+            theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
             home: Scaffold(
               body: LiveRideMap(ride: r, now: now ?? () => t0, driverAt: driverAt, driverHeading: heading),
             ),
@@ -132,6 +143,26 @@ void main() {
       expect(geo.routed, [(at, pickup)]);
       expect(find.text('Arriving in 6 min · 10:36 · 2.3 km'), findsOneWidget);
       expect(find.byKey(const ValueKey('driver-heading')), findsOneWidget);
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('164: at 360x640 the pill drops the clock and keeps left of the map buttons (${dark ? 'dark' : 'light'})',
+          (tester) async {
+        const at = LatLng(3.16, 101.72);
+        await pump(tester, ride('accepted', driver: at, heading: 90), size: const Size(360, 640), dark: dark);
+        expect(find.text('Arriving in 6 min · 2.3 km'), findsOneWidget);
+        expect(find.textContaining('10:36'), findsNothing, reason: 'the clock goes first under 380');
+        final pill = tester.getRect(find.byKey(const ValueKey('eta-chip')));
+        final follow = tester.getRect(find.byType(RecenterButton));
+        expect(pill.right, lessThanOrEqualTo(follow.left), reason: 'never under the follow-the-car button');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('412 wide keeps the clock in the pill', (tester) async {
+      const at = LatLng(3.16, 101.72);
+      await pump(tester, ride('accepted', driver: at), size: const Size(412, 915));
+      expect(find.text('Arriving in 6 min · 10:36 · 2.3 km'), findsOneWidget);
     });
 
     testWidgets('small moves reuse the route; the trip routes to the drop-off', (tester) async {

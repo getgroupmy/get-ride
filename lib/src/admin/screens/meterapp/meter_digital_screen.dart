@@ -145,7 +145,7 @@ class AdminMeterDigitalScreen extends ConsumerWidget {
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.info_outline),
-                    title: const Text('Card priority: Suburb → City → State → Country → Global'),
+                    title: const Text('Card priority: Suburb > City > State > Country > Global'),
                     subtitle: const Text("The driver's meter resolves the first matching card for where the hire "
                         'starts. With no card at all it bills on the built-in TEKSI tariff. Sensors, launch, '
                         'console panels and fare rates are all set per card.'),

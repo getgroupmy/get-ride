@@ -82,7 +82,7 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
           onPressed: () => ref.invalidate(multiGatePlacesProvider),
         ),
       ],
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => _edit(context, ref),
         icon: const Icon(Icons.add),
         label: const Text('Add manually'),
@@ -99,7 +99,7 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
           final t = Theme.of(context);
           return ResponsiveCenter(
             maxWidth: 900,
-            child: ListView(padding: const EdgeInsets.only(top: 12, bottom: 96), children: [
+            child: ListView(padding: EdgeInsets.only(top: 12, bottom: addActionListBottomPadding(context)), children: [
               if (canEdit) ...[
                 PlaceSearchField(
                   hint: 'Search airports, malls, stations...',
@@ -357,9 +357,9 @@ class AdminMultiGateGatesScreen extends ConsumerWidget {
             ..invalidate(parentKey == airportAreasKey ? airportsProvider : multiGatePlacesProvider),
         ),
       ],
-      floatingActionButton: place == null
+      addAction: place == null
           ? null
-          : FloatingActionButton.extended(
+          : PageAddAction(
               onPressed: () => _edit(context, ref, gates, place.values),
               icon: const Icon(Icons.add),
               label: const Text('Add gate'),
@@ -378,7 +378,7 @@ class AdminMultiGateGatesScreen extends ConsumerWidget {
           }
           return ResponsiveCenter(
             maxWidth: 900,
-            child: ListView(padding: const EdgeInsets.only(top: 12, bottom: 96), children: [
+            child: ListView(padding: EdgeInsets.only(top: 12, bottom: addActionListBottomPadding(context)), children: [
               Text('${gates.length} ${gates.length == 1 ? 'gate' : 'gates'} assigned', style: t.textTheme.bodySmall),
               const SizedBox(height: 8),
               if (gates.isEmpty)

@@ -13,6 +13,7 @@ import '../core/map_credit.dart';
 import 'google_js_layer.dart';
 import 'maplibre_layer.dart';
 import 'map_tiles.dart';
+import 'focus_order.dart';
 
 /// Asks Google for the copyright of a viewport; null when it can't say.
 /// Overridden in tests.
@@ -32,8 +33,12 @@ class MapCreditLayer extends StatelessWidget {
 
   final bool satellite;
 
+  // Floats over the map: reached after the page's own content
+  // ([FocusLast], on wide layouts).
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FocusLast(child: _build(context));
+
+  Widget _build(BuildContext context) {
     final source = currentTileSource(context, satellite: satellite);
     if (source.maplibreKey != null) {
       // MapLibre's own credit is off: the provider's line in the ⓘ button,
@@ -64,7 +69,7 @@ class MapCreditLayer extends StatelessWidget {
       return GoogleMapCredit(tileUrl: source.url, fallback: credit.text, onDark: source.darken || satellite);
     }
     final brand = mapBrandFor(source.url);
-    return RichAttributionWidget(
+    final credits = RichAttributionWidget(
       alignment: AttributionAlignment.bottomLeft,
       // The map's own provider beside the ⓘ, not flutter_map's logo.
       showFlutterMapAttribution: false,
@@ -87,13 +92,32 @@ class MapCreditLayer extends StatelessWidget {
         constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
         icon: Icon(Icons.cancel_outlined, color: Theme.of(context).textTheme.titleSmall?.color ?? Colors.black, size: 24),
       ),
-      attributions: [
-        if (brand.isNotEmpty) LogoSourceAttribution(MapBrand(brand), tooltip: brand),
-        TextSourceAttribution(credit.text, prependCopyright: false),
-      ],
+      attributions: [TextSourceAttribution(credit.text, prependCopyright: false)],
+    );
+    if (brand.isEmpty) return credits;
+    // The provider's name beside the ⓘ, outside flutter_map's row: that row
+    // is drawn at half opacity until it is hovered (never, on a phone), which
+    // left the name at 2.7:1. Where the row puts its first logo: 4 in, past
+    // the 44 button and its 2.4 gap, centred on the button.
+    return SafeArea(
+      child: Stack(
+        children: [
+          credits,
+          Positioned(
+            left: 4 + 44 + 2.4,
+            bottom: 4 + (44 - 24) / 2,
+            height: 24,
+            child: Tooltip(message: brand, child: MapBrand(brand)),
+          ),
+        ],
+      ),
     );
   }
 }
+
+/// [MapBrand]'s pill and its name.
+const mapBrandFill = Color(0xF2FFFFFF);
+const mapBrandInk = Color(0xFF3C4043);
 
 /// The provider's name in a small pill, readable on any map.
 class MapBrand extends StatelessWidget {
@@ -105,12 +129,14 @@ class MapBrand extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       key: const ValueKey('map-brand'),
-      decoration: BoxDecoration(color: const Color(0xB3FFFFFF), borderRadius: BorderRadius.circular(4)),
+      // Near-opaque white: the grey name reads (9:1 and more) over any
+      // tiles, dark or satellite included.
+      decoration: BoxDecoration(color: mapBrandFill, borderRadius: BorderRadius.circular(4)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         child: Text(
           name,
-          style: const TextStyle(color: Color(0xFF3C4043), fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
+          style: const TextStyle(color: mapBrandInk, fontSize: 12, fontWeight: FontWeight.w600, height: 1.2),
         ),
       ),
     );

@@ -7,6 +7,7 @@ import '../../core/inbox.dart';
 import '../../data/notifications_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart' show openAppRoute;
+import '../../widgets/offline_strip.dart';
 
 /// Side menu -> Notifications: what this account was sent, newest first, for
 /// the mode the app is in plus the account's own business (inboxFor). A tap
@@ -43,6 +44,12 @@ class NotificationsScreen extends ConsumerWidget {
           if (anyUnread)
             TextButton(
               key: const ValueKey('notifications-read-all'),
+              // A button in the app bar: the theme's accent and button label
+              // style, not the bar's title ink (it read as a label in dark).
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.primary,
+                textStyle: Theme.of(context).textTheme.labelLarge,
+              ),
               onPressed: () => run(
                 () => repo().markRead([
                   for (final i in items)
@@ -53,7 +60,7 @@ class NotificationsScreen extends ConsumerWidget {
             ),
         ],
       ),
-      body: AsyncView<List<InboxItem>>(
+      body: OfflineStrip.over(AsyncView<List<InboxItem>>(
         value: value,
         onRetry: () => ref.invalidate(notificationsProvider),
         data: (_) => items.isEmpty
@@ -99,7 +106,7 @@ class NotificationsScreen extends ConsumerWidget {
                   },
                 ),
               ),
-      ),
+      )),
     );
   }
 }
@@ -160,7 +167,7 @@ class InboxTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 2),
-          Text(item.body, maxLines: 3, overflow: TextOverflow.ellipsis),
+          Text(inboxBodyText(item.body), maxLines: 3, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 4),
           Text(inboxWhen(item.createdAt, now), style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
         ],

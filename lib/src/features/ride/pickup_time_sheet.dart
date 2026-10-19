@@ -48,6 +48,11 @@ int pickupWheelRows(double height) => height < 560 ? 3 : 5;
 class _PickupTimeSheetState extends State<PickupTimeSheet> {
   late final DateTime _opened = widget.clock();
   late final List<DateTime> _days = pickupDays(_opened, widget.config);
+
+  /// Rows of days outside the bookable range drawn faintly above the first
+  /// and below the last, so the day wheel shows as many rows as the hour
+  /// and minute wheels (it showed 3 to their 5). Turned to, they roll back.
+  static const _ghosts = 2;
   late DateTime _at = clampPickup(widget.initial ?? _opened, _opened, widget.config);
   late final FixedExtentScrollController _day, _hour, _minute, _pm;
   String? _problem;
@@ -56,7 +61,7 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
   void initState() {
     super.initState();
     final w = pickupWheelOf(_at);
-    _day = FixedExtentScrollController(initialItem: _dayIndex(_at));
+    _day = FixedExtentScrollController(initialItem: _dayIndex(_at) + _ghosts);
     _hour = FixedExtentScrollController(initialItem: w.hour);
     _minute = FixedExtentScrollController(initialItem: w.minute);
     _pm = FixedExtentScrollController(initialItem: w.pm);
@@ -82,7 +87,7 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
   /// wheels that are off it roll there.
   void _settle({DateTime? now}) {
     final raw = pickupFromWheel(
-      _days[_day.selectedItem.clamp(0, _days.length - 1)],
+      _days[(_day.selectedItem - _ghosts).clamp(0, _days.length - 1)],
       _wrap(_hour.selectedItem, 12),
       _wrap(_minute.selectedItem, pickupMinutes.length),
       _pm.selectedItem.clamp(0, 1),
@@ -95,7 +100,7 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
       });
     }
     final w = pickupWheelOf(at);
-    _roll(_day, _dayIndex(at));
+    _roll(_day, _dayIndex(at) + _ghosts);
     _rollLooping(_hour, w.hour, 12);
     _rollLooping(_minute, w.minute, pickupMinutes.length);
     _roll(_pm, w.pm);
@@ -181,15 +186,22 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
                     },
                     child: Row(
                       children: [
-                        // 2:1:1:1, so the day column holds its words without
-                        // a wide empty gap beside them.
+                        // 3:2:2:2: the day's words without a gap beside
+                        // them, room for hour, minute and AM / PM.
                         Expanded(
-                          flex: 4,
+                          flex: 3,
                           child: _Wheel(
                             key: const ValueKey('pickup-day-wheel'),
                             label: 'Day',
                             controller: _day,
-                            labels: [for (final d in _days) pickupDayLabel(d, _opened)],
+                            labels: [
+                              for (var i = _ghosts; i > 0; i--)
+                                pickupDayLabel(_days.first.subtract(Duration(days: i)), _opened),
+                              for (final d in _days) pickupDayLabel(d, _opened),
+                              for (var i = 1; i <= _ghosts; i++)
+                                pickupDayLabel(_days.last.add(Duration(days: i)), _opened),
+                            ],
+                            ghosts: _ghosts,
                           ),
                         ),
                         Expanded(
@@ -267,9 +279,19 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
 
 /// One column: the row on the band in full ink, the rest fading away.
 class _Wheel extends StatelessWidget {
-  const _Wheel({super.key, required this.label, required this.controller, required this.labels, this.looping = false});
+  const _Wheel({
+    super.key,
+    required this.label,
+    required this.controller,
+    required this.labels,
+    this.looping = false,
+    this.ghosts = 0,
+  });
 
   final String label;
+
+  /// Rows at each end that can't be chosen, drawn faintly.
+  final int ghosts;
   final FixedExtentScrollController controller;
   final List<String> labels;
   final bool looping;
@@ -279,9 +301,15 @@ class _Wheel extends StatelessWidget {
     final t = Theme.of(context);
     final style = t.textTheme.titleMedium?.copyWith(color: t.colorScheme.onSurface, fontWeight: FontWeight.w600);
     final children = [
-      for (final l in labels)
+      for (var i = 0; i < labels.length; i++)
         Center(
-          child: Text(l, style: style, maxLines: 1, overflow: TextOverflow.fade, softWrap: false),
+          child: Opacity(
+            opacity: i < ghosts || i >= labels.length - ghosts ? 0.3 : 1,
+            child: ExcludeSemantics(
+              excluding: i < ghosts || i >= labels.length - ghosts,
+              child: Text(labels[i], style: style, maxLines: 1, overflow: TextOverflow.fade, softWrap: false),
+            ),
+          ),
         ),
     ];
     return Semantics(

@@ -201,7 +201,7 @@ class TripReceipt {
   String get text {
     final b = StringBuffer()
       ..writeln('GET.ride trip receipt')
-      ..writeln('$pickup → $drop');
+      ..writeln('$pickup to $drop');
     for (final (k, v) in details) {
       b.writeln('$k: $v');
     }
@@ -226,7 +226,9 @@ class TripReceipt {
 /// drop-off. Empty unless both ends were recorded — a map of one end of a
 /// trip is not its route.
 List<LatLng> receiptRoute(RideRequest r) {
-  if (r.pickupLat == null || r.pickupLng == null || r.dropLat == null || r.dropLng == null) return const [];
+  if (r.pickupLat == null || r.pickupLng == null) return const [];
+  // No drop-off (a request cancelled before one was set): the pickup alone.
+  if (r.dropLat == null || r.dropLng == null) return [LatLng(r.pickupLat!, r.pickupLng!)];
   return [
     LatLng(r.pickupLat!, r.pickupLng!),
     for (final s in r.stops) s.point,

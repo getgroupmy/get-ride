@@ -101,12 +101,11 @@ Uri? passkeyAddressFix(Uri page) {
 }
 
 /// What a page on the wrong address says instead of offering a passkey.
-String passkeyWrongAddressMessage(Uri page) {
-  final here = page.host.isEmpty ? 'another address' : page.host;
-  final insecure = page.scheme != 'https' ? ' without a secure (https) connection' : '';
-  return 'Passkeys only work at $passkeyHost. This page is open at $here$insecure, '
-      "so your browser won't save or use one here. Open $passkeyHost and sign in there once.";
-}
+/// Plain words: no host, port or "https" (a tester read "127.0.0.1 /
+/// https" as noise); where they work and what to do.
+const passkeyWrongAddressMessage =
+    'Passkeys work on $passkeyHost and in the GET.ride phone app, not on this page. '
+    'Open $passkeyHost to save one or sign in with it.';
 
 /// What a device signed out by a newer sign-in elsewhere is told.
 const signedOutElsewhereMessage =

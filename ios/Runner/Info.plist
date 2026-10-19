@@ -23,6 +23,7 @@
 		<string>tel</string>
 		<string>sms</string>
 		<string>comgooglemaps</string>
+		<string>waze</string>
 	</array>
 	<!-- My QR links: getride://<ref|me|now>/<token> opens the app, and
 	     Flutter hands every link (this scheme, and the universal links on

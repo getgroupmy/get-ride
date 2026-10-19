@@ -407,7 +407,9 @@ class _InternetCard extends StatelessWidget {
               key: const ValueKey('proxy-mobile-data'),
               contentPadding: EdgeInsets.zero,
               title: const Text('Mobile data only'),
-              subtitle: const Text('Shared requests use the SIM\'s network even on Wi-Fi.'),
+              subtitle: const Text(
+                'Shared requests use the SIM\'s network even on Wi-Fi, and are refused when there is no mobile data.',
+              ),
               value: settings.mobileDataOnly,
               onChanged: (v) {
                 settings.mobileDataOnly = v;

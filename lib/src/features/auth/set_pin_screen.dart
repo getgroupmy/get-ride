@@ -13,6 +13,9 @@ import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../data/coin_trade_repository.dart';
 import 'signup_photo_screen.dart' show signupLanding;
 
+/// Under Passenger/Driver when Driver is picked: what comes after.
+const driverSignupNote = 'Drivers add their documents and vehicle after signing in.';
+
 /// Choose the 6-digit sign-in PIN after an SMS sign-in (a new account, or
 /// a forgotten PIN). Requires an active session. Changing it from Settings
 /// is its own page (`ChangePinScreen`).
@@ -134,7 +137,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
           maxWidth: 440,
           padding: const EdgeInsets.all(24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('Use this 6-digit PIN to sign in on any device — no SMS needed.',
+            Text('Use this 6-digit PIN to sign in on any device. No SMS needed.',
                 style: t.textTheme.bodyLarge),
             const SizedBox(height: 24),
             if (needsName) ...[
@@ -151,6 +154,14 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
               ),
               const SizedBox(height: 4),
               Text('You can change the mode later', style: t.textTheme.bodySmall),
+              if (_role == 'driver') ...[
+                const SizedBox(height: 4),
+                Text(
+                  driverSignupNote,
+                  key: const ValueKey('signup-driver-note'),
+                  style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
+                ),
+              ],
               const SizedBox(height: 16),
             ],
             if (needsName) ...[

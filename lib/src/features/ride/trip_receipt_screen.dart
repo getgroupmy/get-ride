@@ -131,6 +131,15 @@ class _BookingIdRow extends StatelessWidget {
   }
 }
 
+/// The receipt map's height, and the margin its route is framed with
+/// above and below.
+const receiptMapHeight = 200.0;
+const receiptMapMargin = 28.0;
+
+/// The room above the framed route: the pickup pin's height over its point
+/// and a little air.
+const receiptMapPinRoom = rideMapPinTop + 8;
+
 class _ReceiptBody extends StatelessWidget {
   const _ReceiptBody({required this.receipt, this.route = const [], this.extra});
   final TripReceipt receipt;
@@ -178,20 +187,29 @@ class _ReceiptBody extends StatelessWidget {
                 ),
               ),
               ?extra,
-              if (route.length > 1)
+              if (route.isNotEmpty)
                 Card(
                   key: const ValueKey('receipt-map'),
                   clipBehavior: Clip.antiAlias,
                   child: SizedBox(
-                    height: 200,
+                    height: receiptMapHeight,
                     // A picture of the trip, not a map to explore: Expo's
-                    // receipt map takes no gestures either.
+                    // receipt map takes no gestures either. Framed on the
+                    // planned route with a slim margin (the map's usual 64
+                    // all round left a 200 high card showing the whole
+                    // Klang Valley); the pickup alone at street level.
                     child: IgnorePointer(
                       child: RideMap(
                         pickup: route.first,
-                        drop: route.last,
-                        stops: route.sublist(1, route.length - 1),
-                        route: route,
+                        drop: route.length > 1 ? route.last : null,
+                        stops: route.length > 2 ? route.sublist(1, route.length - 1) : const [],
+                        route: route.length > 1 ? route : const [],
+                        // Room above for the pickup pin, which stands on
+                        // its point (it was cut to its base at the top
+                        // edge); the slim margin below.
+                        fitTop: receiptMapPinRoom,
+                        fitBottom: receiptMapMargin,
+                        pointZoom: 16,
                       ),
                     ),
                   ),
@@ -202,12 +220,22 @@ class _ReceiptBody extends StatelessWidget {
                     ListTile(
                       leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
                       title: Text(rc.pickup),
-                      subtitle: rc.startedAt == null ? null : Text(formatInZone(rc.startedAt, rc.timezone, pattern: 'h:mm a')),
+                      // Said what it is ("Picked up 8:02 PM"), and only for
+                      // a trip that ran: under a cancelled trip's pickup a
+                      // bare time read as when it was to be.
+                      subtitle: !rc.charged || rc.startedAt == null
+                          ? null
+                          : Text(
+                              'Picked up ${formatInZone(rc.startedAt, rc.timezone, pattern: 'h:mm a')}',
+                              key: const ValueKey('receipt-picked-up'),
+                            ),
                     ),
                     ListTile(
                       leading: Icon(Icons.location_on, color: Colors.red.shade700),
                       title: Text(rc.drop),
-                      subtitle: rc.endedAt == null ? null : Text(formatInZone(rc.endedAt, rc.timezone, pattern: 'h:mm a')),
+                      subtitle: !rc.charged || rc.endedAt == null
+                          ? null
+                          : Text('Dropped off ${formatInZone(rc.endedAt, rc.timezone, pattern: 'h:mm a')}'),
                     ),
                   ],
                 ),
