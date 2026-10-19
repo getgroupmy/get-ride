@@ -32,6 +32,7 @@ import 'realtime_backup.dart';
 import 'realtime_hub.dart';
 import 'ride_cache.dart';
 import 'scheduled_ride_repository.dart';
+import 'function_region.dart';
 import '../core/ride_cache.dart';
 import '../core/scheduled_rides.dart' show ScheduledRide;
 
@@ -267,7 +268,7 @@ class RideRepository {
   /// The caller's public IP as the `ip-lookup` edge function sees it, or null.
   Future<String?> publicIp() async {
     try {
-      final res = await _db.functions.invoke('ip-lookup', body: {}).timeout(const Duration(seconds: 4));
+      final res = await _db.functions.invokeNearDb('ip-lookup', body: {}).timeout(const Duration(seconds: 4));
       return IpInfo.fromResponse(res.data)?.publicIp;
     } catch (_) {
       return null;

@@ -16,9 +16,12 @@ import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import 'demo_accounts.dart';
 import 'display_logic.dart';
+import '../../../core/demo_mode.dart' show demoDriverIdsKey, demoRiderIdsKey;
 import 'display_store.dart';
 import 'pick_image.dart';
+import '../../../core/raise_nudge.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
@@ -253,6 +256,23 @@ class _DisplayBody extends ConsumerWidget {
                   : null,
             ),
           ),
+          const _Section('Ride Search'),
+          Card(
+            child: _StepperTile(
+              label: 'Offer a fare raise after',
+              description: 'Seconds with no driver offer before a bidding ride\'s search sheet suggests raising the fare '
+                  '($raiseNudgeMinSeconds-$raiseNudgeMaxSeconds)',
+              value: displayNum(s, raiseNudgeKey),
+              min: raiseNudgeMinSeconds,
+              max: raiseNudgeMaxSeconds,
+              step: 5,
+              unit: 's',
+              onChanged: canEdit
+                  ? (v) => applyDisplay(
+                      context, ref, (x) => setDisplayNumber(x, raiseNudgeKey, v, raiseNudgeMinSeconds, raiseNudgeMaxSeconds))
+                  : null,
+            ),
+          ),
           const _Section('Map Layout'),
           Card(child: Column(children: [for (final i in mapLayoutItems) stepper(i)])),
           const _Section('Ride Confirm Layout'),
@@ -289,13 +309,34 @@ class _DisplayBody extends ConsumerWidget {
             child: Column(children: [
               toggle(
                   'Turn off Mockup (User)',
-                  'When on, passengers no longer see demo driver offers, bids, and "viewing" avatars while searching '
-                      'for a ride',
+                  'When on, nobody sees demo driver offers, bids, and "viewing" avatars while searching for a ride. '
+                      'When off, only the demo riders below get them',
                   !displayBool(s, 'userMockEnabled'),
                   (v) => set('userMockEnabled', !v)),
-              toggle('Turn off Mockup (Partner)',
-                  'When on, drivers no longer receive demo/auto-generated incoming ride requests while online',
-                  !displayBool(s, 'partnerMockEnabled'), (v) => set('partnerMockEnabled', !v)),
+              DemoAccountsSection(
+                settings: s,
+                listKey: demoRiderIdsKey,
+                title: 'Demo riders',
+                help: 'With Mockup (User) on, Find driver for these accounts books a demo request on their phone '
+                    'alone: demo drivers answer it and the trip is a demo. Nothing is saved, sent or seen by a real '
+                    'driver. No one listed means no one gets demo offers (before, every rider did).',
+                canEdit: canEdit,
+              ),
+              const Divider(height: 1),
+              toggle(
+                  'Turn off Mockup (Partner)',
+                  'When on, no driver receives demo/auto-generated incoming ride requests. When off, only the demo '
+                      'drivers below get them while online',
+                  !displayBool(s, 'partnerMockEnabled'),
+                  (v) => set('partnerMockEnabled', !v)),
+              DemoAccountsSection(
+                settings: s,
+                listKey: demoDriverIdsKey,
+                title: 'Demo drivers',
+                help: 'With Mockup (Partner) on, these accounts get demo incoming requests while online. No one '
+                    'listed means no one gets them (before, every online driver did).',
+                canEdit: canEdit,
+              ),
             ]),
           ),
           const _Section('Service Boxes'),
