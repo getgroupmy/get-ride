@@ -14,6 +14,7 @@ import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
 import 'region_rules_editor.dart';
+import '../../../widgets/chip_button.dart';
 
 const regionsPage = 'admin-settings-country-states-cities';
 
@@ -201,10 +202,10 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(children: [
-                          ActionChip(label: Text(_country), onPressed: () => _select(state: '', city: '')),
+                          ActionChipButton(label: Text(_country), onPressed: () => _select(state: '', city: '')),
                           if (_state.isNotEmpty) ...[
                             const Icon(Icons.chevron_right, size: 16),
-                            ActionChip(label: Text(_state), onPressed: () => _select(city: '')),
+                            ActionChipButton(label: Text(_state), onPressed: () => _select(city: '')),
                           ],
                           if (_city.isNotEmpty) ...[
                             const Icon(Icons.chevron_right, size: 16),

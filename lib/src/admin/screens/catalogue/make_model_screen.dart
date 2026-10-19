@@ -8,6 +8,7 @@ import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/chip_button.dart';
 
 const _page = 'admin-settings-vehicle-make-model';
 
@@ -161,7 +162,7 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
     return [
       for (var i = 0; i < items.length; i++) ...[
         if (i > 0) const Icon(Icons.chevron_right, size: 16),
-        ActionChip(
+        ActionChipButton(
           avatar: i == 0 ? const Icon(Icons.home_outlined, size: 16) : null,
           label: Text(items[i].$1),
           onPressed: items[i].$2 == null ? null : () => _goTo(items[i].$2!),
@@ -397,7 +398,7 @@ class _CategoryEditorState extends State<_CategoryEditor> {
           SectionLabel(_renaming ? 'Existing at this level' : 'Already exists — tap to open instead of duplicating'),
           Wrap(spacing: 6, runSpacing: 4, children: [
             for (final s in suggestions)
-              ActionChip(
+              ActionChipButton(
                 label: Text(s),
                 onPressed: () {
                   if (_renaming) {
@@ -526,7 +527,7 @@ class _ModelEditorState extends State<_ModelEditor> {
           const SectionLabel('Existing models — tap to edit instead'),
           Wrap(spacing: 6, runSpacing: 4, children: [
             for (final m in existing)
-              ActionChip(
+              ActionChipButton(
                 label: Text('${m.model} ${formatYearRange(m.yearFrom, m.yearTo)}'.trim()),
                 onPressed: () => setState(() {
                   // Switch this form to editing the existing row.

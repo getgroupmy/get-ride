@@ -61,6 +61,7 @@ import '../../widgets/trip_safety.dart';
 import '../../widgets/net_image.dart';
 import 'trip_handover_panel.dart' show HandoverOffersCard;
 import '../../widgets/page_style_host.dart';
+import '../../widgets/focus_order.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -933,7 +934,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         Positioned(
           top: 0,
           right: 0,
-          child: SafeArea(
+          // Floating shortcuts: reached by keyboard after the rail and the
+          // panel, with the map's own buttons (FocusLast).
+          child: FocusLast(child: SafeArea(
             bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 12, 0),
@@ -985,7 +988,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   ),
               ]),
             ),
-          ),
+          )),
         ),
         // The menu: top left, exactly where the home map has it (on a
         // phone, with its side menu).

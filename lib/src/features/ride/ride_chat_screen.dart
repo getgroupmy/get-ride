@@ -25,6 +25,7 @@ import '../../widgets/voice_note_composer.dart';
 import '../partner/partner_trip_screen.dart' show tripFixProvider;
 import 'ride_call_screen.dart' show RideCallButton;
 import 'ride_tracking_screen.dart' show rideStreamProvider;
+import '../../widgets/chip_button.dart';
 
 /// Opens a link outside the app (overridden in tests).
 final rideChatLauncherProvider = Provider<Future<bool> Function(Uri)>(
@@ -365,18 +366,12 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
                 runSpacing: 4,
                 children: [
                   for (final line in rideQuickReplies(role))
-                    Semantics(
-                      button: true,
-                      enabled: !_sending,
-                      label: line,
-                      hint: 'Sends this message',
-                      onTap: _sending ? null : () => _sendQuick(role, line),
-                      excludeSemantics: true,
-                      child: ActionChip(
-                        key: ValueKey('quick-$line'),
-                        label: Text(line),
-                        onPressed: _sending ? null : () => _sendQuick(role, line),
-                      ),
+                    // A button named by its line (the shared action chip).
+                    ActionChipButton(
+                      key: ValueKey('quick-$line'),
+                      label: Text(line),
+                      semanticHint: 'Sends this message',
+                      onPressed: _sending ? null : () => _sendQuick(role, line),
                     ),
                 ],
               ),

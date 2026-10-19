@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/partner_queue.dart';
@@ -10,6 +11,8 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
 import 'package:get_ride/src/features/partner/partner_screen.dart';
+import 'package:get_ride/src/features/shell/app_shell.dart';
+import 'package:get_ride/src/widgets/focus_order.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/data/partner_doc_check.dart';
@@ -86,6 +89,82 @@ void main() {
       expect(canCounterOffer(requestOfferMe: false, allowOfferMe: true), isFalse);
     });
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('desktop 1366x768: Tab goes rail, then the panel, then the map controls and floating buttons '
+        '(${b.name})', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1366, 768);
+      addTearDown(tester.view.reset);
+      final router = GoRouter(
+        initialLocation: '/drive',
+        routes: [
+          StatefulShellRoute.indexedStack(
+            builder: (_, _, shell) => AppShell(shell: shell),
+            branches: [
+              for (final path in ['/', '/trips', '/wallet', '/drive', '/account'])
+                StatefulShellBranch(routes: [
+                  GoRoute(
+                    path: path,
+                    builder: (_, _) => path == '/drive' ? const PartnerScreen() : Scaffold(body: Text(path)),
+                  ),
+                ]),
+            ],
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentUserIdProvider.overrideWithValue('me'),
+            partnerProvider.overrideWith((ref) async => Partner({'id': 'p1', 'status': 'approved', 'name': 'Ali'})),
+            openRequestsProvider.overrideWith((ref) => const Stream<List<RideRequest>>.empty()),
+            rideRepositoryProvider.overrideWithValue(_FakeRides()),
+            profileProvider.overrideWith((ref) async => Profile({'id': 'me'})),
+            assignableVehiclesProvider.overrideWith((ref) async => const <AssignableVehicle>[]),
+            partnerTypeEntriesProvider.overrideWith((ref) async => [
+              (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false}),
+            ]),
+          ],
+          child: MaterialApp.router(theme: ThemeData(brightness: b), routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Where each Tab stop sits: 0 the rail, 1 the page's own content, 2
+      // what floats over the map.
+      int region(FocusNode n) {
+        final c = n.context!;
+        if (c.findAncestorWidgetOfExactType<NavigationRail>() != null) return 0;
+        return FocusLast.isMarked(c) ? 2 : 1;
+      }
+
+      final seen = <(int, String)>[];
+      for (var i = 0; i < 40; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        final n = FocusManager.instance.primaryFocus;
+        if (n == null || n.context == null) continue;
+        final tip = n.context!.findAncestorWidgetOfExactType<Tooltip>()?.message ?? '';
+        seen.add((region(n), tip));
+        if (seen.length > 3 && region(n) == 0 && seen[seen.length - 2].$1 == 2) break; // wrapped round
+      }
+      final order = [for (final (r, _) in seen) r];
+      // The first lap: never back to an earlier region before it wraps.
+      final lap = order.sublist(0, order.lastIndexOf(0) > order.indexOf(2) ? order.lastIndexOf(0) : order.length);
+      for (var i = 1; i < lap.length; i++) {
+        expect(lap[i], greaterThanOrEqualTo(lap[i - 1]), reason: 'stop $i went back: $seen');
+      }
+      expect(lap.first, 0, reason: 'the rail first, not the floating buttons: $seen');
+      expect(lap, contains(1), reason: 'the panel');
+      final tips = [for (final (r, t) in seen.take(lap.length)) if (r == 2) t];
+      for (final t in ['My vehicles', 'Menu', 'Satellite view', 'Map credits']) {
+        expect(tips, contains(t), reason: '$t is reached after the panel: $seen');
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   group('screen', () {
     late StreamController<List<RideRequest>> open;

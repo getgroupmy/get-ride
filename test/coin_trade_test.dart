@@ -1,6 +1,10 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/widgets/chip_button.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/widgets/common.dart' show contrastRatio;
 import 'package:get_ride/src/admin/screens/commerce/get_coin.dart';
@@ -222,6 +226,23 @@ void main() {
         }
         expect(field.decoration!.helperMaxLines, 2, reason: 'scaled up, it wraps instead of being cut');
         expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final b in Brightness.values) {
+      testWidgets('the amount presets are buttons, never checkboxes (${b.name})', (tester) async {
+        final handle = tester.ensureSemantics();
+        await pump(tester, _FakeRepo(), theme: appTheme(b));
+        for (final label in ['10', '50', '100', 'MAX']) {
+          final chip = find.widgetWithText(ActionChipButton, label);
+          expect(chip, findsOneWidget, reason: label);
+          final data = tester.getSemantics(chip).getSemanticsData();
+          expect(data.label, label);
+          expect(data.flagsCollection.isButton, isTrue, reason: '$label is an action');
+          expect(data.flagsCollection.isChecked, CheckedState.none, reason: '$label has no checked state');
+          expect(data.hasAction(SemanticsAction.tap), isTrue);
+        }
+        handle.dispose();
       });
     }
 

@@ -19,6 +19,7 @@ import '../../widgets/map_pick_icon.dart';
 import 'map_place_picker.dart';
 import 'saved_place_form.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/chip_button.dart';
 
 /// Result of the place picker: either a concrete place or a request to drop
 /// a pin on the map.
@@ -553,7 +554,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                       runSpacing: 8,
                       children: [
                         for (final g in gates)
-                          ActionChip(
+                          ActionChipButton(
                             key: ValueKey('gate-${g.id}'),
                             avatar: const Icon(Icons.door_front_door_outlined, size: 16),
                             label: Text(g.name),

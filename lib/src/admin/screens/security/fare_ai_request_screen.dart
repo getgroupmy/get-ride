@@ -11,6 +11,7 @@ import '../../widgets/admin_widgets.dart';
 import 'fare_ai_logic.dart';
 import 'security_data.dart';
 import '../../../data/live_tables.dart';
+import '../../../widgets/chip_button.dart';
 
 const _page = 'admin-settings-fare-ai';
 
@@ -226,7 +227,7 @@ class _RequestState extends ConsumerState<AdminFareAiRequestScreen> {
               for (final e in fareAiPlaceholders.entries)
                 Tooltip(
                   message: e.value,
-                  child: ActionChip(
+                  child: ActionChipButton(
                     key: ValueKey('placeholder-${e.key}'),
                     label: Text(e.key, style: const TextStyle(fontFamily: 'monospace')),
                     onPressed: canEdit ? () => _insert(e.key) : null,

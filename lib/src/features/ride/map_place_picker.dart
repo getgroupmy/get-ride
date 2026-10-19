@@ -153,7 +153,7 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
                 initialCenter: _centre,
                 initialZoom: 17,
                 onMapEvent: _onEvent,
-                interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
+                interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate, keyboardOptions: mapKeyboardOptions),
               ),
               children: [
                 baseTileLayer(context, satellite: ref.watch(mapSatelliteProvider)),

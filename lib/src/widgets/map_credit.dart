@@ -13,6 +13,7 @@ import '../core/map_credit.dart';
 import 'google_js_layer.dart';
 import 'maplibre_layer.dart';
 import 'map_tiles.dart';
+import 'focus_order.dart';
 
 /// Asks Google for the copyright of a viewport; null when it can't say.
 /// Overridden in tests.
@@ -32,8 +33,12 @@ class MapCreditLayer extends StatelessWidget {
 
   final bool satellite;
 
+  // Floats over the map: reached after the page's own content
+  // ([FocusLast], on wide layouts).
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => FocusLast(child: _build(context));
+
+  Widget _build(BuildContext context) {
     final source = currentTileSource(context, satellite: satellite);
     if (source.maplibreKey != null) {
       // MapLibre's own credit is off: the provider's line in the ⓘ button,
