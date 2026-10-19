@@ -1,3 +1,5 @@
+import 'dart:ui' show SemanticsAction;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -169,6 +171,38 @@ void main() {
     expect(auth.saved, ['123456']);
     expect(find.text('Your PIN Has Been Set'), findsOneWidget);
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('169: "Forgot PIN? Verify by SMS" is a button, not a line of text (${b.name})', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final handle = tester.ensureSemantics();
+      await pump(tester, _FakeAuth(), brightness: b);
+      final forgot = find.byKey(const ValueKey('pin-forgot'));
+      expect(tester.widget(forgot), isA<TextButton>());
+      expect(find.descendant(of: forgot, matching: find.byIcon(Icons.sms_outlined)), findsOneWidget);
+      final centre = tester.widget<Center>(find.ancestor(of: forgot, matching: find.byType(Center)).first);
+      expect((centre.child!.key), const ValueKey('pin-forgot'), reason: 'its own width, centred, not a full-width line');
+      expect(tester.getSize(forgot).height, greaterThanOrEqualTo(40));
+      final label = tester.widget<Text>(find.descendant(of: forgot, matching: find.text('Forgot PIN? Verify by SMS')));
+      final ink = DefaultTextStyle.of(tester.element(find.text('Forgot PIN? Verify by SMS'))).style.color;
+      expect(label.style?.color ?? ink, Theme.of(tester.element(forgot)).colorScheme.primary,
+          reason: 'the button colour, not body text');
+      final data = tester.getSemantics(forgot).getSemanticsData();
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.label, contains('Forgot PIN? Verify by SMS'));
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
+      // The code step's "Resend code" reads as a button the same way.
+      await tester.tap(forgot);
+      await tester.pumpAndSettle();
+      final resend = find.byKey(const ValueKey('pin-resend'));
+      expect(tester.widget(resend), isA<TextButton>());
+      expect(find.descendant(of: resend, matching: find.byIcon(Icons.refresh)), findsOneWidget);
+      expect(tester.getSemantics(resend).getSemanticsData().flagsCollection.isButton, isTrue);
+      handle.dispose();
+    });
+  }
 
   testWidgets('forgot PIN proves the phone by SMS, never creating an account', (tester) async {
     final auth = _FakeAuth();

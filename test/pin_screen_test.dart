@@ -64,6 +64,31 @@ void main() {
     expect(SignInPhone.value, '+60123456789');
   });
 
+  for (final b in Brightness.values) {
+    testWidgets('169: sign-in "Forgot PIN? Verify by SMS" is an icon button of its own width (${b.name})', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [authRepositoryProvider.overrideWithValue(_FakeAuth(const PinSignInError('Incorrect PIN.')))],
+          child: MaterialApp(theme: ThemeData(brightness: b), home: const PinScreen(phone: '+60123456789')),
+        ),
+      );
+      await tester.pump();
+      final forgot = find.byKey(const ValueKey('pin-forgot-sms'));
+      expect(find.descendant(of: forgot, matching: find.byIcon(Icons.sms_outlined)), findsOneWidget);
+      expect(find.descendant(of: forgot, matching: find.byWidgetPredicate((w) => w is TextButton)), findsOneWidget);
+      final centre = tester.widget<Center>(find.ancestor(of: forgot, matching: find.byType(Center)).first);
+      expect(centre.child!.key, const ValueKey('pin-forgot-sms'), reason: 'its own width, centred');
+      final data = tester.getSemantics(find.descendant(of: forgot, matching: find.byWidgetPredicate((w) => w is TextButton))).getSemanticsData();
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.label, contains('Forgot PIN'));
+      handle.dispose();
+    });
+  }
+
   testWidgets('a wrong PIN does not offer the SMS sign-in', (tester) async {
     final opened = await _pump(tester, _FakeAuth(const PinSignInError('Incorrect PIN. Please try again.')));
     expect(find.text('Incorrect PIN. Please try again.'), findsOneWidget);

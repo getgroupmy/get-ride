@@ -284,10 +284,14 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(color: t.colorScheme.error),
           ),
-        TextButton(
-          key: const ValueKey('delete-use-sms'),
-          onPressed: _busy ? null : _sendCode,
-          child: Text(pin ? 'Use an SMS code instead' : 'Resend code'),
+        // A button, not a line of text: an icon and its own width.
+        Center(
+          child: TextButton.icon(
+            key: const ValueKey('delete-use-sms'),
+            onPressed: _busy ? null : _sendCode,
+            icon: Icon(pin ? Icons.sms_outlined : Icons.refresh),
+            label: Text(pin ? 'Use an SMS code instead' : 'Resend code'),
+          ),
         ),
       ],
     );

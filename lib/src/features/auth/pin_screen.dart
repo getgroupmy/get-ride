@@ -118,9 +118,14 @@ class _PinScreenState extends ConsumerState<PinScreen> {
               ),
               const SizedBox(height: 8),
             ],
-            BusyButton.text(
-              onPressed: _busy ? null : () => _smsCode('set-pin'),
-              child: const Text('Forgot PIN? Verify by SMS'),
+            // A button, not a line of text: an icon and its own width.
+            Center(
+              child: BusyButton.text(
+                key: const ValueKey('pin-forgot-sms'),
+                onPressed: _busy ? null : () => _smsCode('set-pin'),
+                icon: const Icon(Icons.sms_outlined),
+                child: const Text('Forgot PIN? Verify by SMS'),
+              ),
             ),
           ]),
         ),
