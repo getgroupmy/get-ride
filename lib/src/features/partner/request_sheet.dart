@@ -21,6 +21,7 @@ import '../ride/confirm_parts.dart' show accentFill, confirmAccent;
 import '../../widgets/net_image.dart';
 import 'direct_booking_badge.dart';
 import 'my_ride_badges.dart';
+import '../ride/promo_parts.dart' show PromoAppliedIcon, rideHasPromo;
 
 /// A new ride request on a phone, as inDrive's: a sheet up from the bottom
 /// with the route on a map ("Ride request" over it, the time and distance
@@ -403,6 +404,10 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
               if (widget.starred) ...[
                 const SizedBox(width: 8),
                 MyRideStar(key: ValueKey('my-ride-star-${r.id}'), size: 24),
+              ],
+              if (rideHasPromo(r)) ...[
+                const SizedBox(width: 8),
+                PromoAppliedIcon(key: ValueKey('promo-applied-${r.id}'), size: 20),
               ],
             ]),
             MyRideForYouLabel(request: r, me: widget.driverId, clock: () => widget.now),

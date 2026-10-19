@@ -4,6 +4,7 @@ library;
 
 import '../core/format.dart';
 import '../core/my_ride.dart';
+import '../core/promo_codes.dart';
 import '../core/region_pricing.dart';
 import '../core/ride_payment.dart';
 import '../core/ride_stops.dart';
@@ -217,11 +218,20 @@ class RideRequest {
   double? get commissionRate => _d(raw['commission_rate']);
   double? get fareCoinsUsed => _d(raw['fare_coins_used']);
 
-  /// What is left for the driver to collect after GET.coin.
+  /// The ride's promo code (migration 0242): the code the server kept at
+  /// booking, its estimate, and once the trip completed, what it gave.
+  /// Null when the ride has none.
+  RidePromo? get promo => RidePromo.of(raw);
+
+  /// The promo discount settled on the completed trip (0 when none).
+  double get promoDiscount => _d(raw['promo_discount']) ?? 0;
+
+  /// What is left for the driver to collect after GET.coin and the promo
+  /// (the promo's amount goes to the driver's GET.wallet).
   double? get cashDue {
     final t = totalDue;
     if (t == null) return null;
-    final left = t - fareCoinsValue;
+    final left = t - fareCoinsValue - promoDiscount;
     return left < 0 ? 0 : (left * 100).roundToDouble() / 100;
   }
 

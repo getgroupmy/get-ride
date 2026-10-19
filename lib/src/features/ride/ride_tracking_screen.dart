@@ -62,6 +62,8 @@ import 'auto_accept.dart';
 import '../my_ride/my_ride_parts.dart' show MyRideSearchBanner;
 import 'rider_handover_card.dart';
 import '../../widgets/page_style_host.dart';
+import 'promo_parts.dart' show ridePromoLine;
+import '../../core/promo_codes.dart' show promoPayLine;
 
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>((ref, id) {
   // A demo rider's request lives on the phone alone: it is never asked of
@@ -1189,8 +1191,18 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               onPressed: _busy ? null : _cancel,
               child: Text(r.status == RideStatus.onTrip ? 'Request cancellation' : 'Cancel ride'),
             ),
+          // The promo on the way (0242): what the rider should pay after it.
+          if (r.status.isOngoing && ridePromoLine(r) != null)
+            ListTile(
+              key: const ValueKey('ride-promo-estimate'),
+              dense: true,
+              leading: const Icon(Icons.local_offer_outlined),
+              title: Text(ridePromoLine(r)!),
+              subtitle: Text(promoPayLine(r.effectiveFare ?? 0, r.promo!.amount)),
+            ),
           if (r.status == RideStatus.completed &&
-              ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0 || r.fareCoinsValue > 0 || r.chargeLines.isNotEmpty))
+              ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0 || r.fareCoinsValue > 0 ||
+                  r.chargeLines.isNotEmpty || r.promoDiscount > 0))
             Card(
               key: const ValueKey('ride-charges'),
               child: Column(children: [
@@ -1216,9 +1228,16 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 if (r.fareCoinsValue > 0)
                   ListTile(dense: true, title: const Text('Paid with GET.coin'),
                       trailing: Text('−${formatMoney(r.fareCoinsValue, r.currency)}')),
+                if (r.promoDiscount > 0)
+                  ListTile(
+                    key: const ValueKey('ride-promo'),
+                    dense: true,
+                    title: Text('Promo ${r.promo?.code ?? ''}'.trim()),
+                    trailing: Text('−${formatMoney(r.promoDiscount, r.currency)}'),
+                  ),
                 const Divider(height: 1),
                 ListTile(
-                  title: Text(r.fareCoinsValue > 0 ? 'Left to pay' : 'Total to pay',
+                  title: Text(r.fareCoinsValue > 0 || r.promoDiscount > 0 ? 'Left to pay' : 'Total to pay',
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   trailing: Text(formatMoney(r.cashDue, r.currency),
                       style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),

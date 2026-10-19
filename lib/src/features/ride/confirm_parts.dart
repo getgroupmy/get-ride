@@ -2,7 +2,8 @@ import 'dart:math' as math;
 // The confirm-ride screen's parts, drawn as Expo's `app/ride-confirm.tsx`:
 // the address card floating over the map, the vehicle cards with the fare
 // inside the chosen one, the fixed bar with "Find a driver", and the
-// entrance, route-stops, payment and promo-code sheets.
+// entrance, route-stops and payment sheets (the promo bar and sheet are in
+// promo_parts.dart).
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -1703,115 +1704,14 @@ class _CommentsSheetState extends State<_CommentsSheet> {
   }
 }
 
-/// "Got promo code? Use it here" over the top of the sheet.
-class PromoBanner extends StatelessWidget {
-  const PromoBanner({super.key, required this.onTap});
-  final VoidCallback onTap;
-
+/// The bars over the top of the confirm sheet (the promo bar, the demand
+/// band): how much shows above the sheet's edge and how far it tucks under.
+abstract final class SheetTopBar {
   /// How much of the bar shows above the sheet's top edge.
   static const visibleHeight = 40.0;
 
   /// How far the bar reaches under the sheet.
   static const tuck = 22.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
-    return Material(
-      key: const ValueKey('promo-banner'),
-      color: t.colorScheme.surfaceContainerHigh,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      child: InkWell(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 12, tuck + 8),
-          child: SizedBox(
-            height: visibleHeight - 16,
-            child: Row(
-              children: [
-                Icon(Icons.sell_outlined, size: 18, color: muted),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text('Got promo code? Use it here', style: t.textTheme.bodyMedium?.copyWith(color: muted)),
-                ),
-                Icon(Icons.chevron_right, color: muted),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The promo-code sheet. No promotions are set up, so every code is
-/// answered "not valid", as Expo's sheet answers any code it doesn't know.
-Future<void> showPromoSheet(BuildContext context) =>
-    showAppSheet<void>(id: 'confirm.show-promo-sheet', context: context, isScrollControlled: true, builder: (_) => const _PromoSheet());
-
-class _PromoSheet extends StatefulWidget {
-  const _PromoSheet();
-
-  @override
-  State<_PromoSheet> createState() => _PromoSheetState();
-}
-
-class _PromoSheetState extends State<_PromoSheet> {
-  final _code = TextEditingController();
-  String? _error;
-
-  @override
-  void dispose() {
-    _code.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    // Above the keyboard when it is up, else above the home indicator.
-    padding: EdgeInsets.fromLTRB(
-      16,
-      8,
-      16,
-      16 + (MediaQuery.viewInsetsOf(context).bottom > MediaQuery.viewPaddingOf(context).bottom
-          ? MediaQuery.viewInsetsOf(context).bottom
-          : MediaQuery.viewPaddingOf(context).bottom),
-    ),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text('Promo code', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 4),
-        Text(
-          "From a GET.ride campaign or a friend's invite",
-          key: const ValueKey('promo-help'),
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: mutedTextColor(Theme.of(context))),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          key: const ValueKey('promo-code'),
-          controller: _code,
-          autofocus: true,
-          textCapitalization: TextCapitalization.characters,
-          decoration: InputDecoration(hintText: 'Enter promo code', errorText: _error),
-          onChanged: (_) => setState(() => _error = null),
-        ),
-        const SizedBox(height: 12),
-        ListenableBuilder(
-          listenable: _code,
-          builder: (_, _) => FilledButton(
-            key: const ValueKey('promo-apply'),
-            style: FilledButton.styleFrom(backgroundColor: accentFill, padding: const EdgeInsets.all(14)),
-            onPressed: _code.text.trim().isEmpty ? null : () => setState(() => _error = 'Promo code is not valid'),
-            child: const Text('Apply'),
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 /// "Earn 12 GC on this booking", or null for none.
@@ -2069,9 +1969,9 @@ class DemandBanner extends StatelessWidget {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         onTap: onTap,
         child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 8, 12, tucked ? PromoBanner.tuck + 8 : 8),
+          padding: EdgeInsets.fromLTRB(16, 8, 12, tucked ? SheetTopBar.tuck + 8 : 8),
           child: SizedBox(
-            height: PromoBanner.visibleHeight - 16,
+            height: SheetTopBar.visibleHeight - 16,
             child: Row(
               children: [
                 FareTrendArrows(trend: trend, size: 20),
@@ -2096,13 +1996,16 @@ class DemandBanner extends StatelessWidget {
 /// The demand band and the promo bar together, the band on top: while the
 /// fare is off the usual the promo code stays within reach.
 class DemandPromoBars extends StatelessWidget {
-  const DemandPromoBars({super.key, required this.trend, required this.onDemand, required this.onPromo});
+  const DemandPromoBars({super.key, required this.trend, required this.onDemand, required this.promo});
 
   final FareTrend trend;
-  final VoidCallback onDemand, onPromo;
+  final VoidCallback onDemand;
+
+  /// The promo bar under the band (promo_parts.dart's ConfirmPromoBar).
+  final Widget promo;
 
   /// How much taller the pair stands than the promo bar alone.
-  static const extraHeight = PromoBanner.visibleHeight + 1;
+  static const extraHeight = SheetTopBar.visibleHeight + 1;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -2115,7 +2018,7 @@ class DemandPromoBars extends StatelessWidget {
         color: Theme.of(context).colorScheme.surfaceContainerHigh,
         child: const Divider(height: 1, indent: 16, endIndent: 16),
       ),
-      PromoBanner(onTap: onPromo),
+      promo,
     ],
   );
 }

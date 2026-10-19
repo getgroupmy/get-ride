@@ -61,9 +61,6 @@ insert into public.settings_entries (category, position, values) values
   ('rides', 1, jsonb_build_object('name','Cancellation Fee','value',5)),
   ('rides', 2, jsonb_build_object('name','Wait Time Limit','value',5)),
 
-  ('promocode-list', 1, jsonb_build_object('code','WELCOME10','discount',10)),
-  ('promocode-list', 2, jsonb_build_object('code','RIDE5','discount',5)),
-
   ('free-ride', 1, jsonb_build_object('name','First Ride Free','limit',1)),
   ('fixed-price', 1, jsonb_build_object('from','KLIA','to','KL Sentral','price',75)),
 
@@ -76,6 +73,13 @@ insert into public.settings_entries (category, position, values) values
   ('partner-type', 5, jsonb_build_object('name','pHailing',        'enabled',true,'subServicesEnabled',false,'subServicesJson','[]','displayPriority',5,'isDefault',true)),
   ('partner-type', 6, jsonb_build_object('name','Service Provider','enabled',true,'subServicesEnabled',true, 'subServicesJson','[]','displayPriority',6,'isDefault',true)),
   ('partner-type', 7, jsonb_build_object('name','Teksi',           'enabled',true,'subServicesEnabled',false,'subServicesJson','[]','displayPriority',7,'isDefault',true));
+
+-- ---- Promo codes (0242) ---------------------------------------------------
+-- Fixed amounts off the fare, as the old Promocode list had them.
+insert into public.promo_codes (code, description, discount_type, discount_value, active) values
+  ('WELCOME10', 'RM10 off', 'fixed', 10, true),
+  ('RIDE5', 'RM5 off', 'fixed', 5, true)
+on conflict (code) do nothing;
 
 -- ---- Vehicles -------------------------------------------------------------
 -- Mirrors AdminDataContext SEED_VEHICLES so a fresh project boots with the

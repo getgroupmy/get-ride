@@ -18,7 +18,13 @@ import 'package:get_ride/src/data/coin_trade_repository.dart';
 import 'package:get_ride/src/data/device_access.dart';
 import 'package:get_ride/src/data/fare_tariff_repository.dart';
 import 'package:get_ride/src/data/geo_service.dart';
+import 'package:get_ride/src/data/location_source.dart';
 import 'package:get_ride/src/data/models.dart';
+import 'package:get_ride/src/data/promo_repository.dart';
+import 'package:get_ride/src/data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
+import 'package:get_ride/src/core/scheduled_rides.dart' show ScheduledRidesConfig;
+import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/core/promo_codes.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
@@ -27,6 +33,7 @@ import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmSwitc
 import 'package:get_ride/src/features/ride/home_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:get_ride/src/widgets/web_overlay_back.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -109,6 +116,93 @@ class _StopsAi implements RouteEstimateRepository {
   dynamic noSuchMethod(Invocation i) => Future.value(null);
 }
 
+/// The promo codes the server would answer (migration 0242).
+class _Promos extends PromoRepository {
+  _Promos([this.list = const [], this.zone = false, this.later = const []]) : super(null);
+  List<PromoOffer> list;
+
+  /// The codes for a ride for later (asked with its pickup time).
+  List<PromoOffer> later;
+  final pickupTimes = <DateTime?>[];
+  bool zone;
+  final checked = <String>[];
+  final zoneAsked = <LatLng>[];
+  int offersAsked = 0;
+
+  @override
+  Future<List<PromoOffer>> offers({
+    required double pickupLat,
+    required double pickupLng,
+    double? dropLat,
+    double? dropLng,
+    String? service,
+    double? fare,
+    DateTime? pickupAt,
+  }) async {
+    offersAsked++;
+    pickupTimes.add(pickupAt);
+    return pickupAt == null ? list : later;
+  }
+
+  @override
+  Future<PromoCheckResult> check(
+    String code, {
+    required double pickupLat,
+    required double pickupLng,
+    double? dropLat,
+    double? dropLng,
+    String? service,
+    double? fare,
+    DateTime? pickupAt,
+  }) async {
+    checked.add(code);
+    if (code == 'GOOD3') {
+      return PromoCheckResult.fromJson(
+          {'ok': true, 'code_id': 'c3', 'code': 'GOOD3', 'discount_type': 'fixed', 'discount_value': 3, 'discount': 3});
+    }
+    return PromoCheckResult.fromJson(
+        {'ok': false, 'reason': 'min_fare', 'message': 'This code needs a fare of at least RM50.00.'});
+  }
+
+  @override
+  Future<bool> zoneHere(double lat, double lng) async {
+    zoneAsked.add(LatLng(lat, lng));
+    return zone;
+  }
+}
+
+const _ride5 = PromoOffer(
+  codeId: 'c5',
+  code: 'RIDE5',
+  discountValue: 5,
+  estimatedDiscount: 5,
+  autoApply: true,
+);
+const _sched7 = PromoOffer(codeId: 's7', code: 'SCHED7', discountValue: 7, estimatedDiscount: 7, autoApply: true);
+const _pct = PromoOffer(
+  codeId: 'c10',
+  code: 'TENPC',
+  discountType: PromoDiscountType.percent,
+  discountValue: 10,
+  estimatedDiscount: 1,
+);
+
+/// A phone that knows where it is at once.
+class _Here implements LocationSource {
+  const _Here(this.at);
+  final LatLng at;
+  @override
+  Future<bool> serviceEnabled() async => true;
+  @override
+  Future<LocationPermission> checkPermission() async => LocationPermission.whileInUse;
+  @override
+  Future<LocationPermission> requestPermission() async => LocationPermission.whileInUse;
+  @override
+  Future<LatLng?> lastKnown() async => at;
+  @override
+  Future<LatLng> current(LocationAccuracy accuracy) async => at;
+}
+
 class _NoAi implements RouteEstimateRepository {
   @override
   dynamic noSuchMethod(Invocation i) => Future.value(null);
@@ -127,6 +221,9 @@ Future<ProviderContainer> _pump(
   bool book = true,
   RouteEstimateRepository? ai,
   Map<String, dynamic> display = const <String, dynamic>{},
+  PromoRepository? promos,
+  LatLng? here,
+  ScheduledRidesConfig? scheduled,
   Brightness brightness = Brightness.light,
   Size size = const Size(400, 860),
 }) async {
@@ -155,6 +252,9 @@ Future<ProviderContainer> _pump(
       profileProvider.overrideWith((ref) async => null),
       fareTariffsProvider.overrideWith((ref) async => const []),
       meterLaunchSessionProvider.overrideWithValue(null),
+      promoRepositoryProvider.overrideWithValue(promos ?? PromoRepository(null)),
+      if (here != null) locationSourceProvider.overrideWithValue(_Here(here)),
+      if (scheduled != null) scheduledRidesConfigProvider.overrideWith((ref) async => scheduled),
     ],
   );
   addTearDown(container.dispose);
@@ -167,7 +267,7 @@ Future<ProviderContainer> _pump(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp.router(theme: ThemeData(brightness: brightness), routerConfig: router),
+      child: MaterialApp.router(theme: appTheme(brightness), routerConfig: router),
     ),
   );
   for (var i = 0; i < 5; i++) {
@@ -302,7 +402,7 @@ void main() {
     testWidgets('band and promo bar both fit a short or sideways phone (${size.width.round()}x${size.height.round()})',
         (tester) async {
       final ai = _SlowAi();
-      await _pump(tester, _Rides(), ai: ai, size: size);
+      await _pump(tester, _Rides(), ai: ai, size: size, promos: _Promos([_ride5]));
       ai.answer.complete((
         estimate: const RouteEstimate(
           distanceKm: 60,
@@ -315,7 +415,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
       }
       expect(tester.takeException(), isNull);
-      final promo = find.byKey(const ValueKey('promo-banner'));
+      final promo = find.byKey(const ValueKey('confirm-promo-bar'));
       if (promo.evaluate().isNotEmpty) {
         // Both bars on screen, the band above the promo code.
         final band = tester.getRect(find.byKey(const ValueKey('high-demand')));
@@ -404,10 +504,9 @@ void main() {
       final band = find.byKey(ValueKey(up ? 'high-demand' : 'low-demand'));
       expect(band, findsOneWidget);
       expect(find.byKey(ValueKey(up ? 'low-demand' : 'high-demand')), findsNothing);
-      // The promo bar stays, under the band (130).
-      expect(find.byKey(const ValueKey('demand-promo-bars')), findsOneWidget);
-      expect(find.byKey(const ValueKey('promo-banner')), findsOneWidget);
-      expect(tester.getRect(band).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('promo-banner'))).top + 1));
+      // No promo code fits this trip (0242): the band alone, no promo bar.
+      expect(find.byKey(const ValueKey('demand-promo-bars')), findsNothing);
+      expect(find.byKey(const ValueKey('confirm-promo-bar')), findsNothing);
       await tester.tap(band);
       for (var i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 100));
@@ -653,10 +752,10 @@ void main() {
   });
 
   testWidgets('the route is framed between the address card and the bar on the sheet', (tester) async {
-    await _pump(tester, _Rides());
+    await _pump(tester, _Rides(), promos: _Promos([_ride5]));
     await _settle(tester);
     final card = tester.getRect(find.byKey(const ValueKey('confirm-address-card')));
-    final bar = tester.getRect(find.byKey(const ValueKey('promo-banner')));
+    final bar = tester.getRect(find.byKey(const ValueKey('confirm-promo-bar')));
     for (final mark in ['map-dot-pickup', 'map-dot-drop']) {
       final r = tester.getRect(find.byKey(ValueKey(mark)));
       expect(r.top, greaterThanOrEqualTo(card.bottom), reason: '$mark below the card');
@@ -694,7 +793,8 @@ void main() {
     expect(find.byKey(const ValueKey('map-recenter')), findsNothing, reason: "Expo's confirm has no recenter");
     expect(find.byKey(const ValueKey('map-dot-pickup')), findsOneWidget);
     expect(find.byKey(const ValueKey('map-dot-drop')), findsOneWidget);
-    expect(find.byKey(const ValueKey('promo-banner')), findsOneWidget);
+    // No promo code fits the trip (0242): no promo bar.
+    expect(find.byKey(const ValueKey('confirm-promo-bar')), findsNothing);
     // A fixed fare (inDrive's): the chosen row keeps its price, outlined,
     // with no fare section and no −/+; its details are behind the (i).
     expect(find.byKey(const ValueKey('confirm-fare')), findsNothing);
@@ -1116,6 +1216,118 @@ void main() {
       expect(rides.created![#service], 'GET XL');
       if (bidding) expect(rides.created![#fare], 33, reason: 'the same fare offered again');
       expect(find.text('ride r9'), findsOneWidget);
+    });
+  }
+
+  // ---- Promo codes (0242) ----
+  for (final b in Brightness.values) {
+    testWidgets('promo: auto-applied with a note, changed, removed, a typed code refused then one taken (${b.name})',
+        (tester) async {
+      final rides = _Rides();
+      final promos = _Promos([_ride5, _pct]);
+      await _pump(tester, rides, promos: promos, brightness: b);
+      await _settle(tester);
+      expect(promos.offersAsked, greaterThan(0));
+      final bar = find.byKey(const ValueKey('confirm-promo-bar'));
+      expect(bar, findsOneWidget);
+      expect(find.text('RIDE5 applied automatically'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^You pay about .* after promo$')), findsOneWidget);
+
+      // Changed to the other code.
+      await tester.tap(bar);
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('promo-offer-TENPC')));
+      await _settle(tester);
+      expect(find.text('TENPC applied'), findsOneWidget);
+
+      // Removed: the codes stay on offer, none applied, and none comes back by itself.
+      await tester.tap(bar);
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('promo-remove')));
+      await _settle(tester);
+      expect(find.text('2 promos available'), findsOneWidget);
+      expect(find.text('Tap to apply'), findsOneWidget);
+
+      // A typed code the server refuses: its reason, and nothing applied.
+      await tester.tap(bar);
+      await _settle(tester);
+      await tester.enterText(find.byKey(const ValueKey('promo-code')), 'bad1');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('promo-apply')));
+      await _settle(tester);
+      expect(promos.checked, ['BAD1']);
+      expect(find.text('This code needs a fare of at least RM50.00.'), findsOneWidget);
+      // Another one it takes.
+      await tester.enterText(find.byKey(const ValueKey('promo-code')), 'good3');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('promo-apply')));
+      await _settle(tester);
+      expect(find.text('GOOD3 applied'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const ValueKey('book')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(rides.created![#promoCodeId], 'c3', reason: 'booked with the code; the server checks it again');
+    });
+
+    testWidgets('promo: the auto-applied code is booked unless removed (${b.name})', (tester) async {
+      final rides = _Rides();
+      await _pump(tester, rides, promos: _Promos([_ride5]), brightness: b);
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('book')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(rides.created![#promoCodeId], 'c5');
+    });
+
+    testWidgets('promo: a ride for later gets the codes for its pickup time, then is booked with one (${b.name})',
+        (tester) async {
+      final rides = _Rides();
+      final promos = _Promos([_ride5], false, [_sched7]);
+      await _pump(tester, rides, promos: promos, brightness: b,
+          scheduled: const ScheduledRidesConfig(enabled: true, feeFixed: 2));
+      await _settle(tester);
+      expect(find.text('RIDE5 applied automatically'), findsOneWidget, reason: 'a ride now first');
+      await tester.tap(find.byKey(const ValueKey('book-later')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('pickup-confirm')));
+      await _settle(tester);
+      // The same promo sheet, with the codes for that pickup time: the
+      // now-only code gone, the scheduled one applied by itself.
+      expect(promos.pickupTimes.whereType<DateTime>(), isNotEmpty, reason: 'asked with the pickup time');
+      expect(find.text('Promo for your scheduled ride'), findsOneWidget);
+      expect(find.byKey(const ValueKey('promo-later-at')), findsOneWidget);
+      expect(find.byKey(const ValueKey('promo-offer-SCHED7')), findsOneWidget);
+      expect(find.byKey(const ValueKey('promo-offer-RIDE5')), findsNothing);
+      expect(find.text('Book with SCHED7'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('promo-continue')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(rides.created![#scheduleAt], isNotNull);
+      expect(rides.created![#promoCodeId], 's7', reason: 'stored on the booking; the server checks it at pickup time');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('home: the promo zone bar shows only inside a zone (${b.name})', (tester) async {
+      final inZone = _Promos(const [], true);
+      await _pump(tester, _Rides(), book: false, promos: inZone, here: _eco.point, brightness: b);
+      await _settle(tester);
+      expect(inZone.zoneAsked, isNotEmpty);
+      expect(find.byKey(const ValueKey('promo-zone-bar')), findsOneWidget);
+      expect(find.text('You are within promo zone'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('home: no promo zone bar outside a zone (${b.name})', (tester) async {
+      final out = _Promos(const [], false);
+      await _pump(tester, _Rides(), book: false, promos: out, here: _eco.point, brightness: b);
+      await _settle(tester);
+      expect(out.zoneAsked, isNotEmpty);
+      expect(find.byKey(const ValueKey('promo-zone-bar')), findsNothing);
     });
   }
 }

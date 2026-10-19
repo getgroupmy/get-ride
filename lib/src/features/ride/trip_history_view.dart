@@ -161,7 +161,11 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
                     // Who cancelled and why ("Cancelled by you · Drivers are
                     // too far away"), wrapping at large text.
                     Text(
-                      tripStatusLine(r, asRider: !partner),
+                      [
+                        tripStatusLine(r, asRider: !partner),
+                        // A promo settled on the trip (0242).
+                        ?tripListPromo(r),
+                      ].join(' · '),
                       key: ValueKey('trip-status-${r.id}'),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
@@ -217,3 +221,9 @@ String tripListFare(RideRequest r) {
   if (r.status == RideStatus.cancelled || r.status == RideStatus.expired) return notChargedLabel;
   return formatMoney(r.effectiveFare, r.currency);
 }
+
+/// "Promo RIDE5 −RM5.00" on a completed trip a promo was settled on, else null.
+String? tripListPromo(RideRequest r) =>
+    r.status == RideStatus.completed && r.promoDiscount > 0
+        ? 'Promo ${r.promo?.code ?? ''} −${formatMoney(r.promoDiscount, r.currency)}'.replaceAll('  ', ' ')
+        : null;

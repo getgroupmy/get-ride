@@ -255,6 +255,13 @@ class _BookingCard extends ConsumerWidget {
                 'Includes ${formatMoney(ride.schedulingFee, currency)} scheduling fee',
                 style: t.textTheme.bodySmall?.copyWith(color: muted),
               ),
+            // A promo code kept on the booking (0242): off the fare, not the fee.
+            if (ride.promoCode != null && ride.upcoming)
+              Text(
+                'Promo ${ride.promoCode} · about −${formatMoney(ride.promoEstimate ?? 0, currency)} off the fare',
+                key: ValueKey('scheduled-promo-${ride.id}'),
+                style: t.textTheme.bodySmall?.copyWith(color: muted),
+              ),
             if (asked != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),

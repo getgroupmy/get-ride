@@ -43,6 +43,9 @@ begin
     'ev_profiles',
     -- Commission promotions (migration 0224).
     'commission_promotions',
+    -- Rider promo codes and redemptions (migration 0242).
+    'promo_codes',
+    'promo_redemptions',
     -- Commission tiers (migration 0218; followed by the app since 0229).
     'commission_tiers',
     -- Claude Code access (migration 0228).

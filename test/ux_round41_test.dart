@@ -12,6 +12,8 @@ import 'package:get_ride/src/data/geo_service.dart' show Place;
 import 'package:get_ride/src/data/notifications_repository.dart';
 import 'package:get_ride/src/features/notifications/notifications_screen.dart';
 import 'package:get_ride/src/features/ride/confirm_parts.dart';
+import 'package:get_ride/src/features/ride/promo_parts.dart' show showPromoCodeSheet;
+import 'package:get_ride/src/core/promo_codes.dart' show PromoCheckResult;
 import 'package:get_ride/src/features/ride/pickup_time_sheet.dart';
 import 'package:get_ride/src/features/settings/navigation_app_card.dart';
 import 'package:latlong2/latlong.dart';
@@ -116,7 +118,16 @@ void main() {
         theme: theme(),
         home: Builder(
           builder: (context) => Scaffold(
-            body: TextButton(onPressed: () => showPromoSheet(context), child: const Text('open')),
+            body: TextButton(
+              onPressed: () => showPromoCodeSheet(
+                context,
+                offers: const [],
+                applied: null,
+                fare: 20,
+                onCheck: (_) async => const PromoCheckResult.refused('not_found'),
+              ),
+              child: const Text('open'),
+            ),
           ),
         ),
       ));
