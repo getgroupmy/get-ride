@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:getride_gateway/src/core.dart';
 import 'package:getride_gateway/src/engine.dart';
@@ -99,6 +102,140 @@ void main() {
     await engine.tick();
     expect(server.reports, [('j1', true, null)]);
     expect(phone.sent, hasLength(1), reason: 'sent once');
+  });
+
+  group('asking for new SMS (one timer, armed for the next due round)', () {
+    /// Runs [body] on a fake clock with an engine that schedules its own
+    /// rounds, as on the phone. The engine's clock is the fake one.
+    void onFakeClock(void Function(FakeAsync async, GatewayEngine engine) body) {
+      fakeAsync((async) {
+        final start = DateTime(2026, 10, 9, 9);
+        final e = GatewayEngine(
+          backend: server,
+          platform: phone,
+          config: () => const GatewayConfig(deviceId: 'install-1', label: 'Office', subscriptionId: 2),
+          now: () => start.add(async.elapsed),
+        );
+        unawaited(e.start());
+        async.flushMicrotasks();
+        body(async, e);
+        unawaited(e.stop());
+        async.flushMicrotasks();
+        expect(async.pendingTimers, isEmpty, reason: 'stopping cancels the timer');
+        e.dispose();
+      });
+    }
+
+    /// The only timer pending: one-shot, never periodic.
+    Duration armed(FakeAsync async) {
+      expect(async.periodicTimerCount, 0);
+      expect(async.pendingTimers, hasLength(1));
+      return async.pendingTimers.single.duration;
+    }
+
+    /// Moves the clock a second at a time for [seconds], returning the
+    /// seconds (from now) at which a round asked the server.
+    List<int> run(FakeAsync async, int seconds) {
+      final at = <int>[];
+      for (var s = 1; s <= seconds; s++) {
+        final before = server.claims;
+        async.elapse(const Duration(seconds: 1));
+        if (server.claims > before) at.add(s);
+      }
+      return at;
+    }
+
+    List<int> gaps(List<int> at) => [for (var i = 1; i < at.length; i++) at[i] - at[i - 1]];
+
+    test('every 5 s for the first quiet minute, then 10 s, then every 15 s', () {
+      onFakeClock((async, engine) {
+        expect(server.claims, 1);
+        expect(armed(async), const Duration(seconds: 5));
+        final at = run(async, 300);
+        final g = gaps(at);
+        expect(at.first, 5);
+        expect(g.where((d) => d == 5).length, inInclusiveRange(10, 12));
+        expect(g.where((d) => d == 10).length, inInclusiveRange(5, 6));
+        expect(g.every((d) => d == 5 || d == 10 || d == 15), isTrue, reason: '$g');
+        expect(g.sublist(g.length - 5), everyElement(15));
+        // Five quiet minutes: about 35 asks, where every 5 s would be 60.
+        expect(at.length, lessThan(40));
+        // Still says it is here once a minute.
+        expect(server.heartbeats.length, greaterThanOrEqualTo(5));
+        expect(armed(async), const Duration(seconds: 15));
+      });
+    });
+
+    test('no timer fires between due times: one wake-up per round', () {
+      onFakeClock((async, engine) {
+        run(async, 600); // quiet: every 15 s
+        final claims = server.claims;
+        final wait = armed(async);
+        expect(wait, const Duration(seconds: 15));
+        final timer = async.pendingTimers.single;
+        // Just short of due: nothing has run, and the same single timer waits.
+        async.elapse(wait - const Duration(milliseconds: 1));
+        expect(server.claims, claims);
+        expect(armed(async), wait);
+        expect(identical(async.pendingTimers.single, timer), isTrue, reason: 'not re-armed in between');
+        async.elapse(const Duration(milliseconds: 1));
+        expect(server.claims, claims + 1);
+        expect(armed(async), const Duration(seconds: 15));
+      });
+    });
+
+    test('a sign-in code queued while quiet goes out within 15 s, and polling is fast again after', () {
+      onFakeClock((async, engine) {
+        run(async, 600);
+        for (var offset = 0; offset < 15; offset++) {
+          // Wherever in the interval the code is queued.
+          run(async, offset);
+          server.queue.add(SmsJob(id: 'otp-$offset', channel: 'otp', to: '+60123456789', body: 'Your code is 1'));
+          var waited = 0;
+          while (phone.sent.length <= offset) {
+            run(async, 1);
+            waited++;
+            expect(waited, lessThanOrEqualTo(15), reason: 'queued at offset $offset');
+          }
+          // The claim re-armed the timer at the busy interval.
+          expect(armed(async), const Duration(seconds: 5));
+          expect(run(async, 5), [5]);
+          run(async, 600); // and quiet again
+        }
+      });
+    });
+
+    test('a received SMS is handed over at once and re-arms the timer at 5 s', () {
+      onFakeClock((async, engine) {
+        run(async, 600);
+        expect(armed(async), const Duration(seconds: 15));
+        async.elapse(const Duration(seconds: 3));
+        final claims = server.claims;
+        phone.receive(IncomingSms(id: 'r1', from: '+60188888888', body: 'Hi', at: DateTime(2026)));
+        async.flushMicrotasks();
+        expect(server.received.map((s) => s.id), ['r1']);
+        expect(server.claims, claims + 1);
+        expect(armed(async), const Duration(seconds: 5), reason: 'the old 15 s timer was replaced');
+        expect(run(async, 5), [5]);
+      });
+    });
+
+    test('after a failure the one timer waits out the backoff, then the busy interval resumes', () {
+      onFakeClock((async, engine) {
+        server.failWith = Exception('SocketException');
+        async.elapse(const Duration(seconds: 5));
+        expect(engine.state, GatewayState.reconnecting);
+        expect(armed(async), const Duration(seconds: 5)); // backoffAfter(1)
+        async.elapse(const Duration(seconds: 5));
+        expect(armed(async), const Duration(seconds: 10)); // backoffAfter(2)
+        server.failWith = null;
+        final claims = server.claims;
+        async.elapse(const Duration(seconds: 10));
+        expect(engine.state, GatewayState.online);
+        expect(server.claims, claims + 1);
+        expect(armed(async), const Duration(seconds: 5));
+      });
+    });
   });
 
   test('a refusal (not an admin) stops the gateway and says why', () async {
