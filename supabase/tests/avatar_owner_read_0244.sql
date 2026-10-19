@@ -38,15 +38,18 @@ set local role authenticated;
 -- 1. The owner uploads, then upserts the same path --------------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000244a1');
 insert into storage.objects (bucket_id, name, owner)
-values ('avatars', '00000000-0000-0000-0000-0000000244a1/avatar_1.jpg', '00000000-0000-0000-0000-0000000244a1')
-on conflict (bucket_id, name) do update set updated_at = now();
-insert into storage.objects (bucket_id, name, owner)
-values ('avatars', '00000000-0000-0000-0000-0000000244a1/avatar_1.jpg', '00000000-0000-0000-0000-0000000244a1')
-on conflict (bucket_id, name) do update set updated_at = now();
+values ('avatars', '00000000-0000-0000-0000-0000000244a1/avatar_1.jpg', '00000000-0000-0000-0000-0000000244a1');
 select pg_temp.check(
   (select count(*) = 1 from storage.objects
     where bucket_id = 'avatars' and name = '00000000-0000-0000-0000-0000000244a1/avatar_1.jpg'),
-  'the owner reads (and so upserts) their own avatar');
+  'the owner reads their own avatar (an upsert needs this)');
+-- The upsert's update half: it only finds the row through the read policy.
+with u as (
+  update storage.objects set name = name
+   where bucket_id = 'avatars' and name = '00000000-0000-0000-0000-0000000244a1/avatar_1.jpg'
+  returning 1
+)
+select pg_temp.check((select count(*) = 1 from u), 'the owner updates their own avatar');
 
 -- 2. Another user can't list or read it ---------------------------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000244a2');
