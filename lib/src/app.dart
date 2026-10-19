@@ -13,6 +13,7 @@ import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
+import 'core/date_order.dart' show setProfileDateCountry;
 import 'core/launch_destination.dart' show AppLaunch;
 import 'core/auth_utils.dart'
     show
@@ -614,6 +615,10 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     // The maps wait for them rather than show the app's own map first.
     waitForMapProfile();
     ref.listenManual(mapProfileProvider, (_, _) {}, fireImmediately: true);
+    // Dates are typed and shown in the order of the user's country (the
+    // profile's, else the phone's): DD/MM/YYYY, MM/DD/YYYY or YYYY/MM/DD.
+    ref.listenManual(profileProvider, (_, next) => setProfileDateCountry(next.value?.nationality),
+        fireImmediately: true);
     // The home-screen icon: the admin's season or the passenger's choice.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(ref.read(appIconSyncProvider).sync());

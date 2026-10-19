@@ -866,8 +866,8 @@ String? validateDocUpload(
   if (!hasFront) return 'Please upload the document image first.';
   if (f.requireFrontBack && !frontIsPdf && !hasBack) return 'Please upload the back of the document.';
   if (f.requireDocumentNumber && documentNumber.trim().isEmpty) return 'Please enter the document number.';
-  if (f.requireStartDate && !isValidIsoDate(startDate)) return 'Please enter a valid start date (YYYY-MM-DD).';
-  if (f.requireExpiryDate && !isValidIsoDate(expiryDate)) return 'Please enter a valid expiry date (YYYY-MM-DD).';
+  if (f.requireStartDate && !isValidIsoDate(startDate)) return 'Please enter a valid start date.';
+  if (f.requireExpiryDate && !isValidIsoDate(expiryDate)) return 'Please enter a valid expiry date.';
   if (f.requireInsuranceProvider && (insuranceProviderId ?? '').isEmpty) return 'Please choose the insurance provider.';
   return null;
 }

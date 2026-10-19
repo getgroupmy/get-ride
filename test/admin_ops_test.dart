@@ -324,7 +324,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('doc-edit')));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const ValueKey('doc-edit-expiry')), '2031-02-03');
+      // A whole date pasted into one of the boxes fills all three.
+      await tester.enterText(
+          find.descendant(of: find.byKey(const ValueKey('doc-edit-expiry')), matching: find.byKey(const ValueKey('date-box-day'))),
+          '2031-02-03');
       await tester.enterText(find.byKey(const ValueKey('doc-edit-number')), 'L999');
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('doc-edit-save')));

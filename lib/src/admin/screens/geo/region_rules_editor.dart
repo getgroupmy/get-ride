@@ -10,6 +10,7 @@ import 'geo_data.dart';
 import 'geo_logic.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
+import '../../../widgets/date_boxes.dart';
 
 IconData ruleKindIcon(RuleKind k) => switch (k) {
   RuleKind.availability => Icons.schedule,
@@ -160,10 +161,15 @@ class _RegionRuleDialogState extends ConsumerState<RegionRuleDialog> {
   static String _fmt(double v) => v == v.roundToDouble() ? v.toStringAsFixed(0) : '$v';
   static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+  late final _fromText = TextEditingController(text: _r.schedule.from == null ? '' : isoDate(_r.schedule.from!));
+  late final _toText = TextEditingController(text: _r.schedule.to == null ? '' : isoDate(_r.schedule.to!));
+
   @override
   void dispose() {
     _name.dispose();
     _amount.dispose();
+    _fromText.dispose();
+    _toText.dispose();
     super.dispose();
   }
 
@@ -190,17 +196,13 @@ class _RegionRuleDialogState extends ConsumerState<RegionRuleDialog> {
     );
   }
 
-  Future<void> _pickDate(bool isFrom) async {
-    final s = _r.schedule;
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: (isFrom ? s.from : s.to) ?? now,
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 5),
-    );
-    if (picked == null) return;
-    _schedule(isFrom ? _with(from: () => picked) : _with(to: () => picked));
+  /// A date typed in the From or To boxes: blank is "any", a whole date is
+  /// kept, a part-typed one leaves the last good date until it is whole.
+  void _typedDate(bool isFrom, TextEditingController c) {
+    final text = c.text.trim();
+    final d = parseIsoDate(text);
+    if (text.isNotEmpty && d == null) return;
+    _schedule(isFrom ? _with(from: () => d) : _with(to: () => d));
   }
 
   Future<void> _pickTime(bool isStart) async {
@@ -228,8 +230,6 @@ class _RegionRuleDialogState extends ConsumerState<RegionRuleDialog> {
     Navigator.pop(context, r);
   }
 
-  String _date(DateTime? d) =>
-      d == null ? 'Any' : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
   String _hm(int m) => '${(m ~/ 60).toString().padLeft(2, '0')}:${(m % 60).toString().padLeft(2, '0')}';
 
   @override
@@ -385,26 +385,21 @@ class _RegionRuleDialogState extends ConsumerState<RegionRuleDialog> {
               ],
               if (s.mode == ScheduleMode.dates) ...[
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        key: const ValueKey('rule-from'),
-                        icon: const Icon(Icons.event, size: 18),
-                        label: Text('From ${_date(s.from)}'),
-                        onPressed: () => _pickDate(true),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        key: const ValueKey('rule-to'),
-                        icon: const Icon(Icons.event, size: 18),
-                        label: Text('To ${_date(s.to)}'),
-                        onPressed: () => _pickDate(false),
-                      ),
-                    ),
-                  ],
+                DateBoxesField(
+                  key: const ValueKey('rule-from'),
+                  label: 'From (blank for any day)',
+                  controller: _fromText,
+                  firstDate: DateTime(DateTime.now().year - 1),
+                  lastDate: DateTime(DateTime.now().year + 5, 12, 31),
+                  onChanged: (_) => _typedDate(true, _fromText),
+                ),
+                DateBoxesField(
+                  key: const ValueKey('rule-to'),
+                  label: 'To (blank for any day)',
+                  controller: _toText,
+                  firstDate: DateTime(DateTime.now().year - 1),
+                  lastDate: DateTime(DateTime.now().year + 5, 12, 31),
+                  onChanged: (_) => _typedDate(false, _toText),
                 ),
               ],
               SwitchListTile(

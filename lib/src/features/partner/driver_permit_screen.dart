@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../admin/screens/people/people_data.dart';
 import '../../core/driver_permit.dart';
+import '../../core/date_order.dart' show formatDateForUser;
 import '../../data/live_tables.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../providers.dart';
@@ -46,7 +46,6 @@ final currentPlateProvider = FutureProvider.autoDispose<String?>((ref) async {
   return null;
 });
 
-final _date = DateFormat('dd/MM/yyyy');
 
 /// "Update documents" from the permit page: the onboarding form opened on
 /// its Documents step (or an earlier step still missing).
@@ -230,8 +229,8 @@ class _PermitBody extends StatelessWidget {
                           _field(t, 'Permit no.', p.permitNumber),
                           _field(t, 'Vehicle', p.vehiclePlate),
                           _field(t, 'Class', p.licenceClass),
-                          _field(t, 'Valid from', p.issueDate == null ? null : _date.format(p.issueDate!)),
-                          _field(t, 'Valid to', p.expiryDate == null ? null : _date.format(p.expiryDate!)),
+                          _field(t, 'Valid from', p.issueDate == null ? null : formatDateForUser(p.issueDate)),
+                          _field(t, 'Valid to', p.expiryDate == null ? null : formatDateForUser(p.expiryDate)),
                           _field(t, 'Address', p.address),
                         ],
                       ),

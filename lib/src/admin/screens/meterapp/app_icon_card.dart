@@ -15,6 +15,7 @@ import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
+import '../../../widgets/date_boxes.dart';
 
 class AppIconCard extends ConsumerStatefulWidget {
   const AppIconCard({super.key, required this.canEdit});
@@ -291,7 +292,7 @@ class _WindowDialogState extends State<_WindowDialog> {
 
   String get _format => switch (_kind) {
     IconWindowKind.annual => 'MM-DD, e.g. 12-27',
-    IconWindowKind.dated => 'YYYY-MM-DD, e.g. 2027-02-06',
+    IconWindowKind.dated => 'Day, month and year',
     IconWindowKind.monthly => 'Day of the month, e.g. 25',
   };
 
@@ -325,18 +326,35 @@ class _WindowDialogState extends State<_WindowDialog> {
               ],
               onChanged: (v) => setState(() => _kind = v ?? _kind),
             ),
-            TextField(
-              key: const ValueKey('app-icon-window-start'),
-              controller: _start,
-              decoration: InputDecoration(labelText: 'From', helperText: _format),
-              onChanged: (_) => setState(() {}),
-            ),
-            TextField(
-              key: const ValueKey('app-icon-window-end'),
-              controller: _end,
-              decoration: const InputDecoration(labelText: 'To (included)'),
-              onChanged: (_) => setState(() {}),
-            ),
+            // Exact dates are typed in day, month and year boxes; the yearly
+            // MM-DD and the monthly day are not whole dates.
+            if (_kind == IconWindowKind.dated) ...[
+              DateBoxesField(
+                key: const ValueKey('app-icon-window-start-date'),
+                label: 'From',
+                controller: _start,
+                onChanged: (_) => setState(() {}),
+              ),
+              DateBoxesField(
+                key: const ValueKey('app-icon-window-end-date'),
+                label: 'To (included)',
+                controller: _end,
+                onChanged: (_) => setState(() {}),
+              ),
+            ] else ...[
+              TextField(
+                key: const ValueKey('app-icon-window-start'),
+                controller: _start,
+                decoration: InputDecoration(labelText: 'From', helperText: _format),
+                onChanged: (_) => setState(() {}),
+              ),
+              TextField(
+                key: const ValueKey('app-icon-window-end'),
+                controller: _end,
+                decoration: const InputDecoration(labelText: 'To (included)'),
+                onChanged: (_) => setState(() {}),
+              ),
+            ],
             TextField(
               key: const ValueKey('app-icon-window-regions'),
               controller: _regions,

@@ -11,6 +11,7 @@ import '../widgets/admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/date_boxes.dart';
 
 final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
   (ref, table) async {
@@ -153,8 +154,8 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
           'Detected as': d['detected_document_name'],
           'Issuing country': d['issuance_country'],
           'Insurance provider': d['insurance_provider_name'],
-          'Start': d['start_date'],
-          'Expiry': d['expiry_date'],
+          'Start': d['start_date'] == null ? null : formatStoredDateForUser(d['start_date']),
+          'Expiry': d['expiry_date'] == null ? null : formatStoredDateForUser(d['expiry_date']),
           'PWD': d['is_pwd'] == true ? 'Yes' : null,
           'Partner': d['_owner'] ?? d['partner_id'],
           if (_vehicle) 'Vehicle': d['_plate'] ?? d['vehicle_id'],
@@ -239,16 +240,19 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
                   ),
                   TextField(controller: insurer, decoration: const InputDecoration(labelText: 'Insurance provider')),
                   TextField(controller: country, decoration: const InputDecoration(labelText: 'Issuing country')),
-                  TextField(
+                  // Facts from the document as printed: no limits, so an
+                  // expired one can be recorded as it is.
+                  DateBoxesField(
+                    key: const ValueKey('doc-edit-start'),
+                    label: 'Start date',
                     controller: start,
                     onChanged: (_) => set(() {}),
-                    decoration: InputDecoration(labelText: 'Start (YYYY-MM-DD)', errorText: startErr),
                   ),
-                  TextField(
+                  DateBoxesField(
                     key: const ValueKey('doc-edit-expiry'),
+                    label: 'Expiry date',
                     controller: expiry,
                     onChanged: (_) => set(() {}),
-                    decoration: InputDecoration(labelText: 'Expiry (YYYY-MM-DD)', errorText: expiryErr),
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -388,7 +392,7 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
                       d['_owner'],
                       if (_vehicle) d['_plate'],
                       d['document_number'],
-                      if (d['expiry_date'] != null) 'expires ${d['expiry_date']}',
+                      if (d['expiry_date'] != null) 'expires ${formatStoredDateForUser(d['expiry_date'])}',
                       dateText(d['uploaded_at']),
                     ].whereType<String>().where((s) => s.isNotEmpty).join(' · ')),
                     trailing: StatusChip(documentDisplayStatus(d)),
