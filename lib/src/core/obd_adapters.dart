@@ -15,7 +15,7 @@ String obdRetryHint(String? transport) => switch (transport) {
       'bluetooth' => 'Retrying every few seconds. Check the ignition is on, the reader is plugged in and close by, '
           'and no other app or phone is connected to it.',
       'mfi' => 'Retrying every few seconds. Check the ignition is on and the reader is paired in '
-          'Settings → Bluetooth and not in use by another app.',
+          'Settings > Bluetooth and not in use by another app.',
       'usb' => 'Retrying every few seconds. Check the ignition is on and the cable is plugged in.',
       _ => "Retrying every few seconds. Check the ignition is on and the phone is on the reader's Wi-Fi.",
     };

@@ -147,7 +147,7 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('→ ${r.dropLabel}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                    Text('to ${r.dropLabel}', maxLines: 2, overflow: TextOverflow.ellipsis),
                     // Two lines at large (and bold) text rather than cut.
                     Text(
                       formatInZone(r.createdAt, r.timezone),

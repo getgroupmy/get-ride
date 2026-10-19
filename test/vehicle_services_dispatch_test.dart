@@ -150,7 +150,7 @@ void main() {
   }
 
   test('the old Search Radius list is marked replaced, not removed', () {
-    expect(replacedCategories['search-radius'], 'Vehicle Services → Search radius');
+    expect(replacedCategories['search-radius'], 'Vehicle Services > Search radius');
     // Still a known category, so its rows don't resurface as raw JSON.
     expect(crudCategories.map((c) => c.key), contains('search-radius'));
   });

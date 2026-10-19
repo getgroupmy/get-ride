@@ -109,7 +109,7 @@ class _DemoJobFeedState extends State<DemoJobFeed> {
               ],
             ),
             const SizedBox(height: 4),
-            Text('${job.pickupName} → ${job.dropName}', style: t.textTheme.bodyMedium),
+            Text('${job.pickupName} to ${job.dropName}', style: t.textTheme.bodyMedium),
             Text(
               '${job.km.toStringAsFixed(1)} km · ${job.minutes} min · ${job.payment} · ${job.pax} pax · ${job.luggage} bags',
               style: t.textTheme.bodySmall,

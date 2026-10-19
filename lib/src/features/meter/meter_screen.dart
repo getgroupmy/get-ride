@@ -230,11 +230,13 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         currency: _currency,
         multiplier: periodMultiplier(_period, _profile.nightMultiplier),
         current: _dest,
+        recent: recentMeterDropoffs(_trips),
+        canClear: true,
       ),
     );
     _inFront = true;
     await _orientation.lockLandscape();
-    if (mounted && picked != null) setState(() => _dest = picked);
+    if (mounted && picked != null) setState(() => _dest = identical(picked, hailDestinationCleared) ? null : picked);
   }
 
   void _navigateToDestination() {
@@ -1474,9 +1476,9 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
                 [
                   formatMeterDistance(t.distanceM),
                   if (t.pickup != null && t.dropoff != null)
-                    '${t.pickup!.label} → ${t.dropoff!.label}'
+                    '${t.pickup!.label} to ${t.dropoff!.label}'
                   else if (t.destination != null)
-                    '→ ${t.destination}',
+                    'to ${t.destination}',
                 ].join(' · '),
               ),
               trailing: Text('${t.currency} ${t.total.toStringAsFixed(2)}', style: _digits(16, _lcd)),

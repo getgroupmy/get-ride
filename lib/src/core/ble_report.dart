@@ -181,7 +181,7 @@ class BleReportTrip {
   ];
 
   /// "Rina → Dan", with whichever names are known.
-  String get people => [riderName ?? 'Passenger', driverName ?? 'Driver'].join(' → ');
+  String get people => [riderName ?? 'Passenger', driverName ?? 'Driver'].join(' to ');
 
   /// How the trip started, for the sheet.
   String get startedBy => switch (startMethod) {

@@ -167,68 +167,89 @@ class _PromotionCard extends ConsumerWidget {
       'Scheduled' => (cs.tertiaryContainer, cs.onTertiaryContainer),
       _ => (cs.surfaceContainerHighest, mutedTextColor(t, background: cs.surfaceContainerHighest)),
     };
+    final toggle = Semantics(
+      label: '${p.name} on',
+      child: Switch(
+        key: ValueKey('commission-promo-active-${p.id}'),
+        value: p.active,
+        onChanged: canEdit
+            ? (v) async {
+                if (await runAdminAction(
+                    context, () => ref.read(adminRepositoryProvider).saveCommissionPromotion(p.copyWith(active: v)),
+                    success: v ? 'Promotion turned on' : 'Promotion turned off')) {
+                  ref.invalidate(commissionPromotionsProvider);
+                }
+              }
+            : null,
+      ),
+    );
     return Card(
-      child: ListTile(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
         key: ValueKey('commission-promo-${p.id}'),
-        leading: Icon(Icons.local_offer_outlined, color: status == 'Running' ? cs.primary : cs.outline),
-        // The name gets the width (two lines), with its status under it.
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
-              child: Text(status, style: t.textTheme.labelSmall?.copyWith(color: fg)),
-            ),
-          ],
-        ),
-        subtitle: Text(
-          [
-            p.summary,
-            '${formatDateTime(p.startsAt)} – ${formatDateTime(p.endsAt)}',
-            if (p.note.isNotEmpty) p.note,
-          ].join('\n'),
-          style: TextStyle(color: mutedTextColor(t, background: cardSurfaceColor(t))),
-        ),
-        isThreeLine: true,
         onTap: canEdit ? onEdit : null,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Semantics(
-              label: '${p.name} on',
-              child: Switch(
-              key: ValueKey('commission-promo-active-${p.id}'),
-              value: p.active,
-              onChanged: canEdit
-                  ? (v) async {
-                      if (await runAdminAction(
-                          context, () => ref.read(adminRepositoryProvider).saveCommissionPromotion(p.copyWith(active: v)),
-                          success: v ? 'Promotion turned on' : 'Promotion turned off')) {
-                        ref.invalidate(commissionPromotionsProvider);
-                      }
-                    }
-                  : null,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // The name, its status, the switch and delete on one row...
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Icon(Icons.local_offer_outlined, color: status == 'Running' ? cs.primary : cs.outline),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.textTheme.titleMedium),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+                          child: Text(status, style: t.textTheme.labelSmall?.copyWith(color: fg)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  toggle,
+                  if (canEdit)
+                    BusyIconButton(
+                      key: ValueKey('commission-promo-delete-${p.id}'),
+                      tooltip: 'Delete',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () async {
+                        if (!await confirm(context, 'Delete promotion?', p.name, ok: 'Delete')) return;
+                        if (!context.mounted) return;
+                        if (await runAdminAction(
+                            context, () => ref.read(adminRepositoryProvider).deleteCommissionPromotion(p.id!))) {
+                          ref.invalidate(commissionPromotionsProvider);
+                        }
+                      },
+                    ),
+                ],
               ),
-            ),
-            if (canEdit)
-              BusyIconButton(
-                key: ValueKey('commission-promo-delete-${p.id}'),
-                tooltip: 'Delete',
-                icon: const Icon(Icons.delete_outline),
-                onPressed: () async {
-                  if (!await confirm(context, 'Delete promotion?', p.name, ok: 'Delete')) return;
-                  if (!context.mounted) return;
-                  if (await runAdminAction(
-                      context, () => ref.read(adminRepositoryProvider).deleteCommissionPromotion(p.id!))) {
-                    ref.invalidate(commissionPromotionsProvider);
-                  }
-                },
+              const SizedBox(height: 8),
+              // ...and what it does across the card's whole width under them.
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(
+                  [
+                    p.summary,
+                    '${formatDateTime(p.startsAt)} – ${formatDateTime(p.endsAt)}',
+                    if (p.note.isNotEmpty) p.note,
+                  ].join('\n'),
+                  key: ValueKey('commission-promo-details-${p.id}'),
+                  style: t.textTheme.bodyMedium?.copyWith(color: mutedTextColor(t, background: cardSurfaceColor(t))),
+                ),
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -698,7 +719,7 @@ class _CommissionReportsTabState extends ConsumerState<CommissionReportsTab> {
                 ],
               ),
               Text(
-                'Drivers who can\'t take work until they top up (Settings → GET.credit below zero).',
+                'Drivers who can\'t take work until they top up (Settings > GET.credit below zero).',
                 style: t.textTheme.bodySmall?.copyWith(color: muted),
               ),
               const SizedBox(height: 8),

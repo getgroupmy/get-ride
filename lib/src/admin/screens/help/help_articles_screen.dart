@@ -142,7 +142,7 @@ class _AdminHelpArticlesScreenState extends ConsumerState<AdminHelpArticlesScree
                   [
                     if (a.category.isNotEmpty) a.category,
                     'For ${a.audience}',
-                    if (a.actionRoute != null) '→ ${a.actionRoute}',
+                    if (a.actionRoute != null) 'Opens ${a.actionRoute}',
                   ].join(' · '),
                 ),
                 leading: Icon(

@@ -2162,7 +2162,7 @@ class _BookingPanel extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.local_taxi),
               title: Text(ongoing!.status.label),
-              subtitle: Text('${ongoing!.pickupLabel} → ${ongoing!.dropLabel}',
+              subtitle: Text('${ongoing!.pickupLabel} to ${ongoing!.dropLabel}',
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               trailing: const Icon(Icons.chevron_right),
               onTap: onOpenOngoing,
@@ -2176,7 +2176,7 @@ class _BookingPanel extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.person_pin_circle_outlined),
               title: Text('For ${r.passengerName} · ${r.status.label}'),
-              subtitle: Text('${r.pickupLabel} → ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${r.pickupLabel} to ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
               trailing: const Icon(Icons.chevron_right),
               onTap: onOpenRide == null ? null : () => onOpenRide!(r),
             ),

@@ -32,6 +32,27 @@ class _WeeklyEarningsChartState extends State<WeeklyEarningsChart> {
 
   static String _day(DateTime d) => '${d.day} ${_months[d.month - 1]}';
 
+  static TextPainter _paint(BuildContext context, String text, TextStyle? style) => TextPainter(
+    text: TextSpan(text: text, style: style),
+    textDirection: TextDirection.ltr,
+    textScaler: MediaQuery.textScalerOf(context),
+    maxLines: 1,
+  )..layout();
+
+  static double _labelWidth(BuildContext context, String text, TextStyle? style) {
+    final p = _paint(context, text, style);
+    final w = p.width;
+    p.dispose();
+    return w;
+  }
+
+  static double _labelHeight(BuildContext context, TextStyle? style) {
+    final p = _paint(context, '31 Aug', style);
+    final h = p.height;
+    p.dispose();
+    return h;
+  }
+
   @override
   void didUpdateWidget(WeeklyEarningsChart old) {
     super.didUpdateWidget(old);
@@ -107,22 +128,46 @@ class _WeeklyEarningsChartState extends State<WeeklyEarningsChart> {
               ),
             ),
             const SizedBox(height: 6),
-            Row(
-              children: [
-                for (var i = 0; i < weeks.length; i++)
-                  Expanded(
-                    child: Text(
-                      weeklyChartLabelShown(i, weeks.length) ? _day(weeks[i].start) : '',
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.clip,
-                      style: t.textTheme.labelSmall?.copyWith(
-                        color: i == _selected ? t.colorScheme.onSurface : muted,
-                        fontWeight: i == _selected ? FontWeight.w700 : null,
-                      ),
-                    ),
+            // Each date centred under its bar with the room of two bars (the
+            // one between is unlabelled), so "31 Aug" keeps its month at
+            // large text instead of being cut to "31". Where even that is too
+            // narrow, only the oldest and newest dates stay.
+            LayoutBuilder(
+              builder: (context, box) {
+                final slot = box.maxWidth / weeks.length;
+                final room = math.min(box.maxWidth, slot * 2);
+                TextStyle? style(int i) => t.textTheme.labelSmall?.copyWith(
+                  color: i == _selected ? t.colorScheme.onSurface : muted,
+                  fontWeight: i == _selected ? FontWeight.w700 : null,
+                );
+                final shown = [for (var i = 0; i < weeks.length; i++) if (weeklyChartLabelShown(i, weeks.length)) i];
+                final fits = shown.every((i) => _labelWidth(context, _day(weeks[i].start), style(i)) <= room);
+                final kept = fits || shown.length <= 2 ? shown : [shown.first, shown.last];
+                final height = _labelHeight(context, style(0));
+                return SizedBox(
+                  height: height,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      for (final i in kept)
+                        Positioned(
+                          left: ((i + 0.5) * slot - room / 2).clamp(0.0, box.maxWidth - room),
+                          width: room,
+                          top: 0,
+                          child: Text(
+                            _day(weeks[i].start),
+                            key: ValueKey('earnings-week-label-$i'),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.visible,
+                            style: style(i),
+                          ),
+                        ),
+                    ],
                   ),
-              ],
+                );
+              },
             ),
           ],
         ),

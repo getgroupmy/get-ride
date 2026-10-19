@@ -417,7 +417,7 @@ class PartnerTypeField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final all = [...options, ...value.where((v) => !options.contains(v))];
-    if (all.isEmpty) return const Text('No partner types configured (Settings → Partner Type).');
+    if (all.isEmpty) return const Text('No partner types configured (Settings > Partner Type).');
     return ListSearchFilter(
   count: all.length,
   hint: 'Search partner types',
@@ -549,7 +549,7 @@ class MakeModelField extends ConsumerWidget {
                 const SizedBox(height: 8),
                 Expanded(
                   child: list.isEmpty
-                      ? const Center(child: Text('No vehicle models (Settings → Vehicle Make & Model).'))
+                      ? const Center(child: Text('No vehicle models (Settings > Vehicle Make & Model).'))
                       : ListView(children: [
                           for (final m in list)
                             ListTile(

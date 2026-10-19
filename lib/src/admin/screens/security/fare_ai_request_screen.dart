@@ -330,7 +330,7 @@ class _RequestState extends ConsumerState<AdminFareAiRequestScreen> {
             key: const ValueKey('fare-ai-preview'),
             tilePadding: EdgeInsets.zero,
             title: const Text('Preview: what the AI receives'),
-            subtitle: const Text('For a sample trip, KLCC → KL Sentral'),
+            subtitle: const Text('For a sample trip, KLCC to KL Sentral'),
             children: [
               _mono('System', _current.systemInstruction),
               if (preview != null)

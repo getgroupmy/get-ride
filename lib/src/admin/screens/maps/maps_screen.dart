@@ -230,8 +230,8 @@ class _DevicesTab extends ConsumerWidget {
             icon: Icons.key_off_outlined,
             text:
                 'No active key yet for ${missing.join(', ')}. Until there is one, those choices fall back '
-                'to the next provider (or what is built in). Add one in Admin → API Keys, or for Google '
-                'add it to GitHub and run Actions → Sync map keys.',
+                'to the next provider (or what is built in). Add one in Admin > API Keys, or for Google '
+                'add it to GitHub and run Actions > Sync map keys.',
           ),
         Card(
           key: const ValueKey('maps-search-results'),

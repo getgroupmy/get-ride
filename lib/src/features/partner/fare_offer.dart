@@ -51,7 +51,7 @@ class _OfferSheetState extends State<_OfferSheet> {
         children: [
           Text('Make an offer', style: t.textTheme.titleLarge),
           Text(
-            'The rider asks ${r.fareText(_fare)} for ${r.pickupLabel} → ${r.dropLabel}.',
+            'The rider asks ${r.fareText(_fare)} for ${r.pickupLabel} to ${r.dropLabel}.',
             style: t.textTheme.bodyMedium,
           ),
           const SizedBox(height: 12),

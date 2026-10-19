@@ -646,7 +646,7 @@ List<String> fareAiTrafficLines(Map<dynamic, dynamic>? e) {
   if (stretches is List) {
     for (final st in stretches) {
       if (st is! Map) continue;
-      final where = [st['from'], st['to']].whereType<String>().join(' → ');
+      final where = [st['from'], st['to']].whereType<String>().join(' to ');
       final delay = st['delay_min'] is num ? ' · +${(st['delay_min'] as num).round()} min' : '';
       out.add('• ${st['road'] ?? 'Road'}${where.isEmpty ? '' : ' ($where)'}$delay');
     }

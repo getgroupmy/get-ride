@@ -108,8 +108,12 @@ void main() {
       final scroll = tester.state<ScrollableState>(
         find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first,
       );
-      scroll.position.jumpTo(scroll.position.maxScrollExtent);
-      await tester.pumpAndSettle();
+      // A lazy list learns its full length as it scrolls: to the end until
+      // the end stays put.
+      for (var i = 0; i < 5; i++) {
+        scroll.position.jumpTo(scroll.position.maxScrollExtent);
+        await tester.pumpAndSettle();
+      }
       final fab = tester.getRect(find.byType(FloatingActionButton));
       final cards = find.descendant(of: find.byType(ListView), matching: find.byType(Card));
       final last = tester.getRect(cards.last);
@@ -121,6 +125,24 @@ void main() {
   }
 
   for (final brightness in Brightness.values) {
+    testWidgets('"How a booking is priced" is one folded row that opens; no arrow glyph (${brightness.name})',
+        (tester) async {
+      await pump(tester, brightness);
+      final how = find.byKey(const ValueKey('fare-tariffs-how'));
+      expect(how, findsOneWidget);
+      expect(find.text('How a booking is priced'), findsOneWidget);
+      expect(find.byKey(const ValueKey('fare-tariffs-how-text')), findsNothing, reason: 'folded at first');
+      await tester.tap(find.text('How a booking is priced'));
+      await tester.pumpAndSettle();
+      final text = tester.widget<Text>(find.byKey(const ValueKey('fare-tariffs-how-text')));
+      expect(text.data, contains('suburb > city > state > country > everywhere'));
+      expect(text.data, isNot(contains('→')));
+      expect(tester.takeException(), isNull);
+      // Let the live tables' disconnect timer run out.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(minutes: 1));
+    });
+
     testWidgets('pick a place and Car, then set Premium\'s own fare (${brightness.name})', (tester) async {
       final admin = await pump(tester, brightness);
 

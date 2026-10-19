@@ -267,7 +267,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     _leave();
   }
 
-  static String _tripLabel(RideRequest r) => '${r.pickupLabel} → ${r.dropLabel}';
+  static String _tripLabel(RideRequest r) => '${r.pickupLabel} to ${r.dropLabel}';
 
   void _onPosition(TripFix p) {
     if (!mounted) return;

@@ -42,7 +42,7 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
     final canEdit = ref.read(moduleAccessProvider('rides')) == AccessLevel.edit;
     showAdminSheet<void>(
       context,
-      title: '${r.pickupLabel} → ${r.dropLabel}',
+      title: '${r.pickupLabel} to ${r.dropLabel}',
       builder: (ctx) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [StatusChip(r.raw['status'] as String?)]),
         const SizedBox(height: 12),
@@ -144,7 +144,7 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
                 itemBuilder: (_, i) {
                   final r = list[i];
                   return ListTile(
-                    title: Text('${r.pickupLabel} → ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text('${r.pickupLabel} to ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: Text(adminRideSubtitle(r)),
                     trailing: Column(
                       mainAxisAlignment: MainAxisAlignment.center,

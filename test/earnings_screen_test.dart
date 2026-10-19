@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +7,7 @@ import 'package:get_ride/src/core/driver_earnings.dart';
 import 'package:get_ride/src/core/partner_statement.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/partner_statement_repository.dart';
+import 'package:get_ride/src/features/partner/earnings_chart.dart';
 import 'package:get_ride/src/features/partner/earnings_screen.dart';
 import 'package:get_ride/src/providers.dart';
 
@@ -99,6 +101,44 @@ void main() {
       expect(tester.widget<Text>(find.byKey(const ValueKey('earnings-taxes'))).data, contains('1.20'));
       expect(find.text('Today'), findsNWidgets(2), reason: 'the period button and the day');
     });
+  }
+
+  for (final scale in [1.0, 1.3]) {
+    for (final b in Brightness.values) {
+      testWidgets('the 8-week chart keeps month names under its bars at ${scale}x (${b.name})', (tester) async {
+        tester.view.physicalSize = const Size(412, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final weeks = [
+          for (var i = 0; i < 8; i++)
+            EarningsBucket(DateTime.utc(2026, 8, 24 + 7 * i), StatementTotals({'net': 10.0 + i, 'trips': 1})),
+        ];
+        await tester.pumpWidget(MaterialApp(
+          theme: ThemeData(brightness: b),
+          home: Scaffold(body: WeeklyEarningsChart(weeks: weeks, money: (v) => 'RM$v')),
+        ));
+        final labels = find.byWidgetPredicate(
+          (w) => w is Text && w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('earnings-week-label-'),
+        );
+        expect(labels, findsWidgets);
+        // The newest week always, with its month.
+        expect(tester.widget<Text>(find.byKey(const ValueKey('earnings-week-label-7'))).data, '12 Oct');
+        final card = tester.getRect(find.byKey(const ValueKey('earnings-weekly-chart')));
+        for (final e in labels.evaluate()) {
+          final text = (e.widget as Text).data!;
+          expect(text, matches(RegExp(r'^\d{1,2} [A-Z][a-z]{2}$')), reason: 'a day with its month, never a bare day');
+          final p = tester.renderObject<RenderParagraph>(find.descendant(of: find.byWidget(e.widget), matching: find.byType(RichText)));
+          expect(p.didExceedMaxLines, isFalse);
+          expect(p.size.width, greaterThanOrEqualTo(p.getMaxIntrinsicWidth(double.infinity) - 0.5), reason: '"$text" is whole');
+          final r = tester.getRect(find.byWidget(e.widget));
+          expect(r.left, greaterThanOrEqualTo(card.left));
+          expect(r.right, lessThanOrEqualTo(card.right));
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
   }
 
   testWidgets('weekly chart reads out the tapped week; export hands over the CSV', (tester) async {

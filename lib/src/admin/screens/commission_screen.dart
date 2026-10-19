@@ -78,12 +78,12 @@ String commissionHistoryLine(Map<String, dynamic> h) {
   }
   if (before == null || after == null) return 'Changed';
   final changes = <String>[
-    if (before['rate'] != after['rate']) 'rate ${_pct(before['rate'])} → ${_pct(after['rate'])}',
+    if (before['rate'] != after['rate']) 'rate ${_pct(before['rate'])} to ${_pct(after['rate'])}',
     if (before['active'] != after['active']) after['active'] == true ? 'turned on' : 'turned off',
-    if ((before['priority'] ?? 0) != (after['priority'] ?? 0)) 'priority ${before['priority'] ?? 0} → ${after['priority'] ?? 0}',
-    if (before['level'] != after['level']) 'level ${before['level']} → ${after['level']}',
+    if ((before['priority'] ?? 0) != (after['priority'] ?? 0)) 'priority ${before['priority'] ?? 0} to ${after['priority'] ?? 0}',
+    if (before['level'] != after['level']) 'level ${before['level']} to ${after['level']}',
     if (commissionScopeLabel(before) != commissionScopeLabel(after))
-      'scope ${commissionScopeLabel(before)} → ${commissionScopeLabel(after)}',
+      'scope ${commissionScopeLabel(before)} to ${commissionScopeLabel(after)}',
     if ((before['note'] ?? '') != (after['note'] ?? '')) 'note "${after['note'] ?? ''}"',
   ];
   return changes.isEmpty ? 'Saved ${rule(after)} (no change)' : 'Changed ${rule(before)}: ${changes.join(', ')}';
@@ -167,7 +167,7 @@ class AdminCommissionScreen extends ConsumerWidget {
               child: ListTile(
                 leading: const Icon(Icons.info_outline),
                 title: const Text('How rates are chosen'),
-                subtitle: Text('The most specific active rule wins: user → suburb → city → state → country → '
+                subtitle: Text('The most specific active rule wins: user > suburb > city > state > country > '
                     'master. Between rules at the same level, the higher priority wins, then the one naming more '
                     'of its parents, then the newest. Places are matched by the region map where a region has an '
                     'outline, otherwise by name. The rate is locked when the driver accepts the trip. With no '

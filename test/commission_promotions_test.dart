@@ -283,6 +283,24 @@ void main() {
     });
 
     group('Admin → Commission → Promotions and Reports (${b.name})', () {
+      testWidgets('promotions at 412 px: the details run the full card width under the title row (${b.name})',
+          (tester) async {
+        await _pump(tester, brightness: b, size: const Size(412, 2000));
+        await tester.ensureVisible(find.byKey(const ValueKey('commission-tab-promotions')));
+        await tester.pumpAndSettle();
+        await _openTab(tester, 'commission-tab-promotions');
+        final card = tester.getRect(find.byKey(const ValueKey('commission-promo-p1')));
+        final details = tester.getRect(find.byKey(const ValueKey('commission-promo-details-p1')));
+        final toggle = tester.getRect(find.byKey(const ValueKey('commission-promo-active-p1')));
+        expect(details.top, greaterThanOrEqualTo(toggle.bottom - 1), reason: 'below the switch, not beside it');
+        expect(details.width, greaterThan(card.width - 48), reason: 'the full width, not a 180 px column');
+        // Tapping the card still opens it.
+        await tester.tap(find.byKey(const ValueKey('commission-promo-details-p1')));
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+
       for (final faint in [false, true]) {
         testWidgets('promotions read at 360 px${faint ? ', with a faint admin grey' : ''} (${b.name})', (tester) async {
           await _pump(

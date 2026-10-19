@@ -44,6 +44,11 @@ final adminDialerProvider = Provider<Future<bool> Function(Uri)>((ref) => launch
 /// A list card: the record's tile, with a call button when a phone is known
 /// and, for an admin who can edit, the one-tap status actions under it
 /// (Expo `AdminUserList` / `AdminPartnerList` / `AdminVehicleList`).
+/// Whether a record card puts its status and call under the name, not
+/// beside it: from 1.2× text, where beside them the name and phone were
+/// squeezed into a narrow column.
+bool recordCardStacks(TextScaler scaler) => scaler.scale(14) / 14 >= 1.2;
+
 class _RecordCard extends ConsumerWidget {
   const _RecordCard({
     required this.id,
@@ -70,25 +75,42 @@ class _RecordCard extends ConsumerWidget {
     final call = phoneCallUri(phone);
     final actions = canEdit ? quickStatusActions(status) : const <QuickStatusAction>[];
     final c = Theme.of(context).colorScheme;
+    final callButton = call == null
+        ? null
+        : IconButton(
+            key: ValueKey('call-$id'),
+            tooltip: 'Call $phone',
+            icon: const Icon(Icons.call_outlined),
+            onPressed: () async {
+              final ok = await ref.read(adminDialerProvider)(call);
+              if (!ok && context.mounted) showInfo(context, 'Call $phone');
+            },
+          );
+    // Large text: the name and phone take the whole width, and the status
+    // and call move to a row of their own under them.
+    final stacked = recordCardStacks(MediaQuery.textScalerOf(context));
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ListTile(
         leading: leading,
         title: Text(title),
         subtitle: Text(subtitle),
-        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (call != null)
-            IconButton(
-              key: ValueKey('call-$id'),
-              tooltip: 'Call $phone',
-              icon: const Icon(Icons.call_outlined),
-              onPressed: () async {
-                final ok = await ref.read(adminDialerProvider)(call);
-                if (!ok && context.mounted) showInfo(context, 'Call $phone');
-              },
-            ),
-          StatusChip(status),
-        ]),
+        trailing: stacked
+            ? null
+            : Row(mainAxisSize: MainAxisSize.min, children: [
+                ?callButton,
+                StatusChip(status),
+              ]),
       ),
+      if (stacked)
+        Padding(
+          key: ValueKey('record-meta-$id'),
+          padding: const EdgeInsets.only(left: 72, right: 16),
+          child: Row(children: [
+            StatusChip(status),
+            const Spacer(),
+            ?callButton,
+          ]),
+        ),
       if (actions.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),

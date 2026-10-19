@@ -99,7 +99,7 @@ class _PinPolicyCardState extends ConsumerState<PinPolicyCard> {
                 Text(
                   'Every account must have a 6-digit PIN; one without is asked to set it before entering the app. '
                   'From the second wrong PIN the app says how many tries are left. A locked PIN can always be '
-                  'bypassed with an SMS code. The wait between SMS codes is in Admin → SMS / WhatsApp.',
+                  'bypassed with an SMS code. The wait between SMS codes is in Admin > SMS / WhatsApp.',
                   style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),

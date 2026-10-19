@@ -161,7 +161,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
               key: const ValueKey('add-mfi-reader'),
               leading: const Icon(Icons.bluetooth_connected),
               title: const Text('Bluetooth MFi reader'),
-              subtitle: const Text('Certified readers such as OBDLink MX+, paired in Settings → Bluetooth'),
+              subtitle: const Text('Certified readers such as OBDLink MX+, paired in Settings > Bluetooth'),
               onTap: () => Navigator.pop(c, 'mfi'),
             ),
           ListTile(
@@ -217,7 +217,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
                 leading: Icon(Icons.info_outline),
                 title: Text('No MFi reader is connected'),
                 subtitle: Text(
-                  'Pair the reader in Settings → Bluetooth with the ignition on, then come back here. '
+                  'Pair the reader in Settings > Bluetooth with the ignition on, then come back here. '
                   'Readers that are not MFi-certified are added as Bluetooth readers instead.',
                 ),
               ),

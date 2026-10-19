@@ -804,7 +804,7 @@ class _KeyTestDialogState extends ConsumerState<KeyTestDialog> {
                     decoration: const InputDecoration(
                       labelText: 'SHA-1 of the signing key (optional)',
                       hintText: 'AB:CD:…',
-                      helperText: 'Play Console → App integrity. Without it, a key kept to the app is refused.',
+                      helperText: 'Play Console > App integrity. Without it, a key kept to the app is refused.',
                       helperMaxLines: 2,
                     ),
                   ),

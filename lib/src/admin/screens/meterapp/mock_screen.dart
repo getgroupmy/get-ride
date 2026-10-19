@@ -28,7 +28,7 @@ const _sections = [
       (
         'riderTripSimEnabled',
         'Simulated driver movement',
-        'Animated car on the map plus automatic phase changes (arriving → arrived → on trip → completed). When off, '
+        'Animated car on the map plus automatic phase changes (arriving, arrived, on trip, completed). When off, '
             "the car follows the partner's real live GPS position and the real ride status",
         'Ride Tracking',
         Icons.route_outlined,
