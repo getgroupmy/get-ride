@@ -16,9 +16,10 @@ import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
 import '../../core/driver_eta.dart';
 import '../../core/fare.dart';
-import '../../core/fare_info.dart' show fareRateLines;
+import '../../core/fare_info.dart' show demandIncludesNote, demandUplift, demandUpliftLabel, fareRateLines;
 import '../../core/scheduled_rides.dart';
 import '../../core/search_timer.dart';
+import '../../core/smart_address.dart' show isCoordinateLabel;
 import '../../core/fare_tariff.dart';
 import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart';
@@ -28,6 +29,7 @@ import '../../core/region_pricing.dart';
 import '../../core/service_tree.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_request_metadata.dart';
+import '../../core/ride_rebook.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_confirm.dart';
 import '../../core/ride_stops.dart';
@@ -43,6 +45,7 @@ import '../../data/fare_coin_store.dart';
 import '../../data/fare_tariff_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/live_tables.dart';
+import '../../data/location_source.dart';
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
@@ -58,6 +61,7 @@ import 'auto_accept.dart';
 import 'book_for_sheet.dart';
 import 'confirm_parts.dart';
 import 'offer_fare_screen.dart';
+import 'demo_ride.dart' show demoRiderProvider, demoRidesProvider;
 import 'home_parts.dart';
 import 'place_search.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
@@ -93,8 +97,10 @@ final nearbyDriversProvider = FutureProvider.autoDispose.family<Map<String, doub
 /// at, with the pickup in the middle and the nearby streets around it.
 const homeStreetZoom = 17.0;
 
-/// How long the confirm screen waits for the AI fare estimate.
-const aiEstimateTimeout = Duration(seconds: 30);
+/// How long the AI fare estimate is waited for (PERF-33: was 30 s). The
+/// confirm step shows "Calculating fare" meanwhile; past this, the standard
+/// tariff's fare shows instead, and an AI answer later still is ignored.
+const aiEstimateTimeout = Duration(seconds: 5);
 
 /// A point of a trip GET.ride can't serve ([UnavailableAt]; [stop] is the
 /// stop's index when it is a stop).
@@ -429,6 +435,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _locate();
     _checkOngoing();
     _lifecycle = AppLifecycleListener(onResume: _checkOngoing);
+    // A ride to book again (its driver cancelled): filled in on the confirm
+    // step, for the rider to send.
+    ref.listenManual(rideRebookProvider, (_, next) {
+      if (next != null) WidgetsBinding.instance.addPostFrameCallback((_) => _rebook());
+    }, fireImmediately: true);
     // A TEKSI driver whose rate card asks for it lands on the meter, once
     // per launch.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -448,7 +459,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void setState(VoidCallback fn) {
     super.setState(fn);
     _changes.value++;
-    _confirmBack.set(_drop != null, _leaveConfirm);
+    _confirmBack.set(_drop != null, _backFromConfirm);
   }
 
   @override
@@ -576,18 +587,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _pin.currentState?.dropAt(p));
   }
 
+  /// The rider and the pickup on the last known (or a quick) fix at once,
+  /// then moved onto the accurate one when it comes (PERF-4): the pickup
+  /// only while it is still the one set here and no destination is chosen.
   Future<void> _locate({bool recenter = false}) async {
-    final p = await currentPosition();
-    if (p == null || !mounted) return;
-    setState(() => _me = p);
-    if (recenter && recenterMap(_map, p, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(p);
-    final place = await ref.read(geoServiceProvider).reverse(p);
-    if (!mounted) return;
-    setState(() {
-      _here = place;
-      _pickup ??= place;
-    });
-    _updateRoute();
+    Place? set;
+    await for (final p in locateFastThenFine(ref.read(locationSourceProvider))) {
+      if (!mounted) return;
+      setState(() => _me = p);
+      if (recenter && recenterMap(_map, p, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(p);
+      final place = await ref.read(geoServiceProvider).reverse(p);
+      if (!mounted) return;
+      setState(() {
+        _here = place;
+        if (_pickup == null || (identical(_pickup, set) && _drop == null)) _pickup = set = place;
+      });
+      _updateRoute();
+    }
   }
 
   /// The first point of the trip GET.ride can't serve (outside every
@@ -680,7 +696,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // trip with stops is asked about through them, in their order, so adding
     // or rearranging stops prices (and judges high or low) the trip again.
     final via = [for (final p in _stops) p.point];
-    // The proxy may try several keys; past this the map route prices it.
+    // The proxy may try several keys; past this (or on an error) the map
+    // route prices it with the standard tariff, and an AI answer that comes
+    // later still is dropped with the timed-out future.
     final aiFuture = ref
         .read(routeEstimateRepositoryProvider)
         .estimateDetailed(a.point, b.point, via: via)
@@ -689,10 +707,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted || seq != _routeSeq) return;
     setState(() => _route = r);
     onRouted?.call();
-    // Both before the fare shows (Expo's "Calculating fare" overlay stays up
-    // through the AI estimate): the fare is never shown, or booked, on the
-    // map route only to change a moment later.
-    final ai = await aiFuture;
+    // Both before the fare shows ("Calculating fare" stays up through the AI
+    // estimate, PERF-33: for 5 s at most): the fare shown, and booked, is
+    // the one fare for this route and never changes a moment later.
+    ({RouteEstimate? estimate, bool unavailable})? ai;
+    try {
+      ai = await aiFuture;
+    } catch (_) {
+      ai = null;
+    }
     if (!mounted || seq != _routeSeq) return;
     setState(() {
       // Only an estimate through every stop prices this trip.
@@ -724,6 +747,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       title: 'Add a stop',
       near: _me ?? _pickup?.point,
       usage: GateUsage.drop,
+      // A stop, on the trip it joins.
+      fieldLabel: 'Stop',
+      routeLine: addStopRouteLine(_pickup, _stops, _drop),
     );
     if (pick == null || !mounted) return;
     final place = pick.place;
@@ -773,6 +799,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  /// [rideRebookProvider]'s trip on the confirm step: the same pickup,
+  /// stops, drop-off, vehicle and payment, and the same fare offered again
+  /// where the rider may offer one (else the fare priced now). Sent, as any
+  /// booking, by the rider's own tap.
+  Future<void> _rebook() async {
+    if (!mounted) return;
+    final trip = ref.read(rideRebookProvider.notifier).take();
+    if (trip == null) return;
+    setState(() {
+      _pickup = trip.pickup;
+      _stops
+        ..clear()
+        ..addAll(trip.stops.take(maxRideStops));
+      _drop = trip.drop;
+      if (trip.service != null) _serviceName = trip.service;
+      if (trip.payment != null) _paymentPick = trip.payment!;
+    });
+    final seq = _routeSeq + 1;
+    await _updateRoute();
+    final fare = trip.fare;
+    if (!mounted || seq != _routeSeq || fare == null || !_biddingFor(_service)) return;
+    setState(() => _adjust = fare - _recommendedFor(_service));
+  }
+
   /// The places after the pickup, in their new order (the destinations
   /// sheet): the last is the destination, the rest the stops on the way.
   void _setDestinations(List<Place> places) {
@@ -786,7 +836,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _updateRoute();
   }
 
-  Future<void> _choose(_PinTarget target) async {
+  /// What was typed for the destination now on the map ('' or null when
+  /// it was picked without typing), for the search to open on again.
+  String? _dropQuery;
+
+  /// [again]: the trip Back on the confirm step came from, its destination
+  /// and stops, searched again from what was typed for it.
+  Future<void> _choose(_PinTarget target, {({Place to, String query, List<Place> stops})? again}) async {
     final pickup = target == _PinTarget.pickup;
     // One route sheet for both ends: From over To, opened on the one tapped.
     _syncRouteEnds();
@@ -797,12 +853,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       current: _here,
       usage: GateUsage.drop,
       from: _pickup,
-      to: _drop,
+      to: again?.to ?? _drop,
       routeEnds: true,
       startOnFrom: pickup,
       live: _routeEnds,
+      initialQuery: again?.query ?? '',
     );
     if (pick == null || !mounted) return;
+    // A new destination for the trip Back came from keeps its stops.
+    if (again != null && !pick.from && !pick.pickOnMap && _drop == null && _stops.isEmpty) {
+      _stops.addAll(again.stops);
+    }
+    if (!pickup && !pick.from) _dropQuery = pick.query;
     // The route's "From", changed in the same dialog: the pickup.
     final toPickup = pickup || pick.from;
     if (pick.pickOnMap) {
@@ -828,6 +890,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() => _pinTarget = _PinTarget.none);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
+    if (target != _PinTarget.pickup) _dropQuery = null;
     setState(() => target == _PinTarget.pickup ? _pickup = place : _drop = place);
     _updateRoute();
   }
@@ -928,6 +991,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           );
   }
 
+  /// [s]'s fare priced on the plain road route, without the AI's traffic:
+  /// what it would be off the trend.
+  double _usualFor(RideService s) {
+    final r = _route;
+    return r == null
+        ? 0
+        : _pricing.roundFare(
+            quoteFare(_tariffFor(s), r.distanceKm, r.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
+                .fare,
+          );
+  }
+
+  /// What high demand adds to [s]'s recommended fare: the fare on the AI's
+  /// traffic-aware basis over the same on the plain route, while the trend
+  /// is up; null otherwise.
+  ({double amount, double factor})? _upliftFor(RideService s) {
+    if (_ai?.trend?.direction != FareTrendDirection.up || _basis == null) return null;
+    return demandUplift(_recommendedFor(s), _usualFor(s));
+  }
+
   /// What [s] is booked at: the rider's offer on the selected service where
   /// bidding is on, else the recommended fare — rounded as the region prices
   /// fares (a whole amount, rounded up, where it asks for one).
@@ -986,6 +1069,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             current: _recommendedFor(_service) + _adjust,
             currencyLabel: (style?.symbol ?? _currency).trim(),
             money: _fareMoney,
+            fareDecimals: _pricing.fareDecimals,
             payment: _payment,
             payments: _payments,
             autoAccept: _autoAccept,
@@ -1098,6 +1182,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       final offerMe = _biddingFor(_service, rules: rules, fallback: regionOn);
       final pricing = _pricingFor(_service, rules: rules, base: base);
+      // One of the admin's demo riders (Admin → Display Settings → Demo
+      // riders): the request stays on this phone, where the demo drivers
+      // answer it. Nothing is written, pushed or seen by a real driver. A
+      // booking for later, or for one scanned driver, is a real one.
+      if (scheduleAt == null && direct == null && ref.read(demoRiderProvider)) {
+        final req = ref.read(demoRidesProvider.notifier).create({
+          'rider_id': ref.read(currentUserIdProvider),
+          'rider_name': profile?.name,
+          'service': _service.name,
+          'payment_mode': _payment,
+          'pickup_name': a.name,
+          'pickup_address': a.address,
+          'pickup_lat': a.point.latitude,
+          'pickup_lng': a.point.longitude,
+          'drop_name': b.name,
+          'drop_address': b.address,
+          'drop_lat': b.point.latitude,
+          'drop_lng': b.point.longitude,
+          'distance_km': double.parse(r.distanceKm.toStringAsFixed(2)),
+          'duration_min': r.durationMin.round(),
+          'fare': _fareFor(_service, biddingOn: offerMe),
+          'ride_fare': _fareFor(_service, biddingOn: offerMe),
+          'currency': _currency,
+          'passengers': _options.passengers,
+          'offer_me': offerMe,
+          if (_stops.isNotEmpty) 'stops': [for (final p in _stops.take(maxRideStops)) stopToJson(p)],
+          if (forWhom != null) 'booked_for_name': forWhom.name,
+          if (forWhom != null) 'booked_for_phone': forWhom.phone,
+          if (pricing != RegionPricing.none) ...pricing.toRideColumns(),
+        });
+        if (mounted) context.push('/ride/${req.id}').then((_) => _checkOngoing());
+        return;
+      }
       AreaInfo? area;
       try {
         area = await areaLookup.timeout(const Duration(seconds: 5));
@@ -1210,7 +1327,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  /// The confirm step's back arrow: off the trip, back to the home map.
+  /// Back on the confirm step (its arrow, the system's or the browser's):
+  /// off the trip and into the route search again, on what was typed for
+  /// the destination (else its name), so a wrong pick is put right without
+  /// typing it all again. Closing the search leaves the home map.
+  void _backFromConfirm() {
+    final drop = _drop;
+    final stops = [..._stops];
+    final typed = _dropQuery?.trim() ?? '';
+    _leaveConfirm();
+    if (drop == null) return;
+    final query = typed.isNotEmpty ? typed : (isCoordinateLabel(drop.name) ? '' : drop.name);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _drop != null) return;
+      unawaited(_choose(_PinTarget.drop, again: (to: drop, query: query, stops: stops)));
+    });
+  }
+
+  /// Off the trip, back to the home map.
   void _leaveConfirm() {
     setState(() {
       _drop = null;
@@ -1320,7 +1454,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         );
     void whereTo() => serviceOn ? _choose(_PinTarget.drop) : comingSoon(serviceComingSoonMessage);
+    void toRecent(Place p) {
+      if (!serviceOn) return comingSoon(serviceComingSoonMessage);
+      _dropQuery = null;
+      setState(() => _drop = p);
+      _updateRoute();
+    }
+
+    // The two most recent places stay in view with the sheet all the way
+    // down (portrait as on its side); any more only with the sheet up.
+    final firstRecent = recent.take(homeRecentAtRest).toList();
+    final moreRecent = recent.skip(homeRecentAtRest).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Where to first: the destination leads, over the vehicles.
+      sections.searchBar
+          ? HomeSearchPill(onTap: whereTo)
+          : ListTile(
+              key: const ValueKey('home-where-to'),
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.location_on, color: Colors.red.shade700),
+              title: const Text('Where to?'),
+              onTap: whereTo,
+            ),
+      const SizedBox(height: 12),
       if (sections.vehicleBar) ...[
         // Until a catalogue is known -- this read's, or the one this device
         // showed last time -- a skeleton: the built-in names and car icons
@@ -1336,7 +1492,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           )
         else
           const VehicleTypeBarSkeleton(),
-        const SizedBox(height: 12),
+        const SizedBox(height: 4),
       ],
       if (!sections.addressBar)
         ListTile(
@@ -1345,41 +1501,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           title: Text(_pickup?.name ?? 'Set pickup'),
           onTap: () => _choose(_PinTarget.pickup),
         ),
-      // The fold reaches the foot of the upcoming-ride card too, so the
-      // sheet all the way down shows it whole, clear of the home indicator.
+      // The fold reaches the foot of the upcoming-ride card and the first
+      // recent places too, so the sheet all the way down shows them whole,
+      // clear of the home indicator.
       KeyedSubtree(
         key: _foldKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            sections.searchBar
-                ? HomeSearchPill(onTap: whereTo)
-                : ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.location_on, color: Colors.red.shade700),
-                    title: const Text('Where to?'),
-                    onTap: whereTo,
-                  ),
             const UpcomingRideCard(),
+            if (firstRecent.isNotEmpty) HomeRecentPlaces(places: firstRecent, onTap: toRecent),
           ],
         ),
       ),
-      // Under the search bar only with the sheet up: all the way down it
-      // would peek out below it.
-      if (recent.isNotEmpty) ...[
-        const SizedBox(height: 4),
-        MapSheetUpOnly(
-          child: HomeRecentPlaces(
-            places: recent,
-            onTap: (p) {
-              if (!serviceOn) return comingSoon(serviceComingSoonMessage);
-              setState(() => _drop = p);
-              _updateRoute();
-            },
-          ),
-        ),
-      ],
+      if (moreRecent.isNotEmpty)
+        MapSheetUpOnly(child: HomeRecentPlaces(places: moreRecent, onTap: toRecent)),
       if (boxes.isNotEmpty) ...[
         const SizedBox(height: 16),
         MapSheetUpOnly(
@@ -1451,8 +1588,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // A fixed fare off the usual: inDrive's demand band in the promo bar's place.
     final demand = !_biddingFor(_service) && _basis != null && !_routing ? _ai?.trend : null;
     // The back and route buttons stand clear of the promo bar's visible top.
+    // With the promo bar on too, both stand: the band over the bar.
+    final bothBars = demand != null && layout.promoBar;
     final aboveBar = layout.promoBar || demand != null
-        ? PromoBanner.visibleHeight + (layout.promoBarInFront ? PromoBanner.tuck : 0) + 12 - layout.promoBarOffset
+        ? PromoBanner.visibleHeight +
+              (bothBars ? DemandPromoBars.extraHeight : 0) +
+              (layout.promoBarInFront ? PromoBanner.tuck : 0) +
+              12 -
+              layout.promoBarOffset
         : 12.0;
     // On the confirm map the route is framed between the address card and
     // the promo bar on the sheet, with room for the marks standing over it.
@@ -1477,9 +1620,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             bottom: inset - (layout.promoBarInFront ? 0 : PromoBanner.tuck) - layout.promoBarOffset,
             // A fixed fare off the usual takes the bar's place: inDrive's
             // demand band, opening why.
-            child: demand != null
-                ? DemandBanner(trend: demand, onTap: () => showDemandSheet(context, demand))
-                : PromoBanner(onTap: () => showPromoSheet(context)),
+            // The promo bar stays under it, so a code can still be used.
+            child: demand == null
+                ? PromoBanner(onTap: () => showPromoSheet(context))
+                : bothBars
+                ? DemandPromoBars(
+                    trend: demand,
+                    onDemand: () => showDemandSheet(context, demand, factor: _upliftFor(_service)?.factor),
+                    onPromo: () => showPromoSheet(context),
+                  )
+                : DemandBanner(
+                    trend: demand,
+                    onTap: () => showDemandSheet(context, demand, factor: _upliftFor(_service)?.factor),
+                  ),
           ),
         );
     // Admin → Display → Map Layout, while the pickup is being set.
@@ -1702,7 +1855,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 key: const ValueKey('confirm-back'),
                 tooltip: 'Back',
                 icon: const Icon(Icons.arrow_back),
-                onPressed: _leaveConfirm,
+                onPressed: _backFromConfirm,
               ),
             ),
           ),
@@ -1721,7 +1874,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 key: const ValueKey('confirm-back'),
                 tooltip: 'Back',
                 icon: const Icon(Icons.arrow_back),
-                onPressed: _leaveConfirm,
+                onPressed: _backFromConfirm,
               ),
             ),
           ),
@@ -1859,6 +2012,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               coinEarnLabel(rideRewardCoins(_fareFor(s), earnRate)),
             ) : null,
       etaFor: etaFor,
+      upliftFor: (s) {
+        final u = _upliftFor(s);
+        return u == null ? null : _fareMoney(u.amount);
+      },
       currency: _currency,
       ongoing: _ongoing,
       forOthers: _forOthers,
@@ -1926,7 +2083,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           key: const ValueKey('confirm-back'),
                           tooltip: 'Back',
                           icon: const Icon(Icons.arrow_back),
-                          onPressed: _leaveConfirm,
+                          onPressed: _backFromConfirm,
                         ),
                         const SizedBox(width: 4),
                         Expanded(
@@ -1960,7 +2117,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // Back on the confirm step leaves it, as its back arrow does.
         canPop: !confirming,
         onPopInvokedWithResult: (didPop, _) {
-          if (!didPop && confirming) _leaveConfirm();
+          if (!didPop && confirming) _backFromConfirm();
         },
         child: LayoutBuilder(builder: (context, box) {
           // All the way down, the sheet still shows the search bar whole,
@@ -1970,8 +2127,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // A phone on its side (844 × 390): the confirm sheet starts lower,
           // so the map and the pickup above it keep their room.
           final landscapePhone = box.maxWidth > box.maxHeight && box.maxHeight < 500;
-          final confirmMin = landscapePhone ? 0.4 : 0.5;
-          final confirmStart = landscapePhone ? 0.4 : 0.55;
+          // Never so high that the sheet covers the route card over the map
+          // (on its side at large text the card is most of the strip).
+          final cardFit = confirming && _confirmCardBottom > 0 && box.maxHeight > 0
+              ? 1 - (_confirmCardBottom + 8) / box.maxHeight
+              : 1.0;
+          final confirmMin = math.max(0.25, math.min(landscapePhone ? 0.4 : 0.5, cardFit));
+          final confirmStart = math.max(confirmMin, math.min(landscapePhone ? 0.4 : 0.55, cardFit));
           return MapSheetLayout(
           map: map,
           // Android's own buttons (three-button navigation, drawn over the
@@ -1982,6 +2144,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: navLift > 0 ? Padding(padding: EdgeInsets.only(bottom: navLift), child: panel) : panel,
           ),
           min: (confirming ? confirmMin : least) + navLiftFraction,
+          revealMax: confirming && cardFit < 1 ? math.max(confirmStart, cardFit) : null,
           // The main screen's sheet starts fully down; the rider drags it up.
           initial: (confirming ? confirmStart : least) + navLiftFraction,
           hidden: _pinMoving,
@@ -2037,7 +2200,20 @@ class _BookingPanel extends StatelessWidget {
     this.onOpenRide,
     this.currency = AppConfig.currency,
     this.etaFor,
+    this.upliftFor,
   });
+
+  /// What high demand adds to a vehicle's fare (the uplift, formatted);
+  /// null where it adds nothing.
+  final String? Function(RideService)? upliftFor;
+
+  /// The uplift beside [s]'s price ("+RM1"); none on a card whose fare the
+  /// rider has raised or lowered, where the arrows go too.
+  String? _upliftLabel(RideService s) {
+    if (s.name == service.name && fareAdjusted) return null;
+    final u = upliftFor?.call(s);
+    return u == null ? null : demandUpliftLabel(u);
+  }
 
   /// Minutes for the nearest driver to reach the pickup, per vehicle; null
   /// when none is near.
@@ -2095,6 +2271,10 @@ class _BookingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String? s0Uplift() {
+      final u = fareAdjusted ? null : upliftFor?.call(service);
+      return u == null ? null : demandIncludesNote(u);
+    }
     final t = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -2105,7 +2285,7 @@ class _BookingPanel extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.local_taxi),
               title: Text(ongoing!.status.label),
-              subtitle: Text('${ongoing!.pickupLabel} → ${ongoing!.dropLabel}',
+              subtitle: Text('${ongoing!.pickupLabel} to ${ongoing!.dropLabel}',
                   maxLines: 1, overflow: TextOverflow.ellipsis),
               trailing: const Icon(Icons.chevron_right),
               onTap: onOpenOngoing,
@@ -2119,7 +2299,7 @@ class _BookingPanel extends StatelessWidget {
             child: ListTile(
               leading: const Icon(Icons.person_pin_circle_outlined),
               title: Text('For ${r.passengerName} · ${r.status.label}'),
-              subtitle: Text('${r.pickupLabel} → ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text('${r.pickupLabel} to ${r.dropLabel}', maxLines: 1, overflow: TextOverflow.ellipsis),
               trailing: const Icon(Icons.chevron_right),
               onTap: onOpenRide == null ? null : () => onOpenRide!(r),
             ),
@@ -2155,7 +2335,12 @@ class _BookingPanel extends StatelessWidget {
         if (drop != null && route != null && !routing) ...[
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-            child: RouteBasisLine(route: route!, ai: ai),
+            child: RouteBasisLine(
+              route: route!,
+              ai: ai,
+              // The fare line says when the chosen fare includes high demand.
+              demandNote: s0Uplift(),
+            ),
           ),
           for (final s in services)
             Padding(
@@ -2173,6 +2358,7 @@ class _BookingPanel extends StatelessWidget {
                 // The arrows stand by the recommended fare: not on a card
                 // whose fare the rider has raised or lowered.
                 trend: s.name == service.name && fareAdjusted ? null : ai?.trend,
+                uplift: _upliftLabel(s),
               ),
             ),
           // Who's riding is a toggle in the footer, under GET.coin; the note
@@ -2190,14 +2376,20 @@ class _BookingPanel extends StatelessWidget {
   }
 }
 
+/// What the AI mark on the route line means, on tap and to screen readers.
+const routeAiExplainer = 'Fare and travel time worked out by AI from current traffic and demand';
+
 /// The distance and time the fares are priced on. When they came from the
 /// AI Fare Service (`ai-route-proxy`, traffic-aware) the line says so with
 /// the AI mark; the plain road route has none.
 class RouteBasisLine extends StatelessWidget {
-  const RouteBasisLine({super.key, required this.route, this.ai});
+  const RouteBasisLine({super.key, required this.route, this.ai, this.demandNote});
 
   final RouteInfo route;
   final RouteEstimate? ai;
+
+  /// "Includes high demand +RM1" while the trend raises the chosen fare.
+  final String? demandNote;
 
   @override
   Widget build(BuildContext context) {
@@ -2206,34 +2398,69 @@ class RouteBasisLine extends StatelessWidget {
     final text = a == null
         ? '${formatDistance(route.distanceKm)} · ${formatDuration(route.durationMin)}'
         : '${formatDistance(a.distanceKm)} · ${formatDuration(a.durationMin)} with traffic';
-    return Row(children: [
+    final note = demandNote;
+    final line = Row(children: [
       Flexible(child: Text(text, key: const ValueKey('route-basis'), style: t.textTheme.bodyMedium)),
       if (a != null) ...[
         const SizedBox(width: 6),
+        // Tapped (or hovered, or long-pressed) it says what the AI did; a
+        // screen reader reads the same with the mark.
         Tooltip(
-          message: 'Estimated by the AI Fare Service',
-          child: Container(
-            key: const ValueKey('route-ai'),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: t.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.auto_awesome, size: 14, color: t.colorScheme.onPrimaryContainer),
-              const SizedBox(width: 3),
-              Text(
-                'AI',
-                style: t.textTheme.labelSmall?.copyWith(
-                  color: t.colorScheme.onPrimaryContainer,
-                  fontWeight: FontWeight.w700,
+          message: routeAiExplainer,
+          triggerMode: TooltipTriggerMode.tap,
+          showDuration: const Duration(seconds: 5),
+          excludeFromSemantics: true,
+          child: Semantics(
+            container: true,
+            label: 'AI estimate. $routeAiExplainer',
+            excludeSemantics: true,
+            child: ConstrainedBox(
+              // A 44-high tap area around the small chip.
+              constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+              child: Center(
+                widthFactor: 1,
+                child: Container(
+                  key: const ValueKey('route-ai'),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: t.colorScheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.auto_awesome, size: 14, color: t.colorScheme.onPrimaryContainer),
+                    const SizedBox(width: 3),
+                    Text(
+                      'AI',
+                      style: t.textTheme.labelSmall?.copyWith(
+                        color: t.colorScheme.onPrimaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    Icon(Icons.info_outline, size: 14, color: t.colorScheme.onPrimaryContainer),
+                  ]),
                 ),
               ),
-            ]),
+            ),
           ),
         ),
       ],
     ]);
+    if (note == null) return line;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        line,
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            note,
+            key: const ValueKey('route-demand-note'),
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurface, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
   }
 }
 

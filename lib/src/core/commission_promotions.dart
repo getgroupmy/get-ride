@@ -425,3 +425,20 @@ String belowCreditCsv(List<BelowCreditDriver> drivers) => rowsToCsv([
       'short_by': d.shortBy.toStringAsFixed(2),
     },
 ], const ['driver', 'driver_id', 'partner_id', 'phone', 'balance', 'floor', 'short_by']);
+
+/// How a promotion's service key (a ride's service, lower-cased) reads to
+/// the admin: Admin > Vehicle Services' own name for it when one matches
+/// ([vehicleNames]), the meter as "Meter / TEKSI", else the key with each
+/// word capitalised ("premium" > "Premium"). Pure.
+String promoServiceLabel(String key, Iterable<String> vehicleNames) {
+  final k = key.trim();
+  if (k == meterServiceName) return 'Meter / TEKSI';
+  for (final n in vehicleNames) {
+    if (n.trim().toLowerCase() == k.toLowerCase()) return n.trim();
+  }
+  return k
+      .split(RegExp(r'[\s_-]+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => w[0].toUpperCase() + w.substring(1))
+      .join(' ');
+}

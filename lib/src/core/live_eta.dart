@@ -56,14 +56,27 @@ bool shouldReroute({
 }
 
 /// `Arriving in 6 min · 10:42 · 2.3 km` (to the pickup) or `Arrive at 10:58 ·
-/// 14 min · 9.8 km` (on the trip). Never says 0 min.
-String etaLabel({required double minutes, required double km, required DateTime now, required bool toPickup}) {
+/// 14 min · 9.8 km` (on the trip). Never says 0 min. Without [withClock]
+/// (a narrow phone) the clock time is the first thing to go: `Arriving in
+/// 6 min · 2.3 km`, `14 min · 9.8 km`.
+String etaLabel({
+  required double minutes,
+  required double km,
+  required DateTime now,
+  required bool toPickup,
+  bool withClock = true,
+}) {
   final mins = minutes.ceil().clamp(1, 24 * 60);
   final at = now.add(Duration(minutes: mins));
   final clock = '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
   final dist = '${km.toStringAsFixed(1)} km';
+  if (!withClock) return toPickup ? 'Arriving in $mins min · $dist' : '$mins min · $dist';
   return toPickup ? 'Arriving in $mins min · $clock · $dist' : 'Arrive at $clock · $mins min · $dist';
 }
+
+/// Below this width the trip map's ETA pill drops its clock time and keeps
+/// clear of the map buttons on the right.
+const etaPillNarrowWidth = 380.0;
 
 /// The road still ahead of [at] on [route]: the route from the point on it
 /// nearest [at] (which starts the line) to the end, plus how far [at] is

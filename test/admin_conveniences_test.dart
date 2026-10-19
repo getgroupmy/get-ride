@@ -521,7 +521,7 @@ void main() {
       await _pump(tester, const AdminCommissionScreen());
       await tester.tap(find.byKey(const ValueKey('commission-history')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('rate 15.00% → 12.00%'), findsOneWidget);
+      expect(find.textContaining('rate 15.00% to 12.00%'), findsOneWidget);
     });
 
     test('history lines', () {
@@ -538,7 +538,7 @@ void main() {
           'old_row': {'level': 'master', 'rate': 0.15, 'active': true},
           'new_row': {'level': 'master', 'rate': 0.15, 'active': false, 'priority': 2, 'note': 'paused'},
         }),
-        'Changed 15.00% · master (Platform default): turned off, priority 0 → 2, note "paused"',
+        'Changed 15.00% · master (Platform default): turned off, priority 0 to 2, note "paused"',
       );
       expect(commissionHistoryLine({'op': 'delete', 'old_row': {'level': 'master', 'rate': 0.1}}),
           'Deleted 10.00% · master (Platform default)');

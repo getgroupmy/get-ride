@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/support_call.dart' show parseIceServers;
+import 'function_region.dart';
 
 /// How long before the relay credentials expire a cached set stops being
 /// handed out, so a call never starts on credentials about to lapse (or
@@ -48,7 +49,7 @@ class IceServerCache {
 
   /// The cache of [db]: support calls and ride calls share it.
   static IceServerCache of(SupabaseClient db) => _caches[db] ??= IceServerCache(
-    () async => (await db.functions.invoke('turn-credentials')).data,
+    () async => (await db.functions.invokeNearDb('turn-credentials')).data,
     user: () => db.auth.currentUser?.id,
   );
 

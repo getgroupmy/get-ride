@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/ride_bidding.dart';
 import 'package:get_ride/src/data/models.dart';
-import 'package:get_ride/src/features/ride/accepted_driver_tile.dart';
+import 'package:get_ride/src/features/ride/driver_card.dart' show DriverCardHeader;
 import 'package:get_ride/src/features/ride/searching_parts.dart';
 
 class _Phone {
@@ -122,15 +122,15 @@ void main() {
       });
 
       testWidgets('accepted driver card, ${b.name}, $phone', (tester) async {
-        await _pump(tester, phone, b, Card(child: AcceptedDriverTile(ride: _ride({'partner_trips': 312}))));
+        await _pump(tester, phone, b, Card(child: DriverCardHeader(ride: _ride({'partner_trips': 312}))));
         expect(tester.takeException(), isNull);
         expect(find.text('4.9'), findsOneWidget);
         expect(find.text('312 trips'), findsOneWidget);
-        // Next to the rating, under it, inside the card.
-        final rating = tester.getRect(find.text('4.9'));
+        // Beside the rating (or under it when the row is full), inside the card.
+        final rating = tester.getRect(find.byKey(const ValueKey('driver-rating')));
         final trips = tester.getRect(find.byKey(const ValueKey('driver-trips')));
         final card = tester.getRect(find.byType(Card));
-        expect(trips.top, greaterThanOrEqualTo(rating.bottom - 0.01));
+        expect(trips.left >= rating.right - 0.01 || trips.top >= rating.bottom - 0.01, isTrue);
         expect(trips.right, lessThanOrEqualTo(card.right));
         expect(trips.bottom, lessThanOrEqualTo(card.bottom));
       });
@@ -140,14 +140,14 @@ void main() {
   testWidgets('a new driver says so; an old server shows the rating alone', (tester) async {
     await _pump(tester, _phones.first, Brightness.light, Column(children: [
       SearchOfferCard(offer: _offer(trips: 0)),
-      Card(child: AcceptedDriverTile(ride: _ride({'partner_trips': null}))),
+      Card(child: DriverCardHeader(ride: _ride({'partner_trips': null}))),
     ]));
     expect(tester.takeException(), isNull);
     expect(find.textContaining('New driver', findRichText: true), findsNWidgets(2));
 
     await _pump(tester, _phones.first, Brightness.dark, Column(children: [
       SearchOfferCard(offer: _offer()),
-      Card(child: AcceptedDriverTile(ride: _ride({}))),
+      Card(child: DriverCardHeader(ride: _ride({}))),
     ]));
     expect(tester.takeException(), isNull);
     expect(find.textContaining('trip', findRichText: true), findsNothing);
@@ -158,7 +158,7 @@ void main() {
 
   testWidgets('no rating yet: the count alone', (tester) async {
     await _pump(tester, _phones[1], Brightness.dark,
-        Card(child: AcceptedDriverTile(ride: _ride({'partner_rating': null, 'partner_trips': 0}))));
+        Card(child: DriverCardHeader(ride: _ride({'partner_rating': null, 'partner_trips': 0}))));
     expect(tester.takeException(), isNull);
     expect(find.byIcon(Icons.star), findsNothing);
     expect(find.text('New driver'), findsOneWidget);

@@ -166,6 +166,58 @@ void main() {
       });
     });
 
+    test('the admin\'s longest wait from the heartbeat: 5 s, 10 s, then that', () {
+      server.pollMaxSeconds = 30;
+      onFakeClock((async, engine) {
+        expect(engine.quietMax, const Duration(seconds: 30));
+        final g = gaps(run(async, 600));
+        expect(g.every((d) => d == 5 || d == 10 || d == 30), isTrue, reason: '$g');
+        expect(g.where((d) => d == 10), isNotEmpty);
+        expect(g.sublist(g.length - 5), everyElement(30));
+        expect(armed(async), const Duration(seconds: 30));
+      });
+    });
+
+    test('a longest wait under 10 s caps the ramp at it', () {
+      server.pollMaxSeconds = 8;
+      onFakeClock((async, engine) {
+        final g = gaps(run(async, 300));
+        expect(g.every((d) => d == 5 || d == 8), isTrue, reason: '$g');
+        expect(g.sublist(g.length - 5), everyElement(8));
+      });
+    });
+
+    test('a missing or invalid longest wait keeps 15 s', () {
+      for (final bad in [null, 3, 120, 'soon']) {
+        server.pollMaxSeconds = bad;
+        onFakeClock((async, engine) {
+          run(async, 300);
+          expect(engine.quietMax, const Duration(seconds: 15), reason: '$bad');
+          expect(armed(async), const Duration(seconds: 15), reason: '$bad');
+        });
+      }
+    });
+
+    test('a change is picked up at the next heartbeat, without a restart', () {
+      onFakeClock((async, engine) {
+        run(async, 600);
+        expect(armed(async), const Duration(seconds: 15));
+        server.pollMaxSeconds = 6;
+        final beats = server.heartbeats.length;
+        // Within a minute (the heartbeat) and the round after it.
+        final at = run(async, 75);
+        expect(server.heartbeats.length, beats + 1);
+        expect(engine.quietMax, const Duration(seconds: 6));
+        expect(armed(async), const Duration(seconds: 6));
+        expect(gaps(at).last, 6);
+        expect(engine.log.entries.map((e) => e.text), contains('Longest wait for a sign-in code: 6 s.'));
+        // And back to the default when the server stops saying.
+        server.pollMaxSeconds = null;
+        run(async, 75);
+        expect(armed(async), const Duration(seconds: 15));
+      });
+    });
+
     test('no timer fires between due times: one wake-up per round', () {
       onFakeClock((async, engine) {
         run(async, 600); // quiet: every 15 s

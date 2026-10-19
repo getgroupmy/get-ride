@@ -95,8 +95,8 @@ class _ClaudeAccessState extends ConsumerState<AdminClaudeAccessScreen> {
       title: 'Claude access',
       page: _page,
       actions: [IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _reload)],
-      floatingActionButton: mayEdit
-          ? FloatingActionButton.extended(onPressed: () => _edit(), icon: const Icon(Icons.add), label: const Text('Add'))
+      addAction: mayEdit
+          ? PageAddAction(onPressed: () => _edit(), icon: const Icon(Icons.add), label: const Text('Add'))
           : null,
       body: AsyncView(
         value: rules,
@@ -106,7 +106,7 @@ class _ClaudeAccessState extends ConsumerState<AdminClaudeAccessScreen> {
           final visible = filterClaudeRules(all, kind: _kind);
           return ResponsiveCenter(
             maxWidth: 760,
-            child: ListView(padding: const EdgeInsets.only(top: 12, bottom: 96), children: [
+            child: ListView(padding: EdgeInsets.only(top: 12, bottom: addActionListBottomPadding(context)), children: [
               Card(
                 child: ListTile(
                   leading: Icon(office ? Icons.verified_user : Icons.lock_outline, color: office ? Colors.green : null),
@@ -247,6 +247,7 @@ class _RuleDialogState extends State<_RuleDialog> {
             decoration: InputDecoration(
               labelText: isSession ? 'Session link or id' : 'Address or network',
               hintText: isSession ? 'https://claude.ai/code/session_…' : 'e.g. $defaultOfficeIp or 2001:db8::/64',
+              helperText: isSession ? null : 'One address, or a network up to /$minIpv4Prefix (IPv4) or /$minIpv6Prefix (IPv6)',
               errorText: _error,
             ),
             onChanged: (_) => setState(() => _error = null),

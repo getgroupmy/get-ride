@@ -109,28 +109,38 @@ void main() {
         }
       }
 
-      Future<void> enter(String code) async {
-        await tester.tap(find.widgetWithText(FilledButton, 'Start trip').first);
-        await settle();
-        expect(find.byKey(const ValueKey('trip-code-dialog')), findsOneWidget);
-        await tester.enterText(
-          find.descendant(of: find.byKey(const ValueKey('trip-code-dialog')), matching: find.byType(TextField)),
-          code,
-        );
-        await tester.tap(find.byKey(const ValueKey('trip-code-start')));
+      final dialog = find.byKey(const ValueKey('trip-code-dialog'));
+      FilledButton startButton() => tester.widget<FilledButton>(find.byKey(const ValueKey('trip-code-start')));
+      Future<void> type(String code) async {
+        await tester.enterText(find.descendant(of: dialog, matching: find.byType(TextField)), code);
         await settle();
       }
 
-      await enter('12');
-      expect(find.text('Enter the 4-digit code.'), findsOneWidget);
+      await tester.tap(find.widgetWithText(FilledButton, 'Start trip').first);
+      await settle();
+      expect(dialog, findsOneWidget);
+      // Start only once four digits are in (web tester #124).
+      await type('12');
+      expect(startButton().onPressed, isNull);
       expect(rides.starts, isEmpty, reason: 'nothing is sent that can\'t be a code');
 
-      await enter('1111');
+      // A wrong code is said in the dialog, which stays open.
+      await type('1111');
+      await tester.tap(find.byKey(const ValueKey('trip-code-start')));
+      await settle();
       expect(rides.starts.single, ('r1', '1111'));
-      expect(find.textContaining('not correct'), findsOneWidget);
+      expect(dialog, findsOneWidget);
+      expect(find.descendant(of: dialog, matching: find.textContaining('not correct')), findsOneWidget);
 
-      await enter('4821');
+      // Retyped in place; the right one starts the trip and the screen moves
+      // on at once, before realtime brings the row back (#125).
+      await type('4821');
+      expect(find.textContaining('not correct'), findsNothing, reason: 'cleared as the driver types');
+      await tester.tap(find.byKey(const ValueKey('trip-code-start')));
+      await settle();
       expect(rides.starts.last, ('r1', '4821'));
+      expect(dialog, findsNothing);
+      expect(find.byKey(const ValueKey('trip-complete')), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 

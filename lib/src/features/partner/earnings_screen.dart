@@ -27,7 +27,7 @@ import 'earnings_chart.dart';
 /// weekly chart: every period and the chart are slices of it, so switching
 /// period reads nothing new.
 final driverMonthTripsProvider = FutureProvider.autoDispose<List<RideRequest>>((ref) {
-  return ref.watch(rideRepositoryProvider).completedAsDriver(earningsHistoryStart(DateTime.now()));
+  return ref.watch(rideRepositoryProvider).completedAsDriver(earningsHistoryStart(ref.watch(earningsClockProvider)()));
 });
 
 /// Hands the earnings CSV to the system share sheet (Save to Files, email,
@@ -58,6 +58,25 @@ final earningsCsvSharerProvider = Provider<Future<CsvShareOutcome> Function(Stri
 );
 
 enum CsvShareOutcome { shared, downloaded, copied, failed }
+
+/// Whether the period picker [width] wide takes the short labels: the full
+/// ones with each segment's padding (24 a side) and border don't fit.
+bool earningsPeriodsShort(BuildContext context, double width) {
+  final style = Theme.of(context).textTheme.labelLarge;
+  final scaler = MediaQuery.textScalerOf(context);
+  var need = 0.0;
+  for (final p in EarningsPeriod.values) {
+    final tp = TextPainter(
+      text: TextSpan(text: p.label, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    need += tp.width + 48 + 1;
+    tp.dispose();
+  }
+  return need > width;
+}
 
 class EarningsScreen extends ConsumerStatefulWidget {
   const EarningsScreen({super.key});
@@ -113,13 +132,29 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 8),
-                    SegmentedButton<EarningsPeriod>(
-                      key: const ValueKey('earnings-period'),
-                      segments: [for (final p in EarningsPeriod.values) ButtonSegment(value: p, label: Text(p.label))],
-                      selected: {_period},
-                      showSelectedIcon: false,
-                      onSelectionChanged: (v) => setState(() => _period = v.first),
-                    ),
+                    // "Today / Week / Month" where the full labels would
+                    // wrap ("This month" on two lines at 317 wide); a screen
+                    // reader always hears them in full.
+                    LayoutBuilder(builder: (context, box) {
+                      final short = earningsPeriodsShort(context, box.maxWidth);
+                      return SegmentedButton<EarningsPeriod>(
+                        key: const ValueKey('earnings-period'),
+                        segments: [
+                          for (final p in EarningsPeriod.values)
+                            ButtonSegment(
+                              value: p,
+                              label: Semantics(
+                                label: p.label,
+                                excludeSemantics: true,
+                                child: Text(short ? p.shortLabel : p.label, maxLines: 1, softWrap: false),
+                              ),
+                            ),
+                        ],
+                        selected: {_period},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (v) => setState(() => _period = v.first),
+                      );
+                    }),
                     const SizedBox(height: 12),
                     EarningsTotalsCard(totals: s.totals, money: money),
                     if (weeks.value case final w?) WeeklyEarningsChart(weeks: w, money: money),
@@ -137,7 +172,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
                       for (final d in s.days)
                         Card(
                           child: ListTile(
-                            title: Text(_dayLabel(d.start)),
+                            title: Text(_dayLabel(d.start, ref.read(earningsClockProvider)())),
                             subtitle: Text(
                               '${_trips(d.totals.trips)} · ${_km(d.totals.distanceKm)}'
                               '${d.totals.commission > 0 ? ' · commission ${money(d.totals.commission)}' : ''}',
@@ -147,10 +182,15 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
                         ),
                     ],
                     const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: () => context.push('/trips'),
-                      icon: const Icon(Icons.receipt_long_outlined),
-                      label: const Text('Trip history and receipts'),
+                    // A row to open, as Account's: icon, title, chevron.
+                    Card(
+                      child: ListTile(
+                        key: const ValueKey('earnings-trip-history'),
+                        leading: const Icon(Icons.receipt_long_outlined),
+                        title: const Text('Trip history and receipts'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => context.push('/trips'),
+                      ),
                     ),
                   ],
                 ),
@@ -166,8 +206,10 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
   Future<void> _export(BuildContext button) async {
     final rides = ref.read(driverMonthTripsProvider).value ?? const <RideRequest>[];
     final uid = ref.read(currentUserIdProvider) ?? '';
-    final now = DateTime.now();
-    final csv = earningsCsv(rides, driverId: uid, period: _period, now: now);
+    final now = ref.read(earningsClockProvider)();
+    // The week starts as the totals' does (Admin → statement settings).
+    final sunday = ref.read(statementSettingsProvider).value?.weekStartsSunday ?? false;
+    final csv = earningsCsv(rides, driverId: uid, period: _period, now: now, sunday: sunday);
     final messenger = ScaffoldMessenger.of(context);
     // Only the header line: nothing to hand an accountant.
     if (csv.split('\r\n').where((l) => l.isNotEmpty).length <= 1) {
@@ -176,7 +218,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
     }
     final outcome = await ref.read(earningsCsvSharerProvider)(
       csv,
-      earningsCsvFileName(_period, now),
+      earningsCsvFileName(_period, now, sunday: sunday),
       shareOriginOf(button),
     );
     final note = switch (outcome) {
@@ -192,8 +234,8 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
 
   static String _km(double km) => '${km.toStringAsFixed(km >= 100 ? 0 : 1)} km';
 
-  static String _dayLabel(DateTime d) {
-    final today = malaysiaDate(DateTime.now());
+  static String _dayLabel(DateTime d, DateTime now) {
+    final today = malaysiaDate(now);
     d = DateTime.utc(d.year, d.month, d.day);
     if (d == today) return 'Today';
     if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';

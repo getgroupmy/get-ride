@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../data/live_tables.dart';
 import '../../../providers.dart';
+import '../../../data/function_region.dart';
 import '../security/api_keys_logic.dart';
 import '../security/security_data.dart';
 import 'maps_logic.dart';
@@ -91,7 +92,7 @@ class MapsRepository {
   /// empty when it can't say.
   Future<Set<String>> fallbackSlots() async {
     try {
-      final res = await _db.functions.invoke(
+      final res = await _db.functions.invokeNearDb(
         'geo',
         method: HttpMethod.get,
         queryParameters: const {'action': 'fallbacks'},

@@ -8,14 +8,24 @@ import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
 
-/// Which demo parts are on. Unlike Expo, a switch the admin never set is
-/// OFF, so a real rider can never meet a demo driver by default.
+/// Where the admin's list of demo riders and demo drivers is kept in the
+/// display settings blob: bare profile ids, nothing else (the blob is read
+/// by every app, signed in or not).
+const demoRiderIdsKey = 'demoRiderIds';
+const demoDriverIdsKey = 'demoDriverIds';
+
+/// Which demo parts are on, and for whom. Unlike Expo, a switch the admin
+/// never set is OFF, so a real rider can never meet a demo driver by
+/// default; and a switch that is on reaches only the accounts on its list
+/// ([riders], [drivers]). An empty list means nobody.
 class DemoSettings {
   const DemoSettings({
     this.riderOffers = false,
     this.riderTripSim = false,
     this.partnerRequests = false,
     this.partnerDriveSim = false,
+    this.riders = const {},
+    this.drivers = const {},
   });
 
   /// Demo driver offers and "viewing" drivers while a rider searches.
@@ -30,6 +40,19 @@ class DemoSettings {
   /// A demo job's car drives itself, arriving on its own.
   final bool partnerDriveSim;
 
+  /// The accounts (profile ids) that get demo offers ("Demo riders").
+  final Set<String> riders;
+
+  /// The accounts (profile ids) that get demo incoming requests ("Demo
+  /// drivers").
+  final Set<String> drivers;
+
+  /// Whether the signed-in [uid] books demo requests and gets demo offers.
+  bool offersFor(String? uid) => riderOffers && uid != null && riders.contains(uid);
+
+  /// Whether the signed-in [uid] gets demo incoming requests while online.
+  bool requestsFor(String? uid) => partnerRequests && uid != null && drivers.contains(uid);
+
   static DemoSettings fromSettings(Map<String, dynamic> s) {
     bool on(String k) {
       final v = s[k];
@@ -41,9 +64,28 @@ class DemoSettings {
       riderTripSim: on('riderTripSimEnabled'),
       partnerRequests: on('partnerMockEnabled'),
       partnerDriveSim: on('partnerDriveSimEnabled'),
+      riders: demoAccountIds(s[demoRiderIdsKey]).toSet(),
+      drivers: demoAccountIds(s[demoDriverIdsKey]).toSet(),
     );
   }
 }
+
+/// A stored demo list as profile ids: strings only, trimmed, no blanks and
+/// no repeats, in the order they were added. Pure.
+List<String> demoAccountIds(Object? raw) {
+  if (raw is! List) return const [];
+  final out = <String>[];
+  for (final v in raw) {
+    if (v is! String) continue;
+    final id = v.trim();
+    if (id.isNotEmpty && !out.contains(id)) out.add(id);
+  }
+  return out;
+}
+
+/// Whether [id] is a ride that lives on this phone alone (a demo request,
+/// offer or job): never sent to the server.
+bool isDemoRideId(String id) => id.startsWith('demo');
 
 /// A demo driver's offer to a searching rider (Expo `MOCK_DRIVER_OFFERS`).
 class DemoOffer {
@@ -71,9 +113,10 @@ class DemoOffer {
 }
 
 /// The three demo offers on [fare], each a little above or at it, and when
-/// each arrives after the search starts (3, 6 and 9 s).
-List<(Duration, DemoOffer)> demoOffers(double fare) {
-  double at(double markup) => math.max(1, (fare * (1 + markup)).roundToDouble());
+/// each arrives after the search starts (3, 6 and 9 s). A request not open
+/// to offers ([bidding] off) is offered at its fare.
+List<(Duration, DemoOffer)> demoOffers(double fare, {bool bidding = true}) {
+  double at(double markup) => math.max(1, (fare * (1 + (bidding ? markup : 0))).roundToDouble());
   return [
     (
       const Duration(seconds: 3),

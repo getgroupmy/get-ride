@@ -5,7 +5,7 @@ import 'package:get_ride/src/features/ride/confirm_parts.dart';
 
 void main() {
   for (final b in Brightness.values) {
-    testWidgets('typing, deleting and Done; the keys carry their letters ($b)', (tester) async {
+    testWidgets('typing, deleting and Done; the keys carry digits only ($b)', (tester) async {
       tester.view.physicalSize = const Size(400, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -25,8 +25,9 @@ void main() {
       );
       final result = showEntranceSheet(ctx, '');
       await tester.pumpAndSettle();
-      expect(find.text('ABC'), findsOneWidget);
-      expect(find.text('WXYZ'), findsOneWidget);
+      // Only digits can be typed, so no phone letters under them.
+      expect(find.text('ABC'), findsNothing);
+      expect(find.text('WXYZ'), findsNothing);
       for (final k in ['1', '2', '3']) {
         await tester.tap(find.byKey(ValueKey('entrance-key-$k')));
       }

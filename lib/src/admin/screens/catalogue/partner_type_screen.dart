@@ -112,7 +112,7 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
     return AdminPage(
       title: 'Partner Type',
       page: _page,
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => _edit(entries.value ?? []),
         icon: const Icon(Icons.add),
         label: const Text('Add partner type'),
@@ -135,7 +135,7 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
                 child: rows.isEmpty
                     ? const EmptyState(icon: Icons.inbox_outlined, title: 'No partner types', message: 'Categories & nested sub-services')
                     : ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 96),
+                        padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)),
                         itemCount: rows.length,
                         itemBuilder: (_, i) {
                           final e = rows[i];

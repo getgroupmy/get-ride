@@ -1,12 +1,13 @@
 /// What Admin → App Settings sets for every user (the `app_branding` row),
 /// and the splash the Android and iOS apps hold for a moment at launch,
-/// worked the way iAkauntan's is (`core/splash.dart` there): five seconds
-/// counted from when the process started, in the apps only, the admin's
-/// picture on white — or black in dark mode, unless the admin picked other
+/// worked the way iAkauntan's is (`core/splash.dart` there): until the app
+/// is ready, but at least a moment counted from when the process started,
+/// in the apps only, the admin's picture on white — or black in dark mode, unless the admin picked other
 /// backgrounds — falling back to the app's name. Pure: every answer here is
 /// testable without a widget.
 library;
 
+import 'dart:async' show Completer;
 import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart' show TargetPlatform, mapEquals;
@@ -165,27 +166,36 @@ class AppBranding {
 bool iconChangeUnseen(DateTime? changed, DateTime? seen, {required bool firstLook}) =>
     changed != null && !firstLook && (seen == null || changed.isAfter(seen));
 
-/// How long the splash is held, once.
-const splashHold = Duration(seconds: 5);
+/// The least the splash is shown for, so a fast start does not flash it
+/// (PERF-19: it used to be held a fixed five seconds on every cold start).
+const splashMinHold = Duration(milliseconds: 600);
+
+/// The most the splash waits on the app being ready (the update check, see
+/// `SplashGate.ready`) before showing the app anyway.
+const splashMaxHold = Duration(milliseconds: 2500);
 
 /// When this process started, near enough: stamped by [markSplashStart] at
 /// the top of `main`, before anything slow. A top-level `final` would be
 /// initialised lazily on its first read — the first frame, after start-up
-/// has already taken its time — and the splash would then run its full five
-/// seconds on top of the slowest starts.
+/// has already taken its time — and the splash would then be held on top of
+/// the slowest starts.
 DateTime splashStarted = DateTime.now();
 
 void markSplashStart() => splashStarted = DateTime.now();
 
-/// What is left of [splashHold] at [now]; never negative, so a start slow
-/// enough to have used it all goes straight to the app.
-Duration splashRemaining(DateTime now, {DateTime? started}) {
-  final left = splashHold - now.difference(started ?? splashStarted);
+/// What is left of [hold] (by default [splashMinHold]) at [now]; never
+/// negative, so a start slow enough to have used it all goes straight on.
+Duration splashRemaining(DateTime now, {DateTime? started, Duration hold = splashMinHold}) {
+  final left = hold - now.difference(started ?? splashStarted);
   return left.isNegative ? Duration.zero : left;
 }
 
+/// Completes once this launch's splash is gone (or was never held), so
+/// what is asked for at launch (the notifications prompt) waits for it.
+final splashGone = Completer<void>();
+
 /// The apps hold a splash; the website and desktop builds do not — a browser
-/// tab that sits on a logo for five seconds is a tab somebody closes.
+/// tab that sits on a logo is a tab somebody closes.
 bool splashHeld({required bool isWeb, required TargetPlatform platform}) =>
     !isWeb && (platform == TargetPlatform.android || platform == TargetPlatform.iOS);
 

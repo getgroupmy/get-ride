@@ -72,6 +72,37 @@ void main() {
     expect(pollAfter(const Duration(hours: 1), every: const Duration(seconds: 20)), const Duration(seconds: 20));
   });
 
+  test('with the admin\'s longest wait: 5 s, then 10 s, then that; under 10 s it caps the ramp', () {
+    const m30 = Duration(seconds: 30);
+    expect(pollAfter(Duration.zero, max: m30), const Duration(seconds: 5));
+    expect(pollAfter(const Duration(seconds: 90), max: m30), const Duration(seconds: 10));
+    expect(pollAfter(const Duration(minutes: 3), max: m30), m30);
+    const m5 = Duration(seconds: 5);
+    for (final q in [Duration.zero, const Duration(seconds: 90), const Duration(minutes: 3)]) {
+      expect(pollAfter(q, max: m5), m5);
+    }
+    const m10 = Duration(seconds: 10);
+    expect(pollAfter(const Duration(seconds: 30), max: m10), const Duration(seconds: 5));
+    expect(pollAfter(const Duration(minutes: 3), max: m10), m10);
+  });
+
+  test('the longest wait reads off the heartbeat, else stays 15 s', () {
+    expect(defaultPollQuietMax, const Duration(seconds: 15));
+    expect(pollQuietMaxFrom(8), const Duration(seconds: 8));
+    expect(pollQuietMaxFrom(60), const Duration(seconds: 60));
+    expect(pollQuietMaxFrom(5.0), const Duration(seconds: 5));
+    expect(pollQuietMaxFrom(' 20 '), const Duration(seconds: 20));
+    for (final bad in [null, 4, 61, 0, -5, 7.5, double.nan, double.infinity, 'soon', '', true, const <int>[]]) {
+      expect(pollQuietMaxFrom(bad), isNull, reason: '$bad');
+    }
+    final hb = GatewayHeartbeat.fromRow({'id': 'dev-9', 'label': 'Office', 'poll_max_seconds': 30});
+    expect((hb.device, hb.pollQuietMax), ('dev-9', const Duration(seconds: 30)));
+    final old = GatewayHeartbeat.fromRow({'id': 'dev-9', 'label': 'Office'});
+    expect((old.device, old.pollQuietMax), ('dev-9', null), reason: 'a database before 0236');
+    expect(GatewayHeartbeat.fromRow(null).device, isEmpty);
+    expect(GatewayHeartbeat.fromRow({'id': 'dev-9', 'poll_max_seconds': 999}).pollQuietMax, isNull);
+  });
+
   test('the shared internet\'s events: a state, a line for the log, hosts only', () {
     expect(proxyStateFrom({'state': 'connected'}), ProxyState.connected);
     expect(proxyStateFrom({'state': 'error', 'reason': 'x'}), ProxyState.error);

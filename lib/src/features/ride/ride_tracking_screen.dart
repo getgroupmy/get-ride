@@ -17,6 +17,7 @@ import '../../core/auth_utils.dart' show capitaliseName;
 import '../../core/payment_types.dart' show paymentModeLabel;
 import '../../core/ride_bidding.dart';
 import '../../core/ride_cancel.dart';
+import '../../core/ride_rebook.dart';
 import '../../core/ride_chat.dart' show rideChatAvailable, rideContactAllowed;
 import '../../core/ride_confirm.dart';
 import '../../core/request_viewers.dart';
@@ -24,7 +25,9 @@ import '../../core/search_stage.dart';
 import '../../core/ride_payment.dart';
 import '../../core/ride_cache.dart' show sameRideApartFromLive;
 import '../../core/search_timer.dart';
+import '../../core/raise_nudge.dart';
 import '../../config.dart';
+import '../../data/app_display_repository.dart' show displaySettingsBlobProvider;
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../data/push_service.dart';
@@ -33,10 +36,11 @@ import '../../widgets/ble_handshake_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
+import '../../widgets/map_recenter.dart' show RecenterButton;
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/trip_safety.dart';
-import 'accepted_driver_tile.dart';
 import 'demo_ride.dart';
+import 'driver_card.dart';
 import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
 import 'location_share_button.dart';
@@ -46,6 +50,7 @@ import 'ride_call_screen.dart' show RideCallButton;
 import 'ride_payment_overlay.dart';
 import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
+import 'home_screen.dart' show nearbyDriversProvider, roundedPoint;
 import 'shared_ride_screen.dart' show shareRide;
 import '../../widgets/offline_ride_banner.dart';
 import '../../widgets/ride_rating_card.dart';
@@ -58,13 +63,20 @@ import '../my_ride/my_ride_parts.dart' show MyRideSearchBanner;
 import 'rider_handover_card.dart';
 import '../../widgets/page_style_host.dart';
 
-final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>(
-  (ref, id) => ref.watch(rideRepositoryProvider).watch(id),
-);
+final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>((ref, id) {
+  // A demo rider's request lives on the phone alone: it is never asked of
+  // the server.
+  if (isDemoRideId(id)) {
+    final ride = ref.watch(demoRidesProvider.select((m) => m[id]));
+    return ride == null ? Stream.error(StateError('This demo request has ended.')) : Stream.value(ride);
+  }
+  return ref.watch(rideRepositoryProvider).watch(id);
+});
 
 /// The ride's trip code, for its rider (migration 0152); null when there is
 /// none to read.
 final tripCodeProvider = FutureProvider.autoDispose.family<String?, String>((ref, id) async {
+  if (isDemoRideId(id)) return null;
   try {
     return await ref.watch(rideRepositoryProvider).tripCode(id);
   } catch (_) {
@@ -150,7 +162,7 @@ class RideTrackingScreen extends ConsumerWidget {
         title: const Text('Your ride'),
         leading: BackButton(onPressed: () => context.canPop() ? context.pop() : context.go('/')),
         actions: [
-          if (ride.value?.status.isOngoing ?? false)
+          if ((ride.value?.status.isOngoing ?? false) && !isDemoRideId(requestId))
             BusyIconButton(
               key: const ValueKey('share-ride'),
               tooltip: 'Share ride',
@@ -183,6 +195,11 @@ class RideTrackingScreen extends ConsumerWidget {
   }
 }
 
+/// How far from the map's right edge the wide layout's offer cards stand:
+/// clear of the map's buttons ([LiveRideMap]'s layers and recenter, 12 in
+/// from the edge and [RecenterButton.size] wide), with a gap.
+double offersClearOfMapButtons(double paddingRight) => 12 + paddingRight + RecenterButton.size + 12;
+
 class _RidePanel extends ConsumerStatefulWidget {
   const _RidePanel({required this.ride, required this.map, this.wide = false});
   final RideRequest ride;
@@ -211,13 +228,17 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   StreamSubscription<LatLng>? _position;
   DateTime _lastShare = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// The search's one-second clock (Expo ride-confirm): the first-minute
-  /// bar, the "Raise your fare?" prompt, the expiry and the offer window.
+  /// The search's one-second clock (Expo ride-confirm): the countdown,
+  /// the "Raise your fare and search again" card, the expiry and the offer
+  /// window.
   Timer? _tick;
   late final ValueNotifier<DateTime> _clock;
   DateTime get _now => _clock.value;
-  bool _askedRaise = false;
   bool _expiryShown = false;
+
+  /// When the wait for an offer last started over: the request going out,
+  /// a raise, or "Keep waiting" (null: the request's own start).
+  DateTime? _nudgeFrom;
 
   /// The offer on screen, and when the rider first saw it.
   String? _offerKey;
@@ -233,6 +254,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   /// Admin → Demo → mock driver offers, while the request is open.
   DemoOfferTimeline? _demo;
+
+  /// A demo rider's request, on this phone alone: nothing about it goes to
+  /// the server.
+  bool get _isDemo => isDemoRideId(widget.ride.id);
+
+  DemoRides get _demoRides => ref.read(demoRidesProvider.notifier);
 
   /// Drivers who have looked at the request (the bar over the sheet), and
   /// when they were last asked about.
@@ -272,7 +299,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   /// The driver's request to cancel, as a popup the passenger answers.
   void _askAboutCancel() {
-    if (!mounted) return;
+    if (!mounted || _isDemo) return;
     final r = widget.ride;
     final asking = r.cancelRequestedAt != null && r.cancelRequestedBy == 'partner' && r.status.isOngoing;
     final repo = ref.read(rideRepositoryProvider);
@@ -313,6 +340,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _demo?.dispose();
     _tick?.cancel();
     _clock.dispose();
+    _footerHeight.dispose();
     _position?.cancel();
     super.dispose();
   }
@@ -327,10 +355,13 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       _tick?.cancel();
       _tick = null;
     }
-    // Demo driver offers only on a request that takes offers.
-    final demo = open && widget.ride.offerMe && ref.read(demoSettingsProvider).riderOffers;
+    // Demo driver offers only on a demo rider's own demo request: never
+    // mixed in with a real request's offers, where taking one would have
+    // had to withdraw the real request.
+    final demo = open && _isDemo && ref.read(demoRiderProvider);
     if (demo && _demo == null) {
-      _demo = DemoOfferTimeline(widget.ride.fare ?? 0, clock: ref.read(searchClockProvider))
+      _demo = DemoOfferTimeline(widget.ride.fare ?? 0,
+          clock: ref.read(searchClockProvider), bidding: widget.ride.offerMe)
         ..addListener(() {
           if (mounted) setState(() {});
         });
@@ -416,55 +447,57 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final elapsed = searchElapsed(r.createdAt, _now);
     if (!_expiryShown && elapsed >= AppConfig.requestExpiry) {
       _expiryShown = true;
-      _askedRaise = true;
-      unawaited(ref.read(rideRepositoryProvider).expireStaleOpen().catchError((_) {}));
+      if (_isDemo) {
+        _demoRides.expire(r.id);
+      } else {
+        unawaited(ref.read(rideRepositoryProvider).expireStaleOpen().catchError((_) {}));
+      }
       unawaited(_showExpired());
       return;
     }
-    // A fixed-fare request is never offered a raise: its fare is the fare.
-    if (r.offerMe &&
-        shouldPromptRaise(elapsed: elapsed, offerStanding: _visibleOffer != null, alreadyAsked: _askedRaise)) {
-      _askedRaise = true;
-      unawaited(_promptRaise());
-    }
   }
 
-  /// Expo's sheet at the end of the first minute: raise by
-  /// [searchPromptRaise], or keep the fare and go on waiting.
-  Future<void> _promptRaise() async {
+  /// How long the rider has waited for an offer since the request went
+  /// out, or since their last raise or "Keep waiting".
+  Duration _waited(RideRequest r, DateTime now) => searchElapsed(_nudgeFrom ?? r.createdAt, now);
+
+  /// The card's one-tap raise: the usual step, capped as every raise is.
+  Future<void> _nudgeRaise() async {
     final r = widget.ride;
-    final fare = r.fare ?? 0;
-    final raise = await showAppSheet<bool>(id: 'ride-tracking.prompt-raise',
-      context: context,
-      builder: (c) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('No driver yet', style: Theme.of(c).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              const Text("Drivers nearby haven't taken your request. A higher fare can help."),
-              const SizedBox(height: 16),
-              FilledButton(
-                key: const ValueKey('prompt-raise'),
-                onPressed: () => Navigator.pop(c, true),
-                child: Text('Raise fare to ${r.fareText(fare + searchPromptRaise)}'),
-              ),
-              TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep my fare')),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (raise == true && mounted && widget.ride.status == RideStatus.open) {
-      await _raise(searchPromptRaise);
-      if (mounted) showInfo(context, 'You raised the fare to ${r.fareText(fare + searchPromptRaise)}');
-    }
+    final current = r.fare ?? 0;
+    final next = raisedFare(current, fareOfferStep, quoted: _quoted ?? current);
+    if (next <= current) return;
+    var raised = false;
+    await _run(() async {
+      final updated = await _raiseFare(r.id, next);
+      raised = updated != null;
+      if (updated == null && mounted) showInfo(context, 'This request is no longer open.');
+    });
+    if (!raised || !mounted) return;
+    setState(() {
+      _nudgeFrom = _now;
+      _fareTarget = null;
+    });
+    showInfo(context, 'You raised the fare to ${r.fareText(next)}. Searching again.');
   }
+
+  /// A raise: on the server, or on the phone for a demo request.
+  Future<RideRequest?> _raiseFare(String id, double fare) async =>
+      isDemoRideId(id) ? _demoRides.raiseFare(id, fare) : ref.read(rideRepositoryProvider).raiseFare(id, fare);
 
   bool _closed = false;
+
+  /// The pinned footer (Cancel request), measured so the offers' dim stops
+  /// above it.
+  final _footerKey = GlobalKey();
+  final _footerHeight = ValueNotifier<double>(0);
+
+  void _measureFooter() {
+    if (!mounted) return;
+    final box = _footerKey.currentContext?.findRenderObject() as RenderBox?;
+    final h = box != null && box.attached && box.hasSize ? box.size.height : 0.0;
+    if ((h - _footerHeight.value).abs() > 0.5) _footerHeight.value = h;
+  }
 
   /// The ride was cancelled before this screen opened (set in initState).
   bool _openedCancelled = false;
@@ -472,6 +505,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   void _close() {
     if (_closed || !mounted) return;
     _closed = true;
+    context.go('/');
+  }
+
+  /// Home, with [trip] filled in on the confirm step ([rideRebookProvider]).
+  void _bookAgain(RideRebook? trip) {
+    if (_closed || !mounted) return;
+    _closed = true;
+    ref.read(rideRebookProvider.notifier).set(trip);
     context.go('/');
   }
 
@@ -526,7 +567,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   }
 
   void _maybeClaimReward() {
-    if (_rewardClaimed || widget.ride.status != RideStatus.completed) return;
+    if (_rewardClaimed || widget.ride.status != RideStatus.completed || _isDemo) return;
     _rewardClaimed = true;
     final repo = ref.read(rideRepositoryProvider);
     final ride = widget.ride;
@@ -552,20 +593,6 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   /// The fare first seen on this screen: raises are capped against it.
   late final double? _quoted = widget.ride.fare;
 
-  Future<void> _raise(double step) async {
-    final r = widget.ride;
-    final current = r.fare ?? 0;
-    final next = raisedFare(current, step, quoted: _quoted ?? current);
-    if (next <= current) {
-      showInfo(context, 'The fare cannot go any higher.');
-      return;
-    }
-    await _run(() async {
-      final updated = await ref.read(rideRepositoryProvider).raiseFare(r.id, next);
-      if (updated == null && mounted) showInfo(context, 'This request is no longer open.');
-    });
-  }
-
   /// The fare the −/+ keys show.
   double get _target => _fareTarget ?? widget.ride.fare ?? 0;
 
@@ -585,12 +612,17 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final messenger = ScaffoldMessenger.of(context);
     var raised = false;
     await _run(() async {
-      final updated = await ref.read(rideRepositoryProvider).raiseFare(r.id, next);
+      final updated = await _raiseFare(r.id, next);
       raised = updated != null;
       if (updated == null && mounted) showInfo(context, 'This request is no longer open.');
     });
     if (!raised) return;
-    if (mounted) setState(() => _fareTarget = null);
+    if (mounted) {
+      setState(() {
+        _fareTarget = null;
+        _nudgeFrom = _now;
+      });
+    }
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(const SnackBar(
@@ -604,6 +636,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   }
 
   Future<void> _acceptOffer(RideOffer o) async {
+    if (_isDemo) return;
     await _run(() async {
       final won = await ref
           .read(rideRepositoryProvider)
@@ -612,8 +645,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     });
   }
 
-  Future<void> _declineOffer(RideOffer o) =>
-      _run(() => ref.read(rideRepositoryProvider).declineOffer(widget.ride.id, partnerId: o.partnerId));
+  Future<void> _declineOffer(RideOffer o) async {
+    if (_isDemo) return;
+    await _run(() => ref.read(rideRepositoryProvider).declineOffer(widget.ride.id, partnerId: o.partnerId));
+  }
 
   Future<void> _run(Future<void> Function() action) async {
     setState(() => _busy = true);
@@ -637,15 +672,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     rideId: r.id.startsWith('demo') ? null : r.id,
   );
 
-  /// A demo offer taken (Admin → Demo → mock driver offers): the real
-  /// request is withdrawn, so no real driver turns up, and the demo trip
-  /// plays out on the phone alone.
+  /// A demo offer taken (Admin → Demo → mock driver offers, on a demo
+  /// request only): the demo trip plays out on the phone alone. A real
+  /// request is never touched by a demo.
   Future<void> _acceptDemo(DemoOffer o) async {
     final r = widget.ride;
+    if (!r.id.startsWith('demo')) return;
     final pickup = _ll(r.pickupLat, r.pickupLng), drop = _ll(r.dropLat, r.dropLng);
     if (pickup == null || drop == null) return;
-    await _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: 'Took a demo offer', by: 'rider'));
-    if (!mounted) return;
     context.go('/ride/demo',
         extra: DemoTripArgs(
           pickup: pickup,
@@ -662,6 +696,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     if (r.status == RideStatus.open) return _cancelSearch();
     final reason = await showAppDialog<String>(id: 'ride-tracking.cancel', context: context, builder: (_) => _CancelReasonDialog(status: r.status));
     if (reason == null) return;
+    if (_isDemo) return _demoRides.cancel(r.id, reason: reason);
     await _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: reason, by: 'rider'));
   }
 
@@ -673,7 +708,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final messenger = ScaffoldMessenger.of(context);
     var done = false;
     await _run(() async {
-      await ref.read(rideRepositoryProvider).cancel(r, reason: choice.reason, by: 'rider');
+      if (_isDemo) {
+        _demoRides.cancel(r.id, reason: choice.reason);
+      } else {
+        await ref.read(rideRepositoryProvider).cancel(r, reason: choice.reason, by: 'rider');
+      }
       done = true;
     });
     if (!done || !mounted) return;
@@ -688,8 +727,23 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final r = widget.ride;
     final views = <SearchOfferView>[];
     final offer = _visibleOffer;
+    // "+RM1.00" against the rider's fare; nothing when it is their fare.
+    String? difference(double amount) {
+      final fare = r.fare;
+      if (fare == null || (amount - fare).abs() < 0.005) return null;
+      return '${amount > fare ? '+' : '−'}${r.fareText((amount - fare).abs())}';
+    }
+
+    int secondsLeft(Duration shownFor, Duration window) {
+      final left = window - shownFor;
+      return left.isNegative ? 0 : (left.inMilliseconds / 1000).ceil();
+    }
+
     if (offer != null) {
       views.add(SearchOfferView(
+        amount: offer.amount,
+        difference: difference(offer.amount),
+        secondsLeft: _offerSeen == null ? null : secondsLeft(_now.difference(_offerSeen!), counterOfferWindow),
         key: offer.key,
         cardKey: const ValueKey('ride-offer'),
         acceptKey: const ValueKey('accept-offer'),
@@ -711,6 +765,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     }
     for (final (o, at) in _demo?.shown ?? const <(DemoOffer, DateTime)>[]) {
       views.add(SearchOfferView(
+        amount: o.price,
+        difference: difference(o.price),
+        secondsLeft: secondsLeft(_now.difference(at), demoOfferLife),
         key: o.id,
         cardKey: ValueKey('demo-offer-${o.id}'),
         acceptKey: ValueKey('demo-accept-${o.id}'),
@@ -728,7 +785,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         onDecline: () => _demo?.dismiss(o),
       ));
     }
-    return views;
+    return sortOffers(views);
   }
 
   /// The open request's sheet, as inDrive's: the stage and its countdown,
@@ -742,6 +799,18 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     // Raising the fare, confirming a raise and auto-accepting an offer are
     // bidding; a fixed-fare request has none of them.
     final bidding = r.offerMe;
+    // How near the drivers are, from the nearest online ones to the pickup
+    // (the same read the confirm sheet's minutes come from); nothing when
+    // that can't be had.
+    final pickup = _ll(r.pickupLat, r.pickupLng);
+    final waitHint = pickup == null || r.id.startsWith('demo')
+        ? null
+        : searchWaitHint(
+            ref.watch(nearbyDriversProvider(roundedPoint(pickup))).value ?? const <String, double>{},
+            service: r.service,
+          );
+    final nudgeAfter = raiseNudgeAfter(ref.watch(displaySettingsBlobProvider).value);
+    final raisedTo = raisedFare(current, fareOfferStep, quoted: quoted);
     return [
       if (_viewers.any)
         DriversViewingBar(viewers: _viewers)
@@ -757,14 +826,47 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         builder: (_, now, _) {
           final elapsed = searchElapsed(r.createdAt, now);
           final left = searchTimeLeft(elapsed, AppConfig.requestExpiry);
-          return SearchHeader(
+          final header = SearchHeader(
             bidding: bidding,
             elapsed: elapsed,
             left: formatCountdown(left),
             progress: (left.inMilliseconds / AppConfig.requestExpiry.inMilliseconds).clamp(0.0, 1.0),
+            waitHint: waitHint,
+            offers: (_visibleOffer == null ? 0 : 1) + (_demo?.shown.length ?? 0),
+          );
+          // On a phone "Choose a driver" dims the screen over the sheet and
+          // carries its own "All drivers verified": the header under it
+          // stands down (keeping its room, so the sheet doesn't jump).
+          final covered = !widget.wide && _offerViews().isNotEmpty;
+          return Visibility(
+            key: const ValueKey('search-header-slot'),
+            visible: !covered,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: header,
           );
         },
       ),
+      // No offer for a while on a request open to offers: raise it in one
+      // tap, or keep waiting. A fixed-fare request is never offered a
+      // raise: its fare is the fare.
+      if (bidding)
+        ValueListenableBuilder(
+          valueListenable: _clock,
+          builder: (_, now, _) => showRaiseNudge(
+                  bidding: bidding,
+                  offerStanding: _visibleOffer != null,
+                  waited: _waited(r, now),
+                  after: nudgeAfter)
+              ? SearchRaiseCard(
+                  fare: money(current),
+                  raisedTo: raisedTo > current ? money(raisedTo) : null,
+                  onRaise: _busy ? null : _nudgeRaise,
+                  onKeepWaiting: () => setState(() => _nudgeFrom = _now),
+                )
+              : const SizedBox.shrink(),
+        ),
       // Booked with My Ride: offered to the rider's favourites first.
       if (r.isMyRide || r.isDirectBooking)
         ValueListenableBuilder(
@@ -800,10 +902,13 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               onChanged: (on) {
                 final n = ref.read(autoAcceptProvider.notifier);
                 on ? n.set(r.id, current) : n.clear(r.id);
-                // Kept on the request too, so it holds with the app closed.
-                unawaited(
-                  ref.read(rideRepositoryProvider).setAutoAccept(r.id, on ? current : null).catchError((_) {}),
-                );
+                // Kept on the request too, so it holds with the app closed
+                // (not a demo request, which the server never sees).
+                if (!_isDemo) {
+                  unawaited(
+                    ref.read(rideRepositoryProvider).setAutoAccept(r.id, on ? current : null).catchError((_) {}),
+                  );
+                }
                 final offer = _visibleOffer;
                 if (on && shouldAutoAccept(limit: current, offer: offer)) _acceptOffer(offer!);
               },
@@ -812,7 +917,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         ),
       ],
       SearchBlock(child: SearchPaymentRow(amount: money(r.effectiveFare ?? current), mode: r.paymentMode)),
-      SearchBlock(child: SearchRouteCard(ride: r)),
+      // The sheet never rests lower than the drop-off: at 390x844 it sat
+      // behind the pinned Cancel request (or rests all the way up where it
+      // can't fit).
+      MapSheetRestLine(child: SearchBlock(child: SearchRouteCard(ride: r))),
       const SizedBox(height: 12),
       // On a phone it is pinned under the sheet instead ([_cancelFooter]).
       if (widget.wide) ?_cancelAction(r),
@@ -855,11 +963,17 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         // Cancelled while watching: the screen closes by itself. Opened on a
         // ride already cancelled (a link, a reload): it stays, so the
         // reason can be read.
-        if (r.status == RideStatus.cancelled && !_openedCancelled) ...[
+        // Cancelled by the driver it stays until the rider leaves it (WCAG
+        // 2.2.1): the trip is there to book again.
+        if (r.status == RideStatus.cancelled && !_openedCancelled && !cancelledByDriver(r)) ...[
           CancelledCountdown(onDone: _close),
           const SizedBox(height: 12),
         ],
-        if (r.status == RideStatus.cancelled && _openedCancelled && (r.cancelReason ?? '').trim().isNotEmpty) ...[
+        // Once only: the driver's cancel card already gives their reason.
+        if (r.status == RideStatus.cancelled &&
+            _openedCancelled &&
+            !cancelledByDriver(r) &&
+            (r.cancelReason ?? '').trim().isNotEmpty) ...[
           Text(
             'Reason: ${cancelReasonLabel(r.cancelReason) ?? r.cancelReason!.trim()}',
             key: const ValueKey('ride-cancel-reason'),
@@ -868,11 +982,28 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           ),
           const SizedBox(height: 12),
         ],
-        // Cancelled: straight on to booking again, rather than only Done.
-        if (r.status == RideStatus.cancelled)
+        // The driver cancelled: the same trip, vehicle and fare on the
+        // confirm step, to send to another driver.
+        if (cancelledByDriver(r) && rideRebookOf(r) != null) ...[
+          FilledButton(
+            key: const ValueKey('ride-find-another'),
+            onPressed: () => _bookAgain(rideRebookOf(r)!),
+            child: const Text('Find another driver'),
+          ),
+          const SizedBox(height: 8),
+          // The same route, the vehicle and fare chosen afresh.
+          OutlinedButton(
+            key: const ValueKey('ride-book-again'),
+            onPressed: () => _bookAgain(rideRebookOf(r)!.routeOnly),
+            child: const Text('Book another ride'),
+          ),
+        ]
+        // Cancelled: straight on to booking again, the route kept, rather
+        // than only Done.
+        else if (r.status == RideStatus.cancelled)
           FilledButton(
             key: const ValueKey('ride-book-again'),
-            onPressed: () => context.go('/'),
+            onPressed: () => _bookAgain(rideRebookOf(r)?.routeOnly),
             child: const Text('Book another ride'),
           )
         else if (r.status.isFinished)
@@ -903,6 +1034,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureFooter());
     // Settings → Show location to your driver, switched mid-ride.
     ref.listen(showLocationToDriverProvider, (_, _) => _syncLocationShare());
     ref.listen(rideLocationOffProvider, (_, _) => _syncLocationShare());
@@ -918,7 +1050,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (r.status != RideStatus.open) Text(r.status.label, style: t.textTheme.headlineSmall),
+          if (r.status != RideStatus.open) RideStatusTitle(ride: r),
           if (r.isForOthers)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -940,13 +1072,16 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           ] else ...[
           const SizedBox(height: 16),
           // The driver asking to hand the trip over (0199), or the new one coming.
-          RiderHandoverCard(ride: r),
-          RiderHandoverPrompt(ride: r, pushes: PushService.instance?.received),
+          if (!_isDemo) ...[
+            RiderHandoverCard(ride: r),
+            RiderHandoverPrompt(ride: r, pushes: PushService.instance?.received),
+          ],
           if (r.hasDriver)
             Card(
               child: Column(
                 children: [
-                  AcceptedDriverTile(ride: r),
+                  // The plate first, the car under it, then the driver.
+                  DriverCardHeader(ride: r),
                   if (tripCode != null && r.status != RideStatus.onTrip)
                     ListTile(
                       key: const ValueKey('trip-code'),
@@ -964,7 +1099,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   // No Message or Call once the ride is cancelled.
                   // The sheet never rests lower than this row: on a phone on
                   // its side or at large text it showed under "Cancel ride".
-                  if (r.status != RideStatus.cancelled && (r.partnerPhone != null || rideChatAvailable(r)))
+                  if (!_isDemo && r.status != RideStatus.cancelled && (r.partnerPhone != null || rideChatAvailable(r)))
                     MapSheetRestLine(
                       child: OverflowBar(
                       children: [
@@ -1043,9 +1178,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           ),
           const SizedBox(height: 12),
           // Trip safety (Phase D4): "Are you in the car?" / "still on your trip?".
-          if (r.status == RideStatus.onTrip) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
-          if (r.status == RideStatus.completed) RideRatingCard(ride: r),
-          if (r.status == RideStatus.completed) LostItemCard(ride: r),
+          if (r.status == RideStatus.onTrip && !_isDemo) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
+          if (r.status == RideStatus.completed && !_isDemo) RideRatingCard(ride: r),
+          if (r.status == RideStatus.completed && !_isDemo) LostItemCard(ride: r),
           // On the trip itself the X only asks: the driver approves it.
           // Before it, on a phone, Cancel ride is pinned under the sheet.
           if (r.status.isOngoing && !riderCancelAsk && (widget.wide || _cancelAction(r) == null))
@@ -1151,13 +1286,21 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           SizedBox(width: 420, child: SingleChildScrollView(child: content)),
           const VerticalDivider(width: 1),
           Expanded(
-            child: Stack(children: [
+            child: LayoutBuilder(builder: (context, c) {
+              // The offers stand left of the map's layers and recenter
+              // buttons (right edge), never over them: on a phone on its
+              // side (915 × 412) the second card sat under them.
+              final right = offersClearOfMapButtons(MediaQuery.paddingOf(context).right);
+              final width = (c.maxWidth - right - 16).clamp(0.0, 380.0);
+              return Stack(children: [
               Positioned.fill(child: widget.map),
               if (_sosOn(r)) Positioned.fill(child: RideSosFab(onPressed: () => _sos(r))),
               Positioned(
+                key: const ValueKey('wide-offers'),
                 top: 16,
-                right: 16,
-                width: 380,
+                right: right,
+                bottom: 16,
+                width: width,
                 child: SingleChildScrollView(
                   child: ValueListenableBuilder(
                     valueListenable: _clock,
@@ -1165,7 +1308,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   ),
                 ),
               ),
-            ]),
+            ]);
+            }),
           ),
         ],
       );
@@ -1183,14 +1327,28 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             if (_sosOn(r)) Positioned.fill(child: RideSosFab(onPressed: () => _sos(r))),
           ]),
           sheet: content,
-          footer: _rideFooter(r),
+          footer: switch (_rideFooter(r)) {
+            final f? => KeyedSubtree(key: _footerKey, child: f),
+            null => null,
+          },
+          // A phone on its side: SOS and the map's buttons beside the sheet.
+          besideWhenShort: true,
         ),
       ),
+      // Down to the pinned footer, so its Cancel request stays the one way
+      // to cancel while offers are up.
       if (r.status == RideStatus.open)
         Positioned.fill(
           child: ValueListenableBuilder(
-            valueListenable: _clock,
-            builder: (_, _, _) => ChooseDriverOverlay(offers: _offerViews(), onCancel: _busy ? null : _cancelSearch),
+            valueListenable: _footerHeight,
+            builder: (_, footer, child) => Padding(
+              padding: EdgeInsets.only(bottom: footer),
+              child: MediaQuery.removePadding(context: context, removeBottom: footer > 0, child: child!),
+            ),
+            child: ValueListenableBuilder(
+              valueListenable: _clock,
+              builder: (_, _, _) => ChooseDriverOverlay(offers: _offerViews()),
+            ),
           ),
         ),
     ]);

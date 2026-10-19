@@ -12,6 +12,13 @@ final callMediaFactoryProvider = Provider<CallMedia Function()>((_) => WebrtcCal
 /// The clock a call is timed on. Overridden in tests.
 final callClockProvider = Provider<DateTime Function()>((_) => DateTime.now);
 
+/// The calls this device rang or answered (by a tap): the only ones it
+/// joins, with its microphone and a peer connection. The call row doesn't
+/// say which device answered, so another device signed in to the same
+/// account (a web tab beside the phone) that opens or reloads the call's
+/// page shows "Answered on another device" instead of joining in.
+final callsJoinedHereProvider = Provider<Set<String>>((_) => <String>{});
+
 /// One end of a call (a support call, or a rider ↔ driver call): follows the call's row, carries the WebRTC
 /// setup over the signals table, and drives [CallMedia].
 ///
