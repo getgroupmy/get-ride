@@ -8,7 +8,9 @@ import 'package:skeletonizer/skeletonizer.dart';
 import '../../core/fare.dart';
 import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
+import '../../widgets/common.dart' show inkOn, mutedTextColor;
 import '../../widgets/net_image.dart';
+import '../../widgets/scroll_fade.dart';
 import '../../core/page_styles.dart' show homeSurface;
 import '../../core/smart_address.dart' show placeSubtitle;
 import '../../widgets/page_style_host.dart';
@@ -185,16 +187,26 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
   Widget build(BuildContext context) {
     final ready = vehicleBarReady(services.map((s) => s.image), _settled);
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
     final dark = t.brightness == Brightness.dark;
-    final onFill = dark ? Colors.white : t.colorScheme.onSurface;
     // App Page Settings → Home → Vehicle bar.
     final style = SurfaceStyle.of(context, homeSurface);
+    // The words checked against what they sit on: the map sheet (an admin
+    // colour or the theme's) for the others, the chosen card's fill for
+    // the chosen one. The seats were the theme's secondary grey as it was,
+    // 2.5:1 with an admin's light grey.
+    final sheet = style.setColor('mapSheetColor', t.brightness) ?? t.colorScheme.surface;
+    final chosenFill = style.color('vehicleSelected', t.brightness) ?? fillFor(t.brightness);
+    final onFill = inkOn(chosenFill, preferred: dark ? Colors.white : t.colorScheme.onSurface);
+    final ink = inkOn(sheet, preferred: t.colorScheme.onSurface);
+    final muted = mutedTextColor(t, background: sheet);
     final radius = BorderRadius.circular(style.number('vehicleRadius'));
     return SizedBox(
       // Taller by as much as the phone's larger text makes the name line.
       height: style.number('vehicleBarHeight') + (MediaQuery.textScalerOf(context).scale(13) - 13) * 1.4,
-      child: ListView.separated(
+      // Its far edge fades while there are more vehicles to scroll to (at
+      // 317 wide the last was cut to "F…" with no sign the row goes on).
+      child: HorizontalScrollFade(
+        child: ListView.separated(
         key: const ValueKey('vehicle-type-bar'),
         scrollDirection: Axis.horizontal,
         itemCount: services.length,
@@ -202,13 +214,13 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
         itemBuilder: (_, i) {
           final s = services[i];
           final on = ready && s.name == selected.name;
-          final fg = on ? onFill : t.colorScheme.onSurface;
+          final fg = on ? onFill : ink;
           final seats = on ? onFill : muted;
           // Unchosen boxes are the sheet itself; the chosen one is filled,
           // with the name in full and the seats pushed to its right edge.
           return Material(
             key: ValueKey('vehicle-type-${s.name}'),
-            color: on ? style.color('vehicleSelected', t.brightness) ?? fillFor(t.brightness) : Colors.transparent,
+            color: on ? chosenFill : Colors.transparent,
             borderRadius: radius,
             child: InkWell(
               borderRadius: radius,
@@ -302,6 +314,7 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
             ),
           );
         },
+        ),
       ),
     );
   }
@@ -350,6 +363,9 @@ class HomeSearchPill extends StatelessWidget {
     );
   }
 }
+
+/// How many recent places show with the home sheet all the way down.
+const homeRecentAtRest = 2;
 
 /// Recent destinations under the search bar (Expo `recentLocations`).
 class HomeRecentPlaces extends StatelessWidget {

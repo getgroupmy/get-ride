@@ -22,12 +22,40 @@ import '../../widgets/net_image.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 
+/// Where the form opens when asked for [wanted]: there when the partner has
+/// reached it (or finished), else the first step still missing ([reached]),
+/// which has to be done first. Pure.
+OnboardingStep onboardingStartStep(OnboardingStep reached, OnboardingStep wanted) {
+  if (wanted == OnboardingStep.done) return reached;
+  final r = reached == OnboardingStep.done ? OnboardingStep.wizard.length : OnboardingStep.wizard.indexOf(reached);
+  return OnboardingStep.wizard.indexOf(wanted) <= r ? wanted : reached;
+}
+
+/// The step a `/drive/onboarding?step=<key>` address asks for, by its stored
+/// key ('requirements' for the documents); null for none or an unknown one.
+OnboardingStep? onboardingStepFromQuery(String? key) {
+  for (final s in OnboardingStep.wizard) {
+    if (s.key == key) return s;
+  }
+  return null;
+}
+
 /// Becoming a partner (Expo `app/partner-onboarding.tsx`): profile photo,
 /// ID, address, service area, partner type and the required documents, then
 /// submitted for an admin to review. A returning partner lands on the first
 /// step still missing; finished steps can be reopened from the header.
 class PartnerOnboardingScreen extends ConsumerStatefulWidget {
-  const PartnerOnboardingScreen({super.key, this.pickAvatar = pickAvatarImage, this.pickPhoto = pickImage});
+  const PartnerOnboardingScreen({
+    super.key,
+    this.pickAvatar = pickAvatarImage,
+    this.pickPhoto = pickDocumentImage,
+    this.startAt,
+  });
+
+  /// The step to open on ("Update documents" asks for the documents), when
+  /// it is reachable; an earlier step still missing comes first, as the
+  /// steps go in order ([onboardingStartStep]).
+  final OnboardingStep? startAt;
 
   /// The profile photo picker: camera or gallery on a phone, cut square
   /// (overridden in tests).
@@ -101,6 +129,12 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       if (!mounted) return;
       setState(() {
         _s = s;
+        // Opened for one step (`?step=`): there, unless an earlier one is
+        // still missing. Only on the first load.
+        if (_viewing == null && widget.startAt != null) {
+          final start = onboardingStartStep(s.step, widget.startAt!);
+          _viewing = start == s.step ? null : start;
+        }
         _ic.text = '${s.partner['ic'] ?? s.profile?['ic'] ?? ''}';
         _address.text = '${s.partner['address'] ?? s.profile?['address'] ?? ''}';
         _area = area;
@@ -316,20 +350,25 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       // Counted as the step on screen says: full on the last step.
       LinearProgressIndicator(value: ((reachedIndex + 1) / OnboardingStep.wizard.length).clamp(0.0, 1.0)),
       const SizedBox(height: 12),
-      Wrap(spacing: 8, runSpacing: 8, children: [
+      // The steps go in order (each opens once the one before is saved):
+      // finished steps and the current one are chips that open them; later
+      // steps are plain locked labels, not buttons.
+      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         for (final (i, step) in OnboardingStep.wizard.indexed)
-          ChoiceChip(
-            avatar: i < reachedIndex ? const Icon(Icons.check, size: 16) : null,
-            // Ticks only on finished steps; the open one is filled, no tick
-            // (the chip's own checkmark put one on the current step).
-            showCheckmark: false,
-            label: Text(step.label),
-            selected: step == showing,
-            // Finished steps can be reopened; later ones wait their turn.
-            onSelected: i <= reachedIndex && !_busy
-                ? (_) => setState(() => _viewing = step == reached ? null : step)
-                : null,
-          ),
+          if (i <= reachedIndex)
+            ChoiceChip(
+              key: ValueKey('onboarding-step-${step.key}'),
+              avatar: i < reachedIndex ? const Icon(Icons.check, size: 16) : null,
+              // Ticks only on finished steps; the open one is filled, no
+              // tick (the chip's own checkmark put one on the current step).
+              showCheckmark: false,
+              label: Text(step.label),
+              tooltip: i < reachedIndex ? 'Done: open to review' : 'Current step',
+              selected: step == showing,
+              onSelected: !_busy ? (_) => setState(() => _viewing = step == reached ? null : step) : null,
+            )
+          else
+            _LockedStep(key: ValueKey('onboarding-step-${step.key}'), label: step.label, next: i == reachedIndex + 1),
       ]),
     ]);
   }
@@ -517,5 +556,34 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       const SizedBox(height: 8),
       OutlinedButton(onPressed: () => context.go('/drive'), child: const Text('Back to Drive')),
     ]);
+  }
+}
+
+/// A step not reached yet: a plain muted label with a lock, not a chip, so
+/// it doesn't read as a button. The next one up says "Next".
+class _LockedStep extends StatelessWidget {
+  const _LockedStep({super.key, required this.label, required this.next});
+
+  final String label;
+  final bool next;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = mutedTextColor(t);
+    return Semantics(
+      container: true,
+      label: '$label, ${next ? 'next' : 'locked'}. Opens once the steps before it are done',
+      excludeSemantics: true,
+      child: Padding(
+        // About a chip's height, so the row lines up.
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.lock_outline, size: 14, color: muted),
+          const SizedBox(width: 4),
+          Text(next ? '$label · next' : label, style: t.textTheme.labelLarge?.copyWith(color: muted)),
+        ]),
+      ),
+    );
   }
 }

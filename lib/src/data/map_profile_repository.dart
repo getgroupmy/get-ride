@@ -11,6 +11,7 @@ import '../core/map_profile.dart';
 import '../providers.dart';
 import 'live_tables.dart';
 import 'notifications_repository.dart' show appModeProvider;
+import 'function_region.dart';
 
 /// Calls the `geo` function for the signed-in mode (rider or partner) on
 /// this kind of device. The client is looked up on first use, so building
@@ -24,7 +25,7 @@ class GeoProxy {
 
   /// The function's JSON answer for [params], or null when it gave none.
   Future<Map<String, dynamic>?> get(Map<String, String> params) async {
-    final res = await _db().functions.invoke(
+    final res = await _db().functions.invokeNearDb(
       'geo',
       method: HttpMethod.get,
       queryParameters: {...params, 'role': role(), 'device': device.name},

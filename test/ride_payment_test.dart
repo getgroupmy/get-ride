@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/commerce/get_coin.dart' show GetCoinSettings;
+import 'package:get_ride/src/core/format.dart' show formatMoney;
 import 'package:get_ride/src/core/payment_types.dart';
 import 'package:get_ride/src/core/push_logic.dart';
 import 'package:get_ride/src/core/ride_payment.dart';
@@ -288,8 +289,13 @@ void main() {
   });
 
   group('driver', () {
-    Future<(_FakeRides, StreamController<RideRequest>)> pump(WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1200, 1800);
+    Future<(_FakeRides, StreamController<RideRequest>)> pump(
+      WidgetTester tester, {
+      Size size = const Size(1200, 1800),
+      bool dark = false,
+      double textScale = 1,
+    }) async {
+      tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final rides = _FakeRides();
@@ -303,7 +309,14 @@ void main() {
             tripFixProvider.overrideWithValue(() async => null),
             currentUserIdProvider.overrideWithValue(null),
           ],
-          child: const MaterialApp(home: PartnerTripScreen(requestId: 'r1')),
+          child: MaterialApp(
+            theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+              child: child!,
+            ),
+            home: const PartnerTripScreen(requestId: 'r1'),
+          ),
         ),
       );
       return (rides, rows);
@@ -334,6 +347,27 @@ void main() {
       expect(find.text('Cash received'), findsOneWidget);
       expect(find.byKey(const ValueKey('trip-confirm-cash')), findsNothing);
     });
+
+    for (final dark in [false, true]) {
+      testWidgets('412x915 at 1.3x: Total due is bold and no smaller than its parts (${dark ? 'dark' : 'light'})',
+          (tester) async {
+        final (_, rows) = await pump(tester, size: const Size(412, 915), dark: dark, textScale: 1.3);
+        rows.add(driverRide({'payment_status': 'due', 'toll_charges': 3}));
+        await tester.pump();
+        await tester.pump();
+        final total = find.byKey(const ValueKey('trip-collect-total-amount'));
+        await tester.ensureVisible(total);
+        await tester.pump();
+        expect(tester.widget<Text>(total).style?.fontWeight, FontWeight.w700);
+        final fare = find.descendant(of: find.byKey(const ValueKey('trip-collect-fare')), matching: find.text(formatMoney(20, 'MYR')));
+        final part = tester.getSize(fare).height;
+        expect(tester.getSize(total).height, greaterThanOrEqualTo(part));
+        final label = find.descendant(of: find.byKey(const ValueKey('trip-collect-total')), matching: find.text('Total due'));
+        expect(tester.widget<Text>(label).style?.fontWeight, FontWeight.w700);
+        expect(tester.getSize(label).height, greaterThanOrEqualTo(part));
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('paid with GET.wallet: nothing left to collect', (tester) async {
       final (_, rows) = await pump(tester);

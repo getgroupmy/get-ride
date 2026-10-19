@@ -2,6 +2,8 @@
 /// Expo `AdminUserList` / `AdminPartnerList` / `AdminVehicleList` rules.
 library;
 
+import 'profile_search.dart' show peopleSearchTerm;
+
 /// A user's effective status: `profile_status` (the admin decision) wins,
 /// falling back to `status` (Expo `mapProfileStatus`).
 String userStatus(Map<String, dynamic> row) {
@@ -39,6 +41,48 @@ bool rowSearch(Map<String, dynamic> row, String query, List<String> columns) {
   final q = query.trim().toLowerCase();
   if (q.isEmpty) return true;
   return columns.any((c) => '${row[c] ?? ''}'.toLowerCase().contains(q));
+}
+
+/// Rows per page of the admin users list and the partner user picker
+/// (PERF-55): the `profiles` table is read a page at a time, never whole.
+const adminPeoplePageSize = 200;
+
+/// The page on a phone: a user's row is some 113 tall with its Approve and
+/// Reject, so 200 put "Load more" 22,000 px down.
+const adminPeopleNarrowPageSize = 50;
+
+/// The page size for a list [width] wide: smaller under 600.
+int adminPeoplePageSizeFor(double width) => width < 600 ? adminPeopleNarrowPageSize : adminPeoplePageSize;
+
+/// The count over a paged people list: what is loaded, and what of it the
+/// filters or search kept. With more on the server and nothing filtered it
+/// says how many of the newest are loaded (not "200 of the first 200", which
+/// reads as a search result).
+String pagedCountLabel({required int shown, required int loaded, required bool more, required bool filtered}) {
+  if (!more) return '$shown of $loaded';
+  if (!filtered) return 'Showing the newest $loaded';
+  return '$shown ${shown == 1 ? 'match' : 'matches'} among the first $loaded loaded';
+}
+
+/// One page of rows, and whether more are on the server.
+typedef RowsPage = ({List<Map<String, dynamic>> rows, bool more});
+
+/// [rows] fetched with one row past [limit] (`range(0, limit)`) as a page:
+/// that extra row only says there are more.
+RowsPage rowsPage(List<Map<String, dynamic>> rows, int limit) =>
+    rows.length > limit ? (rows: rows.sublist(0, limit), more: true) : (rows: rows, more: false);
+
+/// The columns the users list searches, on the server and on the rows loaded.
+const userSearchColumns = ['name', 'phone', 'deleted_phone', 'email', 'display_id', 'ic', 'app_version'];
+
+/// A PostgREST `or` filter matching [query] anywhere in any of [columns]
+/// (case-insensitive, as [rowSearch]), or null when there is nothing to
+/// search on: the term is made safe the way the people search makes it
+/// ([peopleSearchTerm]).
+String? searchOrFilter(String query, List<String> columns) {
+  final term = peopleSearchTerm(query);
+  if (term == null || columns.isEmpty) return null;
+  return columns.map((c) => '$c.ilike.*$term*').join(',');
 }
 
 const userFilters = {

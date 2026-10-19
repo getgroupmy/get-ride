@@ -249,6 +249,9 @@ class _ReferralCardSectionState extends ConsumerState<ReferralCardSection> {
           shareLabel: 'Share card',
           saveLabel: 'Save card',
           image: _image,
+          // A browser that can't share images: the invite and its link go
+          // on the clipboard instead, and it says so.
+          copyInstead: referralMessage(widget.code, widget.link),
         ),
       ],
     );

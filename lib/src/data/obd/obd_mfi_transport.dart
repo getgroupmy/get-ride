@@ -50,14 +50,14 @@ class MfiObdTransport implements ObdTransport {
   Future<String> connect() async {
     if (!mfiSupported) {
       throw UnsupportedError(
-        'Bluetooth MFi readers are no longer supported. Add a Bluetooth LE or Wi-Fi reader in Settings → OBD-II reader.',
+        'Bluetooth MFi readers are no longer supported. Add a Bluetooth LE or Wi-Fi reader in Settings > OBD-II reader.',
       );
     }
     await disconnect();
     final accessory = pickMfiAccessory(await listMfiAccessories(), preferred: key);
     if (accessory == null) {
       throw StateError(
-        '${name ?? 'The reader'} is not connected to this iPhone. Pair it in Settings → Bluetooth and turn the '
+        '${name ?? 'The reader'} is not connected to this iPhone. Pair it in Settings > Bluetooth and turn the '
         'ignition on.',
       );
     }

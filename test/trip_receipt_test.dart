@@ -6,6 +6,7 @@ import 'package:get_ride/src/core/trip_receipt.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ride/trip_receipt_screen.dart';
 import 'package:get_ride/src/widgets/pdf_actions.dart';
+import 'package:get_ride/src/widgets/ride_map.dart' show PickupPin, openingView;
 import 'package:get_ride/src/providers.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -227,8 +228,52 @@ void main() {
       })),
       const [LatLng(3.15, 101.71), LatLng(3.14, 101.67), LatLng(3.13, 101.68)],
     );
-    expect(receiptRoute(trip(extra: {'pickup_lat': 3.15, 'pickup_lng': 101.71})), isEmpty);
+    // No drop-off (cancelled before one was set): the pickup alone.
+    expect(receiptRoute(trip(extra: {'pickup_lat': 3.15, 'pickup_lng': 101.71})), const [LatLng(3.15, 101.71)]);
     expect(receiptRoute(trip()), isEmpty);
+  });
+
+  test('the receipt map frames a city trip at street level, not the whole valley', () {
+    const route = [LatLng(3.1579, 101.7123), LatLng(3.1340, 101.6860)];
+    // As the card lays it out: 360 wide, 200 high, the slim margins.
+    final view = openingView(
+      route,
+      route,
+      const Size(360, receiptMapHeight),
+      top: receiptMapMargin,
+      bottom: receiptMapMargin - 64,
+    );
+    // With the map's usual 64 all round it was about 11.6 (the valley).
+    final before = openingView(route, route, const Size(360, receiptMapHeight));
+    expect(view.zoom, greaterThan(before.zoom + 0.5));
+    expect(view.zoom, greaterThanOrEqualTo(12.5));
+  });
+
+  testWidgets("a cancelled trip's receipt has no time under its ends; a completed one says what it is", (tester) async {
+    tester.view.physicalSize = const Size(1000, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Future<void> open(RideRequest r) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          key: UniqueKey(),
+          overrides: [
+            currentUserIdProvider.overrideWithValue(_rider),
+            tripProvider.overrideWith((ref, id) async => r),
+          ],
+          child: const MaterialApp(home: TripReceiptScreen(requestId: 'x')),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    await open(trip(status: 'cancelled', extra: {'pickup_lat': 3.15, 'pickup_lng': 101.71}));
+    expect(find.byKey(const ValueKey('receipt-picked-up')), findsNothing);
+    expect(find.textContaining(RegExp(r'^\d{1,2}:\d{2} [AP]M$')), findsNothing);
+    expect(find.byKey(const ValueKey('receipt-map')), findsOneWidget, reason: 'the pickup at street level');
+    await open(trip());
+    expect(tester.widget<Text>(find.byKey(const ValueKey('receipt-picked-up'))).data, startsWith('Picked up '));
   });
 
   testWidgets('the receipt shows the trip on a map when both ends are known', (tester) async {
@@ -255,6 +300,40 @@ void main() {
     await open(trip());
     expect(find.byKey(const ValueKey('receipt-map')), findsNothing);
   });
+
+  // Desktop 138: the pickup pin stands whole inside the map card at 390 px.
+  for (final b in Brightness.values) {
+    testWidgets('138: at 390 wide the pickup pin is wholly inside the receipt map (${b.name})', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      // Pickup north of the drop-off: its pin stands at the top edge.
+      for (final ends in [
+        {'pickup_lat': 3.158, 'pickup_lng': 101.712, 'drop_lat': 3.134, 'drop_lng': 101.686},
+        {'pickup_lat': 3.20, 'pickup_lng': 101.60, 'drop_lat': 3.05, 'drop_lng': 101.75},
+      ]) {
+        await tester.pumpWidget(
+          ProviderScope(
+            key: UniqueKey(),
+            overrides: [
+              currentUserIdProvider.overrideWithValue(_rider),
+              tripProvider.overrideWith((ref, id) async => trip(extra: ends)),
+            ],
+            child: MaterialApp(theme: ThemeData(brightness: b), home: const TripReceiptScreen(requestId: 'x')),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        final card = tester.getRect(find.byKey(const ValueKey('receipt-map')));
+        final pin = tester.getRect(find.byType(PickupPin));
+        expect(pin.top, greaterThanOrEqualTo(card.top), reason: 'the head, not only its base');
+        expect(pin.bottom, lessThanOrEqualTo(card.bottom));
+        expect(pin.left, greaterThanOrEqualTo(card.left));
+        expect(pin.right, lessThanOrEqualTo(card.right));
+        expect(tester.takeException(), isNull);
+      }
+    });
+  }
 
   test('a trip the driver ended early says so, at the fare it was stored at', () {
     final early = TripReceipt.fromRide(trip(extra: {'ride_fare': 9.4, 'ended_early_at': '2026-10-05T01:20:00Z'}));

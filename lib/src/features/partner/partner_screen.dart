@@ -61,6 +61,7 @@ import '../../widgets/trip_safety.dart';
 import '../../widgets/net_image.dart';
 import 'trip_handover_panel.dart' show HandoverOffersCard;
 import '../../widgets/page_style_host.dart';
+import '../../widgets/focus_order.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -86,7 +87,12 @@ bool partnerCanDrive(Partner p) {
   return s == 'approved' || s.startsWith('permit-');
 }
 
+/// Below this height the wide driver panel scrolls as a whole instead of
+/// holding its settings fixed over the queue.
+const wideDriverPanelScrollBelow = 640.0;
+
 /// Driver mode: go online, see open requests live, accept one.
+
 class PartnerScreen extends ConsumerStatefulWidget {
   const PartnerScreen({super.key});
 
@@ -125,6 +131,19 @@ const goOnlineCheckTimeout = Duration(seconds: 8);
 
 class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool _online = false;
+
+  /// A demo request (Admin → Demo → mock incoming requests) is up: it
+  /// floats on the map and holds the sheet down as a real one does.
+  bool _demoShowing = false;
+
+  void _onDemo(bool on) {
+    if (mounted && on != _demoShowing) setState(() => _demoShowing = on);
+  }
+
+  // Only the admin's demo drivers (Admin → Display Settings → Demo drivers).
+  bool get _demoOn => _online && ref.watch(demoDriverProvider);
+
+  bool get _demoShown => _demoShowing && _demoOn;
   late final DriverOnline _onlineState;
   LatLng? _me;
   StreamSubscription<LatLng>? _fixes;
@@ -372,7 +391,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     if (v && _autoAccept) _markQueueSeen();
     // Requests already waiting are in the list; only new ones pop up.
     if (v) _alertSeen.addAll(ref.read(openRequestsProvider).value?.map((r) => r.id) ?? const <String>[]);
-    setState(() => _online = v);
+    setState(() {
+      _online = v;
+      _demoShowing = false;
+    });
     _onlineState.set(v);
     if (!v) _syncAlert(const []);
     if (v) unawaited(_locate());
@@ -472,6 +494,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     return _askForVehicle(needed, teksi: teksi);
   }
 
+  /// The vehicle under the online switch: the one this driver has taken,
+  /// else "No vehicle chosen" (not the car on their profile, which they may
+  /// not be driving: going online then asked them to pick one). Where the
+  /// vehicles can't be read, the profile's, as before.
+  List<String?> _vehicleLine(Partner p) {
+    final vehicles = ref.watch(assignableVehiclesProvider);
+    if (vehicles.hasError) return [p.vehicle, p.plate];
+    final list = vehicles.value;
+    if (list == null) return const [];
+    final mine = list.where((v) => v.inUseByMe).firstOrNull;
+    return mine == null ? const ['No vehicle chosen'] : [mine.title, mine.plate];
+  }
+
   /// [_vehicleReady]'s check alone: null when the driver may start, else
   /// the vehicles to choose from (maybe none).
   Future<List<AssignableVehicle>?> _vehicleNeeded(Partner partner, {required bool teksi}) async {
@@ -539,7 +574,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final picked = await showAppSheet<AssignableVehicle>(id: 'partner.vehicle-ready-2',
       context: context,
       isScrollControlled: true,
-      builder: (_) => VehiclePickerSheet(vehicles: vehicles),
+      // The one vehicle that can be driven comes picked out; still the
+      // driver's tap takes it.
+      builder: (_) => VehiclePickerSheet(vehicles: vehicles, preselect: usable.length == 1 ? usable.single.id : null),
     );
     if (picked == null || !mounted) return false;
     if (picked.inUseByMe) return true;
@@ -794,7 +831,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         // One line: on a phone on its side the card must fit
                         // the sheet's lowest height.
                         subtitle: Text(
-                          [p.name, p.vehicle, p.plate].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · '),
+                          [p.name, ..._vehicleLine(p)].whereType<String>().where((s) => s.trim().isNotEmpty).join(' · '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -856,11 +893,32 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     // Lost item reports to answer (Phase D4).
                     const DriverLostItemsCard(),
                     const CurrentVehicleCard(),
-                    if (_online && ref.watch(demoSettingsProvider).partnerRequests) const DemoJobFeed(),
+                    // On a phone the demo request floats on the map instead,
+                    // with the real ones ([_floatingRequests]).
+                    if (wide && _demoOn) DemoJobFeed(key: const ValueKey('demo-job-feed'), onShowing: _onDemo),
                   ];
                 const offline = EmptyState(icon: Icons.local_taxi_outlined, title: 'Go online to receive ride requests');
                 if (wide) {
-                  final panel = Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)]);
+                  // Tall enough, the settings stand over the queue, which
+                  // takes the rest; short (a phone on its side, 915 × 412),
+                  // the whole panel scrolls, the queue a screenful below the
+                  // settings, so nothing overflows.
+                  final panel = LayoutBuilder(
+                    builder: (_, c) => c.maxHeight >= wideDriverPanelScrollBelow
+                        ? Column(children: [...head, Expanded(child: _online ? _queue(p, wide: true) : offline)])
+                        : CustomScrollView(
+                            key: const ValueKey('partner-panel-scroll'),
+                            slivers: [
+                              SliverList.list(children: head),
+                              SliverToBoxAdapter(
+                                child: SizedBox(
+                                  height: c.maxHeight,
+                                  child: _online ? _queue(p, wide: true) : offline,
+                                ),
+                              ),
+                            ],
+                          ),
+                  );
                   return Row(children: [
                     SizedBox(width: 520, child: panel),
                     const VerticalDivider(width: 1),
@@ -888,7 +946,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 return MapSheetLayout(
                   initial: rest,
                   min: rest,
-                  locked: floating.isNotEmpty,
+                  locked: floating.isNotEmpty || _demoShown,
                   map: Stack(children: [
                     Positioned.fill(child: map),
                     if (_online) _floatingRequests(p, null, floating),
@@ -909,7 +967,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         Positioned(
           top: 0,
           right: 0,
-          child: SafeArea(
+          // Floating shortcuts: reached by keyboard after the rail and the
+          // panel, with the map's own buttons (FocusLast).
+          child: FocusLast(child: SafeArea(
             bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(8, 8, 12, 0),
@@ -961,7 +1021,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   ),
               ]),
             ),
-          ),
+          )),
         ),
         // The menu: top left, exactly where the home map has it (on a
         // phone, with its side menu).
@@ -999,7 +1059,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Widget _requestSheet(Partner partner) {
     final list = ref.watch(openRequestsProvider).value ?? const <RideRequest>[];
     final r = list.where((r) => r.id == _alertId).firstOrNull;
-    return Stack(children: [
+    // While the sheet is up nothing behind it (the demo request card with
+    // its Accept and Decline, the map's buttons) is reachable by a screen
+    // reader (141).
+    return BlockSemantics(blocking: r != null, child: Stack(children: [
       IgnorePointer(
         child: AnimatedOpacity(
           opacity: r == null ? 0 : 1,
@@ -1043,7 +1106,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 ),
         ),
       ),
-    ]);
+    ]));
   }
 
   /// One of the round buttons floating at the top of the page (in place of
@@ -1135,6 +1198,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Widget _floatingRequests(Partner partner, RideRequest? alert, List<RideRequest> items) {
     final t = Theme.of(context);
     final sideways = floatingRequestsBeside(MediaQuery.sizeOf(context));
+    final demoOn = _demoOn, demoShown = _demoShown;
     // Inside the map, so the list keeps clear of the sheet and the map
     // buttons; mounted even when empty, so the last card flies out too.
     return Positioned.fill(
@@ -1154,15 +1218,23 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               // instead, as far as the sheet.
               right: 12 + MediaQuery.paddingOf(context).right + (sideways ? 64 : 0),
               bottom: inset + mapAttributionClearance + (sideways ? 0 : 168),
-              child: FlyInList<RideRequest>(
-                padding: const EdgeInsets.only(top: 8, bottom: 8),
-                items: items,
-                idOf: (r) => r.id == alert?.id ? 'alert-${r.id}' : r.id,
-                itemBuilder: (_, r) => r.id == alert?.id ? _alertCard(r, partner) : _requestCard(r, partner),
-              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                // A demo request, as the real ones float (it sat unseen in
+                // the sheet held down under them).
+                if (demoOn) DemoJobFeed(key: const ValueKey('demo-job-feed'), onShowing: _onDemo),
+                Expanded(
+                  key: const ValueKey('floating-requests-list'),
+                  child: FlyInList<RideRequest>(
+                    padding: const EdgeInsets.only(top: 8, bottom: 8),
+                    items: items,
+                    idOf: (r) => r.id == alert?.id ? 'alert-${r.id}' : r.id,
+                    itemBuilder: (_, r) => r.id == alert?.id ? _alertCard(r, partner) : _requestCard(r, partner),
+                  ),
+                ),
+              ]),
             ),
           ),
-          if (items.isEmpty)
+          if (items.isEmpty && !demoShown)
             Positioned(
               top: 64,
               left: 0,
@@ -1198,12 +1270,16 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
 
   /// The queue as a list (the wide layout's panel).
   Widget _queue(Partner partner, {bool wide = false}) {
+    final demoShown = _demoShown;
     return AsyncView(
       value: ref.watch(openRequestsProvider),
       onRetry: () => ref.invalidate(openRequestsProvider),
       data: (list) {
         final (:alert, :sorted) = _queueOrder(list, wide: wide);
         if (alert == null && sorted.isEmpty) {
+          // A request showing (a demo one above, or a real one over the
+          // map on a desktop): not "waiting" beside it.
+          if (demoShown || list.any((r) => r.id == _alertId)) return const SizedBox.shrink();
           return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');
         }
         return ListView.builder(
@@ -1457,56 +1533,53 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               ].join(' · '),
             ),
           ),
+          // Facts, not choices: plain text to a screen reader (a Chip read
+          // as an unchecked checkbox on the web).
           Wrap(spacing: 6, runSpacing: 6, children: [
-            Chip(label: Text(r.paymentMode), visualDensity: VisualDensity.compact),
-            Chip(label: Text('${r.passengers} pax'), visualDensity: VisualDensity.compact),
-            if ((r.luggage ?? 0) > 0)
-              Chip(
-                label: Text('${r.luggage} ${r.luggage == 1 ? 'bag' : 'bags'}'),
-                visualDensity: VisualDensity.compact,
-              ),
-            if (r.stops.isNotEmpty)
-              Chip(
-                label: Text('${r.stops.length} stop${r.stops.length == 1 ? '' : 's'}'),
-                visualDensity: VisualDensity.compact,
-              ),
+            _InfoPill(r.paymentMode),
+            _InfoPill('${r.passengers} pax'),
+            if ((r.luggage ?? 0) > 0) _InfoPill('${r.luggage} ${r.luggage == 1 ? 'bag' : 'bags'}'),
+            if (r.stops.isNotEmpty) _InfoPill('${r.stops.length} stop${r.stops.length == 1 ? '' : 's'}'),
           ]),
           if (r.note != null) Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text('“${r.note}”', style: t.textTheme.bodySmall),
           ),
           const SizedBox(height: 10),
-          Row(children: [
-            Expanded(
-              child: OutlinedButton(
-                key: const ValueKey('request-alert-decline'),
-                onPressed: _accepting != null ? null : () => _dismissAlert(skipped: true),
-                child: const Text('Skip'),
-              ),
-            ),
-            if (canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)) ...[
-              const SizedBox(width: 8),
-              Expanded(
-                child: BusyButton.outlined(
-                  key: ValueKey('offer-${r.id}'),
-                  onPressed: _accepting != null ? null : () => _offer(r, partner),
-                  child: const Text('Offer price'),
-                ),
-              ),
-            ],
-            const SizedBox(width: 8),
-            Expanded(
-              child: BusyButton.filled(
-                key: const ValueKey('request-alert-accept'),
-                onPressed: _accepting != null ? null : () => _accept(r, partner),
-                child: _accepting == r.id
-                    ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text('Accept ${r.fareText(r.effectiveFare)}', textAlign: TextAlign.center),
-              ),
-            ),
-          ]),
+          // The phone's request sheet's own buttons: Accept for the fare,
+          // the fare offers where the rider takes them, and Skip.
+          RequestAnswerButtons(
+            request: r,
+            busy: _accepting != null,
+            onAccept: () => _accept(r, partner),
+            onSkip: () => _dismissAlert(skipped: true),
+            onOffer: canCounterOffer(requestOfferMe: r.offerMe, allowOfferMe: _allowOfferMe)
+                ? (amount) => _offer(r, partner, preset: amount)
+                : null,
+          ),
         ]),
       ),
+    );
+  }
+}
+
+/// A fact about a request (cash, 1 pax) in a rounded outline: read as its
+/// text, not as a chip that could be ticked.
+class _InfoPill extends StatelessWidget {
+  const _InfoPill(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        border: Border.all(color: t.colorScheme.outline),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(text, style: t.textTheme.labelLarge),
     );
   }
 }

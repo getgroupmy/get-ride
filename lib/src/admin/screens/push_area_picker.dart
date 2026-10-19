@@ -84,7 +84,7 @@ class PushAreaPicker extends StatelessWidget {
         if (area.kind == PushAreaKind.region) ...[
           const SizedBox(height: 12),
           if (choices.countries.isEmpty)
-            Text('Add countries in Admin → Regions to send by region.', style: t.textTheme.bodySmall)
+            Text('Add countries in Admin > Regions to send by region.', style: t.textTheme.bodySmall)
           else ...[
             dropdown(
               'country',

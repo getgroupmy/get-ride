@@ -366,7 +366,7 @@ class _SpotPreview extends StatelessWidget {
       options: MapOptions(
         initialCenter: point,
         initialZoom: 17,
-        interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+        interactionOptions: const InteractionOptions(flags: InteractiveFlag.none, keyboardOptions: mapKeyboardOptions),
       ),
       children: [
         baseTileLayer(context),

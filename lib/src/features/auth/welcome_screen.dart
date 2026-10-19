@@ -78,7 +78,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     final big = const Size.fromHeight(58);
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
     final label = t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600);
-    final muted = t.colorScheme.onSurfaceVariant;
+    final muted = mutedTextColor(t);
     final page = Scaffold(
       key: const ValueKey('welcome'),
       body: SafeArea(
@@ -156,21 +156,10 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
               if (passkeys) ...[const PasskeySignInButton(), const SizedBox(height: 12)],
               FilledButton(
                 key: const ValueKey('continue-with-phone'),
-                style: passkeys
-                    ? FilledButton.styleFrom(
-                        minimumSize: big,
-                        shape: shape,
-                        textStyle: label,
-                        backgroundColor: t.colorScheme.surfaceContainerHighest,
-                        foregroundColor: t.colorScheme.onSurface,
-                      )
-                    : FilledButton.styleFrom(
-                        minimumSize: big,
-                        shape: shape,
-                        textStyle: label,
-                        backgroundColor: t.colorScheme.inverseSurface,
-                        foregroundColor: t.colorScheme.onInverseSurface,
-                      ),
+                // The primary action, always: the theme's filled button, as
+                // Next and Sign in (a grey tonal one beside an outlined
+                // passkey button read as disabled).
+                style: FilledButton.styleFrom(minimumSize: big, shape: shape, textStyle: label),
                 onPressed: () {
                   signedOutElsewhere.value = false;
                   // The page asked for before sign-in rides along (`to`).

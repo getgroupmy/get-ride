@@ -8,12 +8,22 @@ import '../../core/wallet_history.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../../widgets/edge_fade_scroll.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart' show showSearchPicker;
 
 /// One month of this account's ledger, newest first.
 final walletHistoryProvider = FutureProvider.autoDispose.family<List<WalletTransaction>, HistoryMonth>(
   (ref, m) => ref.watch(accountRepositoryProvider).walletTransactions(from: m.start, to: m.end, limit: 1000),
 );
+
+/// When the account's first wallet transaction was made, for "Older…".
+final walletFirstTxProvider = FutureProvider.autoDispose<DateTime?>(
+  (ref) => ref.watch(accountRepositoryProvider).firstWalletTransactionAt(),
+);
+
+/// The month menu's last entry: opens the older months.
+const _olderEntry = HistoryMonth(0, 0, 'Older…');
 
 /// Full wallet history (Expo `app/wallet-history.tsx`): wallet tabs, category
 /// chips and a month picker over the last six months, grouped by day, with a
@@ -29,8 +39,35 @@ class WalletHistoryScreen extends ConsumerStatefulWidget {
 }
 
 class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
-  late final _months = historyMonths(widget.now ?? DateTime.now());
+  DateTime get _now => widget.now ?? DateTime.now();
+  late final _months = historyMonths(_now);
+
+  /// "Older…": a searchable list of the months before the menu's six, back
+  /// to the account's first transaction; each is read as any month is.
+  Future<void> _pickOlder() async {
+    DateTime? first;
+    try {
+      first = await ref.read(walletFirstTxProvider.future);
+    } catch (_) {
+      if (mounted) showInfo(context, "Couldn't load older months. Please try again.");
+      return;
+    }
+    if (!mounted) return;
+    final older = olderHistoryMonths(_now, first);
+    if (older.isEmpty) {
+      showInfo(context, 'There are no older transactions.');
+      return;
+    }
+    final m = await showSearchPicker<HistoryMonth>(
+      context,
+      title: 'Choose a month',
+      selected: older.contains(_month) ? _month : null,
+      choices: [for (final m in older) (value: m, label: m.label, subtitle: null, leading: null)],
+    );
+    if (m != null && mounted) setState(() => _month = m);
+  }
   late var _month = _months.first;
+  final _monthMenu = GlobalKey<PopupMenuButtonState<HistoryMonth>>(debugLabel: 'history-month');
   String? _wallet;
   WalletTxCategory? _category;
 
@@ -59,12 +96,33 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
                 children: [
                   Align(
                     alignment: AlignmentDirectional.centerStart,
-                    child: PopupMenuButton<HistoryMonth>(
+                    // One labelled button for screen readers whose tap opens
+                    // the list (the menu's own tooltip node had no action).
+                    child: Semantics(
                       key: const ValueKey('history-month'),
+                      container: true,
+                      button: true,
+                      label: 'Month, ${_month.label}',
+                      hint: 'Choose a month',
+                      onTap: () => _monthMenu.currentState?.showButtonMenu(),
+                      excludeSemantics: true,
+                      child: PopupMenuButton<HistoryMonth>(
+                      key: _monthMenu,
                       tooltip: 'Month',
                       initialValue: _month,
-                      onSelected: (m) => setState(() => _month = m),
-                      itemBuilder: (_) => [for (final m in _months) PopupMenuItem(value: m, child: Text(m.label))],
+                      onSelected: (m) => m == _olderEntry ? _pickOlder() : setState(() => _month = m),
+                      itemBuilder: (_) => [
+                        for (final m in _months) PopupMenuItem(value: m, child: Text(m.label)),
+                        // An older month picked earlier stays in the list.
+                        if (!_months.contains(_month)) PopupMenuItem(value: _month, child: Text(_month.label)),
+                        if (ref.read(walletFirstTxProvider).value == null ||
+                            olderHistoryMonths(_now, ref.read(walletFirstTxProvider).value).isNotEmpty)
+                          const PopupMenuItem(
+                            key: ValueKey('history-month-older'),
+                            value: _olderEntry,
+                            child: Text('Older…'),
+                          ),
+                      ],
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(minHeight: 48),
                         child: Row(
@@ -78,10 +136,11 @@ class _WalletHistoryScreenState extends ConsumerState<WalletHistoryScreen> {
                         ),
                       ),
                     ),
+                    ),
                   ),
                   const SizedBox(height: 4),
-                  // Two named rows of chips that wrap, so none hides past
-                  // the edge and the two "All"s read as two filters.
+                  // Two named one-line rows of chips, each scrolling with a
+                  // fade, so the two "All"s read as two filters.
                   _FilterRow(
                     label: 'Wallet',
                     chips: [
@@ -195,15 +254,19 @@ class _FilterRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    return Wrap(
-      spacing: 8,
-      runSpacing: 4,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        Text(label, style: t.textTheme.labelLarge?.copyWith(color: mutedTextColor(t))),
-        ...chips,
-      ],
-    );
+    // One line that scrolls sideways, faded at the edge with more: every
+    // option still reachable and in view, without the wrapped rows taking
+    // most of a small or sideways screen.
+    return Row(children: [
+      Text(label, style: t.textTheme.labelLarge?.copyWith(color: mutedTextColor(t))),
+      const SizedBox(width: 8),
+      Expanded(
+        child: EdgeFadeScroll(
+          key: ValueKey('history-filter-$label'),
+          child: Row(spacing: 8, children: chips),
+        ),
+      ),
+    ]);
   }
 }
 
@@ -226,7 +289,16 @@ class _HistoryRow extends StatelessWidget {
       ),
       title: Row(
         children: [
-          Flexible(child: Text(walletTxLabel(tx.kind, tx.note), overflow: TextOverflow.ellipsis)),
+          // Two lines before the amount: "Transfer Received" whole, not
+          // "Transfer Rece…" over a subtitle that wraps.
+          Flexible(
+            child: Text(
+              walletTxLabel(tx.kind, tx.note),
+              key: ValueKey('history-title-${tx.id}'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           if (referral) ...[
             const SizedBox(width: 6),
             Container(

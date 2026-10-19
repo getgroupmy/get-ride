@@ -11,6 +11,7 @@ import '../../platform/web_contacts.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
+import '../../widgets/page_add_action.dart';
 import '../../widgets/call_number.dart';
 import '../../widgets/common.dart';
 import '../../widgets/dial_country_picker.dart';
@@ -219,15 +220,17 @@ class EmergencyContactsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final contacts = ref.watch(emergencyContactsProvider);
     final count = contacts.value?.length ?? 0;
+    // A floating Add on a phone; beside the title from 600 wide.
+    final add = count >= maxContacts
+        ? null
+        : PageAddAction(onPressed: () => _edit(context, ref), label: const Text('Add contact'));
     return Scaffold(
-      appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Emergency contacts')),
-      floatingActionButton: count >= maxContacts
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => _edit(context, ref),
-              icon: const Icon(Icons.add),
-              label: const Text('Add contact'),
-            ),
+      appBar: AppBar(
+        leading: sideMenuLeading(context),
+        title: const Text('Emergency contacts'),
+        actions: pageAddActions(context, add),
+      ),
+      floatingActionButton: pageAddFab(context, add),
       body: AsyncView(
         value: contacts,
         onRetry: () => ref.invalidate(emergencyContactsProvider),
@@ -237,7 +240,7 @@ class EmergencyContactsScreen extends ConsumerWidget {
                 title: 'No emergency contacts',
                 message: 'Add people we can share your trip with in an emergency.',
               )
-            : ListView(children: [
+            : ListView(padding: EdgeInsets.only(bottom: add == null ? 16 : addActionListBottomPadding(context)), children: [
                 ResponsiveCenter(
                   child: Card(
                     child: Column(children: [

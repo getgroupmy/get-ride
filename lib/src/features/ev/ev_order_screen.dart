@@ -232,7 +232,10 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
               : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   _progress(),
                   Expanded(
-                    child: ListView(padding: const EdgeInsets.all(16), children: [
+                    // The last card ends well clear of the pinned Back /
+                    // Continue bar (the Scaffold sets the body above it and
+                    // its safe area), not flush against it at large text.
+                    child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 40), children: [
                       Text(evStepTitles[key]!, style: Theme.of(context).textTheme.titleLarge),
                       const SizedBox(height: 12),
                       ..._stepBody(key, catalog.value!),
@@ -256,18 +259,31 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
 
   Widget _footer(EvCatalog c) {
     final last = _step == evStepKeys.length - 1;
+    final total = evStepKeys[_step] == 'specification' && _order == null && _vehicle(c) != null
+        ? evMoney(evPriceBreakdown(_vehicle(c), _extras(c)).total)
+        : null;
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(children: [
           OutlinedButton(onPressed: _step == 0 || _busy ? null : () => setState(() => _step--), child: const Text('Back')),
+          const SizedBox(width: 12),
           const Spacer(),
           if (!last)
-            FilledButton(
-              style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-              onPressed: _busy || !_canProceed(c) ? null : () => setState(() => _step++),
-              child: const Text('Continue'),
+            Flexible(
+              flex: 4,
+              child: FilledButton(
+                key: const ValueKey('ev-continue'),
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                onPressed: _busy || !_canProceed(c) ? null : () => setState(() => _step++),
+                // On the specification, the running total rides along.
+                child: Text(
+                  total == null ? 'Continue' : 'Continue · $total',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ),
         ]),
       ),
@@ -461,7 +477,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
         ],
       ],
       const SizedBox(height: 12),
-      _Facts({
+      _Facts(key: const ValueKey('ev-price-summary'), {
         'Base price': evMoney(price.base),
         'Tax': evMoney(price.tax),
         'Options': evMoney(price.extras),
@@ -475,8 +491,15 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
         runSpacing: 8,
         children: [
           for (final c in colours)
+            // The swatch always shows: no tick over it; the chosen colour
+            // is marked by the chip's fill and a strong outline.
             ChoiceChip(
+              key: ValueKey('ev-colour-${c.name}'),
               avatar: _swatch(c.code),
+              showCheckmark: false,
+              side: c.name == selected
+                  ? BorderSide(color: Theme.of(context).colorScheme.primary, width: 2)
+                  : null,
               label: Text(c.name),
               selected: c.name == selected,
               onSelected: (_) => onPick(c.name),
@@ -491,6 +514,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
     // A 1 px outline, so a black swatch shows on the dark theme and a white
     // one on the light.
     return Container(
+      key: ValueKey('ev-swatch-$hex'),
       width: 16,
       height: 16,
       decoration: BoxDecoration(
@@ -1005,7 +1029,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
 double? toNumOrNull(Object? v) => v is num ? v.toDouble() : double.tryParse('${v ?? ''}'.trim());
 
 class _Facts extends StatelessWidget {
-  const _Facts(this.facts);
+  const _Facts(this.facts, {super.key});
   final Map<String, String> facts;
 
   @override

@@ -32,6 +32,19 @@ StageGeometry resolveLandscapeStage(Size viewport, EdgeInsets padding) {
 /// The width the console is laid out at before it is scaled to fit.
 const meterConsoleWidth = 820.0;
 
+/// What the console laid out at [layout] is scaled by to fit [available]
+/// (less the 6 around it), as its FittedBox scales it; 1 when it isn't.
+double meterConsoleScale(Size available, Size layout) {
+  if (available.width <= 12 || available.height <= 12 || layout.isEmpty) return 1;
+  return math.min((available.width - 12) / layout.width, (available.height - 12) / layout.height);
+}
+
+/// The layout size that comes to [onScreen] (44, a finger) on the screen once
+/// the console is scaled by [scale]; at most twice that, so a console scaled
+/// right down (a tiny window) keeps room for its readouts.
+double meterTargetSize(double scale, {double onScreen = 44}) =>
+    scale > 0 ? (onScreen / scale).clamp(0, onScreen * 2).toDouble() : onScreen;
+
 /// The console's layout box for the space it is given: a fixed width, and a
 /// height that follows the space's shape within what the layout can use, so
 /// it fills a wide phone and a squarer tablet alike and is then scaled to fit

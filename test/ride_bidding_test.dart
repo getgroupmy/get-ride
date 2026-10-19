@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart' show FlutterMap, MarkerLayer;
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/ride_bidding.dart';
@@ -237,6 +239,62 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
     });
 
+    for (final size in const [Size(390, 844), Size(360, 640)]) {
+      for (final bidding in const [true, false]) {
+      testWidgets(
+          'at rest the raise-fare controls and the drop-off show above the pinned Cancel request '
+          '(${size.width.round()}x${size.height.round()}${bidding ? '' : ', fixed fare'})', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final open = RideRequest({
+          ...ride(offerMe: bidding).raw,
+          'pickup_address': 'Kuala Lumpur City Centre, Kuala Lumpur',
+          'drop_address': 'KL Sentral, Brickfields',
+        });
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              rideRepositoryProvider.overrideWithValue(_FakeRides()),
+              rideStreamProvider.overrideWith((ref, id) => Stream.value(open)),
+              riderPositionStreamProvider.overrideWithValue(() => const Stream.empty()),
+            ],
+            child: const MaterialApp(home: RideTrackingScreen(requestId: 'r1')),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        final dropRow = find.descendant(
+          of: find.byKey(const ValueKey('search-route')),
+          matching: find.textContaining('KL Sentral'),
+        );
+        final band = find.byKey(const ValueKey('ride-cancel-footer'));
+        expect(band, findsOneWidget);
+        final handle = find.byKey(const ValueKey('map-sheet-handle'));
+        final restsAt = tester.getTopLeft(handle).dy;
+        // Offer mode: raising the fare needs no drag either (web tester #115).
+        final shown = [
+          dropRow,
+          if (bidding) find.text('Confirm'),
+          if (bidding) find.byKey(const ValueKey('search-auto-accept')),
+        ];
+        for (final f in shown) {
+          expect(f, findsOneWidget);
+        }
+        if (shown.any((f) => tester.getBottomLeft(f).dy > tester.getTopLeft(band).dy)) {
+          // Taller than the screen (the test font is wide): it rests all
+          // the way up instead.
+          await tester.drag(handle, const Offset(0, -1000));
+          await tester.pumpAndSettle();
+          expect(tester.getTopLeft(handle).dy, closeTo(restsAt, 0.5), reason: 'hidden only when even the full sheet cannot hold them');
+        }
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(seconds: 5));
+      });
+      }
+    }
+
     test('a ride is steady while only its live positions move', () {
       final a = ride(status: 'accepted').raw;
       SteadyRide s(Map<String, dynamic> raw) => SteadyRide(AsyncData(RideRequest(raw)));
@@ -312,6 +370,41 @@ void main() {
       expect(find.text('Ali'), findsNothing);
     });
 
+    for (final b in Brightness.values) {
+      testWidgets('landscape 915x412: the offer cards stand clear of the map buttons; Decline keeps the theme font '
+          '(${b.name})', (tester) async {
+        tester.view.physicalSize = const Size(915, 412);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final rows = StreamController<RideRequest>();
+        addTearDown(rows.close);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              rideRepositoryProvider.overrideWithValue(_FakeRides()),
+              rideStreamProvider.overrideWith((ref, id) => rows.stream),
+            ],
+            child: MaterialApp(theme: ThemeData(brightness: b), home: const RideTrackingScreen(requestId: 'r1')),
+          ),
+        );
+        rows.add(ride(offered: 25, partner: _other, partnerName: 'Ali'));
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        final card = tester.getRect(find.byKey(const ValueKey('ride-offer')));
+        for (final key in const ['map-type', 'map-recenter']) {
+          final button = tester.getRect(find.byKey(ValueKey(key)));
+          expect(card.overlaps(button), isFalse, reason: 'the offer card covers $key');
+          expect(card.right, lessThanOrEqualTo(button.left), reason: 'left of the map buttons');
+        }
+        final decline = find.byKey(const ValueKey('decline-offer'));
+        final label = tester.renderObject<RenderParagraph>(find.descendant(of: decline, matching: find.text('Decline')));
+        expect(label.text.style?.fontFamily, Theme.of(tester.element(decline)).textTheme.labelLarge?.fontFamily);
+        expect(label.text.style?.fontFamily, isNotNull);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('on a phone the offer floats over the top of the map, not in the sheet', (tester) async {
       tester.view.physicalSize = const Size(400, 860);
       tester.view.devicePixelRatio = 1;
@@ -340,6 +433,97 @@ void main() {
       expect(find.text('Choose a driver'), findsOneWidget);
       expect(tester.getRect(overScreen).top, lessThan(300), reason: 'at the top, under the title');
     });
+
+    for (final dark in [false, true]) {
+      testWidgets('412x915 at 1.3x: under "Choose a driver" the sheet header stands down '
+          '(${dark ? 'dark' : 'light'})', (tester) async {
+        tester.view.physicalSize = const Size(412, 915);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final rows = StreamController<RideRequest>();
+        addTearDown(rows.close);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              rideRepositoryProvider.overrideWithValue(_FakeRides()),
+              rideStreamProvider.overrideWith((ref, id) => rows.stream),
+            ],
+            child: MaterialApp(
+              theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)),
+                child: child!,
+              ),
+              home: const RideTrackingScreen(requestId: 'r1'),
+            ),
+          ),
+        );
+        bool headerShown() =>
+            tester.widget<Visibility>(find.byKey(const ValueKey('search-header-slot'))).visible;
+        rows.add(ride());
+        await tester.pump();
+        await tester.pump();
+        expect(headerShown(), isTrue, reason: 'no offers yet: the sheet says what is happening');
+        rows.add(ride(offered: 25, partner: _other, partnerName: 'Ali'));
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.byType(ChooseDriverOverlay), findsOneWidget);
+        expect(headerShown(), isFalse);
+        // Only the overlay's "All drivers verified" is there to see or hear.
+        expect(find.text('All drivers verified').hitTestable(), findsOneWidget);
+        final slot = tester.widget<Visibility>(find.byKey(const ValueKey('search-header-slot')));
+        expect(slot.maintainSemantics, isFalse, reason: 'nor read out twice');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final dark in [false, true]) {
+      testWidgets('165: at 360x640 "Choose a driver" covers the whole map, its title on a near-solid band '
+          '(${dark ? 'dark' : 'light'})', (tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final rows = StreamController<RideRequest>();
+        addTearDown(rows.close);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              rideRepositoryProvider.overrideWithValue(_FakeRides()),
+              rideStreamProvider.overrideWith((ref, id) => rows.stream),
+            ],
+            child: MaterialApp(
+              theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+              home: const RideTrackingScreen(requestId: 'r1'),
+            ),
+          ),
+        );
+        rows.add(ride(offered: 25, partner: _other, partnerName: 'Ali'));
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        final overlay = tester.getRect(find.byType(ChooseDriverOverlay));
+        final map = tester.getRect(find.byType(FlutterMap));
+        // Over the map from its top edge, side to side; since #434 the dim
+        // stops above the sheet's footer instead of covering it.
+        expect(overlay.top, lessThanOrEqualTo(map.top + 0.5), reason: 'over the map from its top, markers and all');
+        expect(overlay.left, lessThanOrEqualTo(map.left + 0.5));
+        expect(overlay.right, greaterThanOrEqualTo(map.right - 0.5));
+        // Painted after the map: the overlay is a later child of the same Stack.
+        final stack = tester.widget<Stack>(find.ancestor(of: find.byType(ChooseDriverOverlay), matching: find.byType(Stack)).first);
+        expect(stack.children.last, isA<Positioned>());
+        final header = find.byKey(const ValueKey('choose-driver-header'));
+        expect(tester.widget<ColoredBox>(header).color.a, greaterThanOrEqualTo(0.9));
+        expect(find.descendant(of: header, matching: find.text('All drivers verified')), findsOneWidget);
+        expect(find.descendant(of: header, matching: find.text('Choose a driver')), findsOneWidget);
+        // Topmost under "All drivers verified" is the overlay, not a pin.
+        final at = tester.getCenter(find.descendant(of: header, matching: find.text('All drivers verified')));
+        final hits = tester.hitTestOnBinding(at).path.map((e) => e.target).whereType<RenderBox>();
+        final markerLayer = find.byType(MarkerLayer).evaluate().map((e) => e.renderObject).toSet();
+        expect(hits.any(markerLayer.contains), isFalse);
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('no offer card or raise once accepted', (tester) async {
       await pump(tester, ride(status: 'accepted', partner: _other, partnerName: 'Ali'));

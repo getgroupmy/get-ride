@@ -72,7 +72,7 @@ class _IpAccessState extends ConsumerState<AdminIpAccessScreen> {
       title: 'IP whitelist / blacklist',
       page: _page,
       actions: [IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _reload)],
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => _edit(),
         icon: const Icon(Icons.add),
         label: const Text('Add rule'),
@@ -87,7 +87,7 @@ class _IpAccessState extends ConsumerState<AdminIpAccessScreen> {
           final mine = ip == null ? null : all.where((r) => r.ipAddress == ip).firstOrNull;
           return ResponsiveCenter(
             maxWidth: 760,
-            child: ListView(padding: const EdgeInsets.only(top: 12, bottom: 96), children: [
+            child: ListView(padding: EdgeInsets.only(top: 12, bottom: addActionListBottomPadding(context)), children: [
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.public),

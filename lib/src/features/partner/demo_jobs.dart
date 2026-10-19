@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
@@ -10,6 +11,7 @@ import '../../config.dart';
 import '../../core/demo_mode.dart';
 import '../../core/format.dart';
 import '../../providers.dart';
+import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 import '../ride/demo_ride.dart';
@@ -18,9 +20,14 @@ import '../ride/demo_ride.dart';
 /// a demo request every 6–14 s, each waiting 30–45 s for an answer (Expo
 /// `partnerMockEnabled`). Nothing is written to the database.
 class DemoJobFeed extends StatefulWidget {
-  const DemoJobFeed({super.key, this.random});
+  const DemoJobFeed({super.key, this.random, this.onShowing});
 
   final math.Random? random;
+
+  /// A demo request came up (true) or went (false): the Drive screen treats
+  /// it as it does a real one (the sheet held down, no "Waiting for
+  /// requests…" under it).
+  final ValueChanged<bool>? onShowing;
 
   @override
   State<DemoJobFeed> createState() => _DemoJobFeedState();
@@ -48,6 +55,7 @@ class _DemoJobFeedState extends State<DemoJobFeed> {
         _job = demoJob(_rnd, id: 'demo-job-${++_count}');
         _shownAt = DateTime.now();
       });
+      widget.onShowing?.call(true);
       _tick?.cancel();
       _tick = Timer.periodic(const Duration(seconds: 1), (_) {
         final job = _job, at = _shownAt;
@@ -64,12 +72,14 @@ class _DemoJobFeedState extends State<DemoJobFeed> {
   void _dismiss() {
     _tick?.cancel();
     setState(() => _job = null);
+    widget.onShowing?.call(false);
     _schedule(const Duration(milliseconds: 400));
   }
 
   Future<void> _accept(DemoJob job) async {
     _tick?.cancel();
     setState(() => _job = null);
+    widget.onShowing?.call(false);
     await context.push('/drive/demo', extra: job);
     if (mounted) _schedule(demoJobGap(_rnd));
   }
@@ -109,7 +119,7 @@ class _DemoJobFeedState extends State<DemoJobFeed> {
               ],
             ),
             const SizedBox(height: 4),
-            Text('${job.pickupName} → ${job.dropName}', style: t.textTheme.bodyMedium),
+            Text('${job.pickupName} to ${job.dropName}', style: t.textTheme.bodyMedium),
             Text(
               '${job.km.toStringAsFixed(1)} km · ${job.minutes} min · ${job.payment} · ${job.pax} pax · ${job.luggage} bags',
               style: t.textTheme.bodySmall,
@@ -222,8 +232,32 @@ class _DemoJobScreenState extends ConsumerState<DemoJobScreen> {
         title: const Row(mainAxisSize: MainAxisSize.min, children: [Text('Demo job'), SizedBox(width: 8), DemoChip()]),
       ),
       body: MapSheetLayout(
-        map: RideMap(pickup: j.pickup, drop: j.drop, route: _trip, driver: car),
-        sheet: Padding(
+        map: RideMap(
+          pickup: j.pickup,
+          drop: j.drop,
+          route: _trip,
+          driver: car,
+          // Heading to the pickup: the way there too, as the car drives it.
+          extraLayers: [
+            if (_phase == _JobPhase.toPickup && car != j.pickup)
+              PolylineLayer(
+                key: const ValueKey('demo-job-to-pickup'),
+                polylines: [
+                  Polyline(
+                    points: [car, j.pickup],
+                    color: const Color(0xFF2DABE2),
+                    strokeWidth: 4,
+                    pattern: StrokePattern.dashed(segments: const [10, 8]),
+                  ),
+                ],
+              ),
+          ],
+        ),
+        // No wider than the other screens' sheets on a desktop.
+        sheet: ResponsiveCenter(
+          maxWidth: 760,
+          padding: EdgeInsets.zero,
+          child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -241,6 +275,7 @@ class _DemoJobScreenState extends ConsumerState<DemoJobScreen> {
                 FilledButton(onPressed: () => context.pop(), child: const Text('Back to Drive')),
             ],
           ),
+        ),
         ),
       ),
     );

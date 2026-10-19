@@ -138,6 +138,18 @@ String appBuildSummary(AppBuild b) => [
   if (b.createdAt != null) formatDateTime(b.createdAt),
 ].join(' · ');
 
+/// The install page's version line in two: "1.4.3 (107) · 52.3 MB", then
+/// the date on a line of its own, each part kept whole (non-breaking
+/// spaces), so a narrow phone never breaks inside the date.
+List<String> appBuildSummaryLines(AppBuild b) {
+  String whole(String s) => s.replaceAll(' ', '\u00A0');
+  final size = formatBuildSize(b.size);
+  return [
+    [whole(b.label), if (size.isNotEmpty) whole(size)].join(' · '),
+    if (b.createdAt != null) whole(formatDateTime(b.createdAt)),
+  ];
+}
+
 /// The QR code a tester scans to open the install page, with its link.
 Future<void> showAppInstallQr(BuildContext context, AppBuild b) {
   final url = appInstallPageUrl(b.platform);
