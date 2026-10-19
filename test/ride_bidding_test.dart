@@ -239,6 +239,62 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
     });
 
+    for (final size in const [Size(390, 844), Size(360, 640)]) {
+      for (final bidding in const [true, false]) {
+      testWidgets(
+          'at rest the raise-fare controls and the drop-off show above the pinned Cancel request '
+          '(${size.width.round()}x${size.height.round()}${bidding ? '' : ', fixed fare'})', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final open = RideRequest({
+          ...ride(offerMe: bidding).raw,
+          'pickup_address': 'Kuala Lumpur City Centre, Kuala Lumpur',
+          'drop_address': 'KL Sentral, Brickfields',
+        });
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              rideRepositoryProvider.overrideWithValue(_FakeRides()),
+              rideStreamProvider.overrideWith((ref, id) => Stream.value(open)),
+              riderPositionStreamProvider.overrideWithValue(() => const Stream.empty()),
+            ],
+            child: const MaterialApp(home: RideTrackingScreen(requestId: 'r1')),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        final dropRow = find.descendant(
+          of: find.byKey(const ValueKey('search-route')),
+          matching: find.textContaining('KL Sentral'),
+        );
+        final band = find.byKey(const ValueKey('ride-cancel-footer'));
+        expect(band, findsOneWidget);
+        final handle = find.byKey(const ValueKey('map-sheet-handle'));
+        final restsAt = tester.getTopLeft(handle).dy;
+        // Offer mode: raising the fare needs no drag either (web tester #115).
+        final shown = [
+          dropRow,
+          if (bidding) find.text('Confirm'),
+          if (bidding) find.byKey(const ValueKey('search-auto-accept')),
+        ];
+        for (final f in shown) {
+          expect(f, findsOneWidget);
+        }
+        if (shown.any((f) => tester.getBottomLeft(f).dy > tester.getTopLeft(band).dy)) {
+          // Taller than the screen (the test font is wide): it rests all
+          // the way up instead.
+          await tester.drag(handle, const Offset(0, -1000));
+          await tester.pumpAndSettle();
+          expect(tester.getTopLeft(handle).dy, closeTo(restsAt, 0.5), reason: 'hidden only when even the full sheet cannot hold them');
+        }
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(seconds: 5));
+      });
+      }
+    }
+
     test('a ride is steady while only its live positions move', () {
       final a = ride(status: 'accepted').raw;
       SteadyRide s(Map<String, dynamic> raw) => SteadyRide(AsyncData(RideRequest(raw)));

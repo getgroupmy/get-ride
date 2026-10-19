@@ -17,6 +17,7 @@ import '../../core/auth_utils.dart' show capitaliseName;
 import '../../core/payment_types.dart' show paymentModeLabel;
 import '../../core/ride_bidding.dart';
 import '../../core/ride_cancel.dart';
+import '../../core/ride_rebook.dart';
 import '../../core/ride_chat.dart' show rideChatAvailable, rideContactAllowed;
 import '../../core/ride_confirm.dart';
 import '../../core/request_viewers.dart';
@@ -482,6 +483,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     context.go('/');
   }
 
+  /// Home, with [trip] filled in on the confirm step ([rideRebookProvider]).
+  void _bookAgain(RideRebook? trip) {
+    if (_closed || !mounted) return;
+    _closed = true;
+    ref.read(rideRebookProvider.notifier).set(trip);
+    context.go('/');
+  }
+
   Future<void> _showExpired() async {
     await showAppDialog<void>(id: 'ride-tracking.show-expired',
       context: context,
@@ -830,7 +839,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         ),
       ],
       SearchBlock(child: SearchPaymentRow(amount: money(r.effectiveFare ?? current), mode: r.paymentMode)),
-      SearchBlock(child: SearchRouteCard(ride: r)),
+      // The sheet never rests lower than the drop-off: at 390x844 it sat
+      // behind the pinned Cancel request (or rests all the way up where it
+      // can't fit).
+      MapSheetRestLine(child: SearchBlock(child: SearchRouteCard(ride: r))),
       const SizedBox(height: 12),
       // On a phone it is pinned under the sheet instead ([_cancelFooter]).
       if (widget.wide) ?_cancelAction(r),
@@ -873,7 +885,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         // Cancelled while watching: the screen closes by itself. Opened on a
         // ride already cancelled (a link, a reload): it stays, so the
         // reason can be read.
-        if (r.status == RideStatus.cancelled && !_openedCancelled) ...[
+        // Cancelled by the driver it stays until the rider leaves it (WCAG
+        // 2.2.1): the trip is there to book again.
+        if (r.status == RideStatus.cancelled && !_openedCancelled && !cancelledByDriver(r)) ...[
           CancelledCountdown(onDone: _close),
           const SizedBox(height: 12),
         ],
@@ -890,11 +904,28 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           ),
           const SizedBox(height: 12),
         ],
-        // Cancelled: straight on to booking again, rather than only Done.
-        if (r.status == RideStatus.cancelled)
+        // The driver cancelled: the same trip, vehicle and fare on the
+        // confirm step, to send to another driver.
+        if (cancelledByDriver(r) && rideRebookOf(r) != null) ...[
+          FilledButton(
+            key: const ValueKey('ride-find-another'),
+            onPressed: () => _bookAgain(rideRebookOf(r)!),
+            child: const Text('Find another driver'),
+          ),
+          const SizedBox(height: 8),
+          // The same route, the vehicle and fare chosen afresh.
+          OutlinedButton(
+            key: const ValueKey('ride-book-again'),
+            onPressed: () => _bookAgain(rideRebookOf(r)!.routeOnly),
+            child: const Text('Book another ride'),
+          ),
+        ]
+        // Cancelled: straight on to booking again, the route kept, rather
+        // than only Done.
+        else if (r.status == RideStatus.cancelled)
           FilledButton(
             key: const ValueKey('ride-book-again'),
-            onPressed: () => context.go('/'),
+            onPressed: () => _bookAgain(rideRebookOf(r)?.routeOnly),
             child: const Text('Book another ride'),
           )
         else if (r.status.isFinished)
@@ -1239,6 +1270,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           ]),
           sheet: content,
           footer: _rideFooter(r),
+          // A phone on its side: SOS and the map's buttons beside the sheet.
+          besideWhenShort: true,
         ),
       ),
       if (r.status == RideStatus.open)

@@ -413,6 +413,34 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   }
 }
 
+/// How far a car's fix can move, and its heading turn, and still be the car
+/// standing where it was: GPS jitter, not driving (PERF-64).
+const carStillMetres = 4.0;
+const carStillDegrees = 5.0;
+
+/// Whether the driver's fix [to] (heading [headingTo]) moves their car on
+/// the map from where it was last shown, [from] (heading [headingFrom])
+/// [elapsed] ago: by [carStillMetres] or more, or a turn of
+/// [carStillDegrees] or more, and not a slow drift (under 1 m/s) that the
+/// fix's own [accuracy] could account for. Pure.
+bool carMovedOnMap({
+  required LatLng? from,
+  required LatLng to,
+  double? headingFrom,
+  double? headingTo,
+  Duration? elapsed,
+  double? accuracy,
+}) {
+  if (from == null) return true;
+  if ((headingFrom == null) != (headingTo == null)) return true;
+  if (headingFrom != null && headingTo != null && _Cam._turn(headingFrom, headingTo) >= carStillDegrees) return true;
+  final moved = const Distance()(from, to);
+  if (moved < carStillMetres) return false;
+  final seconds = elapsed == null ? null : elapsed.inMilliseconds / 1000;
+  final slow = seconds != null && seconds > 0 && moved / seconds < 1;
+  return !(slow && accuracy != null && moved < accuracy);
+}
+
 /// A camera position: [point] shown [offset] from the map's centre.
 class _Cam {
   const _Cam(this.point, this.zoom, this.rotation, this.offset);
@@ -420,11 +448,20 @@ class _Cam {
   final double zoom, rotation;
   final Offset offset;
 
+  /// Close enough not to glide again: GPS jitter on a car standing still
+  /// (well under [carStillMetres], a degree or two of heading) restarted the
+  /// glide on every fix and kept the map wobbling (PERF-64).
   bool same(_Cam o) =>
-      o.point == point &&
+      const Distance()(o.point, point) < carStillMetres &&
       (o.zoom - zoom).abs() < 0.01 &&
-      (o.rotation - rotation).abs() < 0.5 &&
+      _turn(o.rotation, rotation) < carStillDegrees &&
       (o.offset - offset).distance < 1;
+
+  /// The short way round from [a] to [b], in degrees.
+  static double _turn(double a, double b) {
+    final d = (b - a).abs() % 360;
+    return d > 180 ? 360 - d : d;
+  }
 
   static _Cam lerp(_Cam a, _Cam b, double t) {
     // Turn the short way round.

@@ -28,6 +28,7 @@ import '../../core/region_pricing.dart';
 import '../../core/service_tree.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_request_metadata.dart';
+import '../../core/ride_rebook.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_confirm.dart';
 import '../../core/ride_stops.dart';
@@ -429,6 +430,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _locate();
     _checkOngoing();
     _lifecycle = AppLifecycleListener(onResume: _checkOngoing);
+    // A ride to book again (its driver cancelled): filled in on the confirm
+    // step, for the rider to send.
+    ref.listenManual(rideRebookProvider, (_, next) {
+      if (next != null) WidgetsBinding.instance.addPostFrameCallback((_) => _rebook());
+    }, fireImmediately: true);
     // A TEKSI driver whose rate card asks for it lands on the meter, once
     // per launch.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -774,6 +780,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _adjust = before.adjust;
       _routing = false;
     });
+  }
+
+  /// [rideRebookProvider]'s trip on the confirm step: the same pickup,
+  /// stops, drop-off, vehicle and payment, and the same fare offered again
+  /// where the rider may offer one (else the fare priced now). Sent, as any
+  /// booking, by the rider's own tap.
+  Future<void> _rebook() async {
+    if (!mounted) return;
+    final trip = ref.read(rideRebookProvider.notifier).take();
+    if (trip == null) return;
+    setState(() {
+      _pickup = trip.pickup;
+      _stops
+        ..clear()
+        ..addAll(trip.stops.take(maxRideStops));
+      _drop = trip.drop;
+      if (trip.service != null) _serviceName = trip.service;
+      if (trip.payment != null) _paymentPick = trip.payment!;
+    });
+    final seq = _routeSeq + 1;
+    await _updateRoute();
+    final fare = trip.fare;
+    if (!mounted || seq != _routeSeq || fare == null || !_biddingFor(_service)) return;
+    setState(() => _adjust = fare - _recommendedFor(_service));
   }
 
   /// The places after the pickup, in their new order (the destinations

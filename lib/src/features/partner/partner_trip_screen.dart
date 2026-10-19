@@ -90,10 +90,6 @@ final tripPositionStreamProvider = Provider<Stream<TripFix> Function()>((ref) =>
 /// The trip screen's clock, for the running trip time. For tests.
 final tripClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
-/// From this screen height the trip sheet rests with the drop-off row in
-/// view; below it (a phone on its side), with the passenger's row.
-const tripRestAtDropMinHeight = 600.0;
-
 /// Driver view of an accepted trip: navigate, arrive, verify code, start, complete.
 class PartnerTripScreen extends ConsumerStatefulWidget {
   const PartnerTripScreen({super.key, required this.requestId});
@@ -106,7 +102,6 @@ class PartnerTripScreen extends ConsumerStatefulWidget {
 class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   StreamSubscription<TripFix>? _gps;
   LatLng? _me;
-  double? _heading;
   // The running trip: when this screen first saw it on trip (the row's
   // started_at wins), the distance driven since, and the last fix it counted.
   DateTime? _onTripSince;
@@ -119,8 +114,16 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   /// countdown: only their text rebuilds.
   final _clockTicks = ValueNotifier<int>(0);
 
-  /// Bumped on each GPS fix: only the map and the distance driven rebuild.
+  /// Bumped on each GPS fix: only the distance driven rebuilds.
   final _gpsTicks = ValueNotifier<int>(0);
+
+  /// Where the map shows the car, and bumped when that moves: only by a fix
+  /// that really moves it ([carMovedOnMap]), so GPS jitter on a car standing
+  /// still leaves the map alone (PERF-64).
+  final _mapTicks = ValueNotifier<int>(0);
+  LatLng? _mapAt;
+  double? _mapHeading;
+  DateTime? _mapAtTime;
   RideStatus? _status;
   // Set when the driver approves the passenger's cancel here, so the end of
   // the ride isn't announced back to them.
@@ -155,27 +158,65 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       unawaited(_voice.stopTrip());
     });
     ref.listenManual(rideStreamProvider(widget.requestId), (_, next) {
-      final r = next.value;
-      if (r == null) return;
-      _passenger = r.passengerName;
-      final before = _status;
-      _status = r.status;
-      final paidBefore = _payment;
-      _payment = r.paymentStatus;
-      // Paid and confirmed: back to waiting for rides in a few seconds.
-      if (paymentJustSettled(paidBefore, r.paymentStatus)) _startClose();
-      if (r.status == RideStatus.onTrip) {
-        unawaited(_voice.startTrip(rideId: r.id, label: _tripLabel(r)));
-        if (before != RideStatus.onTrip) _beginTrip();
-      } else {
-        _tick?.cancel();
-        _tick = null;
-        if (r.status.isFinished) unawaited(_voice.stopTrip());
-      }
-      final notice = passengerCancelNotice(before, r, approvedHere: _approvedHere);
-      if (notice != null) WidgetsBinding.instance.addPostFrameCallback((_) => _showCancelled(notice));
-      WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel(r));
+      final row = next.value;
+      if (row == null) return;
+      // The row has caught up with the driver's own step, or moved on.
+      final ahead = _ahead;
+      if (ahead != null && (_rank(row.status) ?? 99) >= _rank(ahead)!) _ahead = null;
+      _onRow(_withAhead(row));
     }, fireImmediately: true);
+  }
+
+  /// The step the driver's own update moved the trip to, ahead of the row
+  /// realtime last brought (which may be slow, or down): shown until the
+  /// row catches up, so the screen moves on when the call succeeds rather
+  /// than seconds later, and the button can't be pressed twice.
+  RideStatus? _ahead;
+
+  static int? _rank(RideStatus s) => switch (s) {
+    RideStatus.accepted => 1,
+    RideStatus.arrived => 2,
+    RideStatus.onTrip => 3,
+    RideStatus.completed => 4,
+    _ => null,
+  };
+
+  /// [r] at [_ahead] when the driver's own step is further along.
+  RideRequest _withAhead(RideRequest r) {
+    final a = _ahead, at = _rank(r.status);
+    if (a == null || at == null || at >= _rank(a)!) return r;
+    return RideRequest({...r.raw, 'status': a.db});
+  }
+
+  /// The driver's own update to [status] went through.
+  void _advance(RideRequest r, RideStatus status) {
+    if (!mounted) return;
+    final at = _rank(r.status);
+    if (at == null || at >= _rank(status)!) return;
+    setState(() => _ahead = status);
+    _onRow(_withAhead(r));
+  }
+
+  /// A row of the ride (realtime's, or the driver's own step on it).
+  void _onRow(RideRequest r) {
+    _passenger = r.passengerName;
+    final before = _status;
+    _status = r.status;
+    final paidBefore = _payment;
+    _payment = r.paymentStatus;
+    // Paid and confirmed: back to waiting for rides in a few seconds.
+    if (paymentJustSettled(paidBefore, r.paymentStatus)) _startClose();
+    if (r.status == RideStatus.onTrip) {
+      unawaited(_voice.startTrip(rideId: r.id, label: _tripLabel(r)));
+      if (before != RideStatus.onTrip) _beginTrip();
+    } else {
+      _tick?.cancel();
+      _tick = null;
+      if (r.status.isFinished) unawaited(_voice.stopTrip());
+    }
+    final notice = passengerCancelNotice(before, r, approvedHere: _approvedHere);
+    if (notice != null) WidgetsBinding.instance.addPostFrameCallback((_) => _showCancelled(notice));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel(r));
   }
 
   DateTime get _now => ref.read(tripClockProvider)();
@@ -273,7 +314,6 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     if (!mounted) return;
     final now = _now;
     _me = p.at;
-    _heading = p.heading;
     // Only the trip itself counts toward the distance driven.
     if (_status == RideStatus.onTrip) {
       if (_legFrom != null && _legAt != null) {
@@ -286,6 +326,19 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     }
     // The map's car and the distance driven, not the screen.
     _gpsTicks.value++;
+    if (carMovedOnMap(
+      from: _mapAt,
+      to: p.at,
+      headingFrom: _mapHeading,
+      headingTo: p.heading,
+      elapsed: _mapAtTime == null ? null : now.difference(_mapAtTime!),
+      accuracy: p.accuracy,
+    )) {
+      _mapAt = p.at;
+      _mapHeading = p.heading;
+      _mapAtTime = now;
+      _mapTicks.value++;
+    }
     // Share the driver's live position with the rider at most every 5 s.
     if (now.difference(_lastPublish) < const Duration(seconds: 5)) return;
     _lastPublish = now;
@@ -324,6 +377,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     _closeTimer?.cancel();
     _clockTicks.dispose();
     _gpsTicks.dispose();
+    _mapTicks.dispose();
     // Leaving the trip screen always files whatever was recorded — after the
     // unmount, since a provider can't change while the tree is being torn down.
     unawaited(Future.microtask(_voice.stopTrip));
@@ -342,40 +396,14 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   }
 
   Future<void> _start(RideRequest r) async {
-    final code = await showAppDialog<String>(id: 'partner-trip.start',
-      context: context,
-      builder: (ctx) {
-        final c = TextEditingController();
-        return AlertDialog(
-          key: const ValueKey('trip-code-dialog'),
-          title: const Text('Enter trip code'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('Ask the passenger for the 4-digit code shown in their app.'),
-            const SizedBox(height: 12),
-            CodeField(controller: c, length: 4),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              key: const ValueKey('trip-code-start'),
-              onPressed: () => Navigator.pop(ctx, c.text),
-              child: const Text('Start trip'),
-            ),
-          ],
-        );
-      },
-    );
-    if (code == null || !mounted) return;
-    final clean = cleanTripCode(code);
-    if (clean == null) {
-      showInfo(context, 'Enter the 4-digit code.');
-      return;
-    }
+    final repo = ref.read(rideRepositoryProvider);
     // The server checks the code (start_trip, 0152); the app never sees it.
-    await _run(() async {
-      final message = tripStartMessage(await ref.read(rideRepositoryProvider).startTrip(r.id, clean));
-      if (message != null && mounted) showInfo(context, message);
-    });
+    // A wrong code is said in the dialog, which stays open to try again.
+    final started = await showAppDialog<bool>(id: 'partner-trip.start',
+      context: context,
+      builder: (_) => _TripCodeDialog(start: (code) => repo.startTrip(r.id, code)),
+    );
+    if (started == true) _advance(r, RideStatus.onTrip);
   }
 
   /// The driver cancels before pickup, with a reason; the passenger is told
@@ -409,6 +437,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
 
   Future<void> _arrive(RideRequest r) => _run(() async {
     await ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.arrived);
+    _advance(r, RideStatus.arrived);
     unawaited(_checkpoint(r.id, TripCheckpoint.arrive));
   });
 
@@ -435,6 +464,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       // where the driver stood when they pressed complete.
       unawaited(_checkpoint(r.id, TripCheckpoint.drop));
       await ref.read(rideRepositoryProvider).complete(r, charges: charges, earlyFare: earlyFare);
+      _advance(r, RideStatus.completed);
     });
   }
 
@@ -534,7 +564,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   Widget build(BuildContext context) {
     // The car's position on the row moves every few seconds: only the map
     // follows it ([SteadyRide]).
-    final ride = ref.watch(rideStreamProvider(widget.requestId).select(SteadyRide.new)).value;
+    final ride = ref.watch(rideStreamProvider(widget.requestId).select(SteadyRide.new)).value.whenData(_withAhead);
     // While the trip is on there is no way back off this screen: the ride
     // ends by completing it (or cancelling before pickup), not by leaving,
     // or by handing it over (migration 0199).
@@ -591,14 +621,14 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             Positioned.fill(
               child: Consumer(
                 builder: (_, ref, _) {
-                  final live = ref.watch(rideStreamProvider(widget.requestId)).value ?? r;
+                  final live = _withAhead(ref.watch(rideStreamProvider(widget.requestId)).value ?? r);
                   return ValueListenableBuilder(
-                    valueListenable: _gpsTicks,
+                    valueListenable: _mapTicks,
                     builder: (_, _, _) => LiveRideMap(
                       ride: live,
                       partner: true,
-                      driverAt: _me,
-                      driverHeading: _heading,
+                      driverAt: _mapAt,
+                      driverHeading: _mapHeading,
                       now: ref.read(tripClockProvider),
                     ),
                   );
@@ -625,6 +655,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
               : MapSheetLayout(
                   map: map,
                   sheet: panel,
+                  // A phone on its side: SOS and recenter beside the sheet.
+                  besideWhenShort: true,
                   footer: primary == null
                       ? null
                       : Material(
@@ -685,10 +717,16 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         ? _ll(r.dropLat, r.dropLng)
         : _ll(r.pickupLat, r.pickupLng);
 
-    // An upright phone has the room to rest with the drop-off in view, over
-    // the button bar; on its side only the passenger's row fits.
-    final restAtDrop = MediaQuery.sizeOf(context).height >= tripRestAtDropMinHeight;
-    Widget restLine(bool on, Widget child) => on ? MapSheetRestLine(child: child) : child;
+    // The sheet rests no lower than the passenger card, and where the screen
+    // has the room, than Navigate and Cancel ride too (at 390x844 they sat
+    // under the pinned bar, web tester #133): a soft rest line on the last
+    // of them shown.
+    final restAt = driverMayCancel(r.status)
+        ? _RestAt.cancel
+        : r.status.isOngoing && target != null
+        ? _RestAt.navigate
+        : null;
+    Widget restLine(bool here, Widget child) => here ? MapSheetRestLine(soft: true, child: child) : child;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -703,11 +741,9 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         Card(
           child: Column(children: [
             // The sheet never rests lower than the passenger and their
-            // Message and Call (a phone on its side showed only the title);
-            // on an upright phone, than the drop-off too ([restAtDrop]).
-            restLine(
-              !restAtDrop,
-              ListTile(
+            // Message and Call (a phone on its side showed only the title),
+            // nor, below them, Navigate and Cancel ride ([restAt]).
+            MapSheetRestLine(child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
               title: Text(r.passengerName),
               // Two pieces with their own icons and no separator, each kept
@@ -717,15 +753,13 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     const Icon(Icons.person_outline, size: 16),
                     const SizedBox(width: 4),
-                    // Kept on one line: large text moves the whole piece
-                    // to the next row instead of breaking it.
+                    // Shrunk to fit beside Message and Call on a narrow phone,
+                    // never broken mid-word ("1 passenge / r" at 320).
                     Flexible(
-                      child: Text(
-                        '${r.passengers} passenger${r.passengers == 1 ? '' : 's'}',
-                        key: const ValueKey('trip-pax'),
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text('${r.passengers} passenger${r.passengers == 1 ? '' : 's'}', key: const ValueKey('trip-pax')),
                       ),
                     ),
                   ]),
@@ -733,12 +767,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                     const Icon(Icons.payments_outlined, size: 16),
                     const SizedBox(width: 4),
                     Flexible(
-                      child: Text(
-                        r.paymentMode,
-                        key: const ValueKey('trip-payment'),
-                        maxLines: 1,
-                        softWrap: false,
-                        overflow: TextOverflow.ellipsis,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(r.paymentMode, key: const ValueKey('trip-payment')),
                       ),
                     ),
                   ]),
@@ -767,14 +799,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
               subtitle: r.pickupAddress == null ? null : Text(r.pickupAddress!, maxLines: 2),
             ),
             RideStopTiles(stops: r.stops, onNavigate: r.status.isOngoing ? (s) => _navigate(s.point) : null),
-            restLine(
-              restAtDrop,
-              ListTile(
-                key: const ValueKey('trip-drop'),
-                leading: Icon(Icons.location_on, color: Colors.red.shade700),
-                title: Text(r.dropLabel),
-                subtitle: r.dropAddress == null ? null : Text(r.dropAddress!, maxLines: 2),
-              ),
+            ListTile(
+              key: const ValueKey('trip-drop'),
+              leading: Icon(Icons.location_on, color: Colors.red.shade700),
+              title: Text(r.dropLabel),
+              subtitle: r.dropAddress == null ? null : Text(r.dropAddress!, maxLines: 2),
             ),
             if (r.note != null) ListTile(leading: const Icon(Icons.notes), title: Text(r.note!)),
             const Divider(height: 1),
@@ -810,11 +839,12 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         const SizedBox(height: 12),
         const _VoiceProtectionPill(),
         if (r.status.isOngoing && target != null)
-          OutlinedButton.icon(
+          restLine(restAt == _RestAt.navigate, OutlinedButton.icon(
+            key: const ValueKey('trip-navigate'),
             icon: const Icon(Icons.navigation_outlined),
             label: const Text('Navigate'),
             onPressed: () => _navigate(target),
-          ),
+          )),
         // Asking another partner to take over, or meeting the car (0199).
         TripHandoverPanel(ride: r),
         const SizedBox(height: 8),
@@ -823,11 +853,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           BleHandshakeBadge(rideId: r.id, status: r.status.db, driver: true),
         if (!primaryInFooter) ?_primaryAction(r),
         if (driverMayCancel(r.status))
-          BusyButton.text(
+          restLine(restAt == _RestAt.cancel, BusyButton.text(
             key: const ValueKey('trip-cancel'),
             onPressed: _busy ? null : () => _cancel(r),
             child: const Text('Cancel ride'),
-          ),
+          )),
         if (r.status == RideStatus.completed) _CollectCard(ride: r),
         if (r.status == RideStatus.completed)
           OutlinedButton.icon(
@@ -888,6 +918,82 @@ class _VoiceProtectionPill extends ConsumerWidget {
 }
 
 /// Tolls and other charges, declared on Complete. Blank means none.
+/// "Enter trip code": Start only once four digits are in; a wrong code
+/// (or any other failure) is said under the field and the dialog stays open
+/// to try again. Pops true once the trip has started.
+class _TripCodeDialog extends StatefulWidget {
+  const _TripCodeDialog({required this.start});
+
+  final Future<TripStartOutcome> Function(String code) start;
+
+  @override
+  State<_TripCodeDialog> createState() => _TripCodeDialogState();
+}
+
+class _TripCodeDialogState extends State<_TripCodeDialog> {
+  final _code = TextEditingController();
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final clean = cleanTripCode(_code.text);
+    if (clean == null || _busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    String? error;
+    try {
+      error = tripStartMessage(await widget.start(clean));
+    } catch (e) {
+      error = errorText(e);
+    }
+    if (!mounted) return;
+    if (error == null) return Navigator.pop(context, true);
+    setState(() {
+      _busy = false;
+      _error = error;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const ValueKey('trip-code-dialog'),
+      title: const Text('Enter trip code'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('Ask the passenger for the 4-digit code shown in their app.'),
+        const SizedBox(height: 12),
+        CodeField(
+          controller: _code,
+          length: 4,
+          errorText: _error,
+          onChanged: (_) => setState(() => _error = null),
+        ),
+      ]),
+      actions: [
+        TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+        ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _code,
+          builder: (_, v, _) => FilledButton(
+            key: const ValueKey('trip-code-start'),
+            onPressed: _busy || cleanTripCode(v.text) == null ? null : _submit,
+            child: _busy
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Start trip'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _ChargesDialog extends StatefulWidget {
   const _ChargesDialog({required this.fare, required this.currency});
   final double fare;
@@ -946,7 +1052,7 @@ class _ChargesDialogState extends State<_ChargesDialog> {
             key: const ValueKey('charges-note'),
             controller: _note,
             maxLength: tripChargeNoteMax,
-            decoration: const InputDecoration(labelText: 'What the other charges are for', hintText: 'e.g. Parking'),
+            decoration: const InputDecoration(labelText: 'What are they for?', hintText: 'e.g. Parking'),
             onChanged: (_) => setState(() => _problem = null),
           ),
           if (_problem != null)
@@ -1189,3 +1295,7 @@ class _DriverCancelDialogState extends State<_DriverCancelDialog> {
     );
   }
 }
+
+/// Which of the trip panel's buttons the sheet rests on, where it has the
+/// room ([MapSheetRestLine.soft]).
+enum _RestAt { navigate, cancel }
