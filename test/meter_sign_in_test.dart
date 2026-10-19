@@ -394,9 +394,7 @@ void main() {
             pageAccessProvider.overrideWith((ref, page) => access),
           ],
           child: MaterialApp(
-            // The app's theme makes filled buttons full width; the editor's
-            // Save sits in the app bar, so it gets the plain button size here.
-            theme: appTheme(b).copyWith(filledButtonTheme: const FilledButtonThemeData()),
+            theme: appTheme(b),
             home: Builder(
               builder: (c) => Scaffold(
                 body: TextButton(
@@ -445,7 +443,8 @@ void main() {
         expect(find.textContaining('choose “Turn the meter on” or “Not now”'), findsOneWidget);
         await tester.tap(chip('Always on'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Save rate card'));
+        // The bar's Save and the sticky one below both save; tap the first.
+        await tester.tap(find.text('Save rate card').first);
         await tester.pumpAndSettle();
         expect(store.saved?.meterAtSignIn, 'always');
       });
