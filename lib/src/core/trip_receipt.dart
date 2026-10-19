@@ -159,6 +159,15 @@ class TripReceipt {
             amount: other,
           ),
         if (r.fareCoinsValue > 0) (label: 'Paid with GET.coin', amount: -r.fareCoinsValue),
+        // A promo settled on the trip (0242): off the rider's bill, paid to
+        // the driver's GET.wallet by the platform.
+        if (charged && r.promoDiscount > 0)
+          (
+            label: asDriver
+                ? 'Promo ${r.promo?.code ?? ''} (to your GET.wallet)'.replaceAll('  ', ' ')
+                : 'Promo ${r.promo?.code ?? ''}'.trim(),
+            amount: -r.promoDiscount,
+          ),
       ],
       charged: charged,
       date: r.completedAt ?? r.cancelledAt ?? r.createdAt,

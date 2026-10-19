@@ -61,6 +61,7 @@ import '../../widgets/trip_safety.dart';
 import '../../widgets/net_image.dart';
 import 'trip_handover_panel.dart' show HandoverOffersCard;
 import '../../widgets/page_style_host.dart';
+import '../ride/promo_parts.dart' show PromoAppliedIcon, rideHasPromo;
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -1291,6 +1292,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               const SizedBox(width: 6),
             ],
             Expanded(child: Text(r.service ?? 'Ride', style: t.textTheme.titleMedium)),
+            // The full fare; a promo is paid to the driver by the platform (0242).
+            if (rideHasPromo(r)) ...[
+              PromoAppliedIcon(key: ValueKey('promo-applied-${r.id}')),
+              const SizedBox(width: 6),
+            ],
             Text(r.fareText(r.effectiveFare),
                 style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
           ]),
@@ -1480,6 +1486,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 ),
               ]),
             ),
+            if (rideHasPromo(r)) ...[
+              PromoAppliedIcon(key: ValueKey('promo-applied-${r.id}'), size: 20),
+              const SizedBox(width: 6),
+            ],
             Text(r.fareText(r.effectiveFare),
                 style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
           ]),

@@ -155,7 +155,11 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      tripListFare(r) == notChargedLabel ? '${r.status.label} · $notChargedLabel' : r.status.label,
+                      [
+                        tripListFare(r) == notChargedLabel ? '${r.status.label} · $notChargedLabel' : r.status.label,
+                        // A promo settled on the trip (0242).
+                        ?tripListPromo(r),
+                      ].join(' · '),
                       key: ValueKey('trip-status-${r.id}'),
                     ),
                   ],
@@ -201,3 +205,9 @@ String tripListFare(RideRequest r) {
   if (r.status == RideStatus.cancelled || r.status == RideStatus.expired) return notChargedLabel;
   return formatMoney(r.effectiveFare, r.currency);
 }
+
+/// "Promo RIDE5 −RM5.00" on a completed trip a promo was settled on, else null.
+String? tripListPromo(RideRequest r) =>
+    r.status == RideStatus.completed && r.promoDiscount > 0
+        ? 'Promo ${r.promo?.code ?? ''} −${formatMoney(r.promoDiscount, r.currency)}'.replaceAll('  ', ' ')
+        : null;

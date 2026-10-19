@@ -63,6 +63,9 @@ import 'confirm_parts.dart';
 import 'offer_fare_screen.dart';
 import 'demo_ride.dart' show demoRiderProvider, demoRidesProvider;
 import 'home_parts.dart';
+import 'promo_parts.dart';
+import '../../core/promo_codes.dart' show PromoCheckResult, PromoOffer, promoReasonText;
+import '../../data/promo_repository.dart';
 import 'place_search.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../meter/meter_auto_launch.dart';
@@ -122,6 +125,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Place? _here;
   Place? _pickup;
   Place? _drop;
+
+  // ---- Promo codes (0242) ----
+  /// The codes that apply to the trip on the confirm step.
+  List<PromoOffer> _promoOffers = const [];
+
+  /// The code the ride will be booked with, and whether it applied by itself.
+  PromoOffer? _promo;
+  bool _promoAuto = false;
+
+  /// The rider took the auto-applied code off: it isn't put back.
+  bool _promoRemoved = false;
+
+  /// The trip [_promoOffers] were read for, and the read in flight.
+  String? _promoKey;
+  int _promoSeq = 0;
+  Timer? _promoTimer;
+
+  /// The home bar: the rider stands in an auto-apply code's pickup area,
+  /// as last asked at [_promoZoneAt].
+  bool _promoZone = false;
+  LatLng? _promoZoneAt;
 
   /// The confirm step's address card, measured so the route is framed in
   /// the map left between its bottom edge and the sheet.
@@ -434,7 +458,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _locate();
     _checkOngoing();
-    _lifecycle = AppLifecycleListener(onResume: _checkOngoing);
+    _lifecycle = AppLifecycleListener(onResume: () {
+      _checkOngoing();
+      _checkPromoZone(force: true);
+    });
     // A ride to book again (its driver cancelled): filled in on the confirm
     // step, for the rider to send.
     ref.listenManual(rideRebookProvider, (_, next) {
@@ -470,6 +497,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _carsTick.dispose();
     _carsTimer?.cancel();
     _lifecycle?.dispose();
+    _promoTimer?.cancel();
     _expiry?.cancel();
     _note.dispose();
     _otherName.dispose();
@@ -595,6 +623,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await for (final p in locateFastThenFine(ref.read(locationSourceProvider))) {
       if (!mounted) return;
       setState(() => _me = p);
+      _checkPromoZone();
       if (recenter && recenterMap(_map, p, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(p);
       final place = await ref.read(geoServiceProvider).reverse(p);
       if (!mounted) return;
@@ -1235,6 +1264,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             targetDriverIds: myRideTargets,
             myRideMaxKm: myRideTargets.isEmpty ? null : myRideSettings.maxKm,
             directQrToken: scheduleAt == null ? direct?.token : null,
+            promoCodeId: scheduleAt == null ? _promo?.codeId : null,
           );
       final later = booked.later;
       if (later != null) {
@@ -1267,6 +1297,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         try {
           await ref.read(fareCoinChoiceStoreProvider).choose(req.id);
         } catch (_) {}
+      }
+      // The server checks the code again: one that no longer applies is
+      // dropped and the ride is booked at its full fare.
+      final sent = scheduleAt == null ? _promo : null;
+      if (sent != null && req.promo == null && mounted) {
+        showInfo(context, 'Promo ${sent.code} was not applied. ${promoReasonText(req.raw['promo_error'] as String?)}');
       }
       if (mounted) context.push('/ride/${req.id}').then((_) => _checkOngoing());
     } on DuplicateRideRequest catch (e) {
@@ -1321,9 +1357,118 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  // ---- Promo codes (0242) ----
+
+  /// A demo rider's trips stay on the phone: no promo is asked for.
+  bool get _promoOff => ref.read(demoRiderProvider);
+
+  /// The home bar: asked again on a meaningful move or when the app comes
+  /// back, never on every fix.
+  Future<void> _checkPromoZone({bool force = false}) async {
+    final at = _me;
+    if (at == null || _promoOff || !promoZoneRecheckDue(_promoZoneAt, at, force: force)) return;
+    _promoZoneAt = at;
+    bool inZone;
+    try {
+      inZone = await ref.read(promoRepositoryProvider).zoneHere(at.latitude, at.longitude);
+    } catch (_) {
+      return;
+    }
+    if (mounted && inZone != _promoZone) setState(() => _promoZone = inZone);
+  }
+
+  /// The confirm step's trip, when its fare is known: the offers are read
+  /// again (debounced) whenever it changes.
+  void _syncPromos(bool confirming) {
+    final a = _pickup, b = _drop;
+    final ready = confirming && a != null && b != null && _basis != null && !_routing && _scheduleAt == null && !_promoOff;
+    if (!ready) {
+      if (_promoKey != null || _promoOffers.isNotEmpty || _promo != null) {
+        _promoTimer?.cancel();
+        _promoSeq++;
+        _promoKey = null;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          setState(() {
+            _promoOffers = const [];
+            _promo = null;
+            _promoAuto = false;
+            if (!confirming) _promoRemoved = false;
+          });
+        });
+      }
+      return;
+    }
+    final fare = _fareFor(_service);
+    final key = promoTripKey(pickup: a.point, drop: b.point, service: _service.name, fare: fare);
+    if (key == _promoKey) return;
+    _promoKey = key;
+    _promoTimer?.cancel();
+    _promoTimer = Timer(const Duration(milliseconds: 400), () => _loadPromos(key, a.point, b.point, _service.name, fare));
+  }
+
+  Future<void> _loadPromos(String key, LatLng a, LatLng b, String service, double fare) async {
+    final seq = ++_promoSeq;
+    List<PromoOffer> offers;
+    try {
+      offers = await ref.read(promoRepositoryProvider).offers(
+            pickupLat: a.latitude,
+            pickupLng: a.longitude,
+            dropLat: b.latitude,
+            dropLng: b.longitude,
+            service: service,
+            fare: fare,
+          );
+    } catch (_) {
+      offers = const [];
+    }
+    if (!mounted || seq != _promoSeq || key != _promoKey) return;
+    final next = promoAfterOffers(offers, current: _promo, currentAuto: _promoAuto, removed: _promoRemoved);
+    setState(() {
+      _promoOffers = offers;
+      _promo = next.promo;
+      _promoAuto = next.auto;
+    });
+  }
+
+  Future<PromoCheckResult> _checkPromo(String code) async {
+    final a = _pickup, b = _drop;
+    if (a == null || b == null) return const PromoCheckResult.refused('outside_area');
+    return ref.read(promoRepositoryProvider).check(
+          code,
+          pickupLat: a.point.latitude,
+          pickupLng: a.point.longitude,
+          dropLat: b.point.latitude,
+          dropLng: b.point.longitude,
+          service: _service.name,
+          fare: _fareFor(_service),
+        );
+  }
+
+  Future<void> _openPromoSheet() async {
+    final choice = await showPromoCodeSheet(
+      context,
+      offers: _promoOffers,
+      applied: _promo,
+      fare: _fareFor(_service),
+      currency: _currency,
+      onCheck: _checkPromo,
+    );
+    if (choice == null || !mounted) return;
+    setState(() {
+      _promo = choice.offer;
+      _promoAuto = false;
+      _promoRemoved = choice.offer == null;
+      // A typed code that isn't among the offers yet is shown with them.
+      final o = choice.offer;
+      if (o != null && !_promoOffers.any((x) => x.codeId == o.codeId)) _promoOffers = [..._promoOffers, o];
+    });
+  }
+
   /// Off the trip, back to the home map.
   void _leaveConfirm() {
     setState(() {
+      _promoRemoved = false;
       _drop = null;
       _stops.clear();
       _routeMoved = false;
@@ -1564,9 +1709,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final layout = ConfirmLayout.fromSettings(blob);
     // A fixed fare off the usual: inDrive's demand band in the promo bar's place.
     final demand = !_biddingFor(_service) && _basis != null && !_routing ? _ai?.trend : null;
+    // The promo bar (0242) only when a code fits the trip: one applied, or
+    // some to pick from. A demo rider's trips get none.
+    _syncPromos(confirming);
+    final showPromo = layout.promoBar && (_promo != null || _promoOffers.isNotEmpty);
     // The back and route buttons stand clear of the promo bar's visible top.
-    final aboveBar = layout.promoBar || demand != null
-        ? PromoBanner.visibleHeight + (layout.promoBarInFront ? PromoBanner.tuck : 0) + 12 - layout.promoBarOffset
+    final aboveBar = showPromo || demand != null
+        ? SheetTopBar.visibleHeight + (layout.promoBarInFront ? SheetTopBar.tuck : 0) + 12 - layout.promoBarOffset
         : 12.0;
     // On the confirm map the route is framed between the address card and
     // the promo bar on the sheet, with room for the marks standing over it.
@@ -1588,12 +1737,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             right: 0,
             // Behind, its foot tucks under the sheet's top edge; in front it
             // stands whole on that edge.
-            bottom: inset - (layout.promoBarInFront ? 0 : PromoBanner.tuck) - layout.promoBarOffset,
+            bottom: inset - (layout.promoBarInFront ? 0 : SheetTopBar.tuck) - layout.promoBarOffset,
             // A fixed fare off the usual takes the bar's place: inDrive's
             // demand band, opening why.
             child: demand != null
                 ? DemandBanner(trend: demand, onTap: () => showDemandSheet(context, demand))
-                : PromoBanner(onTap: () => showPromoSheet(context)),
+                : ConfirmPromoBar(
+                    offers: _promoOffers,
+                    applied: _promo,
+                    auto: _promoAuto,
+                    fare: _fareFor(_service),
+                    currency: _currency,
+                    onTap: _openPromoSheet,
+                  ),
+          ),
+        );
+    // Home: the rider stands in a promo zone (an auto-apply code about the pickup).
+    Widget promoZoneBar() => aboveSheet(
+          (inset) => Positioned(
+            left: 0,
+            right: 0,
+            bottom: inset - SheetTopBar.tuck,
+            child: const PromoZoneBar(),
           ),
         );
     // Admin → Display → Map Layout, while the pickup is being set.
@@ -1770,7 +1935,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
       // Behind the sheet: its top shows above it, which overlaps the rest.
-      if (confirming && !wide && (layout.promoBar || demand != null) && !layout.promoBarInFront) promoBar(),
+      if (confirming && !wide && (showPromo || demand != null) && !layout.promoBarInFront) promoBar(),
+      if (!confirming && !wide && _promoZone && _pinTarget == _PinTarget.none && !_promoOff) promoZoneBar(),
       if (confirming && _pinTarget == _PinTarget.none)
         Positioned(
           top: 16 + layout.address.$2,
@@ -2119,7 +2285,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: const ConfirmDisclaimer(),
                   ),
                 ),
-          front: confirming && !wide && (layout.promoBar || demand != null) && layout.promoBarInFront ? Stack(children: [promoBar()]) : null,
+          front: confirming && !wide && (showPromo || demand != null) && layout.promoBarInFront ? Stack(children: [promoBar()]) : null,
         );
         }),
       )),

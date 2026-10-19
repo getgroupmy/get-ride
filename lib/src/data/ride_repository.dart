@@ -97,6 +97,7 @@ class RideRepository {
     List<String> targetDriverIds = const [],
     double? myRideMaxKm,
     String? directQrToken,
+    String? promoCodeId,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -146,6 +147,9 @@ class RideRepository {
       // checks it and refuses the request (QR_EXPIRED &co.) rather than
       // sending it to anybody else; favourites sent with it are dropped.
       if (directQrToken != null && directQrToken.trim().isNotEmpty) 'direct_qr_token': directQrToken.trim(),
+      // A promo code (0242): the server checks it again against this ride
+      // and keeps it only when it applies.
+      if (promoCodeId != null && promoCodeId.isNotEmpty) 'promo_code_id': promoCodeId,
     };
     // Stops, the metadata, the region's pricing and its time zone are
     // extras: a database without one of their columns (stops needs 0098,
@@ -162,11 +166,14 @@ class RideRepository {
       'auto_accept_fare',
       'target_driver_ids',
       'my_ride_max_km',
+      // 0242; without it the ride is booked at its fare, without the promo.
+      'promo_code_id',
     };
     if (scheduleAt != null) {
       // Favourites and a scanned driver are for a ride now; the server
       // drops them from a booking anyway.
-      for (final k in ['target_driver_ids', 'my_ride_max_km', 'direct_qr_token', 'auto_accept_fare']) {
+      // A promo code is checked for a ride now, so a booking for later goes without it.
+      for (final k in ['target_driver_ids', 'my_ride_max_km', 'direct_qr_token', 'auto_accept_fare', 'promo_code_id']) {
         row.remove(k);
       }
       return (now: null, later: await ScheduledRideRepository(_db).schedule(row, scheduleAt));

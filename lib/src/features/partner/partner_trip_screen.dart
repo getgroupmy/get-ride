@@ -46,6 +46,7 @@ import '../safety/ride_sos.dart';
 import '../safety/voice_protection_controller.dart';
 import 'trip_handover_panel.dart';
 import '../../widgets/page_style_host.dart';
+import '../ride/promo_parts.dart' show DriverPromoLine, PromoAppliedIcon, rideHasPromo;
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
 
@@ -809,11 +810,19 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             ListTile(
               title: Text(r.service ?? 'Ride'),
               subtitle: Text('${formatDistance(r.distanceKm)} · ${formatDuration(r.durationMin)}'),
-              trailing: Text(r.fareText(r.effectiveFare),
-                  style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (rideHasPromo(r)) ...[
+                  const PromoAppliedIcon(key: ValueKey('trip-promo-icon')),
+                  const SizedBox(width: 6),
+                ],
+                Text(r.fareText(r.effectiveFare), style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              ]),
             ),
           ]),
         ),
+        // A promo (0242): the cash to collect after it, and that its amount
+        // goes to the driver's GET.wallet; the server's figures once completed.
+        if (rideHasPromo(r) && r.status != RideStatus.cancelled) DriverPromoLine(ride: r),
         if (r.status == RideStatus.onTrip) ...[
           const SizedBox(height: 8),
           Wrap(key: const ValueKey('trip-meter'), crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -1143,6 +1152,14 @@ class _CollectCard extends ConsumerWidget {
             title: const Text('Paid with GET.coin'),
             subtitle: const Text('Added to your GET.wallet'),
             trailing: Text('−${formatMoney(coins, r.currency)}'),
+          ),
+        if (r.promoDiscount > 0)
+          ListTile(
+            key: const ValueKey('trip-collect-promo'),
+            leading: const Icon(Icons.local_offer_outlined),
+            title: Text('Promo ${r.promo?.code ?? ''}'.trim()),
+            subtitle: const Text('Added to your GET.wallet'),
+            trailing: Text('−${formatMoney(r.promoDiscount, r.currency)}'),
           ),
         if (paidOnline)
           ListTile(
