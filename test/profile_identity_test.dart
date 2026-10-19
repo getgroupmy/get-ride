@@ -50,6 +50,10 @@ void main() {
     expect(searchCountries('SINGA'), ['Singapore']);
     expect(searchCountries(''), contains('Indonesia'));
     expect(searchCountries('zzz'), isEmpty);
+    // Malaysia heads the list, the rest A to Z; search still finds any.
+    expect(searchCountries('').first, 'Malaysia');
+    expect(searchCountries('')[1], 'Afghanistan');
+    expect(searchCountries('a').first, 'Malaysia');
   });
 
   Future<_FakeAccount> pump(WidgetTester tester, Map<String, dynamic> profile) async {
@@ -94,6 +98,10 @@ void main() {
     });
     expect(find.text('Malaysia'), findsOneWidget);
     expect(find.text('900101-14-5555'), findsOneWidget);
+    // A picker field: its label over the country, and a chevron.
+    final field = find.byKey(const ValueKey('profile-country'));
+    expect(find.descendant(of: field, matching: find.text('Country')), findsOneWidget);
+    expect(find.descendant(of: field, matching: find.byIcon(Icons.expand_more)), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('profile-country')));
     await tester.pumpAndSettle();

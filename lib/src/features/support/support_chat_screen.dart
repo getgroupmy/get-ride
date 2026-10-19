@@ -100,7 +100,15 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
   double? _titleHeight(BuildContext context) {
     if (_openTicket() == null) return null;
     final scale = MediaQuery.textScalerOf(context);
-    return math.max(kToolbarHeight, scale.scale(16) * 1.35 * 2 + scale.scale(12) * 1.4 + 16);
+    final lines = _short(context) ? 1 : 2;
+    return math.max(kToolbarHeight, scale.scale(16) * 1.35 * lines + scale.scale(12) * 1.4 + 16);
+  }
+
+  /// Short over the keyboard (a phone on its side): the subject gets one
+  /// line, so the messages keep some room between the bar and the box.
+  bool _short(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return mq.size.height - mq.viewInsets.bottom < 300;
   }
 
   Widget _title(BuildContext context) {
@@ -115,7 +123,7 @@ class _SupportChatScreenState extends ConsumerState<SupportChatScreen> with Voic
         Text(
           supportTicketTitle(ticket),
           key: const ValueKey('support-chat-title'),
-          maxLines: 2,
+          maxLines: _short(context) ? 1 : 2,
           overflow: TextOverflow.ellipsis,
           style: t.textTheme.titleMedium,
         ),

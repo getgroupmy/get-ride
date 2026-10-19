@@ -48,6 +48,17 @@ Color mutedTextColor(ThemeData t, {Color? background}) {
   return ink;
 }
 
+/// What a Material 3 dialog is painted with: the admin's modal colour
+/// (App Page Settings, in the theme) or the theme's own.
+Color dialogFill(ThemeData t) => t.dialogTheme.backgroundColor ?? t.colorScheme.surfaceContainerHigh;
+
+/// [preferred] where it reads (4.5:1) on [fill], else black or white,
+/// whichever reads better: text on a coloured fill an admin may change.
+Color inkOn(Color fill, {Color? preferred}) {
+  if (preferred != null && contrastRatio(preferred, fill) >= 4.5) return preferred;
+  return contrastRatio(Colors.black, fill) >= contrastRatio(Colors.white, fill) ? Colors.black : Colors.white;
+}
+
 /// WCAG contrast ratio between two opaque colours (1 to 21).
 double contrastRatio(Color a, Color b) {
   final la = a.computeLuminance(), lb = b.computeLuminance();

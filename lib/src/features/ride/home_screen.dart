@@ -986,6 +986,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             current: _recommendedFor(_service) + _adjust,
             currencyLabel: (style?.symbol ?? _currency).trim(),
             money: _fareMoney,
+            fareDecimals: _pricing.fareDecimals,
             payment: _payment,
             payments: _payments,
             autoAccept: _autoAccept,

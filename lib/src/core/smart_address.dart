@@ -49,7 +49,8 @@ bool isCoordinateLabel(String label) => RegExp(r'^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\
 /// Sepang, Selangor, Malaysia" → "Sepang, Selangor"). The address as it is
 /// when nothing is left. With [homeRegion] (the rider's own state, e.g.
 /// "Selangor") a trailing state that is the same is dropped too, where
-/// something is left before it.
+/// something is left before it, as is a state that only repeats the city
+/// before it ("Federal Territory of Kuala Lumpur" after "Kuala Lumpur").
 String shortArea(Place p, {String? homeRegion}) {
   final name = p.name.trim().toLowerCase();
   final parts = <String>[];
@@ -61,6 +62,11 @@ String shortArea(Place p, {String? homeRegion}) {
     parts.add(part);
   }
   if (parts.isEmpty) return p.address;
+  // A state that only says the city again ("Kuala Lumpur, Federal Territory
+  // of Kuala Lumpur" → "Kuala Lumpur").
+  while (parts.length > 1 && parts.last.toLowerCase().contains(parts[parts.length - 2].toLowerCase())) {
+    parts.removeLast();
+  }
   final home = (homeRegion ?? '').trim().toLowerCase();
   if (home.isNotEmpty && parts.length > 1 && parts.last.toLowerCase() == home) parts.removeLast();
   return parts.length <= 2 ? parts.join(', ') : parts.sublist(parts.length - 2).join(', ');

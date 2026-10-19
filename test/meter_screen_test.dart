@@ -208,6 +208,17 @@ void main() {
     expect(find.text('1 hire · 1.60 km'), findsOneWidget);
   });
 
+  for (final size in const [Size(852, 393), Size(667, 375)]) {
+    testWidgets('SET is 44 on the screen on a phone on its side ($size)', (tester) async {
+      await _pump(tester, size: size);
+      await tester.pumpAndSettle();
+      // It read 39 on an iPhone 15: a 44 button in a console scaled to fit.
+      final set = tester.getRect(find.byKey(const ValueKey('meter-destination')));
+      expect(set.shortestSide, greaterThanOrEqualTo(44 - 0.01));
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('a street hail goes to its destination: quoted, metered, and both on the receipt', (tester) async {
     final orientation = _FakeOrientation();
     final router = GoRouter(
@@ -242,7 +253,9 @@ void main() {
     );
     expect(find.text('NO DESTINATION'), findsOneWidget);
     // SET is a finger-sized target, and so is the vehicle chip's tap area.
-    expect(tester.getSize(find.byKey(const ValueKey('meter-destination'))).height, greaterThanOrEqualTo(44));
+    // 44 as it is on the screen, the console's scaling taken into account.
+    final set = tester.getRect(find.byKey(const ValueKey('meter-destination')));
+    expect(set.shortestSide, greaterThanOrEqualTo(44 - 0.01));
     expect(tester.getSize(find.byKey(const ValueKey('meter-plate'))).height, greaterThanOrEqualTo(44));
     await tester.tap(find.byKey(const ValueKey('meter-destination')));
     await tester.pumpAndSettle();

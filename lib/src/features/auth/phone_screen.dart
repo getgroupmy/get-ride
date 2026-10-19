@@ -15,6 +15,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/dial_country_picker.dart';
+import 'otp_screen.dart' show otpShortScreen;
 import 'passkey_sign_in_button.dart';
 import '../../widgets/page_style_host.dart';
 
@@ -154,6 +155,12 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
     final t = Theme.of(context);
     final blocked = ref.watch(deviceBlockedProvider).value ?? false;
     final muted = t.colorScheme.onSurfaceVariant;
+    final short = otpShortScreen(MediaQuery.of(context));
+    Widget title(TextStyle? style) => Text(
+      'Join us via phone number',
+      key: const ValueKey('phone-title'),
+      style: style?.copyWith(fontWeight: FontWeight.w800),
+    );
     return Scaffold(
       body: SafeArea(
         child: ResponsiveCenter(
@@ -168,6 +175,8 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  // Short over the keyboard (a phone on its side): the title
+                  // beside Back, in one row, rather than a row of its own.
                   Row(children: [
                     if (Navigator.of(context).canPop())
                       IconButton.outlined(
@@ -177,7 +186,11 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                         icon: const Icon(Icons.arrow_back),
                         onPressed: () => Navigator.of(context).maybePop(),
                       ),
-                    const Spacer(),
+                    if (short) ...[
+                      const SizedBox(width: 12),
+                      Expanded(child: title(t.textTheme.titleLarge)),
+                    ] else
+                      const Spacer(),
                     IconButton(
                       key: const ValueKey('phone-diagnostics'),
                       tooltip: 'Connection diagnostics',
@@ -185,14 +198,17 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                       onPressed: () => context.push('/diagnostics'),
                     ),
                   ]),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Join us via phone number',
-                    style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Sign in or create your account with your mobile number', style: t.textTheme.bodyLarge),
-                  const SizedBox(height: 28),
+                  // Short, the line under the title goes: the title and the
+                  // number field stay in view together.
+                  if (short)
+                    const SizedBox(height: 12)
+                  else ...[
+                    const SizedBox(height: 12),
+                    title(t.textTheme.headlineSmall),
+                    const SizedBox(height: 8),
+                    Text('Sign in or create your account with your mobile number', style: t.textTheme.bodyLarge),
+                    const SizedBox(height: 28),
+                  ],
                   const SignedOutElsewhereNote(),
                   _PhoneField(
                     country: _country,
@@ -299,7 +315,7 @@ class _PhoneFieldState extends State<_PhoneField> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text(widget.country.flag, style: const TextStyle(fontSize: 24)),
+                DialCountryFlag(widget.country),
                 const Icon(Icons.arrow_drop_down),
               ]),
             ),
