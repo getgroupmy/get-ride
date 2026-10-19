@@ -56,6 +56,8 @@ class _UserGuideScreenState extends State<UserGuideScreen> {
                   ),
                 for (final s in sections)
                   Card(
+                    // The tiles' ink and edges stay inside the rounded corners.
+                    clipBehavior: Clip.antiAlias,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -67,6 +69,10 @@ class _UserGuideScreenState extends State<UserGuideScreen> {
                           ExpansionTile(
                             key: ValueKey('guide-${s.title}-${topic.title}-${query.isNotEmpty}'),
                             initiallyExpanded: query.isNotEmpty,
+                            // No edge-to-edge rules above and below an open
+                            // topic: the card is the frame.
+                            shape: const Border(),
+                            collapsedShape: const Border(),
                             title: Text(topic.title),
                             expandedCrossAxisAlignment: CrossAxisAlignment.start,
                             childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),

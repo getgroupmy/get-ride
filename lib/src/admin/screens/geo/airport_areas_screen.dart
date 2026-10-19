@@ -122,7 +122,7 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
       actions: [
         IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(airportsProvider)),
       ],
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => _edit(),
         icon: const Icon(Icons.add),
         label: const Text('Add airport'),
@@ -190,7 +190,7 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
                         message: 'Adjust filters or add a new airport.',
                       )
                     : ListView.separated(
-                        padding: const EdgeInsets.only(bottom: 96),
+                        padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)),
                         itemCount: filtered.length,
                         separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (_, i) => _AirportTile(

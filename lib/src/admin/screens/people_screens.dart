@@ -29,12 +29,13 @@ import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
 
 /// How many users the list has loaded and what it searches the server for
-/// (PERF-55: a page at a time).
+/// (PERF-55: a page at a time), by page size ([adminPeoplePageSizeFor]: 50
+/// on a phone, 200 wider).
 final adminUsersRequestProvider =
-    NotifierProvider.autoDispose<PageRequestController, PageRequest>(PageRequestController.new);
-final adminUsersProvider = FutureProvider.autoDispose<RowsPage>((ref) {
+    NotifierProvider.autoDispose.family<PageRequestController, PageRequest, int>(PageRequestController.new);
+final adminUsersProvider = FutureProvider.autoDispose.family<RowsPage, int>((ref, pageSize) {
   ref.watchAdminLive('profiles');
-  final r = ref.watch(adminUsersRequestProvider);
+  final r = ref.watch(adminUsersRequestProvider(pageSize));
   return ref.watch(adminRepositoryProvider).users(limit: r.limit, query: r.query);
 });
 final adminPartnersProvider = FutureProvider.autoDispose((ref) {
@@ -52,6 +53,11 @@ final adminDialerProvider = Provider<Future<bool> Function(Uri)>((ref) => launch
 /// A list card: the record's tile, with a call button when a phone is known
 /// and, for an admin who can edit, the one-tap status actions under it
 /// (Expo `AdminUserList` / `AdminPartnerList` / `AdminVehicleList`).
+/// Whether a record card puts its status and call under the name, not
+/// beside it: from 1.2× text, where beside them the name and phone were
+/// squeezed into a narrow column.
+bool recordCardStacks(TextScaler scaler) => scaler.scale(14) / 14 >= 1.2;
+
 class _RecordCard extends ConsumerWidget {
   const _RecordCard({
     required this.id,
@@ -78,49 +84,83 @@ class _RecordCard extends ConsumerWidget {
     final call = phoneCallUri(phone);
     final actions = canEdit ? quickStatusActions(status) : const <QuickStatusAction>[];
     final c = Theme.of(context).colorScheme;
+    final callButton = call == null
+        ? null
+        : IconButton(
+            key: ValueKey('call-$id'),
+            tooltip: 'Call $phone',
+            icon: const Icon(Icons.call_outlined),
+            onPressed: () async {
+              final ok = await ref.read(adminDialerProvider)(call);
+              if (!ok && context.mounted) showInfo(context, 'Call $phone');
+            },
+          );
+    return LayoutBuilder(builder: (context, box) => _build(context, box.maxWidth, actions, c, callButton));
+  }
+
+  Widget _build(
+    BuildContext context,
+    double width,
+    List<QuickStatusAction> actions,
+    ColorScheme c,
+    Widget? callButton,
+  ) {
+    // A list 600 wide or more (a tablet, a phone on its side, a desktop;
+    // the card sits 16 in from each side): the name and phone, call, status
+    // and the actions all on one line.
+    final wide = width + 32 >= 600;
+    // Large text on a phone: the name and phone take the whole width, and
+    // the status and call move to a row of their own under them.
+    final stacked = !wide && recordCardStacks(MediaQuery.textScalerOf(context));
+    Widget actionButton(QuickStatusAction a) => a.destructive
+        ? OutlinedButton(
+            key: ValueKey('quick-${a.next}-$id'),
+            // 48 tall: a finger's target (Android's minimum).
+            style: OutlinedButton.styleFrom(
+              foregroundColor: c.error,
+              side: BorderSide(color: c.error.withValues(alpha: 0.6)),
+              minimumSize: const Size(64, 48),
+            ),
+            onPressed: () => onAction(a),
+            child: Text(a.label),
+          )
+        : FilledButton.tonal(
+            key: ValueKey('quick-${a.next}-$id'),
+            // Not the theme's full-width filled button.
+            style: FilledButton.styleFrom(minimumSize: const Size(64, 48)),
+            onPressed: () => onAction(a),
+            child: Text(a.label),
+          );
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       ListTile(
+        key: ValueKey('record-tile-$id'),
         leading: leading,
         title: Text(title),
         subtitle: Text(subtitle),
-        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (call != null)
-            IconButton(
-              key: ValueKey('call-$id'),
-              tooltip: 'Call $phone',
-              icon: const Icon(Icons.call_outlined),
-              onPressed: () async {
-                final ok = await ref.read(adminDialerProvider)(call);
-                if (!ok && context.mounted) showInfo(context, 'Call $phone');
-              },
-            ),
-          StatusChip(status),
-        ]),
+        trailing: stacked
+            ? null
+            : Row(mainAxisSize: MainAxisSize.min, children: [
+                ?callButton,
+                StatusChip(status),
+                if (wide)
+                  for (final a in actions) ...[const SizedBox(width: 8), actionButton(a)],
+              ]),
       ),
-      if (actions.isNotEmpty)
+      if (stacked)
+        Padding(
+          key: ValueKey('record-meta-$id'),
+          padding: const EdgeInsets.only(left: 72, right: 16),
+          child: Row(children: [
+            StatusChip(status),
+            const Spacer(),
+            ?callButton,
+          ]),
+        ),
+      if (actions.isNotEmpty && !wide)
         Padding(
           padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
           child: Wrap(spacing: 8, runSpacing: 4, alignment: WrapAlignment.end, children: [
-            for (final a in actions)
-              a.destructive
-                  ? OutlinedButton(
-                      key: ValueKey('quick-${a.next}-$id'),
-                      // 48 tall: a finger's target (Android's minimum).
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: c.error,
-                        side: BorderSide(color: c.error.withValues(alpha: 0.6)),
-                        minimumSize: const Size(64, 48),
-                      ),
-                      onPressed: () => onAction(a),
-                      child: Text(a.label),
-                    )
-                  : FilledButton.tonal(
-                      key: ValueKey('quick-${a.next}-$id'),
-                      // Not the theme's full-width filled button.
-                      style: FilledButton.styleFrom(minimumSize: const Size(64, 48)),
-                      onPressed: () => onAction(a),
-                      child: Text(a.label),
-                    ),
+            for (final a in actions) actionButton(a),
           ]),
         ),
     ]);
@@ -139,7 +179,7 @@ class _RecordList extends ConsumerStatefulWidget {
     required this.tile,
     required this.onOpen,
     this.initialFilter,
-    this.floatingActionButton,
+    this.addAction,
     this.hasMore,
     this.onLoadMore,
     this.onServerSearch,
@@ -154,7 +194,8 @@ class _RecordList extends ConsumerStatefulWidget {
   final Widget Function(Map<String, dynamic>) tile;
   final void Function(Map<String, dynamic>) onOpen;
   final String? initialFilter;
-  final Widget? floatingActionButton;
+  /// The list's "Add …" ([PageAddAction]).
+  final PageAddAction? addAction;
 
   /// For a list read a page at a time: whether the server has more rows,
   /// how to load them, and how to search the rows not loaded yet (called a
@@ -195,7 +236,7 @@ class _RecordListState extends ConsumerState<_RecordList> {
     return AdminPage(
       title: widget.title,
       module: widget.module,
-      floatingActionButton: widget.floatingActionButton,
+      addAction: widget.addAction,
       body: Column(children: [
         FilterBar(
           filters: widget.filters,
@@ -212,23 +253,44 @@ class _RecordListState extends ConsumerState<_RecordList> {
                   .where((r) => widget.matches(r, _filter) && rowSearch(r, _query, widget.searchColumns))
                   .toList();
               if (list.isEmpty && !more) return const EmptyState(icon: Icons.inbox_outlined, title: 'Nothing here');
-              return ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: list.length + (more ? 2 : 1),
+              // Paged: the filters see the rows loaded so far.
+              final count = pagedCountLabel(
+                shown: list.length,
+                loaded: rows.length,
+                more: more,
+                filtered: _filter != 'all' || _query.trim().isNotEmpty,
+              );
+              // The count heads the list, or with more to load sits in the
+              // pinned bar under it instead.
+              final head = more ? 0 : 1;
+              final listView = ListView.separated(
+                // Room under the last row for a floating Add.
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  8,
+                  16,
+                  widget.addAction != null ? addActionListBottomPadding(context) : 8,
+                ),
+                itemCount: list.length + head,
                 separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (_, i) => i == 0
+                itemBuilder: (_, i) => i < head
                     ? Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          // Paged: the filters see the rows loaded so far.
-                          more ? '${list.length} of the first ${rows.length}' : '${list.length} of ${rows.length}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                        child: Text(count, key: const ValueKey('record-count'), style: Theme.of(context).textTheme.bodySmall),
                       )
-                    : i > list.length
-                        ? LoadMoreRow(loading: value.isLoading, onPressed: () => widget.onLoadMore?.call(ref))
-                        : InkWell(onTap: () => widget.onOpen(list[i - 1]), child: widget.tile(list[i - 1])),
+                    : InkWell(onTap: () => widget.onOpen(list[i - head]), child: widget.tile(list[i - head])),
               );
+              if (!more) return listView;
+              // More on the server: the count and Load more stay pinned
+              // under the list, in reach from anywhere in it.
+              return Column(children: [
+                Expanded(child: listView),
+                PagedListBar(
+                  count: count,
+                  loading: value.isLoading,
+                  onLoadMore: () => widget.onLoadMore?.call(ref),
+                ),
+              ]);
             },
           ),
         ),
@@ -430,13 +492,14 @@ class AdminUsersScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(moduleAccessProvider('users')) == AccessLevel.edit;
     final keepDays = ref.watch(accountRetentionDaysProvider).value ?? 365;
+    final page = adminPeoplePageSizeFor(MediaQuery.sizeOf(context).width);
     return _RecordList(
         title: 'Users',
         module: 'users',
-        watch: (r) => r.watch(adminUsersProvider).whenData((p) => p.rows),
-        hasMore: (r) => r.watch(adminUsersProvider).value?.more ?? false,
-        onLoadMore: (r) => r.read(adminUsersRequestProvider.notifier).more(),
-        onServerSearch: (r, q) => r.read(adminUsersRequestProvider.notifier).search(q),
+        watch: (r) => r.watch(adminUsersProvider(page)).whenData((p) => p.rows),
+        hasMore: (r) => r.watch(adminUsersProvider(page)).value?.more ?? false,
+        onLoadMore: (r) => r.read(adminUsersRequestProvider(page).notifier).more(),
+        onServerSearch: (r, q) => r.read(adminUsersRequestProvider(page).notifier).search(q),
         filters: userFilters,
         initialFilter: initialFilter,
         matches: (u, f) => f == 'final-delete' ? dueForFinalDeletion(u, keepDays, DateTime.now()) : userMatches(u, f),
@@ -650,10 +713,9 @@ class AdminPartnersScreen extends ConsumerWidget {
             ? const ['plate', 'make', 'model', 'owner_name', 'owner_phone', 'display_id', 'vin']
             : const ['name', 'phone', 'plate', 'email', 'display_id'],
         onOpen: (p) => _open(context, ref, p),
-        floatingActionButton: ref.watch(pageAccessProvider(vehicles ? 'admin-vehicle-add' : 'admin-partner-add')) ==
+        addAction: ref.watch(pageAccessProvider(vehicles ? 'admin-vehicle-add' : 'admin-partner-add')) ==
                 AccessLevel.edit
-            ? FloatingActionButton.extended(
-                icon: const Icon(Icons.add),
+            ? PageAddAction(
                 label: Text(vehicles ? 'Add vehicle' : 'Add partner'),
                 onPressed: () async {
                   await context.push(vehicles ? '/admin/m/vehicle-add' : '/admin/m/partner-add');

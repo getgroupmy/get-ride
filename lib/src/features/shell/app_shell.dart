@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../widgets/common.dart';
+import '../../widgets/focus_order.dart';
 import '../../data/driver_presence.dart';
 import '../partner/driver_online.dart';
 import 'app_side_menu.dart' show AppSideMenuHost;
@@ -63,8 +64,10 @@ class AppShell extends ConsumerWidget {
     }
     final extended = width >= 1100;
     return Scaffold(
-      body: Row(children: [
-        ScrollableRail(
+      // Keyboard focus in the order the screen reads: the rail, then the
+      // page, and within the page what floats over a map last.
+      body: ShellFocusOrder(
+        rail: ScrollableRail(
           rail: NavigationRail(
             extended: extended,
             selectedIndex: shell.currentIndex,
@@ -85,9 +88,9 @@ class AppShell extends ConsumerWidget {
             ],
           ),
         ),
-        const VerticalDivider(width: 1),
-        Expanded(child: shell),
-      ]),
+        between: const VerticalDivider(width: 1),
+        content: shell,
+      ),
     );
   }
 }

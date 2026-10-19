@@ -44,32 +44,66 @@ const _countries = {
 /// address has been looked up).
 bool isCoordinateLabel(String label) => RegExp(r'^\s*-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?\s*$').hasMatch(label);
 
-/// Option A's second line: [p]'s area without its name, house number,
-/// postcode or country ("Kuala Lumpur International Airport (KLIA), 64000
-/// Sepang, Selangor, Malaysia" → "Sepang, Selangor"). The address as it is
-/// when nothing is left. With [homeRegion] (the rider's own state, e.g.
-/// "Selangor") a trailing state that is the same is dropped too, where
-/// something is left before it, as is a state that only repeats the city
-/// before it ("Federal Territory of Kuala Lumpur" after "Kuala Lumpur").
-String shortArea(Place p, {String? homeRegion}) {
+/// [p]'s address as area parts, nearest the place first: without its name,
+/// house number, postcode or country, and no part twice.
+List<String> _areaParts(Place p) {
   final name = p.name.trim().toLowerCase();
   final parts = <String>[];
-  for (var part in p.address.split(',')) {
-    part = part.trim().replaceFirst(RegExp(r'^\d{4,6}\s+'), '').replaceFirst(RegExp(r'\s+\d{4,6}$'), '');
+  final all = p.address.split(',');
+  for (var i = 0; i < all.length; i++) {
+    final part = all[i].trim().replaceFirst(RegExp(r'^\d{4,6}\s+'), '').replaceFirst(RegExp(r'\s+\d{4,6}$'), '');
     final l = part.toLowerCase();
     if (part.isEmpty || l == name || _countries.contains(l) || RegExp(r'^[\d\s/-]+$').hasMatch(part)) continue;
-    if (parts.isNotEmpty && parts.last.toLowerCase() == l) continue;
+    if (parts.any((x) => x.toLowerCase() == l)) continue;
     parts.add(part);
   }
+  return parts;
+}
+
+String _plain(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+
+/// Option A's second line, area then city: [p]'s address without its name,
+/// house number, postcode or country ("Kuala Lumpur International
+/// Airport (KLIA), 64000 Sepang, Selangor, Malaysia" → "Sepang, Selangor";
+/// "KLCC, 156, Jalan Ampang, Kampung Sungai Baru, 50450 Kuala Lumpur,
+/// Wilayah Persekutuan Kuala Lumpur, Malaysia" → "Kampung Sungai Baru, Kuala
+/// Lumpur"). A state that only repeats the city goes; with more than city
+/// and state, the area nearest the place (not one the name already holds)
+/// stands before the city. The address as it is when nothing is left. With
+/// [homeRegion] (the rider's own state, e.g. "Selangor") a trailing state
+/// that is the same is dropped too, where something is left before it.
+String shortArea(Place p, {String? homeRegion}) {
+  final parts = _areaParts(p);
   if (parts.isEmpty) return p.address;
+  var stateGone = false;
   // A state that only says the city again ("Kuala Lumpur, Federal Territory
-  // of Kuala Lumpur" → "Kuala Lumpur").
-  while (parts.length > 1 && parts.last.toLowerCase().contains(parts[parts.length - 2].toLowerCase())) {
+  // of Kuala Lumpur", "Wilayah Persekutuan Kuala Lumpur"), however often.
+  while (parts.length > 1) {
+    final last = _plain(parts.last), city = _plain(parts[parts.length - 2]);
+    if (city.isEmpty || !(last == city || ' $last '.contains(' $city '))) break;
     parts.removeLast();
+    stateGone = true;
   }
   final home = (homeRegion ?? '').trim().toLowerCase();
-  if (home.isNotEmpty && parts.length > 1 && parts.last.toLowerCase() == home) parts.removeLast();
-  return parts.length <= 2 ? parts.join(', ') : parts.sublist(parts.length - 2).join(', ');
+  if (!stateGone && home.isNotEmpty && parts.length > 1 && parts.last.toLowerCase() == home) {
+    parts.removeLast();
+    stateGone = true;
+  }
+  if (parts.length <= 2 && !(stateGone && parts.length == 2)) return parts.join(', ');
+  final cityAt = stateGone ? parts.length - 1 : parts.length - 2;
+  final name = _plain(p.name);
+  // The area nearest the place that the name doesn't already hold: a
+  // neighbourhood before a street ("Jalan Ampang"), a street before none.
+  String? area;
+  for (final street in [false, true]) {
+    for (var i = 0; i < cityAt && area == null; i++) {
+      final a = _plain(parts[i]);
+      if (a.isEmpty || ' $name '.contains(' $a ') || _streetWords.hasMatch(parts[i]) != street) continue;
+      area = parts[i];
+    }
+  }
+  if (area == null) return parts.sublist(parts.length - 2).join(', ');
+  return '$area, ${parts[cityAt]}';
 }
 
 /// The line under a place's [name]: its [address], or null when that only
@@ -86,9 +120,15 @@ String? placeSubtitle(String name, String address) {
 /// Sepang, Selangor, Malaysia"; null when there is none.
 String? areaRegion(Place? p) {
   if (p == null) return null;
-  final parts = shortArea(p).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+  final parts = _areaParts(p);
   return parts.length < 2 ? null : parts.last;
 }
+
+/// The line under a place in the route sheet (search results and recents
+/// alike): with smart address A ([clean]) its area then city, else its
+/// address; never one that only says the name again (null then).
+String? placeAreaLine(Place p, {required bool clean, String? homeRegion}) =>
+    placeSubtitle(p.name, clean ? shortArea(p, homeRegion: homeRegion) : p.address);
 
 const _addressTypes = {
   'street_address',

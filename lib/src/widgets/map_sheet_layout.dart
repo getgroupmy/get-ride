@@ -141,8 +141,14 @@ class MapSheetLayout extends StatefulWidget {
     this.aboveFooter,
     this.front,
     this.padBottom = true,
+    this.revealMax,
     this.besideWhenShort = false,
   });
+
+  /// The highest a [MapSheetReveal] may raise the sheet by itself (null:
+  /// [max]); its content slides instead. Keeps what the map shows over the
+  /// sheet (the confirm step's route card) in view on a short screen.
+  final double? revealMax;
 
   final Widget map;
   final Widget sheet;
@@ -335,10 +341,11 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     if (!_full && h > 0) {
       final gap = bottom - top;
       final rest = _restSize;
-      if (card.height > gap + 1 && _sheet.size < widget.max - 0.001) {
+      final cap = math.max(_min, math.min(widget.max, widget.revealMax ?? widget.max));
+      if (card.height > gap + 1 && _sheet.size < cap - 0.001) {
         // Taller than the room left: the sheet rises just enough to show it
         // whole (the content's slide below then brings it into place).
-        final to = math.min(widget.max, _sheet.size + (card.height - gap) / h);
+        final to = math.min(cap, _sheet.size + (card.height - gap) / h);
         _restSize ??= _sheet.size;
         _sheet.animateTo(to, duration: move, curve: Curves.easeOut).then(
           (_) => WidgetsBinding.instance.addPostFrameCallback((_) {

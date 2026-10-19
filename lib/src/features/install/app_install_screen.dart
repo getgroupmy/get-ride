@@ -61,7 +61,13 @@ class AppInstallScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (b.available) ...[
-                        Text(appBuildSummary(b), textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+                        for (final (i, line) in appBuildSummaryLines(b).indexed)
+                          Text(
+                            line,
+                            key: ValueKey('install-summary-$i'),
+                            textAlign: TextAlign.center,
+                            style: i == 0 ? theme.textTheme.titleMedium : theme.textTheme.bodyMedium,
+                          ),
                         const SizedBox(height: 16),
                         if (b.installable) AppInstallButton(app: b),
                       ],

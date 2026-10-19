@@ -1,15 +1,8 @@
-// The rider's wait for a driver (Expo `ride-confirm` search): the first
-// minute counts down to a "Raise your fare?" prompt, the request runs out
-// after [AppConfig.requestExpiry], and a driver's offer stands for
-// [counterOfferWindow] from when the rider first saw it. Pure.
+// The rider's wait for a driver (Expo `ride-confirm` search): the request
+// runs out after [AppConfig.requestExpiry], and a driver's offer stands for
+// [counterOfferWindow] from when the rider first saw it. When the sheet
+// offers a raise is in raise_nudge.dart. Pure.
 import 'dart:math' as math;
-
-/// How long the first search phase lasts before the rider is asked once
-/// whether to raise the fare (Expo's 60-second countdown).
-const searchPromptAfter = Duration(seconds: 60);
-
-/// What that prompt offers to add (Expo raises by 5).
-const searchPromptRaise = 5.0;
 
 /// Time since the request went out, never negative (a device clock behind
 /// the server's would otherwise start the search in the future).
@@ -18,15 +11,6 @@ Duration searchElapsed(DateTime? createdAt, DateTime now) {
   final d = now.difference(createdAt);
   return d.isNegative ? Duration.zero : d;
 }
-
-/// The first-minute bar: 1 when the search starts, 0 at [searchPromptAfter].
-double searchPhaseProgress(Duration elapsed) =>
-    (1 - elapsed.inMilliseconds / searchPromptAfter.inMilliseconds).clamp(0.0, 1.0).toDouble();
-
-/// Whether to ask "Raise your fare?" now: the first minute is up, no driver
-/// has offered anything, and the rider hasn't been asked on this screen.
-bool shouldPromptRaise({required Duration elapsed, required bool offerStanding, required bool alreadyAsked}) =>
-    !alreadyAsked && !offerStanding && elapsed >= searchPromptAfter;
 
 /// What is left of the request's life (zero once it has run out).
 Duration searchTimeLeft(Duration elapsed, Duration expiry) {

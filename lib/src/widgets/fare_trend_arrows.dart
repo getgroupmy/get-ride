@@ -67,7 +67,8 @@ class _FareTrendArrowsState extends State<FareTrendArrows> with SingleTickerProv
       message: widget.trend.explanation,
       child: Semantics(
         key: ValueKey('fare-trend-${up ? 'up' : 'down'}'),
-        label: widget.trend.explanation,
+        // Named for screen readers by what it means, then why.
+        label: '${up ? 'High demand' : 'Low demand'}. ${widget.trend.explanation}',
         child: ExcludeSemantics(
           child: SizedBox(
             width: widget.size,

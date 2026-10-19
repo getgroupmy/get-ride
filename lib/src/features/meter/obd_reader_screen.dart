@@ -16,6 +16,7 @@ import '../../data/ble.dart';
 import '../../data/obd/obd_mfi_transport.dart';
 import '../../data/obd/obd_session.dart';
 import '../../widgets/back_or_go_button.dart';
+import '../../widgets/page_add_action.dart';
 import '../../widgets/busy.dart';
 import 'ble_scan_sheet.dart';
 import 'ev_capture_sheet.dart';
@@ -161,7 +162,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
               key: const ValueKey('add-mfi-reader'),
               leading: const Icon(Icons.bluetooth_connected),
               title: const Text('Bluetooth MFi reader'),
-              subtitle: const Text('Certified readers such as OBDLink MX+, paired in Settings → Bluetooth'),
+              subtitle: const Text('Certified readers such as OBDLink MX+, paired in Settings > Bluetooth'),
               onTap: () => Navigator.pop(c, 'mfi'),
             ),
           ListTile(
@@ -217,7 +218,7 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
                 leading: Icon(Icons.info_outline),
                 title: Text('No MFi reader is connected'),
                 subtitle: Text(
-                  'Pair the reader in Settings → Bluetooth with the ignition on, then come back here. '
+                  'Pair the reader in Settings > Bluetooth with the ignition on, then come back here. '
                   'Readers that are not MFi-certified are added as Bluetooth readers instead.',
                 ),
               ),
@@ -265,17 +266,20 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(obdSessionProvider);
+    // A floating Add on a phone; beside the title from 600 wide, where it
+    // sat over the Connected card's speed and coolant.
+    final add = kIsWeb
+        ? null
+        : PageAddAction(key: const ValueKey('obd-add'), onPressed: _add, label: const Text('Add reader'));
     return Scaffold(
-      appBar: AppBar(leading: const BackOrGoButton(fallback: '/meter'), title: const Text('OBD-II reader')),
-      floatingActionButton: kIsWeb
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _add,
-              icon: const Icon(Icons.add),
-              label: const Text('Add reader'),
-            ),
+      appBar: AppBar(
+        leading: const BackOrGoButton(fallback: '/meter'),
+        title: const Text('OBD-II reader'),
+        actions: pageAddActions(context, add),
+      ),
+      floatingActionButton: pageAddFab(context, add),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, add == null ? 16 : addActionListBottomPadding(context)),
         children: [
           if (kIsWeb)
             const Card(
@@ -320,7 +324,23 @@ class _ObdReaderScreenState extends ConsumerState<ObdReaderScreen> {
       child: BusyListTile(
         leading: Icon(selected ? Icons.radio_button_checked : Icons.radio_button_unchecked),
         title: Text(a.name),
-        subtitle: Text(describeAdapter(a)),
+        // The link's kind, then its address on its own line, kept whole
+        // (an ellipsis rather than a break inside "192.168.0.10:35000").
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(describeAdapterParts(a).transport),
+            if (describeAdapterParts(a).address case final address?)
+              Text(
+                address,
+                key: ValueKey('obd-address-${a.id}'),
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
         onTap: kIsWeb ? null : () => _use(a),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,

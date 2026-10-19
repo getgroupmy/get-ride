@@ -326,7 +326,7 @@ class _EvCaptureSheetState extends ConsumerState<EvCaptureSheet> {
         const SizedBox(height: 8),
         for (final e in answered.take(6))
           Text(
-            '${e.header} ${e.request} → ${e.reply.split(RegExp(r'[\r\n]+')).first}',
+            '${e.header} ${e.request} to ${e.reply.split(RegExp(r'[\r\n]+')).first}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: t.textTheme.bodySmall,

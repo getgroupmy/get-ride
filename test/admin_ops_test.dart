@@ -84,8 +84,12 @@ Future<GoRouter> _pump(
   Widget home, {
   Brightness b = Brightness.light,
   String initial = '/admin/sub-admins',
+  Size size = const Size(1000, 1600),
+  double textScale = 1,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1000, 1600));
+  tester.platformDispatcher.textScaleFactorTestValue = textScale;
+  addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   // Grant access and Edit access are pages of their own under the list.
   final router = GoRouter(
@@ -203,6 +207,18 @@ void main() {
   });
 
   for (final b in Brightness.values) {
+    testWidgets('the search hint fits at 1.3x on a 412 phone; what it searches stays under it (${b.name})',
+        (tester) async {
+      await _pump(tester, _Admin(), const AdminSubAdminsScreen(), b: b, size: const Size(412, 915), textScale: 1.3);
+      final field = tester.widget<TextField>(find.byKey(const ValueKey('sub-admin-search')));
+      expect(field.decoration?.hintText, 'Search sub-admins');
+      expect(field.decoration?.helperText, 'Name, phone, email, page or note');
+      // (The test font draws every letter a full em wide, so the fit itself
+      // is judged by the length: under 20 letters fits a phone at 1.3x.)
+      expect(field.decoration!.hintText!.length, lessThan(20));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('grant several pages at once, found by name (${b.name})', (tester) async {
       final admin = _Admin();
       await _pump(tester, admin, const AdminSubAdminsScreen(), b: b);

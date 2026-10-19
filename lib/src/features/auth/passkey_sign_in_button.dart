@@ -86,12 +86,12 @@ class _PasskeySignInButtonState extends ConsumerState<PasskeySignInButton> {
         label: const Text('Use a passkey at $passkeyHost'),
       );
     }
-    return FilledButton.icon(
+    // The secondary way in, outlined: "Continue with phone" is the filled
+    // primary button below it.
+    return OutlinedButton.icon(
       key: const ValueKey('passkey-sign-in'),
-      style: FilledButton.styleFrom(
+      style: OutlinedButton.styleFrom(
         minimumSize: const Size.fromHeight(56),
-        backgroundColor: t.colorScheme.inverseSurface,
-        foregroundColor: t.colorScheme.onInverseSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         textStyle: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
       ),
@@ -99,7 +99,7 @@ class _PasskeySignInButtonState extends ConsumerState<PasskeySignInButton> {
       icon: _busy
           ? SizedBox.square(
               dimension: 20,
-              child: CircularProgressIndicator(strokeWidth: 2, color: t.colorScheme.onInverseSurface),
+              child: CircularProgressIndicator(strokeWidth: 2, color: t.colorScheme.primary),
             )
           : const Icon(Icons.how_to_reg_outlined),
       label: const Text('Continue with passkey'),

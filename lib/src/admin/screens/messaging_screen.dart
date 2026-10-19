@@ -414,7 +414,8 @@ class _RouteEditorState extends ConsumerState<_RouteEditor> {
                     ? 'No gateway phone yet. Install the GET.ride Gateway app on an Android phone with a SIM '
                           'and pair it with "Pair a gateway phone" above; it then appears here.'
                     : 'No device yet. A device appears here once an admin signs in to the app on it.',
-                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                // On the channel's card: muted, but readable on its tint.
+                style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t, background: cardSurfaceColor(t))),
               )
             else
               Wrap(

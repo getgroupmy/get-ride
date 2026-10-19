@@ -1,5 +1,5 @@
 // The admin people lists read `profiles` a page at a time (PERF-55): what a
-// list has asked for so far, and the "Load more" row at its end.
+// list has asked for so far, and the bar pinned under it with "Load more".
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,38 +10,60 @@ import 'admin_filters.dart';
 typedef PageRequest = ({int limit, String query});
 
 class PageRequestController extends Notifier<PageRequest> {
+  /// [pageSize] rows a page ([adminPeoplePageSizeFor] the list's width).
+  PageRequestController([this.pageSize = adminPeoplePageSize]);
+
+  final int pageSize;
+
   @override
-  PageRequest build() => (limit: adminPeoplePageSize, query: '');
+  PageRequest build() => (limit: pageSize, query: '');
 
   /// One more page of the same search.
-  void more() => state = (limit: state.limit + adminPeoplePageSize, query: state.query);
+  void more() => state = (limit: state.limit + pageSize, query: state.query);
 
   /// A new search starts again from the first page.
   void search(String query) {
     final q = query.trim();
-    if (q != state.query) state = (limit: adminPeoplePageSize, query: q);
+    if (q != state.query) state = (limit: pageSize, query: q);
   }
 }
 
-/// The last row of a paged list: "Load more" while the server has more.
-class LoadMoreRow extends StatelessWidget {
-  const LoadMoreRow({super.key, required this.loading, required this.onPressed});
+/// Pinned under a paged list while the server has more: the count and
+/// "Load more", in reach without scrolling to the end of the list.
+class PagedListBar extends StatelessWidget {
+  const PagedListBar({super.key, required this.count, required this.loading, required this.onLoadMore});
 
+  final String count;
   final bool loading;
-  final VoidCallback onPressed;
+  final VoidCallback onLoadMore;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        child: Center(
-          child: OutlinedButton.icon(
-            key: const ValueKey('load-more'),
-            onPressed: loading ? null : onPressed,
-            icon: loading
-                ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.expand_more),
-            label: const Text('Load more'),
-          ),
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Material(
+      key: const ValueKey('paged-bar'),
+      color: t.colorScheme.surfaceContainer,
+      elevation: 3,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
+          child: Row(children: [
+            Expanded(
+              child: Text(count, key: const ValueKey('paged-count'), style: t.textTheme.bodyMedium),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              key: const ValueKey('load-more'),
+              onPressed: loading ? null : onLoadMore,
+              icon: loading
+                  ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.expand_more),
+              label: const Text('Load more'),
+            ),
+          ]),
         ),
-      );
+      ),
+    );
+  }
 }

@@ -25,12 +25,16 @@ import '../../widgets/voice_note_composer.dart';
 import '../partner/partner_trip_screen.dart' show tripFixProvider;
 import 'ride_call_screen.dart' show RideCallButton;
 import 'ride_tracking_screen.dart' show rideStreamProvider;
+import '../../widgets/chip_button.dart';
 
 /// Opens a link outside the app (overridden in tests).
 final rideChatLauncherProvider = Provider<Future<bool> Function(Uri)>(
   (ref) =>
       (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
 );
+
+/// The chat's app bar: a two-line name and the role under it.
+const rideChatToolbarHeight = 76.0;
 
 /// The in-app chat between a ride's rider and its driver, from either side.
 /// It takes messages while the ride is running and is read-only after.
@@ -233,10 +237,21 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
     final t = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
+        // Room for a long name on two lines ("… A/L …", "… Binti …") over
+        // the role; the Call button's tooltip and label carry it in full.
+        toolbarHeight: rideChatToolbarHeight,
         title: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(peer, key: const ValueKey('ride-chat-peer')),
+            Text(
+              peer,
+              key: const ValueKey('ride-chat-peer'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: t.appBarTheme.titleTextStyle?.copyWith(fontSize: 18, height: 1.2) ??
+                  t.textTheme.titleMedium?.copyWith(height: 1.2),
+            ),
             if (role != null)
               Text(
                 role == RideChatRole.rider ? 'Your driver' : 'Your passenger',
@@ -338,23 +353,28 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Four short lines: all built, scrolled sideways on a narrow phone.
-          SingleChildScrollView(
+          // Four short lines, wrapped onto a second row on a narrow phone
+          // so none hides off the edge. Each is an action that sends its
+          // line: a button named by it, not a checkbox.
+          Padding(
             key: const ValueKey('ride-chat-quick'),
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-            child: Row(
-              children: [
-                for (final line in rideQuickReplies(role))
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: ActionChip(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final line in rideQuickReplies(role))
+                    // A button named by its line (the shared action chip).
+                    ActionChipButton(
                       key: ValueKey('quick-$line'),
                       label: Text(line),
+                      semanticHint: 'Sends this message',
                       onPressed: _sending ? null : () => _sendQuick(role, line),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
           Padding(

@@ -123,7 +123,7 @@ const userGuide = <GuideSection>[
       (
         title: 'On a trip',
         body:
-            'Navigate opens your chosen navigation app (Settings → Navigation app). Mark arrived, '
+            'Navigate opens your chosen navigation app (Settings > Navigation app). Mark arrived, '
             'check the rider\'s trip code, start and complete the trip. Commission is charged to '
             'GET.credit when the trip completes.',
       ),
@@ -196,7 +196,7 @@ const userGuide = <GuideSection>[
         title: 'Help',
         body:
             'Help assistant answers common questions straight away. Help & support opens a chat with our '
-            'team. Terms, privacy and licences are under Settings → Rules & terms.',
+            'team. Terms, privacy and licences are under Settings > Rules & terms.',
       ),
     ],
   ),

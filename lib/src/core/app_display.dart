@@ -94,6 +94,12 @@ const serviceComingSoonMessage = "This service isn't available yet. Please check
 const registrationClosedTitle = 'New registrations are closed';
 const registrationClosedMessage = 'This number has no account. For new registration please contact Administrator.';
 
+/// The same page opened again with no number to name (a reload, a bare
+/// link): what closed means, without "this number".
+const registrationClosedNoNumberMessage =
+    "New accounts can't be made right now. If you already have an account, "
+    'sign in with its number. For a new account, please contact Administrator.';
+
 /// Whether [hasAccount] may continue to sign in or sign up.
 bool mayContinueSignIn({required bool hasAccount, required AppDisplay display}) =>
     hasAccount || display.registrationEnabled;

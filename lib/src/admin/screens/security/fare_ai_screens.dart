@@ -655,7 +655,7 @@ class _LogCard extends StatelessWidget {
               if (toll is Map) Text('• ${toll['name'] ?? 'Toll booth'} — ${toll['charge']}'),
           ],
           if (r['origin_lat'] != null && r['dest_lat'] != null)
-            Text('${c(r['origin_lat'])},${c(r['origin_lng'])} → ${c(r['dest_lat'])},${c(r['dest_lng'])}',
+            Text('${c(r['origin_lat'])},${c(r['origin_lng'])} to ${c(r['dest_lat'])},${c(r['dest_lng'])}',
                 style: Theme.of(context).textTheme.bodySmall),
           if (r['raw_response'] != null)
             ExpansionTile(

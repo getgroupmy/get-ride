@@ -48,6 +48,10 @@ final currentPlateProvider = FutureProvider.autoDispose<String?>((ref) async {
 
 final _date = DateFormat('dd/MM/yyyy');
 
+/// "Update documents" from the permit page: the onboarding form opened on
+/// its Documents step (or an earlier step still missing).
+const permitDocumentsRoute = '/drive/onboarding?step=requirements';
+
 /// Taxi driver permit (Expo `partner-teksi`, the TEKSI landing screen): the
 /// permit's details, its expiry and review state, and the two ways to drive
 /// on it — Start Pickup (the permit's checks, "Select tariff", the trip) and
@@ -139,7 +143,7 @@ class _PermitBody extends StatelessWidget {
                   FilledButton.icon(
                     key: const ValueKey('permit-update-documents'),
                     icon: const Icon(Icons.upload_file),
-                    onPressed: () => context.push('/drive/onboarding'),
+                    onPressed: () => context.push(permitDocumentsRoute),
                     label: const Text('Update documents'),
                   ),
                 ],
@@ -173,7 +177,7 @@ class _PermitBody extends StatelessWidget {
               title: const Text('No taxi driver permit uploaded'),
               subtitle: const Text('Upload your permit with your partner documents to show it here.'),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.push('/drive/onboarding'),
+              onTap: () => context.push(permitDocumentsRoute),
             ),
           ),
         Card(
@@ -314,7 +318,7 @@ class _PermitBody extends StatelessWidget {
             OutlinedButton.icon(
               icon: const Icon(Icons.upload_file),
               label: const Text('Update documents'),
-              onPressed: () => context.push('/drive/onboarding'),
+              onPressed: () => context.push(permitDocumentsRoute),
             ),
             FilledButton.tonalIcon(
               key: const ValueKey('permit-open-meter'),
@@ -392,7 +396,7 @@ Future<void> showPermitBlock(BuildContext context, PermitBlock block, DriverPerm
               if (block == PermitBlock.plateMismatch) {
                 context.go('/drive');
               } else {
-                context.push('/drive/onboarding');
+                context.push(permitDocumentsRoute);
               }
             },
             child: Text(block == PermitBlock.plateMismatch ? 'Choose vehicle' : 'Update documents'),

@@ -251,9 +251,10 @@ String signInStepPhone(Map<String, String> query) => query['phone'] ?? SignInPho
 /// of /login/pin or /login/otp, a bare link): the number page when the phone
 /// is missing (in the address of an older link, or [phone] in memory); the
 /// PIN page when a resync lost its PIN ([ResyncPin], gone with a reload).
-/// Null: the step can show.
+/// Null: the step can show. /login/closed needs no number: reloaded, it
+/// still explains itself, without the number.
 String? signInStepRedirect(String location, Map<String, String> query, {String? resyncPin, String? phone}) {
-  const steps = {'/login/pin', '/login/otp', '/login/closed'};
+  const steps = {'/login/pin', '/login/otp'};
   if (!steps.contains(location)) return null;
   final number = query['phone'] ?? phone ?? '';
   if (number.trim().isEmpty) return '/login/phone';

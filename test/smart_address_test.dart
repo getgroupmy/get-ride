@@ -81,6 +81,34 @@ class _Geo extends GeoService {
 
 void main() {
   group('the rules', () {
+    // Web round 38 (177): area then city, a state repeating the city goes,
+    // never the title again.
+    test('A: area then city; no state that repeats the city; never the name again', () {
+      const klcc = Place(
+        name: 'KLCC - Petronas Twin Towers',
+        address: 'KLCC, 156, Jalan Ampang, Kampung Sungai Baru, 50450 Kuala Lumpur, '
+            'Wilayah Persekutuan Kuala Lumpur, Malaysia',
+        point: LatLng(3.158, 101.712),
+      );
+      expect(shortArea(klcc), 'Kampung Sungai Baru, Kuala Lumpur');
+      expect(placeAreaLine(klcc, clean: true), 'Kampung Sungai Baru, Kuala Lumpur');
+      const same = Place(name: 'KLCC - Petronas Twin Towers', address: 'KLCC - Petronas Twin Towers', point: LatLng(3, 101));
+      expect(placeAreaLine(same, clean: true), isNull, reason: 'the title again: no line');
+      expect(placeAreaLine(same, clean: false), isNull);
+      const sunway = Place(
+        name: 'Sunway Pyramid',
+        address: 'Sunway Pyramid, 3, Jalan PJS 11/15, Bandar Sunway, 47500 Petaling Jaya, Selangor, Malaysia',
+        point: LatLng(3.07, 101.6),
+      );
+      expect(shortArea(sunway), 'Bandar Sunway, Petaling Jaya');
+      expect(areaRegion(sunway), 'Selangor', reason: 'the state is still the region');
+      const kl = Place(name: 'Pavilion', address: 'Pavilion, Bukit Bintang, Kuala Lumpur, Kuala Lumpur, Malaysia', point: LatLng(3, 101));
+      expect(shortArea(kl), 'Bukit Bintang, Kuala Lumpur');
+      // An area the name already holds is not "the area".
+      const held = Place(name: 'Kampung Baru Mosque', address: 'Kampung Baru, Chow Kit, Kuala Lumpur, Selangor', point: LatLng(3, 101));
+      expect(shortArea(held), 'Chow Kit, Kuala Lumpur');
+    });
+
     test('A: the area alone, without name, postcode or country', () {
       const p = Place(
         name: 'Kuala Lumpur International Airport (KLIA)',
@@ -232,7 +260,12 @@ void main() {
   for (final dark in [false, true]) {
     final mode = dark ? 'dark' : 'light';
 
-    Future<(_Geo, List<PlacePick?>)> open(WidgetTester tester, String smart) async {
+    Future<(_Geo, List<PlacePick?>)> open(
+      WidgetTester tester,
+      String smart, {
+      List<Place> recent = const [],
+      String? type = 'klia',
+    }) async {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(420, 900);
       addTearDown(tester.view.reset);
@@ -241,7 +274,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            recentPlacesProvider.overrideWith((ref) async => const []),
+            recentPlacesProvider.overrideWith((ref) async => recent),
             savedPlacesProvider.overrideWith((ref) async => const [_work]),
             currentUserIdProvider.overrideWithValue('u1'),
             geoServiceProvider.overrideWithValue(geo),
@@ -263,10 +296,41 @@ void main() {
       );
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byKey(const ValueKey('place-search-field')), 'klia');
-      await tester.pumpAndSettle(const Duration(milliseconds: 500));
+      if (type != null) {
+        await tester.enterText(find.byKey(const ValueKey('place-search-field')), type);
+        await tester.pumpAndSettle(const Duration(milliseconds: 500));
+      }
       return (geo, picked);
     }
+
+    // Web round 38 (177): recents read as search results do.
+    const twin = Place(name: 'KLCC - Petronas Twin Towers', address: 'KLCC - Petronas Twin Towers', point: LatLng(3.158, 101.712));
+    const klcc = Place(
+      name: 'Suria KLCC',
+      address: 'KLCC, 156, Jalan Ampang, Kampung Sungai Baru, 50450 Kuala Lumpur, Wilayah Persekutuan Kuala Lumpur, Malaysia',
+      point: LatLng(3.157, 101.711),
+    );
+
+    testWidgets('177: Suggested recents: area then city, no line that repeats the title ($mode)', (tester) async {
+      await open(tester, 'all', recent: const [twin, klcc], type: null);
+      final twinTile = find.byKey(ValueKey('recent-${twin.point.latitude},${twin.point.longitude}'));
+      final klccTile = find.byKey(ValueKey('recent-${klcc.point.latitude},${klcc.point.longitude}'));
+      expect(find.descendant(of: twinTile, matching: find.byKey(const ValueKey('recent-subtitle'))), findsNothing);
+      expect(find.descendant(of: klccTile, matching: find.text('Kampung Sungai Baru, Kuala Lumpur')), findsOneWidget);
+      expect(find.textContaining('Jalan Ampang'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('177: recents among the results read the same ($mode)', (tester) async {
+      await open(tester, 'all', recent: const [twin, klcc], type: 'klcc');
+      final rows = find.byWidgetPredicate(
+        (w) => w is ListTile && w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('smart-recent-'),
+      );
+      expect(rows, findsNWidgets(2));
+      expect(find.text('Kampung Sungai Baru, Kuala Lumpur'), findsOneWidget);
+      expect(find.text('KLCC - Petronas Twin Towers'), findsNothing, reason: 'never the title again as a subtitle');
+      expect(tester.takeException(), isNull);
+    });
 
     testWidgets('normal: the results as given ($mode)', (tester) async {
       await open(tester, 'normal');

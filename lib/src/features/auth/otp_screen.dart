@@ -146,9 +146,14 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            BusyButton.text(
-              onPressed: _cooldown > 0 ? null : _resend,
-              child: Text(_cooldown > 0 ? 'Resend code in ${_cooldown}s' : 'Resend code'),
+            // A button, not a line of text: an icon and its own width.
+            Center(
+              child: BusyButton.text(
+                key: const ValueKey('otp-resend'),
+                onPressed: _cooldown > 0 ? null : _resend,
+                icon: const Icon(Icons.refresh),
+                child: Text(_cooldown > 0 ? 'Resend code in ${_cooldown}s' : 'Resend code'),
+              ),
             ),
           ]),
         ),
