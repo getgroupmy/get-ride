@@ -8,6 +8,7 @@ library;
 
 import 'dart:math' as math;
 import '../../../core/demo_mode.dart' show demoAccountIds, demoDriverIdsKey, demoRiderIdsKey;
+import '../../../core/sheet_min_height.dart';
 
 const displaySettingsTable = 'admin_display_settings';
 const displaySettingsRowId = 'global';
@@ -247,6 +248,11 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'rtRecenterHorizontal': 0,
       'prRecenterVertical': 0,
       'prRecenterHorizontal': 0,
+      // Bottom sheet minimum height: the admin's px on top of what each
+      // sheet's shown items need (core/sheet_min_height.dart).
+      homeSheetMinAdjustKey: 0,
+      confirmSheetMinAdjustKey: 0,
+      trackingSheetMinAdjustKey: 0,
       'hiddenVehicleServiceIds': <dynamic>[],
       'showVehicleMarkers': false,
       'vehicleBarOrder': <dynamic>[],
@@ -390,6 +396,119 @@ const homeSectionToggles = [
   ('recenterButton', 'Recenter Button', 'Floating recenter map button'),
   ('addressBar', 'Address Bar', 'Top centered address pill'),
 ];
+
+// --- Bottom sheet minimum height -------------------------------------------------
+
+/// The admin can't measure a phone: these are estimated heights, in px, of
+/// what each sheet shows all the way down, read off the widgets. The phone
+/// itself measures the real ones.
+const sheetHandleAndGaps = 30;
+
+/// Between items, and above the first and under the last.
+const sheetItemGap = 8;
+
+const homeSheetItemHeights = {
+  'searchBar': 48,
+  'whereToRow': 56,
+  'rideTypes': 64,
+  'recentLocations': 116,
+  'serviceCategories': 84,
+};
+
+/// The confirm sheet: the distance and time line, two vehicle cards and the
+/// pinned "Find a driver" bar (payment, GET.coin, who's riding).
+const confirmSheetItemHeights = {'routeLine': 32, 'vehicleCards': 152, 'findDriverBar': 136};
+
+/// The rider's tracking sheet with a driver on the way: the status line,
+/// the driver card, its Call and Message row and the pinned Cancel ride bar.
+const trackingSheetItemHeights = {'statusTitle': 36, 'driverCard': 132, 'callRow': 48, 'cancelBar': 72};
+
+/// One shown item of a sheet and its estimated height.
+typedef SheetItemEstimate = ({String label, int px});
+
+/// The items a sheet shows all the way down, in order, as the current
+/// switches have them; the first is always shown.
+List<SheetItemEstimate> sheetItemEstimates(String key, Map<String, dynamic> s) {
+  switch (key) {
+    case homeSheetMinAdjustKey:
+      const h = homeSheetItemHeights;
+      return [
+        displayBool(s, 'searchBar')
+            ? (label: 'Search Bar', px: h['searchBar']!)
+            : (label: 'Where to? row', px: h['whereToRow']!),
+        if (displayBool(s, 'rideTypes')) (label: 'Vehicle Types Bar', px: h['rideTypes']!),
+        if (displayBool(s, 'recentLocations')) (label: 'Recent Locations', px: h['recentLocations']!),
+        if (displayBool(s, 'serviceCategories')) (label: 'Service Categories', px: h['serviceCategories']!),
+      ];
+    case confirmSheetMinAdjustKey:
+      const h = confirmSheetItemHeights;
+      return [
+        (label: 'Distance and time', px: h['routeLine']!),
+        (label: 'Vehicle cards', px: h['vehicleCards']!),
+        (label: 'Find a driver bar', px: h['findDriverBar']!),
+      ];
+    default:
+      const h = trackingSheetItemHeights;
+      return [
+        (label: 'Ride status', px: h['statusTitle']!),
+        (label: 'Driver card', px: h['driverCard']!),
+        (label: 'Call and Message', px: h['callRow']!),
+        (label: 'Cancel ride bar', px: h['cancelBar']!),
+      ];
+  }
+}
+
+/// A sheet's least height as the admin row shows it: the estimated
+/// automatic part, the floor it never goes under, the stored adjustment and
+/// the total.
+class SheetMinEstimate {
+  const SheetMinEstimate({required this.items, required this.adjust, required this.floor});
+
+  final List<SheetItemEstimate> items;
+  final int adjust;
+
+  /// The handle and the first always-shown item whole (with what is pinned
+  /// under the sheet): the least it ever rests at.
+  final int floor;
+
+  /// The handle and gaps, the items and the gaps around them.
+  int get automatic =>
+      sheetHandleAndGaps + items.fold<int>(0, (sum, i) => sum + i.px) + sheetItemGap * (items.length + 1);
+
+  /// Automatic plus the adjustment, never under [floor].
+  int get total => math.max(floor, automatic + adjust);
+
+  bool get atFloor => total <= floor;
+
+  /// "Items shown: Search Bar 48 + … + handle and gaps → 186 px automatic ·
+  /// your adjustment +20 px → 206 px".
+  String get breakdown {
+    final parts = [for (final i in items) '${i.label} ${i.px}', 'handle and gaps'].join(' + ');
+    final sign = adjust > 0 ? '+' : (adjust < 0 ? '-' : '');
+    return 'Items shown: $parts = $automatic px automatic · your adjustment $sign${adjust.abs()} px = $total px';
+  }
+}
+
+/// The estimate for the sheet stored at [key] (one of the
+/// `…SheetMinAdjust` keys) under the current settings.
+SheetMinEstimate sheetMinEstimate(Map<String, dynamic> s, String key) {
+  final items = sheetItemEstimates(key, s);
+  // What stays whole however low the admin sets it: home's first item (the
+  // search bar), confirm's first vehicle card over the Find a driver bar,
+  // tracking's status line over the Cancel ride bar.
+  final whole = switch (key) {
+    homeSheetMinAdjustKey => items.first.px,
+    confirmSheetMinAdjustKey =>
+      confirmSheetItemHeights['routeLine']! + confirmSheetItemHeights['vehicleCards']! ~/ 2 +
+          confirmSheetItemHeights['findDriverBar']!,
+    _ => trackingSheetItemHeights['statusTitle']! + trackingSheetItemHeights['cancelBar']!,
+  };
+  return SheetMinEstimate(
+    items: items,
+    adjust: sheetMinAdjust(s, key).round(),
+    floor: sheetHandleAndGaps + whole + sheetItemGap * 2,
+  );
+}
 
 // --- Service boxes -----------------------------------------------------------
 

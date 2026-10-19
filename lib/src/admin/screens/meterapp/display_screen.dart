@@ -22,6 +22,7 @@ import '../../../core/demo_mode.dart' show demoDriverIdsKey, demoRiderIdsKey;
 import 'display_store.dart';
 import 'pick_image.dart';
 import '../../../core/raise_nudge.dart';
+import '../../../core/sheet_min_height.dart';
 import 'test_accounts.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/page_style_host.dart';
@@ -209,6 +210,17 @@ class _DisplayBody extends ConsumerWidget {
           step: item.step,
         );
 
+    // Bottom sheet minimum height: the estimate follows the switches above,
+    // and only the admin's adjustment is stored.
+    Widget sheetMin(String key) => SheetMinHeightTile(
+          settingKey: key,
+          settings: s,
+          onChanged: canEdit
+              ? (v) => applyDisplay(
+                  context, ref, (x) => setDisplayNumber(x, key, v, sheetMinAdjustMin, sheetMinAdjustMax))
+              : null,
+        );
+
     return ListView(padding: const EdgeInsets.symmetric(vertical: 16), children: [
       ResponsiveCenter(
         maxWidth: 820,
@@ -218,6 +230,8 @@ class _DisplayBody extends ConsumerWidget {
             child: Column(children: [
               for (final (key, label, desc) in homeSectionToggles)
                 toggle(label, desc, displayBool(s, key), (v) => set(key, v)),
+              const Divider(height: 1),
+              sheetMin(homeSheetMinAdjustKey),
             ]),
           ),
           const _Section('Sign-in Screen'),
@@ -290,10 +304,16 @@ class _DisplayBody extends ConsumerWidget {
                   displayBool(s, 'addStopConfirm'),
                   (v) => set('addStopConfirm', v)),
               for (final i in rideConfirmLayoutItems) stepper(i),
+              sheetMin(confirmSheetMinAdjustKey),
             ]),
           ),
           const _Section('Ride Tracking Layout'),
-          Card(child: Column(children: [for (final i in rideTrackingLayoutItems) stepper(i)])),
+          Card(
+            child: Column(children: [
+              for (final i in rideTrackingLayoutItems) stepper(i),
+              sheetMin(trackingSheetMinAdjustKey),
+            ]),
+          ),
           const _Section('Service'),
           Card(
             child: Column(children: [
@@ -457,6 +477,80 @@ class _StepperTile extends StatelessWidget {
           ),
         ]),
       );
+}
+
+/// "Bottom sheet minimum height" for one sheet: the estimated least height
+/// (what the shown items need, plus the admin's adjustment), how it adds
+/// up, − and + to change the adjustment and "Back to automatic" to clear it.
+class SheetMinHeightTile extends StatelessWidget {
+  const SheetMinHeightTile({super.key, required this.settingKey, required this.settings, required this.onChanged});
+
+  /// One of the `…SheetMinAdjust` display keys.
+  final String settingKey;
+  final Map<String, dynamic> settings;
+
+  /// Stores a new adjustment; null for a viewer.
+  final Future<void> Function(num)? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final e = sheetMinEstimate(settings, settingKey);
+    final change = onChanged;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      ListTile(
+        title: const Text('Bottom sheet minimum height'),
+        subtitle: const Text('How much of the sheet shows when pulled all the way down. It follows the items shown; '
+            'the minus and plus buttons add to or take from it'),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          BusyIconButton(
+            key: ValueKey('$settingKey-decrease'),
+            tooltip: 'Decrease',
+            icon: const Icon(Icons.remove),
+            onPressed: change == null || e.atFloor || e.adjust <= sheetMinAdjustMin
+                ? null
+                : () => change(e.adjust - sheetMinAdjustStep),
+          ),
+          SizedBox(
+            width: 72,
+            child: Text(
+              '${e.total} px',
+              key: ValueKey('$settingKey-value'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          BusyIconButton(
+            key: ValueKey('$settingKey-increase'),
+            tooltip: 'Increase',
+            icon: const Icon(Icons.add),
+            onPressed: change == null || e.adjust >= sheetMinAdjustMax
+                ? null
+                : () => change(e.adjust + sheetMinAdjustStep),
+          ),
+        ]),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+        child: Text(
+          e.breakdown,
+          key: ValueKey('$settingKey-breakdown'),
+          style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t, background: cardSurfaceColor(t))),
+        ),
+      ),
+      Align(
+        alignment: AlignmentDirectional.centerEnd,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+          child: BusyButton.text(
+            key: ValueKey('$settingKey-reset'),
+            onPressed: change == null || e.adjust == 0 ? null : () => change(0),
+            child: const Text('Back to automatic'),
+          ),
+        ),
+      ),
+    ]);
+  }
 }
 
 // ---------------------------------------------------------------------------

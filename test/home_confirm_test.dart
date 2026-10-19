@@ -23,6 +23,7 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/promo_repository.dart';
 import 'package:get_ride/src/data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
 import 'package:get_ride/src/core/scheduled_rides.dart' show ScheduledRidesConfig;
+import 'package:get_ride/src/core/sheet_min_height.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/promo_codes.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
@@ -1330,6 +1331,60 @@ void main() {
       expect(find.byKey(const ValueKey('promo-zone-bar')), findsNothing);
     });
   }
+
+  // Admin → Display Settings → Bottom sheet minimum height: the admin's px
+  // move how low each sheet rests, pulled all the way down.
+  group('bottom sheet minimum height', () {
+    /// The sheet's top edge once pulled all the way down and let go.
+    Future<double> restTop(WidgetTester tester) async {
+      await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 600));
+      for (var i = 0; i < 15; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      return tester.getRect(find.byKey(const ValueKey('map-sheet-header'))).top;
+    }
+
+    for (final b in Brightness.values) {
+      testWidgets('home: the adjustment moves the least height by its px; the search bar stays whole (${b.name})',
+          (tester) async {
+        Future<double> top(Map<String, dynamic> display) async {
+          await tester.pumpWidget(const SizedBox());
+          await _pump(tester, _Rides(), book: false, display: display, brightness: b);
+          return restTop(tester);
+        }
+
+        final auto = await top(const {});
+        // Every item shown, the recent places too, with the sheet down.
+        expect(tester.getRect(find.byKey(const ValueKey('home-recent-KLCC'))).bottom, lessThanOrEqualTo(860));
+        expect(auto - await top(const {homeSheetMinAdjustKey: 100}), closeTo(100, 1));
+        expect(await top(const {homeSheetMinAdjustKey: -40}) - auto, closeTo(40, 1));
+        // An item turned off takes its height off; the adjustment still adds.
+        final noRecent = await top(const {'recentLocations': false});
+        expect(noRecent, greaterThan(auto + 50));
+        expect(noRecent - await top(const {'recentLocations': false, homeSheetMinAdjustKey: 60}), closeTo(60, 1));
+        // Taken right down, it stops with the search bar whole.
+        await top(const {'rideTypes': false, 'recentLocations': false, homeSheetMinAdjustKey: -60});
+        final bar = tester.getRect(find.byKey(const ValueKey('home-search')));
+        expect(bar.top, greaterThan(tester.getRect(find.byKey(const ValueKey('map-sheet-header'))).bottom));
+        expect(bar.bottom, lessThanOrEqualTo(860));
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('confirm: the adjustment moves the least height by its px (${b.name})', (tester) async {
+        Future<double> top(Map<String, dynamic> display) async {
+          await tester.pumpWidget(const SizedBox());
+          await _pump(tester, _Rides(), display: display, brightness: b);
+          expect(find.byKey(const ValueKey('confirm-address-card')), findsOneWidget);
+          return restTop(tester);
+        }
+
+        final auto = await top(const {});
+        expect(auto - await top(const {confirmSheetMinAdjustKey: 40}), closeTo(40, 1));
+        expect(await top(const {confirmSheetMinAdjustKey: -40}) - auto, closeTo(40, 1));
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
 }
 
 /// The browser's history, as far as the confirm step's entry goes.
