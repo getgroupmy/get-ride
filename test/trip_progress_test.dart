@@ -460,7 +460,9 @@ void main() {
       final before = tester.getTopLeft(handle).dy;
       await tester.drag(find.text('Head to pickup'), const Offset(0, -300));
       await tester.pumpAndSettle();
-      expect(tester.getTopLeft(handle).dy, lessThan(before - 200), reason: 'the sheet itself moved up');
+      // (It rests higher since Navigate and Cancel ride count for its rest
+      // line, web tester #133, so it has less way to go.)
+      expect(tester.getTopLeft(handle).dy, lessThan(before - 100), reason: 'the sheet itself moved up');
       ScrollPosition content() =>
           tester.state<ScrollableState>(find.descendant(of: sheet, matching: find.byType(Scrollable)).first).position;
       expect(content().pixels, 0, reason: 'a drag expands the sheet; nothing scrolls');

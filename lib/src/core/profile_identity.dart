@@ -43,9 +43,14 @@ String? idNumberProblem(String raw) {
 }
 
 /// Country names for the picker (the same `country-state-city` names Expo
-/// stored), filtered by [query], case-insensitively.
+/// stored), filtered by [query], case-insensitively; [homeCountry] first, where it matches, then the rest A to Z.
 List<String> searchCountries(String query) {
   final q = query.trim().toLowerCase();
   final all = worldCountryCurrencies.keys.toList()..sort();
-  return q.isEmpty ? all : all.where((c) => c.toLowerCase().contains(q)).toList();
+  final hits = q.isEmpty ? all : all.where((c) => c.toLowerCase().contains(q)).toList();
+  if (hits.remove(homeCountry)) hits.insert(0, homeCountry);
+  return hits;
 }
+
+/// The country most riders pick: first in the country list.
+const homeCountry = 'Malaysia';

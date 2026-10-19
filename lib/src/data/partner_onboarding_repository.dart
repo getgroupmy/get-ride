@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../admin/screens/people/people_logic.dart';
 import '../core/partner_onboarding.dart';
 import '../providers.dart';
+import 'doc_photos.dart';
 
 /// What the onboarding wizard works on: the signed-in user's profile and
 /// partner rows.
@@ -27,8 +28,11 @@ class OnboardingState {
 /// of migrations 0087/0088: a partner can fill in their own details but never
 /// approve themselves.
 class PartnerOnboardingRepository {
-  PartnerOnboardingRepository(this._db);
+  PartnerOnboardingRepository(this._db, {this.thumbnail});
   final SupabaseClient _db;
+
+  /// Makes an ID photo's list thumbnail (an isolate by default).
+  final ImageBytesJob? thumbnail;
 
   String get _uid {
     final id = _db.auth.currentUser?.id;
@@ -115,13 +119,12 @@ class PartnerOnboardingRepository {
     );
   }
 
+  /// [path] carries the upload time, so it is cached for a year; an ID
+  /// photo gets its list thumbnail beside it.
   Future<String> _upload(String bucket, String path, Uint8List bytes, String ext) async {
-    await _db.storage.from(bucket).uploadBinary(
-          path,
-          bytes,
-          fileOptions: FileOptions(upsert: true, contentType: contentTypeFor(ext)),
-        );
-    return _db.storage.from(bucket).getPublicUrl(path);
+    final files = _db.storage.from(bucket);
+    await uploadStoredFile(files, path, bytes, contentType: contentTypeFor(ext), thumbnail: thumbnail);
+    return files.getPublicUrl(path);
   }
 }
 

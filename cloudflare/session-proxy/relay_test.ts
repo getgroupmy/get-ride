@@ -9,11 +9,13 @@
  * catching: a session key reaching the phone (or the target) in a header;
  * a key the backend refused being served from the cache; a body that
  * would exceed a frame; a target that is not an absolute http(s) URL
- * being fetched as something else.
+ * being fetched as something else; a target off the public internet (the
+ * phone, its Wi-Fi, the carrier's network) reaching the phone at all.
  */
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 import {
   bearerFrom,
+  checkTarget,
   CHUNK_BYTES,
   forgetSessions,
   forwardHeaders,
@@ -32,7 +34,7 @@ import {
 
 Deno.test("the target is the absolute URL after the first slash, query kept", () => {
   assertEquals(targetFrom("/https://example.com/a/b?x=1&y=2"), "https://example.com/a/b?x=1&y=2");
-  assertEquals(targetFrom("/http://10.0.0.1:8080/"), "http://10.0.0.1:8080/");
+  assertEquals(targetFrom("/http://8.8.8.8:8080/"), "http://8.8.8.8:8080/");
   assertEquals(targetFrom("/HTTPS://Example.com"), "https://example.com/");
 });
 
@@ -43,6 +45,90 @@ Deno.test("a client that collapsed the double slash is read the same", () => {
 Deno.test("anything that is not an http(s) URL is no target", () => {
   for (const p of ["/", "/example.com", "/ftp://x/", "/https://", "/favicon.ico"]) {
     assertEquals(targetFrom(p), null, p);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// checkTarget(): only the public internet
+
+/** The error a target is refused with, or "ok". */
+function verdict(path: string): string {
+  const t = checkTarget(path);
+  return "target" in t ? "ok" : `${t.status} ${t.error}`;
+}
+
+Deno.test("the phone itself, its Wi-Fi and the carrier's network are never a target", () => {
+  for (const p of [
+    "/http://127.0.0.1/",
+    "/http://127.1.2.3:8080/x",
+    "/http://localhost/",
+    "/http://LOCALHOST:3000/",
+    "/http://api.localhost/",
+    "/http://printer.local/",
+    "/http://db.internal/",
+    "/http://svc.cluster.internal/",
+    "/http://router.lan/",
+    "/http://nas.home.arpa/",
+    "/http://router/",
+    "/http://0.0.0.0/",
+    "/http://10.0.0.1:8080/",
+    "/http://172.16.5.4/",
+    "/http://172.31.255.255/",
+    "/http://192.168.1.1/admin",
+    "/http://100.64.0.1/",
+    "/http://100.127.1.1/",
+    "/http://169.254.169.254/latest/meta-data/",
+    "/http://198.18.0.1/",
+    "/http://224.0.0.1/",
+    "/http://255.255.255.255/",
+    "/http://[::1]/",
+    "/http://[::]/",
+    "/http://[fe80::1]/",
+    "/http://[fc00::1]/",
+    "/http://[fd12:3456::1]/",
+    "/http://[ff02::1]/",
+    "/http://[::ffff:127.0.0.1]/",
+    "/http://[::ffff:192.168.0.1]/",
+    "/http://[::127.0.0.1]/",
+    "/http://[64:ff9b::a00:1]/",
+    "/http://[2002:c0a8:101::1]/",
+    // Every IPv4 spelling the URL parser reads as loopback or private.
+    "/http://2130706433/",
+    "/http://017700000001/",
+    "/http://0x7f000001/",
+    "/http://0x7f.1/",
+    "/http://0177.0.0.1/",
+    "/http://127.1/",
+    "/http://0xc0.0xa8.1.1/",
+    "/http://3232235777/",
+  ]) {
+    assertEquals(verdict(p), "403 TARGET_NOT_PUBLIC", p);
+    assertEquals(targetFrom(p), null, p);
+  }
+});
+
+Deno.test("a target with a user name or password is refused; other schemes are no target", () => {
+  assertEquals(verdict("/https://user:pw@example.com/"), "400 TARGET_USERINFO");
+  assertEquals(verdict("/https://user@example.com/"), "400 TARGET_USERINFO");
+  assertEquals(verdict("/https://:pw@example.com/"), "400 TARGET_USERINFO");
+  for (const p of ["/ftp://example.com/", "/file:///etc/passwd", "/gopher://example.com/", "/javascript:alert(1)"]) {
+    assertEquals(verdict(p), "400 NO_TARGET", p);
+  }
+});
+
+Deno.test("public names and addresses pass", () => {
+  for (const p of [
+    "/https://example.com/",
+    "/http://8.8.8.8/",
+    "/http://172.32.0.1/",
+    "/http://100.128.0.1/",
+    "/https://[2606:4700::1111]/",
+    "/https://[64:ff9b::808:808]/",
+    "/https://1password.com/",
+    "/https://bad.cafe/",
+    "/https://api.example.co.my:8443/x?y=1",
+  ]) {
+    assertEquals(verdict(p), "ok", p);
   }
 });
 
@@ -232,6 +318,24 @@ Deno.test("no target, no key, a refused key: told, and nothing reaches a phone",
   );
   assertEquals(badKey.status, 401);
   assertEquals((await badKey.json()).hint, "unknown");
+  for (const target of ["http://127.0.0.1:8080/", "http://[::1]/", "http://192.168.0.1/", "http://localhost/"]) {
+    const local = await handle(
+      new Request(`https://proxy.getride.my/${target}`, { headers: { authorization: "Bearer ok" } }),
+      env,
+      d,
+    );
+    assertEquals(local.status, 403, target);
+    const body = await local.json();
+    assertEquals(body.error, "TARGET_NOT_PUBLIC", target);
+    assertStringIncludes(body.hint, "public internet");
+  }
+  const withUser = await handle(
+    new Request("https://proxy.getride.my/https://admin:pw@example.com/", { headers: { authorization: "Bearer ok" } }),
+    env,
+    d,
+  );
+  assertEquals(withUser.status, 400);
+  assertEquals((await withUser.json()).error, "TARGET_USERINFO");
   assertEquals(relayed, []);
   forgetSessions();
 });

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 
 import '../core/dial_countries.dart';
@@ -12,6 +13,58 @@ Future<DialCountry?> showDialCountryPicker(BuildContext context, {DialCountry? s
   showDragHandle: true,
   builder: (_) => DialCountrySheet(selected: selected),
 );
+
+/// Set in tests to draw flags as on the web (true) or on a phone (false).
+@visibleForTesting
+bool? debugFlagsAsCodes;
+
+/// Whether flags are drawn as their ISO code: on the web, where the emoji
+/// flag would fetch a ~700 KB colour emoji font just for itself.
+bool get flagsAsCodes => debugFlagsAsCodes ?? kIsWeb;
+
+/// [country]'s flag: the emoji on Android and iOS; on the web its ISO code
+/// ("MY") in a small rounded chip. Left to the caller's label for screen
+/// readers (the country's name), so it says nothing itself.
+class DialCountryFlag extends StatelessWidget {
+  const DialCountryFlag(this.country, {super.key, this.size = 24});
+
+  final DialCountry country;
+
+  /// The emoji's font size; the chip is about as tall.
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!flagsAsCodes) return ExcludeSemantics(child: Text(country.flag, style: TextStyle(fontSize: size)));
+    final t = Theme.of(context);
+    return ExcludeSemantics(
+      child: Container(
+        key: ValueKey('flag-code-${country.code}'),
+        constraints: BoxConstraints(minWidth: size * 1.3, minHeight: size * 0.95),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          color: t.colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        // As small as the code, at least the chip's size: not the row's width.
+        child: Center(
+          widthFactor: 1,
+          heightFactor: 1,
+          child: Text(
+            country.code,
+            style: TextStyle(
+              fontSize: size * 0.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: t.colorScheme.onSurface,
+              height: 1.1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// The button beside a phone field: the country's flag and dial code.
 class DialCountryButton extends StatelessWidget {
@@ -37,7 +90,7 @@ class DialCountryButton extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(country.flag, style: const TextStyle(fontSize: 20)),
+          DialCountryFlag(country, size: 20),
           const SizedBox(width: 6),
           Text(country.dialCode),
           const Icon(Icons.arrow_drop_down),
@@ -114,7 +167,7 @@ class _DialCountrySheetState extends State<DialCountrySheet> {
                           selected: on,
                           selectedTileColor: scheme.secondaryContainer,
                           selectedColor: scheme.onSecondaryContainer,
-                          leading: Text(list[i].flag, style: const TextStyle(fontSize: 24)),
+                          leading: DialCountryFlag(list[i]),
                           title: Text(list[i].name),
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,

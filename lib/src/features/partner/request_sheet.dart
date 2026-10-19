@@ -164,16 +164,16 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     } catch (_) {}
   }
 
-  /// "13 min." or "1 h 19 min.", as inDrive's chips.
-  static String _minutes(num m) => m < 60 ? '${m.round()} min.' : '${formatDuration(m)}.';
+  /// "13 min" or "1 h 19 min".
+  static String _minutes(num m) => m < 60 ? '${m.round()} min' : formatDuration(m);
 
-  /// "13 min.\n6.0 km" standing just above a point's mark, which reaches
+  /// "Trip\n13 min · 6.0 km" (or "To pickup\n…") standing just above a point's mark, which reaches
   /// [over] above the point (so the chip never covers the pin).
   Marker _chip(LatLng at, Color color, String text, String key, {required double over}) {
     final lift = over + 6;
     return Marker(
       point: at,
-      width: 120,
+      width: 150,
       height: 60 + lift,
       // The box stands on the point, the chip at its foot, [lift] up.
       alignment: Alignment.topCenter,
@@ -228,12 +228,13 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           framed: [?widget.me, ?a, ?b],
           // Room for "Ride request" and the chips standing over the pins.
           fitTop: 120,
-          extraMarkers: [
+          // Over the car, which near the drop-off used to cover them.
+          topMarkers: [
             if (a != null && widget.awayKm != null)
               _chip(
                 a,
                 RideRequestSheet.toPickup,
-                '${_minutes(pickupMinutes(widget.awayKm!))}\n${formatDistance(widget.awayKm)}',
+                'To pickup\n${_minutes(pickupMinutes(widget.awayKm!))} · ${formatDistance(widget.awayKm)}',
                 'request-chip-pickup',
                 over: confirmPickupTop,
               ),
@@ -241,7 +242,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
               _chip(
                 b,
                 RideRequestSheet.trip,
-                [if (r.durationMin != null) _minutes(r.durationMin!), formatDistance(r.distanceKm)].join('\n'),
+                'Trip\n${[if (r.durationMin != null) _minutes(r.durationMin!), formatDistance(r.distanceKm)].join(' · ')}',
                 'request-chip-trip',
                 over: confirmDropTop,
               ),
@@ -331,13 +332,14 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     );
   }
 
-  /// How long ago the request was made: "37 sec.", "2 min." or "just now".
+  /// How long ago the request was made: "37 s ago", "2 min ago" or "just
+  /// now" (not time left: that stands on the countdown bar).
   String _age() {
     final made = widget.request.createdAt;
     if (made == null) return 'just now';
     final s = widget.now.difference(made).inSeconds;
     if (s < 5) return 'just now';
-    return s < 60 ? '$s sec.' : '${s ~/ 60} min.';
+    return s < 60 ? '$s s ago' : '${s ~/ 60} min ago';
   }
 
   Widget _rider(BuildContext context) {
@@ -378,30 +380,6 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     );
   }
 
-  /// Accept, in the app's accent (the rider's "Find a driver" blue), white
-  /// on it in light and dark alike.
-  ButtonStyle _accent(BuildContext context, {double height = 52}) => FilledButton.styleFrom(
-    backgroundColor: accentFill,
-    foregroundColor: Colors.white,
-    disabledBackgroundColor: confirmAccent.withValues(alpha: 0.4),
-    disabledForegroundColor: Colors.white70,
-    minimumSize: Size.fromHeight(height),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    textStyle: const TextStyle(fontWeight: FontWeight.w700),
-  );
-
-  /// The fare offers: the accent as a tint, so Accept stays the one to press.
-  ButtonStyle _offerStyle(BuildContext context, {double height = 48}) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return FilledButton.styleFrom(
-      backgroundColor: confirmAccent.withValues(alpha: dark ? 0.22 : 0.14),
-      foregroundColor: dark ? const Color(0xFF7FD0F2) : const Color(0xFF0E6E99),
-      minimumSize: Size.fromHeight(height),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      textStyle: const TextStyle(fontWeight: FontWeight.w700),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -409,9 +387,105 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     final fare = r.effectiveFare;
     final muted = mutedTextColor(t);
     final offer = widget.onOffer;
-    final presets = fare == null ? const <double>[] : counterOfferPresets(fare);
     final off = widget.busy;
     final h = MediaQuery.sizeOf(context).height;
+    final details = SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(12, 12, 16, 0),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _rider(context),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (r.distanceKm != null)
+              Text('~${formatDistance(r.distanceKm)}', style: t.textTheme.bodyMedium?.copyWith(color: muted)),
+            Row(children: [
+              Flexible(
+                child: Text(
+                  r.fareText(fare),
+                  key: const ValueKey('request-fare'),
+                  style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+              if (widget.starred) ...[
+                const SizedBox(width: 8),
+                MyRideStar(key: ValueKey('my-ride-star-${r.id}'), size: 24),
+              ],
+            ]),
+            MyRideForYouLabel(request: r, me: widget.driverId, clock: () => widget.now),
+            DirectBookingLabel(request: r, me: widget.driverId ?? _driverId),
+            // The region's surcharges and taxes, collected on top.
+            if (r.chargeLines.isNotEmpty)
+              Text(
+                [for (final l in r.chargeLines) '+ ${l.label} ${formatMoney(l.amount, r.currency)}'].join(' · '),
+                key: const ValueKey('request-charges'),
+                style: t.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+            if (widget.raisedFrom case final was?)
+              Text(
+                'The passenger raised the fare from ${r.fareText(was)} '
+                'to ${r.fareText(fare)}.',
+                key: const ValueKey('request-alert-raised'),
+                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w600),
+              ),
+            _end(context, 'A', RideRequestSheet.toPickup, _place(r.pickupLabel, r.pickupAddress)),
+            _end(context, 'B', RideRequestSheet.trip, _place(r.dropLabel, null)),
+            const SizedBox(height: 6),
+            Text(
+              [
+                r.paymentMode,
+                '${r.passengers} pax',
+                if ((r.luggage ?? 0) > 0) '${r.luggage} ${r.luggage == 1 ? 'bag' : 'bags'}',
+                if (r.stops.isNotEmpty) '${r.stops.length} stop${r.stops.length == 1 ? '' : 's'}',
+                if (widget.towardDestination) 'Toward your destination',
+              ].join(' · '),
+              style: t.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+            if (r.note != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('“${r.note}”', style: t.textTheme.bodySmall),
+              ),
+          ]),
+        ),
+      ]),
+    );
+    // The time left to answer, running down, with its seconds (as the
+    // Offer-sent dialog's "41s"), so the request's age is not read as it.
+    final countdown = Padding(
+      padding: const EdgeInsets.only(right: 16),
+      child: Row(children: [
+        Expanded(
+          child: LinearProgressIndicator(
+            key: const ValueKey('request-alert-countdown'),
+            value: requestAlertProgress(widget.shown),
+            minHeight: 3,
+            color: confirmAccent,
+            backgroundColor: Colors.transparent,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          '${requestAlertSecondsLeft(widget.shown)}s',
+          key: const ValueKey('request-alert-seconds-left'),
+          style: t.textTheme.labelMedium?.copyWith(color: muted, fontFeatures: const [FontFeature.tabularFigures()]),
+        ),
+      ]),
+    );
+    final actions = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      child: RequestAnswerButtons(
+        request: r,
+        busy: off,
+        onAccept: widget.onAccept,
+        onSkip: widget.onSkip,
+        onOffer: offer,
+      ),
+    );
+    final size = MediaQuery.sizeOf(context);
+    // A phone on its side: map, details and buttons side by side, so the
+    // fare, pickup and drop-off always show (stacked, the map and buttons
+    // left the details no room at all).
+    final beside = size.width > size.height && size.height < 500 && size.width >= 600;
     return Material(
       key: const ValueKey('request-alert'),
       color: t.colorScheme.surface,
@@ -420,132 +494,143 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: h * 0.94),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SizedBox(height: (h * 0.34).clamp(180.0, 320.0), child: _cachedMap(context)),
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(12, 12, 16, 0),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _rider(context),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    if (r.distanceKm != null)
-                      Text('~${formatDistance(r.distanceKm)}', style: t.textTheme.bodyMedium?.copyWith(color: muted)),
-                    Row(children: [
-                      Flexible(
-                        child: Text(
-                          r.fareText(fare),
-                          key: const ValueKey('request-fare'),
-                          style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
-                        ),
+        child: beside
+            ? SizedBox(
+                height: h * 0.94,
+                child: SafeArea(
+                  top: false,
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Expanded(
+                      // The details get the most room: they must show whole.
+                      child: LayoutBuilder(
+                        builder: (context, c) => Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          SizedBox(width: c.maxWidth * 0.24, child: _cachedMap(context)),
+                          Expanded(child: details),
+                          SizedBox(width: c.maxWidth * 0.3, child: SingleChildScrollView(child: actions)),
+                        ]),
                       ),
-                      if (widget.starred) ...[
-                        const SizedBox(width: 8),
-                        MyRideStar(key: ValueKey('my-ride-star-${r.id}'), size: 24),
-                      ],
-                    ]),
-                    MyRideForYouLabel(request: r, me: widget.driverId, clock: () => widget.now),
-                    DirectBookingLabel(request: r, me: widget.driverId ?? _driverId),
-                    // The region's surcharges and taxes, collected on top.
-                    if (r.chargeLines.isNotEmpty)
-                      Text(
-                        [for (final l in r.chargeLines) '+ ${l.label} ${formatMoney(l.amount, r.currency)}'].join(' · '),
-                        key: const ValueKey('request-charges'),
-                        style: t.textTheme.bodySmall?.copyWith(color: muted),
-                      ),
-                    if (widget.raisedFrom case final was?)
-                      Text(
-                        'The passenger raised the fare from ${r.fareText(was)} '
-                        'to ${r.fareText(fare)}.',
-                        key: const ValueKey('request-alert-raised'),
-                        style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w600),
-                      ),
-                    _end(context, 'A', RideRequestSheet.toPickup, _place(r.pickupLabel, r.pickupAddress)),
-                    _end(context, 'B', RideRequestSheet.trip, _place(r.dropLabel, null)),
-                    const SizedBox(height: 6),
-                    Text(
-                      [
-                        r.paymentMode,
-                        '${r.passengers} pax',
-                        if ((r.luggage ?? 0) > 0) '${r.luggage} ${r.luggage == 1 ? 'bag' : 'bags'}',
-                        if (r.stops.isNotEmpty) '${r.stops.length} stop${r.stops.length == 1 ? '' : 's'}',
-                        if (widget.towardDestination) 'Toward your destination',
-                      ].join(' · '),
-                      style: t.textTheme.bodySmall?.copyWith(color: muted),
                     ),
-                    if (r.note != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text('“${r.note}”', style: t.textTheme.bodySmall),
-                      ),
+                    countdown,
                   ]),
                 ),
+              )
+            : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                SizedBox(height: (h * 0.34).clamp(180.0, 320.0), child: _cachedMap(context)),
+                Flexible(child: details),
+                const SizedBox(height: 10),
+                countdown,
+                SafeArea(top: false, child: actions),
               ]),
+      ),
+    );
+  }
+}
+
+/// Accept, in the app's accent (the rider's "Find a driver" blue), white
+/// on it in light and dark alike.
+ButtonStyle _acceptStyle(BuildContext context, {double height = 52}) => FilledButton.styleFrom(
+  backgroundColor: accentFill,
+  foregroundColor: Colors.white,
+  disabledBackgroundColor: confirmAccent.withValues(alpha: 0.4),
+  disabledForegroundColor: Colors.white70,
+  minimumSize: Size.fromHeight(height),
+  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  textStyle: const TextStyle(fontWeight: FontWeight.w700),
+);
+
+/// The fare offers: the accent as a tint, so Accept stays the one to press.
+ButtonStyle _offerStyle(BuildContext context, {double height = 48}) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return FilledButton.styleFrom(
+    backgroundColor: confirmAccent.withValues(alpha: dark ? 0.22 : 0.14),
+    foregroundColor: dark ? const Color(0xFF7FD0F2) : const Color(0xFF0E6E99),
+    minimumSize: Size.fromHeight(height),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    textStyle: const TextStyle(fontWeight: FontWeight.w700),
+  );
+}
+
+/// Answering a request: Accept at the rider's fare, the fare offers (+ the
+/// presets and a pencil for another amount) where the rider takes offers,
+/// and Skip. The same on the phone's request sheet and the desktop's
+/// request over the map.
+class RequestAnswerButtons extends StatelessWidget {
+  const RequestAnswerButtons({
+    super.key,
+    required this.request,
+    required this.onAccept,
+    required this.onSkip,
+    this.onOffer,
+    this.busy = false,
+  });
+
+  final RideRequest request;
+  final Future<void> Function() onAccept;
+  final VoidCallback onSkip;
+
+  /// An offer of an amount, or null for one the driver types; null where
+  /// the rider takes no offers.
+  final Future<void> Function(double? amount)? onOffer;
+
+  /// Something is being answered: every button off.
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final r = request;
+    final fare = r.effectiveFare;
+    final muted = mutedTextColor(t);
+    final offer = onOffer;
+    final presets = fare == null ? const <double>[] : counterOfferPresets(fare);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      BusyButton.filled(
+        key: const ValueKey('request-alert-accept'),
+        style: _acceptStyle(context),
+        onPressed: busy ? null : onAccept,
+        child: Text('Accept for ${r.fareText(fare)}', style: const TextStyle(fontSize: 17)),
+      ),
+      if (offer != null && presets.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Text('Offer your fare', textAlign: TextAlign.center, style: t.textTheme.bodyMedium?.copyWith(color: muted)),
+        const SizedBox(height: 8),
+        Row(spacing: 8, children: [
+          for (var i = 0; i < presets.length; i++)
+            Expanded(
+              child: BusyButton.filled(
+                key: ValueKey('request-offer-$i'),
+                style: _offerStyle(context),
+                onPressed: busy ? null : () => offer(presets[i]),
+                child: FittedBox(child: Text(r.fareText(presets[i]))),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          // The time left to answer, running down.
-          LinearProgressIndicator(
-            key: const ValueKey('request-alert-countdown'),
-            value: requestAlertProgress(widget.shown),
-            minHeight: 3,
-            color: confirmAccent,
-            backgroundColor: Colors.transparent,
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                BusyButton.filled(
-                  key: const ValueKey('request-alert-accept'),
-                  style: _accent(context),
-                  onPressed: off ? null : widget.onAccept,
-                  child: Text('Accept for ${r.fareText(fare)}', style: const TextStyle(fontSize: 17)),
-                ),
-                if (offer != null && presets.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text('Offer your fare', textAlign: TextAlign.center, style: t.textTheme.bodyMedium?.copyWith(color: muted)),
-                  const SizedBox(height: 8),
-                  Row(spacing: 8, children: [
-                    for (var i = 0; i < presets.length; i++)
-                      Expanded(
-                        child: BusyButton.filled(
-                          key: ValueKey('request-offer-$i'),
-                          style: _offerStyle(context),
-                          onPressed: off ? null : () => offer(presets[i]),
-                          child: FittedBox(child: Text(r.fareText(presets[i]))),
-                        ),
-                      ),
-                    SizedBox(
-                      width: 56,
-                      child: BusyButton.filled(
-                        key: const ValueKey('request-offer-custom'),
-                        style: _offerStyle(context).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.zero)),
-                        onPressed: off ? null : () => offer(null),
-                        child: const Icon(Icons.edit_outlined, size: 20),
-                      ),
-                    ),
-                  ]),
-                ],
-                const SizedBox(height: 12),
-                FilledButton(
-                  key: const ValueKey('request-alert-decline'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: t.colorScheme.surfaceContainerHighest,
-                    foregroundColor: t.colorScheme.onSurface,
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  onPressed: off ? null : widget.onSkip,
-                  child: const Text('Skip', style: TextStyle(fontSize: 17)),
-                ),
-              ]),
+          SizedBox(
+            width: 56,
+            // Named for screen readers and on a long press (web tester #119).
+            child: Tooltip(
+              message: 'Offer another fare',
+              child: BusyButton.filled(
+                key: const ValueKey('request-offer-custom'),
+                style: _offerStyle(context).copyWith(padding: const WidgetStatePropertyAll(EdgeInsets.zero)),
+                onPressed: busy ? null : () => offer(null),
+                child: const Icon(Icons.edit_outlined, size: 20),
+              ),
             ),
           ),
         ]),
+      ],
+      const SizedBox(height: 12),
+      FilledButton(
+        key: const ValueKey('request-alert-decline'),
+        style: FilledButton.styleFrom(
+          backgroundColor: t.colorScheme.surfaceContainerHighest,
+          foregroundColor: t.colorScheme.onSurface,
+          minimumSize: const Size.fromHeight(50),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        onPressed: busy ? null : onSkip,
+        child: const Text('Skip', style: TextStyle(fontSize: 17)),
       ),
-    );
+    ]);
   }
 }

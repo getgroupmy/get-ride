@@ -24,26 +24,31 @@ class LoadingSkeleton extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, c) {
       final fit = c.maxHeight.isFinite ? (c.maxHeight / rowHeight).floor().clamp(1, rows) : rows;
+      final column = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < fit; i++)
+            SizedBox(
+              height: rowHeight,
+              child: ListTile(
+                leading: leading ? const Bone.circle(size: 40) : null,
+                // Lengths vary row to row, as real content does.
+                title: Text(i.isEven ? 'A title for this row' : 'A longer title for this row here'),
+                subtitle: Text(i % 3 == 0 ? 'Some detail underneath' : 'Detail'),
+              ),
+            ),
+        ],
+      );
       return ClipRect(
         child: SkeletonizerConfig(
           data: SkeletonizerConfigData(brightness: Theme.of(context).brightness),
           child: Skeletonizer(
             key: const ValueKey('loading-skeleton'),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (var i = 0; i < fit; i++)
-                  SizedBox(
-                    height: rowHeight,
-                    child: ListTile(
-                      leading: leading ? const Bone.circle(size: 40) : null,
-                      // Lengths vary row to row, as real content does.
-                      title: Text(i.isEven ? 'A title for this row' : 'A longer title for this row here'),
-                      subtitle: Text(i % 3 == 0 ? 'Some detail underneath' : 'Detail'),
-                    ),
-                  ),
-              ],
-            ),
+            // Less room than one row (a chat on its side with the keyboard
+            // up): the row is cut off at the edge rather than overflowing.
+            child: c.maxHeight.isFinite && c.maxHeight < rowHeight
+                ? SingleChildScrollView(physics: const NeverScrollableScrollPhysics(), primary: false, child: column)
+                : column,
           ),
         ),
       );

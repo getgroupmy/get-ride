@@ -61,6 +61,17 @@ void main() {
     expect(SimCard.fromMap({'label': 'x'}), isNull);
   });
 
+  test('asking for new SMS eases off when quiet, never past 15 s', () {
+    expect(pollAfter(Duration.zero), const Duration(seconds: 5));
+    expect(pollAfter(const Duration(seconds: 59)), const Duration(seconds: 5));
+    expect(pollAfter(const Duration(minutes: 1)), const Duration(seconds: 10));
+    expect(pollAfter(const Duration(seconds: 119)), const Duration(seconds: 10));
+    expect(pollAfter(const Duration(minutes: 2)), const Duration(seconds: 15));
+    expect(pollAfter(const Duration(hours: 5)), const Duration(seconds: 15));
+    expect(pollAfter(const Duration(minutes: 1), max: const Duration(seconds: 8)), const Duration(seconds: 8));
+    expect(pollAfter(const Duration(hours: 1), every: const Duration(seconds: 20)), const Duration(seconds: 20));
+  });
+
   test('the shared internet\'s events: a state, a line for the log, hosts only', () {
     expect(proxyStateFrom({'state': 'connected'}), ProxyState.connected);
     expect(proxyStateFrom({'state': 'error', 'reason': 'x'}), ProxyState.error);
@@ -73,6 +84,9 @@ void main() {
         'Request to api.example.com failed: timeout');
     expect(proxyLogLine({'state': 'error', 'reason': 'refused'}), contains('refused'));
     expect(proxyLogLine({'state': 'mobile', 'available': false}), contains('down'));
+    expect(proxyLogLine({'state': 'mobile', 'available': false}), contains('refused'));
+    expect(proxyLogLine({'state': 'mobile', 'available': false, 'mobileDataOnly': true}), contains('refused'));
+    expect(proxyLogLine({'state': 'mobile', 'available': false, 'mobileDataOnly': false}), contains('default route'));
     expect(proxyLogLine({'state': 'connecting'}), isNull);
   });
 

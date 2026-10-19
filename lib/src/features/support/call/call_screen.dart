@@ -28,6 +28,10 @@ class CallScreen extends ConsumerStatefulWidget {
 class _CallScreenState extends ConsumerState<CallScreen> {
   CallSession<SupportCall>? _session;
   String? _loadError;
+
+  /// Why this device shows the call without joining it (it was rung or
+  /// answered on another device): with Close, no controls.
+  String? _elsewhere;
   Timer? _tick;
   bool _leaving = false;
 
@@ -42,12 +46,23 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 
   Future<void> _open() async {
     final repo = ref.read(supportCallRepositoryProvider);
+    repo.prefetchIceServers();
     final me = ref.read(currentUserIdProvider);
     try {
       final call = await repo.fetch(widget.callId);
       if (!mounted) return;
       if (call == null || me == null) {
         setState(() => _loadError = 'This call is no longer available.');
+        return;
+      }
+      // Joined only where it was rung or answered by a tap: opening or
+      // reloading this page on the account's other device never joins it.
+      if (!ref.read(callsJoinedHereProvider).contains(call.id)) {
+        setState(() => _elsewhere = call.status.isOver
+            ? 'This call has ended.'
+            : call.startedBy(me)
+            ? 'Calling from another device'
+            : 'Answered on another device');
         return;
       }
       final s = CallSession(
@@ -106,6 +121,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         ? (widget.peerName ?? 'Support')
         : callPeerName(call, asAgent: asAgent, userName: widget.peerName);
     final headline =
+        _elsewhere ??
         _loadError ??
         s?.error ??
         (s == null
@@ -152,6 +168,14 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                       style: t.textTheme.titleMedium?.copyWith(color: Colors.white70),
                     ),
                     const Spacer(flex: 2),
+                    if (_elsewhere != null)
+                      FilledButton.tonal(
+                        key: const ValueKey('call-close'),
+                        style: FilledButton.styleFrom(minimumSize: const Size(160, 52)),
+                        onPressed: _leave,
+                        child: const Text('Close'),
+                      )
+                    else
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
@@ -234,7 +258,10 @@ class _RoundKey extends StatelessWidget {
 Future<void> callSupport(BuildContext context, WidgetRef ref, {String? ticketId, String? name}) async {
   if (!await ensureMicForCall(context, ref) || !context.mounted) return;
   try {
+    // The relay credentials come while the call rings, not after.
+    ref.read(supportCallRepositoryProvider).prefetchIceServers();
     final c = await ref.read(supportCallRepositoryProvider).ringSupport(ticketId: ticketId, callerName: name);
+    ref.read(callsJoinedHereProvider).add(c.id);
     if (context.mounted) unawaited(context.push('/call/${c.id}'));
   } catch (_) {
     if (context.mounted) {
@@ -255,9 +282,11 @@ Future<void> callUser(
 }) async {
   if (!await ensureMicForCall(context, ref) || !context.mounted) return;
   try {
+    ref.read(supportCallRepositoryProvider).prefetchIceServers();
     final c = await ref
         .read(supportCallRepositoryProvider)
         .ringUser(profileId: profileId, ticketId: ticketId, agentName: agentName);
+    ref.read(callsJoinedHereProvider).add(c.id);
     if (context.mounted) {
       unawaited(context.push(Uri(path: '/call/${c.id}', queryParameters: {'name': ?userName}).toString()));
     }

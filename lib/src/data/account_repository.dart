@@ -8,6 +8,7 @@ import '../core/avatar.dart';
 import '../core/profile_identity.dart';
 import '../core/ride_chat.dart' show rideVoiceNoteSeconds;
 import '../core/support_media.dart';
+import 'doc_photos.dart';
 import 'models.dart';
 import 'realtime_backup.dart';
 
@@ -60,7 +61,8 @@ class AccountRepository {
   Future<String> uploadIdImage(Uint8List bytes, {required String ext, required String contentType}) async {
     final path = idImageStoragePath(_uid, ext, DateTime.now());
     final bucket = _db.storage.from('ID_Image');
-    await bucket.uploadBinary(path, bytes, fileOptions: FileOptions(upsert: true, contentType: contentType));
+    // A new path each time: cached for a year, with its list thumbnail.
+    await uploadStoredFile(bucket, path, bytes, contentType: contentType);
     final url = bucket.getPublicUrl(path);
     await _db.from('profiles').update({
       'id_image': url,
