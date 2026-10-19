@@ -47,6 +47,23 @@ bool rowSearch(Map<String, dynamic> row, String query, List<String> columns) {
 /// (PERF-55): the `profiles` table is read a page at a time, never whole.
 const adminPeoplePageSize = 200;
 
+/// The page on a phone: a user's row is some 113 tall with its Approve and
+/// Reject, so 200 put "Load more" 22,000 px down.
+const adminPeopleNarrowPageSize = 50;
+
+/// The page size for a list [width] wide: smaller under 600.
+int adminPeoplePageSizeFor(double width) => width < 600 ? adminPeopleNarrowPageSize : adminPeoplePageSize;
+
+/// The count over a paged people list: what is loaded, and what of it the
+/// filters or search kept. With more on the server and nothing filtered it
+/// says how many of the newest are loaded (not "200 of the first 200", which
+/// reads as a search result).
+String pagedCountLabel({required int shown, required int loaded, required bool more, required bool filtered}) {
+  if (!more) return '$shown of $loaded';
+  if (!filtered) return 'Showing the newest $loaded';
+  return '$shown ${shown == 1 ? 'match' : 'matches'} among the first $loaded loaded';
+}
+
 /// One page of rows, and whether more are on the server.
 typedef RowsPage = ({List<Map<String, dynamic>> rows, bool more});
 

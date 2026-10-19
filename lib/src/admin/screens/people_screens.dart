@@ -29,12 +29,13 @@ import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
 
 /// How many users the list has loaded and what it searches the server for
-/// (PERF-55: a page at a time).
+/// (PERF-55: a page at a time), by page size ([adminPeoplePageSizeFor]: 50
+/// on a phone, 200 wider).
 final adminUsersRequestProvider =
-    NotifierProvider.autoDispose<PageRequestController, PageRequest>(PageRequestController.new);
-final adminUsersProvider = FutureProvider.autoDispose<RowsPage>((ref) {
+    NotifierProvider.autoDispose.family<PageRequestController, PageRequest, int>(PageRequestController.new);
+final adminUsersProvider = FutureProvider.autoDispose.family<RowsPage, int>((ref, pageSize) {
   ref.watchAdminLive('profiles');
-  final r = ref.watch(adminUsersRequestProvider);
+  final r = ref.watch(adminUsersRequestProvider(pageSize));
   return ref.watch(adminRepositoryProvider).users(limit: r.limit, query: r.query);
 });
 final adminPartnersProvider = FutureProvider.autoDispose((ref) {
@@ -234,23 +235,38 @@ class _RecordListState extends ConsumerState<_RecordList> {
                   .where((r) => widget.matches(r, _filter) && rowSearch(r, _query, widget.searchColumns))
                   .toList();
               if (list.isEmpty && !more) return const EmptyState(icon: Icons.inbox_outlined, title: 'Nothing here');
-              return ListView.separated(
+              // Paged: the filters see the rows loaded so far.
+              final count = pagedCountLabel(
+                shown: list.length,
+                loaded: rows.length,
+                more: more,
+                filtered: _filter != 'all' || _query.trim().isNotEmpty,
+              );
+              // The count heads the list, or with more to load sits in the
+              // pinned bar under it instead.
+              final head = more ? 0 : 1;
+              final listView = ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: list.length + (more ? 2 : 1),
+                itemCount: list.length + head,
                 separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (_, i) => i == 0
+                itemBuilder: (_, i) => i < head
                     ? Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: Text(
-                          // Paged: the filters see the rows loaded so far.
-                          more ? '${list.length} of the first ${rows.length}' : '${list.length} of ${rows.length}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                        child: Text(count, key: const ValueKey('record-count'), style: Theme.of(context).textTheme.bodySmall),
                       )
-                    : i > list.length
-                        ? LoadMoreRow(loading: value.isLoading, onPressed: () => widget.onLoadMore?.call(ref))
-                        : InkWell(onTap: () => widget.onOpen(list[i - 1]), child: widget.tile(list[i - 1])),
+                    : InkWell(onTap: () => widget.onOpen(list[i - head]), child: widget.tile(list[i - head])),
               );
+              if (!more) return listView;
+              // More on the server: the count and Load more stay pinned
+              // under the list, in reach from anywhere in it.
+              return Column(children: [
+                Expanded(child: listView),
+                PagedListBar(
+                  count: count,
+                  loading: value.isLoading,
+                  onLoadMore: () => widget.onLoadMore?.call(ref),
+                ),
+              ]);
             },
           ),
         ),
@@ -452,13 +468,14 @@ class AdminUsersScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(moduleAccessProvider('users')) == AccessLevel.edit;
     final keepDays = ref.watch(accountRetentionDaysProvider).value ?? 365;
+    final page = adminPeoplePageSizeFor(MediaQuery.sizeOf(context).width);
     return _RecordList(
         title: 'Users',
         module: 'users',
-        watch: (r) => r.watch(adminUsersProvider).whenData((p) => p.rows),
-        hasMore: (r) => r.watch(adminUsersProvider).value?.more ?? false,
-        onLoadMore: (r) => r.read(adminUsersRequestProvider.notifier).more(),
-        onServerSearch: (r, q) => r.read(adminUsersRequestProvider.notifier).search(q),
+        watch: (r) => r.watch(adminUsersProvider(page)).whenData((p) => p.rows),
+        hasMore: (r) => r.watch(adminUsersProvider(page)).value?.more ?? false,
+        onLoadMore: (r) => r.read(adminUsersRequestProvider(page).notifier).more(),
+        onServerSearch: (r, q) => r.read(adminUsersRequestProvider(page).notifier).search(q),
         filters: userFilters,
         initialFilter: initialFilter,
         matches: (u, f) => f == 'final-delete' ? dueForFinalDeletion(u, keepDays, DateTime.now()) : userMatches(u, f),

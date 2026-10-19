@@ -10,6 +10,7 @@ import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_filters.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/admin_repository.dart';
+import 'package:get_ride/src/admin/screens/people/partner_screens.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/admin/screens/people_screens.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
@@ -40,7 +41,120 @@ class _Admin extends AdminRepository {
   }
 }
 
+/// [n] app users for the Add Partner picker, none of them a partner yet.
+class _People extends PeopleRepository {
+  _People(this.n) : super(_db);
+  final int n;
+  final asked = <({int limit, String query})>[];
+
+  @override
+  Future<RowsPage> profiles({int limit = adminPeoplePageSize, String query = ''}) async {
+    asked.add((limit: limit, query: query));
+    final all = [for (var i = 0; i < n; i++) _user(i)];
+    return rowsPage(all.take(limit + 1).toList(), limit);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> partners() async => const [];
+}
+
+Future<_Admin> _users(WidgetTester tester, Size size, Brightness b, {int n = 450}) async {
+  final admin = _Admin(n);
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(ProviderScope(
+    overrides: [
+      supabaseProvider.overrideWithValue(_db),
+      ...quietLiveOverrides,
+      adminAccessProvider.overrideWith((_) async => AdminAccess([AdminGrant(page: '*', edit: true)])),
+      adminRepositoryProvider.overrideWithValue(admin),
+    ],
+    child: MaterialApp(theme: appTheme(b), home: const AdminUsersScreen()),
+  ));
+  await tester.pumpAndSettle();
+  return admin;
+}
+
 void main() {
+  test('page size by width, and the count wording', () {
+    expect(adminPeoplePageSizeFor(360), adminPeopleNarrowPageSize);
+    expect(adminPeoplePageSizeFor(599), 50);
+    expect(adminPeoplePageSizeFor(600), adminPeoplePageSize);
+    expect(pagedCountLabel(shown: 200, loaded: 200, more: true, filtered: false), 'Showing the newest 200');
+    expect(pagedCountLabel(shown: 12, loaded: 200, more: true, filtered: true), '12 matches among the first 200 loaded');
+    expect(pagedCountLabel(shown: 1, loaded: 50, more: true, filtered: true), '1 match among the first 50 loaded');
+    expect(pagedCountLabel(shown: 7, loaded: 9, more: false, filtered: true), '7 of 9');
+  });
+
+  // Desktop tester 137: wording, and Load more in reach on a phone.
+  for (final b in Brightness.values) {
+    testWidgets('360 wide: 50 a page, the count and Load more pinned in view (${b.name})', (tester) async {
+      final admin = await _users(tester, const Size(360, 740), b);
+      expect(admin.asked.single, (limit: 50, query: ''));
+      expect(find.text('Showing the newest 50'), findsOneWidget);
+      final more = find.byKey(const ValueKey('load-more'));
+      expect(more.hitTestable(), findsOneWidget, reason: 'no scrolling to reach it');
+      final bar = tester.getRect(find.byKey(const ValueKey('paged-bar')));
+      expect(bar.bottom, lessThanOrEqualTo(740));
+      // Scrolled into the list, the bar stays put.
+      await tester.drag(find.byType(ListView).first, const Offset(0, -3000));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.byKey(const ValueKey('paged-bar'))), bar);
+      await tester.tap(more);
+      await tester.pumpAndSettle();
+      expect(admin.asked.last, (limit: 100, query: ''));
+      expect(find.text('Showing the newest 100'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('desktop: 200 a page; a filter says matches among the loaded (${b.name})', (tester) async {
+      final admin = await _users(tester, const Size(1366, 768), b);
+      expect(admin.asked.single, (limit: 200, query: ''));
+      expect(find.text('Showing the newest 200'), findsOneWidget);
+      expect(find.byKey(const ValueKey('load-more')).hitTestable(), findsOneWidget);
+      // The loaded rows are filtered at once, before the server search.
+      await tester.enterText(find.byType(TextField).first, 'User 19');
+      await tester.pump(const Duration(milliseconds: 50));
+      // User 19 and User 190 to 199.
+      expect(find.text('11 matches among the first 200 loaded'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(admin.asked.last, (limit: 200, query: 'User 19'));
+      expect(find.text('11 of 11'), findsOneWidget, reason: 'the server search found them all');
+      expect(find.byKey(const ValueKey('paged-bar')), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final size in const [Size(360, 740), Size(1366, 768)]) {
+      testWidgets('Add Partner picker pages the same way at ${size.width.toInt()} (${b.name})', (tester) async {
+        final people = _People(300);
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(ProviderScope(
+          overrides: [
+            supabaseProvider.overrideWithValue(_db),
+            ...quietLiveOverrides,
+            adminAccessProvider.overrideWith((_) async => AdminAccess([AdminGrant(page: '*', edit: true)])),
+            peopleRepositoryProvider.overrideWithValue(people),
+          ],
+          child: MaterialApp(theme: appTheme(b), home: const PartnerAddScreen()),
+        ));
+        await tester.pumpAndSettle();
+        final page = size.width < 600 ? 50 : 200;
+        expect(people.asked.single, (limit: page, query: ''));
+        expect(find.text('$page eligible users among the newest loaded'), findsOneWidget);
+        final more = find.byKey(const ValueKey('load-more'));
+        expect(more.hitTestable(), findsOneWidget);
+        await tester.tap(more);
+        await tester.pumpAndSettle();
+        expect(people.asked.last.limit, 2 * page);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   group('the query', () {
     late List<http.Request> seen;
     late SupabaseClient db;
@@ -121,7 +235,9 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(admin.asked.single, (limit: adminPeoplePageSize, query: ''));
-      expect(find.text('200 of the first 200'), findsOneWidget);
+      // Unfiltered: how many of the newest are loaded, not a search result.
+      expect(find.text('Showing the newest 200'), findsOneWidget);
+      expect(find.text('200 of the first 200'), findsNothing);
 
       final more = find.byKey(const ValueKey('load-more'));
       final list = find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down).last;
