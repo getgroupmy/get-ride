@@ -46,6 +46,10 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   LatLng? _from, _to;
   double _zoom = driverHomeZoom;
 
+  /// The live traffic tiles over the map, and the source they were made for.
+  List<Widget> _overlays = const [];
+  (String?, bool, String?)? _trafficFor;
+
   @override
   void dispose() {
     _glide.dispose();
@@ -119,11 +123,15 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     final me = widget.me, requests = widget.requests, onSelect = widget.onSelect;
     final t = Theme.of(context);
     final trafficUrl = ref.watch(trafficTileUrlProvider);
-    final traffic = trafficTileLayer(
-      trafficUrl,
-      on: trafficUrl != null && ref.watch(mapTrafficProvider),
-      fallback: ref.watch(trafficFallbackTileUrlProvider),
-    );
+    final trafficOn = trafficUrl != null && ref.watch(mapTrafficProvider);
+    final trafficFallback = ref.watch(trafficFallbackTileUrlProvider);
+    // Kept while its source is, so a new position does not redraw its tiles.
+    final trafficFor = (trafficUrl, trafficOn, trafficFallback);
+    if (_trafficFor != trafficFor) {
+      _trafficFor = trafficFor;
+      final layer = trafficTileLayer(trafficUrl, on: trafficOn, fallback: trafficFallback);
+      _overlays = [?layer];
+    }
     final map = RideMap(
       controller: _map,
       me: me,
@@ -137,7 +145,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       },
       satellite: ref.watch(mapSatelliteProvider),
       // Live traffic, when a traffic tile source is configured and switched on.
-      tileOverlays: [?traffic],
+      tileOverlays: _overlays,
       extraMarkers: [
         for (final r in requests)
           if (r.pickupLat != null && r.pickupLng != null)
