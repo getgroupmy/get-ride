@@ -113,7 +113,7 @@ void main() {
     expect(find.text('Expired — renew'), findsOneWidget);
     expect(find.text('Rejected — re-upload'), findsOneWidget);
     expect(find.text('Not uploaded'), findsOneWidget);
-    expect(find.textContaining('Renewal opens 2027-02-15'), findsOneWidget);
+    expect(find.textContaining('Renewal opens 15/02/2027'), findsOneWidget);
 
     // Locked: a tap does not open the upload form.
     await tester.tap(find.text('Driving licence'));

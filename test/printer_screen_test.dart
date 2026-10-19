@@ -112,4 +112,32 @@ void main() {
     expect(printer.jobs.single, contains('80mm (48 cols)'));
     expect(find.text('Test page sent to Dash printer.'), findsOneWidget);
   });
+
+  // Web round 40 (182): Add printer the same way.
+  for (final dark in [false, true]) {
+    for (final size in const [Size(915, 412), Size(360, 640)]) {
+      testWidgets('182: Add printer at ${size.width.toInt()}x${size.height.toInt()} (${dark ? 'dark' : 'light'})',
+          (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(ProviderScope(
+          overrides: [
+            printerSinkFactoryProvider.overrideWithValue((_) => FakePrinter()),
+            printerSettleProvider.overrideWithValue(Duration.zero),
+          ],
+          child: MaterialApp(
+            theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+            home: const PrinterScreen(),
+          ),
+        ));
+        await tester.pumpAndSettle();
+        final inBar = find.descendant(of: find.byType(AppBar), matching: find.byKey(const ValueKey('printer-add')));
+        expect(inBar, size.width >= 600 ? findsOneWidget : findsNothing);
+        expect(find.byType(FloatingActionButton), size.width >= 600 ? findsNothing : findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 }

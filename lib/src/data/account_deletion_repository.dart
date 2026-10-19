@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/account_deletion.dart';
 import '../providers.dart';
 import 'live_tables.dart';
+import 'meter_session_store.dart';
 
 class AccountDeletionRepository {
   AccountDeletionRepository(this._db);
@@ -21,6 +22,7 @@ class AccountDeletionRepository {
 
   /// After deleting: the server already ended every session.
   Future<void> signOutHere() async {
+    await MeterSessionStore.clear();
     try {
       await _db.auth.signOut(scope: SignOutScope.local);
     } catch (_) {}

@@ -39,6 +39,9 @@
  *       → { slots: ["google_tiles", …] }  the key slots with a secret synced from GitHub
  *         (names only, never a key), so Admin → Settings → Maps doesn't call them missing.
  *
+ * Each also as a POST with the same parameters in a JSON body ([geoParams]), which the
+ * app sends: one URL, so a browser asks its CORS preflight once and keeps it (PERF-74).
+ *
  * A provider is only asked for a role and device whose profile lists it.
  * 429 { error: "rate_limited" } past the per-address limit, or the per-user one.
  * 401 { error: "sign_in_required" }: search, locate, reverse, route, distance,
@@ -99,11 +102,19 @@ export interface GeoDeps {
   /** Counts a call against [bucket]'s minute; false when over [limit] or when it can't be counted. */
   take(bucket: string, limit: number): Promise<boolean>;
   /**
+   * Both of a keyed lookup's buckets in one round trip (geo_take2, migration 0235): which one
+   * refused, or null when both allow it; refuses when it can't be counted. Without it, two [take]s.
+   */
+  takePair?(userBucket: string, userLimit: number, ipBucket: string, ipLimit: number): Promise<"user" | "ip" | null>;
+  /**
    * The signed-in caller's user id, or null (the anon key, a bad token).
    * Asked only by the actions that spend a provider key.
    */
   caller(): Promise<string | null>;
-  /** One call counted; a failed one with [detail], what went wrong, for Admin → Maps → Usage. */
+  /**
+   * One call counted; a failed one with [detail], what went wrong, for Admin → Maps → Usage.
+   * Never awaited: it finishes after the answer is sent ([background]).
+   */
   count(provider: string, kind: Kind | "tiles", ok: boolean, cached: boolean, detail?: string): Promise<void>;
   cacheGet(key: string): Promise<unknown | null>;
   cachePut(key: string, value: unknown, seconds: number): Promise<void>;
@@ -122,6 +133,11 @@ export interface GeoDeps {
   redirect?(url: string): Promise<string | null>;
   /** Google tile sessions refused lately, kept per function instance (see [RefusedSessions]). */
   refusedSessions?: RefusedSessions;
+  /**
+   * Keeps [p] (a count, a cache write) running after the answer is sent, as
+   * EdgeRuntime.waitUntil does; [p] never rejects. Without it, [p] is left to finish alone.
+   */
+  background?(p: Promise<unknown>): void;
 }
 
 /**
@@ -167,18 +183,111 @@ export interface GeoAnswer {
 
 const bad = (error: string, status = 400): GeoAnswer => ({ status, body: { error } });
 
+/** The actions that spend a provider key, and so need a signed-in user. */
+const KEYED = new Set(["details", "validate", "search", "locate", "reverse", "route", "distance"]);
+
 /**
- * Whether a keyed lookup may go ahead: a signed-in user under their own
- * limit, and their address under its own. The app falls back to
- * OpenStreetMap when it is refused, so a page open without a sign-in (the
- * shared ride) still finds its way.
+ * Whether a keyed lookup may go ahead: a signed-in user ([caller], asked
+ * when the request came in) under their own limit, and their address under
+ * its own, both in one round trip when [GeoDeps.takePair] is there. The app
+ * falls back to OpenStreetMap when it is refused, so a page open without a
+ * sign-in (the shared ride) still finds its way.
  */
-async function mayLookUp(deps: GeoDeps, ip: string): Promise<GeoAnswer | null> {
-  const uid = await deps.caller().catch(() => null);
+async function mayLookUp(deps: GeoDeps, ip: string, caller: Promise<string | null>): Promise<GeoAnswer | null> {
+  const uid = await caller;
   if (!uid) return bad("sign_in_required", 401);
+  if (deps.takePair) {
+    // Fails closed: a limit that can't be counted refuses.
+    const refused = await deps.takePair(`user:${uid}`, USER_RATE_LIMIT, `ip:${ip}`, RATE_LIMIT)
+      .catch(() => "user" as const);
+    return refused ? bad("rate_limited", 429) : null;
+  }
   if (!(await deps.take(`user:${uid}`, USER_RATE_LIMIT))) return bad("rate_limited", 429);
   if (!(await deps.take(`ip:${ip}`, RATE_LIMIT))) return bad("rate_limited", 429);
   return null;
+}
+
+/** A database RPC as supabase-js answers it. */
+export type Rpc = (
+  fn: string,
+  args: Record<string, unknown>,
+) => PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>;
+
+/** Whether [error] says the function isn't there (PostgREST's PGRST202, Postgres' 42883). */
+export function isMissingFunction(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "PGRST202" || error.code === "42883" ||
+    /could not find the function|function .* does not exist/i.test(error.message ?? "");
+}
+
+/**
+ * [GeoDeps.take] and [GeoDeps.takePair] over the database: geo_take2
+ * (migration 0235) for both buckets in one round trip, or two geo_take calls
+ * while that migration is not run, so the function can be deployed first.
+ * A missing geo_take2 is not asked again for [retryMs]. Both fail closed: a
+ * limit that can't be counted refuses.
+ */
+export function rateTakers(rpc: Rpc, retryMs = 10 * 60_000, now: () => number = Date.now) {
+  let missingAt = Number.NEGATIVE_INFINITY;
+  const take = async (bucket: string, limit: number): Promise<boolean> => {
+    try {
+      const { data, error } = await rpc("geo_take", { p_bucket: bucket, p_limit: limit });
+      return !error && data === true;
+    } catch {
+      return false;
+    }
+  };
+  const takePair = async (
+    userBucket: string,
+    userLimit: number,
+    ipBucket: string,
+    ipLimit: number,
+  ): Promise<"user" | "ip" | null> => {
+    if (now() - missingAt >= retryMs) {
+      try {
+        const { data, error } = await rpc("geo_take2", {
+          p_user_bucket: userBucket,
+          p_user_limit: userLimit,
+          p_ip_bucket: ipBucket,
+          p_ip_limit: ipLimit,
+        });
+        if (!error) return data === null ? null : data === "ip" ? "ip" : "user";
+        if (!isMissingFunction(error)) return "user";
+        missingAt = now();
+      } catch {
+        return "user";
+      }
+    }
+    if (!(await take(userBucket, userLimit))) return "user";
+    return (await take(ipBucket, ipLimit)) ? null : "ip";
+  };
+  return { take, takePair };
+}
+
+/**
+ * The request's parameters: its query string, and on a POST the fields of
+ * its JSON body (strings, numbers, booleans) over them. The app POSTs to the
+ * function's bare URL so a browser's CORS preflight is asked once and kept,
+ * not once per query (PERF-74); a GET with a query string still works. Null
+ * when a POST's body is not a JSON object.
+ */
+export async function geoParams(req: Request): Promise<URLSearchParams | null> {
+  const params = new URL(req.url).searchParams;
+  if (req.method !== "POST") return params;
+  const text = await req.text().catch(() => null);
+  if (text == null || text.length > 16_384) return null;
+  if (text.trim() === "") return params;
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  for (const [k, v] of Object.entries(body)) {
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") params.set(k, String(v));
+  }
+  return params;
 }
 
 function coord(v: string | null, max: number): number | null {
@@ -212,6 +321,11 @@ function directUrl(apiProviders: unknown, ref: string | undefined): string | nul
 
 export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDeps): Promise<GeoAnswer> {
   const action = params.get("action") ?? "";
+  // Counts and cache writes go on after the answer is sent.
+  const later = (p: Promise<unknown>) => {
+    const settled = p.catch(() => {});
+    deps.background?.(settled);
+  };
   if (action === "fallbacks") {
     return { status: 200, body: { slots: Object.keys(FALLBACK_SECRETS).filter((s) => !!deps.fallbackKey?.(s)) } };
   }
@@ -234,6 +348,8 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   const device = params.get("device") ?? "";
   if (!isRole(role) || !isDevice(device)) return bad("Give role (rider|partner) and device (android|ios|web|desktop).");
 
+  // Who is asking and the settings at once (PERF-73): only the rate limit waits on the user.
+  const caller = KEYED.has(action) ? deps.caller().catch(() => null) : Promise.resolve(null);
   const { config, apiProviders } = await deps.settings();
   const profile = profileOf(config, role, device);
   const keys = ((config as { keys?: Record<string, string> } | null)?.keys) ?? {};
@@ -335,7 +451,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     if (!/^[A-Za-z0-9_-]{10,300}$/.test(id)) return bad("Give id.");
     const k = key("google", "search");
     if (!k) return bad("No key for that provider.", 503);
-    const refusal = await mayLookUp(deps, ip);
+    const refusal = await mayLookUp(deps, ip, caller);
     if (refusal) return refusal;
     const session = sessionToken(params.get("session"));
     try {
@@ -344,11 +460,12 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
         googleLegacyDetailsRequest(id, lang, k, session),
       );
       const place = parseDetails(body);
-      await deps.count("google", "search", place != null, false, place ? undefined : "Place details: no place for that id")
-        .catch(() => {});
+      later(
+        deps.count("google", "search", place != null, false, place ? undefined : "Place details: no place for that id"),
+      );
       return { status: 200, body: { place } };
     } catch (e) {
-      await deps.count("google", "search", false, false, `Place details: ${errorDetail(e)}`).catch(() => {});
+      later(deps.count("google", "search", false, false, `Place details: ${errorDetail(e)}`));
       return bad("The provider did not answer.", 502);
     }
   }
@@ -360,16 +477,15 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     if (address.length < 5) return bad("Give address.");
     const k = resolveKey(apiProviders, keys.google_address) ?? deps.fallbackKey?.("google_address") ?? null;
     if (!k) return bad("No key for that provider.", 503);
-    const refusal = await mayLookUp(deps, ip);
+    const refusal = await mayLookUp(deps, ip, caller);
     if (refusal) return refusal;
     try {
       const body = await deps.call(addressValidationRequest(address, countries[0] ?? "my", k));
       const checked = parseAddressValidation(body);
-      await deps.count("google", "search", checked != null, false, checked ? undefined : "Address check: no answer")
-        .catch(() => {});
+      later(deps.count("google", "search", checked != null, false, checked ? undefined : "Address check: no answer"));
       return { status: 200, body: { checked } };
     } catch (e) {
-      await deps.count("google", "search", false, false, `Address check: ${errorDetail(e)}`).catch(() => {});
+      later(deps.count("google", "search", false, false, `Address check: ${errorDetail(e)}`));
       return bad("The provider did not answer.", 502);
     }
   }
@@ -390,7 +506,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   }
   const k = key(provider, kind);
   if (!k) return bad("No key for that provider.", 503);
-  const refusal = await mayLookUp(deps, ip);
+  const refusal = await mayLookUp(deps, ip, caller);
   if (refusal) return refusal;
 
   // Google: the newer API, the older one, or the newer first and the older
@@ -471,7 +587,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   if (ttl > 0) {
     const hit = await deps.cacheGet(ck).catch(() => null);
     if (hit != null) {
-      await deps.count(provider, kind, true, true).catch(() => {});
+      later(deps.count(provider, kind, true, true));
       return { status: 200, body: hit };
     }
   }
@@ -498,11 +614,11 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     const empty = Array.isArray(list)
       ? (answer.distances ? list.every((d) => d == null) : list.length === 0)
       : Object.values(answer)[0] == null;
-    await deps.count(provider, kind, !empty, false, empty ? "Answered, but found nothing" : undefined).catch(() => {});
-    if (ttl > 0 && !empty) await deps.cachePut(ck, answer, ttl).catch(() => {});
+    later(deps.count(provider, kind, !empty, false, empty ? "Answered, but found nothing" : undefined));
+    if (ttl > 0 && !empty) later(deps.cachePut(ck, answer, ttl));
     return { status: 200, body: answer };
   } catch (e) {
-    await deps.count(provider, kind, false, false, errorDetail(e)).catch(() => {});
+    later(deps.count(provider, kind, false, false, errorDetail(e)));
     return bad("The provider did not answer.", 502);
   }
 }

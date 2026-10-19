@@ -12,6 +12,7 @@ import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProv
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
+import '../meter/meter_session_toggle.dart';
 import 'driver_online.dart';
 import '../../widgets/page_style_host.dart';
 
@@ -128,11 +129,18 @@ class PartnerMenuSheet extends ConsumerWidget {
     ];
     final mode = sideMenuModeButton(blob, 'partner');
     final nav = GoRouter.of(context);
+    final sheet = Navigator.of(context);
     return SafeArea(
       child: ListView(
         key: const ValueKey('partner-menu'),
         shrinkWrap: true,
         children: [
+          MeterSessionToggle(
+            onTurnedOn: () {
+              sheet.pop();
+              nav.push('/meter');
+            },
+          ),
           for (final e in menu)
             SideMenuTile(
               entry: e,

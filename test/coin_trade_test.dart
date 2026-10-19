@@ -1,6 +1,12 @@
+import 'dart:ui' show CheckedState;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/widgets/chip_button.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/widgets/common.dart' show contrastRatio;
 import 'package:get_ride/src/admin/screens/commerce/get_coin.dart';
 import 'package:get_ride/src/core/coin_trade.dart';
 import 'package:get_ride/src/data/coin_trade_repository.dart';
@@ -186,18 +192,58 @@ void main() {
   });
 
   group('trade screen', () {
-    Future<_FakeRepo> pump(WidgetTester tester, _FakeRepo repo) async {
+    Future<_FakeRepo> pump(WidgetTester tester, _FakeRepo repo, {ThemeData? theme}) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             coinTradeRepositoryProvider.overrideWithValue(repo),
             coinRateHistoryProvider.overrideWith((ref) async => const [0.09, 0.1, 0.11]),
           ],
-          child: const MaterialApp(home: CoinTradeScreen()),
+          child: MaterialApp(theme: theme, home: const CoinTradeScreen()),
         ),
       );
       await tester.pumpAndSettle();
       return repo;
+    }
+
+    for (final b in Brightness.values) {
+      testWidgets('at 1.3x text the balance helper reads on a tinted page, with a faint admin grey (${b.name})',
+          (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final theme = appTheme(
+          b,
+          colors: {
+            'textSecondary': b == Brightness.light ? '#C8C8C8' : '#4A4A4A',
+            'background': b == Brightness.light ? '#FFF1E6' : '#1E1530',
+          },
+        );
+        await pump(tester, _FakeRepo(), theme: theme);
+        final field = tester.widget<TextField>(find.byKey(const ValueKey('coin-amount')));
+        final c = field.decoration!.helperStyle!.color!;
+        for (final ground in [theme.scaffoldBackgroundColor, theme.colorScheme.surface]) {
+          expect(contrastRatio(c, ground), greaterThanOrEqualTo(4.5));
+        }
+        expect(field.decoration!.helperMaxLines, 2, reason: 'scaled up, it wraps instead of being cut');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final b in Brightness.values) {
+      testWidgets('the amount presets are buttons, never checkboxes (${b.name})', (tester) async {
+        final handle = tester.ensureSemantics();
+        await pump(tester, _FakeRepo(), theme: appTheme(b));
+        for (final label in ['10', '50', '100', 'MAX']) {
+          final chip = find.widgetWithText(ActionChipButton, label);
+          expect(chip, findsOneWidget, reason: label);
+          final data = tester.getSemantics(chip).getSemanticsData();
+          expect(data.label, label);
+          expect(data.flagsCollection.isButton, isTrue, reason: '$label is an action');
+          expect(data.flagsCollection.isChecked, CheckedState.none, reason: '$label has no checked state');
+          expect(data.hasAction(SemanticsAction.tap), isTrue);
+        }
+        handle.dispose();
+      });
     }
 
     testWidgets('buys at the fixed rate after confirming', (tester) async {

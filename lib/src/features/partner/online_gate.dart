@@ -51,7 +51,18 @@ Future<bool> ensureOnlineReady(BuildContext context, WidgetRef ref) async {
       context: context,
       builder: (c) => OnlineBlockDialog(block: block),
     );
-    if (go != true) return false;
+    if (go != true || !context.mounted) return false;
+    final fix = await resolvePermissionBlock(context, probe, block);
+    switch (fix) {
+      case PermissionFix.failed || PermissionFix.declined:
+        return false;
+      case PermissionFix.asked:
+        continue;
+      case PermissionFix.settings:
+        break;
+    }
+    // Back from Settings: check again. Listened for only now, so the
+    // phone's own question, asked first, doesn't count as coming back.
     final back = Completer<void>();
     final lifecycle = AppLifecycleListener(
       onResume: () {
@@ -59,15 +70,7 @@ Future<bool> ensureOnlineReady(BuildContext context, WidgetRef ref) async {
       },
     );
     try {
-      switch (await resolvePermissionBlock(probe, block)) {
-        case PermissionFix.failed:
-          return false;
-        case PermissionFix.settings:
-          // Back from Settings: check again.
-          await back.future.timeout(onlineSettingsWait);
-        case PermissionFix.asked:
-          break;
-      }
+      await back.future.timeout(onlineSettingsWait);
     } on TimeoutException {
       return false;
     } finally {

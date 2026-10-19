@@ -83,5 +83,5 @@ const allOwnedCategories = <String>{
 /// (nothing is deleted) and the list still opens from a direct link.
 const replacedCategories = <String, String>{
   // Nothing read it; the dispatch reads each vehicle service's own radius (0160).
-  'search-radius': 'Vehicle Services → Search radius',
+  'search-radius': 'Vehicle Services > Search radius',
 };

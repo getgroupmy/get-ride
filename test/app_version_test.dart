@@ -188,6 +188,40 @@ void main() {
       });
     }
 
+    testWidgets('the update button opens the link the resolver gives (the phone\'s own APK)', (tester) async {
+      const universal = 'https://github.com/getgroupmy/get-ride/releases/download/android-latest/getride.apk';
+      const arm32 = 'https://github.com/getgroupmy/get-ride/releases/download/android-latest/getride-armeabi-v7a.apk';
+      String? opened;
+      final asked = <String>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appUpdateProvider.overrideWith(
+              (_) async => const UpdateVerdict(UpdateKind.required, latest: '2.0.0', storeUrl: universal),
+            ),
+            updateLinkResolverProvider.overrideWithValue((url) async {
+              asked.add(url);
+              return arm32;
+            }),
+          ],
+          child: MaterialApp(
+            home: UpdateGate(
+              openStore: (url) async {
+                opened = url;
+                return true;
+              },
+              child: const Scaffold(body: Text('the app')),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Update now'));
+      await tester.pumpAndSettle();
+      expect(asked, [universal]);
+      expect(opened, arm32);
+    });
+
     testWidgets('a required update without a link says where to go', (tester) async {
       await pump(tester, const UpdateVerdict(UpdateKind.required, latest: '2.0.0'));
       expect(find.text('Update now'), findsNothing);

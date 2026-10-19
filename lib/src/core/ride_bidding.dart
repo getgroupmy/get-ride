@@ -14,6 +14,7 @@
 library;
 
 import 'dart:convert';
+import 'package:intl/intl.dart';
 
 import 'package:latlong2/latlong.dart';
 
@@ -746,6 +747,7 @@ class RideOffer {
     this.vehicle,
     this.plate,
     this.rating,
+    this.trips,
     this.photo,
     this.fromLat,
     this.fromLng,
@@ -757,6 +759,10 @@ class RideOffer {
   final String? vehicle;
   final String? plate;
   final double? rating;
+
+  /// The driver's completed trips, stamped by the server (migration 0237);
+  /// null before it ran. See [driverTripsLabel].
+  final int? trips;
   final String? photo;
 
   /// Where the driver was when they made the offer (`partner_accept_*`),
@@ -779,10 +785,29 @@ RideOffer? standingOffer(RideRequest r) {
     vehicle: r.partnerVehicle,
     plate: r.partnerPlate,
     rating: r.partnerRating,
+    trips: r.partnerTrips,
     photo: r.partnerPhoto,
     fromLat: r.partnerAcceptLat,
     fromLng: r.partnerAcceptLng,
   );
+}
+
+/// What a driver card says of [trips] completed trips next to the rating:
+/// "312 trips" with [locale]'s thousands separator, "1 trip", and "New
+/// driver" for none. Null when the count isn't known (a server from before
+/// migration 0237), so the card shows the rating alone. The number and its
+/// word never part across a line.
+String? driverTripsLabel(int? trips, {String? locale}) {
+  if (trips == null) return null;
+  if (trips <= 0) return 'New\u00A0driver';
+  String n;
+  try {
+    final l = locale != null && NumberFormat.localeExists(locale) ? locale : null;
+    n = NumberFormat.decimalPattern(l).format(trips);
+  } catch (_) {
+    n = NumberFormat.decimalPattern('en').format(trips);
+  }
+  return '$n\u00A0${trips == 1 ? 'trip' : 'trips'}';
 }
 
 /// The minutes an offer card shows for a drive of [routeMinutes] to the

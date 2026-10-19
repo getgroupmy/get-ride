@@ -8,6 +8,15 @@
  * public getride.my/install page, and serves the manifest an iPhone needs
  * to install an Ad Hoc build over the air (itms-services).
  *
+ * Android also gets one APK per processor (getride-arm64-v8a.apk,
+ * getride-armeabi-v7a.apk), a third of the size of the universal
+ * getride.apk, which stays for old links and as the fallback. A phone is
+ * handed the one it names (`?abi=arm64-v8a` / `?abi=armeabi-v7a`; new
+ * clients send DEFAULT_ABI when they can't tell), the universal one when
+ * its split is missing or when it names none: old clients get exactly what
+ * they got before the split (`pickApk`). Every APK is listed in `apks` so
+ * the app can pick for itself.
+ *
  * This module holds the decisions and imports nothing, so it is tested
  * without a server (`app_install_test.ts`).
  */
@@ -19,6 +28,15 @@ export const BUILD_ASSETS: Record<BuildPlatform, { tag: string; asset: string; b
   // The App Bundle Play takes: downloadable from Admin, never installable.
   android: { tag: "android-latest", asset: "getride.apk", bundle: "getride.aab" },
 };
+
+/** The per-processor APKs, by Android ABI, and the one that runs anywhere. */
+export const SPLIT_APKS: Record<string, string> = {
+  "arm64-v8a": "getride-arm64-v8a.apk",
+  "armeabi-v7a": "getride-armeabi-v7a.apk",
+};
+export const UNIVERSAL_ABI = "universal";
+/** What a new client asks for when it can't tell: nearly every phone is 64-bit. */
+export const DEFAULT_ABI = "arm64-v8a";
 
 export const DEFAULT_BUILDS_REPOSITORY = "getgroupmy/get-ride";
 export const DEFAULT_BUNDLE_ID = "com.taxxee.teksi";
@@ -60,6 +78,39 @@ export function assetsOf(release: unknown): Map<string, ReleaseAsset> {
   return out;
 }
 
+/** One installable APK: a processor's own, or the universal one. */
+export interface AppApk {
+  /** `arm64-v8a`, `armeabi-v7a` or `universal`. */
+  abi: string;
+  url: string;
+  size?: number;
+}
+
+/** The ABI a request asks for (`?abi=`), or null for anything unknown. */
+export function abiOf(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim().toLowerCase();
+  if (s === "arm64" || s === "aarch64" || s === "arm64-v8a") return "arm64-v8a";
+  if (s === "arm" || s === "armv7" || s === "armeabi-v7a") return "armeabi-v7a";
+  if (s === UNIVERSAL_ABI) return UNIVERSAL_ABI;
+  return null;
+}
+
+/**
+ * The APK to hand a phone that runs [abi]: its own split, else the
+ * universal APK. A request that names no ABI (an old app build, an old
+ * cached install page) gets the universal APK exactly as before the split,
+ * so a 32-bit phone on an old build is never handed a 64-bit-only APK; only
+ * when there is no universal APK at all, whatever split there is. New
+ * clients always send `?abi=` (DEFAULT_ABI when they can't tell). Null when
+ * nothing installable is published.
+ */
+export function pickApk(apks: AppApk[], abi: string | null): AppApk | null {
+  const by = (a: string) => apks.find((x) => x.abi === a);
+  if (abi == null) return by(UNIVERSAL_ABI) ?? apks[0] ?? null;
+  return by(abi) ?? by(UNIVERSAL_ABI) ?? null;
+}
+
 export interface AppBuild {
   available: boolean;
   platform: BuildPlatform;
@@ -78,6 +129,10 @@ export interface AppBuild {
   manifest_url?: string;
   /** What installs it on a phone: the itms-services link, or the APK. */
   install_url?: string;
+  /** Android: which APK download_url / install_url are (see `pickApk`). */
+  abi?: string;
+  /** Android: every APK published, 64-bit first, the universal one last. */
+  apks?: AppApk[];
   /** Android: the App Bundle (.aab) for a hand upload to Play, when published. */
   bundle_url?: string;
   bundle_size?: number;
@@ -86,18 +141,38 @@ export interface AppBuild {
 const text = (v: unknown): string | undefined =>
   typeof v === "string" && v.trim() !== "" ? v.trim() : undefined;
 
+/** The APKs a release holds: the splits first, the universal one last. */
+export function apksOf(assets: Map<string, ReleaseAsset>): AppApk[] {
+  const out: AppApk[] = [];
+  const add = (abi: string, name: string) => {
+    const a = assets.get(name);
+    if (a) out.push({ abi, url: a.url, ...(a.size ? { size: a.size } : {}) });
+  };
+  for (const [abi, name] of Object.entries(SPLIT_APKS)) add(abi, name);
+  add(UNIVERSAL_ABI, BUILD_ASSETS.android.asset);
+  return out;
+}
+
 /**
  * What the admin and the install page are told, from the release and its
- * build.json. Without the app asset there is nothing to offer.
+ * build.json. Without the app asset there is nothing to offer. [abi] is the
+ * phone's processor when it said (Android only; see `pickApk`).
  */
 export function appBuildFrom(
   platform: BuildPlatform,
   release: unknown,
   info: unknown,
   manifestUrl: string,
+  abi: string | null = null,
 ): AppBuild {
   const assets = assetsOf(release);
-  const asset = assets.get(BUILD_ASSETS[platform].asset);
+  const apks = platform === "android" ? apksOf(assets) : [];
+  const picked = platform === "android" ? pickApk(apks, abi) : null;
+  const asset = picked
+    ? assets.get(SPLIT_APKS[picked.abi] ?? BUILD_ASSETS.android.asset)
+    : platform === "ios"
+    ? assets.get(BUILD_ASSETS.ios.asset)
+    : undefined;
   if (!asset) return { available: false, platform };
   const bundleName = BUILD_ASSETS[platform].bundle;
   const bundle = bundleName ? assets.get(bundleName) : undefined;
@@ -117,6 +192,12 @@ export function appBuildFrom(
     created_at: text(b.created_at) ?? asset.updatedAt ?? undefined,
     download_url: asset.url,
   };
+  if (picked) {
+    out.abi = picked.abi;
+    out.apks = apks;
+    // build.json's size is the universal APK's; a split is only its own.
+    if (picked.abi !== UNIVERSAL_ABI) out.size = asset.size || undefined;
+  }
   if (bundle) {
     out.bundle_url = bundle.url;
     if (bundle.size) out.bundle_size = bundle.size;

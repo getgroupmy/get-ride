@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/sms_limits_card.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/sms_limits.dart';
+import 'package:get_ride/src/data/messaging_repository.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
 
@@ -21,6 +23,7 @@ void main() {
     expect(s.perPhonePerHour, 5);
     expect(s.perPhonePerDay, 10);
     expect(s.codeValidMinutes, 5, reason: 'a row without the 0188 column reads as 5 minutes');
+    expect(s.gatewayPollMaxSeconds, 15, reason: 'a row without the 0236 column reads as 15 s');
     expect(s.allowedPrefixes, ['+60', '+65']);
     expect(s.blockedNumbers, isEmpty);
     expect(s.messageTemplate, defaultSmsTemplate);
@@ -42,6 +45,11 @@ void main() {
     expect(smsLimitsProblem(s.copyWith(codeValidMinutes: 0)), contains('valid for'));
     expect(smsLimitsProblem(s.copyWith(codeValidMinutes: 61)), contains('valid for'));
     expect(SmsLimits.fromRow({'code_valid_minutes': 3}).toPatch()['code_valid_minutes'], 3);
+    expect(smsLimitsProblem(s.copyWith(gatewayPollMaxSeconds: 4)), contains('longest wait'));
+    expect(smsLimitsProblem(s.copyWith(gatewayPollMaxSeconds: 61)), contains('longest wait'));
+    expect(smsLimitsProblem(s.copyWith(gatewayPollMaxSeconds: 5)), isNull);
+    expect(smsLimitsProblem(s.copyWith(gatewayPollMaxSeconds: 60)), isNull);
+    expect(SmsLimits.fromRow({'gateway_poll_max_seconds': 30}).toPatch()['gateway_poll_max_seconds'], 30);
     expect(smsLimitsProblem(s.copyWith(allowedPrefixes: ['60'])), contains('country prefix'));
     expect(smsLimitsProblem(s.copyWith(blockedNumbers: ['0123456789'])), contains('blocked number'));
     expect(smsLimitsProblem(s.copyWith(messageTemplate: 'No code')), contains('{code}'));
@@ -113,7 +121,61 @@ Future<void> _pumpCard(WidgetTester tester, Brightness b) async {
   await tester.pumpAndSettle();
 }
 
+final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
+
+class _Repo extends MessagingRepository {
+  _Repo() : super(_db);
+  final saved = <SmsLimits>[];
+
+  @override
+  Future<void> saveSmsLimits(SmsLimits s) async => saved.add(s);
+}
+
 void _cardTests() {
+  for (final b in Brightness.values) {
+    testWidgets('the longest wait for a sign-in code: 15 s by default, 5–60, saved (${b.name})', (tester) async {
+      tester.view.physicalSize = const Size(360, 2600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final repo = _Repo();
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          ...quietLiveOverrides,
+          messagingRepositoryProvider.overrideWithValue(repo),
+          smsLimitsProvider.overrideWith((_) async => SmsLimits.fromRow({'updated_at': '2026-10-11T07:53:00Z'})),
+          smsActivityProvider.overrideWith((_) async => smsActivityFrom(null)),
+          smsLogProvider.overrideWith((_, _) async => const <SmsLogEntry>[]),
+        ],
+        child: MaterialApp(
+          theme: appTheme(b),
+          home: const Scaffold(body: SingleChildScrollView(child: SmsLimitsCard(canEdit: true))),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final field = find.byKey(const ValueKey('sms-limits-gateway-wait'));
+      expect(field, findsOneWidget);
+      expect(find.text('Longest wait for a sign-in code (seconds)'), findsOneWidget);
+      expect(tester.widget<TextField>(field).controller!.text, '15');
+      expect(find.textContaining('more server calls from the gateway phone'), findsOneWidget);
+      expect(tester.takeException(), isNull, reason: 'fits a phone-width card');
+
+      final save = find.byKey(const ValueKey('sms-limits-save'));
+      await tester.enterText(field, '4');
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.pump();
+      expect(find.textContaining('5–60 seconds'), findsOneWidget);
+      expect(repo.saved, isEmpty);
+
+      await tester.enterText(field, '30');
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      expect(repo.saved.single.gatewayPollMaxSeconds, 30);
+      expect(repo.saved.single.toPatch()['gateway_poll_max_seconds'], 30);
+    });
+  }
+
   for (final b in Brightness.values) {
     testWidgets('the last-changed line reads across the card, with Save below it (${b.name})', (tester) async {
       await _pumpCard(tester, b);

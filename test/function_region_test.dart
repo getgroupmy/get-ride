@@ -1,5 +1,7 @@
 // PERF-71: the edge functions that chain database calls are run in the
 // database's region (lib/src/data/function_region.dart); the others are not.
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/data/auth_repository.dart';
 import 'package:get_ride/src/data/function_region.dart';
@@ -54,9 +56,11 @@ void main() {
     await GeoProxy(() => db, role: () => 'rider').get({'action': 'reverse', 'lat': '3.1', 'lng': '101.6'});
     final r = call('geo');
     expectPinned(r);
-    expect(r.method, 'GET');
-    expect(r.url.queryParameters['action'], 'reverse');
-    expect(r.url.queryParameters['role'], 'rider');
+    // The parameters go in a JSON body to one URL (PERF-74).
+    expect(r.method, 'POST');
+    final body = jsonDecode((r as http.Request).body) as Map<String, dynamic>;
+    expect(body['action'], 'reverse');
+    expect(body['role'], 'rider');
   });
 
   test('pin sign-in is pinned', () async {

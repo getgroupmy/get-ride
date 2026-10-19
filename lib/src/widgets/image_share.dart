@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../core/image_share.dart';
 import '../platform/web_download.dart';
+import '../platform/web_share.dart';
 import 'busy.dart';
 import 'common.dart';
 
@@ -83,6 +84,17 @@ final imageSharerProvider = Provider<Future<bool> Function(ShareableImage image)
     return true;
   },
 );
+
+/// Whether the share sheet here takes an image file: always in the app, in
+/// a browser only with the Web Share API for files. Overridden in tests.
+final fileSharingAvailableProvider = Provider<bool>((ref) => canShareFiles());
+
+/// Said when the picture could not be drawn (nothing on screen to take).
+const imageNotReadyMessage = "Couldn't make the image. Please try again.";
+
+/// Said when Share copied the text instead of sharing the image, because
+/// this browser can't share files at all.
+const copiedForPasting = 'Copied. Paste it in WhatsApp or any app.';
 
 /// Saves an image: the browser downloads it, a computer writes it to its
 /// Downloads folder, and a phone (no gallery plugin in this build) opens the
@@ -194,7 +206,14 @@ class ShareSaveImageButtons extends ConsumerWidget {
     this.enabled = true,
     this.shareLabel = 'Share',
     this.saveLabel = 'Save image',
+    this.copyInstead,
   });
+
+  /// What Share copies where this browser can never share an image file
+  /// (no Web Share API for files): the account number or link, so it can be
+  /// pasted into a chat ([copiedForPasting]). Null keeps the save-and-copy
+  /// fallback of [imageSharerProvider].
+  final String? copyInstead;
 
   final Future<ShareableImage?> Function(Rect? origin) image;
   final String keyPrefix;
@@ -216,9 +235,25 @@ class ShareSaveImageButtons extends ConsumerWidget {
             onPressed: !enabled
                 ? null
                 : () async {
+                    final copy = copyInstead;
+                    if (copy != null && !ref.read(fileSharingAvailableProvider)) {
+                      // Not a failure to retry: this browser can't share
+                      // files. Copied at once, while the tap still counts
+                      // as the user's (a browser refuses the clipboard later).
+                      try {
+                        await Clipboard.setData(ClipboardData(text: copy));
+                        if (context.mounted) showInfo(context, copiedForPasting);
+                      } catch (_) {
+                        if (context.mounted) showInfo(context, "Couldn't copy it. Please try again.");
+                      }
+                      return;
+                    }
                     try {
                       final img = await image(shareOriginOf(bc));
-                      if (img == null) return;
+                      if (img == null) {
+                        if (context.mounted) showInfo(context, imageNotReadyMessage);
+                        return;
+                      }
                       final copied = await ref.read(imageSharerProvider)(img);
                       if (copied && context.mounted) {
                         showInfo(context, img.text == null ? 'Saved the image' : 'Saved the image. $copiedForSharing');
@@ -240,7 +275,10 @@ class ShareSaveImageButtons extends ConsumerWidget {
                     ImageSaveResult result;
                     try {
                       final img = await image(shareOriginOf(bc));
-                      if (img == null) return;
+                      if (img == null) {
+                        if (context.mounted) showInfo(context, imageNotReadyMessage);
+                        return;
+                      }
                       result = await ref.read(imageSaverProvider)(img);
                     } catch (_) {
                       result = const ImageSaveResult(ImageSaveOutcome.failed);

@@ -64,7 +64,7 @@ class _EntryListPageState extends ConsumerState<_EntryListPage> {
     return AdminPage(
       title: widget.title,
       page: widget.page,
-      floatingActionButton: FloatingActionButton.extended(
+      addAction: PageAddAction(
         onPressed: () => widget.onAdd(entries.value ?? []),
         icon: const Icon(Icons.add),
         label: Text(widget.addLabel),
@@ -80,7 +80,7 @@ class _EntryListPageState extends ConsumerState<_EntryListPage> {
               final rows = sorted.where((e) => widget.matches(e, _q)).toList();
               return ResponsiveCenter(
                 maxWidth: 860,
-                child: ListView(padding: const EdgeInsets.only(top: 8, bottom: 96), children: [
+                child: ListView(padding: EdgeInsets.only(top: 8, bottom: addActionListBottomPadding(context)), children: [
                   ?widget.header?.call(all, canEdit),
                   if (rows.isEmpty) EmptyState(icon: Icons.inbox_outlined, title: widget.emptyTitle, message: widget.emptyMessage),
                   for (var i = 0; i < rows.length; i++) widget.rowBuilder(context, rows[i], rows, i, canEdit),

@@ -127,9 +127,11 @@ Future<ProviderContainer> _pump(
   bool book = true,
   RouteEstimateRepository? ai,
   Map<String, dynamic> display = const <String, dynamic>{},
+  Brightness brightness = Brightness.light,
+  Size size = const Size(400, 860),
 }) async {
   SharedPreferences.setMockInitialValues({});
-  tester.view.physicalSize = const Size(400, 860);
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final container = ProviderContainer(
@@ -165,7 +167,7 @@ Future<ProviderContainer> _pump(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(theme: ThemeData(brightness: brightness), routerConfig: router),
     ),
   );
   for (var i = 0; i < 5; i++) {
@@ -250,6 +252,104 @@ void main() {
     expect(tester.getRect(bar).bottom, lessThanOrEqualTo(600));
   });
 
+  for (final b in Brightness.values) {
+    testWidgets('high demand: a labelled band that opens how much higher, the uplift by each price, the fare note '
+        '(${b.name})', (tester) async {
+      final handle = tester.ensureSemantics();
+      final ai = _SlowAi();
+      await _pump(tester, _Rides(), ai: ai, brightness: b);
+      ai.answer.complete((
+        estimate: const RouteEstimate(
+          distanceKm: 60,
+          durationMin: 90,
+          trend: FareTrend(direction: FareTrendDirection.up, fromFareRange: false, aiMin: 30, standardMin: 20),
+        ),
+        unavailable: false,
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      // The arrows are named.
+      expect(find.bySemanticsLabel(RegExp(r'High demand\. Heavy traffic')), findsWidgets);
+      // Each row: the uplift beside its price, from the fare with and
+      // without the traffic-aware basis.
+      for (final name in ['Teksi', 'GET XL']) {
+        final u = find.byKey(ValueKey('uplift-$name'));
+        expect(u, findsOneWidget);
+        expect(tester.widget<Text>(u).data, startsWith('+RM'));
+      }
+      expect(find.bySemanticsLabel(RegExp(r'High demand, \+RM')), findsWidgets);
+      // The fare line says it.
+      final note = tester.widget<Text>(find.byKey(const ValueKey('route-demand-note')));
+      expect(note.data, startsWith('Includes high demand +RM'));
+      expect(note.data, endsWith(tester.widget<Text>(find.byKey(const ValueKey('uplift-Teksi'))).data!.substring(1)));
+      // The band is a button with a label, opening how much higher.
+      expect(find.bySemanticsLabel('High demand, fare is higher. Fare details'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('high-demand')));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+        tester.widget<Text>(find.byKey(const ValueKey('demand-higher'))).data,
+        matches(RegExp(r'^Fares are \d+% higher right now because of demand')),
+      );
+      expect(tester.takeException(), isNull);
+      handle.dispose();
+    });
+  }
+
+  for (final size in const [Size(360, 640), Size(844, 390)]) {
+    testWidgets('band and promo bar both fit a short or sideways phone (${size.width.round()}x${size.height.round()})',
+        (tester) async {
+      final ai = _SlowAi();
+      await _pump(tester, _Rides(), ai: ai, size: size);
+      ai.answer.complete((
+        estimate: const RouteEstimate(
+          distanceKm: 60,
+          durationMin: 90,
+          trend: FareTrend(direction: FareTrendDirection.up, fromFareRange: true),
+        ),
+        unavailable: false,
+      ));
+      for (var i = 0; i < 6; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(tester.takeException(), isNull);
+      final promo = find.byKey(const ValueKey('promo-banner'));
+      if (promo.evaluate().isNotEmpty) {
+        // Both bars on screen, the band above the promo code.
+        final band = tester.getRect(find.byKey(const ValueKey('high-demand')));
+        expect(band.top, greaterThanOrEqualTo(0));
+        expect(band.bottom, lessThanOrEqualTo(tester.getRect(promo).top + 1));
+        // Its visible top; the foot tucks under the sheet.
+        await tester.tapAt(tester.getRect(promo).topCenter + const Offset(0, 12));
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(find.text('Promo code'), findsWidgets, reason: 'the promo code is still usable');
+      }
+    });
+  }
+
+  testWidgets('an up trend that does not raise the fare shows no uplift and no note', (tester) async {
+    final ai = _SlowAi();
+    await _pump(tester, _Rides(), ai: ai);
+    ai.answer.complete((
+      estimate: const RouteEstimate(
+        distanceKm: 1,
+        durationMin: 3,
+        trend: FareTrend(direction: FareTrendDirection.up, fromFareRange: true),
+      ),
+      unavailable: false,
+    ));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.byKey(const ValueKey('fare-trend-up')), findsWidgets);
+    expect(find.byKey(const ValueKey('uplift-Teksi')), findsNothing, reason: 'no made-up uplift');
+    expect(find.byKey(const ValueKey('route-demand-note')), findsNothing);
+  });
+
   testWidgets('fare trend arrows stand before every fare, and leave the one the rider changes', (tester) async {
     final ai = _SlowAi();
     await _pump(tester, _Rides(bidding: true), ai: ai);
@@ -304,7 +404,10 @@ void main() {
       final band = find.byKey(ValueKey(up ? 'high-demand' : 'low-demand'));
       expect(band, findsOneWidget);
       expect(find.byKey(ValueKey(up ? 'low-demand' : 'high-demand')), findsNothing);
-      expect(find.byKey(const ValueKey('promo-banner')), findsNothing);
+      // The promo bar stays, under the band (130).
+      expect(find.byKey(const ValueKey('demand-promo-bars')), findsOneWidget);
+      expect(find.byKey(const ValueKey('promo-banner')), findsOneWidget);
+      expect(tester.getRect(band).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('promo-banner'))).top + 1));
       await tester.tap(band);
       for (var i = 0; i < 6; i++) {
         await tester.pump(const Duration(milliseconds: 100));
@@ -449,10 +552,104 @@ void main() {
     expect(find.text(trafficUnavailableTitle), findsNothing);
   });
 
+  testWidgets('Where to & for how much? leads the sheet, over the vehicles, with two recent places', (tester) async {
+    await _pump(tester, _Rides(), book: false);
+    final search = find.byKey(const ValueKey('home-search'));
+    expect(search, findsOneWidget, reason: 'one search bar, not two');
+    expect(find.text('Where to & for how much?'), findsOneWidget);
+    expect(tester.getRect(search).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('vehicle-type-bar'))).top));
+    // Both recent places in view with the sheet all the way down, under the vehicles.
+    for (final p in ['Eco Majestic', 'KLCC']) {
+      final row = find.byKey(ValueKey('home-recent-$p'));
+      expect(tester.getRect(row).bottom, lessThanOrEqualTo(860));
+      expect(tester.getRect(row).top, greaterThan(tester.getRect(search).bottom));
+    }
+    // A recent place goes straight on to the confirm step, sheet still down.
+    await tester.tap(find.byKey(const ValueKey('home-recent-KLCC')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('confirm-address-card')), findsOneWidget);
+  });
+
+  testWidgets('on a small phone at large text the search bar and both recent places still show', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pump(tester, _Rides(), book: false);
+    tester.view.physicalSize = const Size(375, 667);
+    await _settle(tester);
+    expect(tester.takeException(), isNull);
+    expect(tester.getRect(find.byKey(const ValueKey('home-search'))).bottom, lessThanOrEqualTo(667));
+    expect(tester.getRect(find.byKey(const ValueKey('home-recent-KLCC'))).bottom, lessThanOrEqualTo(667));
+  });
+
+  testWidgets("Display Settings' switches still hide the search bar and the recent places", (tester) async {
+    await _pump(tester, _Rides(), book: false, display: const {'searchBar': false, 'recentLocations': false});
+    expect(find.byKey(const ValueKey('home-search')), findsNothing);
+    // The plain Where to? row stands in for it, still first.
+    final where = find.byKey(const ValueKey('home-where-to'));
+    expect(where, findsOneWidget);
+    expect(tester.getRect(where).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('vehicle-type-bar'))).top));
+    expect(find.byKey(const ValueKey('home-recent-KLCC')), findsNothing);
+  });
+
+  testWidgets('on its side at large text the whole route card shows above the confirm sheet', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pump(tester, _Rides());
+    tester.view.physicalSize = const Size(852, 393);
+    tester.view.padding = const FakeViewPadding(left: 59, right: 59, bottom: 21);
+    tester.view.viewPadding = const FakeViewPadding(left: 59, right: 59, bottom: 21);
+    await _settle(tester);
+    await tester.pumpAndSettle();
+    final card = tester.getRect(find.byKey(const ValueKey('confirm-address-card')));
+    final sheetTop = tester.getRect(find.byKey(const ValueKey('map-sheet-handle'))).top;
+    expect(card.bottom, lessThanOrEqualTo(sheetTop), reason: 'the route card clear of the sheet');
+  });
+
+  testWidgets('the Entrance chip answers a screen reader; the keypad hints, takes digits only, and clears', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await _pump(tester, _Rides());
+    final chip = find.bySemanticsLabel('Set entrance');
+    expect(chip, findsOneWidget);
+    tester.semantics.tap(find.semantics.byLabel('Set entrance'));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('entrance-hint')), findsOneWidget);
+    expect(find.text('ABC'), findsNothing);
+    expect(find.byKey(const ValueKey('entrance-clear')), findsNothing, reason: 'nothing to clear yet');
+    await tester.tap(find.byKey(const ValueKey('entrance-key-4')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('entrance-hint')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('entrance-done')));
+    await _settle(tester);
+    expect(find.text('Entrance 4'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('confirm-entrance')));
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('entrance-clear')));
+    await _settle(tester);
+    expect(find.text('Entrance 4'), findsNothing);
+    expect(find.text('Entrance'), findsOneWidget);
+    semantics.dispose();
+  });
+
+  testWidgets("a vehicle's fare details sheet is as tall as what it holds", (tester) async {
+    await _pump(tester, _Rides(), book: false);
+    await tester.tap(find.byKey(const ValueKey('vehicle-type-GET XL')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('vehicle-info-GET XL')));
+    await tester.pumpAndSettle();
+    final sheet = tester.getRect(find.byType(BottomSheet));
+    final ok = tester.getRect(find.byKey(const ValueKey('fare-info-ok')));
+    expect(sheet.top, greaterThan(860 * 0.2), reason: 'not full height');
+    expect(sheet.bottom - ok.bottom, lessThan(80), reason: 'no empty space under OK');
+  });
+
   testWidgets('the main screen opens with its sheet fully down', (tester) async {
     await _pump(tester, _Rides(), book: false);
     final top = tester.getTopLeft(find.byKey(const ValueKey('map-sheet-handle'))).dy;
-    expect(top, greaterThan(860 * (1 - 0.22) - 24), reason: 'at its lowest (22%), not half way up');
+    // At its lowest: down to the two recent places under the search bar
+    // and the vehicles, not half way up.
+    expect(top, greaterThan(860 * 0.55), reason: 'at its lowest, not half way up');
+    final second = tester.getRect(find.byKey(const ValueKey('home-recent-KLCC')));
+    expect(second.bottom, lessThanOrEqualTo(860), reason: 'the second recent place shows whole');
   });
 
   testWidgets('the route is framed between the address card and the bar on the sheet', (tester) async {
@@ -871,6 +1068,13 @@ void main() {
     expect(find.text('Find a driver'), findsNothing);
     expect(history.stack.markers, isEmpty);
     expect(history.moves, isEmpty, reason: 'the Back already took the entry off');
+    // Back in the route search, on the destination picked before.
+    final field = find.byKey(const ValueKey('place-search-field'));
+    expect(field, findsOneWidget);
+    expect(tester.widget<TextField>(field).controller!.text, 'KLCC');
+    await tester.tap(find.byKey(const ValueKey('place-search-close')));
+    await _settle(tester);
+    expect(field, findsNothing);
 
     // Left by the back arrow: its entry is taken off.
     await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, -300));
@@ -884,6 +1088,7 @@ void main() {
     await _settle(tester);
     expect(history.stack.markers, isEmpty);
     expect(history.moves, [-1]);
+    expect(find.byKey(const ValueKey('place-search-field')), findsOneWidget, reason: 'the arrow does the same');
   });
 
   for (final bidding in const [true, false]) {

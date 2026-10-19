@@ -12,6 +12,26 @@ final ticketsProvider = FutureProvider.autoDispose<List<SupportTicket>>(
   (ref) => ref.watch(accountRepositoryProvider).tickets(),
 );
 
+/// The support list's clock (pinned in tests).
+final supportClockProvider = Provider<DateTime Function()>((_) => DateTime.now);
+
+/// How long a ticket with nothing in it stays on the list.
+const emptySupportTicketGrace = Duration(minutes: 30);
+
+/// Whether the support list shows [t]: not a ticket that never got a
+/// message and is older than [emptySupportTicketGrace]. A new chat only
+/// makes its ticket with its first message, but a first send that failed
+/// after the ticket was made (offline, an upload refused) left one behind,
+/// counted as Open; users can't delete tickets, so the list leaves it out
+/// (the next "Chat with us" still reuses it). Removing them for good needs
+/// a migration.
+bool supportTicketListed(SupportTicket t, DateTime now) {
+  final empty = (t.raw['last_message_at'] == null) && (t.lastMessage ?? '').trim().isEmpty;
+  if (!empty) return true;
+  final made = DateTime.tryParse('${t.raw['created_at'] ?? ''}');
+  return made == null || now.difference(made) < emptySupportTicketGrace;
+}
+
 /// The way into the help assistant, above the support chats: most questions
 /// have an answer already.
 class HelpAssistantCard extends StatelessWidget {
@@ -76,7 +96,10 @@ class SupportScreen extends ConsumerWidget {
           child: AsyncView(
             value: ref.watch(ticketsProvider),
             onRetry: () => ref.invalidate(ticketsProvider),
-            data: (tickets) => tickets.isEmpty
+            data: (all) {
+              final now = ref.read(supportClockProvider)();
+              final tickets = all.where((t) => supportTicketListed(t, now)).toList();
+              return tickets.isEmpty
                 ? const EmptyState(
                     icon: Icons.support_agent,
                     title: 'How can we help?',
@@ -110,7 +133,8 @@ class SupportScreen extends ConsumerWidget {
                           ),
                       ]),
                     ),
-                  ]),
+                  ]);
+            },
           ),
         ),
       ]),

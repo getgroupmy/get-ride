@@ -98,6 +98,17 @@ class HistoryMonth {
   int get hashCode => Object.hash(year, month);
 }
 
+/// The months before the menu's [shown] most recent ones, back to the one
+/// holding [first] (the account's first transaction), newest first, as
+/// "March 2025". Empty when [first] is null or within the shown months.
+List<HistoryMonth> olderHistoryMonths(DateTime now, DateTime? first, {int shown = 6}) {
+  if (first == null) return const [];
+  final f = first.toLocal();
+  final span = (now.year - f.year) * 12 + now.month - f.month + 1;
+  if (span <= shown) return const [];
+  return historyMonths(now, count: span).sublist(shown);
+}
+
 /// This month and the [count] - 1 before it, newest first: "This Month",
 /// "Last Month", then "March 2026".
 List<HistoryMonth> historyMonths(DateTime now, {int count = 6}) => [

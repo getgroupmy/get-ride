@@ -574,6 +574,11 @@ List<String> describeMeterLeave(MeterLeaveConfig? config) {
 const meterSettingsPriority = ['suburb', 'city', 'state', 'country', 'master'];
 const meterSettingsLevels = ['master', 'country', 'state', 'city', 'suburb'];
 const meterSourceModes = ['gps', 'gps+obd', 'obd'];
+
+/// What happens right after a TEKSI driver signs in (`meter_at_sign_in`,
+/// migration 0243): `off` leaves it to [MeterProfile.autoLaunch], `ask` asks
+/// the driver, `always` turns the meter on at every sign-in.
+const meterAtSignInModes = ['off', 'ask', 'always'];
 const meterDistanceModes = ['block', 'per_km', 'off'];
 const meterTimeModes = ['block', 'per_minute', 'per_second', 'off'];
 const meterChargeModes = ['max', 'sum'];
@@ -623,6 +628,7 @@ class MeterProfile {
     required this.allowStartWithoutOdometer,
     required this.readOdometer,
     required this.autoLaunch,
+    this.meterAtSignIn = 'off',
     required this.leave,
     required this.panels,
     required this.currency,
@@ -651,6 +657,9 @@ class MeterProfile {
   final bool allowStartWithoutOdometer;
   final bool readOdometer;
   final bool autoLaunch;
+
+  /// One of [meterAtSignInModes].
+  final String meterAtSignIn;
   final MeterLeaveConfig leave;
   final MeterPanels panels;
   final String currency;
@@ -679,6 +688,7 @@ class MeterProfile {
     bool? allowStartWithoutOdometer,
     bool? readOdometer,
     bool? autoLaunch,
+    String? meterAtSignIn,
     MeterLeaveConfig? leave,
     MeterPanels? panels,
     String? currency,
@@ -706,6 +716,7 @@ class MeterProfile {
         allowStartWithoutOdometer: allowStartWithoutOdometer ?? this.allowStartWithoutOdometer,
         readOdometer: readOdometer ?? this.readOdometer,
         autoLaunch: autoLaunch ?? this.autoLaunch,
+        meterAtSignIn: meterAtSignIn ?? this.meterAtSignIn,
         leave: leave ?? this.leave,
         panels: panels ?? this.panels,
         currency: currency ?? this.currency,
@@ -785,6 +796,7 @@ const meterOptionalColumnGroups = [
   MeterOptionalColumnGroup('auto_launch', '0084', 'Open the meter on launch', ['auto_launch']),
   MeterOptionalColumnGroup('leave', '0085', 'Leave the meter', meterLeaveColumns),
   MeterOptionalColumnGroup('leave_app', '0086', 'Dispatch app & store links', meterLeaveAppColumns),
+  MeterOptionalColumnGroup('meter_at_sign_in', '0243', 'Meter at sign-in', ['meter_at_sign_in']),
 ];
 
 String? describeMissingMeterColumns(List<String> groupIds) {
@@ -803,7 +815,7 @@ const _panelColumns = [
 
 const meterSettingsColumnList = [
   'id', 'level', 'country', 'state', 'city', 'suburb', 'label', 'source_mode',
-  'allow_start_without_odometer', 'read_odometer', 'auto_launch',
+  'allow_start_without_odometer', 'read_odometer', 'auto_launch', 'meter_at_sign_in',
   ...meterLeaveColumns, ...meterLeaveAppColumns, ..._panelColumns,
   'currency', 'flag_fare', 'flag_distance_m', 'minimum_fare', 'distance_mode', 'distance_block_m',
   'distance_block_charge', 'per_km_charge', 'time_mode', 'time_block_s', 'time_block_charge',
@@ -891,6 +903,7 @@ MeterProfile? normalizeMeterProfile(Object? raw) {
     allowStartWithoutOdometer: _bool(r['allow_start_without_odometer'], d.allowStartWithoutOdometer),
     readOdometer: _bool(r['read_odometer'], d.readOdometer),
     autoLaunch: _bool(r['auto_launch'], d.autoLaunch),
+    meterAtSignIn: _oneOf(r['meter_at_sign_in'], meterAtSignInModes, d.meterAtSignIn),
     leave: normalizeMeterLeave(MeterLeaveConfig(
       passenger: '${r['leave_passenger_action'] ?? ''}',
       ehailing: '${r['leave_ehailing_action'] ?? ''}',
@@ -960,6 +973,7 @@ Map<String, dynamic> meterProfileToRow(MeterProfile p) {
     'allow_start_without_odometer': p.allowStartWithoutOdometer,
     'read_odometer': p.readOdometer,
     'auto_launch': p.autoLaunch,
+    'meter_at_sign_in': p.meterAtSignIn,
     'leave_passenger_action': leave.passenger,
     'leave_ehailing_action': leave.ehailing,
     'leave_ehailing_url': leave.ehailingUrl,

@@ -39,7 +39,7 @@ String pngFileName(String base) {
 /// What to tell the person after a save; null when the share sheet is
 /// already on screen and says it itself.
 String? imageSaveMessage(ImageSaveResult r) => switch (r.outcome) {
-  ImageSaveOutcome.downloaded => 'Image downloaded',
+  ImageSaveOutcome.downloaded => 'Image saved to your downloads',
   ImageSaveOutcome.savedToFile => r.path == null ? 'Image saved' : 'Image saved to ${r.path}',
   ImageSaveOutcome.shareSheet => null,
   ImageSaveOutcome.failed => "Couldn't save the image. Try Share instead.",

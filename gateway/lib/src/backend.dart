@@ -6,8 +6,9 @@ import 'core.dart';
 import 'settings.dart';
 
 abstract class GatewayBackend {
-  /// Says this phone is here and can send SMS; returns its device row id.
-  Future<String> heartbeat({required String deviceId, String? label, String? simNumber, String? appVersion});
+  /// Says this phone is here and can send SMS; returns its device row id and
+  /// the longest quiet wait between asks the admin set (migration 0236).
+  Future<GatewayHeartbeat> heartbeat({required String deviceId, String? label, String? simNumber, String? appVersion});
 
   /// The next jobs routed to this gateway, marked as sending.
   Future<List<SmsJob>> claim(String device, {int limit = 10});
@@ -35,14 +36,19 @@ class SupabaseGatewayBackend implements GatewayBackend {
   }
 
   @override
-  Future<String> heartbeat({required String deviceId, String? label, String? simNumber, String? appVersion}) async {
+  Future<GatewayHeartbeat> heartbeat({
+    required String deviceId,
+    String? label,
+    String? simNumber,
+    String? appVersion,
+  }) async {
     final row = await _db.rpc(
       'gateway_key_heartbeat',
       params: {'p_key': _k, 'p_label': label, 'p_sim_number': simNumber, 'p_app_version': appVersion},
     );
-    final id = row is Map ? '${row['id'] ?? ''}' : '';
-    if (id.isEmpty) throw StateError('NOT_A_GATEWAY');
-    return id;
+    final hb = GatewayHeartbeat.fromRow(row);
+    if (hb.device.isEmpty) throw StateError('NOT_A_GATEWAY');
+    return hb;
   }
 
   @override

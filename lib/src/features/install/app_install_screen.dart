@@ -57,11 +57,20 @@ class AppInstallScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  data: (b) => Column(
+                  // [appBuildForDevice]: the APK this phone runs.
+                  data: (latest) {
+                    final b = appBuildForDevice(ref, latest);
+                    return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (b.available) ...[
-                        Text(appBuildSummary(b), textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
+                        for (final (i, line) in appBuildSummaryLines(b).indexed)
+                          Text(
+                            line,
+                            key: ValueKey('install-summary-$i'),
+                            textAlign: TextAlign.center,
+                            style: i == 0 ? theme.textTheme.titleMedium : theme.textTheme.bodyMedium,
+                          ),
                         const SizedBox(height: 16),
                         if (b.installable) AppInstallButton(app: b),
                       ],
@@ -71,7 +80,11 @@ class AppInstallScreen extends ConsumerWidget {
                         key: const ValueKey('app-install-hint'),
                         style: theme.textTheme.bodyMedium,
                       ),
-                      if (b.available) ...[const SizedBox(height: 8), AppDownloadButton(app: b)],
+                      if (b.available) ...[
+                        const SizedBox(height: 8),
+                        AppDownloadButton(app: b),
+                        AppOtherApkLink(app: b),
+                      ],
                       // On a computer: the phone scans this page's own address.
                       if (wide && b.installable) ...[
                         const SizedBox(height: 24),
@@ -99,7 +112,8 @@ class AppInstallScreen extends ConsumerWidget {
                         ),
                       ],
                     ],
-                  ),
+                  );
+                  },
                 ),
                 const SizedBox(height: 24),
                 TextButton(

@@ -19,6 +19,7 @@ import '../core/installed_app.dart';
 import '../core/sign_in_security.dart';
 import '../providers.dart';
 import 'live_tables.dart';
+import 'meter_session_store.dart';
 
 /// The admin's switches; all off when they can't be read (an older
 /// database, no signal), so nothing is offered that might not work.
@@ -123,6 +124,7 @@ class SessionGuard {
     _signingOut = true;
     signedOutElsewhere.value = true;
     unwatch();
+    await MeterSessionStore.clear();
     try {
       await _db.auth.signOut(scope: SignOutScope.local);
     } catch (_) {

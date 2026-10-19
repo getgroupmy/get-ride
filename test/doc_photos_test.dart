@@ -189,11 +189,16 @@ void main() {
       var signs = 0;
       final db = _client((r) async {
         signs++;
-        if (r.url.path.contains('missing')) {
-          return http.Response('{"statusCode":"404","error":"not_found","message":"Object not found"}', 400,
-              request: r);
-        }
-        return http.Response('{"signedURL":"/object/sign/vehicle-documents/v1/a.jpg.thumb.jpg?token=t"}', 200,
+        // One createSignedUrls call per bucket; a missing file is a per-path error.
+        final paths = ((jsonDecode(r.body) as Map)['paths'] as List).cast<String>();
+        return http.Response(
+            jsonEncode([
+              for (final p in paths)
+                p.contains('missing')
+                    ? {'path': p, 'error': 'Either the object does not exist or you do not have access to it', 'signedURL': null}
+                    : {'path': p, 'signedURL': '/object/sign/vehicle-documents/$p?token=t'},
+            ]),
+            200,
             request: r);
       });
       final url = await signedThumbUrl('$_base/vehicle-documents/v1/a.jpg', client: db);

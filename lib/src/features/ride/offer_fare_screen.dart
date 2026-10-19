@@ -5,6 +5,7 @@ import '../../core/fare_offer.dart';
 import '../../core/payment_types.dart';
 import '../../widgets/common.dart' show mutedTextColor;
 import 'confirm_parts.dart';
+import '../../widgets/chip_button.dart';
 
 /// What "Offer your fare" hands back: the fare and the choices made on it,
 /// and whether the rider asked to find a driver from there.
@@ -326,7 +327,7 @@ class _OfferFareScreenState extends State<OfferFareScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: t.textTheme.bodyLarge,
                     ),
-                    trailing: ActionChip(
+                    trailing: ActionChipButton(
                       key: const ValueKey('offer-fare-entrance'),
                       label: Text(_entrance.isEmpty ? 'Entrance' : 'Entrance $_entrance'),
                       shape: const StadiumBorder(),
