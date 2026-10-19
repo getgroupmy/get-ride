@@ -68,7 +68,7 @@ class RegionScopePicker extends ConsumerWidget {
       ));
     }
     if (fields.isEmpty) {
-      fields.add(const Text('No regions yet. Add countries in Admin → Country / States / Cities.'));
+      fields.add(const Text('No regions yet. Add countries in Admin, under Country / States / Cities.'));
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: fields);
   }
