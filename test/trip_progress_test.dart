@@ -495,6 +495,34 @@ void main() {
       });
     }
 
+    for (final b in Brightness.values) {
+      for (final status in ['arrived', 'on_trip']) {
+        testWidgets('412x915 at 1.3x, $status: the destination rests above the action bar, and scrolls clear of it '
+            '(${b.name})', (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          await pump(tester, brightness: b);
+          tester.view.physicalSize = const Size(412, 915);
+          rows.add(ride(status, extra: {'passengers': 1, 'payment_mode': 'Cash'}));
+          await tester.pump();
+          await tester.pump();
+          await tester.pumpAndSettle();
+          final footer = find.byKey(const ValueKey('trip-footer'));
+          final drop = find.byKey(const ValueKey('trip-drop'));
+          expect(drop, findsOneWidget);
+          expect(tester.getRect(drop).bottom, lessThanOrEqualTo(tester.getRect(footer).top + 1), reason: 'at rest');
+          // Pulled all the way up and scrolled to the end, the last of the
+          // sheet still ends above the bar (its height plus the safe area).
+          await tester.fling(drop, const Offset(0, -600), 2000);
+          await tester.pumpAndSettle();
+          await tester.fling(drop, const Offset(0, -2000), 2000);
+          await tester.pumpAndSettle();
+          expect(tester.getRect(drop).bottom, lessThanOrEqualTo(tester.getRect(footer).top + 1), reason: 'scrolled');
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
     testWidgets('the sheet scrolls only once fully expanded, and only when more is below', (tester) async {
       await pump(tester);
       tester.view.physicalSize = const Size(400, 480);

@@ -181,6 +181,10 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             controller: _reason,
             maxLength: 300,
             maxLines: 2,
+            // Tapped where it peeks out above the pinned buttons (or the
+            // keyboard), the whole field scrolls into view, its second
+            // line and counter too, not just the caret.
+            scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
             decoration: const InputDecoration(labelText: 'Why are you leaving? (optional)'),
           ),
           const SizedBox(height: 8),

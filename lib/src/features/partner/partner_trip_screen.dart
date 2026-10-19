@@ -1027,9 +1027,16 @@ class _CollectCard extends ConsumerWidget {
               key: const ValueKey('trip-collect-other'),
             ),
         ],
+        // The sum at least as large as its parts, and bold (a ListTile's
+        // trailing text is otherwise the small label size).
         ListTile(
-          title: const Text('Total due'),
-          trailing: Text(formatMoney(r.totalDue, r.currency)),
+          key: const ValueKey('trip-collect-total'),
+          title: Text('Total due', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          trailing: Text(
+            formatMoney(r.totalDue, r.currency),
+            key: const ValueKey('trip-collect-total-amount'),
+            style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
         ),
         if (coins > 0)
           ListTile(

@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/widgets/plate_chip.dart';
 import 'package:get_ride/src/core/ride_share.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get_ride/src/data/fare_coin_store.dart';
@@ -134,7 +135,13 @@ void main() {
   group('the shared page', () {
     late _Geo geo;
     late List<String> sent, dialled;
-    Future<_FakeRides> pump(WidgetTester tester, Map<String, dynamic>? view, {Size size = const Size(500, 1000)}) async {
+    Future<_FakeRides> pump(
+      WidgetTester tester,
+      Map<String, dynamic>? view, {
+      Size size = const Size(500, 1000),
+      bool dark = false,
+      double textScale = 1,
+    }) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -152,7 +159,14 @@ void main() {
             return true;
           }),
         ],
-        child: const MaterialApp(home: SharedRideScreen(token: _token)),
+        child: MaterialApp(
+          theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+            child: child!,
+          ),
+          home: const SharedRideScreen(token: _token),
+        ),
       ));
       await tester.pump();
       await tester.pump();
@@ -172,7 +186,9 @@ void main() {
     testWidgets('shows the ride, the driver and the car, read-only', (tester) async {
       await pump(tester, _view());
       expect(find.text('Siti is on the way to the pickup'), findsOneWidget);
-      expect(find.text('★ 4.8'), findsOneWidget);
+      expect(find.byKey(const ValueKey('shared-rating')), findsOneWidget);
+      expect(find.text('4.8'), findsOneWidget);
+      expect(find.textContaining('★'), findsNothing, reason: 'the star icon, as Your ride');
       expect(find.text('WXY 1'), findsOneWidget);
       expect(find.byKey(const ValueKey('shared-car')), findsOneWidget);
       expect(find.text('Proton Saga'), findsOneWidget);
@@ -217,8 +233,36 @@ void main() {
       await pump(tester, _view(car: true));
       expect(find.byKey(const ValueKey('shared-plate')), findsOneWidget);
       expect(find.text('White Perodua Myvi'), findsOneWidget);
-      expect(find.text('Colour: white'), findsOneWidget);
+      expect(find.text('Colour: white'), findsNothing, reason: 'the car already starts with its colour');
     });
+
+    testWidgets('a colour the car name does not lead with keeps its line', (tester) async {
+      await pump(tester, {..._view(), 'vehicle_color': 'red', 'partner_vehicle': 'Axia (red)'});
+      expect(find.text('Axia (red)'), findsOneWidget);
+      expect(find.text('Colour: red'), findsOneWidget);
+    });
+
+    test('modelStatesColour ignores case and spaces', () {
+      expect(modelStatesColour('White Perodua Bezza', 'white'), isTrue);
+      expect(modelStatesColour(' white perodua', 'WHITE '), isTrue);
+      expect(modelStatesColour('Perodua Bezza', 'white'), isFalse);
+      expect(modelStatesColour('Perodua', ''), isFalse);
+    });
+
+    for (final dark in [false, true]) {
+      testWidgets('412x915 at 1.3x: star icon rating, plate chip, one colour mention (${dark ? 'dark' : 'light'})',
+          (tester) async {
+        await pump(tester, _view(car: true), size: const Size(412, 915), dark: dark, textScale: 1.3);
+        expect(find.descendant(of: find.byKey(const ValueKey('shared-rating')), matching: find.byIcon(Icons.star)),
+            findsOneWidget);
+        expect(find.textContaining('★'), findsNothing);
+        expect(find.descendant(of: find.byKey(const ValueKey('shared-plate')), matching: find.text('WXY 1')),
+            findsOneWidget);
+        expect(find.textContaining('Colour:'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
 
     testWidgets('the trip\'s line, and the driver\'s dashed line to the pickup while on the way', (tester) async {
       await pump(tester, _view());

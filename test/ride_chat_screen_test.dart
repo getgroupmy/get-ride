@@ -287,6 +287,28 @@ void main() {
     }
   }
 
+  // Web round 32: the quick replies wrap onto more rows (no line cut off at
+  // the right edge to fade), for the passenger's and the driver's lines.
+  for (final brightness in Brightness.values) {
+    for (final me in const ['rider', 'driver']) {
+      testWidgets('412x915 at 1.3x the $me\'s quick replies are all on screen (${brightness.name})', (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await pumpChat(tester, me: me, status: 'accepted', brightness: brightness, size: const Size(412, 915));
+        await tester.pump();
+        final row = tester.getRect(find.byKey(const ValueKey('ride-chat-quick')));
+        expect(find.descendant(of: find.byKey(const ValueKey('ride-chat-quick')), matching: find.byType(Scrollable)),
+            findsNothing, reason: 'nothing to scroll sideways');
+        for (final line in rideQuickReplies(me == 'rider' ? RideChatRole.rider : RideChatRole.partner)) {
+          final rect = tester.getRect(find.byKey(ValueKey('quick-$line')));
+          expect(rect.left, greaterThanOrEqualTo(row.left));
+          expect(rect.right, lessThanOrEqualTo(412), reason: '"$line" wholly on screen');
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   for (final brightness in Brightness.values) {
     testWidgets('a long name wraps to two lines in the app bar; Call names them in full (${brightness.name})',
         (tester) async {

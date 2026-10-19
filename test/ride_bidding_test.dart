@@ -377,6 +377,50 @@ void main() {
       expect(tester.getRect(overScreen).top, lessThan(300), reason: 'at the top, under the title');
     });
 
+    for (final dark in [false, true]) {
+      testWidgets('412x915 at 1.3x: under "Choose a driver" the sheet header stands down '
+          '(${dark ? 'dark' : 'light'})', (tester) async {
+        tester.view.physicalSize = const Size(412, 915);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final rows = StreamController<RideRequest>();
+        addTearDown(rows.close);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              rideRepositoryProvider.overrideWithValue(_FakeRides()),
+              rideStreamProvider.overrideWith((ref, id) => rows.stream),
+            ],
+            child: MaterialApp(
+              theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)),
+                child: child!,
+              ),
+              home: const RideTrackingScreen(requestId: 'r1'),
+            ),
+          ),
+        );
+        bool headerShown() =>
+            tester.widget<Visibility>(find.byKey(const ValueKey('search-header-slot'))).visible;
+        rows.add(ride());
+        await tester.pump();
+        await tester.pump();
+        expect(headerShown(), isTrue, reason: 'no offers yet: the sheet says what is happening');
+        rows.add(ride(offered: 25, partner: _other, partnerName: 'Ali'));
+        await tester.pump();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.byType(ChooseDriverOverlay), findsOneWidget);
+        expect(headerShown(), isFalse);
+        // Only the overlay's "All drivers verified" is there to see or hear.
+        expect(find.text('All drivers verified').hitTestable(), findsOneWidget);
+        final slot = tester.widget<Visibility>(find.byKey(const ValueKey('search-header-slot')));
+        expect(slot.maintainSemantics, isFalse, reason: 'nor read out twice');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('no offer card or raise once accepted', (tester) async {
       await pump(tester, ride(status: 'accepted', partner: _other, partnerName: 'Ali'));
       expect(find.byKey(const ValueKey('ride-offer')), findsNothing);

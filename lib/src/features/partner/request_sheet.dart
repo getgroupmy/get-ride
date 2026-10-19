@@ -216,7 +216,25 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
   Widget _mapPart(BuildContext context) {
     final r = widget.request;
     final a = _pickup, b = _drop;
-    return Stack(children: [
+    // "Ride request" on a solid band above the map, so large text never
+    // lands on the tiles or the pickup chip.
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const ColoredBox(
+        key: ValueKey('request-title-band'),
+        color: Color(0xFF151515),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Text(
+            'Ride request',
+            key: ValueKey('request-sheet-title'),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ),
+      Expanded(child: Stack(children: [
       Positioned.fill(
         child: RideMap(
           controller: _map,
@@ -226,8 +244,8 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           dotPins: true,
           route: _trip,
           framed: [?widget.me, ?a, ?b],
-          // Room for "Ride request" and the chips standing over the pins.
-          fitTop: 120,
+          // Room for the chips standing over the pins.
+          fitTop: 80,
           extraMarkers: [
             if (a != null && widget.awayKm != null)
               _chip(
@@ -255,41 +273,6 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           ],
         ),
       ),
-      // "Ride request" over the map, as inDrive's, on a shade that keeps it
-      // legible over any tiles.
-      const Positioned(
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 64,
-        child: IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x99000000), Color(0x00000000)],
-              ),
-            ),
-          ),
-        ),
-      ),
-      const Positioned(
-        top: 12,
-        left: 0,
-        right: 0,
-        child: Text(
-          'Ride request',
-          key: ValueKey('request-sheet-title'),
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            shadows: [Shadow(blurRadius: 6, color: Colors.black87)],
-          ),
-        ),
-      ),
       Positioned(
         right: 12,
         top: 0,
@@ -300,6 +283,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
           _round(Icons.remove, 'Zoom out', () => _zoom(-1)),
         ]),
       ),
+    ])),
     ]);
   }
 

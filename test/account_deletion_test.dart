@@ -110,6 +110,55 @@ void main() {
       });
     }
 
+    for (final dark in [false, true]) {
+      for (final keyboard in [0.0, 336.0]) {
+        testWidgets('412x915 at 1.3x: the reason field is never under "Delete my account" '
+            '(${dark ? 'dark' : 'light'}, ${keyboard > 0 ? 'keyboard up' : 'no keyboard'})', (tester) async {
+          tester.view.devicePixelRatio = 1;
+          tester.view.physicalSize = const Size(412, 915);
+          addTearDown(tester.view.reset);
+          await tester.pumpWidget(
+            MediaQuery(
+              data: MediaQueryData(
+                size: const Size(412, 915),
+                textScaler: const TextScaler.linear(1.3),
+                viewInsets: EdgeInsets.only(bottom: keyboard),
+              ),
+              child: host(const AccountDeletionCheck(bookings: 2), theme: dark ? ThemeData.dark() : null),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final field = find.byKey(const ValueKey('delete-reason'));
+          final scroll = find.byType(SingleChildScrollView).first;
+          final viewport = tester.getRect(scroll);
+          // Scrolled so that only the top of the field peeks out above the
+          // bar, then tapped there, as a thumb would.
+          final position = tester.state<ScrollableState>(
+            find.descendant(of: scroll, matching: find.byType(Scrollable)).first,
+          ).position;
+          final peek = tester.getRect(field).top - (viewport.bottom - 24);
+          position.jumpTo((position.pixels + peek).clamp(0.0, position.maxScrollExtent));
+          await tester.pump();
+          expect(tester.getRect(field).bottom, greaterThan(viewport.bottom), reason: 'cut off by the bar to start with');
+          await tester.tapAt(Offset(tester.getRect(field).center.dx, viewport.bottom - 12));
+          await tester.pumpAndSettle();
+          final rect = tester.getRect(field);
+          expect(rect.top, greaterThanOrEqualTo(viewport.top));
+          expect(rect.bottom, lessThanOrEqualTo(viewport.bottom), reason: 'the whole field in view');
+          expect(rect.bottom, lessThanOrEqualTo(915 - keyboard));
+          if (keyboard == 0) {
+            final bar = tester.getRect(find.ancestor(
+              of: find.byKey(const ValueKey('delete-continue')),
+              matching: find.byWidgetPredicate((w) => w is Material && w.elevation == 4),
+            ));
+            expect(viewport.bottom, lessThanOrEqualTo(bar.top), reason: 'the page ends where the bar begins');
+            expect(rect.bottom, lessThanOrEqualTo(bar.top));
+          }
+          expect(tester.takeException(), isNull);
+        });
+      }
+    }
+
     testWidgets('not during a ride, in dark mode too', (tester) async {
       await tester.pumpWidget(host(const AccountDeletionCheck(activeRide: true), theme: ThemeData.dark()));
       await tester.pumpAndSettle();

@@ -1,0 +1,89 @@
+// Web UX round 32 (161) at 412x915 and 1.3x text, light and dark: the
+// driver's Ride request sheet sets its title on a solid band above the map,
+// so it never lands on the tiles or the pickup-distance chip.
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/request_viewers.dart';
+import 'package:get_ride/src/data/models.dart';
+import 'package:get_ride/src/data/ride_repository.dart';
+import 'package:get_ride/src/features/partner/request_sheet.dart';
+import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/ride_map.dart';
+import 'package:latlong2/latlong.dart';
+
+class _Rides implements RideRepository {
+  @override
+  Future<RequestViewers> viewers(String requestId) async => RequestViewers.none;
+
+  @override
+  Future<void> markViewed(String requestId) async {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+RideRequest _open() => RideRequest({
+  'id': 'r1',
+  'rider_id': 'rider',
+  'status': 'open',
+  'fare': 20,
+  'currency': 'MYR',
+  'pickup_name': 'KLCC',
+  'pickup_lat': 3.1579,
+  'pickup_lng': 101.7116,
+  'drop_name': 'KL Sentral',
+  'drop_lat': 3.1340,
+  'drop_lng': 101.6860,
+  'distance_km': 6.4,
+  'duration_min': 14,
+  'created_at': DateTime.now().toUtc().toIso8601String(),
+});
+
+void main() {
+  for (final dark in [false, true]) {
+    testWidgets('161: "Ride request" on a solid band, the map below it (${dark ? 'dark' : 'light'})', (tester) async {
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [rideRepositoryProvider.overrideWithValue(_Rides())],
+          child: MaterialApp(
+            theme: dark ? ThemeData.dark() : ThemeData.light(),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: const TextScaler.linear(1.3)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: RideRequestSheet(
+                request: _open(),
+                shown: Duration.zero,
+                now: DateTime.now(),
+                me: const LatLng(3.165, 101.72),
+                awayKm: 1.2,
+                onAccept: () async {},
+                onSkip: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      final title = tester.getRect(find.byKey(const ValueKey('request-sheet-title')));
+      final band = find.byKey(const ValueKey('request-title-band'));
+      expect(find.descendant(of: band, matching: find.byKey(const ValueKey('request-sheet-title'))), findsOneWidget);
+      expect(tester.widget<ColoredBox>(band).color.a, 1.0, reason: 'solid, not a shade over the tiles');
+      final map = tester.getRect(find.byType(RideMap));
+      expect(map.top, greaterThanOrEqualTo(tester.getRect(band).bottom), reason: 'the map starts below the title');
+      expect(title.bottom, lessThanOrEqualTo(map.top));
+      final chip = find.byKey(const ValueKey('request-chip-pickup'));
+      if (chip.evaluate().isNotEmpty) {
+        expect(tester.getRect(chip).overlaps(title), isFalse, reason: 'the pickup chip never under the title');
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+}

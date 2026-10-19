@@ -168,7 +168,10 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
                                 // Not submitted yet: a draft, resumed from its next step.
                                 : Chip(
                                     key: ValueKey('vehicle-draft-${v['id']}'),
-                                    label: Text('Draft · next: ${step.label}'),
+                                    // Short, and free to wrap: beside a delete
+                                    // button and a chevron at large text, a
+                                    // one-line label was clipped.
+                                    label: Text('Draft · ${step.label} next', softWrap: true, maxLines: 4),
                                     visualDensity: VisualDensity.compact,
                                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                                   ),

@@ -49,6 +49,7 @@ import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
 import 'shared_ride_screen.dart' show shareRide;
 import '../../widgets/offline_ride_banner.dart';
+import '../../widgets/plate_chip.dart';
 import '../../widgets/ride_rating_card.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../safety/ride_sos.dart';
@@ -762,11 +763,23 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         builder: (_, now, _) {
           final elapsed = searchElapsed(r.createdAt, now);
           final left = searchTimeLeft(elapsed, AppConfig.requestExpiry);
-          return SearchHeader(
+          final header = SearchHeader(
             bidding: bidding,
             elapsed: elapsed,
             left: formatCountdown(left),
             progress: (left.inMilliseconds / AppConfig.requestExpiry.inMilliseconds).clamp(0.0, 1.0),
+          );
+          // On a phone "Choose a driver" dims the screen over the sheet and
+          // carries its own "All drivers verified": the header under it
+          // stands down (keeping its room, so the sheet doesn't jump).
+          final covered = !widget.wide && _offerViews().isNotEmpty;
+          return Visibility(
+            key: const ValueKey('search-header-slot'),
+            visible: !covered,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: header,
           );
         },
       ),
@@ -864,7 +877,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           CancelledCountdown(onDone: _close),
           const SizedBox(height: 12),
         ],
-        if (r.status == RideStatus.cancelled && _openedCancelled && (r.cancelReason ?? '').trim().isNotEmpty) ...[
+        // Once only: the driver's cancel card already gives their reason.
+        if (r.status == RideStatus.cancelled &&
+            _openedCancelled &&
+            !cancelledByDriver(r) &&
+            (r.cancelReason ?? '').trim().isNotEmpty) ...[
           Text(
             'Reason: ${cancelReasonLabel(r.cancelReason) ?? r.cancelReason!.trim()}',
             key: const ValueKey('ride-cancel-reason'),
@@ -958,16 +975,23 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                       fallback: const Icon(Icons.person),
                     ),
                     title: Text(r.partnerName ?? 'Your driver'),
-                    subtitle: Text([r.partnerVehicle, r.partnerPlate].whereType<String>().join(' · ')),
-                    trailing: r.partnerRating == null
+                    // The car, then its plate as a plate (the Shared ride
+                    // screen's), never broken after a "·".
+                    subtitle: r.partnerVehicle == null && r.partnerPlate == null
                         ? null
-                        : Row(
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.star, size: 18, color: Colors.amber),
-                              Text(r.partnerRating!.toStringAsFixed(1)),
+                              if (r.partnerVehicle case final v?) Text(v, key: const ValueKey('driver-vehicle')),
+                              if (r.partnerPlate case final p?)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: PlateChip(key: const ValueKey('driver-plate'), plate: p, fontSize: 14),
+                                ),
                             ],
                           ),
+                    trailing: r.partnerRating == null ? null : RatingStars(rating: r.partnerRating!),
                   ),
                   if (tripCode != null && r.status != RideStatus.onTrip)
                     ListTile(
