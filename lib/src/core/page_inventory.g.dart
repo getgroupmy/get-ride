@@ -90,6 +90,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:passkeys.remove', SurfaceKind.modal, 'Passkeys · Remove', 'lib/src/features/settings/passkeys_screen.dart'),
   SurfaceEntry('modal:people-widgets.pick', SurfaceKind.modal, 'People widgets · Pick', 'lib/src/admin/screens/people/people_widgets.dart'),
   SurfaceEntry('modal:people.ask-status-reason', SurfaceKind.modal, 'People · Status reason', 'lib/src/admin/screens/people_screens.dart'),
+  SurfaceEntry('modal:permissions.open_settings', SurfaceKind.modal, 'Permissions · Settings', 'lib/src/features/permissions/permission_actions.dart'),
   SurfaceEntry('modal:place-search.show-place-search', SurfaceKind.modal, 'Place search · Place search', 'lib/src/features/ride/place_search.dart'),
   SurfaceEntry('modal:printer.add-2', SurfaceKind.modal, 'Printer · Add', 'lib/src/features/meter/printer_screen.dart'),
   SurfaceEntry('modal:printer.delete', SurfaceKind.modal, 'Printer · Delete', 'lib/src/features/meter/printer_screen.dart'),
