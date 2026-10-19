@@ -383,4 +383,65 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  // Web round 43 (191, 192) at 317 wide (412 at 1.3x), light and dark.
+  for (final b in Brightness.values) {
+    for (final width in const [317.0, 412.0]) {
+      testWidgets('191: the period picker at ${width.toInt()}: short labels only where the full ones would wrap (${b.name})',
+          (tester) async {
+        tester.view.physicalSize = Size(width, 704);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final semantics = tester.ensureSemantics();
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: overrides(trips: const []),
+            child: MaterialApp(theme: ThemeData(brightness: b), home: const EarningsScreen()),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final picker = find.byKey(const ValueKey('earnings-period'));
+        final short = earningsPeriodsShort(tester.element(picker), tester.getSize(picker).width);
+        for (final p in EarningsPeriod.values) {
+          final shown = find.descendant(of: picker, matching: find.text(short ? p.shortLabel : p.label));
+          expect(shown, findsOneWidget, reason: p.name);
+          final para = tester.renderObject<RenderParagraph>(find.descendant(of: shown, matching: find.byType(RichText)));
+          expect(para.didExceedMaxLines, isFalse);
+          expect(para.size.height, lessThan(para.getMaxIntrinsicHeight(double.infinity) * 1.5), reason: 'one line');
+          // Read out in full whichever is drawn.
+          expect(find.bySemanticsLabel(p.label), findsWidgets);
+        }
+        semantics.dispose();
+      });
+    }
+
+    testWidgets('192: at 317 wide and 1.0x every chart date keeps its month, none run together (${b.name})',
+        (tester) async {
+      tester.view.physicalSize = const Size(317, 704);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final weeks = [
+        for (var i = 0; i < 8; i++)
+          EarningsBucket(DateTime.utc(2026, 8, 31 + 7 * i), StatementTotals({'net': 10.0 + i, 'trips': 1})),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData(brightness: b),
+        home: Scaffold(body: WeeklyEarningsChart(weeks: weeks, money: (v) => 'RM$v')),
+      ));
+      final labels = find.byWidgetPredicate(
+        (w) => w is Text && w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('earnings-week-label-'),
+      );
+      final rects = <Rect>[];
+      for (final e in labels.evaluate()) {
+        expect((e.widget as Text).data, matches(RegExp(r'^\d{1,2} [A-Z][a-z]{2}$')), reason: 'never "21" alone');
+        rects.add(tester.getRect(find.byWidget(e.widget)));
+      }
+      expect(rects, isNotEmpty);
+      rects.sort((a, c) => a.left.compareTo(c.left));
+      for (var k = 1; k < rects.length; k++) {
+        expect(rects[k].left, greaterThanOrEqualTo(rects[k - 1].right));
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

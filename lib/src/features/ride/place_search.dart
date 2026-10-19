@@ -40,6 +40,14 @@ class PlacePick {
       pickOnMap ? const PlacePick.onMap(from: true) : PlacePick.place(place!, entrance: entrance, from: true);
 }
 
+/// The trip a new stop joins, for the Add a stop sheet: "KLCC › Pavilion ›
+/// KL Sentral" (pickup, the stops so far, the drop-off); null without both
+/// ends.
+String? addStopRouteLine(Place? pickup, List<Place> stops, Place? drop) {
+  if (pickup == null || drop == null) return null;
+  return [pickup.name, for (final s in stops) s.name, drop.name].join(' › ');
+}
+
 /// What the sheet is for: a trip's end (inDrive's "Enter your route", with
 /// Suggested and Saved), or just an address (saving a place).
 enum PlaceSearchMode { route, address }
@@ -56,6 +64,8 @@ Future<PlacePick?> showPlaceSearch(
   bool startOnFrom = false,
   PlaceSearchMode mode = PlaceSearchMode.route,
   ValueListenable<RouteSheetEnds>? live,
+  String? fieldLabel,
+  String? routeLine,
 }) {
   final wide = MediaQuery.sizeOf(context).width >= 720;
   final body = _PlaceSearch(
@@ -69,6 +79,8 @@ Future<PlacePick?> showPlaceSearch(
     startOnFrom: startOnFrom,
     mode: mode,
     live: live,
+    fieldLabel: fieldLabel,
+    routeLine: routeLine,
   );
   if (wide) {
     return showAppDialog<PlacePick>(id: 'place-search.show-place-search',
@@ -145,8 +157,17 @@ class _PlaceSearch extends ConsumerStatefulWidget {
     this.startOnFrom = false,
     this.mode = PlaceSearchMode.route,
     this.live,
+    this.fieldLabel,
+    this.routeLine,
   });
   final String title;
+
+  /// The field's caption in place of From / To / Address ("Stop").
+  final String? fieldLabel;
+
+  /// The trip this search is for, over the field ("KLCC › KL Sentral"):
+  /// where a stop goes.
+  final String? routeLine;
   final LatLng? near;
   final Place? current;
 
@@ -250,11 +271,11 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// Address) small over the text, a clear button while there is text, and
   /// the choose-on-map button (inDrive's, 58 high).
   /// The search field's caption: what it is for.
-  String get _fieldLabel => _editFrom
+  String get _fieldLabel => widget.fieldLabel ?? (_editFrom
       ? 'From'
       : _route
       ? 'To'
-      : 'Address';
+      : 'Address');
 
   Widget _field(ThemeData t) {
     final muted = mutedTextColor(t, background: t.colorScheme.surface);
@@ -821,6 +842,23 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             ],
           ),
         ),
+        if (widget.routeLine case final line?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Row(children: [
+              Icon(Icons.route, size: 18, color: mutedTextColor(t, background: t.colorScheme.surface)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  line,
+                  key: const ValueKey('place-search-route-line'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.textTheme.bodyMedium?.copyWith(color: mutedTextColor(t, background: t.colorScheme.surface)),
+                ),
+              ),
+            ]),
+          ),
         // inDrive's route sheet: From over To, the one being searched an
         // outlined field, the other a row that is tapped to search it.
         if (_ends && _editFrom)

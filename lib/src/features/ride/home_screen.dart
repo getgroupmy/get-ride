@@ -724,6 +724,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       title: 'Add a stop',
       near: _me ?? _pickup?.point,
       usage: GateUsage.drop,
+      // A stop, on the trip it joins.
+      fieldLabel: 'Stop',
+      routeLine: addStopRouteLine(_pickup, _stops, _drop),
     );
     if (pick == null || !mounted) return;
     final place = pick.place;

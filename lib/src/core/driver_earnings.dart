@@ -15,12 +15,15 @@ import 'trip_receipt.dart';
 
 /// The spans the page can total.
 enum EarningsPeriod {
-  today('Today'),
-  week('This week'),
-  month('This month');
+  today('Today', 'Today'),
+  week('This week', 'Week'),
+  month('This month', 'Month');
 
-  const EarningsPeriod(this.label);
+  const EarningsPeriod(this.label, this.shortLabel);
   final String label;
+
+  /// For a period picker too narrow for [label] ("Week", "Month").
+  final String shortLabel;
 }
 
 /// The day [period] starts on, in Malaysia, at the instant [now]: today,

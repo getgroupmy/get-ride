@@ -59,6 +59,25 @@ final earningsCsvSharerProvider = Provider<Future<CsvShareOutcome> Function(Stri
 
 enum CsvShareOutcome { shared, downloaded, copied, failed }
 
+/// Whether the period picker [width] wide takes the short labels: the full
+/// ones with each segment's padding (24 a side) and border don't fit.
+bool earningsPeriodsShort(BuildContext context, double width) {
+  final style = Theme.of(context).textTheme.labelLarge;
+  final scaler = MediaQuery.textScalerOf(context);
+  var need = 0.0;
+  for (final p in EarningsPeriod.values) {
+    final tp = TextPainter(
+      text: TextSpan(text: p.label, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    need += tp.width + 48 + 1;
+    tp.dispose();
+  }
+  return need > width;
+}
+
 class EarningsScreen extends ConsumerStatefulWidget {
   const EarningsScreen({super.key});
 
@@ -113,13 +132,29 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 8),
-                    SegmentedButton<EarningsPeriod>(
-                      key: const ValueKey('earnings-period'),
-                      segments: [for (final p in EarningsPeriod.values) ButtonSegment(value: p, label: Text(p.label))],
-                      selected: {_period},
-                      showSelectedIcon: false,
-                      onSelectionChanged: (v) => setState(() => _period = v.first),
-                    ),
+                    // "Today / Week / Month" where the full labels would
+                    // wrap ("This month" on two lines at 317 wide); a screen
+                    // reader always hears them in full.
+                    LayoutBuilder(builder: (context, box) {
+                      final short = earningsPeriodsShort(context, box.maxWidth);
+                      return SegmentedButton<EarningsPeriod>(
+                        key: const ValueKey('earnings-period'),
+                        segments: [
+                          for (final p in EarningsPeriod.values)
+                            ButtonSegment(
+                              value: p,
+                              label: Semantics(
+                                label: p.label,
+                                excludeSemantics: true,
+                                child: Text(short ? p.shortLabel : p.label, maxLines: 1, softWrap: false),
+                              ),
+                            ),
+                        ],
+                        selected: {_period},
+                        showSelectedIcon: false,
+                        onSelectionChanged: (v) => setState(() => _period = v.first),
+                      );
+                    }),
                     const SizedBox(height: 12),
                     EarningsTotalsCard(totals: s.totals, money: money),
                     if (weeks.value case final w?) WeeklyEarningsChart(weeks: w, money: money),

@@ -289,7 +289,16 @@ class _HistoryRow extends StatelessWidget {
       ),
       title: Row(
         children: [
-          Flexible(child: Text(walletTxLabel(tx.kind, tx.note), overflow: TextOverflow.ellipsis)),
+          // Two lines before the amount: "Transfer Received" whole, not
+          // "Transfer Rece…" over a subtitle that wraps.
+          Flexible(
+            child: Text(
+              walletTxLabel(tx.kind, tx.note),
+              key: ValueKey('history-title-${tx.id}'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
           if (referral) ...[
             const SizedBox(width: 6),
             Container(
