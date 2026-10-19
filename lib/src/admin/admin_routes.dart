@@ -8,6 +8,7 @@ import 'screens/messaging_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/documents_screen.dart';
 import 'screens/people_screens.dart';
+import 'screens/promo_codes_screen.dart';
 import 'screens/push_screen.dart';
 import 'screens/rides_screen.dart';
 import 'screens/settings_screens.dart';
@@ -64,7 +65,11 @@ final adminRoute = ShellRoute(
       builder: (_, s) {
         final q = Map<String, String>.from(s.uri.queryParameters);
         final label = q.remove('_label');
-        return AdminCategoryScreen(categoryKey: s.pathParameters['category']!, scope: q, parentLabel: label);
+        final key = s.pathParameters['category']!;
+        // Promo codes have their own table and editor (0242).
+        return key != 'promocode-list' || q.isNotEmpty
+            ? AdminCategoryScreen(categoryKey: key, scope: q, parentLabel: label)
+            : const AdminPromoCodesScreen();
       },
     ),
     ...allPortedAdminRoutes,

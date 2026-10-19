@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/commission_promotions.dart';
+import '../core/promo_codes.dart';
 import '../core/commission_settings.dart';
 import '../core/fare_tariff.dart' show fareTariffRowWithoutServices;
 import 'admin_access.dart';
@@ -407,6 +408,40 @@ class AdminRepository {
         for (final r in await _db.rpc('statement_surcharge_names') as List)
           (name: '${(r as Map)['name']}', trips: (r['trips'] as num?)?.toInt() ?? 0),
       ];
+
+  // ---- Rider promo codes (0242) ----
+  Future<List<PromoCode>> promoCodes() async => [
+        for (final r in await _db.from('promo_codes').select().order('created_at', ascending: false) as List)
+          PromoCode.fromRow(Map<String, dynamic>.from(r as Map)),
+      ];
+
+  Future<void> savePromoCode(PromoCode p) {
+    final row = p.toRow();
+    return p.id == null
+        ? _db.from('promo_codes').insert(row)
+        : _db.from('promo_codes').update(row).eq('id', p.id!);
+  }
+
+  Future<void> deletePromoCode(String id) => _db.from('promo_codes').delete().eq('id', id);
+
+  /// Per code: how many trips it settled, the discount given, the last one.
+  Future<Map<String, ({int uses, double discount, DateTime? lastAt})>> promoRedemptionStats() async => {
+        for (final r in await _db.rpc('admin_promo_redemption_stats') as List)
+          '${(r as Map)['code_id']}': (
+            uses: (r['uses'] as num?)?.toInt() ?? 0,
+            discount: (r['discount'] as num?)?.toDouble() ?? 0,
+            lastAt: DateTime.tryParse('${r['last_at']}'),
+          ),
+      };
+
+  /// A code's latest settled trips.
+  Future<List<Map<String, dynamic>>> promoRedemptions(String codeId, {int limit = 30}) async =>
+      List<Map<String, dynamic>>.from(await _db
+          .from('promo_redemptions')
+          .select('ride_id, rider_id, driver_id, fare, discount, payable, driver_credit, created_at')
+          .eq('code_id', codeId)
+          .order('created_at', ascending: false)
+          .limit(limit));
 
   // ---- Commission promotions and reports (0224) ----
   Future<List<CommissionPromotion>> commissionPromotions() async => [

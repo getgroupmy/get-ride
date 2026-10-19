@@ -220,6 +220,9 @@ const liveAdminTables = <String>[
   'safety_incidents',
   // Commission promotions (0224): admins only.
   'commission_promotions',
+  // Rider promo codes and what they gave (0242): admins only.
+  'promo_codes',
+  'promo_redemptions',
   // Claude Code access (0228): the admin page follows the list live.
   'claude_access_rules',
 ];
