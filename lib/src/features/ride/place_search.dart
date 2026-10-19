@@ -535,13 +535,15 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                     overflow: TextOverflow.ellipsis,
                     style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    smart.clean ? shortArea(p, homeRegion: areaRegion(_current)) : p.address,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
-                  ),
+                  if (placeAreaLine(p, clean: smart.clean, homeRegion: areaRegion(_current)) case final line?) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      line,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
+                    ),
+                  ],
                   if (gates.isNotEmpty) ...[
                     if (blocked)
                       Padding(
@@ -748,11 +750,11 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             key: ValueKey('smart-recent-${r.place!.point.latitude},${r.place!.point.longitude}'),
             leading: const Icon(Icons.history),
             title: Text('Recent: ${r.place!.name}', maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
-              smart.clean ? shortArea(r.place!, homeRegion: areaRegion(_current)) : r.place!.address,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            // As a search result's: area then city, never the name again.
+            subtitle: switch (placeAreaLine(r.place!, clean: smart.clean, homeRegion: areaRegion(_current))) {
+              final a? => Text(a, key: const ValueKey('recent-subtitle'), maxLines: 1, overflow: TextOverflow.ellipsis),
+              null => null,
+            },
             onTap: () => _done(PlacePick.place(r.place!)),
           )
         else
@@ -929,9 +931,14 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             key: ValueKey('recent-${p.point.latitude},${p.point.longitude}'),
             leading: const Icon(Icons.history),
             title: Text(p.name),
-            // None when it would only repeat the name.
-            subtitle: switch (placeSubtitle(p.name, p.address)) {
-              final a? => Text(a, maxLines: 1, overflow: TextOverflow.ellipsis),
+            // As a search result's: area then city (smart address A), and
+            // none when it would only repeat the name.
+            subtitle: switch (placeAreaLine(
+              p,
+              clean: ref.watch(geoServiceProvider).smartAddress.clean,
+              homeRegion: areaRegion(_current),
+            )) {
+              final a? => Text(a, key: const ValueKey('recent-subtitle'), maxLines: 1, overflow: TextOverflow.ellipsis),
               null => null,
             },
             onTap: () => _done(PlacePick.place(p)),
