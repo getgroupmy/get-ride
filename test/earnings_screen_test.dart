@@ -292,4 +292,95 @@ void main() {
     expect(shared, isEmpty);
     expect(find.text('No completed trips today to export.'), findsOneWidget);
   });
+
+  // Web round 34.
+  for (final b in Brightness.values) {
+    testWidgets('140 addendum: at 360 wide and 1.0x every date keeps its month, none overlap (${b.name})',
+        (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final weeks = [
+        for (var i = 0; i < 8; i++)
+          EarningsBucket(DateTime.utc(2026, 8, 31 + 7 * i), StatementTotals({'net': 10.0 + i, 'trips': 1})),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData(brightness: b),
+        home: Scaffold(body: WeeklyEarningsChart(weeks: weeks, money: (v) => 'RM$v')),
+      ));
+      Future<void> check() async {
+        final labels = find.byWidgetPredicate(
+          (w) => w is Text && w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('earnings-week-label-'),
+        );
+        final rects = <Rect>[];
+        for (final e in labels.evaluate()) {
+          expect((e.widget as Text).data, matches(RegExp(r'^\d{1,2} [A-Z][a-z]{2}$')), reason: 'one format: day and month');
+          final p = tester.renderObject<RenderParagraph>(find.descendant(of: find.byWidget(e.widget), matching: find.byType(RichText)));
+          expect(p.size.width, greaterThanOrEqualTo(p.getMaxIntrinsicWidth(double.infinity) - 0.5));
+          rects.add(tester.getRect(find.byWidget(e.widget)));
+        }
+        expect(rects, isNotEmpty);
+        expect(find.byKey(const ValueKey('earnings-week-label-7')), findsOneWidget, reason: 'the newest always');
+        rects.sort((a, b) => a.left.compareTo(b.left));
+        for (var k = 1; k < rects.length; k++) {
+          expect(rects[k].left, greaterThanOrEqualTo(rects[k - 1].right), reason: 'no two dates run together');
+        }
+      }
+
+      await check();
+      // Tapping an older bar (bold) never changes the format or overlaps.
+      await tester.tap(find.byKey(const ValueKey('earnings-week-1')));
+      await tester.pump();
+      await check();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('167: eight weeks of nothing is a header and a line, no empty chart (${b.name})', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final weeks = [
+        for (var i = 0; i < 8; i++) EarningsBucket(DateTime.utc(2026, 8, 31 + 7 * i), StatementTotals.zero),
+      ];
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData(brightness: b),
+        home: Scaffold(body: Align(alignment: Alignment.topCenter, child: WeeklyEarningsChart(weeks: weeks, money: (v) => 'RM$v'))),
+      ));
+      final card = find.byKey(const ValueKey('earnings-weekly-chart'));
+      expect(find.text('Last 8 weeks'), findsOneWidget);
+      expect(find.text('No earnings in the last 8 weeks'), findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.byWidgetPredicate((w) => w is CustomPaint && w.painter != null)),
+        findsNothing,
+        reason: 'no bars drawn',
+      );
+      expect(find.byKey(const ValueKey('earnings-week-readout')), findsNothing);
+      expect(find.byKey(const ValueKey('earnings-week-0')), findsNothing);
+      expect(tester.getSize(card).height, lessThan(100), reason: 'normal height, not 330');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('168: Trip history and receipts is a row with a chevron (${b.name})', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: overrides(trips: const []),
+          child: MaterialApp(theme: ThemeData(brightness: b), home: const EarningsScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(const ValueKey('earnings-trip-history'));
+      await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
+      final tile = tester.widget<ListTile>(row);
+      expect(tile.onTap, isNotNull);
+      expect(find.descendant(of: row, matching: find.text('Trip history and receipts')), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.byIcon(Icons.chevron_right)), findsOneWidget);
+      expect(find.descendant(of: row, matching: find.byIcon(Icons.receipt_long_outlined)), findsOneWidget);
+      expect(find.ancestor(of: row, matching: find.byType(Card)), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Trip history and receipts'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

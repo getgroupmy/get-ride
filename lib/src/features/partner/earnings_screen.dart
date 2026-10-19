@@ -147,10 +147,15 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
                         ),
                     ],
                     const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: () => context.push('/trips'),
-                      icon: const Icon(Icons.receipt_long_outlined),
-                      label: const Text('Trip history and receipts'),
+                    // A row to open, as Account's: icon, title, chevron.
+                    Card(
+                      child: ListTile(
+                        key: const ValueKey('earnings-trip-history'),
+                        leading: const Icon(Icons.receipt_long_outlined),
+                        title: const Text('Trip history and receipts'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => context.push('/trips'),
+                      ),
                     ),
                   ],
                 ),

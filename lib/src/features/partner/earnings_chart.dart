@@ -14,6 +14,13 @@ import '../../core/partner_statement.dart';
 /// the spacing is even (8 weeks: 4 dates, the newest among them).
 bool weeklyChartLabelShown(int i, int count) => count <= 6 || (count - 1 - i).isEven;
 
+/// The weeks that get a date when every [step]th one is labelled, counted
+/// back from the newest (which is always among them).
+List<int> weeklyChartLabelsEvery(int step, int count) => [
+  for (var i = 0; i < count; i++)
+    if ((count - 1 - i) % step == 0) i,
+];
+
 class WeeklyEarningsChart extends StatefulWidget {
   const WeeklyEarningsChart({super.key, required this.weeks, required this.money});
 
@@ -65,6 +72,29 @@ class _WeeklyEarningsChartState extends State<WeeklyEarningsChart> {
     final muted = t.colorScheme.onSurfaceVariant;
     final weeks = widget.weeks;
     if (weeks.isEmpty) return const SizedBox.shrink();
+    // Nothing earned in any week: the header and a line, not 150 of empty
+    // bars over the "No completed trips" below.
+    if (weeks.every((w) => w.totals.net == 0 && w.totals.trips == 0)) {
+      return Card(
+        key: const ValueKey('earnings-weekly-chart'),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Last ${weeks.length} weeks', style: t.textTheme.titleSmall),
+              const SizedBox(height: 2),
+              Text(
+                'No earnings in the last ${weeks.length} weeks',
+                key: const ValueKey('earnings-weekly-empty'),
+                style: t.textTheme.bodyMedium?.copyWith(color: muted),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     final w = weeks[_selected];
     final trips = w.totals.trips;
     return Card(
@@ -128,21 +158,42 @@ class _WeeklyEarningsChartState extends State<WeeklyEarningsChart> {
               ),
             ),
             const SizedBox(height: 6),
-            // Each date centred under its bar with the room of two bars (the
-            // one between is unlabelled), so "31 Aug" keeps its month at
-            // large text instead of being cut to "31". Where even that is too
-            // narrow, only the oldest and newest dates stay.
+            // Every date shown is "day month", centred under its bar and
+            // clear of its neighbours. Where they don't fit,
+            // fewer dates (every 2nd, then 4th, … counted back from the
+            // newest), never a date cut to its day, never mixed formats.
             LayoutBuilder(
               builder: (context, box) {
                 final slot = box.maxWidth / weeks.length;
-                final room = math.min(box.maxWidth, slot * 2);
                 TextStyle? style(int i) => t.textTheme.labelSmall?.copyWith(
                   color: i == _selected ? t.colorScheme.onSurface : muted,
+                  // The bold of the selected date is measured for every one,
+                  // so tapping a bar never changes which dates fit.
                   fontWeight: i == _selected ? FontWeight.w700 : null,
                 );
-                final shown = [for (var i = 0; i < weeks.length; i++) if (weeklyChartLabelShown(i, weeks.length)) i];
-                final fits = shown.every((i) => _labelWidth(context, _day(weeks[i].start), style(i)) <= room);
-                final kept = fits || shown.length <= 2 ? shown : [shown.first, shown.last];
+                // Each date's box: its own (bold) width, centred under its
+                // bar and kept inside the chart at the ends.
+                final bold = t.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700);
+                final width = <int, double>{
+                  for (var i = 0; i < weeks.length; i++) i: _labelWidth(context, _day(weeks[i].start), bold) + 2,
+                };
+                double leftOf(int i) =>
+                    ((i + 0.5) * slot - width[i]! / 2).clamp(0.0, math.max(0.0, box.maxWidth - width[i]!));
+                // A little air between neighbours.
+                const gap = 6.0;
+                bool fits(List<int> idx) {
+                  for (var k = 0; k < idx.length; k++) {
+                    if (width[idx[k]]! > box.maxWidth) return false;
+                    if (k > 0 && leftOf(idx[k - 1]) + width[idx[k - 1]]! + gap > leftOf(idx[k])) return false;
+                  }
+                  return true;
+                }
+                var step = weeks.length <= 6 ? 1 : 2;
+                var kept = weeklyChartLabelsEvery(step, weeks.length);
+                while (kept.length > 1 && !fits(kept)) {
+                  step *= 2;
+                  kept = weeklyChartLabelsEvery(step, weeks.length);
+                }
                 final height = _labelHeight(context, style(0));
                 return SizedBox(
                   height: height,
@@ -151,8 +202,8 @@ class _WeeklyEarningsChartState extends State<WeeklyEarningsChart> {
                     children: [
                       for (final i in kept)
                         Positioned(
-                          left: ((i + 0.5) * slot - room / 2).clamp(0.0, box.maxWidth - room),
-                          width: room,
+                          left: leftOf(i),
+                          width: width[i]!,
                           top: 0,
                           child: Text(
                             _day(weeks[i].start),

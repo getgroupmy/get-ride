@@ -317,7 +317,12 @@ void _batch2() {
           await _at(tester, size);
           final weeks = [
             for (var i = 0; i < 8; i++)
-              EarningsBucket(DateTime(2026, 8, 24).add(Duration(days: 7 * i)), StatementTotals.zero),
+              // Quiet weeks beside one that earned (all quiet is a line of
+              // text, round 34).
+              EarningsBucket(
+                DateTime(2026, 8, 24).add(Duration(days: 7 * i)),
+                i == 7 ? const StatementTotals({'net': 5, 'trips': 1}) : StatementTotals.zero,
+              ),
           ];
           await tester.pumpWidget(
             _app(
