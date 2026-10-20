@@ -135,6 +135,12 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
     _onEvent(MapEventMove(camera: _map.camera, oldCamera: _map.camera, source: MapEventSource.mapController));
   }
 
+  /// A tap on the map drops the flag there and names the spot.
+  void _dropAt(LatLng p) {
+    recenterMap(_map, p, zoom: _map.camera.zoom);
+    _onEvent(MapEventMove(camera: _map.camera, oldCamera: _map.camera, source: MapEventSource.mapController));
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -153,6 +159,8 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
                 initialCenter: _centre,
                 initialZoom: 17,
                 onMapEvent: _onEvent,
+                // A tap drops the flag there: the map glides to the spot.
+                onTap: (_, p) => _dropAt(p),
                 interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate, keyboardOptions: mapKeyboardOptions),
               ),
               children: [

@@ -13,7 +13,9 @@ import '../../../data/dispatch_repository.dart';
 import '../../../features/dispatch/dispatch_console.dart';
 import '../../../features/dispatch/stand_charges_view.dart';
 import '../../../features/dispatch/stand_staff_view.dart' show AccessChips;
+import '../../../data/geo_service.dart' show Place;
 import '../../../features/ride/map_place_picker.dart';
+import '../../../features/ride/place_search.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
@@ -314,13 +316,31 @@ class _StandEditorState extends ConsumerState<StandEditor> {
   Future<void> _pick() async {
     final place = await pickPlaceOnMap(context, start: _lat == null ? null : LatLng(_lat!, _lng!));
     if (place == null || !mounted) return;
-    setState(() {
-      _lat = place.point.latitude;
-      _lng = place.point.longitude;
-      if (_address.text.trim().isEmpty) _address.text = place.address;
-      if (_name.text.trim().isEmpty) _name.text = place.name;
-    });
+    _place(place);
   }
+
+  /// The address from a place search; "Choose on map" goes to [_pick].
+  Future<void> _searchAddress() async {
+    final pick = await showPlaceSearch(
+      context,
+      title: 'Stand address',
+      near: _lat == null ? null : LatLng(_lat!, _lng!),
+      mode: PlaceSearchMode.address,
+      fieldLabel: 'Address',
+    );
+    if (pick == null || !mounted) return;
+    if (pick.pickOnMap) return _pick();
+    final place = pick.place;
+    if (place == null) return;
+    _place(place);
+  }
+
+  void _place(Place place) => setState(() {
+    _lat = place.point.latitude;
+    _lng = place.point.longitude;
+    _address.text = place.address.isEmpty ? place.name : place.address;
+    if (_name.text.trim().isEmpty) _name.text = place.name;
+  });
 
   Future<void> _save() async {
     final s = DispatchStand(
@@ -373,17 +393,15 @@ class _StandEditorState extends ConsumerState<StandEditor> {
                 ),
                 const SizedBox(height: 10),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       child: TextField(
                         key: const ValueKey('stand-code'),
                         controller: _code,
                         textCapitalization: TextCapitalization.characters,
-                        decoration: const InputDecoration(
-                          labelText: 'Short code',
-                          helperText: 'Starts each ticket: PAV-0041',
-                          border: OutlineInputBorder(),
-                        ),
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(labelText: 'Short code', border: OutlineInputBorder()),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -399,10 +417,26 @@ class _StandEditorState extends ConsumerState<StandEditor> {
                     ),
                   ],
                 ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+                  child: Text(
+                    'Starts each ticket: ${_code.text.trim().isEmpty ? 'PAV' : _code.text.trim().toUpperCase()}-0041',
+                    key: const ValueKey('stand-code-example'),
+                    style: muted,
+                  ),
+                ),
                 const SizedBox(height: 10),
                 TextField(
+                  key: const ValueKey('stand-address'),
                   controller: _address,
-                  decoration: const InputDecoration(labelText: 'Address', border: OutlineInputBorder()),
+                  readOnly: true,
+                  onTap: _searchAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Address',
+                    hintText: 'Search a place or address',
+                    suffixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Row(
