@@ -86,6 +86,11 @@ class _FakeRepo implements VehicleAssignmentRepository {
   @override
   Future<void> remove(String assignmentId) async => removed.add(assignmentId);
 
+  final approvals = <String>[];
+
+  @override
+  Future<void> setApproval(String assignmentId, bool approved) async => approvals.add('$assignmentId $approved');
+
   @override
   Future<void> endSession(String vehicleId) async {}
 }
@@ -322,6 +327,37 @@ void main() {
       expect(repo.assigned.single['partner_id'], 'p2');
       expect(repo.assigned.single['role'], 'co-driver');
       expect(repo.assigned.single['assigned_by'], 'admin-1');
+    });
+
+    testWidgets("a fleet owner's assignment waits for the admin's approval", (tester) async {
+      final repo = _FakeRepo(const [])
+        ..drivers.add(
+          const VehicleDriver(
+            assignmentId: 'a3',
+            userId: 'u4',
+            role: VehicleRole.driver,
+            active: true,
+            name: 'Rajesh',
+            approval: 'pending',
+          ),
+        );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [vehicleAssignmentRepositoryProvider.overrideWithValue(repo)],
+          child: const MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(child: VehicleDriversSection(vehicleId: 'v1', canEdit: true)),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Waiting for your approval (fleet)'), findsOneWidget);
+      await tester.tap(find.byTooltip('Driver actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Approve'));
+      await tester.pumpAndSettle();
+      expect(repo.approvals.single, 'a3 true');
     });
 
     testWidgets('an unknown phone number is reported', (tester) async {

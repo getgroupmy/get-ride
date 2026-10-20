@@ -91,6 +91,10 @@ final adminModules = <String, AdminModule>{
   'commission': const AdminModule('commission', 'Commission rates', ['admin-settings-commission']),
   'fare-tariffs': const AdminModule('fare-tariffs', 'Fare tariffs', ['admin-settings-fare-tariffs']),
   'messaging': const AdminModule('messaging', 'SMS / WhatsApp', ['admin-settings-messaging']),
+  // Order dispatch (0251): the console, stands, groups and fleets, IDs.
+  'dispatch': const AdminModule('dispatch', 'Dispatch', [
+    'admin-dispatch', 'admin-dispatch-stands', 'admin-dispatch-groups', 'admin-dispatch-accounts',
+  ]),
   'settings': const AdminModule('settings', 'Settings', ['admin-settings']),
   'sub-admins': const AdminModule('sub-admins', 'Sub-admins', ['admin-settings-sub-admin']),
 };

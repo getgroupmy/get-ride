@@ -3,7 +3,7 @@
 /// does the same job. Null means there is no such screen here.
 library;
 
-const _flutterRoots = ['/account', '/drive', '/meter', '/wallet', '/trips', '/ev', '/admin', '/ride'];
+const _flutterRoots = ['/account', '/drive', '/meter', '/wallet', '/trips', '/ev', '/admin', '/ride', '/dispatch'];
 
 const _expoToFlutter = <String, String>{
   '/': '/',

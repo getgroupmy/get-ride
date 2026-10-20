@@ -20,6 +20,7 @@ import '../../widgets/ride_map.dart';
 import '../ride/confirm_parts.dart' show accentFill, confirmAccent;
 import '../../widgets/net_image.dart';
 import 'direct_booking_badge.dart';
+import 'stand_order_label.dart';
 import 'my_ride_badges.dart';
 import '../ride/promo_parts.dart' show PromoAppliedIcon, rideHasPromo;
 import '../ride/pet_parts.dart' show RidePetsView;
@@ -425,6 +426,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
             ]),
             MyRideForYouLabel(request: r, me: widget.driverId, clock: () => widget.now),
             DirectBookingLabel(request: r, me: widget.driverId ?? _driverId),
+            StandOrderLabel(request: r, me: widget.driverId ?? _driverId),
             // The region's surcharges and taxes, collected on top.
             if (r.chargeLines.isNotEmpty)
               Text(

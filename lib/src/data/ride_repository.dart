@@ -430,13 +430,26 @@ class RideRepository {
 
   Future<List<RideRequest>> openRequests({int limit = 30}) async {
     final cutoff = DateTime.now().toUtc().subtract(AppConfig.requestExpiry).toIso8601String();
-    final rows = await _db
-        .from(_table)
-        .select()
-        .eq('status', 'open')
-        .gte('created_at', cutoff)
-        .order('created_at', ascending: false)
-        .limit(limit);
+    List<Map<String, dynamic>> rows;
+    try {
+      // A stand order (0251) re-sent by its stand counts from when it was sent.
+      rows = await _db
+          .from(_table)
+          .select()
+          .eq('status', 'open')
+          .or('created_at.gte.$cutoff,dispatch_offered_at.gte.$cutoff')
+          .order('created_at', ascending: false)
+          .limit(limit);
+    } on PostgrestException {
+      // A database without 0251.
+      rows = await _db
+          .from(_table)
+          .select()
+          .eq('status', 'open')
+          .gte('created_at', cutoff)
+          .order('created_at', ascending: false)
+          .limit(limit);
+    }
     return rows.map(RideRequest.new).where((r) => r.riderId != _uid).toList();
   }
 

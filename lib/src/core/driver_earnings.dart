@@ -66,7 +66,7 @@ class EarningsTotals {
     trips: trips + 1,
     gross: gross + r.gross,
     commission: commission + (r.commission ?? 0),
-    platformFees: platformFees + r.platformFees,
+    platformFees: platformFees + r.platformFees + r.standFee,
     distanceKm: distanceKm + (r.distanceKm ?? 0),
   );
 }

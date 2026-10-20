@@ -44,6 +44,7 @@ class TripReceipt {
     this.commission,
     this.commissionRate,
     this.platformFees = 0,
+    this.standFee = 0,
     this.endedEarly = false,
     this.timezone,
   });
@@ -92,6 +93,9 @@ class TripReceipt {
   /// or late-cancel fee, 0189): taken back from the driver as commission is.
   final double platformFees;
 
+  /// A stand order's fee the driver bears (migration 0251), on the driver's copy.
+  final double standFee;
+
   /// What the passenger owed the driver: every charge, before any GET.coin
   /// (coins paid towards the fare are credited to the driver's GET.wallet).
   double get gross => charged ? lines.where((l) => l.amount > 0).fold(0, (s, l) => s + l.amount) : 0;
@@ -100,7 +104,7 @@ class TripReceipt {
   /// fees, as the statement counts it (`ride_net_earnings`, 0199). Tolls and
   /// other charges pass through untouched; only the fare is commissioned.
   double get earnings {
-    final v = gross - (commission ?? 0) - platformFees;
+    final v = gross - (commission ?? 0) - platformFees - standFee;
     return v < 0 ? 0 : v;
   }
 
@@ -184,6 +188,7 @@ class TripReceipt {
       commission: asDriver ? r.commissionAmount : null,
       commissionRate: asDriver ? r.commissionRate : null,
       platformFees: asDriver ? platformFeesOf(r.raw['charges']) : 0,
+      standFee: asDriver && r.raw['stand_fee_bearer'] == 'driver' ? ((r.raw['stand_fee_amount'] as num?) ?? 0).toDouble() : 0,
       timezone: r.timezone,
     );
   }
@@ -222,6 +227,7 @@ class TripReceipt {
       if (asDriver) {
         if (commission != null) b.writeln('$commissionLabel: −${formatMoney(commission, currency)}');
         if (platformFees > 0) b.writeln('Platform fees: −${formatMoney(platformFees, currency)}');
+        if (standFee > 0) b.writeln('Stand fee: −${formatMoney(standFee, currency)}');
         b.writeln('You earn: ${formatMoney(earnings, currency)}');
       }
     } else {

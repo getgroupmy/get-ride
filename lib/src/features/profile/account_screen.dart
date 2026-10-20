@@ -9,6 +9,7 @@ import '../../admin/screens/meterapp/display_logic.dart' show inviteFriendsMenuI
 import '../../core/side_menu.dart';
 import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../../data/app_display_repository.dart';
+import '../../data/dispatch_repository.dart' show dispatchRolesProvider;
 import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -110,6 +111,7 @@ class RiderMenu extends ConsumerWidget {
     final t = Theme.of(context);
     final profile = ref.watch(profileProvider);
     final isAdmin = ref.watch(adminAccessProvider).value?.isAdmin ?? false;
+    final dispatch = !isAdmin && (ref.watch(dispatchRolesProvider).value?.any ?? false);
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
     final menu = [
@@ -173,6 +175,14 @@ class RiderMenu extends ConsumerWidget {
               title: Text(mode.label),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => mode.comingSoon ? showComingSoon(context) : openPartnerMode(context, ref, beforeOpen: beforeOpen),
+            ),
+          if (dispatch)
+            ListTile(
+              key: const ValueKey('account-dispatch'),
+              leading: const Icon(Icons.storefront_outlined),
+              title: const Text('Dispatch'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => go('/dispatch'),
             ),
           if (isAdmin)
             ListTile(

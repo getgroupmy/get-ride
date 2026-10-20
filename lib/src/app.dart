@@ -45,6 +45,8 @@ import 'data/permission_probe.dart';
 import 'data/push_service.dart';
 import 'data/session_guard.dart';
 import 'data/session_tracker.dart';
+import 'features/dispatch/dispatch_screen.dart';
+import 'features/partner/stand_groups_screen.dart';
 import 'features/install/app_install_screen.dart';
 import 'features/auth/otp_screen.dart';
 import 'features/ev/ev_order_screen.dart';
@@ -384,6 +386,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                             ScheduledJobsScreen(initialTab: s.uri.queryParameters['tab'] == 'mine' ? 1 : 0),
                       ),
                       GoRoute(path: 'earnings', builder: (_, _) => const EarningsScreen()),
+                      GoRoute(path: 'groups', builder: (_, _) => const StandGroupsScreen()),
                       GoRoute(path: 'statements', builder: (_, _) => const StatementsScreen()),
                       GoRoute(
                         path: 'history',
@@ -472,6 +475,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
+          // Order dispatch (0251): a stand's console, its staff and charges, a fleet.
+          GoRoute(path: '/dispatch', builder: (_, _) => const DispatchScreen()),
           // Driver mode's pages, under the driver menu.
           GoRoute(
             path: '/drive/onboarding',

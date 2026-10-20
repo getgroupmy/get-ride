@@ -264,6 +264,10 @@ class _ReceiptBody extends StatelessWidget {
                           const SizedBox(height: 4),
                           _row(t, 'Platform fees', '−${formatMoney(rc.platformFees, rc.currency)}'),
                         ],
+                        if (rc.standFee > 0) ...[
+                          const SizedBox(height: 4),
+                          _row(t, 'Stand fee', '−${formatMoney(rc.standFee, rc.currency)}'),
+                        ],
                         const SizedBox(height: 4),
                         KeyedSubtree(
                           key: const ValueKey('receipt-earnings'),

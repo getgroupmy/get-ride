@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../data/dispatch_repository.dart' show dispatchRepositoryProvider;
+import '../dispatch/dispatch_console.dart' show MeterFareDialog;
 import '../../data/active_location.dart';
 import '../../core/early_end.dart';
 import '../../core/fare.dart' show RideService;
@@ -452,6 +454,21 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   /// early?"): the fare is recalculated for the distance actually covered and
   /// confirmed first, then stored on the ride.
   Future<void> _complete(RideRequest r) async {
+    // A metered stand order (0251) has no fare until the meter's: asked here.
+    if (r.raw['stand_id'] != null && r.raw['fare_mode'] == 'meter' && r.effectiveFare == null) {
+      final fare = await showAppDialog<double>(
+        id: 'partner-trip.meter-fare',
+        context: context,
+        builder: (_) => const MeterFareDialog(),
+      );
+      if (fare == null || !mounted) return;
+      await _run(() async {
+        unawaited(_checkpoint(r.id, TripCheckpoint.drop));
+        await ref.read(dispatchRepositoryProvider).driverComplete(r.id, fare);
+        _advance(r, RideStatus.completed);
+      });
+      return;
+    }
     double? earlyFare;
     final here = _me;
     if (endsEarly(here, _ll(r.dropLat, r.dropLng))) {

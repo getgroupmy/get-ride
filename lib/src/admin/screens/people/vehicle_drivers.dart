@@ -79,17 +79,23 @@ class VehicleDriversSection extends ConsumerWidget {
                 if (d.phone != null) d.phone!,
                 if (d.drivingNow) 'Driving now',
                 if (!d.active) 'Paused',
+                if (d.pending) 'Waiting for your approval (fleet)',
+                if (d.approval == 'rejected') 'Not approved',
               ].join(' · '),
             ),
             trailing: canEdit && d.role != VehicleRole.owner
                 ? PopupMenuButton<String>(
                     tooltip: 'Driver actions',
                     onSelected: (v) => switch (v) {
+                      'approve' => act(() => repo.setApproval(d.assignmentId, true), 'Approved'),
+                      'reject' => act(() => repo.setApproval(d.assignmentId, false), 'Rejected'),
                       'pause' => act(() => repo.setActive(d.assignmentId, false), 'Paused'),
                       'resume' => act(() => repo.setActive(d.assignmentId, true), 'Resumed'),
                       _ => act(() => repo.remove(d.assignmentId), 'Removed'),
                     },
                     itemBuilder: (_) => [
+                      if (d.approval != 'approved') const PopupMenuItem(value: 'approve', child: Text('Approve')),
+                      if (d.pending) const PopupMenuItem(value: 'reject', child: Text('Reject')),
                       d.active
                           ? const PopupMenuItem(value: 'pause', child: Text('Pause (keep on file)'))
                           : const PopupMenuItem(value: 'resume', child: Text('Resume')),
