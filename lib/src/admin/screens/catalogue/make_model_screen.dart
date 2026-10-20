@@ -7,6 +7,8 @@ import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
+import '../geo/geo_data.dart' show regionVehicleTypesProvider;
+import '../../../widgets/search_select.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/chip_button.dart';
 
@@ -94,6 +96,13 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
   // ---- models --------------------------------------------------------------
 
   Future<void> _editModel(List<VehicleMakeModel> all, [VehicleMakeModel? m]) async {
+    List<({String id, String name})> services;
+    try {
+      services = [for (final o in await ref.read(regionVehicleTypesProvider.future)) (id: o.id, name: o.name)];
+    } catch (_) {
+      services = const [];
+    }
+    if (!mounted) return;
     final row = await openEditor<Map<String, dynamic>>(
       context,
       m == null ? 'Add Model' : 'Edit Model',
@@ -105,6 +114,7 @@ class _VehicleMakeModelScreenState extends ConsumerState<VehicleMakeModelScreen>
             : ModelForm.fromRecord(m),
         newId: _repo.newId(),
         canEdit: canEditPage(ref, _page),
+        services: services,
       ),
     );
     if (row == null || !mounted) return;
@@ -442,8 +452,18 @@ class _CategoryEditorState extends State<_CategoryEditor> {
 }
 
 class _ModelEditor extends StatefulWidget {
-  const _ModelEditor({required this.all, this.editing, required this.initial, required this.newId, required this.canEdit});
+  const _ModelEditor({
+    required this.all,
+    this.editing,
+    required this.initial,
+    required this.newId,
+    required this.canEdit,
+    this.services = const [],
+  });
   final List<VehicleMakeModel> all;
+
+  /// The vehicle services a model may map to (0249).
+  final List<({String id, String name})> services;
   final VehicleMakeModel? editing;
   final ModelForm initial;
   final String newId;
@@ -587,6 +607,22 @@ class _ModelEditorState extends State<_ModelEditor> {
           title: const Text('Ongoing (~)'),
           value: f.ongoing,
           onChanged: (x) => setState(() => f.ongoing = x ?? false),
+        ),
+        // A vehicle of this make & model is for this service; the driver
+        // doesn't choose one (the admin still approves it on the vehicle).
+        SearchableDropdownFormField<String>(
+          key: const ValueKey('vmm-service'),
+          isExpanded: true,
+          initialValue: widget.services.any((s) => s.id == f.serviceId) ? f.serviceId : '',
+          decoration: const InputDecoration(
+            labelText: 'Service type',
+            helperText: 'Optional. Set it and drivers of this model skip choosing one.',
+          ),
+          items: [
+            const DropdownMenuItem(value: '', child: Text('The driver chooses')),
+            for (final s in widget.services) DropdownMenuItem(value: s.id, child: Text(s.name)),
+          ],
+          onChanged: (v) => setState(() => f.serviceId = v ?? ''),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,

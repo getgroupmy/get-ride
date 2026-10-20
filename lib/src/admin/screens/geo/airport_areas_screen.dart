@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../core/airport_queue.dart';
+import '../../../data/airport_repository.dart';
+import 'airport_editor.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
@@ -17,7 +19,10 @@ import '../../../widgets/search_select.dart';
 const airportAreasPage = 'admin-settings-airport-areas';
 
 /// Airports with an assigned place, a geofence and gates
-/// (Expo `admin-settings-airport-areas.tsx`, table `airport_areas`).
+/// (Expo `admin-settings-airport-areas.tsx`, table `airport_areas`): a list
+/// of airports, each opening its editor (airport_editor.dart: Area, Gates &
+/// doors, Pickup rules, Waiting queue, Fares and Charges, migration 0249).
+/// On a wide screen the editor stands beside the list.
 class AdminAirportAreasScreen extends ConsumerStatefulWidget {
   const AdminAirportAreasScreen({super.key});
 
@@ -27,6 +32,9 @@ class AdminAirportAreasScreen extends ConsumerStatefulWidget {
 
 class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScreen> {
   String _query = '', _country = '', _state = '', _city = '';
+
+  /// The airport open beside the list on a wide screen.
+  String? _openId;
 
   Future<void> _edit([GeoEntry? entry]) async {
     final form = await showAdminSheet<AirportForm>(
@@ -81,10 +89,11 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
         initial: stored,
         near: latLngOf(e.values),
         reverseFirst: true,
+        onPickSaved: () => pickSavedRegionShape(context, ref),
         onSave: (shape) async {
           await repo.saveAirport(
             id: e.id,
-            values: {...e.values, ...boundaryValues(shape, DateTime.now())},
+            values: {...e.values, ...boundaryValues(simplifyShape(shape), DateTime.now())},
             position: e.position,
           );
           ref.invalidate(airportsProvider);
@@ -131,6 +140,10 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
         value: async,
         onRetry: () => ref.invalidate(airportsProvider),
         data: (entries) {
+          final wide = MediaQuery.sizeOf(context).width >= 1000;
+          final doors = ref.watch(airportDoorsProvider).value ?? const <AirportDoor>[];
+          final settings = ref.watch(airportSettingsProvider).value ?? const <String, AirportSettings>{};
+          final open = entries.where((e) => e.id == _openId).firstOrNull ?? entries.firstOrNull;
           final values = [for (final e in entries) e.values];
           final opts = airportFilterOptions(values, country: _country, state: _state);
           final filtered = entries
@@ -145,10 +158,7 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
                   onSelected: enabled ? (_) => _pickFilter(label, options, value, onPick) : null,
                 ),
               );
-          return ResponsiveCenter(
-            maxWidth: 900,
-            padding: EdgeInsets.zero,
-            child: Column(children: [
+          final list = Column(children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                 child: TextField(
@@ -189,80 +199,114 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
                         title: 'No airports',
                         message: 'Adjust filters or add a new airport.',
                       )
-                    : ListView.separated(
-                        padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)),
+                    : ListView.builder(
+                        padding: EdgeInsets.fromLTRB(12, 4, 12, addActionListBottomPadding(context)),
                         itemCount: filtered.length,
-                        separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (_, i) => _AirportTile(
                           entry: filtered[i],
+                          selected: wide && filtered[i].id == open?.id,
+                          summary: airportCardSummary(
+                            filtered[i].values,
+                            doors: doors,
+                            airportId: filtered[i].id,
+                            settings: settings[filtered[i].id],
+                          ),
                           canEdit: canEdit,
-                          onGeofence: () => _geofence(filtered[i], canEdit),
-                          onGates: () => context.push(Uri(
-                            path: '/admin/m/multi-gate-place-gates',
-                            queryParameters: {'placeId': filtered[i].id, 'parentKey': airportAreasKey},
-                          ).toString()),
+                          onOpen: () => wide
+                              ? setState(() => _openId = filtered[i].id)
+                              : AirportEditor.open(
+                                  context,
+                                  entry: filtered[i],
+                                  canEdit: canEdit,
+                                  onEditDetails: () => _edit(filtered[i]),
+                                  onEditBoundary: () => _geofence(filtered[i], canEdit),
+                                ),
                           onEdit: () => _edit(filtered[i]),
                           onDelete: () => _delete(filtered[i]),
                         ),
                       ),
               ),
-            ]),
-          );
+            ]);
+          if (!wide || open == null) return ResponsiveCenter(maxWidth: 900, padding: EdgeInsets.zero, child: list);
+          return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            SizedBox(width: 360, child: list),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: AirportEditor(
+                key: ValueKey('airport-editor-${open.id}'),
+                entry: open,
+                canEdit: canEdit,
+                onEditDetails: () => _edit(open),
+                onEditBoundary: () => _geofence(open, canEdit),
+              ),
+            ),
+          ]);
         },
       ),
     );
   }
 }
 
+/// "KUL · 2 drop-off · 2 pickup · queue pickups" for an airport's card.
+String airportCardSummary(
+  Map<String, dynamic> values, {
+  required List<AirportDoor> doors,
+  required String airportId,
+  AirportSettings? settings,
+}) {
+  final code = '${values['code'] ?? ''}'.trim();
+  final drop = doorsFor(doors, airportId, AirportSide.drop).length;
+  final pick = doorsFor(doors, airportId, AirportSide.pick).length;
+  final mode = settings == null || !settings.restrictPickups
+      ? 'normal pickups'
+      : settings.pickupFrom.length == 2
+      ? 'queue and zone pickups'
+      : settings.pickupFrom.contains(PickupSource.queue)
+      ? 'queue pickups'
+      : 'zone pickups';
+  return [if (code.isNotEmpty) code, '$drop drop-off', '$pick pickup', mode].join(' · ');
+}
+
 class _AirportTile extends StatelessWidget {
   const _AirportTile({
     required this.entry,
+    required this.summary,
+    required this.selected,
     required this.canEdit,
-    required this.onGeofence,
-    required this.onGates,
+    required this.onOpen,
     required this.onEdit,
     required this.onDelete,
   });
   final GeoEntry entry;
-  final bool canEdit;
-  final VoidCallback onGeofence, onGates;
+  final String summary;
+  final bool selected, canEdit;
+  final VoidCallback onOpen;
   final Future<void> Function() onEdit, onDelete;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final v = entry.values;
-    final code = '${v['code'] ?? ''}';
     final hasBoundary = parseBoundary(v['boundary']) != null;
-    final where = [v['city'], v['state'], v['country']].map((x) => '${x ?? ''}').where((s) => s.isNotEmpty).join(' • ');
-    Widget badge(String text, Color c) => Container(
-          margin: const EdgeInsets.only(left: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
-          child: Text(text, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w600)),
-        );
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: scheme.primaryContainer,
-        child: Icon(Icons.flight, color: scheme.primary, size: 20),
-      ),
-      title: Row(children: [
-        Flexible(child: Text('${v['name'] ?? 'Airport'}', overflow: TextOverflow.ellipsis)),
-        if (code.isNotEmpty) badge(code, scheme.primary),
-        if (hasBoundary) badge('Geofence', Colors.teal),
-      ]),
-      subtitle: where.isEmpty ? null : Text(where),
-      trailing: Wrap(children: [
-        IconButton(
-          tooltip: 'Geofence',
-          icon: Icon(Icons.map_outlined, color: hasBoundary ? scheme.primary : null),
-          onPressed: onGeofence,
+    return Card(
+      key: ValueKey('airport-card-${entry.id}'),
+      color: selected ? scheme.primaryContainer : null,
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ListTile(
+        onTap: onOpen,
+        leading: CircleAvatar(
+          backgroundColor: scheme.primaryContainer,
+          child: Icon(Icons.flight, color: scheme.primary, size: 20),
         ),
-        IconButton(tooltip: 'Gates', icon: const Icon(Icons.door_front_door_outlined), onPressed: onGates),
-        if (canEdit) BusyIconButton(tooltip: 'Edit', icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
-        if (canEdit)
-          BusyIconButton(tooltip: 'Delete', icon: Icon(Icons.delete_outline, color: scheme.error), onPressed: onDelete),
-      ]),
+        title: Text('${v['name'] ?? 'Airport'}', overflow: TextOverflow.ellipsis),
+        subtitle: Text(hasBoundary ? summary : '$summary · no boundary yet'),
+        trailing: canEdit
+            ? Wrap(children: [
+                BusyIconButton(tooltip: 'Edit details', icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
+                BusyIconButton(tooltip: 'Delete', icon: Icon(Icons.delete_outline, color: scheme.error), onPressed: onDelete),
+              ])
+            : const Icon(Icons.chevron_right),
+      ),
     );
   }
 }

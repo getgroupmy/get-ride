@@ -65,6 +65,7 @@ import 'trip_handover_panel.dart' show HandoverOffersCard;
 import '../../widgets/page_style_host.dart';
 import '../ride/promo_parts.dart' show PromoAppliedIcon, rideHasPromo;
 import '../../widgets/focus_order.dart';
+import 'airport_queue_card.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(rideRepositoryProvider).watchOpen(),
@@ -281,11 +282,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final id = _alertId;
     if (id == null) return;
     if (skipped) {
-      final fare = (ref.read(openRequestsProvider).value ?? const <RideRequest>[])
-          .where((r) => r.id == id)
-          .firstOrNull
-          ?.effectiveFare;
+      final req = (ref.read(openRequestsProvider).value ?? const <RideRequest>[]).where((r) => r.id == id).firstOrNull;
+      final fare = req?.effectiveFare;
       if (fare != null) _declinedFare[id] = fare;
+      // An airport order passed on goes to the next driver now (0249).
+      if (req != null && req.airportHold) unawaited(declineAirportOffer(ref, id));
     }
     setState(() => _alertId = null);
     _syncAlert(ref.read(openRequestsProvider).value ?? const []);
@@ -904,6 +905,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     ),
                     // A driver asking this partner to take over their trip (0199).
                     const HandoverOffersCard(),
+                    // At an airport: the waiting queue (0249).
+                    if (_online) const AirportQueueCard(),
                     // The next scheduled ride the driver took, under the switch.
                     const PartnerUpcomingBookingCard(),
                     if (modes.length > 1 || modes.any((m) => m.isTeksi))

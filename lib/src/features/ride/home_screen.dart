@@ -25,6 +25,11 @@ import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
+import '../../core/airport_areas.dart' show AirportArea;
+import '../../core/airport_queue.dart';
+import '../../data/airport_repository.dart';
+import '../../data/place_gates_repository.dart' show airportAreasProvider;
+import 'airport_door_sheet.dart';
 import '../../core/region_pricing.dart';
 import '../../core/service_tree.dart';
 import '../../core/ride_bidding.dart';
@@ -133,6 +138,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Place? _here;
   Place? _pickup;
   Place? _drop;
+
+  // ---- Airports (0249) ----
+  /// The doors chosen for a pickup at, or a drop-off at, an airport.
+  AirportDoor? _pickupDoor;
+  AirportDoor? _dropDoor;
+
+  /// The server's airport fare for the confirm step, and what it was asked for.
+  AirportQuote? _airportQuote;
+  String? _airportQuoteKey;
 
   // ---- Promo codes (0242) ----
   /// The codes that apply to the trip on the confirm step.
@@ -1145,8 +1159,117 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// ("+ Night surcharge: RM 2.00"); null when there are none.
   String? _chargeLines() {
     final lines = _pricingFor(_service).linesFor(_fareFor(_service));
-    if (lines.isEmpty) return null;
-    return [for (final l in lines) '+ ${l.label}: ${formatMoney(l.amount, _currency)}'].join('\n');
+    final airport = _airportQuoteNow();
+    if (lines.isEmpty && airport == null) return null;
+    return [
+      // The airport fare, as the server books it (0249): how it is made up,
+      // its charges and the total.
+      if (airport != null) ...[
+        for (final l in airport.lines) '${l.charge ? '+ ' : ''}${l.label}: ${formatMoney(l.amount, _currency)}',
+        'Airport fare: ${formatMoney(airport.total, _currency)}',
+      ],
+      for (final l in lines) '+ ${l.label}: ${formatMoney(l.amount, _currency)}',
+    ].join('\n');
+  }
+
+  /// The server's airport fare for the trip on the confirm step, when it
+  /// starts or ends at an airport; asked for again when the trip, service
+  /// or fare changes. Null until it answers, or with no airport.
+  AirportQuote? _airportQuoteNow() {
+    final a = _pickup, b = _drop, basis = _basis;
+    if (a == null || b == null || basis == null) return null;
+    // The fare as booked, option charges in it (0248): the server takes them
+    // out for the airport fare and adds them back after its minimum.
+    final normal = _fareFor(_service);
+    final options = [for (final c in _optionCharges) c.toJson()];
+    final key = '${a.point.latitude},${a.point.longitude}|${b.point.latitude},${b.point.longitude}|'
+        '${_service.name}|${basis.distanceKm.toStringAsFixed(2)}|$normal|$options';
+    if (key == _airportQuoteKey) return _airportQuote;
+    _airportQuoteKey = key;
+    _airportQuote = null;
+    final areas = ref.read(airportAreasProvider).value ?? const [];
+    if (airportAt(areas, a.point) == null && airportAt(areas, b.point) == null) return null;
+    final area = _pickupArea;
+    ref
+        .read(airportRepositoryProvider)
+        .quote(
+          pickup: a.point,
+          drop: b.point,
+          service: _service.name,
+          km: basis.distanceKm,
+          normalFare: normal,
+          country: area?.country,
+          state: area?.state,
+          city: area?.city,
+          suburb: area?.suburb,
+          optionCharges: options,
+        )
+        .then((q) {
+          if (mounted && _airportQuoteKey == key) setState(() => _airportQuote = q);
+        })
+        .catchError((_) {});
+    return null;
+  }
+
+  /// Before booking: the door at each end that is at an airport which asks
+  /// for one (0249). False when the rider closed a door sheet.
+  Future<bool> _chooseAirportDoors() async {
+    final a = _pickup, b = _drop;
+    if (a == null || b == null) return true;
+    List<AirportArea> areas;
+    try {
+      areas = await ref.read(airportAreasProvider.future);
+    } catch (_) {
+      return true;
+    }
+    final atPickup = airportAt(areas, a.point), atDrop = airportAt(areas, b.point);
+    if (atPickup == null && atDrop == null) {
+      _pickupDoor = _dropDoor = null;
+      return true;
+    }
+    final doors = await ref.read(airportDoorsProvider.future).catchError((_) => const <AirportDoor>[]);
+    final settings = await ref.read(airportSettingsProvider.future).catchError((_) => const <String, AirportSettings>{});
+    Future<AirportDoor?> ask(AirportArea airport, AirportSide side, Place at, AirportDoor? current) async {
+      final list = doorsFor(doors, airport.id, side);
+      final s = settings[airport.id];
+      if (list.isEmpty) return null;
+      if (current != null && list.any((d) => d.id == current.id)) return current;
+      // A door picked in the place search (its gate) counts as chosen.
+      final fromSearch = list.where((d) =>
+          d.lat == at.point.latitude && d.lng == at.point.longitude && at.name.endsWith(d.name)).firstOrNull;
+      if (fromSearch != null) return fromSearch;
+      if (s != null && !s.doorRequired(side)) return null;
+      if (!mounted) return null;
+      return showAirportDoorSheet(
+        context,
+        airportName: airport.name,
+        side: side,
+        doors: list,
+        charge: s?.chargeFor(side),
+        currency: _currency,
+      );
+    }
+
+    AirportDoor? pick, drop;
+    if (atPickup != null) {
+      pick = await ask(atPickup, AirportSide.pick, a, _pickupDoor);
+      final required = doorsFor(doors, atPickup.id, AirportSide.pick).isNotEmpty &&
+          (settings[atPickup.id]?.pickDoorRequired ?? true);
+      if (pick == null && required) return false;
+    }
+    if (atDrop != null) {
+      drop = await ask(atDrop, AirportSide.drop, b, _dropDoor);
+      final required = doorsFor(doors, atDrop.id, AirportSide.drop).isNotEmpty &&
+          (settings[atDrop.id]?.dropDoorRequired ?? true);
+      if (drop == null && required) return false;
+    }
+    if (mounted) {
+      setState(() {
+        _pickupDoor = pick;
+        _dropDoor = drop;
+      });
+    }
+    return true;
   }
 
   /// A fixed-fare vehicle's (i) (inDrive's): what [s] is priced on at the
@@ -1352,12 +1475,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       try {
         area = await areaLookup.timeout(const Duration(seconds: 5));
       } catch (_) {}
-      final metadata = rideRequestMetadata(
-        area: area,
-        ipAddress: await ipLookup,
-        gender: profile?.raw['gender'] as String?,
-        riderPhoto: profile?.avatarUrl,
-      );
+      final metadata = {
+        ...rideRequestMetadata(
+          area: area,
+          ipAddress: await ipLookup,
+          gender: profile?.raw['gender'] as String?,
+          riderPhoto: profile?.avatarUrl,
+        ),
+        // The doors chosen at an airport (0249; checked and named by the server).
+        if (_pickupDoor case final d?) 'pickup_door_id': d.id,
+        if (_dropDoor case final d?) 'drop_door_id': d.id,
+      };
       final booked = await rides.createRequest(
             scheduleAt: scheduleAt,
             service: _service.name,
@@ -1739,6 +1867,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // Already known to be outside GET.ride's regions: say so again, at once.
     final gap = _gap;
     if (gap != null) return _showGap(gap);
+    // At an airport: which door (0249).
+    if (!await _chooseAirportDoors() || !mounted) return;
     await _book();
   }
 

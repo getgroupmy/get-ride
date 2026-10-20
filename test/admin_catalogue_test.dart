@@ -537,7 +537,10 @@ void main() {
         'status': true,
         'is_default': true,
         'position': 2,
+        // The service the model maps to (0249); none here.
+        'service_id': null,
       });
+      expect(VehicleMakeModel.fromRow({'id': 'y', 'service_id': 's1'}).toRow()['service_id'], 's1');
     });
 
     test('formatYearRange', () {

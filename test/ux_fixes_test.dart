@@ -716,7 +716,7 @@ void _batch2() {
     expect(makeModelKind('car', 'ev'), 'Car · Electric');
     expect(makeModelKind('', 'ev'), 'Electric');
     MakeModel m(String make, String model) =>
-        (vehicleType: 'car', energyType: 'petrol', make: make, model: model, yearFrom: '', yearTo: '');
+        (vehicleType: 'car', energyType: 'petrol', make: make, model: model, yearFrom: '', yearTo: '', serviceId: '');
     final list = [m('Toyota', 'Vios'), m('perodua', 'Myvi'), m('Proton', 'X50'), m('Perodua', 'Axia')]
       ..sort(compareMakeModel);
     expect([for (final x in list) '${x.make} ${x.model}'], ['Perodua Axia', 'perodua Myvi', 'Proton X50', 'Toyota Vios']);

@@ -150,6 +150,70 @@ BoundaryShape? parseBoundary(Object? raw) {
   }
 }
 
+/// Most corners a stored airport area or zone keeps (Douglas-Peucker on
+/// save), so an outline copied from OpenStreetMap or a saved region stays a
+/// few kilobytes rather than megabytes.
+const zoneMaxPoints = 300;
+
+/// [ring] with corners closer than [toleranceM] metres to the line through
+/// their neighbours dropped (Douglas-Peucker; the first and last corners
+/// stay). Pure.
+List<LatLng> simplifyRing(List<LatLng> ring, double toleranceM) {
+  if (ring.length <= 3) return ring;
+  final lat0 = ring.first.latitude * math.pi / 180;
+  const m = 111320.0;
+  final pts = [for (final p in ring) (x: p.longitude * m * math.cos(lat0), y: p.latitude * m)];
+  final keep = List<bool>.filled(ring.length, false)
+    ..[0] = true
+    ..[ring.length - 1] = true;
+  final stack = <(int, int)>[(0, ring.length - 1)];
+  while (stack.isNotEmpty) {
+    final (a, b) = stack.removeLast();
+    var best = -1.0;
+    var at = -1;
+    final ax = pts[a].x, ay = pts[a].y, bx = pts[b].x, by = pts[b].y;
+    final dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+    for (var i = a + 1; i < b; i++) {
+      final px = pts[i].x, py = pts[i].y;
+      final t = len2 == 0 ? 0.0 : (((px - ax) * dx + (py - ay) * dy) / len2).clamp(0.0, 1.0);
+      final cx = ax + t * dx - px, cy = ay + t * dy - py;
+      final d = math.sqrt(cx * cx + cy * cy);
+      if (d > best) {
+        best = d;
+        at = i;
+      }
+    }
+    if (at != -1 && best > toleranceM) {
+      keep[at] = true;
+      stack
+        ..add((a, at))
+        ..add((at, b));
+    }
+  }
+  final out = [for (var i = 0; i < ring.length; i++) if (keep[i]) ring[i]];
+  return out.length >= 3 ? out : ring;
+}
+
+/// [s] with at most about [maxPoints] corners in all, its tolerance doubled
+/// from 5 m until it fits. The source and bounding box are kept. Pure.
+BoundaryShape simplifyShape(BoundaryShape s, {int maxPoints = zoneMaxPoints}) {
+  int count(List<List<LatLng>> rings) => rings.fold(0, (n, r) => n + r.length);
+  if (count(s.rings) <= maxPoints) return s;
+  var tol = 5.0;
+  var rings = s.rings;
+  var coords = s.coords;
+  for (var i = 0; i < 20 && count(rings) > maxPoints; i++) {
+    rings = [for (final r in s.rings) simplifyRing(r, tol)];
+    coords = simplifyRing(s.coords, tol);
+    tol *= 2;
+  }
+  return BoundaryShape(coords: coords, polygons: s.polygons == null ? null : rings, bbox: s.bbox, source: s.source);
+}
+
+/// [s] as copied from a saved region of [level] (`region:city`, …).
+BoundaryShape shapeFromRegion(BoundaryShape s, RegionLevel level) =>
+    BoundaryShape(coords: s.coords, polygons: s.polygons, bbox: s.bbox, source: 'region:${level.name}');
+
 /// A finished drawing (≥ 3 vertices) becomes a `manual` shape; null when there
 /// are too few points (Expo `commitDraft`).
 BoundaryShape? boundaryFromDraft(List<LatLng> pts) {

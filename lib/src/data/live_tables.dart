@@ -28,6 +28,12 @@ const liveSettingTables = <String>[
   'commission_rates',
   'airport_areas',
   'multi_gate',
+  // Airports' settings, waiting zones and fare zones (0249).
+  'airport_settings',
+  'airport_waiting_zones',
+  'airport_fare_zones',
+  // Vehicle services, lowest to highest (0249).
+  'vehicle_service_order',
   'ip_access_rules',
   'admin_access',
   'vehicle_make_models',

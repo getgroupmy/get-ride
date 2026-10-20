@@ -925,6 +925,7 @@ class VehicleMakeModel {
     this.status = true,
     this.isDefault = false,
     this.position = 0,
+    this.serviceId = '',
   });
 
   factory VehicleMakeModel.fromRow(Map<String, dynamic> r) => VehicleMakeModel(
@@ -939,6 +940,7 @@ class VehicleMakeModel {
         status: r['status'] == null ? true : jsBool(r['status']),
         isDefault: jsBool(r['is_default']),
         position: (r['position'] as num?)?.toInt() ?? 0,
+        serviceId: str(r['service_id']).trim(),
       );
 
   final String id;
@@ -955,6 +957,10 @@ class VehicleMakeModel {
   final bool isDefault;
   final int position;
 
+  /// The vehicle service (Vehicle Services entry id) a vehicle of this make
+  /// and model is for; '' when the driver chooses (migration 0249).
+  final String serviceId;
+
   /// The row `upsertVehicleMakeModel` writes.
   Map<String, dynamic> toRow() => {
         'id': id,
@@ -968,6 +974,7 @@ class VehicleMakeModel {
         'status': status,
         'is_default': isDefault,
         'position': position,
+        'service_id': serviceId.isEmpty ? null : serviceId,
       };
 }
 
@@ -1155,6 +1162,7 @@ class ModelForm {
     this.ongoing = false,
     this.iconUri = '',
     this.status = true,
+    this.serviceId = '',
   });
 
   factory ModelForm.fromRecord(VehicleMakeModel p) => ModelForm(
@@ -1167,9 +1175,10 @@ class ModelForm {
         ongoing: p.yearTo == '~',
         iconUri: p.iconUri,
         status: p.status,
+        serviceId: p.serviceId,
       );
 
-  String vehicleType, energyType, make, model, yearFrom, yearTo, iconUri;
+  String vehicleType, energyType, make, model, yearFrom, yearTo, iconUri, serviceId;
   bool ongoing, status;
 }
 
@@ -1217,6 +1226,7 @@ class ModelForm {
       status: f.status,
       isDefault: editing?.isDefault ?? false,
       position: editing?.position ?? 0,
+      serviceId: f.serviceId.trim(),
     ).toRow(),
     error: null,
   );

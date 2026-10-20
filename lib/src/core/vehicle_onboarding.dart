@@ -196,3 +196,11 @@ List<RequiredDoc> vehicleRequiredDocs({
       countries: area.countries,
       states: area.statePairs(),
     );
+
+/// The service a vehicle is registered for (migration 0249): the one its make
+/// & model maps to, else the driver's choice; a problem when neither is set.
+({String? serviceId, String? problem}) vehicleServiceChoice({required String mapped, required String chosen}) {
+  if (mapped.trim().isNotEmpty) return (serviceId: mapped.trim(), problem: null);
+  if (chosen.trim().isNotEmpty) return (serviceId: chosen.trim(), problem: null);
+  return (serviceId: null, problem: 'Choose the service type of this vehicle.');
+}

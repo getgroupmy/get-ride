@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import '../../data/ride_cancel_config.dart';
 import '../../data/active_location.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
+import '../../core/airport_queue.dart' show airportNoDriverMessage, airportNoDriverReason;
 import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart' show fareOfferStep;
 import '../../core/format.dart';
@@ -525,7 +526,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       builder: (c) => AlertDialog(
         title: const Text('Request expired'),
         content: Text(
-          widget.ride.offerMe
+          // An airport that declines a pickup nobody in its queue can take (0249).
+          widget.ride.cancelReason == airportNoDriverReason
+              ? airportNoDriverMessage
+              : widget.ride.offerMe
               ? "We couldn't find a driver in time. Try again, perhaps with a higher fare."
               : "We couldn't find a driver in time. Please try again.",
         ),
