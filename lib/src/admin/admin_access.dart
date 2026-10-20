@@ -95,6 +95,8 @@ final adminModules = <String, AdminModule>{
   'dispatch': const AdminModule('dispatch', 'Dispatch', [
     'admin-dispatch', 'admin-dispatch-stands', 'admin-dispatch-groups', 'admin-dispatch-accounts',
   ]),
+  // Telematics (0255): km and trips per driver, vehicle and pair.
+  'telematics': const AdminModule('telematics', 'Telematics', ['admin-telematics']),
   'settings': const AdminModule('settings', 'Settings', ['admin-settings']),
   'sub-admins': const AdminModule('sub-admins', 'Sub-admins', ['admin-settings-sub-admin']),
 };

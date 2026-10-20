@@ -51,6 +51,7 @@ const _builtInIcons = <String, IconData>{
   'dashboard': Icons.dashboard_outlined,
   'my-ride-code': Icons.qr_code_2,
   'earnings': Icons.payments_outlined,
+  'telematics': Icons.speed_outlined,
   'trip-history': Icons.schedule,
   'vehicle': Icons.directions_car_outlined,
   'stand-groups': Icons.groups_outlined,
@@ -72,7 +73,15 @@ void openRoute(GoRouter router, String route) => routeInShell(route) ? router.go
 /// The driver's pages inside the tabbed shell (beside the rail on a wide
 /// screen), under /drive; its other pages (a trip, the vehicles, sign-up)
 /// stand over the shell.
-const driveShellPages = ['/drive/permit', '/drive/my-ride', '/drive/scheduled', '/drive/earnings', '/drive/statements', '/drive/history'];
+const driveShellPages = [
+  '/drive/permit',
+  '/drive/my-ride',
+  '/drive/scheduled',
+  '/drive/earnings',
+  '/drive/telematics',
+  '/drive/statements',
+  '/drive/history',
+];
 
 /// Whether [route] is a page of the tabbed shell (gone to, not pushed).
 bool routeInShell(String route) {

@@ -96,6 +96,7 @@ const _defaultMenuIcons = <String, Map<String, String>>{
     'dashboard': 'Settings',
     'my-ride-code': 'Star',
     'earnings': 'Wallet',
+    'telematics': 'Clock',
     'trip-history': 'Clock',
     'scheduled-rides': 'Clock',
     'vehicle': 'Car',

@@ -20,6 +20,7 @@ import '../../core/format.dart';
 import '../../core/navigation_app.dart';
 import '../../core/trip_charges.dart';
 import '../../core/trip_checkpoint.dart';
+import '../../data/telematics_tracker.dart' show telematicsTrackerProvider;
 import '../../core/trip_progress.dart';
 import '../../core/trip_start.dart';
 import '../../core/ride_cancel.dart';
@@ -206,6 +207,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
 
   /// A row of the ride (realtime's, or the driver's own step on it).
   void _onRow(RideRequest r) {
+    // Telematics (0255): the km to the pickup and with the passenger.
+    ref.read(telematicsTrackerProvider).onRide(r);
     _passenger = r.passengerName;
     final before = _status;
     _status = r.status;

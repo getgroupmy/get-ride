@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../widgets/common.dart';
 import '../../widgets/focus_order.dart';
 import '../../data/driver_presence.dart';
+import '../../data/telematics_tracker.dart' show telematicsTrackerProvider;
 import '../partner/driver_online.dart';
 import 'app_side_menu.dart' show AppSideMenuHost;
 
@@ -44,6 +45,8 @@ class AppShell extends ConsumerWidget {
     final online = ref.watch(driverOnlineProvider);
     // The server learns who is taking rides, and where (migration 0145).
     ref.watch(driverPresenceProvider);
+    // How far the driver drives online, for Telematics (migration 0255).
+    ref.watch(telematicsTrackerProvider);
     void go(int i) {
       if (online && i == rideTab) return;
       shell.goBranch(i, initialLocation: i == shell.currentIndex);

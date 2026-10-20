@@ -14,6 +14,7 @@ import 'screens/push_screen.dart';
 import 'screens/rides_screen.dart';
 import 'screens/settings_screens.dart';
 import 'screens/sub_admins_screen.dart';
+import 'screens/telematics_screen.dart';
 import 'screens/support_screens.dart';
 
 /// `/admin/...` — a separate shell from the passenger/driver app.
@@ -52,6 +53,7 @@ final adminRoute = ShellRoute(
     GoRoute(path: '/admin/fare-tariffs', builder: (_, _) => const AdminFareTariffsScreen()),
     GoRoute(path: '/admin/messaging', builder: (_, _) => const AdminMessagingScreen()),
     GoRoute(path: '/admin/dispatch', builder: (_, _) => const AdminDispatchScreen()),
+    GoRoute(path: '/admin/telematics', builder: (_, _) => const AdminTelematicsScreen()),
     GoRoute(
       path: '/admin/sub-admins',
       builder: (_, _) => const AdminSubAdminsScreen(),

@@ -47,6 +47,7 @@ import 'data/session_guard.dart';
 import 'data/session_tracker.dart';
 import 'features/dispatch/dispatch_screen.dart';
 import 'features/partner/stand_groups_screen.dart';
+import 'features/partner/telematics_screen.dart';
 import 'features/partner/ride_extras_parts.dart' show RideExtrasScreen;
 import 'features/install/app_install_screen.dart';
 import 'features/auth/otp_screen.dart';
@@ -391,6 +392,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                             ScheduledJobsScreen(initialTab: s.uri.queryParameters['tab'] == 'mine' ? 1 : 0),
                       ),
                       GoRoute(path: 'earnings', builder: (_, _) => const EarningsScreen()),
+                      GoRoute(path: 'telematics', builder: (_, _) => const TelematicsScreen()),
                       GoRoute(path: 'groups', builder: (_, _) => const StandGroupsScreen()),
                       GoRoute(path: 'statements', builder: (_, _) => const StatementsScreen()),
                       GoRoute(
