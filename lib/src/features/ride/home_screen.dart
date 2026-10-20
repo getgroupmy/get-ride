@@ -253,6 +253,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String get _payment => resolvePayment(_paymentPick, _payments);
   bool _useCoins = false;
 
+  /// Admin → Display → Ride Confirm Layout, read when booking: a row the
+  /// admin hides books as off, whatever the rider last chose.
+  ConfirmLayout get _confirmLayout =>
+      ConfirmLayout.fromSettings(ref.read(displaySettingsBlobProvider).value ?? const <String, dynamic>{});
+  bool get _useCoinsOn => _useCoins && _confirmLayout.showCoin;
+  bool get _autoAcceptOn => _autoAccept && _confirmLayout.showAutoAccept;
+  bool get _forOtherOn => _forOther && _confirmLayout.showBookForOther;
+
   /// The rider's GET.coin balance and the admin rate, for the "Use GET.coin"
   /// switch. Null while loading or when it can't be read: no switch then.
   ({double balance, double rate})? get _coins {
@@ -394,7 +402,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// The favourites a booking now goes to first; empty with My Ride off.
   List<String> _myRideTargets(List<FavouriteDriver> favourites, MyRideSettings s) {
-    if (!(_myRideOn ?? s.onByDefault)) return const [];
+    if (!_confirmLayout.showMyRide || !(_myRideOn ?? s.onByDefault)) return const [];
     final pick = _myRidePick;
     if (pick == null) return defaultMyRideTargets(favourites, s.maxKm);
     return [
@@ -1139,7 +1147,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             fareDecimals: _pricing.fareDecimals,
             payment: _payment,
             payments: _payments,
-            autoAccept: _autoAccept,
+            autoAccept: _autoAcceptOn,
             entrance: _entrance,
             pickupName: _pickup?.name ?? 'Pickup',
             routeLabel: _stops.isEmpty ? (_drop?.name ?? 'Destination') : '${_stops.length + 1} route stops',
@@ -1170,15 +1178,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final canFind = !_booking &&
         !_routing &&
         _basis != null &&
-        !(_forOther && bookedFor(_otherName.text, _otherPhone.text) == null);
+        !(_forOtherOn && bookedFor(_otherName.text, _otherPhone.text) == null);
     if (r.find && canFind) await _find();
   }
 
   Future<void> _book() async {
     final a = _pickup, b = _drop, r = _basis;
     if (a == null || b == null || r == null) return;
-    final forWhom = _forOther ? bookedFor(_otherName.text, _otherPhone.text) : null;
-    if (_forOther && forWhom == null) {
+    final forWhom = _forOtherOn ? bookedFor(_otherName.text, _otherPhone.text) : null;
+    if (_forOtherOn && forWhom == null) {
       showInfo(context, bookForProblem(_otherName.text, _otherPhone.text) ?? "Enter the passenger's details.");
       return;
     }
@@ -1315,7 +1323,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             riderPhone: profile?.phone,
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
             offerMe: offerMe,
-            autoAcceptFare: _autoAccept && offerMe ? _fareFor(_service, biddingOn: offerMe) : null,
+            autoAcceptFare: _autoAcceptOn && offerMe ? _fareFor(_service, biddingOn: offerMe) : null,
             stops: List.of(_stops),
             metadata: metadata,
             bookedFor: forWhom,
@@ -1356,11 +1364,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(directBookingNamesProvider.notifier).remember(req.id, direct.driverName);
         ref.read(directBookingProvider.notifier).clear();
       }
-      if (_autoAccept && offerMe) {
+      if (_autoAcceptOn && offerMe) {
         ref.read(autoAcceptProvider.notifier).set(req.id, _fareFor(_service, biddingOn: offerMe));
       }
       final coins = _coins;
-      if (_useCoins && coins != null && fareCoinOffer(_fareFor(_service, biddingOn: offerMe), coins.balance, coins.rate) != null) {
+      if (_useCoinsOn && coins != null && fareCoinOffer(_fareFor(_service, biddingOn: offerMe), coins.balance, coins.rate) != null) {
         try {
           await ref.read(fareCoinChoiceStoreProvider).choose(req.id);
         } catch (_) {}
@@ -1648,7 +1656,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// "Find a driver" (or Now). One ride of the rider's own at a time (Expo's
   /// alert); rides for others are not held back by it.
   Future<void> _find() async {
-    if (!_forOther && _scheduleAt == null && _ongoing != null) {
+    if (!_forOtherOn && _scheduleAt == null && _ongoing != null) {
       final open = await showAppDialog<bool>(id: 'home.find',
         context: context,
         builder: (c) => AlertDialog(
@@ -2201,10 +2209,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               if (p != null && mounted) setState(() => _paymentPick = p);
             },
             // Offers only come where bidding is on for this service.
-            autoAcceptLabel: _biddingFor(_service) ? 'Auto-accept offer of ${_fareMoney(_fareFor(_service))}' : null,
+            autoAcceptLabel: layout.showAutoAccept && _biddingFor(_service) ? 'Auto-accept offer of ${_fareMoney(_fareFor(_service))}' : null,
             autoAccept: _autoAccept,
             onAutoAccept: (v) => setState(() => _autoAccept = v),
-            label: _forOther
+            label: _forOtherOn
                 ? 'Find a driver for ${otherName.isEmpty ? 'someone else' : otherName}'
                 : direct != null
                 ? 'Book ${direct.driverName}'
@@ -2212,11 +2220,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onFind: _booking ||
                     _routing ||
                     _basis == null ||
-                    (_forOther && bookedFor(_otherName.text, _otherPhone.text) == null)
+                    (_forOtherOn && bookedFor(_otherName.text, _otherPhone.text) == null)
                 ? null
                 : _find,
-            coinTitle: coinOffer == null ? null : 'Use GET.coin',
-            coinSubtitle: coinOffer == null
+            coinTitle: coinOffer == null || !layout.showCoin ? null : 'Use GET.coin',
+            coinSubtitle: coinOffer == null || !layout.showCoin
                 ? null
                 : fareCoinSubtitle(
                     on: _useCoins,
@@ -2230,7 +2238,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             pickLater: scheduleConfig.enabled && direct == null ? () => _pickLater(scheduleConfig) : null,
             onLater: _bookLater,
             owedNote: owed > 0 ? '+ ${formatMoney(owed, _currency)} late fee from an earlier booking' : null,
-            whoRiding: _WhoRiding(
+            whoRiding: !layout.showBookForOther ? null : _WhoRiding(
               forOther: _forOther,
               name: _otherName,
               phone: _otherPhone,
@@ -2247,7 +2255,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     booking: direct,
                     onCancel: () => ref.read(directBookingProvider.notifier).clear(),
                   )
-                : myRideFavs.any((d) => d.available)
+                : layout.showMyRide && myRideFavs.any((d) => d.available)
                 ? MyRideConfirmRow(
                     on: myRideOn,
                     names: myRideOn ? myRideNames(myRideTargets, myRideFavs) : null,
@@ -2447,6 +2455,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           minFromContent: confirming,
           minAdjust: confirming ? sheetMinAdjust(blob, confirmSheetMinAdjustKey) : 0,
           minCap: confirming ? contentCap : null,
+          minFloor: confirming ? confirmSheetMinFloor.toDouble() : null,
           revealMax: confirming && cardFit < 1 ? math.max(confirmStart, cardFit) : null,
           // The main screen's sheet starts fully down; the rider drags it up.
           initial: (confirming ? confirmStart : least) + navLiftFraction,

@@ -147,6 +147,7 @@ class MapSheetLayout extends StatefulWidget {
     this.minAdjust = 0,
     this.minFromContent = false,
     this.minCap,
+    this.minFloor,
   });
 
   /// Admin → Display Settings → "Bottom sheet minimum height": px added to
@@ -163,6 +164,10 @@ class MapSheetLayout extends StatefulWidget {
   /// The most the least height may be (a fraction, under [max]): the confirm
   /// sheet's, so the route card over the map stays in view.
   final double? minCap;
+
+  /// The least the sheet ever rests at, in px with its footer, in place of
+  /// its [MapSheetRestLine.floor] line (the confirm sheet's admin-set low).
+  final double? minFloor;
 
   /// The highest a [MapSheetReveal] may raise the sheet by itself (null:
   /// [max]); its content slides instead. Keeps what the map shows over the
@@ -276,7 +281,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   double _minWith(double adjust) {
     final h = _h;
     final lines = _restLine > 0 || _softRestLine > 0;
-    if (h <= 0 || (!lines && adjust == 0 && _floorLine <= 0)) return widget.min;
+    if (h <= 0 || (!lines && adjust == 0 && _floorLine <= 0 && widget.minFloor == null)) return widget.min;
     final under = widget.footer != null ? _footerHeight : (widget.padBottom ? _bottomPad : 0.0);
     var rest = widget.minFromContent && _restLine > 0 ? 0.0 : widget.min;
     if (_restLine > 0) rest = math.max(rest, (_restLine + under) / h);
@@ -285,7 +290,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
     if (_softRestLine > 0 && soft <= MapSheetRestLine.softMax) rest = math.max(rest, soft);
     final cap = math.min(widget.max, widget.minCap ?? widget.max);
     // The handle at least, else the first item whole over the footer.
-    final floor = (_floorLine > 0 ? _floorLine : 22.0) + under;
+    final floor = widget.minFloor ?? (_floorLine > 0 ? _floorLine : 22.0) + under;
     final least = effectiveSheetMin(auto: math.min(rest, cap) * h, adjust: adjust, floor: floor, max: cap * h) / h;
     // Exactly the cap at most: px back to a share can land a hair over it.
     return math.min(cap, least);

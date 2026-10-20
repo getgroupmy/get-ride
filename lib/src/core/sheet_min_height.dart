@@ -16,13 +16,21 @@ const sheetMinAdjustMin = -60;
 const sheetMinAdjustMax = 300;
 const sheetMinAdjustStep = 10;
 
+/// The ride-confirm sheet may rest as low as this, in px with the Find a
+/// driver bar under it; the vehicles above it are a pull away.
+const confirmSheetMinFloor = 150;
+
+/// The lowest adjustment for the sheet at [key]: the ride-confirm one goes
+/// far enough to reach [confirmSheetMinFloor].
+int sheetMinAdjustMinFor(String key) => key == confirmSheetMinAdjustKey ? -400 : sheetMinAdjustMin;
+
 /// The admin's adjustment at [key] (0 when unset or unreadable), kept in
 /// range.
 double sheetMinAdjust(Map<String, dynamic>? settings, String key) {
   final v = settings?[key];
   final n = v is num ? v : num.tryParse('${v ?? ''}'.trim());
   if (n == null || !n.isFinite) return 0;
-  return n.toDouble().clamp(sheetMinAdjustMin.toDouble(), sheetMinAdjustMax.toDouble());
+  return n.toDouble().clamp(sheetMinAdjustMinFor(key).toDouble(), sheetMinAdjustMax.toDouble());
 }
 
 /// The sheet's least height in px: what its shown items need ([auto]) plus
