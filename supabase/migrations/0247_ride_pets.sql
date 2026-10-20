@@ -91,9 +91,11 @@ begin
     raise exception 'RIDE_PETS_INVALID' using errcode = '22023',
       hint = 'Each pet needs a type, and its photo must be the rider''s own.';
   end if;
-  -- The rider's pets are the rider's: nobody else changes them.
+  -- The rider's pets are the rider's: nobody else changes them. This runs as
+  -- its owner (security definer), so the caller's role is the session's
+  -- `role` setting, not current_user.
   if not ins and new.pets is distinct from old.pets
-     and current_user in ('anon', 'authenticated') and not public.caller_is_admin()
+     and current_setting('role', true) in ('anon', 'authenticated') and not public.caller_is_admin()
      and auth.uid() is distinct from old.rider_id then
     raise exception 'RIDE_RIDER_ONLY' using errcode = '42501',
       hint = 'Only the passenger changes their pets.';
