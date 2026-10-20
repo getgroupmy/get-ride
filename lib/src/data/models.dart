@@ -4,6 +4,7 @@ library;
 
 import '../core/format.dart';
 import '../core/my_ride.dart';
+import '../core/permits.dart' show PlateColours, plateColoursFromJson;
 import '../core/promo_codes.dart';
 import '../core/region_pricing.dart';
 import '../core/ride_payment.dart';
@@ -135,6 +136,14 @@ class RideRequest {
   String? get partnerPhone => raw['partner_phone'] as String?;
   String? get partnerVehicle => raw['partner_vehicle'] as String?;
   String? get partnerPlate => raw['partner_plate'] as String?;
+
+  /// The vehicle the driver had taken when they bid on or took the ride,
+  /// its energy, partner types and plate colours (server-stamped, 0254).
+  String? get partnerVehicleId => raw['partner_vehicle_id'] as String?;
+  String? get partnerEnergy => raw['partner_energy'] as String?;
+  List<String> get partnerVehicleTypes =>
+      [for (final t in (raw['partner_vehicle_types'] as List?) ?? const []) '$t'];
+  PlateColours? get partnerPlateColours => plateColoursFromJson(raw['partner_plate_colours']);
   double? get partnerRating => _d(raw['partner_rating']);
 
   /// The driver's completed trips when they bid or took the ride, stamped by

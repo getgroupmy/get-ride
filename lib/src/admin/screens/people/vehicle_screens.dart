@@ -13,6 +13,7 @@ import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
 import 'vehicle_drivers.dart';
+import 'vehicle_permits_screen.dart' show VehiclePermitsSection;
 import '../geo/geo_data.dart' show regionVehicleTypesProvider;
 import '../geo/geo_logic.dart' show ServiceOption;
 import '../../../widgets/search_select.dart';
@@ -189,6 +190,8 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
       );
       // The service type the admin approves (and, for a new vehicle, asks for).
       cols['service_approved_id'] = _service.isEmpty ? null : _service;
+      // The energy of the make & model picked here (0254: the plate's colour).
+      if (_mm!.energyType.trim().isNotEmpty) cols['energy_type'] = _mm!.energyType.trim();
       if (!_isEdit || _s('service_id').isEmpty) cols['service_id'] = _service.isEmpty ? null : _service;
       if (_isEdit) {
         await repo.updateVehicle(r!['id'] as String, cols);
@@ -329,6 +332,8 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
             ],
             const SectionTitle('Permit'),
             ChoiceChips(options: permitOptions, value: _permit, enabled: canEdit, onChanged: (p) => setState(() => _permit = p)),
+            // The country's permits for this vehicle (0254): upload, bypass.
+            if (_isEdit) VehiclePermitsSection(vehicleId: r!['id'] as String, canEdit: canEdit),
             const SizedBox(height: 8),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,

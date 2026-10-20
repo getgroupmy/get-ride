@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../admin_registry.dart';
 import 'partner_screens.dart';
 import 'user_screens.dart';
+import 'vehicle_permits_screen.dart';
 import 'vehicle_screens.dart';
 
 String _id(GoRouterState s) => s.uri.queryParameters['id'] ?? '';
@@ -16,12 +17,24 @@ final peopleRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/partner-edit', builder: (_, s) => PartnerEditScreen(id: _id(s))),
   GoRoute(path: '/admin/m/vehicle-add', builder: (_, _) => const VehicleAddScreen()),
   GoRoute(path: '/admin/m/vehicle-edit', builder: (_, s) => VehicleEditScreen(id: _id(s))),
+  GoRoute(
+    path: '/admin/m/vehicle-permits',
+    builder: (_, s) => VehiclePermitsScreen(initialCountry: s.uri.queryParameters['country']),
+  ),
 ];
 
 // "Add user" (admin-user-add) is intentionally not ported: profiles.id is a
 // foreign key to auth.users, and the Expo add flow never reaches the database
 // (`upsertUser` skips rows with no existing profile).
 const peopleEntries = <AdminScreenEntry>[
+  AdminScreenEntry(
+    section: 'People',
+    title: 'Vehicle permits',
+    subtitle: 'Permits per country: upload, bypass, require, plate colours, expiry reminders',
+    path: '/admin/m/vehicle-permits',
+    pages: [vehiclePermitsPage],
+    icon: Icons.verified_user_outlined,
+  ),
   AdminScreenEntry(
     section: 'People',
     title: 'User ID documents',

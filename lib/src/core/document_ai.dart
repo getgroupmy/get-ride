@@ -50,6 +50,12 @@ class DocumentAiResult {
   /// them; `lib/src/core/driver_permit.dart` reads them off the stored row.
   Map<String, dynamic>? get taxiPermit => (_ex['taxiPermit'] as Map?)?.cast<String, dynamic>();
 
+  /// A permit type's own fields as the AI read them (key: value, dates as
+  /// yyyy-mm-dd), present only when the check was asked for them.
+  Map<String, String?> get permitFields => {
+    for (final e in ((_ex['permitFields'] as Map?) ?? const {}).entries) '${e.key}': _s(e.value),
+  };
+
   /// Where the driver's portrait is on the front image, if the AI saw one.
   FractionBox? get permitPhotoBox => FractionBox.parse(taxiPermit?['photoBox']);
 }
@@ -114,6 +120,7 @@ Map<String, dynamic> docAiRequestBody({
   String? startDate,
   String? expiryDate,
   bool isTaxiPermit = false,
+  List<({String key, String label, String labelLocal, bool isDate})> permitFields = const [],
 }) {
   String? blank(String? v) => v == null || v.trim().isEmpty ? null : v.trim();
   return {
@@ -128,6 +135,12 @@ Map<String, dynamic> docAiRequestBody({
       'expiryDate': blank(expiryDate),
       // Also read the permit's fields and where its portrait is.
       if (isTaxiPermit) 'isTaxiPermit': true,
+      // A permit type's fields, read by their printed labels.
+      if (permitFields.isNotEmpty)
+        'permitFields': [
+          for (final f in permitFields)
+            {'key': f.key, 'label': f.label, if (f.labelLocal.trim().isNotEmpty) 'labelLocal': f.labelLocal, 'kind': f.isDate ? 'date' : 'text'},
+        ],
     },
   };
 }

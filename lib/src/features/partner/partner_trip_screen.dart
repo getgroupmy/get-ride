@@ -46,6 +46,7 @@ import '../../widgets/offline_ride_banner.dart';
 import '../ride/ride_tracking_screen.dart' show SteadyRide, rideStreamProvider;
 import '../safety/ride_sos.dart';
 import '../safety/voice_protection_controller.dart';
+import 'my_permits_screen.dart' show DriverPermitButton;
 import 'trip_handover_panel.dart';
 import '../../widgets/page_style_host.dart';
 import '../ride/promo_parts.dart' show DriverPromoLine, PromoAppliedIcon, rideHasPromo;
@@ -835,6 +836,9 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                   : Text([if (r.dropDoor case final d?) 'Drop-off door: $d', ?r.dropAddress].join('\n'), maxLines: 3),
             ),
             if (r.note != null) ListTile(leading: const Icon(Icons.notes), title: Text(r.note!)),
+            // The vehicle's permits, to show an officer (0254).
+            if (r.status == RideStatus.accepted || r.status == RideStatus.arrived || r.status == RideStatus.onTrip)
+              const Padding(padding: EdgeInsets.fromLTRB(16, 4, 16, 8), child: DriverPermitButton()),
             if (r.pets.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),

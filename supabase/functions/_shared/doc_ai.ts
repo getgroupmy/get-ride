@@ -89,6 +89,17 @@ export function parseImage(input: unknown): InlineImage | string {
   return { mime, base64 };
 }
 
+/** One field of a permit type (Admin > Vehicle permits) the AI is asked to read. */
+export interface PermitFieldAsk {
+  key: string;
+  label: string;
+  labelLocal: string | null;
+  kind: "text" | "date";
+}
+
+/** Most fields one permit type can ask for. */
+export const MAX_PERMIT_FIELDS = 20;
+
 export interface DocumentAiContext {
   docName: string;
   documentNumber?: string | null;
@@ -97,6 +108,8 @@ export interface DocumentAiContext {
   startDate?: string | null;
   expiryDate?: string | null;
   isTaxiPermit?: boolean;
+  /** A permit type's own fields, read into extracted.permitFields. */
+  permitFields?: PermitFieldAsk[];
 }
 
 const clip = (v: unknown, n = 120): string | null =>
@@ -116,7 +129,35 @@ export function parseContext(input: unknown): DocumentAiContext | null {
     startDate: clip(o.startDate, 20),
     expiryDate: clip(o.expiryDate, 20),
     isTaxiPermit: o.isTaxiPermit === true,
+    permitFields: parsePermitFields(o.permitFields),
   };
+}
+
+/** The permit fields asked for: valid keys, labels clipped, at most [MAX_PERMIT_FIELDS]. */
+export function parsePermitFields(input: unknown): PermitFieldAsk[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out: PermitFieldAsk[] = [];
+  const seen = new Set<string>();
+  for (const f of input) {
+    if (!f || typeof f !== "object") continue;
+    const o = f as Record<string, unknown>;
+    const key = typeof o.key === "string" ? o.key.trim() : "";
+    const label = clip(o.label, 80);
+    if (!/^[a-z0-9_]{1,40}$/.test(key) || !label || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, label, labelLocal: clip(o.labelLocal, 80), kind: o.kind === "date" ? "date" : "text" });
+    if (out.length >= MAX_PERMIT_FIELDS) break;
+  }
+  return out.length ? out : undefined;
+}
+
+/** What the prompt asks for a permit type's own fields (any country's, by their printed labels). */
+export function permitFieldsInstructions(fields: PermitFieldAsk[]): string {
+  const lines = fields.map((f) => {
+    const printed = f.labelLocal ? `"${f.label}" (printed as "${f.labelLocal}")` : `"${f.label}"`;
+    return `- ${f.key}: ${printed}${f.kind === "date" ? ", as ISO yyyy-mm-dd" : ""}.`;
+  });
+  return `This document is a permit with its own fields. Also read each of these from the visible text and add them under "extracted.permitFields" as {"<key>": string|null}. The label may be printed in English or in the local language. Use null when a field is not clearly legible and never invent values:\n${lines.join("\n")}`;
 }
 
 export const SYSTEM_PROMPT = `You are a strict document verifier for a partner onboarding flow.
@@ -173,6 +214,7 @@ export function buildUserText(ctx: DocumentAiContext, hasBack: boolean): string 
   if (ctx.expiryDate) meta.push(`Stated expiry date: ${ctx.expiryDate}.`);
   if (ctx.isPwd) meta.push("Partner claims this is a PWD (disability) document.");
   if (ctx.isTaxiPermit) meta.push(TAXI_PERMIT_INSTRUCTIONS);
+  if (ctx.permitFields?.length) meta.push(permitFieldsInstructions(ctx.permitFields));
   meta.push(hasBack ? "Image 1 is the FRONT, image 2 is the BACK." : "Only the FRONT side was provided.");
   meta.push("Return ONLY the JSON object specified by the system message.");
   return meta.join(" ");
@@ -301,6 +343,7 @@ export interface DocumentAiVerificationResult {
     issuanceCountry: string | null;
     documentName: string | null;
     taxiPermit: TaxiPermitFields | null;
+    permitFields: Record<string, string | null> | null;
   };
   rawText: string;
   verifiedAt: string;
@@ -331,6 +374,15 @@ function normBox(v: unknown): PhotoBox | null {
   if (x == null || y == null || width == null || height == null) return null;
   if (width <= 0 || height <= 0) return null;
   return { x, y, width, height };
+}
+
+/** Only the keys asked for; dates as ISO, text clipped. */
+function normPermitFields(v: unknown, asked: PermitFieldAsk[] | undefined): Record<string, string | null> | null {
+  if (!asked?.length) return null;
+  const o = v && typeof v === "object" ? v as Record<string, unknown> : {};
+  const out: Record<string, string | null> = {};
+  for (const f of asked) out[f.key] = f.kind === "date" ? normDate(o[f.key]) : clip(o[f.key]);
+  return out;
 }
 
 function normTaxiPermit(v: unknown): TaxiPermitFields | null {
@@ -392,6 +444,7 @@ export function normalizeResult(raw: string, ctx: DocumentAiContext, now: Date):
       issuanceCountry: clip(ex.issuanceCountry),
       documentName: clip(ex.documentName),
       taxiPermit: ctx.isTaxiPermit ? normTaxiPermit(ex.taxiPermit) : null,
+      permitFields: normPermitFields(ex.permitFields, ctx.permitFields),
     },
     rawText: raw.trim().slice(0, 1000),
     verifiedAt: now.toISOString(),

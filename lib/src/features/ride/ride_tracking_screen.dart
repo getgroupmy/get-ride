@@ -42,6 +42,7 @@ import '../../widgets/map_recenter.dart' show RecenterButton;
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/trip_safety.dart';
 import 'demo_ride.dart';
+import 'ride_permit_button.dart';
 import 'driver_card.dart';
 import 'confirm_parts.dart' show AutoAcceptIcon, ConfirmSwitch;
 import 'live_ride_map.dart';
@@ -761,9 +762,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         name: offer.name,
         rating: offer.rating,
         trips: offer.trips,
-        vehicle: [offer.vehicle, offer.plate].whereType<String>().isEmpty
-            ? null
-            : [offer.vehicle, offer.plate].whereType<String>().join(' · '),
+        vehicle: offer.vehicle,
+        plate: offer.plate,
+        plateColours: offer.plateColours,
         photo: offer.photo,
         etaMin: _offerEta[offer.key],
         onAccept: _busy ? null : () => _acceptOffer(offer),
@@ -1094,6 +1095,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 children: [
                   // The plate first, the car under it, then the driver.
                   DriverCardHeader(ride: r),
+                  // The vehicle's permits, from acceptance to the end of the trip (0254).
+                  if (!_isDemo) RidePermitButton(ride: r),
                   if (tripCode != null && r.status != RideStatus.onTrip)
                     ListTile(
                       key: const ValueKey('trip-code'),

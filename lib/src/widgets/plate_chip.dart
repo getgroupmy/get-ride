@@ -1,26 +1,44 @@
-// A number plate as the car shows it: white capitals on a black plate,
+// A number plate as the car shows it: in the country's colours for the
+// vehicle (a taxi, an EV...), else white capitals on a black plate,
 // kept whole (never broken after a "·" in a line of text).
 import 'package:flutter/material.dart';
 
+import '../core/permits.dart' show PlateColours;
+export '../core/permits.dart' show PlateColours;
+
 class PlateChip extends StatelessWidget {
-  const PlateChip({super.key, required this.plate, this.fontSize = 18});
+  const PlateChip({super.key, required this.plate, this.fontSize = 18, this.colours});
 
   final String plate;
   final double fontSize;
 
+  /// The country's plate colours for this vehicle (core/permits.dart); null
+  /// keeps white on black.
+  final PlateColours? colours;
+
   @override
-  Widget build(BuildContext context) => Container(
-    padding: EdgeInsets.symmetric(horizontal: fontSize * 0.66, vertical: fontSize / 3),
-    decoration: BoxDecoration(
-      color: Colors.black,
-      borderRadius: BorderRadius.circular(6),
-      border: Border.all(color: Theme.of(context).colorScheme.outline),
-    ),
-    child: Text(
-      plate.toUpperCase(),
-      maxLines: 1,
-      softWrap: false,
-      style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.w800, letterSpacing: 1.5),
+  Widget build(BuildContext context) => Semantics(
+    label: 'Number plate $plate',
+    excludeSemantics: true,
+    child: Container(
+      padding: EdgeInsets.symmetric(horizontal: fontSize * 0.66, vertical: fontSize / 3),
+      decoration: BoxDecoration(
+        color: colours?.bg ?? Colors.black,
+        borderRadius: BorderRadius.circular(6),
+        // A thin edge, so a white plate stands out on a white card.
+        border: Border.all(color: colours == null ? Theme.of(context).colorScheme.outline : const Color(0xFF888888)),
+      ),
+      child: Text(
+        plate.toUpperCase(),
+        maxLines: 1,
+        softWrap: false,
+        style: TextStyle(
+          color: colours?.fg ?? Colors.white,
+          fontSize: fontSize,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1.5,
+        ),
+      ),
     ),
   );
 }

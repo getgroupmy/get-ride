@@ -3,7 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin/screens/meterapp/display_logic.dart'
-    show myQrMenuItemId, myRideCodeMenuItemId, scheduledRidesMenuItemId, standGroupsMenuItemId, vehicleInfoMenuItemId;
+    show
+        myPermitMenuItemId,
+        myQrMenuItemId,
+        myRideCodeMenuItemId,
+        scheduledRidesMenuItemId,
+        standGroupsMenuItemId,
+        vehicleInfoMenuItemId;
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
@@ -62,6 +68,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     myQrMenuItemId: '/account/my-qr',
     'vehicle': '/drive/vehicles',
     standGroupsMenuItemId: '/drive/groups',
+    myPermitMenuItemId: '/drive/permits',
     // The trips taken as a partner; the rides booked are on the user side.
     'trip-history': '/drive/history',
     scheduledRidesMenuItemId: '/drive/scheduled',

@@ -56,6 +56,7 @@ const _titles = {
   '/drive': 'Drive',
   '/drive/earnings': 'Earnings',
   '/drive/history': 'Trip history',
+  '/drive/permits': 'My permit',
   '/drive/my-ride': 'My Ride code',
   '/drive/onboarding': 'Become a partner',
   '/drive/permit': 'Taxi permit',

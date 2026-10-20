@@ -64,6 +64,9 @@ const defaultUserMenuItems = <(String, String)>[
 /// The driver menu's stand groups and fleets to join (0251).
 const standGroupsMenuItemId = 'stand-groups';
 
+/// The driver's permits, any time (0254).
+const myPermitMenuItemId = 'my-permit';
+
 const defaultPartnerMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
   ('dashboard', 'Dashboard'),
@@ -74,6 +77,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   ('trip-history', 'Trip history'),
   (scheduledRidesMenuItemId, 'Scheduled rides'), // this app's own; the Expo menu skips it
   ('vehicle', 'Vehicle'),
+  (myPermitMenuItemId, 'My permit'), // this app's own (0254): the vehicle's and driver's permits
   (standGroupsMenuItemId, 'Stand groups'), // this app's own (0251): groups a driver asks to join
   (vehicleInfoMenuItemId, 'Vehicle information'),
   ('documents', 'Documents'),

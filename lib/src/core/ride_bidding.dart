@@ -20,6 +20,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../data/geo_service.dart';
 import '../data/models.dart';
+import 'permits.dart' show PlateColours;
 import 'region_pricing.dart';
 import 'region_rules.dart';
 import 'region_time.dart';
@@ -746,6 +747,7 @@ class RideOffer {
     this.name,
     this.vehicle,
     this.plate,
+    this.plateColours,
     this.rating,
     this.trips,
     this.photo,
@@ -758,6 +760,9 @@ class RideOffer {
   final String? name;
   final String? vehicle;
   final String? plate;
+
+  /// The plate's colours in the vehicle's country (server-stamped, 0254).
+  final PlateColours? plateColours;
   final double? rating;
 
   /// The driver's completed trips, stamped by the server (migration 0237);
@@ -784,6 +789,7 @@ RideOffer? standingOffer(RideRequest r) {
     name: r.partnerName,
     vehicle: r.partnerVehicle,
     plate: r.partnerPlate,
+    plateColours: r.partnerPlateColours,
     rating: r.partnerRating,
     trips: r.partnerTrips,
     photo: r.partnerPhoto,
