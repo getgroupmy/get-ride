@@ -12,6 +12,7 @@ import {
   DEFAULT_VISION_MODELS,
   isVisionProvider,
   MAX_IMAGE_BYTES,
+  MAX_PERMIT_FIELDS,
   normalizeResult,
   normDate,
   parseContext,
@@ -156,4 +157,33 @@ Deno.test("only a refused key moves on to the next one", () => {
   assertEquals(keyRefused(401), true);
   assertEquals(keyRefused(403), true);
   for (const s of [400, 413, 429, 500, 503]) assertEquals(keyRefused(s), false);
+});
+
+Deno.test("a permit type's own fields: asked by label, read back by key", () => {
+  const c = parseContext({
+    docName: "Sample vehicle permit",
+    permitFields: [
+      { key: "ref_primary", label: "Reference No.", labelLocal: "No. Rujukan", kind: "text" },
+      { key: "valid_until", label: "Valid until", kind: "date" },
+      { key: "Bad Key", label: "x" },
+      { key: "ref_primary", label: "duplicate" },
+      { key: "nolabel" },
+    ],
+  })!;
+  assertEquals(c.permitFields!.map((f) => f.key), ["ref_primary", "valid_until"]);
+  const t = buildUserText(c, false);
+  assertStringIncludes(t, 'ref_primary: "Reference No." (printed as "No. Rujukan").');
+  assertStringIncludes(t, 'valid_until: "Valid until", as ISO yyyy-mm-dd.');
+  assertStringIncludes(t, "extracted.permitFields");
+  assertEquals(parseContext({ docName: "Licence" })!.permitFields, undefined);
+
+  const raw = JSON.stringify({
+    isReal: true,
+    isRelevant: true,
+    extracted: { permitFields: { ref_primary: " AB-123 ", valid_until: "5 July 2027", other: "dropped" } },
+  });
+  assertEquals(normalizeResult(raw, c, now)!.extracted.permitFields, { ref_primary: "AB-123", valid_until: "2027-07-05" });
+  assertEquals(normalizeResult(raw, { docName: "Licence" }, now)!.extracted.permitFields, null);
+  const many = Array.from({ length: 30 }, (_, i) => ({ key: `f${i}`, label: `F${i}` }));
+  assertEquals(parseContext({ docName: "P", permitFields: many })!.permitFields!.length, MAX_PERMIT_FIELDS);
 });

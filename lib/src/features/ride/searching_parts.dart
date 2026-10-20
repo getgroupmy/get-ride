@@ -11,6 +11,7 @@ import '../../widgets/ride_stop_tiles.dart';
 import '../../data/models.dart';
 import 'confirm_parts.dart';
 import '../../widgets/net_image.dart';
+import '../../widgets/plate_chip.dart';
 import '../../widgets/page_style_host.dart';
 
 // The rider's search for a driver, drawn as inDrive draws it: the sheet
@@ -482,6 +483,8 @@ class SearchOfferView {
     this.rating,
     this.trips,
     this.vehicle,
+    this.plate,
+    this.plateColours,
     this.photo,
     this.etaMin,
     this.demo = false,
@@ -513,6 +516,10 @@ class SearchOfferView {
   final double progress;
   final VoidCallback? onAccept, onDecline;
   final String? name, vehicle, photo;
+
+  /// The plate in its own box, in the country's colours for the vehicle.
+  final String? plate;
+  final PlateColours? plateColours;
   final double? rating;
 
   /// The driver's completed trips (see [driverTripsLabel]); null when unknown.
@@ -730,7 +737,19 @@ class SearchOfferCard extends StatelessWidget {
                         ),
                         style: t.textTheme.titleMedium,
                       ),
-                      if (o.vehicle != null) Text(o.vehicle!, style: t.textTheme.titleMedium),
+                      if (o.plate != null && o.plate!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            PlateChip(key: ValueKey('offer-plate-${o.key}'), plate: o.plate!.trim(), fontSize: 14, colours: o.plateColours),
+                            if (o.vehicle != null) Text(o.vehicle!, style: t.textTheme.titleMedium),
+                          ],
+                        ),
+                      ] else if (o.vehicle != null)
+                        Text(o.vehicle!, style: t.textTheme.titleMedium),
                     ],
                   ),
                 ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/driver_eta.dart';
+import '../../core/permits.dart' show PlateColours;
 import '../../core/ride_bidding.dart' show driverTripsLabel;
 import '../../data/models.dart';
 import '../../widgets/net_image.dart';
@@ -48,13 +49,17 @@ class RideStatusTitle extends ConsumerWidget {
 
 /// The plate in a box of its own, as it looks on the car.
 class PlateBox extends StatelessWidget {
-  const PlateBox({super.key, required this.plate});
+  const PlateBox({super.key, required this.plate, this.colours});
   final String plate;
+
+  /// The country's colours for this vehicle (core/permits.dart): a taxi's
+  /// white plate, an EV's green; null keeps the card's own colours.
+  final PlateColours? colours;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final ink = t.colorScheme.onSurface;
+    final ink = colours?.fg ?? t.colorScheme.onSurface;
     return Semantics(
       label: 'Number plate $plate',
       excludeSemantics: true,
@@ -62,9 +67,9 @@ class PlateBox extends StatelessWidget {
         key: const ValueKey('driver-plate'),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: t.colorScheme.surface,
+          color: colours?.bg ?? t.colorScheme.surface,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: ink, width: 2),
+          border: colours == null ? Border.all(color: ink, width: 2) : Border.all(color: const Color(0xFF888888)),
         ),
         // A long plate at large text on a small phone shrinks to fit
         // rather than running off the card.
@@ -104,7 +109,7 @@ class DriverCardHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (plate != null && plate.isNotEmpty) PlateBox(plate: plate),
+                if (plate != null && plate.isNotEmpty) PlateBox(plate: plate, colours: ride.partnerPlateColours),
                 if (vehicle != null && vehicle.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(

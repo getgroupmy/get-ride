@@ -725,6 +725,17 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
           subtitle: Text(a.description),
         ),
       ),
+      // Vehicles > [plate] > Permit: the vehicle's permits, uploaded by GET.ride (0254).
+      Card(
+        child: ListTile(
+          key: const ValueKey('vehicle-permit-link'),
+          leading: const Icon(Icons.verified_user_outlined),
+          title: const Text('Permit'),
+          subtitle: const Text('The permits for this vehicle, to show when asked'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.push('/drive/vehicles/${v['id']}/permit'),
+        ),
+      ),
       const SizedBox(height: 16),
       PartnerDocsUploader(
         key: ValueKey('done:${v['id']}:${docs.map((d) => d.id).join(',')}'),

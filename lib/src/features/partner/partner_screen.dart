@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../data/permits_repository.dart';
 import '../../data/dispatch_repository.dart' show dispatchRepositoryProvider;
 import '../../data/scheduled_ride_repository.dart';
 import '../../data/active_location.dart';
@@ -403,6 +404,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
     if (v && !await _typeRulesCleared(teksi: false)) return;
     if (!mounted) return;
+    if (v && !await _vehiclePermitCleared()) return;
+    if (!mounted) return;
     if (v && _autoAccept) _markQueueSeen();
     // Requests already waiting are in the list; only new ones pop up.
     if (v) _alertSeen.addAll(ref.read(openRequestsProvider).value?.map((r) => r.id) ?? const <String>[]);
@@ -488,6 +491,41 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         ],
       ),
     );
+    return false;
+  }
+
+  /// The country's permits (0254): where they are required, a vehicle
+  /// without a valid one (and no bypass) stays offline; say why and where to
+  /// see it. Unanswered lets the driver through (the server still keeps them
+  /// offline).
+  Future<bool> _vehiclePermitCleared() async {
+    String? problem;
+    try {
+      problem = (await ref.read(permitsRepositoryProvider).myPermits().timeout(goOnlineCheckTimeout)).problem;
+    } catch (_) {
+      return true;
+    }
+    final why = problem;
+    if (why == null) return true;
+    if (!mounted) return false;
+    final open = await showAppDialog<bool>(
+      id: 'partner.vehicle-permit-blocked',
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const ValueKey('vehicle-permit-blocked'),
+        title: const Text("You can't go online yet"),
+        content: Text(why),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('OK')),
+          FilledButton(
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('My permit'),
+          ),
+        ],
+      ),
+    );
+    if (open == true && mounted) unawaited(context.push('/drive/permits'));
     return false;
   }
 
