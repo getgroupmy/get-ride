@@ -18,6 +18,10 @@ String dispatchTicketText(DispatchOrder o) {
     [?o.service, o.fareText, o.payment.label].join(' · '),
     if (total != null && (o.feeAmount ?? 0) > 0 && o.feePayer == FeePayer.customer)
       'To pay: RM ${total.toStringAsFixed(2)} (fare and stand fee)',
+    if (o.paidByLink)
+      'Paid by card / e-wallet'
+    else if (o.payLink && o.payUrl != null && !o.cancelled)
+      'Pay by card / e-wallet: ${o.payUrl}',
     if (o.tripCode != null) 'Trip code: ${o.tripCode} (give it to the driver)',
     if (o.hasDriver || o.status == 'completed')
       ...o.driverLines
@@ -78,6 +82,13 @@ class DispatchTicketDialog extends StatelessWidget {
                     Text([?o.service, o.fareText, o.payment.label].join(' · '), style: muted),
                     if (total != null && (o.feeAmount ?? 0) > 0 && o.feePayer == FeePayer.customer)
                       Text('To pay: RM ${total.toStringAsFixed(2)} (fare and stand fee)'),
+                    if (o.paidByLink)
+                      Text('Paid by card / e-wallet', key: const ValueKey('ticket-paid'))
+                    else if (o.payLink && o.payUrl != null && !o.cancelled) ...[
+                      const SizedBox(height: 6),
+                      Text('Pay by card / e-wallet', style: muted),
+                      SelectableText(o.payUrl!, key: const ValueKey('ticket-pay-url')),
+                    ],
                     if (o.tripCode != null) ...[
                       const SizedBox(height: 6),
                       Text('Trip code', style: muted),

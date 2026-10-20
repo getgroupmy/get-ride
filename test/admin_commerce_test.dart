@@ -325,7 +325,7 @@ void main() {
       final v = {'providerId': 'fiuu', 'fiuu_merchantId': 'm', 'fiuu_secretKey': 's', 'fiuu_verifyKey': ''};
       expect(storedSecretKeys(v), ['fiuu_secretKey']);
       expect(stripSecrets(v), {'providerId': 'fiuu', 'fiuu_merchantId': 'm'});
-      expect(GatewayForm.fromValues(v).credentials, {'merchantId': 'm', 'callbackUrl': ''});
+      expect(GatewayForm.fromValues(v).credentials, {'merchantId': 'm', 'paymentUrl': ''});
     });
 
     test('picker and default resolution', () {

@@ -41,6 +41,11 @@ final standCreditProvider = FutureProvider.autoDispose.family<StandCredit, Strin
   (ref, standId) => ref.watch(dispatchRepositoryProvider).standCredit(standId),
 );
 
+/// Whether card / e-wallet orders are paid by a gateway link now (0252).
+final dispatchPayLinksProvider = FutureProvider.autoDispose<bool>(
+  (ref) => ref.watch(dispatchRepositoryProvider).payLinkAvailable(),
+);
+
 /// The service names offered (the catalogue, else the built-in list).
 final dispatchServiceNamesProvider = Provider.autoDispose<List<String>>((ref) {
   final list = ref.watch(rideServicesProvider).value ?? rideServices;
@@ -323,8 +328,22 @@ class _NewOrderFormState extends ConsumerState<NewOrderForm> {
     if (problem != null) return;
     setState(() => _busy = true);
     try {
-      final made = await ref.read(dispatchRepositoryProvider).create(o);
+      final repo = ref.read(dispatchRepositoryProvider);
+      var made = await repo.create(o);
+      // Card / e-wallet paid by link: the customer is texted it now when the fare is known.
+      String? linkProblem;
+      if (made.canSendPayLink) {
+        try {
+          await repo.payLink(made.id);
+          made = await repo.order(made.id);
+        } on DispatchPayLinkError catch (e) {
+          linkProblem = e.message;
+        } catch (_) {
+          linkProblem = const DispatchPayLinkError('').message;
+        }
+      }
       if (!mounted) return;
+      if (linkProblem != null) showError(context, linkProblem);
       setState(() {
         for (final c in [_dest, _name, _phone, _fare, _note, _pickup, _date, _time]) {
           c.clear();
@@ -366,7 +385,8 @@ class _NewOrderFormState extends ConsumerState<NewOrderForm> {
     final group = stand.groups.where((g) => g.id == _groupId).firstOrNull;
     final credit = stand.isCallCentre ? null : ref.watch(standCreditProvider(stand.id)).value;
     final counterBlocked = credit != null && credit.applies && credit.blocked;
-    if (counterBlocked && _payment.atCounter) _payment = CounterPayment.cash;
+    final payLinks = stand.isCallCentre ? false : ref.watch(dispatchPayLinksProvider).value ?? false;
+    if (counterBlocked && _payment.heldByCredit(payLinks: payLinks)) _payment = CounterPayment.cash;
 
     Widget label(String s) => Padding(
       padding: const EdgeInsets.only(top: 10, bottom: 4),
@@ -684,7 +704,7 @@ class _NewOrderFormState extends ConsumerState<NewOrderForm> {
           children: [
             for (final p in CounterPayment.values)
               if (!(stand.isCallCentre && p == CounterPayment.counter))
-                if (counterBlocked && p.atCounter)
+                if (counterBlocked && p.heldByCredit(payLinks: payLinks))
                   Tooltip(
                     message: standCreditTopUpText,
                     child: ChoiceChip(key: ValueKey('pay-${p.name}'), label: Text(p.label), selected: false),
@@ -698,6 +718,17 @@ class _NewOrderFormState extends ConsumerState<NewOrderForm> {
                   ),
           ],
         ),
+        if (_payment == CounterPayment.app && !stand.isCallCentre)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              payLinks
+                  ? 'The customer gets a card / e-wallet payment link by SMS once the fare is known.'
+                  : 'No payment gateway set: card / e-wallet is taken at the counter.',
+              key: const ValueKey('pay-app-note'),
+              style: muted,
+            ),
+          ),
         label('Note for the driver'),
         TextField(
           key: const ValueKey('order-note'),
@@ -1166,6 +1197,18 @@ class OrderCard extends ConsumerWidget {
     }
   }
 
+  Future<void> _payLink(BuildContext context, WidgetRef ref) async {
+    try {
+      final r = await ref.read(dispatchRepositoryProvider).payLink(order.id);
+      ref.invalidate(dispatchBoardProvider);
+      if (context.mounted) showInfo(context, 'Payment link for RM ${r.amount.toStringAsFixed(2)} sent to the customer');
+    } on DispatchPayLinkError catch (e) {
+      if (context.mounted) showError(context, e.message);
+    } catch (_) {
+      if (context.mounted) showError(context, const DispatchPayLinkError('').message);
+    }
+  }
+
   Future<void> _resend(BuildContext context, WidgetRef ref, {required bool reassign}) async {
     final choice = await showAppSheet<_Resend>(
       id: 'dispatch.resend',
@@ -1297,6 +1340,19 @@ class OrderCard extends ConsumerWidget {
               style: muted,
             ),
           Text([?order.service, order.fareText, order.payment.label].join(' · '), style: muted),
+          if (order.payLine != null)
+            Text(
+              order.payLine!,
+              key: ValueKey('order-pay-${order.id}'),
+              style: muted?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: order.paidByLink
+                    ? t.colorScheme.primary
+                    : order.payLink
+                    ? t.colorScheme.tertiary
+                    : t.colorScheme.error,
+              ),
+            ),
           if (order.isScheduled) ...[
             Text(order.scheduleState, key: ValueKey('order-schedule-${order.id}'), style: muted),
             if (order.driverConfirmed)
@@ -1357,6 +1413,12 @@ class OrderCard extends ConsumerWidget {
                   key: ValueKey('cancel-${order.id}'),
                   label: 'Cancel',
                   onPressed: () => _cancel(context, ref),
+                ),
+              if (order.canSendPayLink)
+                _SmallButton(
+                  key: ValueKey('pay-link-${order.id}'),
+                  label: order.payUrl == null ? 'Pay link' : 'Resend pay link',
+                  onPressed: () => _payLink(context, ref),
                 ),
               _SmallButton(
                 key: ValueKey('ticket-${order.id}'),

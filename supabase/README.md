@@ -176,6 +176,36 @@ Vault secret `project_url`; see `docs/backend.md`.
 "Partners" vs "Users" is resolved by membership in the `partners` table
 (the legacy "drivers" audience key is still accepted as an alias for partners).
 
+## Payments (gateway accounts, 0252)
+
+Admin → Settings → Payment Gateways keeps one account per provider (Stripe,
+Billplz, Fiuu, iPay88, eGHL, SenangPay, toyyibPay, Curlec, HitPay, PayPal,
+Xendit, 2C2P, Adyen, Airwallex, …). Public configuration stays in
+`settings_entries`; secret keys are written once from that screen into
+Supabase Vault (`payment_gateway_secret_set`) and can never be read back:
+only the `payments` edge function, with the service role, reads them
+(`payment_gateway_account`). The same screen chooses which account takes
+GET.wallet top-ups, ride card payments and dispatch payment links, shows each
+account's webhook address to paste at the provider, and tests an account's
+credentials.
+A stand order taken as "Card / e-wallet" (Order Dispatch, 0251) is paid by a
+link from the dispatch account, texted to the customer; paid and done, the
+driver's share and the stand's share of its fee go to their GET.wallet once.
+With no dispatch account it is taken at the counter as before.
+
+```bash
+supabase functions deploy payments --no-verify-jwt
+```
+
+`--no-verify-jwt` because providers' webhooks and the payer's browser carry
+no Supabase token; the function checks every caller itself (a signed-in user
+for a checkout, an admin with edit access to Payment Gateways for a test, the
+provider's signature for a webhook). Optional secret `PAYMENTS_PUBLIC_URL`
+when the function is reached at another address than
+`<SUPABASE_URL>/functions/v1/payments`. The adapters, and which of them were
+checked against the provider's documentation, are in
+`functions/_shared/payments/` (`deno test --allow-read=lib,supabase supabase/functions`).
+
 ## Re-seeding
 
 ```bash

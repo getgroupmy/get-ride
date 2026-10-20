@@ -57,13 +57,33 @@ class CredentialField {
   final bool optional;
 }
 
+/// How far the `payments` edge function can charge through a provider
+/// (supabase/functions/_shared/payments/): [checked] against the provider's
+/// documentation or official SDK, [unchecked] (built, but a detail could not
+/// be confirmed: make a sandbox payment first), or [none] (credentials are
+/// kept, nothing is charged yet).
+enum ChargeSupport { checked, unchecked, none }
+
 class GatewayProvider {
-  const GatewayProvider(this.id, this.name, this.description, this.fields, {this.website});
+  const GatewayProvider(
+    this.id,
+    this.name,
+    this.description,
+    this.fields, {
+    this.website,
+    this.charging = ChargeSupport.checked,
+    this.dashboardUrls = false,
+  });
   final String id;
   final String name;
   final String description;
   final String? website;
   final List<CredentialField> fields;
+  final ChargeSupport charging;
+
+  /// The provider takes its return and callback addresses from its own
+  /// dashboard, not per payment (SenangPay): the admin pastes ours there.
+  final bool dashboardUrls;
 
   List<CredentialField> get publicFields => fields.where((f) => !f.secret).toList();
   List<CredentialField> get secretFields => fields.where((f) => f.secret).toList();
@@ -71,7 +91,11 @@ class GatewayProvider {
 
 const gatewayModes = ['Live', 'Sandbox'];
 
-/// Provider catalogue, identical to Expo `GATEWAY_PROVIDERS`.
+/// Provider catalogue: Expo `GATEWAY_PROVIDERS` and the Malaysian and global
+/// gateways added with the `payments` function (0252). The same ids, order
+/// and secret fields as the function's adapters
+/// (supabase/functions/_shared/payments/registry.ts) and
+/// `payment_gateway_secret_fields()` in SQL; a deno test keeps them equal.
 const gatewayProviders = <GatewayProvider>[
   GatewayProvider('stripe', 'Stripe', 'Cards, wallets and global payments', website: 'https://stripe.com', [
     CredentialField('publishableKey', 'Publishable Key', placeholder: 'pk_live_...'),
@@ -80,21 +104,35 @@ const gatewayProviders = <GatewayProvider>[
     CredentialField('accountId', 'Account ID', placeholder: 'acct_...', optional: true),
   ]),
   GatewayProvider('fiuu', 'Fiuu (Razer Merchant Services)', 'Malaysian merchant payments (FPX, cards, e-wallets)',
-      website: 'https://fiuu.com', [
+      website: 'https://fiuu.com', charging: ChargeSupport.unchecked, [
     CredentialField('merchantId', 'Merchant ID', placeholder: 'Your merchant ID'),
     CredentialField('verifyKey', 'Verify Key', placeholder: 'Verify key', secret: true),
     CredentialField('secretKey', 'Secret Key', placeholder: 'Secret key', secret: true),
-    CredentialField('callbackUrl', 'Callback URL', placeholder: 'https://...', optional: true),
+    CredentialField('paymentUrl', 'Payment URL (if Fiuu gave you one)',
+        placeholder: 'https://pay.fiuu.com/RMS/pay', optional: true),
   ]),
   GatewayProvider('adaptis', 'ADAPTIS (iPay88 + eGHL)', 'Unified gateway over iPay88 and eGHL',
-      website: 'https://adaptis.my', [
+      website: 'https://adaptis.my', charging: ChargeSupport.none, [
     CredentialField('merchantCode', 'Merchant Code', placeholder: 'Merchant code'),
     CredentialField('merchantKey', 'Merchant Key', placeholder: 'Merchant key', secret: true),
     CredentialField('ipay88MerchantCode', 'iPay88 Merchant Code', placeholder: 'iPay88 merchant code', optional: true),
     CredentialField('eghlPaymentId', 'eGHL Payment ID', placeholder: 'eGHL payment ID', optional: true),
     CredentialField('eghlPassword', 'eGHL Password', placeholder: 'eGHL password', secret: true, optional: true),
   ]),
-  GatewayProvider('senangpay', 'SenangPay', 'Malaysian card & FPX payments', website: 'https://senangpay.my', [
+  GatewayProvider('ipay88', 'iPay88', 'Malaysian FPX, cards and e-wallets', website: 'https://www.ipay88.com',
+      charging: ChargeSupport.unchecked, [
+    CredentialField('merchantCode', 'Merchant Code', placeholder: 'M00000'),
+    CredentialField('merchantKey', 'Merchant Key', placeholder: 'Merchant key', secret: true),
+  ]),
+  GatewayProvider('eghl', 'eGHL', 'GHL payment gateway (FPX, cards, e-wallets)', website: 'https://e-ghl.com',
+      charging: ChargeSupport.unchecked, [
+    CredentialField('serviceId', 'Service ID (merchant ID)', placeholder: 'Service ID'),
+    CredentialField('password', 'Merchant Password', placeholder: 'Merchant password', secret: true),
+    CredentialField('paymentUrl', 'Payment URL (if eGHL gave you one)',
+        placeholder: 'https://securepay.e-ghl.com/IPG/Payment.aspx', optional: true),
+  ]),
+  GatewayProvider('senangpay', 'SenangPay', 'Malaysian card & FPX payments', website: 'https://senangpay.my',
+      charging: ChargeSupport.unchecked, dashboardUrls: true, [
     CredentialField('merchantId', 'Merchant ID', placeholder: 'Merchant ID'),
     CredentialField('secretKey', 'Secret Key', placeholder: 'Secret key', secret: true),
   ]),
@@ -112,26 +150,51 @@ const gatewayProviders = <GatewayProvider>[
     CredentialField('clientSecret', 'Client Secret', placeholder: 'PayPal secret', secret: true),
     CredentialField('webhookId', 'Webhook ID', placeholder: 'Webhook ID', optional: true),
   ]),
-  GatewayProvider('airwallex', 'Airwallex', 'Global cards & APMs', website: 'https://www.airwallex.com', [
+  GatewayProvider('airwallex', 'Airwallex', 'Global cards & APMs', website: 'https://www.airwallex.com',
+      charging: ChargeSupport.unchecked, [
     CredentialField('clientId', 'Client ID', placeholder: 'Airwallex client ID'),
     CredentialField('apiKey', 'API Key', placeholder: 'API key', secret: true),
     CredentialField('webhookSecret', 'Webhook Secret', placeholder: 'Webhook secret', secret: true, optional: true),
   ]),
-  GatewayProvider('payhalal', 'PayHalal', 'Shariah-compliant payment gateway', website: 'https://payhalal.my', [
+  GatewayProvider('payhalal', 'PayHalal', 'Shariah-compliant payment gateway', website: 'https://payhalal.my',
+      charging: ChargeSupport.none, [
     CredentialField('merchantId', 'Merchant ID', placeholder: 'Merchant ID'),
     CredentialField('appId', 'App ID', placeholder: 'App ID'),
     CredentialField('secretKey', 'Secret Key', placeholder: 'Secret key', secret: true),
   ]),
-  GatewayProvider('toyyibpay', 'ToyyibPay', 'Low-fee MY payment gateway (FPX, cards)', website: 'https://toyyibpay.com', [
+  GatewayProvider('toyyibpay', 'ToyyibPay', 'Low-fee MY payment gateway (FPX, cards)', website: 'https://toyyibpay.com',
+      charging: ChargeSupport.unchecked, [
     CredentialField('userSecretKey', 'User Secret Key', placeholder: 'User secret key', secret: true),
     CredentialField('categoryCode', 'Category Code', placeholder: 'Category code'),
   ]),
   GatewayProvider('paydibs', 'Paydibs', 'Multi-channel payments (cards, FPX, e-wallets)',
-      website: 'https://v3api-docs.paydibs.com', [
+      website: 'https://v3api-docs.paydibs.com', charging: ChargeSupport.none, [
     CredentialField('merchantId', 'Merchant ID', placeholder: 'Merchant ID'),
     CredentialField('merchantPassword', 'Merchant Password', placeholder: 'Merchant password', secret: true),
     CredentialField('paymentUrl', 'Payment URL', placeholder: 'https://...'),
     CredentialField('apiVersion', 'API Version', placeholder: '3.8', optional: true),
+  ]),
+  GatewayProvider('curlec', 'Curlec by Razorpay', 'Malaysian FPX, cards, DuitNow and e-mandates',
+      website: 'https://curlec.com', [
+    CredentialField('keyId', 'Key ID', placeholder: 'rzp_live_...'),
+    CredentialField('keySecret', 'Key Secret', placeholder: 'Key secret', secret: true),
+    CredentialField('webhookSecret', 'Webhook Secret', placeholder: 'Webhook secret', secret: true, optional: true),
+  ]),
+  GatewayProvider('2c2p', '2C2P', 'Southeast Asian cards, wallets and bank transfers', website: 'https://2c2p.com',
+      charging: ChargeSupport.unchecked, [
+    CredentialField('merchantId', 'Merchant ID', placeholder: 'Merchant ID'),
+    CredentialField('secretKey', 'Secret Key (SHA key)', placeholder: 'Secret key', secret: true),
+  ]),
+  GatewayProvider('adyen', 'Adyen', 'Global cards and local payment methods', website: 'https://www.adyen.com', [
+    CredentialField('merchantAccount', 'Merchant Account', placeholder: 'YourCompanyMY'),
+    CredentialField('liveUrlPrefix', 'Live URL Prefix', placeholder: '1797a841fbb37ca7-YourCompany', optional: true),
+    CredentialField('apiKey', 'API Key', placeholder: 'AQE...', secret: true),
+    CredentialField('hmacKey', 'Webhook HMAC Key', placeholder: 'HMAC key (hex)', secret: true, optional: true),
+  ]),
+  GatewayProvider('xendit', 'Xendit', 'Southeast Asian cards, e-wallets and bank transfers',
+      website: 'https://www.xendit.co', [
+    CredentialField('secretKey', 'Secret Key', placeholder: 'xnd_production_...', secret: true),
+    CredentialField('callbackToken', 'Callback Verification Token', placeholder: 'Token', secret: true, optional: true),
   ]),
 ];
 
@@ -286,6 +349,120 @@ List<SelectedGateway> pickableGateways(List<({String id, Map<String, dynamic> va
   final active = entries.where((e) => e.values['active'] != false).toList();
   if (active.isEmpty) return null;
   return active.where((e) => e.values['isDefault'] == true).firstOrNull ?? active.first;
+}
+
+// ---- Write-only secrets, routing and addresses (0252) ---------------------
+
+/// Which secret of an account is set, as payment_gateway_secret_status()
+/// tells an admin: the last 4 characters of a long one, never the value.
+class GatewaySecretState {
+  const GatewaySecretState({required this.gatewayId, required this.field, this.last4, this.length = 0, this.updatedAt});
+
+  factory GatewaySecretState.fromRow(Map<String, dynamic> r) => GatewaySecretState(
+        gatewayId: '${r['gateway_id']}',
+        field: '${r['field']}',
+        last4: r['last4'] as String?,
+        length: (r['length'] as num?)?.toInt() ?? 0,
+        updatedAt: DateTime.tryParse('${r['updated_at'] ?? ''}'),
+      );
+
+  final String gatewayId;
+  final String field;
+  final String? last4;
+  final int length;
+  final DateTime? updatedAt;
+}
+
+/// "•••• 1234 · updated 20 Oct 2026", "•••• set (8 characters) · …" or "Not set".
+String secretStatusLine(GatewaySecretState? s, {String Function(DateTime)? date}) {
+  if (s == null) return 'Not set';
+  final when = s.updatedAt == null
+      ? ''
+      : ' · updated ${date != null ? date(s.updatedAt!) : _shortDate(s.updatedAt!.toLocal())}';
+  final mask = s.last4 != null && s.last4!.isNotEmpty ? '•••• ${s.last4}' : '•••• set (${s.length} characters)';
+  return '$mask$when';
+}
+
+const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+String _shortDate(DateTime d) => '${d.day} ${_months[d.month - 1]} ${d.year}';
+
+/// The kinds of payment an account can be chosen for (payment_gateway_routing).
+const paymentPurposes = <({String id, String label, String about})>[
+  (id: 'wallet_topup', label: 'GET.wallet top-up', about: 'Riders and drivers reload GET.wallet in the app.'),
+  (id: 'ride_card', label: 'Ride card payment', about: 'A ride paid by card (not charged by the app yet).'),
+  (id: 'dispatch', label: 'Dispatch payment link', about: 'A stand order paid by card / e-wallet: its link is texted to the customer.'),
+];
+
+/// The account that takes [purpose], as payment_gateway_for() decides: the
+/// one chosen for it while active, else the active default, else the only
+/// active account; null for none.
+String? effectiveGatewayFor(String purpose, Map<String, String?> routing, List<GatewayEntry> entries) {
+  final active = entries.where((e) => e.values['active'] != false).toList();
+  final chosen = routing[purpose];
+  if (chosen != null && active.any((e) => e.id == chosen)) return chosen;
+  final defaults = active.where((e) => e.values['isDefault'] == true).map((e) => e.id).toList()..sort();
+  if (defaults.isNotEmpty) return defaults.first;
+  return active.length == 1 ? active.single.id : null;
+}
+
+/// An entry as these helpers read it (`commerce_data.dart`'s `Entry`).
+typedef GatewayEntry = ({String id, Map<String, dynamic> values});
+
+/// The `payments` function's address on [supabaseUrl].
+String paymentsFunctionUrl(String supabaseUrl) =>
+    '${supabaseUrl.replaceFirst(RegExp(r'/+$'), '')}/functions/v1/payments';
+
+/// The webhook (callback / notification) address to paste at the provider.
+String gatewayWebhookUrl(String supabaseUrl, String providerId, String gatewayId) =>
+    '${paymentsFunctionUrl(supabaseUrl)}/webhook/$providerId/$gatewayId';
+
+/// The return address for a provider that takes it from its own dashboard.
+String gatewayReturnUrl(String supabaseUrl, String providerId, String gatewayId) =>
+    '${paymentsFunctionUrl(supabaseUrl)}/back/$providerId/$gatewayId';
+
+String chargeSupportLabel(ChargeSupport c) => switch (c) {
+      ChargeSupport.checked => 'Charging ready',
+      ChargeSupport.unchecked => 'Charging ready · not fully checked',
+      ChargeSupport.none => 'Charging not built yet',
+    };
+
+String chargeSupportAbout(ChargeSupport c) => switch (c) {
+      ChargeSupport.checked =>
+        "Built from the provider's documentation. Use Test connection, then a sandbox payment, before going live.",
+      ChargeSupport.unchecked =>
+        "Built, but a detail could not be confirmed against the provider's documentation: make a sandbox (or RM 1) "
+            "payment before going live. A wrong guess leaves a payment pending; it never credits an unpaid one.",
+      ChargeSupport.none => 'Credentials are kept, but nothing is charged through this provider yet.',
+    };
+
+/// What the `payments` function's test said.
+class GatewayTestResult {
+  const GatewayTestResult({required this.result, required this.title, required this.detail, this.checkoutUrl});
+
+  factory GatewayTestResult.fromJson(Object? j) {
+    final m = j is Map ? j : const {};
+    if (m['result'] == null) {
+      final err = '${m['error'] ?? 'no answer'}';
+      return GatewayTestResult(
+        result: 'fail',
+        title: err == 'admin_only' ? 'Edit access needed' : "Couldn't run the test",
+        detail: err == 'admin_only'
+            ? 'Only admins who can edit Payment Gateways can test an account.'
+            : 'The payments function answered: $err. Is it deployed?',
+      );
+    }
+    return GatewayTestResult(
+      result: '${m['result']}',
+      title: '${m['title'] ?? ''}',
+      detail: '${m['detail'] ?? ''}',
+      checkoutUrl: m['checkout_url'] as String?,
+    );
+  }
+
+  final String result;
+  final String title;
+  final String detail;
+  final String? checkoutUrl;
 }
 
 /// Payment type values (`settings_entries` category `payment-type`).
