@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../core/airport_queue.dart';
@@ -20,6 +21,7 @@ import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
 import '../../widgets/admin_widgets.dart';
 import '../catalogue/catalogue_data.dart' show pickImageFile;
+import '../catalogue/service_order_screen.dart' show serviceOrderPath;
 import 'airport_tabs.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
@@ -123,17 +125,6 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
       if (ok) _draft = null;
     });
     if (ok) ref.invalidate(airportSettingsProvider);
-  }
-
-  /// Saves the services' order (lowest first) at once: it is shared by every
-  /// airport, not part of this airport's settings.
-  Future<void> _saveServiceOrder(ServiceOrder order) async {
-    final ok = await runAdminAction(
-      context,
-      () => _repo.saveServiceOrder(order.ids),
-      success: 'Service order saved',
-    );
-    if (ok) ref.invalidate(vehicleServiceOrderProvider);
   }
 
   // ---- Doors ----
@@ -591,7 +582,7 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
                         const <String>[],
                     [for (final s in serviceList) s.id],
                   ),
-                  onServiceOrder: _edit ? _saveServiceOrder : null,
+                  onOpenServiceOrder: () => context.push(serviceOrderPath),
                 ),
                 AirportFaresTab(
                   settings: s,

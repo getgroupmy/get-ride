@@ -8,6 +8,7 @@ import 'catalogue_logic.dart';
 import 'document_screens.dart';
 import 'make_model_screen.dart';
 import 'partner_type_screen.dart';
+import 'service_order_screen.dart';
 import 'services_screens.dart';
 
 /// `settings_entries.category` keys whose screens live in this module, so
@@ -25,6 +26,7 @@ const catalogueOwnedCategories = <String>{
 final catalogueRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/service-settings', builder: (_, _) => const ServiceSettingsScreen()),
   GoRoute(path: '/admin/m/vehicle-services', builder: (_, _) => const VehicleServicesScreen()),
+  GoRoute(path: serviceOrderPath, builder: (_, _) => const ServiceOrderScreen()),
   GoRoute(path: '/admin/m/partner-type', builder: (_, _) => const PartnerTypeScreen()),
   GoRoute(path: '/admin/m/document-type', builder: (_, _) => const DocumentTypeScreen()),
   GoRoute(path: '/admin/m/required-documents', builder: (_, _) => const RequiredDocumentsScreen()),
@@ -52,6 +54,14 @@ const catalogueEntries = <AdminScreenEntry>[
     path: '/admin/m/vehicle-services',
     pages: ['admin-settings-vehicle-services'],
     icon: Icons.layers_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'Services & catalogue',
+    title: 'Service order',
+    subtitle: 'Which services may take which orders, lowest to highest',
+    path: serviceOrderPath,
+    pages: ['admin-settings-vehicle-services'],
+    icon: Icons.stairs_outlined,
   ),
   AdminScreenEntry(
     section: 'Services & catalogue',
