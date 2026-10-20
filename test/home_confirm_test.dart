@@ -933,9 +933,14 @@ void main() {
     expect(find.text('Options'), findsWidgets);
     await tester.tap(find.byKey(const ValueKey('option-child-seat')));
     await tester.pump();
+    // "Pet with me" opens Your pets; cancelled with none saved, it stays off.
     await tester.tap(find.byKey(const ValueKey('option-pet')));
-    await tester.pump();
-    expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('option-pet'))).value, isTrue);
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('ride-pets')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pets-cancel')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('ride-pets')), findsNothing);
+    expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('option-pet'))).value, isFalse);
     // Comments: ← goes back to Options without saving; Save keeps it.
     await tester.tap(find.byKey(const ValueKey('option-comments')));
     await _settle(tester);
@@ -972,7 +977,8 @@ void main() {
     for (var i = 0; i < 10; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    expect(rides.created![#note], 'Child safety seat · Pet with me · Blue gate');
+    expect(rides.created![#note], 'Child safety seat · Blue gate');
+    expect(rides.created![#pets], isEmpty);
     expect(rides.created![#passengers], 1);
   });
 

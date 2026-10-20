@@ -7,6 +7,7 @@ import '../core/my_ride.dart';
 import '../core/promo_codes.dart';
 import '../core/region_pricing.dart';
 import '../core/ride_payment.dart';
+import '../core/ride_pets.dart';
 import '../core/ride_stops.dart';
 import 'geo_service.dart';
 
@@ -313,6 +314,11 @@ class RideRequest {
 
   /// Stops between pickup and drop-off, in order (migration 0098).
   List<Place> get stops => parseRideStops(raw['stops']);
+
+  /// "Pet with me" (migration 0247): each pet's type and size, and its photo
+  /// once the driver has taken the ride (an open request keeps the photos
+  /// aside, for the rider only).
+  List<RidePet> get pets => parseRidePets(raw['pets']);
 
   /// The fare the trip will actually be billed at.
   double? get effectiveFare => _d(raw['ride_fare']) ?? fare;
