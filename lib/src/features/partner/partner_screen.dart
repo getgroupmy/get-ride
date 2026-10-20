@@ -1485,7 +1485,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 onPressed: _accepting != null ? null : () => _accept(r, partner),
                 child: _accepting == r.id
                     ? const SizedBox.square(dimension: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Text('Accept ${r.fareText(r.effectiveFare)}', textAlign: TextAlign.center),
+                    : Text(acceptLabel(r), textAlign: TextAlign.center),
               ),
             ),
           ]),
@@ -1669,4 +1669,12 @@ class _InfoPill extends StatelessWidget {
       child: Text(text, style: t.textTheme.labelLarge),
     );
   }
+}
+
+/// The Accept button's words: the fare when the ride has one, else how it is
+/// charged (a counter or call-centre order on the meter has no fare yet).
+String acceptLabel(RideRequest r) {
+  final f = r.effectiveFare;
+  if (f != null) return 'Accept ${r.fareText(f)}';
+  return '${r.raw['fare_mode']}' == 'meter' ? 'Accept · by meter' : 'Accept';
 }
