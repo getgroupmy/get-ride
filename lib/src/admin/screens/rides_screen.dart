@@ -5,6 +5,7 @@ import '../../core/format.dart';
 import '../../core/region_time.dart' show formatInZone;
 import '../../data/models.dart';
 import '../../features/ride/pet_parts.dart' show RidePetsView;
+import '../../features/ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
@@ -77,6 +78,15 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
         if (r.pets.isNotEmpty) ...[
           const SizedBox(height: 12),
           RidePetsView(key: const ValueKey('admin-ride-pets'), pets: r.pets, title: 'Pets riding along'),
+        ],
+        // "Assistance required" (0248): an open request's note waits aside.
+        if (r.assistance case final help?) ...[
+          const SizedBox(height: 12),
+          RideAssistanceView(key: const ValueKey('admin-ride-assistance'), assistance: help),
+        ],
+        if (r.optionCharges.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          OptionChargesLine(lines: r.optionCharges, money: (v) => formatMoney(v, r.currency)),
         ],
         if (canEdit && r.status.isOngoing) ...[
           const SizedBox(height: 16),

@@ -3,6 +3,7 @@
 /// destination, and when a driver's offer is accepted without asking. Pure.
 library;
 
+import 'ride_assistance.dart';
 import 'ride_bidding.dart';
 import 'ride_pets.dart';
 
@@ -125,12 +126,18 @@ bool shouldAutoAccept({required double? limit, required RideOffer? offer}) {
 class RideOptions {
   const RideOptions({
     this.childSeat = false,
+    this.childSeats = 1,
     this.morePassengers = false,
     this.pet = false,
     this.pets = const [],
+    this.assistance,
   });
 
   final bool childSeat;
+
+  /// How many child safety seats, while [childSeat] is on: 1, or up to the
+  /// admin's most (Admin → Display Settings → Ride Options).
+  final int childSeats;
 
   /// More than [standardSeats] riding.
   final bool morePassengers;
@@ -142,39 +149,58 @@ class RideOptions {
   /// cleared when "Pet with me" is turned off.
   final List<RidePet> pets;
 
+  /// "Assistance required": the help picked on its sheet, with the rider's
+  /// note; null while it is off.
+  final RideAssistance? assistance;
+
   static const standardSeats = 4;
 
-  bool get any => childSeat || morePassengers || pet;
+  bool get any => childSeat || morePassengers || pet || assistance != null;
 
   /// The passengers the request carries: one, or more than four.
   int get passengers => morePassengers ? standardSeats + 1 : 1;
 
   /// Spelled out for the driver, ahead of the note. The pets' summary goes
-  /// after "Pet with me", so a driver app that doesn't read `pets` still
-  /// knows what is coming.
+  /// after "Pet with me", and the help's names after "Assistance:", so a
+  /// driver app that doesn't read `pets` or `assistance` still knows what
+  /// is coming. The rider's own assistance note is never in it: an open
+  /// request's note is for every nearby driver.
   List<String> get labels => [
-    if (childSeat) 'Child safety seat',
+    if (childSeat) childSeats > 1 ? '$childSeats child safety seats' : 'Child safety seat',
     if (morePassengers) 'More than $standardSeats passengers',
     if (pet) pets.isEmpty ? 'Pet with me' : 'Pet with me: ${petSummary(pets)}',
+    if (assistance != null && !assistance!.isEmpty) assistanceNoteLabel(assistance!.items),
   ];
 
-  RideOptions copyWith({bool? childSeat, bool? morePassengers, bool? pet, List<RidePet>? pets}) => RideOptions(
+  RideOptions copyWith({
+    bool? childSeat,
+    int? childSeats,
+    bool? morePassengers,
+    bool? pet,
+    List<RidePet>? pets,
+    RideAssistance? assistance,
+    bool clearAssistance = false,
+  }) => RideOptions(
     childSeat: childSeat ?? this.childSeat,
+    childSeats: childSeats ?? this.childSeats,
     morePassengers: morePassengers ?? this.morePassengers,
     pet: pet ?? this.pet,
     pets: pets ?? this.pets,
+    assistance: clearAssistance ? null : (assistance ?? this.assistance),
   );
 
   @override
   bool operator ==(Object other) =>
       other is RideOptions &&
       other.childSeat == childSeat &&
+      other.childSeats == childSeats &&
       other.morePassengers == morePassengers &&
       other.pet == pet &&
-      samePets(other.pets, pets);
+      samePets(other.pets, pets) &&
+      other.assistance == assistance;
 
   @override
-  int get hashCode => Object.hash(childSeat, morePassengers, pet, Object.hashAll(pets));
+  int get hashCode => Object.hash(childSeat, childSeats, morePassengers, pet, Object.hashAll(pets), assistance);
 }
 
 /// The note the driver gets: the options the rider asked for, the entrance

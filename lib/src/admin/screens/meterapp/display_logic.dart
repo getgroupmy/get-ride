@@ -8,6 +8,9 @@ library;
 
 import 'dart:math' as math;
 import '../../../core/demo_mode.dart' show demoAccountIds, demoDriverIdsKey, demoRiderIdsKey;
+import '../../../core/ride_assistance.dart';
+import '../../../core/ride_option_settings.dart';
+import '../../../core/ride_pets.dart';
 import '../../../core/sheet_min_height.dart';
 
 const displaySettingsTable = 'admin_display_settings';
@@ -705,3 +708,192 @@ Map<String, dynamic> addDemoAccount(Map<String, dynamic> s, String key, String i
 Map<String, dynamic> removeDemoAccount(Map<String, dynamic> s, String key, String id) =>
     {...s, key: [for (final x in demoAccounts(s, key)) if (x != id.trim()) x]};
 
+
+// --- Ride Options -------------------------------------------------------------------
+// The rider's Options sheet (core/ride_option_settings.dart), the pets
+// (PetConfig's keys) and the assistance catalogue, each a function from the
+// blob to the next one as everything else here.
+
+RideOptionsConfig rideOptionsOf(Map<String, dynamic> s) => RideOptionsConfig.fromSettings(s);
+
+Map<String, dynamic> _withRideOptions(Map<String, dynamic> s, RideOptionsConfig c) => {...s, ...c.toSettings()};
+
+/// Shows or hides an option on the rider's sheet.
+Map<String, dynamic> setRideOptionShown(Map<String, dynamic> s, RideOptionKind k, bool shown) {
+  final c = rideOptionsOf(s);
+  return _withRideOptions(s, c.copyWith(hidden: shown ? ({...c.hidden}..remove(k)) : {...c.hidden, k}));
+}
+
+/// The name riders see; blank (or the built-in name) goes back to it.
+Map<String, dynamic> renameRideOption(Map<String, dynamic> s, RideOptionKind k, String label) {
+  final c = rideOptionsOf(s);
+  var t = label.trim();
+  if (t.length > RideOptionsConfig.labelMax) t = t.substring(0, RideOptionsConfig.labelMax).trim();
+  final labels = {...c.labels}..remove(k);
+  if (t.isNotEmpty && t != k.defaultLabel) labels[k] = t;
+  return _withRideOptions(s, c.copyWith(labels: labels));
+}
+
+/// Moves an option up (-1) or down (1).
+Map<String, dynamic> moveRideOption(Map<String, dynamic> s, RideOptionKind k, int dir) {
+  final c = rideOptionsOf(s);
+  final order = [...c.order];
+  final i = order.indexOf(k), j = i + dir;
+  if (i < 0 || j < 0 || j >= order.length) return s;
+  order[i] = order[j];
+  order[j] = k;
+  return _withRideOptions(s, c.copyWith(order: order));
+}
+
+/// "Most seats a rider can ask for", 1 to 3.
+Map<String, dynamic> setChildSeatMax(Map<String, dynamic> s, num n) =>
+    _withRideOptions(s, rideOptionsOf(s).copyWith(childSeatMax: n.round().clamp(1, RideOptionsConfig.childSeatLimit)));
+
+// The pets.
+
+PetConfig petConfigOf(Map<String, dynamic> s) => PetConfig.fromSettings(s);
+
+Map<String, dynamic> _withPets(Map<String, dynamic> s, PetConfig c) => {...s, ...c.toSettings()};
+
+PetConfig _pets(
+  PetConfig c, {
+  List<String>? types,
+  List<String>? sizes,
+  int? maxPerType,
+  bool? photoRequired,
+  Map<String, PetCharge>? charges,
+  Map<String, double>? sizeExtras,
+}) => PetConfig(
+  types: types ?? c.types,
+  sizes: sizes ?? c.sizes,
+  maxPerType: maxPerType ?? c.maxPerType,
+  photoRequired: photoRequired ?? c.photoRequired,
+  charges: charges ?? c.charges,
+  sizeExtras: sizeExtras ?? c.sizeExtras,
+);
+
+/// Why [name] can't be a pet type (beside [others]); null when it can.
+String? petTypeProblem(String name, List<String> others) {
+  final t = cleanPetTypeName(name);
+  if (t.isEmpty) return 'Type a name, e.g. Bird.';
+  if (t.length > PetConfig.typeNameMax) return 'Keep it under ${PetConfig.typeNameMax} characters.';
+  if (others.any((o) => o.toLowerCase() == t.toLowerCase())) return '$t is already on the list.';
+  return null;
+}
+
+/// A new pet type at the end of the list (name only: no emoji).
+Map<String, dynamic> addPetType(Map<String, dynamic> s, String name, {PetCharge charge = PetCharge.none}) {
+  final c = petConfigOf(s);
+  final t = cleanPetTypeName(name);
+  if (petTypeProblem(t, c.types) != null || c.types.length >= PetConfig.maxTypes) return s;
+  return _withPets(s, _pets(c, types: [...c.types, t], charges: {...c.charges, if (!charge.isZero) t: charge}));
+}
+
+/// Renames a type (its charge goes with it) and sets its charge.
+Map<String, dynamic> updatePetType(Map<String, dynamic> s, String type, {String? name, PetCharge? charge}) {
+  final c = petConfigOf(s);
+  if (!c.types.contains(type)) return s;
+  final t = name == null ? type : cleanPetTypeName(name);
+  if (t != type && petTypeProblem(t, [for (final o in c.types) if (o != type) o]) != null) return s;
+  final charges = {...c.charges};
+  final kept = charges.remove(type);
+  final next = charge ?? kept ?? PetCharge.none;
+  if (!next.isZero) charges[t] = next;
+  return _withPets(s, _pets(c, types: [for (final o in c.types) o == type ? t : o], charges: charges));
+}
+
+/// Takes a type off the list; the last one stays.
+Map<String, dynamic> removePetType(Map<String, dynamic> s, String type) {
+  final c = petConfigOf(s);
+  if (!c.types.contains(type) || c.types.length <= 1) return s;
+  return _withPets(
+    s,
+    _pets(c, types: [for (final o in c.types) if (o != type) o], charges: {...c.charges}..remove(type)),
+  );
+}
+
+Map<String, dynamic> movePetType(Map<String, dynamic> s, String type, int dir) {
+  final c = petConfigOf(s);
+  final order = _moved(c.types, type, dir);
+  return order == null ? s : _withPets(s, _pets(c, types: order));
+}
+
+/// Offers [size] or not (XS to XL, in that order); at least one stays.
+Map<String, dynamic> setPetSizeOffered(Map<String, dynamic> s, String size, bool on) {
+  final c = petConfigOf(s);
+  final next = [
+    for (final z in PetConfig.defaultSizes)
+      if (z == size ? on : c.sizes.contains(z)) z,
+  ];
+  if (next.isEmpty) return s;
+  return _withPets(s, _pets(c, sizes: next, sizeExtras: {...c.sizeExtras}..removeWhere((k, _) => !next.contains(k))));
+}
+
+Map<String, dynamic> setPetMaxPerType(Map<String, dynamic> s, num n) =>
+    _withPets(s, _pets(petConfigOf(s), maxPerType: n.round().clamp(1, PetConfig.maxPerTypeLimit)));
+
+Map<String, dynamic> setPetPhotoRequired(Map<String, dynamic> s, bool on) =>
+    _withPets(s, _pets(petConfigOf(s), photoRequired: on));
+
+/// The extra for each pet of [size]; 0 for none.
+Map<String, dynamic> setPetSizeExtra(Map<String, dynamic> s, String size, double amount) {
+  final c = petConfigOf(s);
+  final extras = {...c.sizeExtras}..remove(size);
+  if (amount > 0 && c.sizes.contains(size)) extras[size] = amount;
+  return _withPets(s, _pets(c, sizeExtras: extras));
+}
+
+// The assistance catalogue.
+
+AssistanceCatalogue assistanceOf(Map<String, dynamic> s) => AssistanceCatalogue.fromSettings(s);
+
+Map<String, dynamic> _withAssistance(Map<String, dynamic> s, List<AssistanceItem> items) =>
+    {...s, ...AssistanceCatalogue(items: items).toSettings()};
+
+/// Why [item] can't be saved; null when it can.
+String? assistanceItemProblem(AssistanceItem item) {
+  if (item.name.trim().isEmpty) return 'Type a name.';
+  if (item.name.trim().length > assistanceNameMax) return 'Keep the name under $assistanceNameMax characters.';
+  if (item.group.trim().isEmpty) return 'Pick a group or type a new one.';
+  if (item.charge.isPercent && item.charge.value > 100) return 'A percentage is at most 100%.';
+  return null;
+}
+
+/// A new item at the end of its group.
+Map<String, dynamic> addAssistanceItem(Map<String, dynamic> s, AssistanceItem item) {
+  final items = [...assistanceOf(s).items];
+  if (assistanceItemProblem(item) != null || items.any((i) => i.id == item.id)) return s;
+  if (items.length >= AssistanceCatalogue.maxItems) return s;
+  final last = items.lastIndexWhere((i) => i.group == item.group);
+  items.insert(last == -1 ? items.length : last + 1, item);
+  return _withAssistance(s, items);
+}
+
+/// Replaces the item with [item]'s id.
+Map<String, dynamic> updateAssistanceItem(Map<String, dynamic> s, AssistanceItem item) {
+  if (assistanceItemProblem(item) != null) return s;
+  return _withAssistance(s, [for (final i in assistanceOf(s).items) i.id == item.id ? item : i]);
+}
+
+Map<String, dynamic> removeAssistanceItem(Map<String, dynamic> s, String id) =>
+    _withAssistance(s, [for (final i in assistanceOf(s).items) if (i.id != id) i]);
+
+Map<String, dynamic> setAssistanceItemShown(Map<String, dynamic> s, String id, bool shown) => _withAssistance(s, [
+  for (final i in assistanceOf(s).items) i.id == id ? i.copyWith(hidden: !shown) : i,
+]);
+
+/// Moves an item up (-1) or down (1) within its group.
+Map<String, dynamic> moveAssistanceItem(Map<String, dynamic> s, String id, int dir) {
+  final items = [...assistanceOf(s).items];
+  final i = items.indexWhere((x) => x.id == id);
+  if (i < 0) return s;
+  var j = i + dir;
+  while (j >= 0 && j < items.length && items[j].group != items[i].group) {
+    j += dir;
+  }
+  if (j < 0 || j >= items.length) return s;
+  final a = items[i];
+  items[i] = items[j];
+  items[j] = a;
+  return _withAssistance(s, items);
+}

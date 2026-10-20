@@ -7,6 +7,8 @@ import '../core/my_ride.dart';
 import '../core/promo_codes.dart';
 import '../core/region_pricing.dart';
 import '../core/ride_payment.dart';
+import '../core/ride_assistance.dart';
+import '../core/ride_option_charges.dart';
 import '../core/ride_pets.dart';
 import '../core/ride_stops.dart';
 import 'geo_service.dart';
@@ -319,6 +321,15 @@ class RideRequest {
   /// once the driver has taken the ride (an open request keeps the photos
   /// aside, for the rider only).
   List<RidePet> get pets => parseRidePets(raw['pets']);
+
+  /// "Assistance required" (migration 0248): the help picked, and the
+  /// rider's note once the driver has taken the ride (an open request keeps
+  /// the note aside, for the rider only). Null for none.
+  RideAssistance? get assistance => RideAssistance.fromJson(raw['assistance']);
+
+  /// What the rider's pets and assistance added to the fare (0248); the
+  /// fare includes them.
+  List<OptionChargeLine> get optionCharges => parseOptionCharges(raw['option_charges']);
 
   /// The fare the trip will actually be billed at.
   double? get effectiveFare => _d(raw['ride_fare']) ?? fare;

@@ -21,6 +21,8 @@ import '../core/region_pricing.dart';
 import '../core/format.dart' show setRegionCurrencySymbols;
 import '../core/ride_bidding.dart';
 import '../core/ride_payment.dart';
+import '../core/ride_assistance.dart';
+import '../core/ride_option_charges.dart';
 import '../core/ride_pets.dart';
 import '../core/ride_stops.dart';
 import '../core/trip_charges.dart';
@@ -85,6 +87,8 @@ class RideRepository {
     int passengers = 1,
     String? note,
     List<RidePet> pets = const [],
+    RideAssistance? assistance,
+    List<OptionChargeLine> optionCharges = const [],
     String? riderName,
     String? riderPhone,
     String? deviceOs,
@@ -131,6 +135,12 @@ class RideRepository {
       // "Pet with me" (0247): each pet's type, size and photo; the note
       // carries the summary for drivers on an older app.
       if (pets.isNotEmpty) 'pets': [for (final p in pets) p.toJson()],
+      // "Assistance required" (0248): what help, and the rider's note, which
+      // waits for the driver who takes the ride; the note label carries the
+      // names for drivers on an older app.
+      if (assistance != null && !assistance.isEmpty) 'assistance': assistance.toJson(),
+      // What the pets and the assistance add to the fare (included in it).
+      if (optionCharges.isNotEmpty) 'option_charges': [for (final c in optionCharges) c.toJson()],
       'offer_me': offerMe,
       'otp': otp,
       'device_os': deviceOs,
@@ -175,6 +185,10 @@ class RideRepository {
       'promo_code_id',
       // 0247; without it the driver reads the pets in the note.
       'pets',
+      // 0248; without them the driver reads the help in the note, and the
+      // fare still includes the charges.
+      'assistance',
+      'option_charges',
     };
     if (scheduleAt != null) {
       // Favourites and a scanned driver are for a ride now; the server

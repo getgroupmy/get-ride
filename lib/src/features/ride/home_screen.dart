@@ -54,6 +54,8 @@ import '../permissions/permission_actions.dart' show askPermission;
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../data/ride_pet_repository.dart' show petConfigProvider;
+import '../../data/ride_option_providers.dart';
+import '../../core/ride_option_charges.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_drag_pin.dart';
@@ -1057,27 +1059,62 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// card's.
   String get _currency => _tariffFor(_service)?.currency ?? AppConfig.currency;
 
-  double _recommendedFor(RideService s) {
+  /// [s]'s fare on the AI's traffic-aware basis, before the options' charges.
+  double _routeFareFor(RideService s) {
     final b = _basis;
     return b == null
         ? 0
-        : _pricing.roundFare(
-            quoteFare(_tariffFor(s), b.distanceKm, b.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
-                .fare,
-          );
+        : quoteFare(_tariffFor(s), b.distanceKm, b.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
+            .fare;
+  }
+
+  /// The options as they can be booked now: what the admin no longer offers
+  /// (Display Settings → Ride Options) is off.
+  RideOptions get _bookable =>
+      ref.read(rideOptionsConfigProvider).allowed(_options, catalogue: ref.read(assistanceCatalogueProvider));
+
+  /// What the rider's pets and assistance add to a route fare of [fare]
+  /// (Admin → Display Settings → Ride Options; nothing until set).
+  List<OptionChargeLine> _optionChargesOn(double fare) => rideOptionCharges(
+        _bookable,
+        fare,
+        pets: ref.read(petConfigProvider),
+        assistance: ref.read(assistanceCatalogueProvider),
+      );
+
+  /// [s]'s recommended fare: the route's, plus what the options add, so the
+  /// vehicle cards, the offer and the booked fare all include them.
+  double _recommendedFor(RideService s) {
+    if (_basis == null) return 0;
+    final route = _routeFareFor(s);
+    return _pricing.roundFare(route + optionChargesTotal(_optionChargesOn(route)));
   }
 
   /// [s]'s fare priced on the plain road route, without the AI's traffic:
-  /// what it would be off the trend.
+  /// what it would be off the trend (with the options, as the fare is).
   double _usualFor(RideService s) {
     final r = _route;
-    return r == null
-        ? 0
-        : _pricing.roundFare(
-            quoteFare(_tariffFor(s), r.distanceKm, r.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
-                .fare,
-          );
+    if (r == null) return 0;
+    final route =
+        quoteFare(_tariffFor(s), r.distanceKm, r.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
+            .fare;
+    return _pricing.roundFare(route + optionChargesTotal(_optionChargesOn(route)));
   }
+
+  /// Whether the Options button shows: not when the admin hides every
+  /// option.
+  bool get _optionsShown =>
+      ref.read(rideOptionsConfigProvider).anyShown(catalogue: ref.read(assistanceCatalogueProvider));
+
+  /// The selected service's option charges, as stamped on the ride.
+  List<OptionChargeLine> get _optionCharges => _basis == null ? const [] : _optionChargesOn(_routeFareFor(_service));
+
+  /// "Pet charge RM10 · Assistance charge RM5", under the fares; null for
+  /// none.
+  String? get _optionChargesNote => optionChargesText(
+        _optionCharges,
+        (v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : _pricing.fareDecimals),
+      );
 
   /// What high demand adds to [s]'s recommended fare: the fare on the AI's
   /// traffic-aware basis over the same on the plain route, while the trend
@@ -1157,13 +1194,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 : () => showRouteStopsSheet(context, destinations: [..._stops, _drop!], onChanged: _setDestinations),
             onAddStop: _stops.length < maxRideStops ? _addStop : null,
             optionsOn: _options.any,
-            onOptions: (c) => showRideOptionsSheet(
-              c,
-              options: _options,
-              onChanged: (o) => setState(() => _options = o),
-              note: _note,
-              petConfig: ref.read(petConfigProvider),
-            ),
+            // Every option hidden (Display Settings → Ride Options): no button.
+            onOptions: _optionsShown
+                ? (c) => showRideOptionsSheet(
+                      c,
+                      options: _options,
+                      onChanged: (o) => setState(() => _options = o),
+                      note: _note,
+                      petConfig: ref.read(petConfigProvider),
+                      config: ref.read(rideOptionsConfigProvider),
+                      assistance: ref.read(assistanceCatalogueProvider),
+                    )
+                : null,
             onChanged: (v) => latest = v,
           ),
         ),
@@ -1259,6 +1301,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       final offerMe = _biddingFor(_service, rules: rules, fallback: regionOn);
       final pricing = _pricingFor(_service, rules: rules, base: base);
+      // What the admin still offers, and what it adds to the fare.
+      final options = _bookable;
+      final optionCharges = _optionCharges;
       // One of the admin's demo riders (Admin → Display Settings → Demo
       // riders): the request stays on this phone, where the demo drivers
       // answer it. Nothing is written, pushed or seen by a real driver. A
@@ -1282,8 +1327,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           'fare': _fareFor(_service, biddingOn: offerMe),
           'ride_fare': _fareFor(_service, biddingOn: offerMe),
           'currency': _currency,
-          'passengers': _options.passengers,
-          if (_options.pets.isNotEmpty) 'pets': [for (final p in _options.pets) p.toJson()],
+          'passengers': options.passengers,
+          if (options.pets.isNotEmpty) 'pets': [for (final p in options.pets) p.toJson()],
+          if (options.assistance != null) 'assistance': options.assistance!.toJson(),
+          if (optionCharges.isNotEmpty) 'option_charges': [for (final c in optionCharges) c.toJson()],
           'offer_me': offerMe,
           if (_stops.isNotEmpty) 'stops': [for (final p in _stops.take(maxRideStops)) stopToJson(p)],
           if (forWhom != null) 'booked_for_name': forWhom.name,
@@ -1320,9 +1367,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // since turned out to be off goes out at the recommended fare.
             fare: _fareFor(_service, biddingOn: offerMe),
             paymentMode: _payment,
-            passengers: _options.passengers,
-            note: driverNote(options: _options, entrance: _entrance, note: _note.text),
-            pets: _options.pets,
+            passengers: options.passengers,
+            note: driverNote(options: options, entrance: _entrance, note: _note.text),
+            pets: options.pets,
+            assistance: options.assistance,
+            optionCharges: optionCharges,
             riderName: profile?.name,
             riderPhone: profile?.phone,
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
@@ -2197,16 +2246,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final owed = scheduleConfig.enabled ? ref.watch(owedFeesProvider).value ?? 0 : 0.0;
     final footer = confirming && _route != null
         ? ConfirmFooter(
-            onOptions: () => showRideOptionsSheet(
-              context,
-              options: _options,
-              onChanged: (o) => setState(() => _options = o),
-              note: _note,
-              petConfig: ref.read(petConfigProvider),
-            ).then((_) {
-              if (mounted) setState(() {}); // the note may have changed
-            }),
-            optionsOn: _options.any,
+            // Every option hidden (Display Settings → Ride Options): no button.
+            onOptions: _optionsShown
+                ? () => showRideOptionsSheet(
+                      context,
+                      options: _options,
+                      onChanged: (o) => setState(() => _options = o),
+                      note: _note,
+                      petConfig: ref.read(petConfigProvider),
+                      config: ref.read(rideOptionsConfigProvider),
+                      assistance: ref.read(assistanceCatalogueProvider),
+                    ).then((_) {
+                      if (mounted) setState(() {}); // the note may have changed
+                    })
+                : null,
+            optionsOn: _bookable.any,
+            chargesNote: _optionChargesNote,
             payment: _payment,
             payments: _payments,
             onPayment: () async {

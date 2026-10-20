@@ -11,6 +11,9 @@ import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/fare.dart';
 import 'package:get_ride/src/core/overlay_back.dart';
 import 'package:get_ride/src/core/region_pricing.dart';
+import 'package:get_ride/src/core/ride_assistance.dart';
+import 'package:get_ride/src/core/ride_option_charges.dart';
+import 'package:get_ride/src/core/ride_pets.dart';
 import 'package:get_ride/src/core/ride_rebook.dart';
 import 'package:get_ride/src/core/route_estimate.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
@@ -981,6 +984,99 @@ void main() {
     expect(rides.created![#pets], isEmpty);
     expect(rides.created![#passengers], 1);
   });
+
+  // Admin → Display Settings → Ride Options (0248).
+  for (final b in Brightness.values) {
+    testWidgets('every ride option hidden: no Options button (${b.name})', (tester) async {
+      await _pump(
+        tester,
+        _Rides(),
+        brightness: b,
+        display: const {
+          'rideOptions': {
+            'hidden': ['child-seat', 'more-passengers', 'pet', 'assistance'],
+          },
+        },
+      );
+      expect(find.byKey(const ValueKey('book')), findsOneWidget);
+      expect(find.byKey(const ValueKey('confirm-options')), findsNothing);
+    });
+
+    testWidgets('pet and assistance charges: in the fare, a line before booking, on the booking (${b.name})',
+        (tester) async {
+      const display = {
+        'petPhotoRequired': false,
+        'petTypes': ['Dog', 'Iguana'],
+        'petCharges': {
+          'Iguana': {'kind': 'fixed', 'value': 10, 'per': 'pet'},
+        },
+        'assistanceCatalogue': [
+          {
+            'id': 'custom-1',
+            'name': 'Sign language',
+            'emoji': '🤟',
+            'group': 'Talking',
+            'charge': {'kind': 'fixed', 'value': 5},
+          },
+        ],
+      };
+      // The same trip with no options, for its fare.
+      final plain = _Rides();
+      await _pump(tester, plain, display: display, brightness: b);
+      expect(find.byKey(const ValueKey('option-charges-note')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('book')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      final base = plain.created![#fare] as double;
+      expect(plain.created![#optionCharges], isEmpty);
+
+      final rides = _Rides();
+      await _pump(tester, rides, display: display, brightness: b);
+      await tester.tap(find.byKey(const ValueKey('confirm-options')));
+      await _settle(tester);
+      // A custom pet type.
+      await tester.tap(find.byKey(const ValueKey('option-pet')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('pets-type-Iguana')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('pet-size-Iguana-0-M')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('pets-done')));
+      await _settle(tester);
+      // A custom help item.
+      await tester.tap(find.byKey(const ValueKey('option-assistance')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('assist-item-custom-1')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('assist-done')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('ride-options-close')));
+      await _settle(tester);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('option-charges-note')),
+          matching: find.text('Pet charge RM10 · Assistance charge RM5'),
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey('book')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(rides.created![#fare], closeTo(base + 15, 0.001), reason: 'the fare includes the charges');
+      expect([for (final c in rides.created![#optionCharges] as List<OptionChargeLine>) c.toJson()], [
+        {'kind': 'pet', 'name': 'Pet charge', 'amount': 10.0},
+        {'kind': 'assistance', 'name': 'Assistance charge', 'amount': 5.0},
+      ]);
+      expect((rides.created![#pets] as List<RidePet>).single.type, 'Iguana');
+      expect((rides.created![#assistance] as RideAssistance).items.single.name, 'Sign language');
+      expect(rides.created![#note], 'Pet with me: 1 iguana (M) · Assistance: Sign language');
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(minutes: 1));
+    });
+  }
 
   testWidgets('booking for someone else is a toggle under GET.coin; the modal fills it in', (tester) async {
     final rides = _Rides();

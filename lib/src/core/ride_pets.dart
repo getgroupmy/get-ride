@@ -6,15 +6,49 @@ library;
 
 import 'dart:typed_data';
 
-/// What the Your pets sheet offers. Read from the display settings blob
-/// ([fromSettings]); [toSettings] writes the same keys back, for Admin →
-/// Display Settings.
+import 'option_charge.dart';
+
+/// A pet type's charge (Admin → Display Settings → Ride Options): a fixed
+/// amount or a percentage of the fare, for each pet of the type or once
+/// for the ride however many come.
+class PetCharge {
+  const PetCharge({this.charge = OptionCharge.none, this.perPet = true});
+
+  final OptionCharge charge;
+
+  /// For each pet of the type; else once per ride.
+  final bool perPet;
+
+  static const none = PetCharge();
+
+  bool get isZero => charge.isZero;
+
+  Map<String, Object> toJson() => {...charge.toJson(), 'per': perPet ? 'pet' : 'ride'};
+
+  static PetCharge fromJson(Object? raw) =>
+      PetCharge(charge: OptionCharge.fromJson(raw), perPet: raw is! Map || raw['per'] != 'ride');
+
+  @override
+  bool operator ==(Object other) => other is PetCharge && other.charge == charge && other.perPet == perPet;
+
+  @override
+  int get hashCode => Object.hash(charge, perPet);
+}
+
+/// What the Your pets sheet offers, and what pets cost. Read from the
+/// display settings blob ([fromSettings]); [toSettings] writes the same keys
+/// back, for Admin → Display Settings → Ride Options. The types are the
+/// admin's own list (names only), so any type works everywhere: the sheet,
+/// the summary, the driver's view and the database (0247 checks only the
+/// name's length).
 class PetConfig {
   const PetConfig({
     this.types = defaultTypes,
     this.sizes = defaultSizes,
     this.maxPerType = defaultMaxPerType,
     this.photoRequired = true,
+    this.charges = const {},
+    this.sizeExtras = const {},
   });
 
   static const defaultTypes = ['Dog', 'Cat', 'Rabbit', 'Guinea pig', 'Hamster'];
@@ -22,13 +56,19 @@ class PetConfig {
   static const defaultMaxPerType = 5;
 
   /// The most of one type an admin may allow.
-  static const maxPerTypeLimit = 20;
+  static const maxPerTypeLimit = 10;
+
+  /// The longest type name, and the most types.
+  static const typeNameMax = 40;
+  static const maxTypes = 30;
 
   /// The display settings keys.
   static const typesKey = 'petTypes';
   static const sizesKey = 'petSizes';
   static const maxPerTypeKey = 'petMaxPerType';
   static const photoRequiredKey = 'petPhotoRequired';
+  static const chargesKey = 'petCharges';
+  static const sizeExtrasKey = 'petSizeExtras';
 
   /// The pet types to pick from, in order.
   final List<String> types;
@@ -42,6 +82,17 @@ class PetConfig {
   /// Whether Done waits for a photo of every pet.
   final bool photoRequired;
 
+  /// Each type's charge, by type name; none for a type not in it.
+  final Map<String, PetCharge> charges;
+
+  /// An amount added for each pet of a size ("L": 2), on top of its type's
+  /// charge.
+  final Map<String, double> sizeExtras;
+
+  PetCharge chargeFor(String type) => charges[type] ?? PetCharge.none;
+
+  double sizeExtraFor(String? size) => size == null ? 0 : (sizeExtras[size] ?? 0);
+
   static List<String> _list(Object? v, List<String> fallback) {
     final raw = switch (v) {
       final List<dynamic> l => l,
@@ -50,8 +101,8 @@ class PetConfig {
     };
     final out = <String>[];
     for (final e in raw) {
-      final t = e is String ? e.trim() : '';
-      if (t.isNotEmpty && t.length <= 40 && !out.any((o) => o.toLowerCase() == t.toLowerCase())) out.add(t);
+      final t = e is String ? cleanPetTypeName(e) : '';
+      if (t.isNotEmpty && t.length <= typeNameMax && !out.any((o) => o.toLowerCase() == t.toLowerCase())) out.add(t);
     }
     return out.isEmpty ? fallback : List.unmodifiable(out);
   }
@@ -66,12 +117,33 @@ class PetConfig {
       final String t when ['false', '0', 'off'].contains(t.trim().toLowerCase()) => false,
       _ => true,
     };
+    final types = _list(s[typesKey], defaultTypes);
+    final sizes = _list(s[sizesKey], defaultSizes);
+    final rawCharges = s[chargesKey];
+    final rawExtras = s[sizeExtrasKey];
     return PetConfig(
-      types: _list(s[typesKey], defaultTypes),
-      sizes: _list(s[sizesKey], defaultSizes),
+      types: types,
+      sizes: sizes,
       maxPerType: (max ?? defaultMaxPerType).clamp(1, maxPerTypeLimit),
       photoRequired: photo,
+      charges: {
+        if (rawCharges is Map)
+          for (final e in rawCharges.entries)
+            if (e.key is String && types.contains(e.key) && !PetCharge.fromJson(e.value).isZero)
+              e.key as String: PetCharge.fromJson(e.value),
+      },
+      sizeExtras: {
+        if (rawExtras is Map)
+          for (final e in rawExtras.entries)
+            if (e.key is String && sizes.contains(e.key) && _amount(e.value) > 0) e.key as String: _amount(e.value),
+      },
     );
+  }
+
+  static double _amount(Object? v) {
+    final n = v is num ? v.toDouble() : (v is String ? double.tryParse(v.trim()) : null);
+    if (n == null || !n.isFinite || n <= 0) return 0;
+    return cents(n > OptionCharge.maxAmount ? OptionCharge.maxAmount : n);
   }
 
   Map<String, Object> toSettings() => {
@@ -79,8 +151,26 @@ class PetConfig {
     sizesKey: sizes,
     maxPerTypeKey: maxPerType,
     photoRequiredKey: photoRequired,
+    chargesKey: {
+      for (final e in charges.entries)
+        if (!e.value.isZero) e.key: e.value.toJson(),
+    },
+    sizeExtrasKey: {
+      for (final e in sizeExtras.entries)
+        if (e.value > 0) e.key: e.value,
+    },
   };
 }
+
+/// Emoji and other pictographs the admin can't use in a pet type's name
+/// (the owner asked for names only).
+final _pictographs = RegExp(
+  r'[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]',
+  unicode: true,
+);
+
+/// A pet type's name as kept: no emoji, single spaces.
+String cleanPetTypeName(String raw) => raw.replaceAll(_pictographs, '').replaceAll(RegExp(r'\s+'), ' ').trim();
 
 /// One pet: its type, the size the rider chose and, once uploaded, where
 /// its photo is in the `ride-pets` bucket. [preview] is the picked photo,
