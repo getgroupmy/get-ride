@@ -87,16 +87,17 @@ void main() {
     test("a request's extras: each pet type with its count and sizes, each kind of help, a seat, more passengers", () {
       final x = _request.extras;
       expect([for (final e in x) e.key],
-          ['child-seat', 'more-passengers', 'pet:dog', 'pet:cat', 'assist:luggage'],
-          reason: 'never the guide dog; the keys the server keeps');
+          ['child-seat', 'more-passengers', 'pet:dog', 'pet:cat', 'assist:luggage', 'assist:$guideDogAssistanceId'],
+          reason: 'the keys the server keeps, the guide dog included');
       expect([for (final e in x) e.line], [
         'Child safety seat',
         'More than 4 passengers',
         'Bringing a pet: Dog ×2 (M, L)',
         'Bringing a pet: Cat ×1',
         'Assistance required: Help with luggage or shopping',
+        'Assistance required: Guide or service dog',
       ]);
-      expect([for (final e in x) e.label].skip(2), ['Dog', 'Cat', 'Help with luggage or shopping']);
+      expect([for (final e in x) e.label].skip(2), ['Dog', 'Cat', 'Help with luggage or shopping', 'Guide or service dog']);
       expect(RideRequest({'id': 'r2', 'passengers': 1}).extras, isEmpty);
     });
 
@@ -107,11 +108,11 @@ void main() {
       expect(driverTakes({'pet:dog'}, x), isFalse);
       expect(driverTakes({'assist:luggage'}, x), isFalse);
       expect(driverTakes({'more-passengers'}, x), isFalse);
-      expect(driverTakes({'assist:$guideDogAssistanceId'}, x), isTrue, reason: 'the guide dog is never an extra');
+      expect(driverTakes({'assist:$guideDogAssistanceId'}, x), isFalse, reason: 'a driver may turn the guide dog off too');
       expect(RideExtraKey.pet(' Guinea Pig '), 'pet:guinea pig');
     });
 
-    test('the switches follow the admin: names, order, pet types and help offered; never the guide dog', () {
+    test('the switches follow the admin: names, order, pet types and help offered, the guide dog included', () {
       final config = RideOptionsConfig.fromSettings({
         RideOptionsConfig.key: {
           'order': ['pet', 'assistance', 'child-seat', 'more-passengers'],
@@ -123,8 +124,8 @@ void main() {
       expect([for (final g in groups) g.option], [RideOptionKind.pet, RideOptionKind.assistance, RideOptionKind.childSeat]);
       expect(groups.first.title, 'Bringing a pet');
       expect([for (final i in groups.first.items) i.key], ['pet:dog', 'pet:iguana']);
-      expect(groups[1].items.any((i) => i.key == 'assist:$guideDogAssistanceId'), isFalse);
-      expect(groups[1].items.length, defaultAssistanceItems.length - 1);
+      expect(groups[1].items.any((i) => i.key == 'assist:$guideDogAssistanceId'), isTrue);
+      expect(groups[1].items.length, defaultAssistanceItems.length);
       expect(hiddenExtrasText(0), isNull);
       expect(hiddenExtrasText(1), '1 request not shown: it includes an extra you turned off.');
       expect(hiddenExtrasText(3), '3 requests not shown: they include an extra you turned off.');
@@ -193,7 +194,7 @@ void main() {
         expect(find.text('Passenger added extras'), findsOneWidget);
         expect(find.text('Bringing a pet: Dog ×2 (M, L)'), findsOneWidget);
         expect(find.text('Assistance required: Help with luggage or shopping'), findsOneWidget);
-        expect(find.textContaining('Guide'), findsNothing);
+        expect(find.text('Assistance required: Guide or service dog'), findsOneWidget);
         expect(find.text('Offer fare'), findsOneWidget);
         expect(find.text('Stop showing Dog rides'), findsOneWidget);
         await _tapKey(tester, 'ride-extras-stop-pet:dog');
@@ -233,7 +234,7 @@ void main() {
             tester.widget<Switch>(find.descendant(of: find.byKey(ValueKey('ride-extra-$key')), matching: find.byType(Switch)));
         expect(sw('pet:dog').value, isTrue);
         expect(sw('pet:cat').value, isFalse);
-        expect(find.byKey(const ValueKey('ride-extra-assist:$guideDogAssistanceId')), findsNothing);
+        expect(find.byKey(const ValueKey('ride-extra-assist:$guideDogAssistanceId')), findsOneWidget);
         await tester.ensureVisible(find.byKey(const ValueKey('ride-extra-pet:dog')));
         await tester.tap(find.descendant(of: find.byKey(const ValueKey('ride-extra-pet:dog')), matching: find.byType(Switch)));
         await _settle(tester);

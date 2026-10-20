@@ -3,8 +3,7 @@
 /// passengers, all on until the driver turns one off. A request carrying an
 /// extra the driver turned off is never offered to them (the server keeps
 /// it from their feed and pushes). The keys match the server's
-/// `ride_extra_keys`. The guide or service dog is never an extra a driver
-/// can turn down. Pure.
+/// `ride_extra_keys`. Pure.
 library;
 
 import 'ride_assistance.dart';
@@ -71,7 +70,6 @@ List<RideExtra> rideExtrasOf({
   }
   final helpName = names[RideOptionKind.assistance.id] ?? 'Assistance';
   for (final i in assistance?.items ?? const <AssistancePick>[]) {
-    if (i.id == guideDogAssistanceId) continue;
     final key = RideExtraKey.assist(i.id);
     if (out.any((x) => x.key == key)) continue;
     out.add(RideExtra(key: key, line: '$helpName: ${i.label}', label: i.name));
@@ -86,8 +84,8 @@ bool driverTakes(Set<String> off, Iterable<RideExtra> extras) => !extras.any((x)
 typedef RideExtraSwitch = ({String key, String label});
 
 /// The switches, by option in the admin's order: a child safety seat, more
-/// passengers, each pet type and each kind of help offered (never the
-/// guide dog). Options the admin hides from riders are left out.
+/// passengers, each pet type and each kind of help offered. Options the
+/// admin hides from riders are left out.
 List<({RideOptionKind option, String title, List<RideExtraSwitch> items})> rideExtraGroups(
   RideOptionsConfig config,
   PetConfig pets,
@@ -103,8 +101,7 @@ List<({RideOptionKind option, String title, List<RideExtraSwitch> items})> rideE
           RideOptionKind.morePassengers => [(key: RideExtraKey.morePassengers, label: config.labelOf(k))],
           RideOptionKind.pet => [for (final t in pets.types) (key: RideExtraKey.pet(t), label: t)],
           RideOptionKind.assistance => [
-            for (final i in help.visible)
-              if (!i.isGuideDog) (key: RideExtraKey.assist(i.id), label: i.name),
+            for (final i in help.visible) (key: RideExtraKey.assist(i.id), label: i.name),
           ],
         },
       ),

@@ -190,14 +190,14 @@ reset role;
 select pg_temp.check(public.ride_extra_keys('[{"type": "Dog"}, {"type": " dog "}, {"type": "Cat"}]',
                                             '{"items": [{"id": "wheelchair", "name": "W"}, {"id": "guide-dog", "name": "G"}]}',
                                             '{"child-seat": "Child safety seat"}', 5)
-                     = array['assist:wheelchair', 'child-seat', 'more-passengers', 'pet:cat', 'pet:dog'],
-  'a request''s extras: each pet type, each help item but the guide dog, a child seat, more passengers');
+                     = array['assist:guide-dog', 'assist:wheelchair', 'child-seat', 'more-passengers', 'pet:cat', 'pet:dog'],
+  'a request''s extras: each pet type, each help item (the guide dog too), a child seat, more passengers');
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000253d2');
 insert into public.driver_ride_extras (driver_id, off) values
   ('00000000-0000-0000-0000-0000000253d2', array['Pet:Dog ', 'assist:guide-dog', 'pet:dog']);
 select pg_temp.check((select off from public.driver_ride_extras where driver_id = '00000000-0000-0000-0000-0000000253d2')
-                     = array['pet:dog'], 'kept in lower case, once, never the guide dog');
+                     = array['assist:guide-dog', 'pet:dog'], 'kept in lower case, once; the guide dog can be turned off');
 select pg_temp.refused($q$insert into public.driver_ride_extras (driver_id, off) values ('00000000-0000-0000-0000-0000000253d1', array['pet:cat'])$q$,
   'a driver writing another''s');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000253d1');

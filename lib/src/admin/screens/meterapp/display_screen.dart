@@ -1889,7 +1889,7 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
               )
             else
               Text(
-                'Its charge is set by place: Ride Options → Charges and where offered.',
+                'Its charge is set by place: Ride Options > Charges and where offered.',
                 key: const ValueKey('assist-charge-by-place'),
                 style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
               ),

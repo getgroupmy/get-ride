@@ -34,7 +34,7 @@ class DriverExtrasOffCard extends ConsumerWidget {
           Text('Ride extras turned off', style: t.textTheme.titleSmall),
           const SizedBox(height: 4),
           Text(
-            'Requests with these are not offered to this driver. The driver changes them in Settings → Ride extras I take.',
+            'Requests with these are not offered to this driver. The driver changes them in Settings > Ride extras I take.',
             style: t.textTheme.bodySmall?.copyWith(color: muted),
           ),
           const SizedBox(height: 8),

@@ -43,8 +43,7 @@
 --     widening and everyone pushes, My Ride's favourites, the airport queue
 --     and waiting-zone offers, a stand group's broadcast and the scheduled
 --     rides list. A request booked straight to them (GET.now, a stand's
---     assignment) still reaches them. The guide or service dog is never an
---     extra a driver can turn down.
+--     assignment) still reaches them.
 --   * ride_extras_hidden_count: how many open requests the feed leaves out
 --     for that reason.
 -- ============================================================================
@@ -463,7 +462,7 @@ create trigger trg_scheduled_rides_option_places
 -- ---- 5. The extras each driver takes --------------------------------------------------------------
 
 -- The extras a request carries, as the keys a driver turns off: each pet
--- type, each kind of help (never the guide dog), a child seat, more
+-- type, each kind of help (the guide dog included), a child seat, more
 -- passengers. Lower case.
 create or replace function public.ride_extra_keys(p_pets jsonb, p_assistance jsonb, p_names jsonb,
                                                   p_passengers integer)
@@ -488,7 +487,6 @@ as $$
                                      then p_assistance->'items' else '[]'::jsonb end) e
      where jsonb_typeof(e) = 'object'
        and coalesce(nullif(btrim(e->>'id'), ''), btrim(e->>'name'), '') <> ''
-       and coalesce(e->>'id', '') <> 'guide-dog'
   ) x;
 $$;
 
@@ -512,7 +510,7 @@ create table if not exists public.driver_ride_extras (
 comment on table public.driver_ride_extras is
   'The ride extras each driver turned off (0253): requests carrying one are not offered to them.';
 
--- Kept trimmed, lower case and without repeats; the guide dog is never one.
+-- Kept trimmed, lower case and without repeats.
 create or replace function public.driver_ride_extras_normalise()
 returns trigger
 language plpgsql
@@ -521,7 +519,7 @@ as $$
 begin
   new.off := coalesce((select array_agg(distinct k order by k)
                          from (select lower(btrim(x)) k from unnest(coalesce(new.off, '{}')) x) y
-                        where k <> '' and k <> 'assist:guide-dog'), '{}');
+                        where k <> ''), '{}');
   new.updated_at := now();
   return new;
 end;
