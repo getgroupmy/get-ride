@@ -754,5 +754,117 @@ reset role;
 select pg_temp.check((select airport_hold from public.ride_requests where id = pg_temp.id('ap_near')),
   'the Call centre''s nearby booking follows the airport''s rules');
 
+-- 16. The stand's credit limit for counter-paid orders -------------------------------------------
+reset role;
+-- The due per order, as dispatchCounterDue (lib/src/core/dispatch.dart).
+select pg_temp.check(public.dispatch_counter_due(25, 'fixed', 3, 'customer', 'percent', 20) = 25.60
+                     and public.dispatch_counter_due(40, 'percent', 10, 'driver', 'fixed', 0.5) = 36.50
+                     and public.dispatch_counter_due(25, 'none', 0, 'customer', 'fixed', 1) = 25
+                     and public.dispatch_counter_due(0, 'fixed', 3, 'driver', 'fixed', 1) = 1
+                     and public.dispatch_counter_due(null, 'none', 0, 'customer', 'percent', 20) = 0,
+  'a counter order costs the driver''s share and the platform''s fee');
+select pg_temp.check(not has_function_privilege('authenticated', 'public.dispatch_credit_state(uuid, uuid)', 'execute')
+                     and not has_function_privilege('authenticated', 'public.dispatch_credit_check(uuid, numeric, uuid)', 'execute'),
+  'the credit helpers are the server''s');
+select pg_temp.check(public.dispatch_credit_state('00000000-0000-0000-0000-0000000251e1')->>'applies' = 'false',
+  'no limit by default');
+
+set local role authenticated;
+-- Who sets it: the admin; the stand admin only when let, within the cap; staff never.
+select pg_temp.as_user('00000000-0000-0000-0000-0000000251a3');
+select pg_temp.refused($q$select public.dispatch_set_credit_limit('00000000-0000-0000-0000-0000000251e1', 100)$q$,
+  'a stand admin setting a limit the admin sets');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000251a1');
+update public.dispatch_stands set credit_limit_set_by = 'stand', credit_limit_max = 300
+ where id = '00000000-0000-0000-0000-0000000251e1';
+select pg_temp.as_user('00000000-0000-0000-0000-0000000251a3');
+select public.dispatch_set_credit_limit('00000000-0000-0000-0000-0000000251e1', 250);
+select pg_temp.refused($q$select public.dispatch_set_credit_limit('00000000-0000-0000-0000-0000000251e1', 301)$q$,
+  'a stand admin past the cap');
+select pg_temp.refused($q$select public.dispatch_set_credit_limit('00000000-0000-0000-0000-0000000251e1', null)$q$,
+  'a stand admin clearing the limit');
+select pg_temp.refused($q$update public.dispatch_stands set credit_limit_max = 5000
+   where id = '00000000-0000-0000-0000-0000000251e1'$q$, 'a stand admin raising the cap');
+select pg_temp.refused($q$select public.dispatch_set_credit_limit('00000000-0000-0000-0000-0000000251e2', 10)$q$,
+  'a stand admin setting another stand''s limit');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000251a5');
+select pg_temp.refused($q$select public.dispatch_set_credit_limit('00000000-0000-0000-0000-0000000251e1', 10)$q$,
+  'staff setting the limit');
+select pg_temp.check((public.dispatch_stand_credit('00000000-0000-0000-0000-0000000251e1')->>'limit')::numeric = 250,
+  'the console reads the limit');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000251d2');
+select pg_temp.refused($q$select public.dispatch_stand_credit('00000000-0000-0000-0000-0000000251e1')$q$,
+  'a driver reading a stand''s credit');
+
+-- RM 10 left before the limit: an admin sets it so (any amount).
+reset role;
+select set_config('dispatch_test.limit', (round(-((c->>'balance')::numeric - (c->>'pending')::numeric) + 10, 2))::text, true)
+  from (select public.dispatch_credit_state('00000000-0000-0000-0000-0000000251e1') c) x;
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000251a1');
+select public.dispatch_set_credit_limit('00000000-0000-0000-0000-0000000251e1',
+  current_setting('dispatch_test.limit')::numeric);
+select pg_temp.as_user('00000000-0000-0000-0000-0000000251a5');
+select pg_temp.check((public.dispatch_stand_credit('00000000-0000-0000-0000-0000000251e1')->>'available')::numeric = 10
+                     and not (public.dispatch_stand_credit('00000000-0000-0000-0000-0000000251e1')->>'blocked')::boolean,
+  'RM 10 left, not blocked');
+do $$
+begin
+  begin
+    perform public.dispatch_create_order('00000000-0000-0000-0000-0000000251e1',
+      '{"drop_name": "KLCC", "mode": "broadcast", "group_id": "00000000-0000-0000-0000-0000000251f1",
+        "fare_mode": "fixed", "fare": 20, "payment": "counter"}');
+  exception when others then
+    if sqlerrm = 'STAND_CREDIT_LIMIT' then
+      return;
+    end if;
+    raise exception 'FAILED: refused with %, not STAND_CREDIT_LIMIT', sqlerrm;
+  end;
+  raise exception 'FAILED: a counter order past the limit went out';
+end $$;
+select pg_temp.refused($q$select public.dispatch_create_order('00000000-0000-0000-0000-0000000251e1',
+  '{"drop_name": "KLCC", "mode": "broadcast", "group_id": "00000000-0000-0000-0000-0000000251f1",
+    "fare_mode": "fixed", "fare": 20, "payment": "app"}')$q$, 'a card / e-wallet order past the limit');
+select pg_temp.order_as('cr_cash', '00000000-0000-0000-0000-0000000251e1',
+  '{"drop_name": "KLCC", "mode": "broadcast", "group_id": "00000000-0000-0000-0000-0000000251f1",
+    "fare_mode": "fixed", "fare": 20, "payment": "cash"}');
+select pg_temp.order_as('cr_ok', '00000000-0000-0000-0000-0000000251e1',
+  '{"drop_name": "Bukit Bintang", "mode": "broadcast", "group_id": "00000000-0000-0000-0000-0000000251f1",
+    "fare_mode": "fixed", "fare": 5, "payment": "counter"}');
+select pg_temp.check((public.dispatch_stand_credit('00000000-0000-0000-0000-0000000251e1')->>'available')::numeric = 5,
+  'the open counter order counts against the limit (RM 5, 10 % from the driver: driver 4.50, platform 0.50)');
+select pg_temp.refused($q$select public.dispatch_create_order('00000000-0000-0000-0000-0000000251e1',
+  '{"drop_name": "Bukit Bintang", "mode": "broadcast", "group_id": "00000000-0000-0000-0000-0000000251f1",
+    "fare_mode": "fixed", "fare": 6, "payment": "counter"}')$q$, 'a second one past what is left');
+-- Re-sending it: still within (it is counted once).
+select public.dispatch_order_action(pg_temp.id('cr_ok'), 'resend_group',
+  '{"group_id": "00000000-0000-0000-0000-0000000251f1"}');
+-- The limit lowered past it: no more counter orders, nor re-sending it; cash still goes.
+reset role;
+update public.dispatch_stands set credit_limit = credit_limit - 6 where id = '00000000-0000-0000-0000-0000000251e1';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000251a5');
+select pg_temp.check((public.dispatch_stand_credit('00000000-0000-0000-0000-0000000251e1')->>'blocked')::boolean,
+  'blocked: the console says top up');
+select pg_temp.refused($q$select public.dispatch_create_order('00000000-0000-0000-0000-0000000251e1',
+  '{"drop_name": "KLCC", "mode": "broadcast", "group_id": "00000000-0000-0000-0000-0000000251f1",
+    "payment": "counter"}')$q$, 'a metered counter order while blocked');
+select pg_temp.refused($q$select public.dispatch_order_action(pg_temp.id('cr_ok'), 'widen')$q$,
+  're-sending a counter order past the limit');
+select pg_temp.order_as('cr_cash2', '00000000-0000-0000-0000-0000000251e1',
+  '{"drop_name": "KLCC", "mode": "broadcast", "group_id": "00000000-0000-0000-0000-0000000251f1",
+    "payment": "cash"}');
+select pg_temp.check(pg_temp.id('cr_cash2') is not null, 'cash to the driver still goes out');
+-- Settled outside the app: the stand's GET.credit isn't touched, so no limit applies.
+reset role;
+update public.dispatch_stands set settlement = 'outside', credit_limit = 0
+ where id = '00000000-0000-0000-0000-0000000251e1';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000251a5');
+select pg_temp.order_as('cr_out', '00000000-0000-0000-0000-0000000251e1',
+  '{"drop_name": "KLCC", "mode": "broadcast", "group_id": "00000000-0000-0000-0000-0000000251f1",
+    "fare_mode": "fixed", "fare": 20, "payment": "counter"}');
+reset role;
+
 select 'order_dispatch_0251: all passed';
 rollback;

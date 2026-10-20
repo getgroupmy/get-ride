@@ -531,4 +531,59 @@ void main() {
       expect(StandKind.parse('call_centre'), StandKind.callCentre);
     });
   });
+
+  group('the stand credit limit (dispatch_counter_due, dispatch_credit_check in 0251)', () {
+    DispatchSplit split(double fare, FeeType t, double v, FeePayer payer, FeeType pt, double pv) =>
+        dispatchSplit(fare: fare, feeType: t, feeValue: v, payer: payer, platformType: pt, platformValue: pv);
+
+    test("a counter order costs the stand the driver's share and the platform's fee", () {
+      // As order_dispatch_0251.sql section 16.
+      expect(split(25, FeeType.fixed, 3, FeePayer.customer, FeeType.percent, 20).counterDue, 25.6);
+      expect(split(40, FeeType.percent, 10, FeePayer.driver, FeeType.fixed, 0.5).counterDue, 36.5);
+      expect(split(25, FeeType.none, 0, FeePayer.customer, FeeType.fixed, 1).counterDue, 25);
+      // A metered order with no fare yet: the platform's fee on a fixed stand fee only.
+      expect(split(0, FeeType.fixed, 3, FeePayer.driver, FeeType.fixed, 1).counterDue, 1);
+      expect(split(0, FeeType.none, 0, FeePayer.customer, FeeType.percent, 20).counterDue, 0);
+    });
+
+    test('the balance chip and what may go out', () {
+      const ok = StandCredit(applies: true, balance: -320, limit: 500, available: 180);
+      expect(ok.label, 'GET.credit: RM −320 of −500 limit');
+      expect(ok.allows(180), isTrue);
+      expect(ok.allows(180.01), isFalse);
+      const full = StandCredit(applies: true, balance: -500, limit: 500, available: 0, blocked: true);
+      expect(full.allows(0), isFalse, reason: 'at the limit nothing more goes out at the counter');
+      const none = StandCredit(balance: 150.5);
+      expect(none.label, 'GET.credit: RM 150.50');
+      expect(none.allows(1000), isTrue, reason: 'no limit, or settled outside the app');
+      expect(
+        StandCredit.fromJson({'applies': true, 'balance': -12, 'limit': 100, 'available': 88, 'blocked': false}).label,
+        'GET.credit: RM −12 of −100 limit',
+      );
+    });
+
+    test('who sets the limit, and within what', () {
+      const byAdmin = StandFee(creditLimit: 500);
+      const byStand = StandFee(creditLimit: 200, creditLimitByStand: true, creditLimitMax: 300);
+      expect(canSetCreditLimit(admin: true, standAdmin: false, fee: byAdmin), isTrue);
+      expect(canSetCreditLimit(admin: false, standAdmin: true, fee: byAdmin), isFalse);
+      expect(canSetCreditLimit(admin: false, standAdmin: true, fee: byStand), isTrue);
+      expect(canSetCreditLimit(admin: false, standAdmin: false, fee: byStand), isFalse, reason: 'staff never');
+      expect(creditLimitProblem(null, admin: true, max: 0), isNull, reason: 'an admin may clear it');
+      expect(creditLimitProblem(null, admin: false, max: 300), 'Enter the limit.');
+      expect(creditLimitProblem(300, admin: false, max: 300), isNull);
+      expect(creditLimitProblem(301, admin: false, max: 300), 'The limit is RM 0 to RM 300.00.');
+      expect(creditLimitProblem(-1, admin: true, max: 0), isNotNull);
+      expect(creditLimitProblem(5000, admin: true, max: 300), isNull, reason: "the cap is the stand admin's");
+    });
+
+    test('the settings round-trip with the stand row', () {
+      final f = StandFee.fromRow({'credit_limit': 500, 'credit_limit_set_by': 'stand', 'credit_limit_max': '800'});
+      expect([f.creditLimit, f.creditLimitByStand, f.creditLimitMax], [500, true, 800]);
+      expect(f.toRow(), containsPair('credit_limit_set_by', 'stand'));
+      expect(StandFee.fromRow(const {}).creditLimit, isNull, reason: 'no limit by default');
+      expect(CounterPayment.counter.atCounter && CounterPayment.app.atCounter, isTrue);
+      expect(CounterPayment.cash.atCounter, isFalse);
+    });
+  });
 }

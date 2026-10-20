@@ -110,6 +110,14 @@ class DispatchRepository {
   Future<Map<String, dynamic>> report(String standId, {int days = 1}) async =>
       _map(await _db.rpc('dispatch_report', params: {'p_stand': standId, 'p_days': days}));
 
+  /// The stand's GET.credit standing for counter-paid orders.
+  Future<StandCredit> standCredit(String standId) async =>
+      StandCredit.fromJson(_map(await _db.rpc('dispatch_stand_credit', params: {'p_stand': standId})));
+
+  /// A stand admin's credit limit, within the admin's cap.
+  Future<void> setCreditLimit(String standId, double limit) =>
+      _db.rpc('dispatch_set_credit_limit', params: {'p_stand': standId, 'p_limit': limit});
+
   Future<StandStatement> statement(String standId, DateTime from, DateTime to) async => StandStatement.fromJson(
     _map(
       await _db.rpc(
@@ -260,14 +268,7 @@ class DispatchRepository {
   /// The admin's charges for a stand: the fee, who sets it, the platform's fee.
   Future<void> saveStandCharges(String standId, StandFee fee) => _db
       .from('dispatch_stands')
-      .update({
-        'fee_type': fee.type.name,
-        'fee_value': fee.value,
-        'fee_bearer': fee.payer.name,
-        'fee_set_by': fee.setByStand ? 'stand' : 'admin',
-        'platform_fee_type': fee.platformType == FeeType.fixed ? 'fixed' : 'percent',
-        'platform_fee_value': fee.platformValue,
-      })
+      .update(fee.toRow())
       .eq('id', standId);
 
   /// Everyone who works at the stands (admins read every row).

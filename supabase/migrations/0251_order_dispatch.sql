@@ -136,6 +136,13 @@ create table if not exists public.dispatch_stands (
   -- percentage of the stand fee, or a fixed amount. Admins only.
   platform_fee_type  text not null default 'percent' check (platform_fee_type in ('percent', 'fixed')),
   platform_fee_value numeric(10,2) not null default 0 check (platform_fee_value >= 0 and platform_fee_value <= 10000),
+  -- How far below zero the stand's GET.credit may go with orders paid at
+  -- the counter (500: down to RM -500); null, no limit. Set by admins, or
+  -- by the stand admin within credit_limit_max when credit_limit_set_by =
+  -- 'stand' (dispatch_set_credit_limit). Never staff.
+  credit_limit        numeric(10,2) check (credit_limit is null or credit_limit between 0 and 1000000),
+  credit_limit_set_by text not null default 'admin' check (credit_limit_set_by in ('admin', 'stand')),
+  credit_limit_max    numeric(10,2) not null default 0 check (credit_limit_max between 0 and 1000000),
   -- The account the stand's earnings go to (else its first stand admin).
   owner_id         uuid references public.profiles(id) on delete set null,
   next_ticket      integer not null default 1 check (next_ticket >= 1),
@@ -1152,6 +1159,8 @@ begin
       'lat', s.lat, 'lng', s.lng, 'allow_fixed_fare', s.allow_fixed_fare, 'settlement', s.settlement,
       'fee_type', s.fee_type, 'fee_value', s.fee_value, 'fee_bearer', s.fee_bearer, 'fee_set_by', s.fee_set_by,
       'platform_fee_type', s.platform_fee_type, 'platform_fee_value', s.platform_fee_value,
+      'credit_limit', s.credit_limit, 'credit_limit_set_by', s.credit_limit_set_by,
+      'credit_limit_max', s.credit_limit_max,
       'admin', v_admin,
       'role', case when v_admin then 'admin' else o.role end,
       'perms', jsonb_build_object(
@@ -1409,6 +1418,12 @@ begin
     v_detail := 'Nearby drivers, as a normal booking';
   else
     raise exception 'DISPATCH_MODE' using errcode = '22023';
+  end if;
+
+  -- Paid at the counter: within the stand's credit limit (cash is always fine).
+  if v_pay in ('counter', 'app') and s.settlement = 'wallet' then
+    perform public.dispatch_credit_check(p_stand, public.dispatch_counter_due(v_fare, s.fee_type, s.fee_value,
+      s.fee_bearer, s.platform_fee_type, s.platform_fee_value));
   end if;
 
   -- The ticket: the stand's next number, under its row lock.
@@ -2075,6 +2090,14 @@ begin
   end if;
   perform set_config('dispatch.rpc', '1', true);
 
+  -- Sending a counter-paid order out again: within the stand's credit limit.
+  if p_action in ('widen', 'resend_group', 'resend_driver', 'reassign')
+     and r.dispatch_payment in ('counter', 'app') and r.stand_settlement = 'wallet' then
+    perform public.dispatch_credit_check(r.stand_id,
+      public.dispatch_counter_due(coalesce(r.ride_fare, r.fare), r.stand_fee_type, r.stand_fee_value,
+                                  r.stand_fee_bearer, r.stand_platform_fee_type, r.stand_platform_fee_value), r.id);
+  end if;
+
   if p_action = 'widen' then
     if not public.dispatch_caller_can(r.stand_id, 'broadcast') then
       raise exception 'DISPATCH_NO_PERMISSION' using errcode = '42501';
@@ -2577,6 +2600,133 @@ end;
 $$;
 revoke execute on function public.dispatch_set_stand_fee(uuid, text, numeric, text) from public, anon;
 grant execute on function public.dispatch_set_stand_fee(uuid, text, numeric, text) to authenticated;
+
+-- ---- The stand's credit limit ---------------------------------------------------------------------
+-- An order paid at the counter (or by card / e-wallet at the counter), settled
+-- in the app, costs the stand's GET.credit the driver's share and the
+-- platform's fee (dispatch_settle). What one order will cost: the same split
+-- (dispatchCounterDue in lib/src/core/dispatch.dart); a metered order with
+-- no fare yet, the platform's fee on a fixed stand fee only.
+create or replace function public.dispatch_counter_due(p_fare numeric, p_fee_type text, p_fee_value numeric,
+                                                      p_payer text, p_platform_type text, p_platform_value numeric)
+returns numeric
+language sql
+immutable
+set search_path = public
+as $$
+  select greatest(0, (m->>'driver')::numeric) + (m->>'platform')::numeric
+    from (select public.dispatch_split(coalesce(p_fare, 0), p_fee_type, p_fee_value, p_payer,
+                                       p_platform_type, p_platform_value) m) x;
+$$;
+grant execute on function public.dispatch_counter_due(numeric, text, numeric, text, text, numeric)
+  to authenticated, service_role;
+
+-- The stand's standing: its account's GET.credit balance, the limit, what its
+-- open counter-paid orders will still cost (not [p_except]), and what is
+-- left before the limit. 'applies': counter orders are settled in the app
+-- and the stand has a limit.
+create or replace function public.dispatch_credit_state(p_stand uuid, p_except uuid default null)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with s as (select * from public.dispatch_stands where id = p_stand),
+       b as (select coalesce((select w.balance from public.wallets w
+                               where w.user_id = public.dispatch_stand_account(p_stand)
+                                 and w.wallet_type = 'get_credit'), 0)::numeric as balance),
+       p as (select coalesce(sum(public.dispatch_counter_due(coalesce(r.ride_fare, r.fare), r.stand_fee_type,
+                                   r.stand_fee_value, r.stand_fee_bearer, r.stand_platform_fee_type,
+                                   r.stand_platform_fee_value)), 0)::numeric as pending
+               from public.ride_requests r
+              where r.stand_id = p_stand and r.dispatch_payment in ('counter', 'app')
+                and r.dispatch_settled_at is null and r.status not in ('cancelled', 'expired')
+                and r.stand_settlement = 'wallet'
+                and r.id is distinct from p_except)
+  select jsonb_build_object(
+    'applies', s.settlement = 'wallet' and s.credit_limit is not null and not s.admin_only,
+    'balance', b.balance, 'limit', s.credit_limit, 'pending', p.pending,
+    'available', case when s.credit_limit is null then null
+                      else round(b.balance - p.pending + s.credit_limit, 2) end,
+    'set_by', s.credit_limit_set_by, 'max', s.credit_limit_max)
+    from s, b, p;
+$$;
+revoke execute on function public.dispatch_credit_state(uuid, uuid) from public, anon, authenticated;
+
+-- Refuses a counter-paid order of [p_due] the stand can't carry.
+create or replace function public.dispatch_credit_check(p_stand uuid, p_due numeric, p_except uuid default null)
+returns void
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  c jsonb := public.dispatch_credit_state(p_stand, p_except);
+  v_left numeric := (c->>'available')::numeric;
+begin
+  if (c->>'applies')::boolean and (v_left <= 0 or coalesce(p_due, 0) > v_left) then
+    raise exception 'STAND_CREDIT_LIMIT' using errcode = 'P0001',
+      hint = format('Top up to send counter-paid orders: the stand''s GET.credit may go down to RM -%s. '
+                    'Cash to driver still works.', to_char((c->>'limit')::numeric, 'FM999999990.00'));
+  end if;
+end;
+$$;
+revoke execute on function public.dispatch_credit_check(uuid, numeric, uuid) from public, anon, authenticated;
+
+-- The console's balance chip: the stand's people and admins.
+create or replace function public.dispatch_stand_credit(p_stand uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  c jsonb;
+begin
+  if auth.uid() is null or not (public.dispatch_caller_can(p_stand, 'use') or public.caller_is_admin()) then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  c := public.dispatch_credit_state(p_stand);
+  return c || jsonb_build_object('blocked',
+    coalesce((c->>'applies')::boolean and (c->>'available')::numeric <= 0, false));
+end;
+$$;
+revoke execute on function public.dispatch_stand_credit(uuid) from public, anon;
+grant execute on function public.dispatch_stand_credit(uuid) to authenticated;
+
+-- The limit: an admin with the Stands page, any amount (null: none); the
+-- stand admin, when the admin lets the stand set it, 0 up to the admin's cap.
+-- Who sets it and the cap are the admin's, on the table itself.
+create or replace function public.dispatch_set_credit_limit(p_stand uuid, p_limit numeric)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  s public.dispatch_stands;
+  v_admin boolean := public.caller_admin_can_write('dispatch_stands');
+begin
+  select * into s from public.dispatch_stands where id = p_stand for update;
+  if not found or auth.uid() is null
+     or not (v_admin or (s.credit_limit_set_by = 'stand' and array[p_stand] <@ public.dispatch_caller_admin_stand_ids())) then
+    raise exception 'not_authorized' using errcode = '42501', hint = 'The admin sets this stand''s credit limit.';
+  end if;
+  if (p_limit is null and not v_admin) or p_limit < 0 or p_limit > 1000000
+     or (not v_admin and p_limit > s.credit_limit_max) then
+    raise exception 'DISPATCH_CREDIT_LIMIT' using errcode = '22023',
+      hint = format('The limit is RM 0 to RM %s.', to_char(case when v_admin then 1000000 else s.credit_limit_max end,
+                                                           'FM999999990.00'));
+  end if;
+  update public.dispatch_stands set credit_limit = round(p_limit, 2) where id = p_stand;
+  return jsonb_build_object('credit_limit', round(p_limit, 2));
+end;
+$$;
+revoke execute on function public.dispatch_set_credit_limit(uuid, numeric) from public, anon;
+grant execute on function public.dispatch_set_credit_limit(uuid, numeric) to authenticated;
 
 -- The stand's statement for [p_from, p_to): each finished order with its
 -- fare, the stand fee, the platform's fee and what the stand keeps, and the

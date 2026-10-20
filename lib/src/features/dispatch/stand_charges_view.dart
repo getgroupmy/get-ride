@@ -3,6 +3,9 @@
 // Admins set everything, and who sets the stand fee; a stand admin sets the
 // fee only when the admin lets them, and sees the platform fee. The server
 // enforces the same (dispatch_set_stand_fee, the stands' write policy).
+// The credit limit (how far below zero the stand's GET.credit may go with
+// counter-paid orders) works the same way: admins, or the stand admin within
+// the admin's cap (dispatch_set_credit_limit).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -39,8 +42,12 @@ class _StandChargesViewState extends ConsumerState<StandChargesView> {
   late StandFee _fee = _stand.fee;
   late final _amount = TextEditingController(text: _num(_fee.value));
   late final _platform = TextEditingController(text: _num(_fee.platformValue));
+  late final _limit = TextEditingController(text: _limitText(_fee.creditLimit));
+  late final _cap = TextEditingController(text: _num(_fee.creditLimitMax));
   final _example = TextEditingController(text: '25');
   bool _busy = false;
+
+  static String _limitText(double? v) => v == null ? '' : _num(v);
 
   static String _num(double v) => v == v.roundToDouble() ? '${v.round()}' : v.toStringAsFixed(2);
 
@@ -50,6 +57,8 @@ class _StandChargesViewState extends ConsumerState<StandChargesView> {
   void dispose() {
     _amount.dispose();
     _platform.dispose();
+    _limit.dispose();
+    _cap.dispose();
     _example.dispose();
     super.dispose();
   }
@@ -59,6 +68,8 @@ class _StandChargesViewState extends ConsumerState<StandChargesView> {
     _fee = _stand.fee;
     _amount.text = _num(_fee.value);
     _platform.text = _num(_fee.platformValue);
+    _limit.text = _limitText(_fee.creditLimit);
+    _cap.text = _num(_fee.creditLimitMax);
   });
 
   StandFee get _current => StandFee(
@@ -68,7 +79,14 @@ class _StandChargesViewState extends ConsumerState<StandChargesView> {
     setByStand: _fee.setByStand,
     platformType: _fee.platformType,
     platformValue: double.tryParse(_platform.text.trim()) ?? 0,
+    creditLimit: double.tryParse(_limit.text.trim()),
+    creditLimitByStand: _fee.creditLimitByStand,
+    creditLimitMax: widget.admin ? double.tryParse(_cap.text.trim()) ?? 0 : _fee.creditLimitMax,
   );
+
+  bool get _canFee => widget.editable && canSetStandFee(admin: widget.admin, standAdmin: _stand.isStandAdmin, fee: _fee);
+  bool get _canLimit =>
+      widget.editable && canSetCreditLimit(admin: widget.admin, standAdmin: _stand.isStandAdmin, fee: _fee);
 
   Future<void> _save() async {
     final fee = _current;
@@ -77,13 +95,27 @@ class _StandChargesViewState extends ConsumerState<StandChargesView> {
       showError(context, 'A percentage is 0 to 100.');
       return;
     }
+    if (_limit.text.trim().isNotEmpty && fee.creditLimit == null) {
+      showError(context, 'Enter the limit as an amount.');
+      return;
+    }
+    final limitProblem = _canLimit
+        ? creditLimitProblem(fee.creditLimit, admin: widget.admin, max: fee.creditLimitMax)
+        : null;
+    if (limitProblem != null) {
+      showError(context, limitProblem);
+      return;
+    }
     setState(() => _busy = true);
     final repo = ref.read(dispatchRepositoryProvider);
     try {
       if (widget.admin) {
         await repo.saveStandCharges(_standId, fee);
       } else {
-        await repo.setStandFee(_standId, fee);
+        if (_canFee) await repo.setStandFee(_standId, fee);
+        if (_canLimit && fee.creditLimit != _stand.fee.creditLimit) {
+          await repo.setCreditLimit(_standId, fee.creditLimit!);
+        }
       }
       ref.invalidate(dispatchRolesProvider);
       widget.onSaved?.call();
@@ -99,7 +131,8 @@ class _StandChargesViewState extends ConsumerState<StandChargesView> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final muted = t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant);
-    final canFee = widget.editable && canSetStandFee(admin: widget.admin, standAdmin: _stand.isStandAdmin, fee: _fee);
+    final canFee = _canFee;
+    final canLimit = _canLimit;
     final canPlatform = widget.editable && widget.admin;
     final fee = _current;
     final split = fee.splitFor(double.tryParse(_example.text.trim()) ?? 0);
@@ -301,6 +334,73 @@ class _StandChargesViewState extends ConsumerState<StandChargesView> {
       ),
     );
 
+    final limitCard = Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Credit limit', style: t.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              "How far below zero the stand's GET.credit may go with orders paid at the counter. Past it, the "
+              'console sends only Cash to driver orders until the stand tops up.',
+              style: muted,
+            ),
+            if (widget.admin) ...[
+              const SizedBox(height: 8),
+              Text('Who sets the limit', style: muted),
+              Wrap(
+                spacing: 6,
+                children: [
+                  ChoiceChip(
+                    key: const ValueKey('limit-by-admin'),
+                    label: const Text('Admin'),
+                    selected: !_fee.creditLimitByStand,
+                    onSelected: canPlatform
+                        ? (_) => setState(() => _fee = _fee.copyWith(creditLimitByStand: false))
+                        : null,
+                  ),
+                  ChoiceChip(
+                    key: const ValueKey('limit-by-stand'),
+                    label: const Text('Stand admin'),
+                    selected: _fee.creditLimitByStand,
+                    onSelected: canPlatform
+                        ? (_) => setState(() => _fee = _fee.copyWith(creditLimitByStand: true))
+                        : null,
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                amountField(_limit, 'Limit', canLimit, percent: false, key: const ValueKey('credit-limit')),
+                if (widget.admin && _fee.creditLimitByStand)
+                  amountField(_cap, 'Stand admin up to', canPlatform, percent: false, key: const ValueKey('credit-cap')),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.admin
+                  ? (_limit.text.trim().isEmpty
+                        ? 'Empty: no limit.'
+                        : 'The stand may reach RM -${_limit.text.trim()}.')
+                  : canLimit
+                  ? 'You choose RM 0 to RM ${_num(_fee.creditLimitMax)}.'
+                  : 'Set by the admin.',
+              key: const ValueKey('credit-limit-help'),
+              style: muted,
+            ),
+          ],
+        ),
+      ),
+    );
+
     return LayoutBuilder(
       builder: (_, c) => ListView(
         padding: const EdgeInsets.all(16),
@@ -319,12 +419,14 @@ class _StandChargesViewState extends ConsumerState<StandChargesView> {
             const SizedBox(height: 16),
             platformCard,
           ],
+          const SizedBox(height: 16),
+          limitCard,
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerRight,
             child: FilledButton(
               key: const ValueKey('charges-save'),
-              onPressed: _busy || !(canPlatform || canFee) ? null : _save,
+              onPressed: _busy || !(canPlatform || canFee || canLimit) ? null : _save,
               child: const Text('Save charges'),
             ),
           ),
@@ -342,6 +444,9 @@ class _StandChargesViewState extends ConsumerState<StandChargesView> {
     setByStand: setByStand ?? _fee.setByStand,
     platformType: platformType ?? _fee.platformType,
     platformValue: _fee.platformValue,
+    creditLimit: _fee.creditLimit,
+    creditLimitByStand: _fee.creditLimitByStand,
+    creditLimitMax: _fee.creditLimitMax,
   );
 }
 

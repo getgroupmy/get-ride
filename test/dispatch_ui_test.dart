@@ -165,8 +165,18 @@ class _Repo extends DispatchRepository {
   Future<void> setStandFee(String standId, StandFee fee) async => fees.add('stand ${fee.type.name} ${fee.value}');
 
   @override
-  Future<void> saveStandCharges(String standId, StandFee fee) async =>
-      fees.add('admin ${fee.type.name} ${fee.value} ${fee.setByStand} ${fee.platformValue}');
+  Future<void> saveStandCharges(String standId, StandFee fee) async => fees.add(
+    'admin ${fee.type.name} ${fee.value} ${fee.setByStand} ${fee.platformValue}'
+    '${fee.creditLimit == null && !fee.creditLimitByStand ? '' : ' limit ${fee.creditLimit} ${fee.creditLimitByStand} ${fee.creditLimitMax}'}',
+  );
+
+  StandCredit credit = const StandCredit();
+
+  @override
+  Future<StandCredit> standCredit(String standId) async => credit;
+
+  @override
+  Future<void> setCreditLimit(String standId, double limit) async => fees.add('limit $limit');
 
   @override
   Future<StandStatement> statement(String standId, DateTime from, DateTime to) async => StandStatement.fromJson({
@@ -509,6 +519,76 @@ void main() {
         await tester.enterText(find.byKey(const ValueKey('fee-amount')), '10');
         await _tap(tester, find.byKey(const ValueKey('charges-save')));
         expect(repo.fees.single, 'stand percent 10.0');
+      });
+
+      testWidgets('the console: the GET.credit chip, and counter orders stopped past the limit', (tester) async {
+        final repo = _Repo()
+          ..credit = const StandCredit(applies: true, balance: -320, limit: 500, available: 180);
+        await _pump(tester, DispatchConsole(stands: [_stand()], ticking: false), repo, b: b);
+        expect(find.text('GET.credit: RM \u2212320 of \u2212500 limit'), findsOneWidget);
+        expect(find.byKey(const ValueKey('stand-credit-banner')), findsNothing);
+        expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('pay-counter'))).selected, isTrue);
+
+        final blocked = _Repo()
+          ..credit = const StandCredit(applies: true, balance: -500, limit: 500, available: 0, blocked: true);
+        await _pump(
+          tester,
+          DispatchConsole(key: const ValueKey('blocked'), stands: [_stand()], ticking: false),
+          blocked,
+          b: b,
+        );
+        expect(find.text('GET.credit: RM \u2212500 of \u2212500 limit'), findsOneWidget);
+        expect(find.byKey(const ValueKey('stand-credit-banner')), findsOneWidget);
+        expect(find.textContaining('Top up to send counter-paid orders'), findsOneWidget);
+        expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('pay-counter'))).onSelected, isNull);
+        expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('pay-app'))).onSelected, isNull);
+        expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('pay-cash'))).selected, isTrue);
+        expect(
+          find.ancestor(of: find.byKey(const ValueKey('pay-counter')), matching: find.byType(Tooltip)),
+          findsOneWidget,
+          reason: 'the disabled chip says why',
+        );
+        await tester.enterText(find.byKey(const ValueKey('order-dest')), 'KL Sentral');
+        await _tap(tester, find.byKey(const ValueKey('order-send')));
+        expect(blocked.created.single, containsPair('payment', 'cash'), reason: 'cash to the driver still goes out');
+        await _tap(tester, find.widgetWithText(FilledButton, 'Done'));
+        expect(unreadableTexts(tester, find.byKey(const ValueKey('stand-credit-banner'))), isEmpty);
+      });
+
+      testWidgets('charges: the credit limit, by the admin or the stand admin within the cap', (tester) async {
+        final repo = _Repo();
+        await _pump(tester, StandChargesView(stands: [_stand()], admin: true), repo, b: b);
+        expect(find.byKey(const ValueKey('credit-cap')), findsNothing, reason: 'no cap while the admin sets it');
+        await tester.enterText(find.byKey(const ValueKey('credit-limit')), '500');
+        await _tap(tester, find.byKey(const ValueKey('limit-by-stand')));
+        await tester.enterText(find.byKey(const ValueKey('credit-cap')), '800');
+        await _tap(tester, find.byKey(const ValueKey('charges-save')));
+        expect(repo.fees.single, 'admin fixed 3.0 false 20.0 limit 500.0 true 800.0');
+
+        // A stand admin the admin lets set it: RM 0 to the cap.
+        final mine = DispatchStand(
+          id: 's1',
+          name: 'Pavilion KL',
+          code: 'PAV',
+          role: 'admin',
+          fee: const StandFee(creditLimit: 200, creditLimitByStand: true, creditLimitMax: 300),
+        );
+        final repo2 = _Repo();
+        await _pump(tester, StandChargesView(key: const ValueKey('mine'), stands: [mine], admin: false), repo2, b: b);
+        expect(find.text('You choose RM 0 to RM 300.'), findsOneWidget);
+        expect(find.byKey(const ValueKey('credit-cap')), findsNothing);
+        await tester.enterText(find.byKey(const ValueKey('credit-limit')), '400');
+        await _tap(tester, find.byKey(const ValueKey('charges-save')));
+        expect(repo2.fees, isEmpty, reason: 'past the cap');
+        expect(find.text('The limit is RM 0 to RM 300.00.'), findsOneWidget);
+        await tester.enterText(find.byKey(const ValueKey('credit-limit')), '250');
+        await _tap(tester, find.byKey(const ValueKey('charges-save')));
+        expect(repo2.fees.single, 'limit 250.0', reason: 'only the limit: the fee is the admin\'s');
+
+        // Set by the admin: shown, not changed.
+        await _pump(tester, StandChargesView(key: const ValueKey('theirs'), stands: [_stand()], admin: false), _Repo(), b: b);
+        expect(tester.widget<TextField>(find.byKey(const ValueKey('credit-limit'))).enabled, isFalse);
+        expect(find.text('Set by the admin.'), findsWidgets);
       });
 
       testWidgets('the fleet: drivers, vehicles waiting for approval, requests to approve', (tester) async {

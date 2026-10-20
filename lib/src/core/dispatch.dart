@@ -73,6 +73,11 @@ class DispatchSplit {
 
   double get stand => _round2(fee - platform);
 
+  /// What a counter-paid order settled in the app costs the stand's
+  /// GET.credit: the driver's share and the platform's fee
+  /// (`dispatch_counter_due`).
+  double get counterDue => _round2(math.max(0, driver) + platform);
+
   @override
   String toString() => 'fare $fare fee $fee platform $platform stand $stand customer $customer driver $driver';
 }
@@ -108,6 +113,9 @@ class StandFee {
     this.setByStand = false,
     this.platformType = FeeType.percent,
     this.platformValue = 0,
+    this.creditLimit,
+    this.creditLimitByStand = false,
+    this.creditLimitMax = 0,
   });
 
   factory StandFee.fromRow(Map<String, dynamic> r) => StandFee(
@@ -117,6 +125,9 @@ class StandFee {
     setByStand: r['fee_set_by'] == 'stand',
     platformType: r['platform_fee_type'] == 'fixed' ? FeeType.fixed : FeeType.percent,
     platformValue: _d(r['platform_fee_value']) ?? 0,
+    creditLimit: _d(r['credit_limit']),
+    creditLimitByStand: r['credit_limit_set_by'] == 'stand',
+    creditLimitMax: _d(r['credit_limit_max']) ?? 0,
   );
 
   final FeeType type;
@@ -125,6 +136,40 @@ class StandFee {
   final bool setByStand;
   final FeeType platformType;
   final double platformValue;
+
+  /// How far below zero the stand's GET.credit may go with counter-paid
+  /// orders (500: down to RM -500); null, no limit.
+  final double? creditLimit;
+
+  /// The stand admin sets the limit, from 0 to [creditLimitMax].
+  final bool creditLimitByStand;
+  final double creditLimitMax;
+
+  StandFee copyWith({double? creditLimit, bool clearCreditLimit = false, bool? creditLimitByStand, double? creditLimitMax}) =>
+      StandFee(
+        type: type,
+        value: value,
+        payer: payer,
+        setByStand: setByStand,
+        platformType: platformType,
+        platformValue: platformValue,
+        creditLimit: clearCreditLimit ? null : (creditLimit ?? this.creditLimit),
+        creditLimitByStand: creditLimitByStand ?? this.creditLimitByStand,
+        creditLimitMax: creditLimitMax ?? this.creditLimitMax,
+      );
+
+  /// The columns of the charges on `dispatch_stands` (an admin's write).
+  Map<String, dynamic> toRow() => {
+    'fee_type': type.name,
+    'fee_value': value,
+    'fee_bearer': payer.name,
+    'fee_set_by': setByStand ? 'stand' : 'admin',
+    'platform_fee_type': platformType == FeeType.fixed ? 'fixed' : 'percent',
+    'platform_fee_value': platformValue,
+    'credit_limit': creditLimit,
+    'credit_limit_set_by': creditLimitByStand ? 'stand' : 'admin',
+    'credit_limit_max': creditLimitMax,
+  };
 
   DispatchSplit splitFor(double fare) => dispatchSplit(
     fare: fare,
@@ -156,6 +201,73 @@ String _pct(double v) => v == v.roundToDouble() ? '${v.round()}' : v.toStringAsF
 /// when the admin lets the stand set it, staff never (`dispatch_set_stand_fee`).
 bool canSetStandFee({required bool admin, required bool standAdmin, required StandFee fee}) =>
     admin || (standAdmin && fee.setByStand);
+
+/// Whether the caller may change a stand's credit limit: admins always, a
+/// stand admin when the admin lets the stand set it, staff never
+/// (`dispatch_set_credit_limit`).
+bool canSetCreditLimit({required bool admin, required bool standAdmin, required StandFee fee}) =>
+    admin || (standAdmin && fee.creditLimitByStand);
+
+const _creditLimitTop = 1000000.0;
+
+/// What is wrong with a credit limit, or null: admins RM 0 up (empty: no
+/// limit), a stand admin RM 0 to the admin's cap.
+String? creditLimitProblem(double? limit, {required bool admin, required double max}) {
+  if (limit == null) return admin ? null : 'Enter the limit.';
+  final top = admin ? _creditLimitTop : max;
+  if (limit < 0 || limit > top) return 'The limit is RM 0 to RM ${_money(top)}.';
+  return null;
+}
+
+String _rmWhole(double v) {
+  final a = v.abs();
+  final n = a == a.roundToDouble() ? '${a.round()}' : a.toStringAsFixed(2);
+  return v < 0 ? '\u2212$n' : n;
+}
+
+/// "Top up to send counter-paid orders": a stand past its credit limit.
+const standCreditTopUpText = 'Top up to send counter-paid orders';
+
+/// A stand's GET.credit standing for counter-paid orders (`dispatch_stand_credit`).
+class StandCredit {
+  const StandCredit({
+    this.applies = false,
+    this.balance = 0,
+    this.limit,
+    this.pending = 0,
+    this.available,
+    this.blocked = false,
+  });
+
+  factory StandCredit.fromJson(Map<String, dynamic> j) => StandCredit(
+    applies: _b(j['applies']),
+    balance: _d(j['balance']) ?? 0,
+    limit: _d(j['limit']),
+    pending: _d(j['pending']) ?? 0,
+    available: _d(j['available']),
+    blocked: _b(j['blocked']),
+  );
+
+  /// Counter orders are settled in the app and the stand has a limit.
+  final bool applies;
+  final double balance;
+  final double? limit;
+
+  /// What the stand's open counter-paid orders will still cost.
+  final double pending;
+
+  /// Left before the limit (after [pending]); null without a limit.
+  final double? available;
+  final bool blocked;
+
+  /// "GET.credit: RM −320 of −500 limit"; "GET.credit: RM 150".
+  String get label => limit == null || !applies
+      ? 'GET.credit: RM ${_rmWhole(balance)}'
+      : 'GET.credit: RM ${_rmWhole(balance)} of ${_rmWhole(-limit!)} limit';
+
+  /// Whether a counter-paid order costing [due] may go out (`dispatch_credit_check`).
+  bool allows(double due) => !applies || (available != null && available! > 0 && due <= available!);
+}
 
 // ---- Who an order is offered to -------------------------------------------------
 
@@ -546,12 +658,7 @@ class DispatchStand {
     'lng': lng,
     'allow_fixed_fare': allowFixedFare,
     'settlement': settleInApp ? 'wallet' : 'outside',
-    'fee_type': fee.type.name,
-    'fee_value': fee.value,
-    'fee_bearer': fee.payer.name,
-    'fee_set_by': fee.setByStand ? 'stand' : 'admin',
-    'platform_fee_type': fee.platformType == FeeType.fixed ? 'fixed' : 'percent',
-    'platform_fee_value': fee.platformValue,
+    ...fee.toRow(),
     'owner_id': ownerId,
     'active': active,
   };
@@ -591,6 +698,9 @@ enum CounterPayment {
 
   const CounterPayment(this.label);
   final String label;
+
+  /// Taken at the counter (the stand's GET.credit pays the driver).
+  bool get atCounter => this != cash;
 
   static CounterPayment parse(Object? v) => switch (v) {
     'cash' => cash,

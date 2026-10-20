@@ -36,6 +36,11 @@ final dispatchReportProvider = FutureProvider.autoDispose.family<Map<String, dyn
   (ref, standId) => ref.watch(dispatchRepositoryProvider).report(standId),
 );
 
+/// A stand's GET.credit standing for counter-paid orders (the balance chip).
+final standCreditProvider = FutureProvider.autoDispose.family<StandCredit, String>(
+  (ref, standId) => ref.watch(dispatchRepositoryProvider).standCredit(standId),
+);
+
 /// The service names offered (the catalogue, else the built-in list).
 final dispatchServiceNamesProvider = Provider.autoDispose<List<String>>((ref) {
   final list = ref.watch(rideServicesProvider).value ?? rideServices;
@@ -336,9 +341,11 @@ class _NewOrderFormState extends ConsumerState<NewOrderForm> {
         _driverId = null;
       });
       ref.invalidate(dispatchBoardProvider);
+      ref.invalidate(standCreditProvider(widget.stand.id));
       await showDispatchTicket(context, made);
     } catch (e) {
       if (mounted) setState(() => _error = dispatchErrorText(e));
+      if ('$e'.contains('STAND_CREDIT_LIMIT')) ref.invalidate(standCreditProvider(widget.stand.id));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -357,6 +364,9 @@ class _NewOrderFormState extends ConsumerState<NewOrderForm> {
     final fares = fareModes(stand);
     if (!fares.contains(_fareMode)) _fareMode = FareMode.meter;
     final group = stand.groups.where((g) => g.id == _groupId).firstOrNull;
+    final credit = stand.isCallCentre ? null : ref.watch(standCreditProvider(stand.id)).value;
+    final counterBlocked = credit != null && credit.applies && credit.blocked;
+    if (counterBlocked && _payment.atCounter) _payment = CounterPayment.cash;
 
     Widget label(String s) => Padding(
       padding: const EdgeInsets.only(top: 10, bottom: 4),
@@ -629,18 +639,63 @@ class _NewOrderFormState extends ConsumerState<NewOrderForm> {
             child: Text('Stand fee: ${stand.fee.label}', style: muted),
           ),
         label('Payment'),
+        if (credit != null && credit.applies)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Chip(
+                key: const ValueKey('stand-credit'),
+                avatar: Icon(
+                  Icons.account_balance_wallet_outlined,
+                  size: 18,
+                  color: counterBlocked ? t.colorScheme.error : t.colorScheme.onSurfaceVariant,
+                ),
+                label: Text(credit.label),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+        if (counterBlocked)
+          Container(
+            key: const ValueKey('stand-credit-banner'),
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: t.colorScheme.errorContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, color: t.colorScheme.onErrorContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$standCreditTopUpText. Cash to driver orders still go out.',
+                    style: TextStyle(color: t.colorScheme.onErrorContainer),
+                  ),
+                ),
+              ],
+            ),
+          ),
         Wrap(
           spacing: 6,
           runSpacing: 6,
           children: [
             for (final p in CounterPayment.values)
               if (!(stand.isCallCentre && p == CounterPayment.counter))
-                ChoiceChip(
-                  key: ValueKey('pay-${p.name}'),
-                  label: Text(p.label),
-                  selected: _payment == p,
-                  onSelected: (_) => setState(() => _payment = p),
-                ),
+                if (counterBlocked && p.atCounter)
+                  Tooltip(
+                    message: standCreditTopUpText,
+                    child: ChoiceChip(key: ValueKey('pay-${p.name}'), label: Text(p.label), selected: false),
+                  )
+                else
+                  ChoiceChip(
+                    key: ValueKey('pay-${p.name}'),
+                    label: Text(p.label),
+                    selected: _payment == p,
+                    onSelected: (_) => setState(() => _payment = p),
+                  ),
           ],
         ),
         label('Note for the driver'),
@@ -923,6 +978,7 @@ String dispatchErrorText(Object e) {
   final s = '$e';
   final hint = RegExp(r'hint: ([^,)]+)').firstMatch(s)?.group(1);
   if (s.contains('not_authorized') || s.contains('NO_PERMISSION')) return hint ?? "You can't do that here.";
+  if (s.contains('STAND_CREDIT_LIMIT')) return hint ?? '$standCreditTopUpText. Cash to driver still works.';
   if (s.contains('WRONG_STATUS')) return hint ?? 'The order has moved on; the board shows it as it is now.';
   if (s.contains('DISPATCH_')) return hint ?? 'Check the order and try again.';
   return "Couldn't reach the server. Try again.";
