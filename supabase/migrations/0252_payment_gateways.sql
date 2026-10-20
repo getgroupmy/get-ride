@@ -37,10 +37,9 @@
 --        payment_intent_id is unique, so it can never be credited twice.
 --        An account in Sandbox (test) mode never credits real money: the
 --        intent is marked paid with applied = 'test_mode'.
---      * dispatch calls public.payment_dispatch_paid(intent id, purpose_ref):
---        a no-op here. The stand order (Order Dispatch, 0251) is not on main
---        yet; the migration that adds it replaces this function to mark the
---        order (purpose_ref = its id) paid.
+--      * dispatch calls public.payment_dispatch_paid(intent id, purpose_ref =
+--        the stand order's id): the order is paid and settled (section 4).
+--        A sandbox payment is logged on the order and pays nothing out.
 --      * ride_card calls public.payment_ride_card_paid(intent id, ride id):
 --        a no-op until rides are charged by card.
 --      * test (Admin → Test connection) does nothing.
@@ -537,20 +536,7 @@ $$;
 revoke execute on function public.payment_intent_set_checkout(uuid, text, text) from public, anon, authenticated;
 grant execute on function public.payment_intent_set_checkout(uuid, text, text) to service_role;
 
--- The hooks a later migration wires (see the header). Called once per paid intent.
-create or replace function public.payment_dispatch_paid(p_intent uuid, p_order text)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  -- Replaced by the Order Dispatch migration: mark stand order p_order paid.
-  return;
-end;
-$$;
-revoke execute on function public.payment_dispatch_paid(uuid, text) from public, anon, authenticated;
-
+-- The hook a later migration wires (see the header). Called once per paid intent.
 create or replace function public.payment_ride_card_paid(p_intent uuid, p_ride text)
 returns void
 language plpgsql
@@ -603,7 +589,7 @@ begin
     end if;
   elsif v.purpose = 'dispatch' then
     perform public.payment_dispatch_paid(v.id, v.purpose_ref);
-    v_applied := 'dispatch';
+    v_applied := case when v.test_mode then 'test_mode' else 'dispatch' end;
   elsif v.purpose = 'ride_card' then
     perform public.payment_ride_card_paid(v.id, v.purpose_ref);
     v_applied := 'ride_card';
@@ -679,5 +665,883 @@ $$;
 revoke execute on function public.payment_intent_settle(text, text, text, text, numeric, text, jsonb)
   from public, anon, authenticated;
 grant execute on function public.payment_intent_settle(text, text, text, text, numeric, text, jsonb) to service_role;
+
+
+-- ---- 4. Order Dispatch: card / e-wallet orders paid by a link (0251) -------------------------------
+-- A stand order taken as "Card / e-wallet" (dispatch_payment 'app') is paid
+-- through the account Admin → Payment Gateways chose for dispatch payment
+-- links. When there is one as the order goes out, dispatch_pay_link is set:
+--   * the console asks the `payments` function for a link once the fare is
+--     known (fixed or app fare: at once; a metered one: when the driver
+--     enters the meter fare). payment_dispatch_intent() makes (or reuses)
+--     the intent for the customer's total (dispatch_split 'customer');
+--     payment_dispatch_link_set() puts the hosted page on the order and
+--     texts it to the customer;
+--   * the order isn't the stand's to carry: no credit-limit check, nothing
+--     on the stand's GET.credit;
+--   * paid (payment_dispatch_paid, once per intent) and done, in either
+--     order, dispatch_settle pays the driver's share into their GET.wallet
+--     and the stand's share of its fee into its GET.wallet (the platform
+--     keeps its fee and the customer's money), exactly once (the ledger's
+--     one-of-each-kind-per-ride index and dispatch_settled_at).
+-- With no dispatch account, a card / e-wallet order is the stand's as
+-- before (taken at the counter's terminal: the counter settlement) and the
+-- console says "No payment gateway set".
+alter table public.ride_requests
+  add column if not exists dispatch_pay_link      boolean,
+  add column if not exists dispatch_pay_intent_id uuid references public.payment_intents(id) on delete set null,
+  add column if not exists dispatch_pay_url       text,
+  add column if not exists dispatch_pay_paid_at   timestamptz;
+create index if not exists ride_requests_dispatch_pay_intent_idx on public.ride_requests (dispatch_pay_intent_id);
+
+-- A gateway payment is recorded as such.
+alter table public.ride_requests drop constraint if exists ride_requests_paid_method_check;
+alter table public.ride_requests add constraint ride_requests_paid_method_check
+  check (paid_method is null or paid_method in ('get_wallet', 'get_coin', 'cash', 'counter', 'gateway'));
+
+-- Whether a card / e-wallet stand order is paid by a link: decided as the
+-- ride is written (now, or when a booking ahead is released).
+create or replace function public.ride_requests_dispatch_pay_link()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.dispatch_pay_link := case
+    when new.stand_id is not null and new.dispatch_payment = 'app' then public.payment_gateway_for('dispatch') is not null
+  end;
+  new.dispatch_pay_intent_id := null;
+  new.dispatch_pay_url := null;
+  new.dispatch_pay_paid_at := null;
+  return new;
+end;
+$$;
+revoke execute on function public.ride_requests_dispatch_pay_link() from public, anon, authenticated;
+drop trigger if exists trg_ride_requests_dispatch_pay_link on public.ride_requests;
+create trigger trg_ride_requests_dispatch_pay_link before insert on public.ride_requests
+  for each row execute function public.ride_requests_dispatch_pay_link();
+
+-- Only the server changes them (the app's callers are told apart by the
+-- session's role, as in 0247 / 0248).
+create or replace function public.ride_requests_guard_dispatch_pay()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce(current_setting('role', true), '') in ('anon', 'authenticated')
+     and (new.dispatch_pay_link, new.dispatch_pay_intent_id, new.dispatch_pay_url, new.dispatch_pay_paid_at)
+         is distinct from (old.dispatch_pay_link, old.dispatch_pay_intent_id, old.dispatch_pay_url, old.dispatch_pay_paid_at) then
+    raise exception 'DISPATCH_PAY_FIXED' using errcode = '42501', hint = 'The payment link is the server''s.';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.ride_requests_guard_dispatch_pay() from public, anon, authenticated;
+drop trigger if exists trg_ride_requests_guard_dispatch_pay on public.ride_requests;
+create trigger trg_ride_requests_guard_dispatch_pay before update on public.ride_requests
+  for each row execute function public.ride_requests_guard_dispatch_pay();
+
+-- The latest 0251 definitions, changed only where marked (0252).
+create or replace function public.dispatch_create_order(p_stand uuid, p_order jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  s public.dispatch_stands;
+  g public.dispatch_groups;
+  v_admin boolean := public.caller_admin_can_write('rpc:dispatch_console');
+  v_call boolean;
+  v_mode text := coalesce(nullif(p_order->>'mode', ''), 'broadcast');
+  v_fare_mode text := coalesce(nullif(p_order->>'fare_mode', ''), 'meter');
+  v_pay text;
+  v_drop text := nullif(btrim(coalesce(p_order->>'drop_name', '')), '');
+  v_name text := nullif(btrim(coalesce(p_order->>'customer_name', '')), '');
+  v_phone text := nullif(btrim(coalesce(p_order->>'customer_phone', '')), '');
+  v_note text := nullif(btrim(coalesce(p_order->>'note', '')), '');
+  v_via text := nullif(p_order->>'booked_via', '');
+  v_pickup_at timestamptz := nullif(p_order->>'pickup_at', '')::timestamptz;
+  v_lead integer := coalesce(nullif(p_order->>'lead_minutes', '')::integer, 30);
+  v_rider uuid;
+  v_driver uuid;
+  v_fare numeric;
+  v_n integer;
+  v_ticket text;
+  v_id uuid := gen_random_uuid();
+  v_token uuid := gen_random_uuid();
+  v_fee numeric;
+  v_earner uuid;
+  v_detail text;
+  v_pax integer := coalesce(nullif(p_order->>'passengers', '')::integer, 1);
+  v_plat double precision;
+  v_plng double precision;
+  v_pname text;
+  v_paddr text;
+  v_row jsonb;
+  v_cols text;
+  v_offer uuid;
+  b public.scheduled_rides;
+  j jsonb;
+begin
+  if v_uid is null then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  select * into s from public.dispatch_stands where id = p_stand and active;
+  if not found or not public.dispatch_caller_can(p_stand, 'use') then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  -- The Call centre (admins only): a customer who phoned or texted.
+  v_call := s.admin_only;
+  if v_call and not v_admin then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  v_pay := coalesce(nullif(p_order->>'payment', ''), case when v_call then 'cash' else 'counter' end);
+
+  if v_drop is null or char_length(v_drop) > 200 then
+    raise exception 'DISPATCH_DESTINATION' using errcode = '22023', hint = 'Say where the customer is going.';
+  end if;
+  if v_pax < 1 or v_pax > 20 then
+    raise exception 'DISPATCH_PASSENGERS' using errcode = '22023', hint = 'Passengers are 1 to 20.';
+  end if;
+  if v_name is not null and char_length(v_name) > 80 then
+    raise exception 'DISPATCH_CUSTOMER' using errcode = '22023', hint = 'The name is too long.';
+  end if;
+  if v_phone is not null and char_length(regexp_replace(v_phone, '\D', '', 'g')) not between 6 and 20 then
+    raise exception 'DISPATCH_PHONE' using errcode = '22023', hint = 'The phone number doesn''t look right.';
+  end if;
+  if v_pay not in ('counter', 'cash', 'app') then
+    raise exception 'DISPATCH_PAYMENT' using errcode = '22023';
+  end if;
+
+  -- Where the customer is picked up: the stand, or (Call centre) their address.
+  if v_call then
+    if v_name is null or v_phone is null then
+      raise exception 'DISPATCH_CUSTOMER' using errcode = '22023', hint = 'A phone booking needs the customer''s name and phone.';
+    end if;
+    if v_via is null or v_via not in ('phone', 'sms', 'whatsapp') then
+      raise exception 'DISPATCH_VIA' using errcode = '22023', hint = 'Say how the customer booked.';
+    end if;
+    v_plat := nullif(p_order->>'pickup_lat', '')::double precision;
+    v_plng := nullif(p_order->>'pickup_lng', '')::double precision;
+    v_pname := nullif(btrim(coalesce(p_order->>'pickup_name', '')), '');
+    v_paddr := nullif(btrim(coalesce(p_order->>'pickup_address', '')), '');
+    if v_plat is null or v_plng is null or v_pname is null then
+      raise exception 'DISPATCH_PICKUP' using errcode = '22023', hint = 'Find the pickup address.';
+    end if;
+    -- A customer with a GET.ride account: booked on their account (their app
+    -- tracks it); else a guest.
+    v_rider := public.dispatch_profile_by_phone(v_phone);
+    if v_rider is not null and v_pickup_at is null and exists (
+         select 1 from public.ride_requests x
+          where x.rider_id = v_rider
+            and ((x.status = 'open' and x.created_at > now() - interval '7 minutes')
+                 or (x.status in ('accepted', 'arrived', 'on_trip') and x.updated_at > now() - interval '12 hours'))) then
+      raise exception 'RIDE_REQUEST_DUPLICATE' using errcode = 'P0001',
+        hint = 'This customer already has a ride on the go.';
+    end if;
+  else
+    v_via := null;
+    v_plat := s.lat;
+    v_plng := s.lng;
+    v_pname := s.name;
+    v_paddr := s.address;
+  end if;
+
+  -- When: now, or booked ahead (released [lead] minutes before pickup).
+  if v_pickup_at is not null then
+    if v_lead not in (15, 30, 60) then
+      raise exception 'DISPATCH_LEAD' using errcode = '22023', hint = 'Send it 15, 30 or 60 minutes before.';
+    end if;
+    if v_pickup_at < now() + make_interval(mins => v_lead + 5) or v_pickup_at > now() + interval '30 days' then
+      raise exception 'DISPATCH_TIME' using errcode = '22023',
+        hint = format('Pick a time at least %s minutes from now, within 30 days.', v_lead + 5);
+    end if;
+    if v_rider is not null and (select count(*) from public.scheduled_rides
+                                 where rider_id = v_rider and status in ('scheduled', 'assigned', 'released')) >= 5 then
+      raise exception 'SCHEDULED_LIMIT' using hint = 'This customer already has 5 upcoming rides.';
+    end if;
+  end if;
+
+  -- The fare.
+  if v_fare_mode not in ('meter', 'estimate', 'fixed') then
+    raise exception 'DISPATCH_FARE' using errcode = '22023';
+  end if;
+  if v_fare_mode = 'fixed' and not (v_admin or (s.allow_fixed_fare and public.dispatch_caller_can(p_stand, 'fixed_fare'))) then
+    raise exception 'DISPATCH_NO_PERMISSION' using errcode = '42501', hint = 'You can''t set a fixed fare here.';
+  end if;
+  if v_fare_mode in ('fixed', 'estimate') then
+    v_fare := round(nullif(p_order->>'fare', '')::numeric, 2);
+    if v_fare is null or v_fare <= 0 or not public.ride_money_ok(v_fare) then
+      raise exception 'DISPATCH_FARE' using errcode = '22023', hint = 'Enter the fare.';
+    end if;
+  end if;
+
+  -- Who it goes to.
+  if v_mode = 'assign' then
+    if not public.dispatch_caller_can(p_stand, 'assign') then
+      raise exception 'DISPATCH_NO_PERMISSION' using errcode = '42501', hint = 'You can''t assign drivers here.';
+    end if;
+    v_driver := nullif(p_order->>'driver_id', '')::uuid;
+    if v_driver is null or v_driver = v_rider or not exists (
+         select 1 from public.partners p where p.auth_user_id = v_driver
+            and (p.status = 'approved' or p.status::text like 'permit-%')) then
+      raise exception 'DISPATCH_DRIVER' using errcode = '22023', hint = 'Pick a driver.';
+    end if;
+    -- The service order (0250): only a vehicle of this service or a higher one.
+    if not public.service_order_driver_allows(v_driver, nullif(btrim(coalesce(p_order->>'service', '')), '')) then
+      raise exception 'SERVICE_ORDER_DIRECT' using errcode = '42501',
+        hint = 'This driver''s vehicle can''t take this service. Pick another driver or service.';
+    end if;
+    v_detail := 'Assigned to ' || public.dispatch_actor_name(v_driver);
+  elsif v_mode = 'broadcast' then
+    if not public.dispatch_caller_can(p_stand, 'broadcast') then
+      raise exception 'DISPATCH_NO_PERMISSION' using errcode = '42501', hint = 'You can''t broadcast here.';
+    end if;
+    select * into g from public.dispatch_groups
+     where id = nullif(p_order->>'group_id', '')::uuid and active;
+    if not found or not (v_admin or exists (select 1 from public.dispatch_stand_groups sg
+                                             where sg.stand_id = p_stand and sg.group_id = g.id)) then
+      raise exception 'DISPATCH_GROUP' using errcode = '22023', hint = 'Pick a group this stand sends to.';
+    end if;
+    v_detail := 'Broadcast to ' || g.name;
+  elsif v_mode = 'nearby' and v_call then
+    v_detail := 'Nearby drivers, as a normal booking';
+  else
+    raise exception 'DISPATCH_MODE' using errcode = '22023';
+  end if;
+
+  -- Paid at the counter: within the stand's credit limit (cash is always fine).
+  -- (0252) A card / e-wallet order paid by a gateway link isn't the stand's to carry.
+  if (v_pay = 'counter' or (v_pay = 'app' and public.payment_gateway_for('dispatch') is null))
+     and s.settlement = 'wallet' then
+    perform public.dispatch_credit_check(p_stand, public.dispatch_counter_due(v_fare, s.fee_type, s.fee_value,
+      s.fee_bearer, s.platform_fee_type, s.platform_fee_value));
+  end if;
+
+  -- The ticket: the stand's next number, under its row lock.
+  update public.dispatch_stands set next_ticket = next_ticket + 1 where id = p_stand
+  returning next_ticket - 1 into v_n;
+  v_ticket := public.dispatch_ticket_text(s.code, v_n);
+
+  v_fee := case when s.fee_type = 'none' then null
+                else public.dispatch_fee_amount(s.fee_type, s.fee_value, coalesce(v_fare, 0)) end;
+  v_earner := public.dispatch_stand_account(s.id);
+
+  -- The ride as it goes out (now, or when the booking is released).
+  v_row := jsonb_build_object(
+    'rider_id', v_rider, 'rider_name', coalesce(v_name, 'Customer'), 'rider_phone', v_phone,
+    'service', nullif(btrim(coalesce(p_order->>'service', '')), ''),
+    'payment_mode', case v_pay when 'counter' then 'Paid at counter' when 'app' then 'Card / e-wallet' else 'Cash' end,
+    'pickup_name', v_pname, 'pickup_address', v_paddr, 'pickup_lat', v_plat, 'pickup_lng', v_plng,
+    'drop_name', v_drop, 'drop_address', nullif(btrim(coalesce(p_order->>'drop_address', '')), ''),
+    'drop_lat', nullif(p_order->>'drop_lat', '')::double precision,
+    'drop_lng', nullif(p_order->>'drop_lng', '')::double precision,
+    'distance_km', nullif(p_order->>'distance_km', '')::numeric,
+    'duration_min', nullif(p_order->>'duration_min', '')::numeric::integer,
+    'fare', v_fare, 'ride_fare', v_fare, 'passengers', v_pax, 'note', left(v_note, 300), 'share_token', v_token)
+  || jsonb_build_object(
+    'stand_id', s.id, 'ticket_no', v_ticket, 'dispatch_stand_name', s.name, 'dispatch_created_by', v_uid,
+    'dispatch_mode', v_mode, 'dispatch_group_id', g.id, 'dispatch_group_name', g.name, 'dispatch_group_kind', g.kind,
+    'dispatch_driver_id', v_driver, 'fare_mode', v_fare_mode, 'dispatch_payment', v_pay,
+    'stand_settlement', s.settlement, 'stand_fee_type', s.fee_type, 'stand_fee_value', s.fee_value,
+    'stand_fee_bearer', s.fee_bearer, 'stand_fee_earner_id', v_earner, 'stand_fee_amount', v_fee,
+    'stand_platform_fee_type', s.platform_fee_type, 'stand_platform_fee_value', s.platform_fee_value,
+    'dispatch_booked_via', v_via);
+  -- Booked ahead: the trip code is fixed now, for the ticket.
+  if v_pickup_at is not null then
+    v_row := v_row || jsonb_build_object('otp', public.new_trip_code());
+  end if;
+
+  perform set_config('dispatch.rpc', '1', true);
+
+  if v_pickup_at is not null then
+    insert into public.scheduled_rides (
+      rider_id, pickup_at, request, service, pickup_address, drop_address,
+      pickup_lat, pickup_lng, drop_lat, drop_lng, distance_km, fare, scheduling_fee, currency, stand_id, lead_minutes)
+    values (
+      v_rider, v_pickup_at, jsonb_strip_nulls(v_row), v_row->>'service', coalesce(v_paddr, v_pname),
+      coalesce(v_row->>'drop_address', v_drop), v_plat, v_plng,
+      (v_row->>'drop_lat')::double precision, (v_row->>'drop_lng')::double precision,
+      (v_row->>'distance_km')::numeric, coalesce(v_fare, 0), 0, 'MYR', s.id, v_lead)
+    returning * into b;
+    perform public.dispatch_log_scheduled(b.id, s.id, 'created',
+      v_ticket || ' · for ' || public.dispatch_when(v_pickup_at) || ' · ' || v_detail
+      || coalesce(' · booked by ' || v_via, ''));
+    -- An assigned driver is asked now, as a passenger's choice of driver is (0198).
+    if v_driver is not null then
+      insert into public.scheduled_ride_offers (scheduled_ride_id, kind, rider_id, from_id, to_partner_id, expires_at)
+      values (b.id, 'assign', v_rider, v_uid, v_driver, public.scheduled_offer_deadline(v_pickup_at))
+      returning id into v_offer;
+      perform public.enqueue_notification(v_driver, 'sched-offer-' || v_offer, 'scheduled_ride', 'normal',
+        'Stand booking for you',
+        coalesce(s.name, 'A stand') || ' asks you to take a ride on ' || public.scheduled_when(v_pickup_at)
+        || ' from ' || coalesce(v_pname, 'the stand') || '. Accept or decline it.',
+        jsonb_build_object('type', 'scheduled_offer', 'scheduled_ride_id', b.id, 'offer_id', v_offer, 'role', 'partner'));
+    end if;
+    j := public.dispatch_scheduled_json(b.id);
+  else
+    v_row := v_row || jsonb_build_object(
+      'id', v_id, 'status', 'open', 'dispatch_offered_at', now(),
+      'dispatch_offer_until', case when v_mode = 'assign' then now() + interval '30 seconds' end,
+      'dispatch_open_after', case when v_mode = 'broadcast' and g.kind = 'open'
+                                  then now() + make_interval(secs => g.members_first_sec) end);
+    select string_agg(quote_ident(a.attname), ', ') into v_cols
+      from pg_attribute a
+     where a.attrelid = 'public.ride_requests'::regclass and a.attnum > 0 and not a.attisdropped
+       and v_row ? a.attname;
+    execute format('insert into public.ride_requests (%1$s) select %1$s from jsonb_populate_record(null::public.ride_requests, $1)',
+                   v_cols) using v_row;
+    perform public.dispatch_log(v_id, s.id, 'created', v_ticket || ' · ' || v_detail || coalesce(' · booked by ' || v_via, ''));
+    perform public.dispatch_push(v_id);
+    j := public.dispatch_order_json(v_id);
+  end if;
+
+  -- A guest (no GET.ride account) is texted the ticket; an account holder
+  -- has it in their app.
+  if v_phone is not null and v_rider is null then
+    perform public.dispatch_sms(v_phone,
+      'GET.ride ' || s.name || ': ticket ' || v_ticket || ' to ' || v_drop
+      || coalesce(', pickup ' || public.dispatch_when(v_pickup_at), '')
+      || coalesce('. Trip code ' || (j->>'trip_code'), '')
+      || '. Track: https://getride.my/share/' || v_token);
+  end if;
+  return j;
+end;
+$$;
+
+create or replace function public.dispatch_order_action(p_request uuid, p_action text, p_args jsonb default '{}')
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r public.ride_requests;
+  g public.dispatch_groups;
+  v_driver uuid;
+  v_fare numeric;
+  v_reason text;
+begin
+  if auth.uid() is null then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  select * into r from public.ride_requests where id = p_request for update;
+  if not found or r.stand_id is null or not public.dispatch_caller_can(r.stand_id, 'use') then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  perform set_config('dispatch.rpc', '1', true);
+
+  -- Sending a counter-paid order out again: within the stand's credit limit.
+  if p_action in ('widen', 'resend_group', 'resend_driver', 'reassign')
+     and (r.dispatch_payment = 'counter' or (r.dispatch_payment = 'app' and not coalesce(r.dispatch_pay_link, false)))
+     and r.stand_settlement = 'wallet' then
+    perform public.dispatch_credit_check(r.stand_id,
+      public.dispatch_counter_due(coalesce(r.ride_fare, r.fare), r.stand_fee_type, r.stand_fee_value,
+                                  r.stand_fee_bearer, r.stand_platform_fee_type, r.stand_platform_fee_value), r.id);
+  end if;
+
+  if p_action = 'widen' then
+    if not public.dispatch_caller_can(r.stand_id, 'broadcast') then
+      raise exception 'DISPATCH_NO_PERMISSION' using errcode = '42501';
+    end if;
+    if r.status <> 'open' then
+      raise exception 'DISPATCH_WRONG_STATUS' using errcode = '22023', hint = 'Only a waiting order is re-sent.';
+    end if;
+    update public.ride_requests
+       set dispatch_mode = 'broadcast', dispatch_widened_at = now(), dispatch_offered_at = now(),
+           dispatch_returned_at = null, dispatch_offer_until = null, dispatch_driver_id = null,
+           dispatch_widen_pushed_at = now()
+     where id = r.id;
+    perform public.dispatch_log(r.id, r.stand_id, 'widened', 'Re-sent to any nearby driver');
+    perform public.dispatch_push(r.id);
+
+  elsif p_action in ('resend_group', 'resend_driver', 'reassign') then
+    if p_action = 'reassign' then
+      if not public.dispatch_caller_can(r.stand_id, 'reassign') then
+        raise exception 'DISPATCH_NO_PERMISSION' using errcode = '42501';
+      end if;
+      if r.status not in ('open', 'accepted', 'arrived') then
+        raise exception 'DISPATCH_WRONG_STATUS' using errcode = '22023',
+          hint = 'Only an order not yet picked up is reassigned.';
+      end if;
+    elsif r.status <> 'open' then
+      raise exception 'DISPATCH_WRONG_STATUS' using errcode = '22023', hint = 'Only a waiting order is re-sent.';
+    end if;
+    v_driver := nullif(p_args->>'driver_id', '')::uuid;
+    if v_driver is not null then
+      if not public.dispatch_caller_can(r.stand_id, 'assign') then
+        raise exception 'DISPATCH_NO_PERMISSION' using errcode = '42501';
+      end if;
+      if not exists (select 1 from public.partners p where p.auth_user_id = v_driver
+                        and (p.status = 'approved' or p.status::text like 'permit-%')) then
+        raise exception 'DISPATCH_DRIVER' using errcode = '22023', hint = 'Pick a driver.';
+      end if;
+      if not public.service_order_driver_allows(v_driver, r.service) then
+        raise exception 'SERVICE_ORDER_DIRECT' using errcode = '42501',
+          hint = 'This driver''s vehicle can''t take this service. Pick another driver.';
+      end if;
+    else
+      if not public.dispatch_caller_can(r.stand_id, 'broadcast') then
+        raise exception 'DISPATCH_NO_PERMISSION' using errcode = '42501';
+      end if;
+      select * into g from public.dispatch_groups
+       where id = coalesce(nullif(p_args->>'group_id', '')::uuid, r.dispatch_group_id) and active;
+      if not found or not (public.caller_admin_can_write('rpc:dispatch_console')
+                           or exists (select 1 from public.dispatch_stand_groups sg
+                                       where sg.stand_id = r.stand_id and sg.group_id = g.id)) then
+        raise exception 'DISPATCH_GROUP' using errcode = '22023', hint = 'Pick a group this stand sends to.';
+      end if;
+    end if;
+    update public.ride_requests
+       set status = 'open', partner_id = null, partner_name = null, partner_phone = null,
+           partner_photo = null, partner_vehicle = null, partner_plate = null, partner_rating = null,
+           partner_trips = null, accepted_at = null, arrived_at = null, offered_fare = null,
+           commission_locked_at = null,
+           dispatch_mode = case when v_driver is not null then 'assign' else 'broadcast' end,
+           dispatch_driver_id = v_driver,
+           dispatch_group_id = case when v_driver is null then g.id end,
+           dispatch_group_name = case when v_driver is null then g.name end,
+           dispatch_group_kind = case when v_driver is null then g.kind end,
+           dispatch_offered_at = now(),
+           dispatch_offer_until = case when v_driver is not null then now() + interval '30 seconds' end,
+           dispatch_open_after = case when v_driver is null and g.kind = 'open'
+                                      then now() + make_interval(secs => g.members_first_sec) end,
+           dispatch_widened_at = null, dispatch_widen_pushed_at = null, dispatch_returned_at = null
+     where id = r.id;
+    perform public.dispatch_log(r.id, r.stand_id, case when p_action = 'reassign' then 'reassigned' else 'resent' end,
+      case when v_driver is not null then 'To ' || public.dispatch_actor_name(v_driver) else 'To ' || g.name end
+      || case when r.partner_id is not null and r.status <> 'open'
+              then ' (was ' || coalesce(r.partner_name, 'a driver') || ')' else '' end);
+    perform public.dispatch_push(r.id);
+
+  elsif p_action = 'picked_up' then
+    if r.status not in ('accepted', 'arrived') then
+      raise exception 'DISPATCH_WRONG_STATUS' using errcode = '22023', hint = 'The driver hasn''t taken it yet.';
+    end if;
+    update public.ride_requests set status = 'on_trip', start_method = 'none', started_at = now() where id = r.id;
+    perform public.dispatch_log(r.id, r.stand_id, 'picked_up', 'Customer picked up');
+
+  elsif p_action = 'complete' then
+    if r.status <> 'on_trip' then
+      raise exception 'DISPATCH_WRONG_STATUS' using errcode = '22023', hint = 'Only a trip under way is completed.';
+    end if;
+    v_fare := round(nullif(p_args->>'fare', '')::numeric, 2);
+    if r.fare_mode = 'meter' and coalesce(r.ride_fare, r.fare) is null and v_fare is null then
+      raise exception 'DISPATCH_FARE' using errcode = '22023', hint = 'Enter the meter fare.';
+    end if;
+    if v_fare is not null and (v_fare <= 0 or not public.ride_money_ok(v_fare) or r.fare_mode <> 'meter') then
+      raise exception 'DISPATCH_FARE' using errcode = '22023', hint = 'Only a metered trip takes a fare here.';
+    end if;
+    update public.ride_requests
+       set status = 'completed', completed_at = now(),
+           fare = coalesce(v_fare, fare), ride_fare = coalesce(v_fare, ride_fare, fare)
+     where id = r.id;
+    perform public.dispatch_log(r.id, r.stand_id, 'completed',
+      case when v_fare is not null then 'Meter fare ' || to_char(v_fare, 'FM999999990.00') else 'Trip done' end);
+
+  elsif p_action = 'cancel' then
+    if not public.dispatch_caller_can(r.stand_id, 'cancel') then
+      raise exception 'DISPATCH_NO_PERMISSION' using errcode = '42501';
+    end if;
+    if r.status not in ('open', 'accepted', 'arrived') then
+      raise exception 'DISPATCH_WRONG_STATUS' using errcode = '22023',
+        hint = 'Only an order not yet picked up is cancelled here.';
+    end if;
+    v_reason := coalesce(nullif(btrim(coalesce(p_args->>'reason', '')), ''), 'Cancelled by the stand');
+    update public.ride_requests set status = 'cancelled', cancelled_at = now(), cancel_reason = left(v_reason, 200)
+     where id = r.id;
+    perform public.dispatch_log(r.id, r.stand_id, 'cancelled', v_reason);
+
+  else
+    raise exception 'DISPATCH_ACTION' using errcode = '22023';
+  end if;
+
+  return public.dispatch_order_json(r.id);
+end;
+$$;
+
+create or replace function public.dispatch_credit_state(p_stand uuid, p_except uuid default null)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with s as (select * from public.dispatch_stands where id = p_stand),
+       b as (select coalesce((select w.balance from public.wallets w
+                               where w.user_id = public.dispatch_stand_account(p_stand)
+                                 and w.wallet_type = 'get_credit'), 0)::numeric as balance),
+       p as (select coalesce(sum(public.dispatch_counter_due(coalesce(r.ride_fare, r.fare), r.stand_fee_type,
+                                   r.stand_fee_value, r.stand_fee_bearer, r.stand_platform_fee_type,
+                                   r.stand_platform_fee_value)), 0)::numeric as pending
+               from public.ride_requests r
+              where r.stand_id = p_stand
+                and (r.dispatch_payment = 'counter' or (r.dispatch_payment = 'app' and not coalesce(r.dispatch_pay_link, false)))
+                and r.dispatch_settled_at is null and r.status not in ('cancelled', 'expired')
+                and r.stand_settlement = 'wallet'
+                and r.id is distinct from p_except)
+  select jsonb_build_object(
+    'applies', s.settlement = 'wallet' and s.credit_limit is not null and not s.admin_only,
+    'balance', b.balance, 'limit', s.credit_limit, 'pending', p.pending,
+    'available', case when s.credit_limit is null then null
+                      else round(b.balance - p.pending + s.credit_limit, 2) end,
+    'set_by', s.credit_limit_set_by, 'max', s.credit_limit_max)
+    from s, b, p;
+$$;
+
+create or replace function public.dispatch_settle(p_request uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r public.ride_requests;
+  m jsonb;
+  v_fare numeric;
+  v_fee numeric;
+  v_plat numeric;
+  v_stand numeric;
+  v_driver numeric;
+  v_total numeric;
+  v_note text;
+  v_no_fee boolean;
+  v_link boolean;
+begin
+  select * into r from public.ride_requests where id = p_request for update;
+  if not found or r.stand_id is null or r.status <> 'completed' or r.dispatch_settled_at is not null then
+    return jsonb_build_object('settled', false);
+  end if;
+  v_no_fee := coalesce(r.stand_fee_type, 'none') = 'none';
+  m := public.dispatch_split(coalesce(r.ride_fare, r.fare, 0), r.stand_fee_type, r.stand_fee_value,
+                             r.stand_fee_bearer, r.stand_platform_fee_type, r.stand_platform_fee_value);
+  v_fare := (m->>'fare')::numeric;
+  v_fee := (m->>'fee')::numeric;
+  v_plat := (m->>'platform')::numeric;
+  v_stand := (m->>'stand')::numeric;
+  v_driver := (m->>'driver')::numeric;
+  v_total := (m->>'customer')::numeric;
+  v_note := coalesce(r.dispatch_stand_name, 'Stand') || ' · ticket ' || r.ticket_no;
+  v_link := r.dispatch_payment = 'app' and coalesce(r.dispatch_pay_link, false);
+
+  if v_link then
+    -- (0252) Paid by a gateway link: the platform has the customer's money.
+    -- Settled once both the trip is done and the payment is in (whichever
+    -- comes second calls this): the driver's share to their GET.wallet, the
+    -- stand's share of its fee to its GET.wallet; the platform keeps its fee.
+    if r.dispatch_pay_paid_at is null then
+      return jsonb_build_object('settled', false, 'waiting_payment', true);
+    end if;
+    if r.partner_id is not null and v_driver > 0 then
+      insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+      values (r.partner_id, 'get_wallet', 'stand_payout', v_driver, 'gateway',
+              'Fare paid by card / e-wallet link — ' || v_note, r.id)
+      on conflict do nothing;
+    end if;
+    if r.stand_fee_earner_id is not null and v_stand > 0 then
+      insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+      values (r.stand_fee_earner_id, 'get_wallet', 'stand_fee_earning', v_stand, 'gateway',
+              'Stand fee less the platform''s — ' || v_note, r.id)
+      on conflict do nothing;
+    end if;
+    update public.ride_requests
+       set payment_status = 'paid', paid_method = 'gateway', paid_amount = v_total,
+           paid_at = r.dispatch_pay_paid_at,
+           stand_fee_amount = case when v_no_fee then null else v_fee end,
+           stand_platform_fee = case when v_no_fee then null else v_plat end,
+           dispatch_settled_at = now()
+     where id = r.id;
+    return jsonb_build_object('settled', true, 'via', 'gateway') || m;
+  end if;
+
+  if r.dispatch_payment in ('counter', 'app') then
+    -- The stand has the customer's money. Paid out in the app: the driver's
+    -- share to their wallet, owed by the stand with the platform's fee.
+    if r.stand_settlement = 'wallet' and r.partner_id is not null then
+      if v_driver > 0 then
+        insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+        values (r.partner_id, 'get_wallet', 'stand_payout', v_driver, 'stand',
+                'Fare paid at the counter — ' || v_note, r.id)
+        on conflict do nothing;
+      end if;
+      if r.stand_fee_earner_id is not null then
+        if v_driver > 0 then
+          insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+          values (r.stand_fee_earner_id, 'get_credit', 'stand_payout_due', -v_driver, 'stand',
+                  'Driver paid for you — ' || v_note, r.id)
+          on conflict do nothing;
+        end if;
+        if v_plat > 0 then
+          insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+          values (r.stand_fee_earner_id, 'get_credit', 'stand_platform_fee', -v_plat, 'stand',
+                  'Platform fee — ' || v_note, r.id)
+          on conflict do nothing;
+        end if;
+      end if;
+    end if;
+    update public.ride_requests
+       set payment_status = 'paid', paid_method = 'counter', paid_amount = v_total, paid_at = now(),
+           stand_fee_amount = case when v_no_fee then null else v_fee end,
+           stand_platform_fee = case when v_no_fee then null else v_plat end,
+           dispatch_settled_at = now()
+     where id = r.id;
+  else
+    -- Cash to the driver, who holds the fee too: it comes off their
+    -- GET.credit; the stand gets its share, the platform keeps its own.
+    if v_fee > 0 and r.partner_id is not null then
+      insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+      values (r.partner_id, 'get_credit', 'stand_fee', -v_fee, 'stand', 'Stand fee — ' || v_note, r.id)
+      on conflict do nothing;
+      if r.stand_fee_earner_id is not null and v_stand > 0 then
+        insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+        values (r.stand_fee_earner_id, 'get_wallet', 'stand_fee_earning', v_stand, 'stand',
+                'Stand fee less the platform''s — ' || v_note, r.id)
+        on conflict do nothing;
+      end if;
+    end if;
+    update public.ride_requests
+       set payment_status = 'paid', paid_method = 'cash', paid_amount = v_total, paid_at = now(),
+           stand_fee_amount = case when v_no_fee then null else v_fee end,
+           stand_platform_fee = case when v_no_fee then null else v_plat end,
+           dispatch_settled_at = now()
+     where id = r.id;
+  end if;
+  return jsonb_build_object('settled', true) || m;
+end;
+$$;
+
+create or replace function public.dispatch_order_json(p_request uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'id', r.id, 'stand_id', r.stand_id, 'stand_name', r.dispatch_stand_name, 'ticket_no', r.ticket_no,
+    'status', r.status, 'mode', r.dispatch_mode, 'group_id', r.dispatch_group_id,
+    'group_name', r.dispatch_group_name, 'group_kind', r.dispatch_group_kind,
+    'driver_id', r.dispatch_driver_id,
+    'driver_target_name', case when r.dispatch_driver_id is not null then public.dispatch_actor_name(r.dispatch_driver_id) end,
+    'offered_at', r.dispatch_offered_at, 'offer_until', r.dispatch_offer_until,
+    'open_after', r.dispatch_open_after, 'widened_at', r.dispatch_widened_at,
+    'returned_at', r.dispatch_returned_at, 'created_at', r.created_at,
+    'pickup_name', r.pickup_name, 'pickup_address', r.pickup_address,
+    'pickup_lat', r.pickup_lat, 'pickup_lng', r.pickup_lng,
+    'booked_via', r.dispatch_booked_via, 'rider_account', r.rider_id is not null,
+    'drop_name', r.drop_name, 'drop_address', r.drop_address, 'drop_lat', r.drop_lat, 'drop_lng', r.drop_lng,
+    'service', r.service, 'passengers', r.passengers, 'note', r.note)
+  || jsonb_build_object(
+    'fare_mode', r.fare_mode, 'fare', coalesce(r.ride_fare, r.fare), 'currency', r.currency,
+    'payment', r.dispatch_payment, 'payment_mode', r.payment_mode, 'payment_status', r.payment_status,
+    'settlement', r.stand_settlement,
+    'fee_type', r.stand_fee_type, 'fee_value', r.stand_fee_value, 'fee_bearer', r.stand_fee_bearer,
+    'fee_amount', r.stand_fee_amount, 'settled_at', r.dispatch_settled_at,
+    'platform_fee', r.stand_platform_fee,
+    'customer_name', coalesce(pv.rider_name, r.rider_name),
+    'customer_phone', coalesce(r.rider_phone, pv.rider_phone),
+    'partner_id', r.partner_id, 'partner_name', r.partner_name, 'partner_phone', r.partner_phone,
+    'partner_plate', r.partner_plate, 'partner_vehicle', r.partner_vehicle,
+    'accepted_at', r.accepted_at, 'arrived_at', r.arrived_at, 'started_at', r.started_at,
+    'completed_at', r.completed_at, 'cancelled_at', r.cancelled_at, 'cancel_reason', r.cancel_reason,
+    'trip_code', (select c.code from public.ride_trip_codes c where c.request_id = r.id),
+    'share_token', coalesce(r.share_token, pv.share_token),
+    'created_by', r.dispatch_created_by, 'created_by_name', public.dispatch_actor_name(r.dispatch_created_by),
+    'events', coalesce((select jsonb_agg(jsonb_build_object('action', e.action, 'detail', e.detail,
+                                                            'actor', e.actor_name, 'at', e.at) order by e.at)
+                          from public.dispatch_order_events e
+                         where e.request_id = r.id
+                            or (r.scheduled_ride_id is not null and e.scheduled_ride_id = r.scheduled_ride_id)),
+                       '[]'::jsonb),
+    'scheduled_ride_id', r.scheduled_ride_id,
+    'pickup_at', (select b.pickup_at from public.scheduled_rides b where b.id = r.scheduled_ride_id))
+  -- (0252) A card / e-wallet order's payment link.
+  || jsonb_build_object(
+    'pay_link', coalesce(r.dispatch_pay_link, false), 'pay_url', r.dispatch_pay_url,
+    'pay_paid_at', r.dispatch_pay_paid_at,
+    'pay_status', (select i.status from public.payment_intents i where i.id = r.dispatch_pay_intent_id),
+    'pay_amount', (select i.amount from public.payment_intents i where i.id = r.dispatch_pay_intent_id),
+    'pay_test', (select i.test_mode from public.payment_intents i where i.id = r.dispatch_pay_intent_id))
+  from public.ride_requests r
+  left join public.ride_request_private pv on pv.request_id = r.id
+  where r.id = p_request;
+$$;
+
+
+-- The console: may the caller ask for a payment link for this order?
+create or replace function public.payment_dispatch_link_allowed(p_request uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.ride_requests r
+                  where r.id = p_request and r.stand_id is not null
+                    and public.dispatch_caller_can(r.stand_id, 'use'));
+$$;
+revoke execute on function public.payment_dispatch_link_allowed(uuid) from public, anon;
+grant execute on function public.payment_dispatch_link_allowed(uuid) to authenticated, service_role;
+
+-- The console: are card / e-wallet orders paid by a link now (no credentials)?
+create or replace function public.dispatch_pay_link_available()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select auth.uid() is not null and public.payment_gateway_for('dispatch') is not null;
+$$;
+revoke execute on function public.dispatch_pay_link_available() from public, anon;
+grant execute on function public.dispatch_pay_link_available() to authenticated;
+
+-- Service role: the intent for an order's link (the pending one with the same
+-- amount when there is one), with what the checkout needs of the customer.
+create or replace function public.payment_dispatch_intent(p_request uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r public.ride_requests;
+  v public.payment_intents;
+  v_gateway uuid;
+  v_values jsonb;
+  v_total numeric;
+  v_phone text;
+  v_name text;
+begin
+  select * into r from public.ride_requests where id = p_request for update;
+  if not found or r.stand_id is null then
+    raise exception 'unknown_order' using errcode = '22023';
+  end if;
+  if r.dispatch_payment is distinct from 'app' or not coalesce(r.dispatch_pay_link, false) then
+    raise exception 'not_pay_link' using errcode = '22023';
+  end if;
+  if r.dispatch_pay_paid_at is not null or r.dispatch_settled_at is not null then
+    raise exception 'already_paid' using errcode = '22023';
+  end if;
+  if r.status in ('cancelled', 'expired') then
+    raise exception 'order_closed' using errcode = '22023';
+  end if;
+  if coalesce(r.ride_fare, r.fare, 0) <= 0 then
+    raise exception 'fare_unknown' using errcode = '22023';
+  end if;
+  v_total := (public.dispatch_split(coalesce(r.ride_fare, r.fare), r.stand_fee_type, r.stand_fee_value,
+                                    r.stand_fee_bearer, r.stand_platform_fee_type, r.stand_platform_fee_value)
+              ->> 'customer')::numeric;
+  select coalesce(pv.rider_phone, r.rider_phone), coalesce(pv.rider_name, r.rider_name) into v_phone, v_name
+    from (select 1) x left join public.ride_request_private pv on pv.request_id = r.id;
+  select * into v from public.payment_intents
+   where id = r.dispatch_pay_intent_id and status = 'pending' and amount = v_total;
+  if not found then
+    v_gateway := public.payment_gateway_for('dispatch');
+    select e.values into v_values from public.settings_entries e where e.id = v_gateway;
+    if v_values is null then
+      raise exception 'no_gateway' using errcode = '22023';
+    end if;
+    -- A link for another amount (the fare changed) is no longer the one to pay.
+    update public.payment_intents set status = 'cancelled', failure = 'replaced'
+     where id = r.dispatch_pay_intent_id and status = 'pending';
+    insert into public.payment_intents (user_id, purpose, purpose_ref, gateway_id, provider, test_mode, amount, currency)
+    values (r.rider_id, 'dispatch', r.id::text, v_gateway, v_values ->> 'providerId',
+            coalesce(v_values ->> 'mode', 'Live') = 'Sandbox', v_total, 'MYR')
+    returning * into v;
+    update public.ride_requests set dispatch_pay_intent_id = v.id, dispatch_pay_url = null where id = r.id;
+  end if;
+  return to_jsonb(v) || jsonb_build_object(
+    'customer', jsonb_build_object('name', coalesce(v_name, ''), 'phone', coalesce(v_phone, ''), 'email', ''),
+    'ticket_no', r.ticket_no, 'stand_name', r.dispatch_stand_name);
+end;
+$$;
+revoke execute on function public.payment_dispatch_intent(uuid) from public, anon, authenticated;
+grant execute on function public.payment_dispatch_intent(uuid) to service_role;
+
+-- Service role: the hosted page is on the order; the customer is texted it.
+create or replace function public.payment_dispatch_link_set(p_request uuid, p_url text, p_actor uuid default null)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r public.ride_requests;
+  v_phone text;
+  v_amount numeric;
+begin
+  select * into r from public.ride_requests where id = p_request for update;
+  if not found or r.dispatch_pay_intent_id is null or coalesce(p_url, '') !~ '^https://' then
+    raise exception 'unknown_order' using errcode = '22023';
+  end if;
+  update public.ride_requests set dispatch_pay_url = p_url where id = r.id;
+  select amount into v_amount from public.payment_intents where id = r.dispatch_pay_intent_id;
+  perform public.dispatch_log(r.id, r.stand_id, 'pay_link',
+    'Payment link sent · RM ' || to_char(v_amount, 'FM999999990.00'), p_actor);
+  v_phone := coalesce(r.rider_phone, (select p.rider_phone from public.ride_request_private p where p.request_id = r.id));
+  if v_phone is not null then
+    perform public.dispatch_sms(v_phone,
+      'GET.ride ticket ' || r.ticket_no || ': pay RM ' || to_char(v_amount, 'FM999999990.00')
+      || ' by card or e-wallet: ' || p_url);
+  end if;
+end;
+$$;
+revoke execute on function public.payment_dispatch_link_set(uuid, text, uuid) from public, anon, authenticated;
+grant execute on function public.payment_dispatch_link_set(uuid, text, uuid) to service_role;
+
+-- A paid link (payment_intent_apply, once per intent): the order is paid;
+-- settled now if the trip is done, else when it is.
+create or replace function public.payment_dispatch_paid(p_intent uuid, p_order text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  r public.ride_requests;
+  i public.payment_intents;
+begin
+  select * into i from public.payment_intents where id = p_intent;
+  if p_order is null or p_order !~ '^[0-9a-fA-F-]{36}$' then
+    return;
+  end if;
+  select * into r from public.ride_requests where id = p_order::uuid for update;
+  if not found or r.stand_id is null then
+    return;
+  end if;
+  if r.dispatch_pay_paid_at is not null or r.dispatch_settled_at is not null then
+    -- Paid twice (an old link, or after the counter took it): an admin refunds it.
+    perform public.dispatch_log(r.id, r.stand_id, 'paid_again',
+      'Paid again by link (' || i.reference || ', RM ' || to_char(i.amount, 'FM999999990.00') || '): refund it', null);
+    return;
+  end if;
+  if i.test_mode then
+    -- A sandbox payment is not money: nothing is paid out.
+    perform public.dispatch_log(r.id, r.stand_id, 'paid_test',
+      'Test payment by link (sandbox) · RM ' || to_char(i.amount, 'FM999999990.00') || ': not paid out', null);
+    return;
+  end if;
+  update public.ride_requests
+     set dispatch_pay_paid_at = now(), dispatch_pay_intent_id = p_intent
+   where id = r.id;
+  perform public.dispatch_log(r.id, r.stand_id, 'paid',
+    'Paid by card / e-wallet link · RM ' || to_char(i.amount, 'FM999999990.00')
+    || case when i.test_mode then ' (test)' else '' end, null);
+  if r.status in ('cancelled', 'expired') then
+    perform public.dispatch_log(r.id, r.stand_id, 'paid_again', 'Paid after the order was cancelled: refund it', null);
+    return;
+  end if;
+  if r.status = 'completed' then
+    perform public.dispatch_settle(r.id);
+  end if;
+end;
+$$;
+revoke execute on function public.payment_dispatch_paid(uuid, text) from public, anon, authenticated;
 
 notify pgrst, 'reload schema';

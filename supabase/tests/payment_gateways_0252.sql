@@ -330,10 +330,10 @@ begin
   perform pg_temp.check(not exists (select 1 from public.wallet_transactions where payment_intent_id = i.id),
     'a sandbox payment credited the wallet');
 
-  -- Dispatch: the hook is called, nothing is credited.
+  -- Dispatch in sandbox: nothing is paid out (supabase/tests/dispatch_pay_link_0252.sql has the orders).
   i := public.payment_intent_create('00000000-0000-0000-0000-0000000252c2', 'dispatch', 120, null, 'order-1');
   j := public.payment_intent_settle(i.reference, 'billplz', 'paid', 'b2', 120, 'MYR', null);
-  perform pg_temp.check(j.applied = 'dispatch' and j.purpose_ref = 'order-1', 'dispatch hook');
+  perform pg_temp.check(j.applied = 'test_mode' and j.purpose_ref = 'order-1', 'dispatch hook in sandbox');
   -- An admin's test payment.
   i := public.payment_intent_create('00000000-0000-0000-0000-0000000252a1', 'test', 1, null, null,
                                     '00000000-0000-0000-0000-0000002520f1');

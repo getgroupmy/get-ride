@@ -19,9 +19,12 @@ const GW = "22222222-2222-2222-2222-222222222222";
 const FIUU_GW = "33333333-3333-3333-3333-333333333333";
 const USER = "44444444-4444-4444-4444-444444444444";
 const OTHER = "55555555-5555-5555-5555-555555555555";
+const ORDER = "77777777-7777-7777-7777-777777777777";
 const SECRETS = ["sk_test_SECRETVALUE", "whsec_SECRETVALUE", "verify_SECRETVALUE", "secret_SECRETVALUE"];
 
 interface World {
+  links: Array<{ request: string; url: string; actor: string }>;
+  dispatchError?: string;
   deps: Deps;
   intents: IntentRow[];
   credits: string[];
@@ -34,6 +37,8 @@ function world(opts: { whsec?: boolean; admin?: boolean } = {}): World {
   const credits: string[] = [];
   const calls: string[] = [];
   const answers: Array<[number, unknown]> = [];
+  const links: Array<{ request: string; url: string; actor: string }> = [];
+  const w = { links } as unknown as World;
   const accounts: Record<string, Account> = {
     [GW]: {
       id: GW,
@@ -59,6 +64,7 @@ function world(opts: { whsec?: boolean; admin?: boolean } = {}): World {
     http,
     now: () => 1700000000_000,
     user: (auth) => Promise.resolve(auth === "Bearer user" ? { id: USER } : auth === "Bearer admin" ? { id: OTHER } : null),
+    mayLinkOrder: (auth, id) => Promise.resolve(auth === "Bearer admin" && id === ORDER),
     canEditGateways: (auth) => Promise.resolve(auth ? auth === "Bearer admin" || opts.admin === true : null),
     db: {
       rpc(fn, a: any) {
@@ -91,6 +97,39 @@ function world(opts: { whsec?: boolean; admin?: boolean } = {}): World {
             intents.push(row);
             return Promise.resolve({ ...row });
           }
+          case "payment_dispatch_intent": {
+            if (w.dispatchError) return Promise.reject(new Error(`payment_dispatch_intent: ${w.dispatchError}`));
+            let row: any = intents.find((i) => i.purpose_ref === a.p_request && i.status === "pending");
+            if (!row) {
+              row = {
+                id: `00000000-0000-0000-0000-${String(++n).padStart(12, "0")}`,
+                reference: `GR26102000000000${n}`,
+                user_id: null,
+                purpose: "dispatch",
+                purpose_ref: a.p_request,
+                gateway_id: GW,
+                provider: "stripe",
+                test_mode: false,
+                amount: 32,
+                currency: "MYR",
+                status: "pending",
+                provider_ref: null,
+                checkout_url: null,
+                applied: null,
+                failure: null,
+              };
+              intents.push(row);
+            }
+            return Promise.resolve({
+              ...row,
+              customer: { name: "Aminah", phone: "+60123450001", email: "" },
+              ticket_no: "LNK-0001",
+              stand_name: "Link Mall",
+            });
+          }
+          case "payment_dispatch_link_set":
+            links.push({ request: a.p_request, url: a.p_url, actor: a.p_actor });
+            return Promise.resolve(null);
           case "payment_intent_set_checkout": {
             const i = intents.find((x) => x.id === a.p_id)!;
             i.provider_ref = a.p_provider_ref ?? i.provider_ref;
@@ -123,7 +162,7 @@ function world(opts: { whsec?: boolean; admin?: boolean } = {}): World {
       customer: () => Promise.resolve({ name: "Aminah", email: "a@example.com", phone: "+60123456789" }),
     },
   };
-  return { deps, intents, credits, calls, answers };
+  return Object.assign(w, { deps, intents, credits, calls, answers });
 }
 
 const post = (path: string, body: unknown, auth?: string, headers: Record<string, string> = {}) =>
@@ -295,4 +334,32 @@ Deno.test("providers: what the admin sees of each adapter", async () => {
   assertEquals(body.base, BASE);
   assertEquals(body.providers.find((p: any) => p.id === "stripe").verified, true);
   assertEquals(body.providers.find((p: any) => p.id === "paydibs").ready, false);
+});
+
+Deno.test("dispatch link: the operator gets the order's link, put on the order and texted; asked again, the same one", async () => {
+  const w = world();
+  w.answers.push([200, { id: "cs_9", url: "https://checkout.stripe.com/c/pay/cs_9" }]);
+  const r = await handle(post("dispatch-link", { request_id: ORDER }, "Bearer admin"), w.deps);
+  const body = JSON.parse(await noSecrets(r));
+  assertEquals([r.status, body.url, body.amount], [200, "https://checkout.stripe.com/c/pay/cs_9", 32]);
+  assertEquals(w.links, [{ request: ORDER, url: "https://checkout.stripe.com/c/pay/cs_9", actor: OTHER }]);
+  const sent = w.calls.length;
+  const again = await handle(post("dispatch-link", { request_id: ORDER }, "Bearer admin"), w.deps);
+  assertEquals(JSON.parse(await again.text()).url, "https://checkout.stripe.com/c/pay/cs_9");
+  assertEquals(w.calls.length, sent, "the provider is not asked twice");
+  assertEquals(w.links.length, 2, "texted again");
+  assertEquals(w.intents.length, 1);
+});
+
+Deno.test("dispatch link: refusals", async () => {
+  const w = world();
+  assertEquals((await handle(post("dispatch-link", { request_id: ORDER }), w.deps)).status, 401);
+  assertEquals((await handle(post("dispatch-link", { request_id: ORDER }, "Bearer user"), w.deps)).status, 403);
+  w.dispatchError = "no_gateway";
+  const r = await handle(post("dispatch-link", { request_id: ORDER }, "Bearer admin"), w.deps);
+  assertEquals([r.status, (await r.json()).error], [409, "no_gateway"]);
+  w.dispatchError = "fare_unknown";
+  const m = await handle(post("dispatch-link", { request_id: ORDER }, "Bearer admin"), w.deps);
+  assertEquals((await m.json()).error, "fare_unknown");
+  assertEquals(w.links, []);
 });

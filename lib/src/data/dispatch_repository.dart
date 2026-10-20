@@ -2,6 +2,7 @@
 // fleet owner's, the admin's and the driver's reads and writes. Every rule is
 // the server's (RLS and the dispatch_* RPCs); this only asks.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -38,6 +39,25 @@ class DispatchAccountError implements Exception {
     'bad_request' => 'Check the name and phone number.',
     _ => "Couldn't create the ID ($code). Try again.",
   };
+}
+
+/// Why a payment link wasn't made, by the `payments` function's code.
+class DispatchPayLinkError implements Exception {
+  const DispatchPayLinkError(this.code);
+  final String code;
+
+  String get message => switch (code) {
+    'no_gateway' || 'not_pay_link' => 'No payment gateway set for dispatch: take it at the counter.',
+    'fare_unknown' => 'The link is made once the fare is known.',
+    'already_paid' => 'This order is already paid.',
+    'order_closed' => 'This order is closed.',
+    'gateway_needs_form' => "This payment gateway can't send a link. Pick another for dispatch payment links.",
+    'not_authorized' => 'Only this stand\'s people can send its payment link.',
+    _ => "The payment link couldn't be made. Try again.",
+  };
+
+  @override
+  String toString() => code;
 }
 
 class DispatchRepository {
@@ -88,6 +108,33 @@ class DispatchRepository {
   Future<DispatchOrder> create(NewOrder o) async => DispatchOrder.fromJson(
     _map(await _db.rpc('dispatch_create_order', params: {'p_stand': o.standId, 'p_order': o.toJson()})),
   );
+
+  /// A card / e-wallet order's payment link (the `payments` function, 0252):
+  /// put on the order and texted to the customer. Throws [DispatchPayLinkError].
+  Future<({String url, double amount})> payLink(String requestId) async {
+    try {
+      final res = await _db.functions.invoke('payments/dispatch-link', body: {'request_id': requestId});
+      final m = _map(res.data is String ? jsonDecode(res.data as String) : res.data);
+      return (url: '${m['url']}', amount: (m['amount'] as num?)?.toDouble() ?? 0);
+    } on FunctionException catch (e) {
+      Object? d = e.details;
+      if (d is String) {
+        try {
+          d = jsonDecode(d);
+        } catch (_) {}
+      }
+      throw DispatchPayLinkError(d is Map && d['error'] != null ? '${d['error']}' : 'http_${e.status}');
+    }
+  }
+
+  /// Whether card / e-wallet orders are paid by a link now (a dispatch account is set).
+  Future<bool> payLinkAvailable() async {
+    try {
+      return await _db.rpc('dispatch_pay_link_available') == true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// 'widen', 'resend_group', 'resend_driver', 'reassign', 'picked_up',
   /// 'complete', 'cancel' (dispatch_order_action).

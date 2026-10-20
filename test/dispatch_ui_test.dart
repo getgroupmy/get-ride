@@ -172,6 +172,24 @@ class _Repo extends DispatchRepository {
 
   StandCredit credit = const StandCredit();
 
+  // Card / e-wallet orders paid by a gateway link (0252).
+  bool payLinks = false;
+  final links = <String>[];
+  Map<String, dynamic>? afterLink;
+
+  @override
+  Future<bool> payLinkAvailable() async => payLinks;
+
+  @override
+  Future<({String url, double amount})> payLink(String requestId) async {
+    links.add(requestId);
+    return (url: 'https://checkout.stripe.com/c/pay/cs_42', amount: 31.0);
+  }
+
+  @override
+  Future<DispatchOrder> order(String id) async =>
+      DispatchOrder.fromJson(afterLink ?? orders.firstWhere((o) => o['id'] == id));
+
   @override
   Future<StandCredit> standCredit(String standId) async => credit;
 
@@ -555,6 +573,78 @@ void main() {
         expect(unreadableTexts(tester, find.byKey(const ValueKey('stand-credit-banner'))), isEmpty);
       });
 
+      testWidgets('card / e-wallet paid by link: texted with the order, on its ticket', (tester) async {
+        final repo = _Repo()..payLinks = true;
+        final made = _order('42', 'open', extra: {
+          'ticket_no': 'PAV-0042',
+          'payment': 'app',
+          'pay_link': true,
+        });
+        repo.afterLink = {
+          ...made,
+          'pay_url': 'https://checkout.stripe.com/c/pay/cs_42',
+          'pay_status': 'pending',
+          'pay_amount': 31,
+        };
+        repo.orders = [];
+        await _pump(tester, DispatchConsole(stands: [_stand()], ticking: false), _LinkRepo(repo, made), b: b);
+        await tester.enterText(find.byKey(const ValueKey('order-dest')), 'KL Sentral');
+        await _tap(tester, find.byKey(const ValueKey('fare-fixed')));
+        await tester.enterText(find.byKey(const ValueKey('order-fare')), '28');
+        await _tap(tester, find.byKey(const ValueKey('pay-app')));
+        expect(find.textContaining('payment link by SMS'), findsOneWidget);
+        await _tap(tester, find.byKey(const ValueKey('order-send')));
+        expect(repo.links, ['42'], reason: 'the link is made as the order goes out');
+        expect(tester.widget<SelectableText>(find.byKey(const ValueKey('ticket-pay-url'))).data,
+            'https://checkout.stripe.com/c/pay/cs_42');
+        expect(unreadableTexts(tester, find.byType(AlertDialog)), isEmpty);
+        await _tap(tester, find.widgetWithText(FilledButton, 'Done'));
+      });
+
+      testWidgets('the board: a pay link pending, paid, and no gateway set', (tester) async {
+        final repo = _Repo(orders: [
+          _order('51', 'accepted', extra: {
+            'payment': 'app',
+            'pay_link': true,
+            'pay_url': 'https://checkout.stripe.com/c/pay/cs_51',
+            'pay_status': 'pending',
+          }),
+          _order('52', 'completed', extra: {
+            'payment': 'app',
+            'pay_link': true,
+            'pay_url': 'https://checkout.stripe.com/c/pay/cs_52',
+            'pay_status': 'paid',
+            'pay_paid_at': _now.toIso8601String(),
+          }),
+          _order('53', 'accepted', extra: {'payment': 'app', 'pay_link': false}),
+          _order('54', 'on_trip', extra: {'payment': 'app', 'pay_link': true, 'fare_mode': 'meter', 'fare': null}),
+        ]);
+        await _pump(tester, DispatchConsole(stands: [_stand()], ticking: false), repo, b: b);
+        Text pay(String id) => tester.widget<Text>(find.byKey(ValueKey('order-pay-$id')));
+        expect(pay('51').data, 'Pay link · Pending');
+        expect(pay('52').data, 'Pay link · Paid');
+        expect(pay('53').data, 'No payment gateway set · take it at the counter');
+        expect(pay('54').data, 'Pay link · after the meter fare');
+        expect(find.byKey(const ValueKey('pay-link-52')), findsNothing, reason: 'paid');
+        expect(find.byKey(const ValueKey('pay-link-53')), findsNothing, reason: 'no gateway');
+        expect(find.byKey(const ValueKey('pay-link-54')), findsNothing, reason: 'no fare yet');
+        expect(find.widgetWithText(OutlinedButton, 'Resend pay link'), findsOneWidget);
+        await _tap(tester, find.byKey(const ValueKey('pay-link-51')));
+        expect(repo.links, ['51']);
+        for (final id in ['51', '52', '53', '54']) {
+          expect(unreadableTexts(tester, find.byKey(ValueKey('order-pay-$id'))), isEmpty);
+        }
+      });
+
+      testWidgets('past the credit limit, card / e-wallet still goes out when it is paid by link', (tester) async {
+        final repo = _Repo()
+          ..payLinks = true
+          ..credit = const StandCredit(applies: true, balance: -500, limit: 500, available: 0, blocked: true);
+        await _pump(tester, DispatchConsole(stands: [_stand()], ticking: false), repo, b: b);
+        expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('pay-counter'))).onSelected, isNull);
+        expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('pay-app'))).onSelected, isNotNull);
+      });
+
       testWidgets('charges: the credit limit, by the admin or the stand admin within the cap', (tester) async {
         final repo = _Repo();
         await _pump(tester, StandChargesView(stands: [_stand()], admin: true), repo, b: b);
@@ -800,4 +890,23 @@ void main() {
       });
     });
   }
+}
+
+/// [_Repo] whose new order is [made] (a card / e-wallet one).
+class _LinkRepo extends _Repo {
+  _LinkRepo(this.inner, this.made) : super() {
+    payLinks = inner.payLinks;
+    afterLink = inner.afterLink;
+  }
+  final _Repo inner;
+  final Map<String, dynamic> made;
+
+  @override
+  Future<DispatchOrder> create(NewOrder o) async {
+    inner.created.add(o.toJson());
+    return DispatchOrder.fromJson(made);
+  }
+
+  @override
+  Future<({String url, double amount})> payLink(String requestId) => inner.payLink(requestId);
 }

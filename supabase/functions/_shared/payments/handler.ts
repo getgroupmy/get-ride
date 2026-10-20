@@ -12,6 +12,9 @@
  *   GET  /payments/providers                                       gateway admin
  *   POST /payments/test      {gateway_id, checkout?}               gateway admin (edit)
  *        → {result, title, detail, checkout_url?, form?}
+ *   POST /payments/dispatch-link {request_id}                      the stand's operator (0251)
+ *        → {url, reference, amount, status, test_mode}: a stand order's
+ *          payment link, put on the order and texted to the customer
  *   *    /payments/webhook/<provider>/<gateway id>                 the provider
  *   *    /payments/return/<intent id>[?cancel=1]                   the payer's browser
  *   *    /payments/back/<provider>/<gateway id>                    the payer's browser (dashboard-set return)
@@ -68,6 +71,8 @@ export interface Deps {
   base: string;
   /** The signed-in user the Authorization header names, or null. */
   user(authorization: string | null): Promise<{ id: string } | null>;
+  /** May the caller ask for this stand order's payment link (payment_dispatch_link_allowed, as them). */
+  mayLinkOrder(authorization: string | null, requestId: string): Promise<boolean>;
   /** Edit access to Admin → Payment Gateways (null: not signed in). */
   canEditGateways(authorization: string | null): Promise<boolean | null>;
   log?(message: string): void;
@@ -167,13 +172,15 @@ async function openCheckout(
   account: Account,
   intent: IntentRow,
   req: Request,
+  given?: { customer: Customer; description: string },
 ): Promise<Checkout> {
-  const customer = intent.user_id ? await deps.db.customer(intent.user_id) : { name: "", email: "", phone: "" };
+  const customer = given?.customer ??
+    (intent.user_id ? await deps.db.customer(intent.user_id) : { name: "", email: "", phone: "" });
   return await adapter.createCheckout(account, {
     reference: intent.reference,
     amount: amountOf(intent),
     currency: intent.currency,
-    description: describe(intent),
+    description: given?.description ?? describe(intent),
     customer,
     ...urlsFor(deps.base, intent),
     testMode: intent.test_mode,
@@ -396,6 +403,60 @@ async function test(req: Request, deps: Deps): Promise<Response> {
   }
 }
 
+/** Refusals of payment_dispatch_intent the console shows in words. */
+const DISPATCH_ERRORS = ["no_gateway", "fare_unknown", "already_paid", "not_pay_link", "order_closed", "unknown_order"];
+
+async function dispatchLink(req: Request, deps: Deps): Promise<Response> {
+  const auth = req.headers.get("Authorization");
+  const user = await deps.user(auth);
+  if (!user) return json({ error: "not_signed_in" }, 401);
+  const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+  const id = String(body?.request_id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "unknown_order" }, 404);
+  if (!(await deps.mayLinkOrder(auth, id))) return json({ error: "not_authorized" }, 403);
+  // deno-lint-ignore no-explicit-any
+  let a: any;
+  try {
+    a = await deps.db.rpc("payment_dispatch_intent", { p_request: id });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const code = DISPATCH_ERRORS.find((c) => msg.includes(c));
+    if (code) return json({ error: code }, 409);
+    throw e;
+  }
+  const intent = a as IntentRow;
+  let url = intent.checkout_url;
+  if (!url) {
+    const account = await accountFor(deps, intent.gateway_id);
+    const adapter = ADAPTERS[intent.provider];
+    if (!account || !account.active || !adapter?.ready) return json({ error: "gateway_not_ready" }, 409);
+    let c: Checkout;
+    try {
+      c = await openCheckout(deps, adapter, account, intent, req, {
+        customer: {
+          name: String(a.customer?.name ?? ""),
+          phone: String(a.customer?.phone ?? ""),
+          email: String(a.customer?.email ?? ""),
+        },
+        description: `GET.ride ${a.stand_name ?? "stand"} ticket ${a.ticket_no ?? intent.reference}`,
+      });
+    } catch (e) {
+      if (e instanceof PaymentError) {
+        deps.log?.(`payments: dispatch link ${intent.reference}: ${e.message}`);
+        return json({ error: e.code }, e.status === 400 ? 502 : e.status);
+      }
+      throw e;
+    }
+    // A form-posted page (iPay88) has no address to text.
+    if (!("url" in c)) return json({ error: "gateway_needs_form" }, 409);
+    await deps.db.rpc("payment_intent_set_checkout", { p_id: intent.id, p_provider_ref: c.providerRef ?? null, p_url: c.url });
+    url = c.url;
+  }
+  // On the order, and (again) to the customer's phone.
+  await deps.db.rpc("payment_dispatch_link_set", { p_request: id, p_url: url, p_actor: user.id });
+  return json({ url, reference: intent.reference, amount: amountOf(intent), status: intent.status, test_mode: intent.test_mode });
+}
+
 async function webhook(req: Request, url: URL, deps: Deps, provider: string, gatewayId: string, page: boolean) {
   const adapter = ADAPTERS[provider];
   const account = /^[0-9a-f-]{36}$/i.test(gatewayId) ? await accountFor(deps, gatewayId) : null;
@@ -481,6 +542,8 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
         return req.method === "POST" ? await status(req, deps) : json({ error: "method_not_allowed" }, 405);
       case "test":
         return req.method === "POST" ? await test(req, deps) : json({ error: "method_not_allowed" }, 405);
+      case "dispatch-link":
+        return req.method === "POST" ? await dispatchLink(req, deps) : json({ error: "method_not_allowed" }, 405);
       case "providers": {
         const can = await deps.canEditGateways(req.headers.get("Authorization"));
         if (can === null) return json({ error: "not_signed_in" }, 401);

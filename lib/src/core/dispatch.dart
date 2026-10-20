@@ -702,6 +702,10 @@ enum CounterPayment {
   /// Taken at the counter (the stand's GET.credit pays the driver).
   bool get atCounter => this != cash;
 
+  /// Held up by the stand's credit limit: a counter order, and a card /
+  /// e-wallet one unless it is paid by a gateway link ([payLinks], 0252).
+  bool heldByCredit({required bool payLinks}) => this == counter || (this == app && !payLinks);
+
   static CounterPayment parse(Object? v) => switch (v) {
     'cash' => cash,
     'app' => app,
@@ -870,6 +874,33 @@ class DispatchOrder {
     FeeType.percent => _round2(fare * feeValue / 100),
     FeeType.none => 0,
   };
+
+  // ---- Card / e-wallet orders paid by a link (0252) ----
+
+  /// Paid by a gateway link (a dispatch account was set when it went out).
+  bool get payLink => raw['pay_link'] == true;
+  String? get payUrl => _s(raw['pay_url']);
+  DateTime? get payPaidAt => _t(raw['pay_paid_at']);
+  String? get payStatus => _s(raw['pay_status']);
+  double? get payAmount => _d(raw['pay_amount']);
+  bool get payTest => raw['pay_test'] == true;
+  bool get paidByLink => payPaidAt != null;
+
+  /// A link can be sent (or sent again): a card order paid by link, its fare
+  /// known, not paid, not over.
+  bool get canSendPayLink =>
+      payment == CounterPayment.app && payLink && !paidByLink && !cancelled && !isScheduled && (fare ?? 0) > 0;
+
+  /// The card's payment line for a card / e-wallet order; null for the others.
+  String? get payLine {
+    if (payment != CounterPayment.app || isScheduled) return null;
+    if (!payLink) return 'No payment gateway set · take it at the counter';
+    if (paidByLink) return 'Pay link · Paid';
+    if (payStatus == 'paid' && payTest) return 'Pay link · Test payment (not paid out)';
+    if (payUrl != null) return 'Pay link · Pending';
+    if ((fare ?? 0) <= 0) return 'Pay link · after the meter fare';
+    return 'Pay link · not sent';
+  }
 
   /// The pill on a card: "Sent 18 s ago", "No answer", "Coming", ….
   String pill(DateTime now) {

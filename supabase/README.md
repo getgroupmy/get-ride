@@ -188,6 +188,10 @@ only the `payments` edge function, with the service role, reads them
 GET.wallet top-ups, ride card payments and dispatch payment links, shows each
 account's webhook address to paste at the provider, and tests an account's
 credentials.
+A stand order taken as "Card / e-wallet" (Order Dispatch, 0251) is paid by a
+link from the dispatch account, texted to the customer; paid and done, the
+driver's share and the stand's share of its fee go to their GET.wallet once.
+With no dispatch account it is taken at the counter as before.
 
 ```bash
 supabase functions deploy payments --no-verify-jwt

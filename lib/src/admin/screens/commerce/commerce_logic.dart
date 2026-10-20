@@ -390,7 +390,7 @@ String _shortDate(DateTime d) => '${d.day} ${_months[d.month - 1]} ${d.year}';
 const paymentPurposes = <({String id, String label, String about})>[
   (id: 'wallet_topup', label: 'GET.wallet top-up', about: 'Riders and drivers reload GET.wallet in the app.'),
   (id: 'ride_card', label: 'Ride card payment', about: 'A ride paid by card (not charged by the app yet).'),
-  (id: 'dispatch', label: 'Dispatch payment link', about: 'A payment link for a dispatched order (Order Dispatch).'),
+  (id: 'dispatch', label: 'Dispatch payment link', about: 'A stand order paid by card / e-wallet: its link is texted to the customer.'),
 ];
 
 /// The account that takes [purpose], as payment_gateway_for() decides: the
