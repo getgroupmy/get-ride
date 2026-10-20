@@ -22,6 +22,7 @@ import '../../widgets/net_image.dart';
 import 'direct_booking_badge.dart';
 import 'my_ride_badges.dart';
 import '../ride/promo_parts.dart' show PromoAppliedIcon, rideHasPromo;
+import '../ride/pet_parts.dart' show RidePetsView;
 
 /// A new ride request on a phone, as inDrive's: a sheet up from the bottom
 /// with the route on a map ("Ride request" over it, the time and distance
@@ -443,6 +444,12 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text('“${r.note}”', style: t.textTheme.bodySmall),
+              ),
+            // "Pet with me": the photos come with the ride once it is taken.
+            if (r.pets.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: RidePetsView(pets: r.pets, locked: r.status == RideStatus.open),
               ),
           ]),
         ),

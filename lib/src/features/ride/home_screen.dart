@@ -53,6 +53,7 @@ import '../../core/permission_ask.dart';
 import '../permissions/permission_actions.dart' show askPermission;
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
+import '../../data/ride_pet_repository.dart' show petConfigProvider;
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_drag_pin.dart';
@@ -1153,6 +1154,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               options: _options,
               onChanged: (o) => setState(() => _options = o),
               note: _note,
+              petConfig: ref.read(petConfigProvider),
             ),
             onChanged: (v) => latest = v,
           ),
@@ -1273,6 +1275,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           'ride_fare': _fareFor(_service, biddingOn: offerMe),
           'currency': _currency,
           'passengers': _options.passengers,
+          if (_options.pets.isNotEmpty) 'pets': [for (final p in _options.pets) p.toJson()],
           'offer_me': offerMe,
           if (_stops.isNotEmpty) 'stops': [for (final p in _stops.take(maxRideStops)) stopToJson(p)],
           if (forWhom != null) 'booked_for_name': forWhom.name,
@@ -1311,6 +1314,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             paymentMode: _payment,
             passengers: _options.passengers,
             note: driverNote(options: _options, entrance: _entrance, note: _note.text),
+            pets: _options.pets,
             riderName: profile?.name,
             riderPhone: profile?.phone,
             deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
@@ -2190,6 +2194,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               options: _options,
               onChanged: (o) => setState(() => _options = o),
               note: _note,
+              petConfig: ref.read(petConfigProvider),
             ).then((_) {
               if (mounted) setState(() {}); // the note may have changed
             }),

@@ -47,6 +47,7 @@ import '../safety/voice_protection_controller.dart';
 import 'trip_handover_panel.dart';
 import '../../widgets/page_style_host.dart';
 import '../ride/promo_parts.dart' show DriverPromoLine, PromoAppliedIcon, rideHasPromo;
+import '../ride/pet_parts.dart' show RidePetsView;
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
 
@@ -807,6 +808,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
               subtitle: r.dropAddress == null ? null : Text(r.dropAddress!, maxLines: 2),
             ),
             if (r.note != null) ListTile(leading: const Icon(Icons.notes), title: Text(r.note!)),
+            if (r.pets.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: RidePetsView(key: const ValueKey('trip-pets'), pets: r.pets, title: 'Pets riding along'),
+              ),
             const Divider(height: 1),
             ListTile(
               title: Text(r.service ?? 'Ride'),

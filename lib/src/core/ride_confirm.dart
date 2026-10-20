@@ -4,6 +4,7 @@
 library;
 
 import 'ride_bidding.dart';
+import 'ride_pets.dart';
 
 /// Admin → Display Settings offsets for the confirm screen's floating parts
 /// (Expo `rc*`, `discountBar*`), in logical pixels, and whether the promo
@@ -106,7 +107,12 @@ bool shouldAutoAccept({required double? limit, required RideOffer? offer}) {
 
 /// What the rider asks for from the Options sheet beside "Find a driver".
 class RideOptions {
-  const RideOptions({this.childSeat = false, this.morePassengers = false, this.pet = false});
+  const RideOptions({
+    this.childSeat = false,
+    this.morePassengers = false,
+    this.pet = false,
+    this.pets = const [],
+  });
 
   final bool childSeat;
 
@@ -116,6 +122,10 @@ class RideOptions {
   /// A pet rides along (inDrive's "Pet with me").
   final bool pet;
 
+  /// Which pets, from the Your pets sheet: none until it is done, and
+  /// cleared when "Pet with me" is turned off.
+  final List<RidePet> pets;
+
   static const standardSeats = 4;
 
   bool get any => childSeat || morePassengers || pet;
@@ -123,25 +133,32 @@ class RideOptions {
   /// The passengers the request carries: one, or more than four.
   int get passengers => morePassengers ? standardSeats + 1 : 1;
 
-  /// Spelled out for the driver, ahead of the note.
+  /// Spelled out for the driver, ahead of the note. The pets' summary goes
+  /// after "Pet with me", so a driver app that doesn't read `pets` still
+  /// knows what is coming.
   List<String> get labels => [
     if (childSeat) 'Child safety seat',
     if (morePassengers) 'More than $standardSeats passengers',
-    if (pet) 'Pet with me',
+    if (pet) pets.isEmpty ? 'Pet with me' : 'Pet with me: ${petSummary(pets)}',
   ];
 
-  RideOptions copyWith({bool? childSeat, bool? morePassengers, bool? pet}) => RideOptions(
+  RideOptions copyWith({bool? childSeat, bool? morePassengers, bool? pet, List<RidePet>? pets}) => RideOptions(
     childSeat: childSeat ?? this.childSeat,
     morePassengers: morePassengers ?? this.morePassengers,
     pet: pet ?? this.pet,
+    pets: pets ?? this.pets,
   );
 
   @override
   bool operator ==(Object other) =>
-      other is RideOptions && other.childSeat == childSeat && other.morePassengers == morePassengers && other.pet == pet;
+      other is RideOptions &&
+      other.childSeat == childSeat &&
+      other.morePassengers == morePassengers &&
+      other.pet == pet &&
+      samePets(other.pets, pets);
 
   @override
-  int get hashCode => Object.hash(childSeat, morePassengers, pet);
+  int get hashCode => Object.hash(childSeat, morePassengers, pet, Object.hashAll(pets));
 }
 
 /// The note the driver gets: the options the rider asked for, the entrance

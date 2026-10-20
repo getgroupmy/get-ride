@@ -16,6 +16,7 @@ import '../../core/payment_types.dart';
 import '../../core/route_estimate.dart' show FareTrend, FareTrendDirection;
 import '../../widgets/fare_trend_arrows.dart';
 import '../../core/ride_confirm.dart' show RideOptions;
+import '../../core/ride_pets.dart' show PetConfig, petSummary;
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show mutedTextColor;
@@ -23,6 +24,7 @@ import '../../widgets/map_sheet_layout.dart' show MapSheetReveal;
 import '../../widgets/shake.dart';
 import 'fare_offer_controls.dart';
 import 'home_parts.dart' show uriImage;
+import 'pet_parts.dart' show showRidePetsSheet;
 import '../../core/page_styles.dart' show fareInfoSurface;
 import '../../widgets/page_style_host.dart';
 
@@ -1469,14 +1471,16 @@ class ConfirmFooter extends StatelessWidget {
 }
 
 /// The Options sheet from the button beside "Find a driver": a child
-/// safety seat, more than four passengers, and comments for the driver.
-/// Changes apply as they are made ([onChanged], and [note] is the confirm
-/// screen's own note), so Close and a swipe down both keep them.
+/// safety seat, more than four passengers, a pet (its own Your pets sheet,
+/// [petConfig]) and comments for the driver. Changes apply as they are made
+/// ([onChanged], and [note] is the confirm screen's own note), so Close and
+/// a swipe down both keep them.
 Future<void> showRideOptionsSheet(
   BuildContext context, {
   required RideOptions options,
   required ValueChanged<RideOptions> onChanged,
   required TextEditingController note,
+  PetConfig petConfig = const PetConfig(),
 }) => showAppSheet<void>(id: 'confirm.show-ride-options-sheet',
   context: context,
   isScrollControlled: true,
@@ -1484,14 +1488,20 @@ Future<void> showRideOptionsSheet(
   // Close did not fit: the sheet scrolls instead of cutting Close off.
   fitContent: true,
   showDragHandle: false,
-  builder: (_) => _RideOptionsSheet(options: options, onChanged: onChanged, note: note),
+  builder: (_) => _RideOptionsSheet(options: options, onChanged: onChanged, note: note, petConfig: petConfig),
 );
 
 class _RideOptionsSheet extends StatefulWidget {
-  const _RideOptionsSheet({required this.options, required this.onChanged, required this.note});
+  const _RideOptionsSheet({
+    required this.options,
+    required this.onChanged,
+    required this.note,
+    required this.petConfig,
+  });
   final RideOptions options;
   final ValueChanged<RideOptions> onChanged;
   final TextEditingController note;
+  final PetConfig petConfig;
 
   @override
   State<_RideOptionsSheet> createState() => _RideOptionsSheetState();
@@ -1503,6 +1513,15 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
   void _set(RideOptions o) {
     setState(() => _options = o);
     widget.onChanged(o);
+  }
+
+  /// "Pet with me": on opens Your pets, and stays off unless it is done;
+  /// off clears the pets. Edit reopens it; cancelled keeps what was saved.
+  Future<void> _pets({bool? on}) async {
+    if (on == false) return _set(_options.copyWith(pet: false, pets: const []));
+    final pets = await showRidePetsSheet(context, initial: _options.pets, config: widget.petConfig);
+    if (pets == null || pets.isEmpty || !mounted) return;
+    _set(_options.copyWith(pet: true, pets: pets));
   }
 
   Future<void> _comments() async {
@@ -1560,12 +1579,27 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
               value: _options.morePassengers,
               onChanged: (v) => _set(_options.copyWith(morePassengers: v)),
             ),
+            // "Pet with me": as the other options, with the pets' summary
+            // and Edit under it once they are in.
             SwitchListTile(
               key: const ValueKey('option-pet'),
               contentPadding: EdgeInsets.zero,
               title: const Text('Pet with me'),
+              subtitle: _options.pet && _options.pets.isNotEmpty
+                  ? Row(children: [
+                      Expanded(
+                        child: Text(petSummary(_options.pets), key: const ValueKey('option-pet-summary')),
+                      ),
+                      TextButton(
+                        key: const ValueKey('option-pet-edit'),
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                        onPressed: _pets,
+                        child: const Text('Edit'),
+                      ),
+                    ])
+                  : null,
               value: _options.pet,
-              onChanged: (v) => _set(_options.copyWith(pet: v)),
+              onChanged: (v) => _pets(on: v),
             ),
             const SizedBox(height: 12),
             Material(

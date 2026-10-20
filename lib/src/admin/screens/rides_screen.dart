@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/format.dart';
 import '../../core/region_time.dart' show formatInZone;
 import '../../data/models.dart';
+import '../../features/ride/pet_parts.dart' show RidePetsView;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
@@ -72,6 +73,11 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
               : '${formatMoney(r.raw['commission_amount'] as num, r.currency)} '
                   '(${((r.raw['commission_rate'] as num? ?? 0) * 100).toStringAsFixed(1)}%)',
         }),
+        // "Pet with me" (0247): an open request's photos wait aside.
+        if (r.pets.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          RidePetsView(key: const ValueKey('admin-ride-pets'), pets: r.pets, title: 'Pets riding along'),
+        ],
         if (canEdit && r.status.isOngoing) ...[
           const SizedBox(height: 16),
           BusyButton.outlined(
