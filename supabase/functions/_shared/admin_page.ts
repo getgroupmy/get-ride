@@ -67,3 +67,5 @@ export const PUSH_PAGES = ["admin-settings-push-notification"];
 export const API_KEY_PAGES = ["admin-settings-api-keys-keys", "admin-settings-api-keys"];
 export const FARE_AI_PAGES = ["admin-settings-fare-ai"];
 export const STATEMENT_PAGES = ["admin-settings-partner-statements"];
+/** Admin → Payment Gateways (0252), or the Settings hub grant that covers it. */
+export const PAYMENT_GATEWAY_PAGES = ["admin-settings-payment-gateway", "admin-settings"];

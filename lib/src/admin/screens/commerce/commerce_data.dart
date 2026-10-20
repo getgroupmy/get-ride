@@ -1,5 +1,7 @@
 // Data access for the Payments & commerce screens. Every call runs with the
 // signed-in admin's session; RLS (`caller_is_admin()`) is the real gate.
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -144,6 +146,47 @@ class CommerceRepository {
     return row['id'] as String;
   }
 
+  // ---- Payment gateways: secrets, routing, tests (0252) ---------------------
+
+  /// Which secrets are set, for every account (never the values).
+  Future<List<GatewaySecretState>> gatewaySecretStatus() async {
+    final rows = await _db.rpc('payment_gateway_secret_status');
+    return [for (final r in rows is List ? rows : const []) GatewaySecretState.fromRow(Map<String, dynamic>.from(r as Map))];
+  }
+
+  /// Sets or replaces one secret; an empty [value] clears it. It can't be read back.
+  Future<void> setGatewaySecret(String gatewayId, String field, String value) =>
+      _db.rpc('payment_gateway_secret_set', params: {'p_gateway': gatewayId, 'p_field': field, 'p_value': value});
+
+  /// Which account takes each kind of payment (null: the default account).
+  Future<Map<String, String?>> gatewayRouting() async {
+    final rows = await _db.from('payment_gateway_routing').select('purpose, gateway_id');
+    return {for (final r in rows) '${r['purpose']}': r['gateway_id'] as String?};
+  }
+
+  Future<void> setGatewayRouting(String purpose, String? gatewayId) =>
+      _db.from('payment_gateway_routing').update({'gateway_id': gatewayId}).eq('purpose', purpose);
+
+  /// The `payments` function's harmless check of an account's credentials
+  /// ([checkout]: also an RM 1.00 test checkout to open).
+  Future<GatewayTestResult> testGateway(String gatewayId, {bool checkout = false}) async {
+    try {
+      final res = await _db.functions.invoke('payments/test', body: {'gateway_id': gatewayId, 'checkout': checkout});
+      return GatewayTestResult.fromJson(res.data is String ? jsonDecode(res.data as String) : res.data);
+    } on FunctionException catch (e) {
+      final d = e.details;
+      Object? body = d;
+      if (d is String) {
+        try {
+          body = jsonDecode(d);
+        } catch (_) {}
+      }
+      return GatewayTestResult.fromJson(body is Map ? body : {'error': 'HTTP ${e.status}'});
+    } catch (_) {
+      return GatewayTestResult.fromJson(const {'error': 'no answer'});
+    }
+  }
+
   // ---- EV orders (owner-scoped `ev_orders`) --------------------------------
 
   Future<List<EvOrderRow>> evOrders() async {
@@ -186,6 +229,20 @@ final getCoinProvider = FutureProvider.autoDispose(
     final results = await Future.wait([repo.getCoinSettings(), repo.coinMarketStats()]);
     return (settings: results[0] as GetCoinSettings, stats: results[1] as CoinMarketStats);
   },
+);
+
+/// Which secrets are set, by account id then field.
+final gatewaySecretStatusProvider = FutureProvider.autoDispose<Map<String, Map<String, GatewaySecretState>>>((ref) async {
+  final list = await ref.watch(commerceRepositoryProvider).gatewaySecretStatus();
+  final out = <String, Map<String, GatewaySecretState>>{};
+  for (final s in list) {
+    (out[s.gatewayId] ??= {})[s.field] = s;
+  }
+  return out;
+});
+
+final gatewayRoutingProvider = FutureProvider.autoDispose<Map<String, String?>>(
+  (ref) => ref.watch(commerceRepositoryProvider).gatewayRouting(),
 );
 
 final evOrdersProvider = FutureProvider.autoDispose((ref) {

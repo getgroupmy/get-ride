@@ -106,6 +106,8 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:partner.type-rules-blocked', SurfaceKind.modal, 'Partner · Type rules blocked', 'lib/src/features/partner/partner_screen.dart'),
   SurfaceEntry('modal:partner.vehicle-ready', SurfaceKind.modal, 'Partner · Vehicle ready', 'lib/src/features/partner/partner_screen.dart'),
   SurfaceEntry('modal:passkeys.remove', SurfaceKind.modal, 'Passkeys · Remove', 'lib/src/features/settings/passkeys_screen.dart'),
+  SurfaceEntry('modal:payment-gateways.set-secret', SurfaceKind.modal, 'Payment gateways · Set secret', 'lib/src/admin/screens/commerce/payment_screens.dart'),
+  SurfaceEntry('modal:payment-gateways.test-result', SurfaceKind.modal, 'Payment gateways · Test result', 'lib/src/admin/screens/commerce/payment_screens.dart'),
   SurfaceEntry('modal:people-widgets.pick', SurfaceKind.modal, 'People widgets · Pick', 'lib/src/admin/screens/people/people_widgets.dart'),
   SurfaceEntry('modal:people.ask-status-reason', SurfaceKind.modal, 'People · Status reason', 'lib/src/admin/screens/people_screens.dart'),
   SurfaceEntry('modal:permissions.open_settings', SurfaceKind.modal, 'Permissions · Settings', 'lib/src/features/permissions/permission_actions.dart'),
@@ -166,6 +168,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('page:ev-profiles.captures-tab', SurfaceKind.page, 'Ev profiles · Captures tab', 'lib/src/admin/screens/meterapp/ev_profiles_screen.dart'),
   SurfaceEntry('page:home.open-offer-fare', SurfaceKind.page, 'Home · Offer fare', 'lib/src/features/ride/home_screen.dart'),
   SurfaceEntry('page:in-app.open-in-app', SurfaceKind.page, 'In app · In app', 'lib/src/widgets/in_app_page.dart'),
+  SurfaceEntry('page:in-app.payment-page', SurfaceKind.page, 'In app · Payment page', 'lib/src/widgets/in_app_page.dart'),
   SurfaceEntry('page:map-place-picker.pick-place-on-map', SurfaceKind.page, 'Map place picker · Place on map', 'lib/src/features/ride/map_place_picker.dart'),
   SurfaceEntry('page:my-qr.scan', SurfaceKind.page, 'My qr · Scan', 'lib/src/features/my_qr/my_qr_screen.dart'),
   SurfaceEntry('page:my-ride.scan', SurfaceKind.page, 'My ride · Scan', 'lib/src/features/my_ride/my_ride_screen.dart'),
@@ -376,4 +379,5 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:vehicle-picker.pick', SurfaceKind.sheet, 'Vehicle picker · Pick', 'lib/src/features/partner/vehicle_picker.dart'),
   SurfaceEntry('sheet:wallet-history.details', SurfaceKind.sheet, 'Wallet history · Details', 'lib/src/features/wallet/wallet_history_screen.dart'),
   SurfaceEntry('sheet:wallet-qr.scanner-torch-available', SurfaceKind.sheet, 'Wallet qr · Scanner torch available', 'lib/src/features/wallet/wallet_qr_screens.dart'),
+  SurfaceEntry('sheet:wallet.top-up', SurfaceKind.sheet, 'Wallet · Top up', 'lib/src/features/wallet/wallet_topup.dart'),
 ];

@@ -14,6 +14,7 @@ import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/offline_strip.dart';
+import 'wallet_topup.dart';
 
 final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>((ref) {
   ref.watchLive('wallets');
@@ -175,6 +176,21 @@ class WalletScreen extends ConsumerWidget {
                   ),
                   ),
                   const SizedBox(height: 12),
+                  Card(
+                    child: ListTile(
+                      key: const ValueKey('wallet-topup-open'),
+                      leading: const Icon(Icons.add_card),
+                      title: const Text('Top up GET.wallet'),
+                      subtitle: const Text('Pay by card, online banking or e-wallet'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () async {
+                        if (await showWalletTopUp(context) == true) {
+                          ref.invalidate(walletBalancesProvider);
+                          ref.invalidate(walletTxProvider);
+                        }
+                      },
+                    ),
+                  ),
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.swap_horiz),

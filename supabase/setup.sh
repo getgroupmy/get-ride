@@ -77,7 +77,7 @@ if [[ $FUNCTIONS -eq 1 ]]; then
     echo "→ Deploying edge functions…"
     REF_ARG=()
     [[ -n "${SUPABASE_PROJECT_REF:-}" ]] && REF_ARG=(--project-ref "$SUPABASE_PROJECT_REF")
-    for fn in send-push ai-route-proxy document-ai-verify ios-release android-release; do
+    for fn in send-push ai-route-proxy document-ai-verify ios-release android-release payments; do
       if supabase functions deploy "$fn" --no-verify-jwt "${REF_ARG[@]}"; then
         echo "  ✓ $fn deployed."
       else
@@ -93,6 +93,7 @@ if [[ $FUNCTIONS -eq 1 ]]; then
     echo "    supabase functions deploy document-ai-verify --no-verify-jwt"
     echo "    supabase functions deploy ios-release --no-verify-jwt"
     echo "    supabase functions deploy android-release --no-verify-jwt"
+    echo "    supabase functions deploy payments --no-verify-jwt"
   fi
 fi
 

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../config.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/in_app_page.dart';
+import '../../../widgets/page_style_host.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
@@ -176,8 +180,11 @@ class _PaymentTypeFormState extends State<_PaymentTypeForm> {
 // ===========================================================================
 
 class PaymentGatewayScreen extends ConsumerStatefulWidget {
-  const PaymentGatewayScreen({super.key});
+  const PaymentGatewayScreen({super.key, this.supabaseUrl = AppConfig.supabaseUrl});
   static const page = 'admin-settings-payment-gateway';
+
+  /// Where the `payments` function runs (its webhook addresses are shown to copy).
+  final String supabaseUrl;
 
   @override
   ConsumerState<PaymentGatewayScreen> createState() => _PaymentGatewayScreenState();
@@ -190,6 +197,8 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
   void _refresh() {
     ref.invalidate(commerceEntriesProvider(paymentGatewayCategory));
     ref.invalidate(gatewayAccountsProvider);
+    ref.invalidate(gatewaySecretStatusProvider);
+    ref.invalidate(gatewayRoutingProvider);
   }
 
   Future<void> _add(List<Entry> all) async {
@@ -202,8 +211,11 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
           (
             value: p.id,
             label: p.name,
-            subtitle: [p.description, if ((counts[p.id] ?? 0) > 0) '${counts[p.id]} account${counts[p.id] == 1 ? '' : 's'}']
-                .join(' · '),
+            subtitle: [
+              p.description,
+              if (p.charging == ChargeSupport.none) 'charging not built yet',
+              if ((counts[p.id] ?? 0) > 0) '${counts[p.id]} account${counts[p.id] == 1 ? '' : 's'}',
+            ].join(' · '),
             leading: const Icon(Icons.credit_card),
           ),
       ],
@@ -214,11 +226,20 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
   }
 
   Future<void> _edit(List<Entry> all, {Entry? entry, GatewayForm? form}) async {
+    final canEdit = ref.read(pageAccessProvider(PaymentGatewayScreen.page)) == AccessLevel.edit;
     final values = await showFormDialog<Map<String, dynamic>>(
       context,
-      (_) => _GatewayForm(entry: entry, form: form ?? GatewayForm.fromValues(entry!.values)),
+      (_) => _GatewayForm(
+        entry: entry,
+        form: form ?? GatewayForm.fromValues(entry!.values),
+        supabaseUrl: widget.supabaseUrl,
+        canEdit: canEdit,
+      ),
     );
-    if (values == null || !mounted) return;
+    if (values == null || !mounted) {
+      ref.invalidate(gatewaySecretStatusProvider);
+      return;
+    }
     final ok = await runAdminAction(context, () async {
       final repo = ref.read(commerceRepositoryProvider);
       final c = commerceCategories[paymentGatewayCategory]!;
@@ -230,7 +251,7 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
         id = await repo.insertEntry(paymentGatewayCategory, values, all.length);
       }
       if (values['isDefault'] == true) await repo.clearOtherDefaults(paymentGatewayCategory, all, id);
-    }, success: 'Gateway saved');
+    }, success: entry == null ? 'Gateway saved. Open it again to set its secret keys.' : 'Gateway saved');
     if (ok) _refresh();
   }
 
@@ -243,35 +264,25 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
     return m;
   }
 
-  Future<void> _stripSecrets(Entry e) async {
-    final keys = storedSecretKeys(e.values);
-    if (!await confirm(
-      context,
-      'Remove stored secrets?',
-      'This removes ${keys.length} secret credential${keys.length == 1 ? '' : 's'} from this account record. '
-          'Server-side payment code that reads them from here will stop working until they are provided another way.',
-      ok: 'Remove',
-    )) {
-      return;
-    }
+  Future<void> _test(Entry e) async {
+    final result = await ref.read(commerceRepositoryProvider).testGateway(e.id);
     if (!mounted) return;
-    if (await runAdminAction(
-      context,
-      () => ref.read(adminRepositoryProvider).saveSetting(
-            commerceCategories[paymentGatewayCategory]!,
-            id: e.id,
-            values: stripSecrets(e.values),
-          ),
-      success: 'Secrets removed',
-    )) {
-      _refresh();
-    }
+    await showAppDialog<void>(
+      id: 'payment-gateways.test-result',
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${e.values['providerName'] ?? ''} · ${e.values['accountName'] ?? ''}'),
+        content: GatewayTestResultView(result),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final canEdit = ref.watch(pageAccessProvider(PaymentGatewayScreen.page)) == AccessLevel.edit;
     final entries = ref.watch(commerceEntriesProvider(paymentGatewayCategory));
+    final secrets = ref.watch(gatewaySecretStatusProvider).value ?? const {};
     return AdminPage(
       title: 'Payment Gateways',
       page: PaymentGatewayScreen.page,
@@ -297,21 +308,11 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
           final active = all.where((e) => e.values['active'] != false).length;
           final live = all.where((e) => '${e.values['mode'] ?? 'Live'}' == 'Live').length;
           final def = all.where((e) => e.values['isDefault'] == true).firstOrNull;
-          final withSecrets = all.where((e) => storedSecretKeys(e.values).isNotEmpty).length;
           return ResponsiveCenter(
             maxWidth: 900,
             child: ListView(padding: EdgeInsets.only(top: 8, bottom: addActionListBottomPadding(context)), children: [
-              const _SecretNotice(),
-              if (withSecrets > 0)
-                Card(
-                  color: Theme.of(context).colorScheme.errorContainer,
-                  child: ListTile(
-                    leading: const Icon(Icons.warning_amber),
-                    title: Text('$withSecrets account${withSecrets == 1 ? ' has' : 's have'} secret credentials stored here'),
-                    subtitle: const Text('This table is readable by every app user. Move the secrets to server-side '
-                        'storage and remove them from the record (open the account menu).'),
-                  ),
-                ),
+              const _SecretsNotice(),
+              if (all.isNotEmpty) _RoutingCard(entries: all, canEdit: canEdit),
               TextField(
                 decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search account or provider', isDense: true),
                 onChanged: (v) => setState(() => _q = v),
@@ -354,9 +355,9 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
                 const EmptyState(
                   icon: Icons.inbox_outlined,
                   title: 'No gateways yet',
-                  message: 'Add Stripe, Fiuu, PayPal and more.',
+                  message: 'Add Stripe, Billplz, Fiuu, PayPal and more.',
                 ),
-              for (final e in rows) _row(e, all, canEdit),
+              for (final e in rows) _row(e, all, canEdit, secrets[e.id] ?? const {}),
             ]),
           );
         },
@@ -364,119 +365,313 @@ class _PaymentGatewayScreenState extends ConsumerState<PaymentGatewayScreen> {
     );
   }
 
-  Widget _row(Entry e, List<Entry> all, bool canEdit) {
+  Widget _row(Entry e, List<Entry> all, bool canEdit, Map<String, GatewaySecretState> set) {
     final v = e.values;
     final mode = '${v['mode'] ?? 'Live'}';
     final active = v['active'] != false;
-    final secrets = storedSecretKeys(v);
+    final provider = providerById('${v['providerId'] ?? ''}');
+    final scheme = Theme.of(context).colorScheme;
+    final needed = provider?.secretFields.where((f) => !f.optional).toList() ?? const [];
+    final missing = needed.where((f) => !set.containsKey(f.key)).length;
+    final secretsLine = provider == null || provider.secretFields.isEmpty
+        ? null
+        : missing > 0
+            ? '$missing required secret key${missing == 1 ? '' : 's'} not set'
+            : '${set.length} of ${provider.secretFields.length} secret keys set';
     return Opacity(
       opacity: active ? 1 : 0.6,
       child: Card(
+        key: ValueKey('gateway-${e.id}'),
         child: BusyListTile(
           leading: const CircleAvatar(child: Icon(Icons.credit_card)),
-
           title: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
             Text('${v['providerName'] ?? ''}'),
             if (v['isDefault'] == true) const Icon(Icons.star, size: 16),
             Chip(
               label: Text(mode),
               visualDensity: VisualDensity.compact,
-              backgroundColor: (mode == 'Live' ? Colors.green : Colors.orange).withValues(alpha: 0.15),
+              backgroundColor: mode == 'Live' ? scheme.primaryContainer : scheme.tertiaryContainer,
+              labelStyle: TextStyle(color: mode == 'Live' ? scheme.onPrimaryContainer : scheme.onTertiaryContainer),
             ),
             if (!active) const StatusChip('Inactive'),
-            if (secrets.isNotEmpty)
-              Tooltip(
-                message: '${secrets.length} secret credential(s) stored in a client-readable table',
-                child: Icon(Icons.key, size: 16, color: Theme.of(context).colorScheme.error),
-              ),
           ]),
-          subtitle: Text('${v['accountName'] ?? ''}'),
-          onTap: canEdit ? () => _edit(all, entry: e) : null,
-          trailing: canEdit
-              ? PopupMenuButton<String>(
-                  onSelected: (a) async {
-                    if (a == 'edit') return _edit(all, entry: e);
-                    if (a == 'strip') return _stripSecrets(e);
-                    if (!await confirm(context, 'Delete',
-                        'Remove ${v['providerName']} (${v['accountName']})?', ok: 'Delete')) {
-                      return;
-                    }
-                    if (!mounted) return;
-                    if (await runAdminAction(
-                        context,
-                        () => ref
-                            .read(adminRepositoryProvider)
-                            .deleteSetting(commerceCategories[paymentGatewayCategory]!, e.id))) {
-                      _refresh();
-                    }
-                  },
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                    if (secrets.isNotEmpty) const PopupMenuItem(value: 'strip', child: Text('Remove stored secrets')),
-                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                  ],
-                )
-              : null,
+          subtitle: Text([
+            '${v['accountName'] ?? ''}',
+            if (provider != null) chargeSupportLabel(provider.charging),
+            ?secretsLine,
+          ].join(' · ')),
+          onTap: () => _edit(all, entry: e),
+          trailing: PopupMenuButton<String>(
+            onSelected: (a) async {
+              if (a == 'edit') return _edit(all, entry: e);
+              if (a == 'test') return _test(e);
+              if (!await confirm(context, 'Delete',
+                  'Remove ${v['providerName']} (${v['accountName']})? Its secret keys are deleted too.', ok: 'Delete')) {
+                return;
+              }
+              if (!mounted) return;
+              if (await runAdminAction(
+                  context,
+                  () => ref
+                      .read(adminRepositoryProvider)
+                      .deleteSetting(commerceCategories[paymentGatewayCategory]!, e.id))) {
+                _refresh();
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'edit', child: Text(canEdit ? 'Edit' : 'View')),
+              if (canEdit) const PopupMenuItem(value: 'test', child: Text('Test connection')),
+              if (canEdit) const PopupMenuItem(value: 'delete', child: Text('Delete')),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _SecretNotice extends StatelessWidget {
-  const _SecretNotice();
+class _SecretsNotice extends StatelessWidget {
+  const _SecretsNotice();
 
   @override
   Widget build(BuildContext context) => const Card(
+        key: ValueKey('gateway-secrets-notice'),
         child: ListTile(
           leading: Icon(Icons.lock_outline),
-          title: Text('Secret keys are not entered here'),
-          subtitle: Text('Gateway accounts are stored in a table every app user can read, so this screen only '
-              'manages public configuration (merchant IDs, publishable keys, mode). Secret keys, passwords and '
-              'webhook secrets belong in server-side secrets used by the payment edge function.'),
+          title: Text('Secret keys are write-only'),
+          subtitle: Text('Open an account to set or replace its secret keys. They are kept in the server\'s vault: '
+              'nobody can read them back here or in the app, only the payments service uses them. The rest of an '
+              'account (merchant IDs, publishable keys, mode) is public configuration.'),
         ),
       );
 }
 
-class _GatewayForm extends StatefulWidget {
-  const _GatewayForm({this.entry, required this.form});
-  final Entry? entry;
-  final GatewayForm form;
+/// Which account takes each kind of payment.
+class _RoutingCard extends ConsumerWidget {
+  const _RoutingCard({required this.entries, required this.canEdit});
+  final List<Entry> entries;
+  final bool canEdit;
 
   @override
-  State<_GatewayForm> createState() => _GatewayFormState();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final routing = ref.watch(gatewayRoutingProvider).value ?? const <String, String?>{};
+    final t = Theme.of(context);
+    final active = entries.where((e) => e.values['active'] != false).toList();
+    String label(Entry e) => '${e.values['providerName'] ?? ''} · ${e.values['accountName'] ?? ''}'
+        '${e.values['mode'] == 'Sandbox' ? ' (Sandbox)' : ''}';
+    return Card(
+      key: const ValueKey('gateway-routing'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Which account takes which payment', style: t.textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text('"Default account" uses the account marked Default gateway (or the only active one).',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+          for (final p in paymentPurposes) ...[
+            const SizedBox(height: 12),
+            SearchableDropdownFormField<String>(
+              key: ValueKey('gateway-route-${p.id}-${routing[p.id]}'),
+              isExpanded: true,
+              initialValue: active.any((e) => e.id == routing[p.id]) ? routing[p.id] : '',
+              decoration: InputDecoration(
+                labelText: p.label,
+                helperText: () {
+                  final eff = effectiveGatewayFor(p.id, routing, entries);
+                  final who = entries.where((e) => e.id == eff).firstOrNull;
+                  return '${p.about} Now: ${who == null ? 'no account (cannot be paid)' : label(who)}.';
+                }(),
+                helperMaxLines: 3,
+              ),
+              items: [
+                const DropdownMenuItem(value: '', child: Text('Default account')),
+                for (final e in active) DropdownMenuItem(value: e.id, child: Text(label(e), overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: !canEdit
+                  ? null
+                  : (v) async {
+                      if (await runAdminAction(
+                        context,
+                        () => ref.read(commerceRepositoryProvider).setGatewayRouting(p.id, (v ?? '').isEmpty ? null : v),
+                        success: 'Saved',
+                      )) {
+                        ref.invalidate(gatewayRoutingProvider);
+                      }
+                    },
+            ),
+          ],
+        ]),
+      ),
+    );
+  }
 }
 
-class _GatewayFormState extends State<_GatewayForm> {
+/// What a connection test said.
+class GatewayTestResultView extends StatelessWidget {
+  const GatewayTestResultView(this.result, {super.key});
+  final GatewayTestResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final (icon, color) = switch (result.result) {
+      'ok' => (Icons.check_circle_outline, scheme.primary),
+      'warn' => (Icons.info_outline, scheme.tertiary),
+      _ => (Icons.error_outline, scheme.error),
+    };
+    return Column(
+      key: const ValueKey('gateway-test-result'),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: Icon(icon, color: color),
+          title: Text(result.title),
+          subtitle: Text(result.detail),
+        ),
+        if (result.checkoutUrl != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              key: const ValueKey('gateway-test-checkout'),
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open the RM 1.00 test checkout'),
+              onPressed: () => openInApp(context, result.checkoutUrl!, title: 'Test checkout'),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _GatewayForm extends ConsumerStatefulWidget {
+  const _GatewayForm({this.entry, required this.form, required this.supabaseUrl, required this.canEdit});
+  final Entry? entry;
+  final GatewayForm form;
+  final String supabaseUrl;
+  final bool canEdit;
+
+  @override
+  ConsumerState<_GatewayForm> createState() => _GatewayFormState();
+}
+
+class _GatewayFormState extends ConsumerState<_GatewayForm> {
   late final GatewayForm _f = widget.form;
   String? _error;
+  GatewayTestResult? _test;
+  bool _testing = false;
+
+  Future<void> _setSecret(CredentialField f, bool replace) async {
+    final value = await showAppDialog<String>(
+      id: 'payment-gateways.set-secret',
+      context: context,
+      builder: (_) => _SecretDialog(field: f, replace: replace),
+    );
+    if (value == null || value.trim().isEmpty || !mounted) return;
+    if (await runAdminAction(
+      context,
+      () => ref.read(commerceRepositoryProvider).setGatewaySecret(widget.entry!.id, f.key, value.trim()),
+      success: '${f.label} saved',
+    )) {
+      ref.invalidate(gatewaySecretStatusProvider);
+    }
+  }
+
+  Future<void> _clearSecret(CredentialField f) async {
+    if (!await confirm(context, 'Clear ${f.label}?',
+        'Payments through this account that need it stop until a new one is set.', ok: 'Clear')) {
+      return;
+    }
+    if (!mounted) return;
+    if (await runAdminAction(
+      context,
+      () => ref.read(commerceRepositoryProvider).setGatewaySecret(widget.entry!.id, f.key, ''),
+      success: '${f.label} cleared',
+    )) {
+      ref.invalidate(gatewaySecretStatusProvider);
+    }
+  }
+
+  Future<void> _runTest(GatewayProvider p) async {
+    setState(() {
+      _testing = true;
+      _test = null;
+    });
+    // Providers with no harmless API call also get an RM 1 checkout to open.
+    final r = await ref.read(commerceRepositoryProvider).testGateway(
+          widget.entry!.id,
+          checkout: const {'fiuu', 'ipay88', 'eghl', 'senangpay'}.contains(p.id),
+        );
+    if (mounted) {
+      setState(() {
+        _testing = false;
+        _test = r;
+      });
+    }
+  }
+
+  Widget _address(String label, String url, String key) => ListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(label),
+        subtitle: SelectableText(url, key: ValueKey('$key-url')),
+        trailing: IconButton(
+          key: ValueKey('copy-$key'),
+          tooltip: 'Copy',
+          icon: const Icon(Icons.copy),
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: url));
+            if (mounted) showInfo(context, 'Copied');
+          },
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
     final provider = providerById(_f.providerId);
+    final entry = widget.entry;
+    final t = Theme.of(context);
+    final set = entry == null ? const <String, GatewaySecretState>{} : ref.watch(gatewaySecretStatusProvider).value?[entry.id] ?? const {};
     return FormDialogScaffold(
-      title: widget.entry == null ? 'Add ${provider?.name ?? 'Gateway'}' : 'Edit Gateway',
+      title: entry == null ? 'Add ${provider?.name ?? 'Gateway'}' : (widget.canEdit ? 'Edit Gateway' : 'Gateway'),
       error: _error,
       onSave: () {
-        final r = buildGatewayValues(_f, existing: widget.entry?.values);
+        if (!widget.canEdit) return Navigator.pop(context);
+        final r = buildGatewayValues(_f, existing: entry?.values);
         if (r.error != null) return setState(() => _error = r.error);
         Navigator.pop(context, r.values);
       },
       children: [
-        if (provider != null) Text(provider.description, style: Theme.of(context).textTheme.bodySmall),
+        if (provider != null) Text(provider.description, style: t.textTheme.bodySmall),
         const SizedBox(height: 12),
         InputDecorator(
           decoration: const InputDecoration(labelText: 'Provider', prefixIcon: Icon(Icons.credit_card)),
           child: Text(provider?.name ?? 'Unknown provider (${_f.providerId})'),
         ),
+        if (provider != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              '${chargeSupportLabel(provider.charging)}. ${chargeSupportAbout(provider.charging)}',
+              key: const ValueKey('gateway-charging'),
+              style: t.textTheme.bodySmall?.copyWith(
+                color: provider.charging == ChargeSupport.checked ? t.colorScheme.onSurfaceVariant : t.colorScheme.tertiary,
+              ),
+            ),
+          ),
         const SizedBox(height: 12),
         TextFormField(
           initialValue: _f.accountName,
+          enabled: widget.canEdit,
           decoration: const InputDecoration(labelText: 'Account name *', hintText: 'e.g. Stripe MY Live'),
           onChanged: (v) => _f.accountName = v,
         ),
         const SectionLabel('Mode'),
-        ChoiceRow(options: gatewayModes, value: _f.mode, onChanged: (m) => setState(() => _f.mode = m)),
+        ChoiceRow(
+          options: gatewayModes,
+          value: _f.mode,
+          onChanged: (m) => widget.canEdit ? setState(() => _f.mode = m) : null,
+        ),
         if (provider != null) ...[
           SectionLabel('Credentials', icon: Icons.vpn_key_outlined, trailing: Text('${provider.publicFields.length} public')),
           for (final f in provider.publicFields)
@@ -484,34 +679,147 @@ class _GatewayFormState extends State<_GatewayForm> {
               padding: const EdgeInsets.only(bottom: 12),
               child: TextFormField(
                 initialValue: _f.credentials[f.key] ?? '',
+                enabled: widget.canEdit,
                 decoration: InputDecoration(labelText: '${f.label}${f.optional ? '' : ' *'}', hintText: f.placeholder),
                 onChanged: (v) => _f.credentials[f.key] = v,
               ),
             ),
-          if (provider.secretFields.isNotEmpty)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.lock_outline),
-                title: const Text('Server-side secrets'),
-                subtitle: Text('${provider.secretFields.map((f) => f.label).join(', ')} must be configured as '
-                    'server-side secrets, not in this client-readable record.'),
-              ),
+          if (provider.secretFields.isNotEmpty) ...[
+            SectionLabel('Secret keys', icon: Icons.lock_outline,
+                trailing: Text('${set.length} of ${provider.secretFields.length} set')),
+            Text(
+              entry == null
+                  ? 'Save the account first, then open it again to set its secret keys.'
+                  : 'Saved at once, to the server\'s vault. They are never shown again: replace one to change it.',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
             ),
+            for (final f in provider.secretFields)
+              ListTile(
+                key: ValueKey('secret-${f.key}'),
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(set.containsKey(f.key) ? Icons.lock : Icons.lock_open_outlined,
+                    color: set.containsKey(f.key) ? t.colorScheme.primary : (f.optional ? null : t.colorScheme.error)),
+                title: Text('${f.label}${f.optional ? ' (optional)' : ' *'}'),
+                subtitle: Text(secretStatusLine(set[f.key]), key: ValueKey('secret-status-${f.key}')),
+                trailing: entry == null || !widget.canEdit
+                    ? null
+                    : Wrap(spacing: 4, children: [
+                        TextButton(
+                          key: ValueKey('secret-set-${f.key}'),
+                          onPressed: () => _setSecret(f, set.containsKey(f.key)),
+                          child: Text(set.containsKey(f.key) ? 'Replace' : 'Set'),
+                        ),
+                        if (set.containsKey(f.key))
+                          IconButton(
+                            key: ValueKey('secret-clear-${f.key}'),
+                            tooltip: 'Clear',
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () => _clearSecret(f),
+                          ),
+                      ]),
+              ),
+          ],
+          if (entry != null) ...[
+            const SectionLabel('Addresses to paste at the provider', icon: Icons.link),
+            _address(provider.dashboardUrls ? 'Callback URL' : 'Webhook / callback URL',
+                gatewayWebhookUrl(widget.supabaseUrl, provider.id, entry.id), 'webhook'),
+            if (provider.dashboardUrls)
+              _address('Return URL', gatewayReturnUrl(widget.supabaseUrl, provider.id, entry.id), 'return'),
+            if (!provider.dashboardUrls)
+              Text('The payer\'s return address is sent with each payment; nothing to set for it.',
+                  style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+            if (widget.canEdit) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  key: const ValueKey('gateway-test'),
+                  onPressed: _testing ? null : () => _runTest(provider),
+                  icon: _testing
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.network_check),
+                  label: const Text('Test connection'),
+                ),
+              ),
+              if (_test != null) Padding(padding: const EdgeInsets.only(top: 8), child: GatewayTestResultView(_test!)),
+            ],
+          ],
         ],
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Active'),
           value: _f.active,
-          onChanged: (v) => setState(() => _f.active = v),
+          onChanged: widget.canEdit ? (v) => setState(() => _f.active = v) : null,
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Default gateway'),
-          subtitle: const Text('Used when an order or fee has no specific gateway account.'),
+          subtitle: const Text('Takes a payment no account is chosen for (see "Which account takes which payment").'),
           value: _f.isDefault,
-          onChanged: (v) => setState(() => _f.isDefault = v),
+          onChanged: widget.canEdit ? (v) => setState(() => _f.isDefault = v) : null,
         ),
       ],
     );
   }
+}
+
+/// Types one secret. It is sent once and never shown again.
+class _SecretDialog extends StatefulWidget {
+  const _SecretDialog({required this.field, required this.replace});
+  final CredentialField field;
+  final bool replace;
+
+  @override
+  State<_SecretDialog> createState() => _SecretDialogState();
+}
+
+class _SecretDialogState extends State<_SecretDialog> {
+  final _c = TextEditingController();
+  bool _show = false;
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text('${widget.replace ? 'Replace' : 'Set'} ${widget.field.label}'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          TextField(
+            key: const ValueKey('secret-value'),
+            controller: _c,
+            autofocus: true,
+            obscureText: !_show,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              labelText: widget.field.label,
+              hintText: widget.field.placeholder,
+              suffixIcon: IconButton(
+                tooltip: _show ? 'Hide' : 'Show',
+                icon: Icon(_show ? Icons.visibility_off : Icons.visibility),
+                onPressed: () => setState(() => _show = !_show),
+              ),
+            ),
+            onSubmitted: (v) => Navigator.pop(context, v),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.replace
+                ? 'The one set now is replaced. Neither can be read back.'
+                : 'It is saved to the server\'s vault and can\'t be read back.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('secret-save'),
+            onPressed: () => Navigator.pop(context, _c.text),
+            child: const Text('Save'),
+          ),
+        ],
+      );
 }

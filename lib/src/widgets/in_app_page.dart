@@ -64,6 +64,54 @@ Future<void> _open(BuildContext context, String link, {String? title, required b
   if (!ok && context.mounted) _couldNotOpen(context, url);
 }
 
+/// A payment provider's checkout: its hosted page ([url]) or, for a provider
+/// whose page is opened by posting a form ([form], iPay88), that form. Inside
+/// the app on Android and iOS, closing by itself once the page reaches one
+/// of [closeOn] (the `payments` function's return pages); elsewhere in the
+/// browser. Returns when the payer is back.
+Future<void> openPaymentPage(
+  BuildContext context, {
+  String? url,
+  ({String action, Map<String, String> fields})? form,
+  List<String> closeOn = const [],
+  String title = 'Payment',
+}) async {
+  if (webViewSupported) {
+    await Navigator.of(context, rootNavigator: true).push(AppPageRoute<void>(
+      id: 'in-app.payment-page',
+      builder: (_) => WebPageScreen(
+        url: url ?? form!.action,
+        title: title,
+        html: form == null ? null : paymentFormHtml(form.action, form.fields),
+        closeOn: closeOn,
+      ),
+    ));
+    return;
+  }
+  if (url == null) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('This payment method opens in the GET.ride phone app.')),
+    );
+    return;
+  }
+  var ok = false;
+  try {
+    ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  } catch (_) {}
+  if (!ok && context.mounted) _couldNotOpen(context, url);
+}
+
+/// A page that posts [fields] to [action] as soon as it loads.
+String paymentFormHtml(String action, Map<String, String> fields) {
+  String esc(String s) =>
+      s.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  final inputs = fields.entries.map((e) => '<input type="hidden" name="${esc(e.key)}" value="${esc(e.value)}">').join();
+  return '<!doctype html><html><head><meta charset="utf-8">'
+      '<meta name="viewport" content="width=device-width, initial-scale=1"></head>'
+      '<body onload="document.forms[0].submit()"><p style="font-family:sans-serif">Opening the payment page…</p>'
+      '<form method="post" action="${esc(action)}">$inputs</form></body></html>';
+}
+
 void _couldNotOpen(BuildContext context, String url) =>
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Could not open $url')));
 
@@ -74,10 +122,24 @@ bool get webViewSupported =>
 /// A web page inside the app. Back steps back through the page's own history
 /// first, then leaves the screen.
 class WebPageScreen extends StatefulWidget {
-  const WebPageScreen({super.key, required this.url, required this.title, this.javascript = true});
+  const WebPageScreen({
+    super.key,
+    required this.url,
+    required this.title,
+    this.javascript = true,
+    this.html,
+    this.closeOn = const [],
+  });
 
   final String url;
   final String title;
+
+  /// A page to show instead of loading [url] (a payment form that posts itself).
+  final String? html;
+
+  /// The screen closes once a page whose address starts with one of these
+  /// has loaded (a payment's return page).
+  final List<String> closeOn;
 
   /// Off for a file from somebody else's record: it is shown, not run.
   final bool javascript;
@@ -110,7 +172,16 @@ class _WebPageScreenState extends State<WebPageScreen> {
           onProgress: (p) {
             if (mounted) setState(() => _progress = p);
           },
-          onPageFinished: (_) => unawaited(_syncCanGoBack()),
+          onPageFinished: (url) {
+            if (widget.closeOn.any((p) => p.isNotEmpty && url.startsWith(p))) {
+              if (mounted && !_closed) {
+                _closed = true;
+                Navigator.of(context).pop();
+              }
+              return;
+            }
+            unawaited(_syncCanGoBack());
+          },
           onUrlChange: (_) => unawaited(_syncCanGoBack()),
           // A link on the page to a call, an email or another app goes to
           // that app; everything on the web stays here.
@@ -123,9 +194,16 @@ class _WebPageScreenState extends State<WebPageScreen> {
             return NavigationDecision.navigate;
           },
         ),
-      )
-      ..loadRequest(Uri.parse(widget.url));
+      );
+    if (widget.html != null) {
+      _web.loadHtmlString(widget.html!);
+    } else {
+      _web.loadRequest(Uri.parse(widget.url));
+    }
   }
+
+  /// Closed itself on a return page (once: the page may finish twice).
+  bool _closed = false;
 
   Future<void> _back() async {
     if (await _web.canGoBack()) {
