@@ -11,6 +11,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../config.dart' show AppConfig;
+import '../../../core/format.dart' show formatMoney;
+import '../../../core/option_charge.dart';
+import '../../../core/ride_assistance.dart';
+import '../../../core/ride_option_settings.dart';
+import '../../../core/ride_pets.dart';
+import '../../../core/trip_charges.dart' show parseChargeAmount;
+import '../../../core/profile_identity.dart' show homeCountry;
+import '../geo/geo_data.dart' show regionsProvider;
+import '../geo/geo_logic.dart' show RegionEntry, RegionLevel, regionCurrency;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
@@ -315,6 +325,8 @@ class _DisplayBody extends ConsumerWidget {
               sheetMin(confirmSheetMinAdjustKey),
             ]),
           ),
+          const _Section('Ride Options'),
+          RideOptionsCard(settings: s, canEdit: canEdit),
           const _Section('Ride Tracking Layout'),
           Card(
             child: Column(children: [
@@ -1087,4 +1099,980 @@ class _MenuItemDialogState extends State<_MenuItemDialog> {
           ),
         ],
       );
+}
+
+// ---------------------------------------------------------------------------
+// Ride Options
+// ---------------------------------------------------------------------------
+
+/// An amount for a charge in [currency], as the admin sees it.
+String _rideOptionMoney(double v, String currency) => formatMoney(v, currency, v == v.roundToDouble() ? 0 : 2);
+
+/// The country whose currency the option charges are shown in on these
+/// pages: the home country until the admin picks another. Each country's
+/// riders pay the amounts in its own currency (no conversion).
+class _ChargeCountry extends Notifier<String> {
+  @override
+  String build() => homeCountry;
+
+  void set(String country) => state = country;
+}
+
+final _chargeCountryProvider = NotifierProvider<_ChargeCountry, String>(_ChargeCountry.new);
+
+/// The currency of the country being viewed (Country information), else
+/// the app's default.
+String _chargeCurrency(WidgetRef ref) {
+  final regions = ref.watch(regionsProvider).value ?? const <RegionEntry>[];
+  return regionCurrency(regions, ref.watch(_chargeCountryProvider)) ?? AppConfig.currency;
+}
+
+/// "Amounts in MYR (Malaysia)", with Change to view another country's.
+class _ChargeCurrencyBar extends ConsumerWidget {
+  const _ChargeCurrencyBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context);
+    final country = ref.watch(_chargeCountryProvider);
+    final currency = _chargeCurrency(ref);
+    final regions = ref.watch(regionsProvider).value ?? const <RegionEntry>[];
+    final countries = {
+      for (final r in regions)
+        if (r.level == RegionLevel.country && r.country.trim().isNotEmpty) r.country.trim(),
+    }.toList()
+      ..sort();
+    return Card(
+      child: ListTile(
+        key: const ValueKey('charge-currency'),
+        leading: const Icon(Icons.payments_outlined),
+        title: Text('Amounts in $currency ($country)', key: const ValueKey('charge-currency-label')),
+        subtitle: Text(
+          "Riders in each country pay the amounts in that country's currency, as their fares are. Nothing is converted.",
+          style: t.textTheme.bodySmall,
+        ),
+        trailing: countries.length < 2
+            ? null
+            : TextButton(
+                key: const ValueKey('charge-currency-change'),
+                onPressed: () async {
+                  final picked = await showSearchPicker<String>(
+                    context,
+                    title: 'Show amounts for',
+                    selected: country,
+                    choices: [
+                      for (final c in countries)
+                        (value: c, label: c, subtitle: regionCurrency(regions, c), leading: null),
+                    ],
+                  );
+                  if (picked != null) ref.read(_chargeCountryProvider.notifier).set(picked);
+                },
+                child: const Text('Change'),
+              ),
+      ),
+    );
+  }
+}
+
+/// One line of text in a dialog: the trimmed text when saved, null when
+/// cancelled.
+class _TextDialog extends StatefulWidget {
+  const _TextDialog({required this.title, required this.label, required this.initial, this.helper, this.problem});
+  final String title;
+  final String label;
+  final String initial;
+  final String? helper;
+  final String? Function(String)? problem;
+
+  @override
+  State<_TextDialog> createState() => _TextDialogState();
+}
+
+class _TextDialogState extends State<_TextDialog> {
+  late final _text = TextEditingController(text: widget.initial);
+  String? _error;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final e = widget.problem?.call(_text.text);
+    if (e != null) return setState(() => _error = e);
+    Navigator.pop(context, _text.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.title),
+        content: SizedBox(
+          width: 420,
+          child: TextField(
+            key: const ValueKey('text-dialog-field'),
+            controller: _text,
+            autofocus: true,
+            decoration: InputDecoration(labelText: widget.label, helperText: widget.helper, errorText: _error),
+            onSubmitted: (_) => _save(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(key: const ValueKey('text-dialog-save'), onPressed: _save, child: const Text('Save')),
+        ],
+      );
+}
+
+/// Up and down arrows for a row that can be moved.
+Widget _moveArrows({required String key, VoidCallback? up, VoidCallback? down}) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        InkWell(key: ValueKey('$key-up'), onTap: up, child: const Icon(Icons.keyboard_arrow_up, size: 20)),
+        InkWell(key: ValueKey('$key-down'), onTap: down, child: const Icon(Icons.keyboard_arrow_down, size: 20)),
+      ],
+    );
+
+/// Admin → Display Settings → Ride Options: each option on the rider's
+/// Options sheet shown or hidden, renamed and moved, with its own settings
+/// under it. With every option hidden the Options button goes.
+class RideOptionsCard extends ConsumerWidget {
+  const RideOptionsCard({super.key, required this.settings, required this.canEdit});
+  final Map<String, dynamic> settings;
+  final bool canEdit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context);
+    final c = rideOptionsOf(settings);
+    final pets = petConfigOf(settings);
+    final help = assistanceOf(settings);
+    final rules = OptionChargeRules.fromSettings(settings);
+    final muted = mutedTextColor(t, background: cardSurfaceColor(t));
+    Future<void> edit(DisplayEdit e) => applyDisplay(context, ref, e);
+
+    Widget settingsRow(String key, String title, String subtitle, VoidCallback onTap) => ListTile(
+          key: ValueKey(key),
+          contentPadding: const EdgeInsets.only(left: 56, right: 16),
+          title: Text(title),
+          subtitle: Text(subtitle),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: onTap,
+        );
+
+    return Card(
+      key: const ValueKey('ride-options-card'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(
+            'The options riders pick beside Find a driver. Switch one off to hide it, use the arrows to reorder and '
+            'the pencil to rename it; riders and drivers both see the new name. Comments always stays, so the '
+            'Options button is always there.',
+            style: t.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+        ),
+        for (var i = 0; i < c.order.length; i++) ...[
+          if (i > 0) const Divider(height: 1),
+          () {
+            final k = c.order[i];
+            final renamed = c.labels.containsKey(k);
+            return ListTile(
+              key: ValueKey('ride-option-${k.id}'),
+              leading: _moveArrows(
+                key: 'ride-option-${k.id}',
+                up: !canEdit || i == 0 ? null : () => edit((x) => moveRideOption(x, k, -1)),
+                down: !canEdit || i == c.order.length - 1 ? null : () => edit((x) => moveRideOption(x, k, 1)),
+              ),
+              title: Text(c.labelOf(k), key: ValueKey('ride-option-label-${k.id}')),
+              subtitle: renamed ? Text('Built-in name: ${k.defaultLabel}') : null,
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (canEdit)
+                  BusyIconButton(
+                    key: ValueKey('ride-option-rename-${k.id}'),
+                    tooltip: 'Rename',
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: () async {
+                      final name = await showAppDialog<String>(id: 'display.rename-ride-option',
+                        context: context,
+                        builder: (_) => _TextDialog(
+                          title: 'Rename option',
+                          label: 'Name riders see',
+                          initial: c.labelOf(k),
+                          helper: 'Leave it empty for "${k.defaultLabel}".',
+                          problem: (v) => v.trim().length > RideOptionsConfig.labelMax
+                              ? 'Keep it under ${RideOptionsConfig.labelMax} characters.'
+                              : null,
+                        ),
+                      );
+                      if (name != null && context.mounted) await edit((x) => renameRideOption(x, k, name));
+                    },
+                  ),
+                BusySwitch(
+                  key: ValueKey('ride-option-shown-${k.id}'),
+                  value: c.isShown(k),
+                  onChanged: canEdit ? (v) => edit((x) => setRideOptionShown(x, k, v)) : null,
+                ),
+              ]),
+            );
+          }(),
+          if (c.order[i] == RideOptionKind.childSeat)
+            Padding(
+              padding: const EdgeInsets.only(left: 40),
+              child: KeyedSubtree(
+                key: const ValueKey('child-seat-max'),
+                child: _StepperTile(
+                  label: 'Most seats a rider can ask for',
+                  description: 'Above 1 the rider picks how many seats instead of a switch; the driver sees the '
+                      'number (1-${RideOptionsConfig.childSeatLimit})',
+                  value: c.childSeatMax,
+                  min: 1,
+                  max: RideOptionsConfig.childSeatLimit,
+                  step: 1,
+                  onChanged: canEdit ? (v) => edit((x) => setChildSeatMax(x, v)) : null,
+                ),
+              ),
+            ),
+          if (c.order[i] == RideOptionKind.pet)
+            settingsRow(
+              'ride-option-pet-settings',
+              'Pet types, sizes and charges',
+              '${pets.types.length} ${pets.types.length == 1 ? 'type' : 'types'} · sizes ${pets.sizes.join(', ')} · '
+                  'up to ${pets.maxPerType} of a type · photo ${pets.photoRequired ? 'required' : 'optional'}',
+              () => Navigator.of(context).push(AppPageRoute(id: 'display.pet-options',
+                builder: (_) => const PetOptionsScreen(),
+              )),
+            ),
+          if (c.order[i] == RideOptionKind.assistance)
+            settingsRow(
+              'ride-option-assistance-settings',
+              'Help offered and charges',
+              '${help.items.length} ${help.items.length == 1 ? 'item' : 'items'}, ${help.visible.length} shown',
+              () => Navigator.of(context).push(AppPageRoute(id: 'display.assistance-options',
+                builder: (_) => const AssistanceOptionsScreen(),
+              )),
+            ),
+        ],
+        const Divider(height: 1),
+        // Comments can't be hidden: riders can always write to the driver.
+        const ListTile(
+          key: ValueKey('ride-option-comments'),
+          leading: SizedBox(width: 20),
+          title: Text('Comments'),
+          subtitle: Text('Always shown: riders can always leave the driver a note'),
+          trailing: Icon(Icons.lock_outline),
+        ),
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Text('Charges', style: t.textTheme.titleSmall),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+          child: Text(
+            'Pet and assistance charges are set under each option and are part of the fare.',
+            style: t.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+        ),
+        BusySwitchListTile(
+          key: const ValueKey('option-charges-commission'),
+          title: const Text('Commission applies to option charges'),
+          subtitle: const Text('Off: commission is worked out on the fare less the pet and assistance charges'),
+          value: rules.commission,
+          onChanged: canEdit ? (v) => edit((x) => setOptionChargeRules(x, commission: v)) : null,
+        ),
+        BusySwitchListTile(
+          key: const ValueKey('option-charges-promo'),
+          title: const Text('Promo codes discount option charges'),
+          subtitle: const Text('Off: a promo code discounts the fare less the pet and assistance charges'),
+          value: rules.promo,
+          onChanged: canEdit ? (v) => edit((x) => setOptionChargeRules(x, promo: v)) : null,
+        ),
+      ]),
+    );
+  }
+}
+
+/// Pet types (add, rename, remove, reorder; names only), the sizes offered
+/// and their extras, the most of one type, whether a photo is a must, and
+/// each type's charge. Writes PetConfig's keys.
+class PetOptionsScreen extends ConsumerWidget {
+  const PetOptionsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = ref.watch(pageAccessProvider(displayPage)) == AccessLevel.edit;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pet with me')),
+      body: AsyncView(
+        value: ref.watch(displaySettingsProvider),
+        onRetry: () => ref.invalidate(displaySettingsProvider),
+        data: (s) {
+          final t = Theme.of(context);
+          final c = petConfigOf(s);
+          final currency = _chargeCurrency(ref);
+          String money(double v) => _rideOptionMoney(v, currency);
+          Future<void> edit(DisplayEdit e) => applyDisplay(context, ref, e);
+          String chargeText(PetCharge p) => p.isZero
+              ? 'No charge'
+              : '${p.charge.describe(money)} ${p.perPet ? 'per pet' : 'per ride'}';
+          return ListView(padding: const EdgeInsets.symmetric(vertical: 16), children: [
+            ResponsiveCenter(
+              maxWidth: 820,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const _ChargeCurrencyBar(),
+                const _Section('Pet types'),
+                Card(
+                  child: ListSearchFilter(
+                    count: c.types.length,
+                    hint: 'Search pet types',
+                    fieldKey: const ValueKey('pet-types-search'),
+                    builder: (context, q) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      for (var i = 0; i < c.types.length; i++)
+                        if (q.isEmpty || c.types[i].toLowerCase().contains(q.toLowerCase()))
+                          ListTile(
+                            key: ValueKey('pet-type-${c.types[i]}'),
+                            leading: _moveArrows(
+                              key: 'pet-type-${c.types[i]}',
+                              up: !canEdit || i == 0 ? null : () => edit((x) => movePetType(x, c.types[i], -1)),
+                              down: !canEdit || i == c.types.length - 1
+                                  ? null
+                                  : () => edit((x) => movePetType(x, c.types[i], 1)),
+                            ),
+                            title: Text(c.types[i]),
+                            subtitle: Text(chargeText(c.chargeFor(c.types[i]))),
+                            trailing: canEdit
+                                ? Row(mainAxisSize: MainAxisSize.min, children: [
+                                    BusyIconButton(
+                                      key: ValueKey('pet-type-edit-${c.types[i]}'),
+                                      tooltip: 'Edit',
+                                      icon: const Icon(Icons.edit_outlined),
+                                      onPressed: () async {
+                                        final type = c.types[i];
+                                        final r = await _editPetType(context, c, currency, type: type);
+                                        if (r != null && context.mounted) {
+                                          await edit((x) => updatePetType(x, type, name: r.name, charge: r.charge));
+                                        }
+                                      },
+                                    ),
+                                    BusyIconButton(
+                                      key: ValueKey('pet-type-remove-${c.types[i]}'),
+                                      tooltip: 'Remove',
+                                      icon: const Icon(Icons.delete_outline),
+                                      onPressed: c.types.length <= 1
+                                          ? null
+                                          : () async {
+                                              final type = c.types[i];
+                                              if (!await confirm(context, 'Remove pet type', 'Remove "$type"?',
+                                                  ok: 'Remove')) {
+                                                return;
+                                              }
+                                              if (context.mounted) await edit((x) => removePetType(x, type));
+                                            },
+                                    ),
+                                  ])
+                                : null,
+                          ),
+                    ]),
+                  ),
+                ),
+                if (canEdit)
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: BusyButton.text(
+                      key: const ValueKey('pet-type-add'),
+                      icon: const Icon(Icons.add),
+                      onPressed: c.types.length >= PetConfig.maxTypes
+                          ? null
+                          : () async {
+                              final r = await _editPetType(context, c, currency);
+                              if (r != null && context.mounted) {
+                                await edit((x) => addPetType(x, r.name, charge: r.charge));
+                              }
+                            },
+                      child: const Text('Add pet type'),
+                    ),
+                  ),
+                const _Section('Sizes'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Text('Sizes offered', style: t.textTheme.labelLarge),
+                      const SizedBox(height: 6),
+                      Wrap(spacing: 8, runSpacing: 8, children: [
+                        for (final z in PetConfig.defaultSizes)
+                          FilterChip(
+                            key: ValueKey('pet-size-offered-$z'),
+                            label: Text(z),
+                            selected: c.sizes.contains(z),
+                            onSelected: canEdit ? (v) => edit((x) => setPetSizeOffered(x, z, v)) : null,
+                          ),
+                      ]),
+                      const SizedBox(height: 8),
+                      Text(
+                        'An extra by size is added for each pet of that size, on top of its type\'s charge.',
+                        style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t, background: cardSurfaceColor(t))),
+                      ),
+                      for (final z in c.sizes)
+                        ListTile(
+                          key: ValueKey('pet-size-extra-$z'),
+                          contentPadding: EdgeInsets.zero,
+                          title: Text('Extra for size $z'),
+                          trailing: Text(
+                            c.sizeExtraFor(z) > 0 ? '+${money(c.sizeExtraFor(z))}' : 'None',
+                            key: ValueKey('pet-size-extra-value-$z'),
+                          ),
+                          enabled: canEdit,
+                          onTap: () async {
+                            final v = await showAppDialog<String>(id: 'display.pet-size-extra',
+                              context: context,
+                              builder: (_) => _TextDialog(
+                                title: 'Extra for size $z',
+                                label: 'Amount ($currency)',
+                                initial: c.sizeExtraFor(z) > 0 ? trimNumber(c.sizeExtraFor(z)) : '',
+                                helper: 'Empty or 0 for none.',
+                                problem: _amountProblem,
+                              ),
+                            );
+                            if (v != null && context.mounted) {
+                              await edit((x) => setPetSizeExtra(x, z, parseChargeAmount(v) ?? 0));
+                            }
+                          },
+                        ),
+                    ]),
+                  ),
+                ),
+                const _Section('Pets on a ride'),
+                Card(
+                  child: Column(children: [
+                    KeyedSubtree(
+                      key: const ValueKey('pet-max-per-type'),
+                      child: _StepperTile(
+                        label: 'Most pets of one type',
+                        description: 'How many of one type a rider can bring (1-${PetConfig.maxPerTypeLimit})',
+                        value: c.maxPerType,
+                        min: 1,
+                        max: PetConfig.maxPerTypeLimit,
+                        step: 1,
+                        onChanged: canEdit ? (v) => edit((x) => setPetMaxPerType(x, v)) : null,
+                      ),
+                    ),
+                    BusySwitchListTile(
+                      key: const ValueKey('pet-photo-required'),
+                      title: const Text('Photo of each pet required'),
+                      subtitle: const Text('When on, Done waits for a photo of every pet'),
+                      value: c.photoRequired,
+                      onChanged: canEdit ? (v) => edit((x) => setPetPhotoRequired(x, v)) : null,
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 32),
+              ]),
+            ),
+          ]);
+        },
+      ),
+    );
+  }
+}
+
+String? _amountProblem(String v) {
+  final n = parseChargeAmount(v);
+  if (n == null) return 'Enter an amount, e.g. 2.50.';
+  if (n > OptionCharge.maxAmount) return 'At most ${OptionCharge.maxAmount.toStringAsFixed(0)}.';
+  return null;
+}
+
+/// A pet type as its dialog hands it back.
+typedef _PetTypeEdit = ({String name, PetCharge charge});
+
+/// The pet type dialog: a name and its charge. Null when cancelled.
+Future<_PetTypeEdit?> _editPetType(BuildContext context, PetConfig c, String currency, {String? type}) =>
+    showAppDialog<_PetTypeEdit>(id: 'display.pet-type',
+      context: context,
+      builder: (_) => _PetTypeDialog(config: c, currency: currency, type: type),
+    );
+
+class _PetTypeDialog extends StatefulWidget {
+  const _PetTypeDialog({required this.config, required this.currency, this.type});
+  final PetConfig config;
+  final String currency;
+  final String? type;
+
+  @override
+  State<_PetTypeDialog> createState() => _PetTypeDialogState();
+}
+
+class _PetTypeDialogState extends State<_PetTypeDialog> {
+  late final PetCharge _start = widget.type == null ? PetCharge.none : widget.config.chargeFor(widget.type!);
+  late final _name = TextEditingController(text: widget.type ?? '');
+  late final _amount = TextEditingController(text: _start.isZero ? '' : trimNumber(_start.charge.value));
+  late OptionChargeKind _kind = _start.charge.kind;
+  late bool _perPet = _start.perPet;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _amount.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final others = [for (final o in widget.config.types) if (o != widget.type) o];
+    final problem = petTypeProblem(_name.text, others) ?? _chargeProblem(_amount.text, _kind);
+    if (problem != null) return setState(() => _error = problem);
+    final v = parseChargeAmount(_amount.text) ?? 0;
+    Navigator.pop(context, (
+      name: cleanPetTypeName(_name.text),
+      charge: PetCharge(charge: OptionCharge(kind: _kind, value: v), perPet: _perPet),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.type == null ? 'Add pet type' : 'Edit pet type'),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              TextField(
+                key: const ValueKey('pet-type-name'),
+                controller: _name,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. Bird', helperText: 'A name only, no emoji'),
+              ),
+              const SizedBox(height: 16),
+              _ChargeFields(
+                amount: _amount,
+                kind: _kind,
+                onKind: (k) => setState(() => _kind = k),
+                fieldKey: const ValueKey('pet-type-charge'),
+                currency: widget.currency,
+              ),
+              const SizedBox(height: 12),
+              SegmentedButton<bool>(
+                key: const ValueKey('pet-type-per'),
+                segments: const [
+                  ButtonSegment(value: true, label: Text('Per pet')),
+                  ButtonSegment(value: false, label: Text('Once per ride')),
+                ],
+                selected: {_perPet},
+                onSelectionChanged: (v) => setState(() => _perPet = v.first),
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                ),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(key: const ValueKey('pet-type-save'), onPressed: _save, child: const Text('Save')),
+        ],
+      );
+}
+
+String? _chargeProblem(String amount, OptionChargeKind kind) {
+  final n = parseChargeAmount(amount);
+  if (n == null) return 'Enter the charge as a number, e.g. 5.';
+  if (kind == OptionChargeKind.percent && n > OptionCharge.maxPercent) return 'A percentage is at most 100%.';
+  if (n > OptionCharge.maxAmount) return 'A charge is at most ${OptionCharge.maxAmount.toStringAsFixed(0)}.';
+  return null;
+}
+
+/// A charge: a fixed amount or a percentage of the fare, and how much.
+class _ChargeFields extends StatelessWidget {
+  const _ChargeFields({
+    required this.amount,
+    required this.kind,
+    required this.onKind,
+    required this.fieldKey,
+    required this.currency,
+  });
+  final TextEditingController amount;
+  final OptionChargeKind kind;
+  final ValueChanged<OptionChargeKind> onKind;
+  final Key fieldKey;
+  final String currency;
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SegmentedButton<OptionChargeKind>(
+            segments: const [
+              ButtonSegment(value: OptionChargeKind.fixed, label: Text('Fixed amount')),
+              ButtonSegment(value: OptionChargeKind.percent, label: Text('% of the fare')),
+            ],
+            selected: {kind},
+            onSelectionChanged: (v) => onKind(v.first),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: fieldKey,
+            controller: amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: kind == OptionChargeKind.percent ? 'Charge (%)' : 'Charge ($currency)',
+              helperText: 'Empty or 0 for no charge',
+            ),
+          ),
+        ],
+      );
+}
+
+/// The assistance catalogue: every kind of help offered, by group, each
+/// with an emoji, a name, a short description, optional choices and a
+/// charge; added, edited, hidden, reordered and removed here.
+class AssistanceOptionsScreen extends ConsumerWidget {
+  const AssistanceOptionsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = ref.watch(pageAccessProvider(displayPage)) == AccessLevel.edit;
+    final value = ref.watch(displaySettingsProvider);
+    final add = canEdit
+        ? PageAddAction(
+            icon: const Icon(Icons.add),
+            label: const Text('Add help'),
+            onPressed: () async {
+              final s = value.value;
+              if (s == null) return;
+              final item = await _editAssistanceItem(context, assistanceOf(s), _chargeCurrency(ref));
+              if (item != null && context.mounted) await applyDisplay(context, ref, (x) => addAssistanceItem(x, item));
+            },
+          )
+        : null;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Assistance required'), actions: pageAddActions(context, add)),
+      floatingActionButton: pageAddFab(context, add),
+      body: AsyncView(
+        value: value,
+        onRetry: () => ref.invalidate(displaySettingsProvider),
+        data: (s) {
+          final t = Theme.of(context);
+          final muted = mutedTextColor(t, background: cardSurfaceColor(t));
+          final c = assistanceOf(s);
+          final currency = _chargeCurrency(ref);
+          String money(double v) => _rideOptionMoney(v, currency);
+          Future<void> edit(DisplayEdit e) => applyDisplay(context, ref, e);
+          return ListView(padding: EdgeInsets.fromLTRB(0, 16, 0, addActionListBottomPadding(context)), children: [
+            ResponsiveCenter(
+              maxWidth: 820,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const _ChargeCurrencyBar(),
+                Text(
+                  'What riders can ask for under "Assistance required". Each one shows its emoji on the rider\'s sheet; '
+                  'choices make the rider pick one. A guide or service dog is always free.',
+                  style: t.textTheme.bodySmall,
+                ),
+                if (c.items.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Text('No help offered: the option is hidden from riders until you add some.'),
+                  ),
+                ListSearchFilter(
+                  count: c.items.length,
+                  hint: 'Search help',
+                  fieldKey: const ValueKey('assist-admin-search'),
+                  builder: (context, q) {
+                    final l = q.toLowerCase();
+                    final shown = [
+                      for (final i in c.items)
+                        if (l.isEmpty || i.name.toLowerCase().contains(l) || i.group.toLowerCase().contains(l)) i,
+                    ];
+                    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      for (final g in AssistanceCatalogue.byGroup(shown).entries) ...[
+                        _Section(g.key),
+                        for (final item in g.value)
+                          () {
+                            final inGroup = [for (final i in c.items) if (i.group == item.group) i.id];
+                            final at = inGroup.indexOf(item.id);
+                            return Card(
+                              key: ValueKey('assist-admin-${item.id}'),
+                              child: ListTile(
+                                leading: Text(item.emoji, style: const TextStyle(fontSize: 24)),
+                                title: Text(item.name),
+                                subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  if (item.description.isNotEmpty) Text(item.description),
+                                  if (item.choices.isNotEmpty)
+                                    Text('Choices: ${item.choices.join(' / ')}', style: TextStyle(color: muted)),
+                                  Text(
+                                    item.isGuideDog ? 'Always free' : item.charge.describe(money),
+                                    key: ValueKey('assist-admin-charge-${item.id}'),
+                                    style: TextStyle(color: muted),
+                                  ),
+                                  Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+                                    BusyIconButton(
+                                      key: ValueKey('assist-admin-up-${item.id}'),
+                                      tooltip: 'Move up',
+                                      icon: const Icon(Icons.keyboard_arrow_up),
+                                      onPressed: !canEdit || at <= 0
+                                          ? null
+                                          : () => edit((x) => moveAssistanceItem(x, item.id, -1)),
+                                    ),
+                                    BusyIconButton(
+                                      key: ValueKey('assist-admin-down-${item.id}'),
+                                      tooltip: 'Move down',
+                                      icon: const Icon(Icons.keyboard_arrow_down),
+                                      onPressed: !canEdit || at >= inGroup.length - 1
+                                          ? null
+                                          : () => edit((x) => moveAssistanceItem(x, item.id, 1)),
+                                    ),
+                                    if (canEdit)
+                                      BusyIconButton(
+                                        key: ValueKey('assist-admin-edit-${item.id}'),
+                                        tooltip: 'Edit',
+                                        icon: const Icon(Icons.edit_outlined),
+                                        onPressed: () async {
+                                          final next = await _editAssistanceItem(context, c, currency, item: item);
+                                          if (next != null && context.mounted) {
+                                            await edit((x) => updateAssistanceItem(x, next));
+                                          }
+                                        },
+                                      ),
+                                    if (canEdit)
+                                      BusyIconButton(
+                                        key: ValueKey('assist-admin-remove-${item.id}'),
+                                        tooltip: 'Remove',
+                                        icon: const Icon(Icons.delete_outline),
+                                        onPressed: () async {
+                                          if (!await confirm(context, 'Remove help', 'Remove "${item.name}"? Rides '
+                                              'already booked keep it.', ok: 'Remove')) {
+                                            return;
+                                          }
+                                          if (context.mounted) await edit((x) => removeAssistanceItem(x, item.id));
+                                        },
+                                      ),
+                                  ]),
+                                ]),
+                                trailing: BusySwitch(
+                                  key: ValueKey('assist-admin-shown-${item.id}'),
+                                  value: !item.hidden,
+                                  onChanged: canEdit ? (v) => edit((x) => setAssistanceItemShown(x, item.id, v)) : null,
+                                ),
+                              ),
+                            );
+                          }(),
+                      ],
+                    ]);
+                  },
+                ),
+              ]),
+            ),
+          ]);
+        },
+      ),
+    );
+  }
+}
+
+/// The help item dialog: a new item when [item] is null. Null when
+/// cancelled.
+Future<AssistanceItem?> _editAssistanceItem(
+  BuildContext context,
+  AssistanceCatalogue c,
+  String currency, {
+  AssistanceItem? item,
+}) =>
+    showAppDialog<AssistanceItem>(id: 'display.assistance-item',
+      context: context,
+      builder: (_) => _AssistanceItemDialog(catalogue: c, currency: currency, item: item),
+    );
+
+class _AssistanceItemDialog extends StatefulWidget {
+  const _AssistanceItemDialog({required this.catalogue, required this.currency, this.item});
+  final AssistanceCatalogue catalogue;
+  final String currency;
+  final AssistanceItem? item;
+
+  @override
+  State<_AssistanceItemDialog> createState() => _AssistanceItemDialogState();
+}
+
+class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
+  late final AssistanceItem? _i = widget.item;
+  late final _emoji = TextEditingController(text: _i?.emoji ?? '');
+  late final _name = TextEditingController(text: _i?.name ?? '');
+  late final _description = TextEditingController(text: _i?.description ?? '');
+  late final _newGroup = TextEditingController();
+  late final _amount = TextEditingController(
+    text: _i == null || _i.charge.isZero ? '' : trimNumber(_i.charge.value),
+  );
+  late final List<TextEditingController> _choices = [
+    for (final c in _i?.choices ?? const <String>[]) TextEditingController(text: c),
+  ];
+  late String? _group = _i?.group ?? assistanceDefaultGroups.first;
+  late OptionChargeKind _kind = _i?.charge.kind ?? OptionChargeKind.fixed;
+  String? _error;
+
+  bool get _guideDog => _i?.isGuideDog ?? false;
+
+  /// The groups to pick from: the starting ones and any the admin made.
+  List<String> get _groups => [
+    ...assistanceDefaultGroups,
+    for (final g in widget.catalogue.groups)
+      if (!assistanceDefaultGroups.contains(g)) g,
+  ];
+
+  @override
+  void dispose() {
+    for (final c in [_emoji, _name, _description, _newGroup, _amount, ..._choices]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() {
+    final group = (_group ?? _newGroup.text).trim();
+    final chargeProblem = _guideDog ? null : _chargeProblem(_amount.text, _kind);
+    final choices = <String>[];
+    for (final c in _choices) {
+      final t = c.text.trim();
+      if (t.isNotEmpty && !choices.contains(t)) choices.add(t);
+    }
+    final item = AssistanceItem(
+      id: _i?.id ?? 'custom-${const Uuid().v4().substring(0, 8)}',
+      name: _name.text.trim(),
+      emoji: _emoji.text.trim(),
+      description: _description.text.trim(),
+      group: group,
+      choices: choices,
+      hidden: _i?.hidden ?? false,
+      charge: _guideDog ? OptionCharge.none : OptionCharge(kind: _kind, value: parseChargeAmount(_amount.text) ?? 0),
+    );
+    final problem = chargeProblem ?? assistanceItemProblem(item);
+    if (problem != null) return setState(() => _error = problem);
+    Navigator.pop(context, item);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return AlertDialog(
+      title: Text(_i == null ? 'Add help' : 'Edit help'),
+      content: SizedBox(
+        width: 460,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              SizedBox(
+                width: 72,
+                child: TextField(
+                  key: const ValueKey('assist-emoji'),
+                  controller: _emoji,
+                  maxLength: 8,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 22),
+                  decoration: const InputDecoration(labelText: 'Emoji', counterText: ''),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('assist-name'),
+                  controller: _name,
+                  autofocus: _i == null,
+                  maxLength: assistanceNameMax,
+                  decoration: const InputDecoration(labelText: 'Name', counterText: ''),
+                ),
+              ),
+            ]),
+            TextField(
+              key: const ValueKey('assist-description'),
+              controller: _description,
+              maxLength: assistanceDescriptionMax,
+              decoration: const InputDecoration(labelText: 'Short description', counterText: ''),
+            ),
+            const SizedBox(height: 12),
+            Text('Group', style: t.textTheme.labelLarge),
+            const SizedBox(height: 6),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (final g in _groups)
+                ChoiceChip(
+                  key: ValueKey('assist-group-chip-$g'),
+                  label: Text(g),
+                  selected: _group == g,
+                  onSelected: (_) => setState(() => _group = g),
+                ),
+              ChoiceChip(
+                key: const ValueKey('assist-group-new'),
+                label: const Text('New group'),
+                selected: _group == null,
+                onSelected: (_) => setState(() => _group = null),
+              ),
+            ]),
+            if (_group == null)
+              TextField(
+                key: const ValueKey('assist-group-name'),
+                controller: _newGroup,
+                maxLength: assistanceNameMax,
+                decoration: const InputDecoration(labelText: 'New group name', counterText: ''),
+              ),
+            const SizedBox(height: 12),
+            Text('Choices (optional)', style: t.textTheme.labelLarge),
+            Text(
+              'With choices the rider must pick one, e.g. the kind of wheelchair.',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
+            for (var i = 0; i < _choices.length; i++)
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    key: ValueKey('assist-choice-field-$i'),
+                    controller: _choices[i],
+                    maxLength: assistanceChoiceMax,
+                    decoration: InputDecoration(labelText: 'Choice ${i + 1}', counterText: ''),
+                  ),
+                ),
+                IconButton(
+                  key: ValueKey('assist-choice-remove-$i'),
+                  tooltip: 'Remove choice',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => setState(() => _choices.removeAt(i).dispose()),
+                ),
+              ]),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                key: const ValueKey('assist-choice-add'),
+                icon: const Icon(Icons.add),
+                label: const Text('Add a choice'),
+                onPressed: _choices.length >= 8 ? null : () => setState(() => _choices.add(TextEditingController())),
+              ),
+            ),
+            const SizedBox(height: 8),
+            if (_guideDog)
+              Text(
+                'A guide or service dog is always free.',
+                key: const ValueKey('assist-always-free'),
+                style: t.textTheme.bodyMedium,
+              )
+            else
+              _ChargeFields(
+                amount: _amount,
+                kind: _kind,
+                onKind: (k) => setState(() => _kind = k),
+                fieldKey: const ValueKey('assist-charge'),
+                currency: widget.currency,
+              ),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(_error!, key: const ValueKey('assist-error'), style: TextStyle(color: t.colorScheme.error)),
+              ),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        FilledButton(key: const ValueKey('assist-save'), onPressed: _save, child: const Text('Save')),
+      ],
+    );
+  }
 }

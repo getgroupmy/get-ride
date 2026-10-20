@@ -16,6 +16,8 @@ import '../../core/payment_types.dart';
 import '../../core/route_estimate.dart' show FareTrend, FareTrendDirection;
 import '../../widgets/fare_trend_arrows.dart';
 import '../../core/ride_confirm.dart' show RideOptions;
+import '../../core/ride_assistance.dart' show AssistanceCatalogue, assistanceSummary;
+import '../../core/ride_option_settings.dart';
 import '../../core/ride_pets.dart' show PetConfig, petSummary;
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
@@ -24,6 +26,7 @@ import '../../widgets/map_sheet_layout.dart' show MapSheetReveal;
 import '../../widgets/shake.dart';
 import 'fare_offer_controls.dart';
 import 'home_parts.dart' show uriImage;
+import 'assistance_parts.dart' show showRideAssistanceSheet;
 import 'pet_parts.dart' show showRidePetsSheet;
 import '../../core/page_styles.dart' show fareInfoSurface;
 import '../../widgets/page_style_host.dart';
@@ -1274,6 +1277,7 @@ class ConfirmFooter extends StatelessWidget {
     this.pickLater,
     this.onLater,
     this.owedNote,
+    this.chargesNote,
     this.whoRiding,
     this.myRide,
     this.onOptions,
@@ -1311,6 +1315,10 @@ class ConfirmFooter extends StatelessWidget {
 
   /// Late-cancel fees from earlier bookings, added to this ride.
   final String? owedNote;
+
+  /// What the rider's options add to the fare ("Pet charge RM10 ·
+  /// Assistance charge RM5"); the fares above already include it.
+  final String? chargesNote;
 
   /// A row under the GET.coin one: who's riding (a toggle for someone else).
   final Widget? whoRiding;
@@ -1383,6 +1391,23 @@ class ConfirmFooter extends StatelessWidget {
                       Expanded(
                         child: Text(
                           owedNote!,
+                          style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (chargesNote != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    key: const ValueKey('option-charges-note'),
+                    children: [
+                      Icon(Icons.info_outline, size: 18, color: t.colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          chargesNote!,
                           style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                         ),
                       ),
@@ -1471,8 +1496,11 @@ class ConfirmFooter extends StatelessWidget {
 }
 
 /// The Options sheet from the button beside "Find a driver": a child
-/// safety seat, more than four passengers, a pet (its own Your pets sheet,
-/// [petConfig]) and comments for the driver. Changes apply as they are made
+/// safety seat (a number of them when the admin allows more than one), more
+/// than four passengers, a pet (its own Your pets sheet, [petConfig]),
+/// assistance (its own sheet, [assistance]) and comments for the driver.
+/// [config] (Admin → Display Settings → Ride Options) decides which show,
+/// in what order and under what name. Changes apply as they are made
 /// ([onChanged], and [note] is the confirm screen's own note), so Close and
 /// a swipe down both keep them.
 Future<void> showRideOptionsSheet(
@@ -1481,6 +1509,8 @@ Future<void> showRideOptionsSheet(
   required ValueChanged<RideOptions> onChanged,
   required TextEditingController note,
   PetConfig petConfig = const PetConfig(),
+  RideOptionsConfig config = const RideOptionsConfig(),
+  AssistanceCatalogue assistance = const AssistanceCatalogue(),
 }) => showAppSheet<void>(id: 'confirm.show-ride-options-sheet',
   context: context,
   isScrollControlled: true,
@@ -1488,7 +1518,14 @@ Future<void> showRideOptionsSheet(
   // Close did not fit: the sheet scrolls instead of cutting Close off.
   fitContent: true,
   showDragHandle: false,
-  builder: (_) => _RideOptionsSheet(options: options, onChanged: onChanged, note: note, petConfig: petConfig),
+  builder: (_) => _RideOptionsSheet(
+    options: options,
+    onChanged: onChanged,
+    note: note,
+    petConfig: petConfig,
+    config: config,
+    assistance: assistance,
+  ),
 );
 
 class _RideOptionsSheet extends StatefulWidget {
@@ -1497,11 +1534,15 @@ class _RideOptionsSheet extends StatefulWidget {
     required this.onChanged,
     required this.note,
     required this.petConfig,
+    required this.config,
+    required this.assistance,
   });
   final RideOptions options;
   final ValueChanged<RideOptions> onChanged;
   final TextEditingController note;
   final PetConfig petConfig;
+  final RideOptionsConfig config;
+  final AssistanceCatalogue assistance;
 
   @override
   State<_RideOptionsSheet> createState() => _RideOptionsSheetState();
@@ -1522,6 +1563,106 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
     final pets = await showRidePetsSheet(context, initial: _options.pets, config: widget.petConfig);
     if (pets == null || pets.isEmpty || !mounted) return;
     _set(_options.copyWith(pet: true, pets: pets));
+  }
+
+  /// "Assistance required": as "Pet with me", with its own sheet.
+  Future<void> _assistance({bool? on}) async {
+    if (on == false) return _set(_options.copyWith(clearAssistance: true));
+    final help = await showRideAssistanceSheet(context, initial: _options.assistance, catalogue: widget.assistance);
+    if (help == null || help.isEmpty || !mounted) return;
+    _set(_options.copyWith(assistance: help));
+  }
+
+  /// A summary under an option's name, with Edit.
+  Widget _summary(String text, String key, VoidCallback onEdit) => Row(children: [
+    Expanded(child: Text(text, key: ValueKey('$key-summary'))),
+    TextButton(
+      key: ValueKey('$key-edit'),
+      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+      onPressed: onEdit,
+      child: const Text('Edit'),
+    ),
+  ]);
+
+  Widget _option(BuildContext context, RideOptionKind k) {
+    final c = widget.config;
+    final title = Text(c.labelOf(k));
+    switch (k) {
+      case RideOptionKind.childSeat:
+        if (c.childSeatMax <= 1) {
+          return SwitchListTile(
+            key: const ValueKey('option-child-seat'),
+            contentPadding: EdgeInsets.zero,
+            title: title,
+            value: _options.childSeat,
+            onChanged: (v) => _set(_options.copyWith(childSeat: v, childSeats: 1)),
+          );
+        }
+        // More than one allowed: how many, 0 for none.
+        final n = _options.childSeat ? _options.childSeats.clamp(1, c.childSeatMax) : 0;
+        void count(int v) => _set(_options.copyWith(childSeat: v > 0, childSeats: v < 1 ? 1 : v));
+        return ListTile(
+          key: const ValueKey('option-child-seat'),
+          contentPadding: EdgeInsets.zero,
+          title: title,
+          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+            IconButton(
+              key: const ValueKey('option-child-seat-minus'),
+              tooltip: 'One less',
+              icon: const Icon(Icons.remove_circle_outline),
+              onPressed: n > 0 ? () => count(n - 1) : null,
+            ),
+            SizedBox(
+              width: 24,
+              child: Text(
+                '$n',
+                key: const ValueKey('option-child-seat-count'),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('option-child-seat-plus'),
+              tooltip: 'One more',
+              icon: const Icon(Icons.add_circle_outline),
+              onPressed: n < c.childSeatMax ? () => count(n + 1) : null,
+            ),
+          ]),
+        );
+      case RideOptionKind.morePassengers:
+        return SwitchListTile(
+          key: const ValueKey('option-more-passengers'),
+          contentPadding: EdgeInsets.zero,
+          title: title,
+          value: _options.morePassengers,
+          onChanged: (v) => _set(_options.copyWith(morePassengers: v)),
+        );
+      case RideOptionKind.pet:
+        // As the other options, with the pets' summary and Edit under it
+        // once they are in.
+        return SwitchListTile(
+          key: const ValueKey('option-pet'),
+          contentPadding: EdgeInsets.zero,
+          title: title,
+          subtitle: _options.pet && _options.pets.isNotEmpty
+              ? _summary(petSummary(_options.pets), 'option-pet', _pets)
+              : null,
+          value: _options.pet,
+          onChanged: (v) => _pets(on: v),
+        );
+      case RideOptionKind.assistance:
+        final help = _options.assistance;
+        return SwitchListTile(
+          key: const ValueKey('option-assistance'),
+          contentPadding: EdgeInsets.zero,
+          title: title,
+          subtitle: help != null && !help.isEmpty
+              ? _summary(assistanceSummary(help.items), 'option-assistance', _assistance)
+              : null,
+          value: help != null,
+          onChanged: (v) => _assistance(on: v),
+        );
+    }
   }
 
   Future<void> _comments() async {
@@ -1565,42 +1706,7 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
               ],
             ),
             const SizedBox(height: 8),
-            SwitchListTile(
-              key: const ValueKey('option-child-seat'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Child safety seat'),
-              value: _options.childSeat,
-              onChanged: (v) => _set(_options.copyWith(childSeat: v)),
-            ),
-            SwitchListTile(
-              key: const ValueKey('option-more-passengers'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('More than ${RideOptions.standardSeats} passengers'),
-              value: _options.morePassengers,
-              onChanged: (v) => _set(_options.copyWith(morePassengers: v)),
-            ),
-            // "Pet with me": as the other options, with the pets' summary
-            // and Edit under it once they are in.
-            SwitchListTile(
-              key: const ValueKey('option-pet'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Pet with me'),
-              subtitle: _options.pet && _options.pets.isNotEmpty
-                  ? Row(children: [
-                      Expanded(
-                        child: Text(petSummary(_options.pets), key: const ValueKey('option-pet-summary')),
-                      ),
-                      TextButton(
-                        key: const ValueKey('option-pet-edit'),
-                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                        onPressed: _pets,
-                        child: const Text('Edit'),
-                      ),
-                    ])
-                  : null,
-              value: _options.pet,
-              onChanged: (v) => _pets(on: v),
-            ),
+            for (final k in widget.config.shown(catalogue: widget.assistance)) _option(context, k),
             const SizedBox(height: 12),
             Material(
               color: t.colorScheme.surfaceContainerHigh,
