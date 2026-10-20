@@ -300,7 +300,8 @@ class AdminMultiGateGatesScreen extends ConsumerWidget {
       () => ref.read(geoAdminRepositoryProvider).saveMultiGate(
             'gate',
             id: entry?.id,
-            values: form.toValues(placeId: placeId, parentKey: parentKey),
+            // Keys the form doesn't edit (an airport door's guide, 0249) are kept.
+            values: {...?entry?.values, ...form.toValues(placeId: placeId, parentKey: parentKey)},
             position: entry?.position ?? 0,
           ),
       success: 'Gate saved',

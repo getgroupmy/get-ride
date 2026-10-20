@@ -312,6 +312,16 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
   static String _place(String label, String? address) =>
       address == null || address.trim().isEmpty || address.trim() == label ? label : '$label ($address)';
 
+  Widget _doorLine(BuildContext context, String text, String key) => Padding(
+    key: ValueKey(key),
+    padding: const EdgeInsets.only(left: 28, top: 2),
+    child: Row(children: [
+      Icon(Icons.door_front_door_outlined, size: 16, color: Theme.of(context).colorScheme.primary),
+      const SizedBox(width: 4),
+      Expanded(child: Text(text, style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600))),
+    ]),
+  );
+
   Widget _end(BuildContext context, String letter, Color color, String text) {
     final t = Theme.of(context);
     return Padding(
@@ -433,7 +443,10 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                 style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w600),
               ),
             _end(context, 'A', RideRequestSheet.toPickup, _place(r.pickupLabel, r.pickupAddress)),
+            // The door the rider chose at an airport (0249).
+            if (r.pickupDoor case final door?) _doorLine(context, 'Pickup door: $door', 'request-pickup-door'),
             _end(context, 'B', RideRequestSheet.trip, _place(r.dropLabel, null)),
+            if (r.dropDoor case final door?) _doorLine(context, 'Drop-off door: $door', 'request-drop-door'),
             const SizedBox(height: 6),
             Text(
               [

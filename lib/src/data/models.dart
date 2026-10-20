@@ -315,6 +315,16 @@ class RideRequest {
   String get pickupLabel => pickupName ?? pickupAddress ?? 'Pickup';
   String get dropLabel => dropName ?? dropAddress ?? 'Drop-off';
 
+  /// The doors the rider chose at an airport (migration 0249; named by the
+  /// server).
+  String? get pickupDoor => _nonEmpty(raw['pickup_door_name']);
+  String? get dropDoor => _nonEmpty(raw['drop_door_name']);
+
+  /// A pickup the airport keeps for its waiting drivers (0249).
+  bool get airportHold => raw['airport_hold'] == true;
+
+  static String? _nonEmpty(Object? v) => v is String && v.trim().isNotEmpty ? v.trim() : null;
+
   /// Stops between pickup and drop-off, in order (migration 0098).
   List<Place> get stops => parseRideStops(raw['stops']);
 

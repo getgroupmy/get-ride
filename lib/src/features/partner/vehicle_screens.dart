@@ -12,6 +12,8 @@ import '../../core/partner_onboarding.dart';
 import '../../core/partner_type_rules.dart' show vehicleAgeProblem;
 import '../../core/vehicle_onboarding.dart';
 import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
+import '../../core/fare.dart' show RideService;
+import '../../data/app_display_repository.dart' show rideServicesProvider;
 import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../data/vehicle_onboarding_repository.dart';
@@ -22,6 +24,7 @@ import '../../widgets/loading_skeleton.dart';
 import '../../widgets/back_or_go_button.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 
@@ -239,6 +242,9 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   final _ownerPhone = TextEditingController();
   final _ownerIc = TextEditingController();
   MakeModel? _makeModel;
+
+  /// The service type the driver chose (0249), when the make & model maps none.
+  String _serviceId = '';
   bool? _ownVehicle;
 
   _Entries _requiredDocs = const [];
@@ -319,6 +325,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
     _ownerPhone.text = t('owner_phone');
     _ownerIc.text = t('owner_ic');
     if (t('make').isNotEmpty) _makeModel = makeModelFromRow(v);
+    _serviceId = t('service_id');
   }
 
   Future<void> _save(Future<Map<String, dynamic>> Function() action, {VehicleStep? stayOn}) async {
@@ -350,10 +357,14 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   Future<void> _saveMakeModel() async {
     final m = _makeModel;
     if (m == null || m.make.isEmpty) return showError(context, 'Please select the make and model.');
+    // Its service type: the make & model's, else the driver's choice (0249).
+    final service = vehicleServiceChoice(mapped: m.serviceId, chosen: _serviceId);
+    if (service.problem != null) return showError(context, service.problem!);
     await _save(() => _repo.patch(_v!, {
           'make': m.make,
           'model': m.model,
           'vehicle_type': m.vehicleType.isEmpty ? null : m.vehicleType,
+          'service_id': service.serviceId,
         }));
   }
 
@@ -594,6 +605,8 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
             subtitle: 'Choose your vehicle from the list.',
             children: [
               MakeModelField(value: _makeModel, enabled: !_busy, onChanged: (m) => setState(() => _makeModel = m)),
+              if (_makeModel != null && _makeModel!.serviceId.isEmpty)
+                _ServicePicker(value: _serviceId, enabled: !_busy, onChanged: (v) => setState(() => _serviceId = v)),
               _continue(_saveMakeModel),
             ],
           ),
@@ -726,5 +739,37 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
       const SizedBox(height: 16),
       BusyButton.outlined(onPressed: _busy ? null : _finish, child: const Text('Done')),
     ]);
+  }
+}
+
+/// "Service type": what the vehicle is for (Ride, Comfort, …), when its make &
+/// model doesn't say. An administrator approves it with the vehicle (0249).
+class _ServicePicker extends ConsumerWidget {
+  const _ServicePicker({required this.value, required this.onChanged, this.enabled = true});
+  final String value;
+  final ValueChanged<String> onChanged;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final services = [
+      for (final s in ref.watch(rideServicesProvider).value ?? const <RideService>[])
+        if (s.id != null) s,
+    ];
+    final known = services.any((s) => s.id == value);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: SearchableDropdownFormField<String>(
+        key: ValueKey('vehicle-service-pick-$known-${services.length}'),
+        isExpanded: true,
+        initialValue: known ? value : null,
+        decoration: const InputDecoration(
+          labelText: 'Service type',
+          helperText: 'What this vehicle is for. An administrator approves it with the vehicle.',
+        ),
+        items: [for (final s in services) DropdownMenuItem(value: s.id!, child: Text(s.name))],
+        onChanged: enabled ? (v) => onChanged(v ?? '') : null,
+      ),
+    );
   }
 }

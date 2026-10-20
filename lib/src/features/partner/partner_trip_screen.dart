@@ -800,14 +800,22 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             ListTile(
               leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
               title: Text(r.pickupLabel),
-              subtitle: r.pickupAddress == null ? null : Text(r.pickupAddress!, maxLines: 2),
+              subtitle: r.pickupAddress == null && r.pickupDoor == null
+                  ? null
+                  : Text(
+                      [if (r.pickupDoor case final d?) 'Pickup door: $d', ?r.pickupAddress].join('\n'),
+                      key: const ValueKey('trip-pickup-door'),
+                      maxLines: 3,
+                    ),
             ),
             RideStopTiles(stops: r.stops, onNavigate: r.status.isOngoing ? (s) => _navigate(s.point) : null),
             ListTile(
               key: const ValueKey('trip-drop'),
               leading: Icon(Icons.location_on, color: Colors.red.shade700),
               title: Text(r.dropLabel),
-              subtitle: r.dropAddress == null ? null : Text(r.dropAddress!, maxLines: 2),
+              subtitle: r.dropAddress == null && r.dropDoor == null
+                  ? null
+                  : Text([if (r.dropDoor case final d?) 'Drop-off door: $d', ?r.dropAddress].join('\n'), maxLines: 3),
             ),
             if (r.note != null) ListTile(leading: const Icon(Icons.notes), title: Text(r.note!)),
             if (r.pets.isNotEmpty)

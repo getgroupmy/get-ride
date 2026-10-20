@@ -13,6 +13,9 @@ import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
 import 'vehicle_drivers.dart';
+import '../geo/geo_data.dart' show regionVehicleTypesProvider;
+import '../geo/geo_logic.dart' show ServiceOption;
+import '../../../widgets/search_select.dart';
 import '../../../data/live_tables.dart';
 import '../../../widgets/page_style_host.dart';
 
@@ -101,7 +104,19 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
   late String? _ownerUuid = r?['owner_partner_id'] as String?;
   late MakeModel? _mm = r == null
       ? null
-      : (vehicleType: _s('vehicle_type'), energyType: '', make: _s('make'), model: _s('model'), yearFrom: '', yearTo: '');
+      : (
+          vehicleType: _s('vehicle_type'),
+          energyType: '',
+          make: _s('make'),
+          model: _s('model'),
+          yearFrom: '',
+          yearTo: '',
+          serviceId: '',
+        );
+
+  /// The approved service type (0249): what the airport queue uses. Starts
+  /// from the one approved, else the one the driver asked for.
+  late String _service = _s('service_approved_id').isNotEmpty ? _s('service_approved_id') : _s('service_id');
   late String _permit = r?['permit'] as String? ?? 'none';
   late String _status = r?['status'] as String? ?? 'unapproved';
   late bool _docsOk = r?['documents_ok'] == true;
@@ -172,6 +187,9 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
         documentsOk: _docsOk,
         area: _area,
       );
+      // The service type the admin approves (and, for a new vehicle, asks for).
+      cols['service_approved_id'] = _service.isEmpty ? null : _service;
+      if (!_isEdit || _s('service_id').isEmpty) cols['service_id'] = _service.isEmpty ? null : _service;
       if (_isEdit) {
         await repo.updateVehicle(r!['id'] as String, cols);
       } else {
@@ -217,7 +235,21 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
             if (_isEdit)
               Text('${_s('plate')} • ${r!['display_id'] ?? r!['id']}', style: t.textTheme.bodySmall),
             const SectionTitle('Vehicle'),
-            MakeModelField(value: _mm, enabled: canEdit, onChanged: (m) => setState(() => _mm = m)),
+            MakeModelField(
+              value: _mm,
+              enabled: canEdit,
+              onChanged: (m) => setState(() {
+                _mm = m;
+                if (m.serviceId.isNotEmpty && _service.isEmpty) _service = m.serviceId;
+              }),
+            ),
+            _ServiceTypeField(
+              value: _service,
+              requested: _s('service_id'),
+              approved: _s('service_approved_id'),
+              enabled: canEdit,
+              onChanged: (v) => setState(() => _service = v),
+            ),
             FormColumns(children: [
               PeopleField(
                   controller: _plate,
@@ -477,4 +509,45 @@ class VehicleEditScreen extends ConsumerWidget {
                 data: (data) => _VehicleForm(data: data, page: page, row: row),
               ),
       );
+}
+
+/// The vehicle's service type (0249): the one the driver asked for, and the
+/// one approved — what the airport queue lines it up by.
+class _ServiceTypeField extends ConsumerWidget {
+  const _ServiceTypeField({
+    required this.value,
+    required this.requested,
+    required this.approved,
+    required this.enabled,
+    required this.onChanged,
+  });
+  final String value, requested, approved;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final services = ref.watch(regionVehicleTypesProvider).value ?? const <ServiceOption>[];
+    String name(String id) => services.where((s) => s.id == id).firstOrNull?.name ?? (id.isEmpty ? 'none' : 'unknown');
+    final known = services.any((s) => s.id == value);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: SearchableDropdownFormField<String>(
+        key: ValueKey('vehicle-service-$known'),
+        isExpanded: true,
+        initialValue: known ? value : '',
+        decoration: InputDecoration(
+          labelText: 'Service type (approved)',
+          helperText: approved.isEmpty
+              ? (requested.isEmpty ? 'Not chosen yet' : 'Driver asked for ${name(requested)} · not approved yet')
+              : 'Approved: ${name(approved)}${requested.isNotEmpty && requested != approved ? ' · driver asked for ${name(requested)}' : ''}',
+        ),
+        items: [
+          const DropdownMenuItem(value: '', child: Text('None')),
+          for (final s in services) DropdownMenuItem(value: s.id, child: Text(s.name)),
+        ],
+        onChanged: enabled ? (v) => onChanged(v ?? '') : null,
+      ),
+    );
+  }
 }

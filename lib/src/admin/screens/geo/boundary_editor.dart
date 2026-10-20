@@ -34,6 +34,8 @@ class BoundaryEditorPage extends ConsumerStatefulWidget {
     this.near,
     this.reverseFirst = false,
     this.onClear,
+    this.onPickSaved,
+    this.askQuery = false,
   });
 
   final String title;
@@ -51,6 +53,14 @@ class BoundaryEditorPage extends ConsumerStatefulWidget {
   /// Removes the stored boundary; null when nothing is stored.
   final Future<void> Function()? onClear;
 
+  /// A third source beside drawing and OpenStreetMap: copies a saved
+  /// region's outline (Airport Areas' zones). Null hides it.
+  final Future<BoundaryShape?> Function()? onPickSaved;
+
+  /// Ask what to search OpenStreetMap for, starting from [query] (a zone is
+  /// rarely named after the airport).
+  final bool askQuery;
+
   static Future<void> open(BuildContext context, BoundaryEditorPage page) =>
       Navigator.of(context).push(AppPageRoute(id: 'admin-regions.boundary-editor', fullscreenDialog: true, builder: (_) => page));
 
@@ -63,6 +73,7 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
   bool _ready = false;
   late BoundaryShape? _boundary = widget.initial;
   late bool _hasStored = widget.onClear != null;
+  late String _query = widget.query;
   _DrawMode _mode = _DrawMode.off;
   List<LatLng> _draft = [];
   int? _selected;
@@ -164,6 +175,29 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
   }
 
   Future<void> _fetchOsm() async {
+    if (widget.askQuery) {
+      final c = TextEditingController(text: _query);
+      final q = await showAppDialog<String>(
+        id: 'admin-regions.osm-query',
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Search OpenStreetMap'),
+          content: TextField(
+            controller: c,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'e.g. Putrajaya'),
+            onSubmitted: (v) => Navigator.pop(ctx, v),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Search')),
+          ],
+        ),
+      );
+      c.dispose();
+      if (q == null || q.trim().isEmpty || !mounted) return;
+      setState(() => _query = q.trim());
+    }
     setState(() => _busy = true);
     final osm = ref.read(osmLookupProvider);
     try {
@@ -171,11 +205,11 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
       if (widget.reverseFirst && widget.near != null) {
         final both = await Future.wait([
           osm.reverseBoundaries(widget.near!),
-          osm.boundaries(widget.query, near: widget.near),
+          osm.boundaries(_query, near: widget.near),
         ]);
         list = mergeCandidates(both[0], both[1]);
       } else {
-        list = await osm.boundaries(widget.query, near: widget.near);
+        list = await osm.boundaries(_query, near: widget.near);
       }
       if (!mounted) return;
       if (list.isEmpty) {
@@ -186,6 +220,16 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
         final picked = await _pickCandidate(list);
         if (picked != null) _setBoundary(picked.shape);
       }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _pickSaved() async {
+    setState(() => _busy = true);
+    try {
+      final shape = await widget.onPickSaved!();
+      if (shape != null && mounted) _setBoundary(shape);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -232,7 +276,7 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
               onPressed: () async {
                 final nextLimit = (list.length + 10).clamp(1, 50);
                 final fresh =
-                    await ref.read(osmLookupProvider).boundaries(widget.query, limit: nextLimit, near: widget.near);
+                    await ref.read(osmLookupProvider).boundaries(_query, limit: nextLimit, near: widget.near);
                 final merged = mergeCandidates(list, fresh);
                 setSheet(() {
                   exhausted = merged.length == list.length || nextLimit >= 50;
@@ -422,6 +466,13 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
             label: const Text('BBOX'),
             onPressed: _busy || _mode != _DrawMode.off ? null : _applyBBox,
           ),
+          if (widget.onPickSaved != null)
+            ActionChipButton(
+              key: const ValueKey('boundary-saved-regions'),
+              avatar: const Icon(Icons.travel_explore, size: 18),
+              label: const Text('Saved regions'),
+              onPressed: _busy || _mode != _DrawMode.off ? null : _pickSaved,
+            ),
         ]),
         const SizedBox(height: 12),
         Row(children: [num('North', _n), const SizedBox(width: 8), num('South', _s)]),

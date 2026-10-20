@@ -8,7 +8,8 @@
 // signed link when it shows or opens the file.
 
 /// The buckets whose files need a signed link to be read.
-const privateDocumentBuckets = {'ID_Image', 'vehicle-documents', 'provider-documents', 'support-media'};
+/// 'airport-guides': the pickup guides' photos (migration 0249).
+const privateDocumentBuckets = {'ID_Image', 'vehicle-documents', 'provider-documents', 'support-media', 'airport-guides'};
 
 /// How long a signed document link stays good.
 const documentLinkTtl = Duration(hours: 1);

@@ -504,9 +504,20 @@ class _VehicleSelectorState extends State<VehicleSelector> {
 
 // ---- Vehicle make/model ----------------------------------------------------
 
-typedef MakeModel = ({String vehicleType, String energyType, String make, String model, String yearFrom, String yearTo});
+/// [serviceId]: the vehicle service the make & model maps to ('' when the
+/// driver chooses; migration 0249).
+typedef MakeModel = ({
+  String vehicleType,
+  String energyType,
+  String make,
+  String model,
+  String yearFrom,
+  String yearTo,
+  String serviceId,
+});
 
 MakeModel makeModelFromRow(Map<String, dynamic> r) => (
+      serviceId: '${r['service_id'] ?? ''}'.trim(),
       vehicleType: '${r['vehicle_type'] ?? ''}'.trim(),
       energyType: '${r['energy_type'] ?? ''}'.trim(),
       make: '${r['make'] ?? ''}'.trim(),

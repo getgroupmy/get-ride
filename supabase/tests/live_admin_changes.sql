@@ -49,7 +49,9 @@ begin
     -- Commission tiers (migration 0218; followed by the app since 0229).
     'commission_tiers',
     -- Claude Code access (migration 0228).
-    'claude_access_rules'
+    'claude_access_rules',
+    -- Airports' settings, waiting zones and fare zones (migration 0249).
+    'airport_settings', 'airport_waiting_zones', 'airport_fare_zones', 'vehicle_service_order'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables
