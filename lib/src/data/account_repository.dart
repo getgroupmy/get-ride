@@ -132,7 +132,7 @@ class AccountRepository {
         .from('emergency_contacts')
         .select()
         .eq('profile_id', _uid)
-        .order('created_at');
+        .order('created_at', ascending: false);
     return rows.map(EmergencyContact.fromRow).toList();
   }
 
@@ -194,7 +194,7 @@ class AccountRepository {
         .from('support_messages')
         .select()
         .eq('ticket_id', ticketId)
-        .order('created_at');
+        .order('created_at', ascending: true);
     return rows.map(SupportMessage.new).toList();
   }
 

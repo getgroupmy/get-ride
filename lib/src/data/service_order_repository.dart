@@ -42,7 +42,7 @@ class ServiceOrderRepository {
         .select('id, plate, make, model, service_id')
         .eq('status', 'approved')
         .isFilter('service_approved_id', null)
-        .order('plate')
+        .order('plate', ascending: true)
         .limit(1000);
     return [
       for (final r in rows)

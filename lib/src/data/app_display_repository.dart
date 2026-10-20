@@ -136,7 +136,7 @@ final rideServicesProvider = FutureProvider<List<RideService>>((ref) async {
           .from('settings_entries')
           .select('id, values, position')
           .eq('category', 'vehicle-services')
-          .order('position')
+          .order('position', ascending: true).order('created_at', ascending: true)
           .timeout(appSettingsReadTimeout);
       return [for (final r in rows) Map<String, dynamic>.from(r)];
     } catch (_) {
@@ -211,7 +211,7 @@ final paymentChoicesProvider = FutureProvider<List<PaymentChoice>>((ref) async {
         .from('settings_entries')
         .select('values, position')
         .eq('category', 'payment-type')
-        .order('position');
+        .order('position', ascending: true).order('created_at', ascending: true);
     final choices = paymentChoicesFrom([
       for (final r in rows) if (r['values'] is Map) Map<String, dynamic>.from(r['values'] as Map),
     ]);

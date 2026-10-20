@@ -32,7 +32,7 @@ class PeopleRepository {
     var q = _db.from('profiles').select();
     final or = searchOrFilter(query, partnerUserSearchColumns);
     if (or != null) q = q.or(or);
-    final rows = await q.order('joined_at', ascending: false).order('id').range(0, limit);
+    final rows = await q.order('joined_at', ascending: false).order('id', ascending: false).range(0, limit);
     return rowsPage(List<Map<String, dynamic>>.from(rows), limit);
   }
 
@@ -137,14 +137,14 @@ class PeopleRepository {
       await _db.from('vehicle_documents').select().eq('vehicle_id', vehicleId).order('uploaded_at', ascending: false));
 
   Future<List<Map<String, dynamic>>> makeModels() async => List<Map<String, dynamic>>.from(
-      await _db.from('vehicle_make_models').select().eq('status', true).order('position'));
+      await _db.from('vehicle_make_models').select().eq('status', true).order('position', ascending: true).order('created_at', ascending: true));
 
   // ---- Settings & geo ------------------------------------------------------
 
   Future<List<({String id, Map<String, dynamic> values})>> _entries(String table, {String? category}) async {
     var q = _db.from(table).select('id, values');
     if (category != null) q = q.eq('category', category);
-    final rows = await q.order('position');
+    final rows = await q.order('position', ascending: true).order('created_at', ascending: true);
     return [
       for (final r in rows) (id: r['id'] as String, values: Map<String, dynamic>.from((r['values'] as Map?) ?? const {})),
     ];
@@ -159,7 +159,7 @@ class PeopleRepository {
   Future<GeoOptions> geoOptions({Iterable<ServiceArea> inUse = const []}) async {
     Future<List<Map<String, dynamic>>> rows(String t, String cols) async {
       try {
-        return List<Map<String, dynamic>>.from(await _db.from(t).select(cols).order('position'));
+        return List<Map<String, dynamic>>.from(await _db.from(t).select(cols).order('position', ascending: true).order('created_at', ascending: true));
       } catch (_) {
         return const [];
       }

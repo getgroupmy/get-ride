@@ -52,7 +52,7 @@ class TestAccountsRepository {
         for (final r in await _db
             .from('test_accounts')
             .select('profile_id, note, created_at, profile:profiles(id, name, phone, email, display_id)')
-            .order('created_at'))
+            .order('created_at', ascending: false))
           TestAccount.fromRow(r),
       ];
 

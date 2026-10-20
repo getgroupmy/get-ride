@@ -415,7 +415,7 @@ class RideRepository {
           .eq('status', 'completed')
           .gte('completed_at', since.toUtc().toIso8601String())
           .order('completed_at', ascending: false)
-          .order('id')
+          .order('id', ascending: false)
           .range(out.length, out.length + pageSize - 1);
       out.addAll(rows.map(RideRequest.new));
       if (rows.length < pageSize) break;

@@ -49,7 +49,7 @@ class AdminRepository {
   Future<bool> bootstrap() async => (await _db.rpc('admin_access_bootstrap')) == true;
 
   Future<List<Map<String, dynamic>>> allGrants() async =>
-      List<Map<String, dynamic>>.from(await _db.from('admin_access').select().order('created_at'));
+      List<Map<String, dynamic>>.from(await _db.from('admin_access').select().order('created_at', ascending: false));
 
   Future<void> grant({required String profileId, required String page, required bool edit, String? notes}) =>
       _db.from('admin_access').insert({
@@ -139,7 +139,7 @@ class AdminRepository {
     var q = _db.from('profiles').select();
     final or = searchOrFilter(query, userSearchColumns);
     if (or != null) q = q.or(or);
-    final rows = await q.order('joined_at', ascending: false).order('id').range(0, limit);
+    final rows = await q.order('joined_at', ascending: false).order('id', ascending: false).range(0, limit);
     return rowsPage(List<Map<String, dynamic>>.from(rows), limit);
   }
 
@@ -271,7 +271,7 @@ class AdminRepository {
       });
 
   Future<List<Map<String, dynamic>>> ticketMessages(String ticketId) async => List<Map<String, dynamic>>.from(
-        await _db.from('support_messages').select().eq('ticket_id', ticketId).order('created_at'),
+        await _db.from('support_messages').select().eq('ticket_id', ticketId).order('created_at', ascending: true),
       );
 
   Future<void> replyToTicket(String ticketId, String body, String myName) async {
@@ -390,7 +390,7 @@ class AdminRepository {
       CommissionConfig.fromJson(await _db.rpc('set_commission_config', params: {'p_config': c.toJson()}));
 
   Future<List<CommissionTier>> commissionTiers() async => [
-        for (final r in await _db.from('commission_tiers').select().order('position').order('created_at') as List)
+        for (final r in await _db.from('commission_tiers').select().order('position', ascending: true).order('created_at', ascending: true) as List)
           CommissionTier.fromRow(Map<String, dynamic>.from(r as Map)),
       ];
 
@@ -490,7 +490,7 @@ class AdminRepository {
     final term = peopleSearchTerm(q);
     if (term == null) return const [];
     return List<Map<String, dynamic>>.from(
-      await _db.from('profiles').select(cols).or(peopleOrFilter(term)).order('name').limit(limit),
+      await _db.from('profiles').select(cols).or(peopleOrFilter(term)).order('name', ascending: true).limit(limit),
     );
   }
 
@@ -538,7 +538,7 @@ class AdminRepository {
   Future<List<SettingEntry>> settings(SettingsCategory c) async {
     var q = _db.from(c.table).select('id, values, position, active');
     if (c.usesCategoryColumn) q = q.eq('category', c.key);
-    final rows = await q.order('position');
+    final rows = await q.order('position', ascending: true).order('created_at', ascending: true);
     return rows.map(SettingEntry.fromRow).toList();
   }
 

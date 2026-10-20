@@ -10,7 +10,7 @@ class SavedPlacesRepository {
   final SupabaseClient _db;
 
   Future<List<SavedPlace>> list() async {
-    final rows = await _db.from('saved_places').select().order('created_at');
+    final rows = await _db.from('saved_places').select().order('created_at', ascending: false);
     return [for (final r in rows) ?SavedPlace.fromRow(r)];
   }
 

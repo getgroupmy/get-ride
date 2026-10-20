@@ -204,7 +204,7 @@ class SecurityRepository {
   static const _claudeCols = 'id, kind, value, label, enabled, created_at, updated_at';
 
   Future<List<ClaudeAccessRule>> claudeRules() async {
-    final rows = await _db.from('claude_access_rules').select(_claudeCols).order('kind').order('created_at', ascending: false);
+    final rows = await _db.from('claude_access_rules').select(_claudeCols).order('kind', ascending: false).order('created_at', ascending: false);
     return rows.map(ClaudeAccessRule.fromRow).toList();
   }
 

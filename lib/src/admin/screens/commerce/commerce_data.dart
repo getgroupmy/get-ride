@@ -56,7 +56,7 @@ final gatewayAccountsProvider = FutureProvider.autoDispose<List<SelectedGateway>
       .select('id, providerId:values->>providerId, providerName:values->>providerName, '
           'accountName:values->>accountName, mode:values->>mode, active:values->active')
       .eq('category', paymentGatewayCategory)
-      .order('position');
+      .order('position', ascending: true).order('created_at', ascending: true);
   return pickableGateways([
     for (final r in rows)
       (

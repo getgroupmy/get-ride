@@ -224,7 +224,7 @@ final serviceDispatchConfigsProvider = FutureProvider<Map<String, ServiceDispatc
         .from('settings_entries')
         .select('id, values, position')
         .eq('category', 'vehicle-services')
-        .order('position');
+        .order('position', ascending: true).order('created_at', ascending: true);
     return dispatchConfigsByService([
       for (final r in rows)
         (

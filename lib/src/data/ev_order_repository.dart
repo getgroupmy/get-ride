@@ -48,7 +48,7 @@ class EvOrderRepository {
     try {
       var q = _db.from(table).select('id, values, position');
       if (category != null) q = q.eq('category', category);
-      final rows = await q.order('position');
+      final rows = await q.order('position', ascending: true).order('created_at', ascending: true);
       return [
         for (final r in rows)
           (id: '${r['id']}', values: Map<String, dynamic>.from((r['values'] as Map?) ?? const {})),

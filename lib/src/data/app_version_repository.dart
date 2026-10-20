@@ -17,7 +17,7 @@ final appVersionRulesProvider = FutureProvider<List<AppVersionRule>>((ref) async
         .from('settings_entries')
         .select('values, position')
         .eq('category', 'app-version-setting')
-        .order('position');
+        .order('position', ascending: true).order('created_at', ascending: true);
     return [
       for (final r in rows)
         if (r['values'] is Map) ?AppVersionRule.fromValues(Map<String, dynamic>.from(r['values'] as Map)),

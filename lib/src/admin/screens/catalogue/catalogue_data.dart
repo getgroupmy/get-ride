@@ -108,8 +108,8 @@ class CatalogueRepository {
       final rows = await _db
           .from('vehicle_make_models')
           .select()
-          .order('position')
-          .order('id')
+          .order('position', ascending: true)
+          .order('id', ascending: true)
           .range(from, from + page - 1);
       out.addAll(rows.map(VehicleMakeModel.fromRow));
       if (rows.length < page) break;

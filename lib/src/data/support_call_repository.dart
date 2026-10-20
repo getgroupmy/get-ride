@@ -152,7 +152,7 @@ class SupportCallRepository implements CallSignalling<SupportCall> {
       PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'call_id', value: callId),
       event: PostgresChangeEvent.insert,
       initial: () async =>
-          List<Map<String, dynamic>>.from(await _db.from(_signals).select().eq('call_id', callId).order('id')),
+          List<Map<String, dynamic>>.from(await _db.from(_signals).select().eq('call_id', callId).order('id', ascending: true)),
       healthy: callRowsInCallHealthyInterval,
     ).map(CallSignal.fromRow).where((s) => seen.add(s.id));
   }

@@ -221,7 +221,7 @@ class DispatchRepository {
 
   /// The staff of the caller's stands (their own rows, by RLS).
   Future<List<Map<String, dynamic>>> staff(String standId) async => List<Map<String, dynamic>>.from(
-    await _db.from('dispatch_stand_people').select().eq('stand_id', standId).eq('role', 'staff').order('created_at'),
+    await _db.from('dispatch_stand_people').select().eq('stand_id', standId).eq('role', 'staff').order('created_at', ascending: false),
   );
 
   Future<void> setStaff(String standId, String userId, {StandPerms? perms, bool? active}) => _db
@@ -285,7 +285,7 @@ class DispatchRepository {
   // ---- The admin -------------------------------------------------------------------------
 
   Future<List<DispatchStand>> allStands() async {
-    final rows = await _db.from('dispatch_stands').select().order('name');
+    final rows = await _db.from('dispatch_stands').select().order('name', ascending: true);
     final links = await _db.from('dispatch_stand_groups').select('stand_id, group_id');
     final byStand = <String, List<String>>{};
     for (final l in links) {
@@ -320,13 +320,13 @@ class DispatchRepository {
 
   /// Everyone who works at the stands (admins read every row).
   Future<List<Map<String, dynamic>>> standPeople() async =>
-      List<Map<String, dynamic>>.from(await _db.from('dispatch_stand_people').select().order('created_at'));
+      List<Map<String, dynamic>>.from(await _db.from('dispatch_stand_people').select().order('created_at', ascending: false));
 
   Future<void> setStandPerson(String standId, String userId, Map<String, dynamic> patch) =>
       _db.from('dispatch_stand_people').update(patch).eq('stand_id', standId).eq('user_id', userId);
 
   Future<List<DispatchGroup>> allGroups() async => [
-    for (final r in await _db.from('dispatch_groups').select().order('name')) DispatchGroup.fromJson(r),
+    for (final r in await _db.from('dispatch_groups').select().order('name', ascending: true)) DispatchGroup.fromJson(r),
   ];
 
   Future<void> saveGroup(DispatchGroup g, {String? id}) async {
@@ -394,7 +394,7 @@ class DispatchRepository {
   /// The groups the driver may ask to join, with where they stand in each.
   Future<List<({DispatchGroup group, JoinState state})>> joinable() async {
     final uid = _db.auth.currentUser?.id;
-    final groups = await _db.from('dispatch_groups').select().eq('active', true).order('name');
+    final groups = await _db.from('dispatch_groups').select().eq('active', true).order('name', ascending: true);
     final mine = uid == null
         ? const <Map<String, dynamic>>[]
         : List<Map<String, dynamic>>.from(

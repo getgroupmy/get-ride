@@ -73,7 +73,7 @@ class CoinTransferRepository {
         .eq('to_user_id', userId)
         .eq('status', 'pending')
         .gt('expires_at', DateTime.now().toUtc().toIso8601String())
-        .order('created_at')
+        .order('created_at', ascending: true)
         .limit(10);
     return rows.map(CoinTransferRequest.fromRow).toList();
   }
