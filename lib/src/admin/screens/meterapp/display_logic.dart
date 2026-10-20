@@ -236,6 +236,10 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'discountBarInFront': false,
       'discountBar': true,
       'addStopConfirm': true,
+      'confirmShowCoin': true,
+      'confirmShowBookForOther': true,
+      'confirmShowMyRide': true,
+      'confirmShowAutoAccept': true,
       'rcBackVertical': 0,
       'rcBackHorizontal': 0,
       'rcRecenterVertical': 0,
@@ -494,19 +498,16 @@ class SheetMinEstimate {
 SheetMinEstimate sheetMinEstimate(Map<String, dynamic> s, String key) {
   final items = sheetItemEstimates(key, s);
   // What stays whole however low the admin sets it: home's first item (the
-  // search bar), confirm's first vehicle card over the Find a driver bar,
-  // tracking's status line over the Cancel ride bar.
+  // search bar), tracking's status line over the Cancel ride bar. Confirm
+  // goes down to a fixed [confirmSheetMinFloor].
   final whole = switch (key) {
     homeSheetMinAdjustKey => items.first.px,
-    confirmSheetMinAdjustKey =>
-      confirmSheetItemHeights['routeLine']! + confirmSheetItemHeights['vehicleCards']! ~/ 2 +
-          confirmSheetItemHeights['findDriverBar']!,
     _ => trackingSheetItemHeights['statusTitle']! + trackingSheetItemHeights['cancelBar']!,
   };
   return SheetMinEstimate(
     items: items,
     adjust: sheetMinAdjust(s, key).round(),
-    floor: sheetHandleAndGaps + whole + sheetItemGap * 2,
+    floor: key == confirmSheetMinAdjustKey ? confirmSheetMinFloor : sheetHandleAndGaps + whole + sheetItemGap * 2,
   );
 }
 

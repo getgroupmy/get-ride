@@ -75,6 +75,18 @@ void main() {
     expect(ConfirmLayout.fromSettings(const {'addStopConfirm': false}).confirmAddStop, isFalse);
   });
 
+  test('GET.coin, Book for someone else, My Ride and Auto-accept show unless the admin hides them', () {
+    final on = ConfirmLayout.fromSettings(const {});
+    expect([on.showCoin, on.showBookForOther, on.showMyRide, on.showAutoAccept], everyElement(isTrue));
+    final off = ConfirmLayout.fromSettings(const {
+      'confirmShowCoin': false,
+      'confirmShowBookForOther': 'off',
+      'confirmShowMyRide': 0,
+      'confirmShowAutoAccept': false,
+    });
+    expect([off.showCoin, off.showBookForOther, off.showMyRide, off.showAutoAccept], everyElement(isFalse));
+  });
+
   test("the trip maps' recenter offsets: the rider's and the driver's", () {
     const s = {'rtRecenterHorizontal': -10, 'rtRecenterVertical': 30, 'prRecenterHorizontal': 5, 'prRecenterVertical': '-15'};
     expect(tripRecenterOffset(s, partner: false), (-10.0, 30.0));

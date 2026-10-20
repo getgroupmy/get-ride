@@ -217,7 +217,7 @@ class _DisplayBody extends ConsumerWidget {
           settings: s,
           onChanged: canEdit
               ? (v) => applyDisplay(
-                  context, ref, (x) => setDisplayNumber(x, key, v, sheetMinAdjustMin, sheetMinAdjustMax))
+                  context, ref, (x) => setDisplayNumber(x, key, v, sheetMinAdjustMinFor(key), sheetMinAdjustMax))
               : null,
         );
 
@@ -303,6 +303,14 @@ class _DisplayBody extends ConsumerWidget {
                       'Off = the stop is added straight away.',
                   displayBool(s, 'addStopConfirm'),
                   (v) => set('addStopConfirm', v)),
+              toggle('Show "Use GET.coin"', 'Let riders pay part of the fare with their coins',
+                  displayBool(s, 'confirmShowCoin'), (v) => set('confirmShowCoin', v)),
+              toggle('Show "Book for someone else"', "Let riders book with another person's name and phone",
+                  displayBool(s, 'confirmShowBookForOther'), (v) => set('confirmShowBookForOther', v)),
+              toggle('Show "My Ride"', 'Let riders offer the ride to their favourite drivers first',
+                  displayBool(s, 'confirmShowMyRide'), (v) => set('confirmShowMyRide', v)),
+              toggle('Show "Auto-accept offer"', 'Let riders accept a driver offer at their fare without tapping (bidding rides)',
+                  displayBool(s, 'confirmShowAutoAccept'), (v) => set('confirmShowAutoAccept', v)),
               for (final i in rideConfirmLayoutItems) stepper(i),
               sheetMin(confirmSheetMinAdjustKey),
             ]),
@@ -507,7 +515,7 @@ class SheetMinHeightTile extends StatelessWidget {
             key: ValueKey('$settingKey-decrease'),
             tooltip: 'Decrease',
             icon: const Icon(Icons.remove),
-            onPressed: change == null || e.atFloor || e.adjust <= sheetMinAdjustMin
+            onPressed: change == null || e.atFloor || e.adjust <= sheetMinAdjustMinFor(settingKey)
                 ? null
                 : () => change(e.adjust - sheetMinAdjustStep),
           ),

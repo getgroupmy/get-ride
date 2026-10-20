@@ -18,6 +18,10 @@ class ConfirmLayout {
     this.promoBarOffset = 0,
     this.promoBarInFront = false,
     this.confirmAddStop = true,
+    this.showCoin = true,
+    this.showBookForOther = true,
+    this.showMyRide = true,
+    this.showAutoAccept = true,
   });
 
   /// (horizontal, vertical) offsets.
@@ -38,6 +42,14 @@ class ConfirmLayout {
   /// Admin → Display → "Ask before adding a stop": a new stop's additional
   /// cost and time are shown with Add or Cancel; off, it is added at once.
   final bool confirmAddStop;
+
+  /// Admin → Display → Ride Confirm Layout: whether the confirm sheet shows
+  /// its "Use GET.coin", "Book for someone else", "My Ride" and
+  /// "Auto-accept offer" rows (each still only where it applies).
+  final bool showCoin;
+  final bool showBookForOther;
+  final bool showMyRide;
+  final bool showAutoAccept;
 
   static ConfirmLayout fromSettings(Map<String, dynamic> s) {
     double n(String k) {
@@ -68,6 +80,10 @@ class ConfirmLayout {
       promoBarOffset: n('discountBarHeightOffset'),
       promoBarInFront: flag('discountBarInFront', false),
       confirmAddStop: flag('addStopConfirm', true),
+      showCoin: flag('confirmShowCoin', true),
+      showBookForOther: flag('confirmShowBookForOther', true),
+      showMyRide: flag('confirmShowMyRide', true),
+      showAutoAccept: flag('confirmShowAutoAccept', true),
     );
   }
 }
