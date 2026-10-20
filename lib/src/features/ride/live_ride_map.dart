@@ -12,6 +12,7 @@ import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
 import '../../providers.dart';
 import '../../data/models.dart';
+import '../../widgets/map_brightness.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/map_sheet_layout.dart';
@@ -534,7 +535,7 @@ Widget walkToPickupLayer(List<LatLng> line) => Builder(
     polylines: [
       Polyline(
         points: line,
-        color: Theme.of(context).brightness == Brightness.dark ? Colors.lightBlueAccent : Colors.blue.shade700,
+        color: mapIsDark(context) ? Colors.lightBlueAccent : Colors.blue.shade700,
         strokeWidth: 4,
         pattern: StrokePattern.dashed(segments: const [10, 8]),
       ),

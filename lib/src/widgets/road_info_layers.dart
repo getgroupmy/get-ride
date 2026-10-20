@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../core/road_info.dart';
 import '../data/road_info_service.dart';
+import 'map_brightness.dart';
 
 /// Traffic signals (OSM `highway=traffic_signals`) as small lights on the
 /// map, from [trafficSignalsMinZoom] in. A child of a [FlutterMap]: it reads
@@ -139,7 +140,7 @@ class _SpeedLimitBadgeState extends State<SpeedLimitBadge> {
     final road = _road;
     if (widget.at == null || road == null) return const SizedBox.shrink();
     final t = Theme.of(context);
-    final dark = t.brightness == Brightness.dark;
+    final dark = mapIsDark(context);
     return Semantics(
       label: road.estimated
           ? '${road.roadClass.label}, about ${road.speedKmh} km/h'
@@ -179,7 +180,10 @@ class _SpeedLimitBadgeState extends State<SpeedLimitBadge> {
             child: Text(
               road.estimated ? '${road.roadClass.label} · est.' : road.roadClass.label,
               key: const ValueKey('speed-limit-road'),
-              style: t.textTheme.labelSmall?.copyWith(fontSize: 10),
+              style: t.textTheme.labelSmall?.copyWith(
+                fontSize: 10,
+                color: dark ? Colors.white : const Color(0xFF111111),
+              ),
             ),
           ),
         ],

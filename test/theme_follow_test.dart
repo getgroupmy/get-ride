@@ -37,6 +37,9 @@ void main() {
     });
 
     testWidgets('pickup pin follows the theme ($b)', (tester) async {
+      // Phone and app both the same: the default Map appearance (Follow phone) draws the map so.
+      tester.platformDispatcher.platformBrightnessTestValue = b;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
       await tester.pumpWidget(_app(b, const PickupPin()));
       final dark = b == Brightness.dark;
       final head = tester.widget<Container>(find.byKey(const ValueKey('pickup-pin')));

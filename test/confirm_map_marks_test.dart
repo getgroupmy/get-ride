@@ -13,6 +13,9 @@ import 'package:get_ride/src/widgets/ride_map.dart';
 void main() {
   for (final b in Brightness.values) {
     testWidgets('pickup, stop and drop-off marks follow the theme ($b)', (tester) async {
+      // Phone and app both the same: the default Map appearance (Follow phone) draws the map so.
+      tester.platformDispatcher.platformBrightnessTestValue = b;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData(brightness: b),
@@ -49,6 +52,9 @@ void main() {
     });
 
     testWidgets('the whole-route button is a route to a pin on the recenter disc ($b)', (tester) async {
+      // Phone and app both the same: the default Map appearance (Follow phone) draws the map so.
+      tester.platformDispatcher.platformBrightnessTestValue = b;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
       var taps = 0;
       await tester.pumpWidget(
         MaterialApp(

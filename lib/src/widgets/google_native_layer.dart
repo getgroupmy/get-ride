@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gm;
 
 import 'google_map_style.dart';
+import 'map_brightness.dart';
 import 'map_traffic.dart' show googleTrafficProvider, mapTrafficProvider;
 
 /// Whether this build can draw Google's own map: Android or iOS, with the
@@ -70,7 +71,7 @@ class _GoogleNativeBaseLayerState extends ConsumerState<GoogleNativeBaseLayer> {
     if (!googleNativeSupported) return widget.fallback;
     final camera = MapCamera.of(context);
     final traffic = ref.watch(googleTrafficProvider) && ref.watch(mapTrafficProvider);
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dark = mapIsDark(context);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _follow(camera);
     });
